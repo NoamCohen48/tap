@@ -53,5 +53,6 @@ Rules when doing so:
 
 - JDK 17 is required (`JAVA_HOME`); the workstation default JDK is not compatible with AGP.
 - The Phase 0 host flow (`host ... <serials> <apks>`) is destructive and reboots devices.
-  Do not run it against shared devices without asking.
+  Do not run it against shared devices without asking. `host --no-reboot ...` skips only the
+  reboot scenario and is safe for routine validation on the local matrix.
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.

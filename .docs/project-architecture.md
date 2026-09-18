@@ -1,6 +1,6 @@
 # Tap Project Architecture
 
-Date: 2026-09-15
+Date: 2026-09-18
 
 Status: current Phase 0 implementation overview. The normative future design remains
 [`android-e2e-framework-implementation-plan.md`](android-e2e-framework-implementation-plan.md).
@@ -39,6 +39,7 @@ persistent RPC connection after startup; they do not launch one ADB process per 
 tap/
 +-- protocol/
 +-- driver/
+|   +-- command-engine/
 +-- host/
 +-- fixture-app/
 +-- .docs/
@@ -51,9 +52,12 @@ The dependency direction is intentionally narrow:
 
 ```text
 host ----------------> protocol
-driver androidTest --> protocol
+driver androidTest --> driver:command-engine --> protocol
 fixture-app            independent
 ```
+
+`driver:command-engine` is pure Kotlin/JVM (no Android types) so the execution state machine
+is unit-tested on the host JVM.
 
 The host has no Android API dependency. The protocol has no Android, host, or coroutine
 runtime dependency.
@@ -117,6 +121,12 @@ The server:
 Because it is independent from the AUT, the driver survives AUT force-stop, clear-data, and
 relaunch operations.
 
+One authenticated connection runs through independent lanes (`ClientConnection` reads;
+`CommandPipeline` in `driver/command-engine` owns the bounded queue, single executor, writer,
+and watchdog). `DriverCommandEngine` and `UiAutomationCommands` receive a `CommandContext`
+carrying the acceptance-relative deadline, cooperative cancellation checkpoints, and the
+atomic mutation gate. See `protocol-contract.md` for the resulting semantics.
+
 Current operations are:
 
 ```text
@@ -164,8 +174,9 @@ adb -s SERIAL forward tcp:0 tcp:DEVICE_PORT
 ### Driver RPC
 
 `DriverClient.kt` opens the forwarded local TCP port, performs mutual authentication,
-allocates monotonically increasing request IDs, applies request-relative socket deadlines,
-and serializes requests and responses.
+allocates monotonically increasing request IDs under a per-session transport mutex,
+demultiplexes responses on a reader thread, and exposes `execute`, `submit`/`await`/`cancel`,
+and `ping`. `FakeDriverServer` under `host/src/test` speaks the real handshake for JVM tests.
 
 Authentication negotiates application protocol `1.0` separately from framing version 1. The
 canonical HELLO/CHALLENGE/NEGOTIATION transcript binds the selected version, capabilities,
@@ -291,6 +302,7 @@ The Android build currently requires JDK 17:
 
 ```bash
 JAVA_HOME="/tmp/opencode/temurin17" ./gradlew \
+  :protocol:test :driver:command-engine:test :host:test \
   :fixture-app:assembleDebug \
   :driver:assembleDebugAndroidTest \
   :host:installDist

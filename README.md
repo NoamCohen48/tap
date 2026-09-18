@@ -43,7 +43,7 @@ Set `JAVA_HOME` to a JDK 17 installation before building.
 ## Build
 
 ```bash
-./gradlew :protocol:test :host:installDist \
+./gradlew :protocol:test :driver:command-engine:test :host:test :host:installDist \
   :driver:assembleDebug :driver:assembleDebugAndroidTest \
   :fixture-app:assembleDebug
 ```
@@ -65,7 +65,10 @@ devices.
 ```
 
 The run prints `PHASE_0_OK` only after the device flow and instrumentation process both
-finish successfully.
+finish successfully. Pass `--no-reboot` (anywhere in the arguments) to skip only the
+late-mutation quarantine scenario; every other check, including the Phase 1 cancellation
+proofs (`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK`), still runs and no
+device is rebooted.
 
 To benchmark and inventory screens in an arbitrary installed product shape without adding
 product logic to Tap, use product-probe mode. Each final argument is

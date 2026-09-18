@@ -9,6 +9,7 @@ import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
+import com.company.tap.driver.engine.CommandContext
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
@@ -98,8 +99,10 @@ internal class UiAutomationCommands(
     private val objects: UiObjectAccess,
     private val faults: FaultController,
 ) {
-    fun tap(socket: Socket, request: Request, requestId: Long, started: Long): Response {
+    fun tap(context: CommandContext, socket: Socket, request: Request): Response {
+        val started = context.acceptedAtMs
         val requestSelector = requireNotNull(request.selector)
+        context.checkpoint()
         val resolved = objects.resolveUnique(requestSelector)
         val element = resolved.element ?: return Response(
             false,
@@ -107,12 +110,13 @@ internal class UiAutomationCommands(
             durationMs = elapsed(started),
         )
         try {
-            if (android.os.SystemClock.elapsedRealtime() >= started + request.timeoutMs) {
-                return Response(false, errorCode = "DEADLINE_EXCEEDED", durationMs = elapsed(started))
-            }
-            faults.injectLateUninterruptible(socket, request, requestId)
+            // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
+            // cancellation is ignored from here on and the click result is definitive.
+            context.markMutationStarted()
+            faults.injectLateUninterruptible(socket, request, context.requestId)
             element.click()
-            if (faults.inject(FaultPoint.AFTER_MUTATION, request, requestId)) {
+            faults.holdAfterMutation(request, context.requestId)
+            if (faults.inject(FaultPoint.AFTER_MUTATION, request, context.requestId)) {
                 throw InjectedTransportLoss()
             }
         } finally {
@@ -121,14 +125,15 @@ internal class UiAutomationCommands(
         return Response(true, value = true, durationMs = elapsed(started))
     }
 
-    fun waitVisible(request: Request, started: Long): Response {
+    fun waitVisible(context: CommandContext, request: Request): Response {
+        val started = context.acceptedAtMs
         require(request.timeoutMs >= 0) { "timeoutMs must not be negative" }
-        val deadline = started + request.timeoutMs
+        val deadline = context.deadlineMs
         var found = false
         do {
+            context.checkCancelled()
             found = objects.hasObject(requireNotNull(request.selector))
-            val remaining = deadline - android.os.SystemClock.elapsedRealtime()
-            if (!found && remaining > 0) Thread.sleep(minOf(50, remaining))
+            if (!found && context.remainingMs() > 0) context.sleep(50)
         } while (!found && android.os.SystemClock.elapsedRealtime() < deadline)
         return if (found) Response(true, value = true, durationMs = elapsed(started))
         else Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
@@ -151,8 +156,10 @@ internal class UiAutomationCommands(
         return Response(true, text = hierarchy, durationMs = elapsed(started))
     }
 
-    fun setText(request: Request, started: Long): Response {
+    fun setText(context: CommandContext, request: Request): Response {
+        val started = context.acceptedAtMs
         val requestSelector = requireNotNull(request.selector)
+        context.checkpoint()
         val resolved = objects.resolveUnique(requestSelector)
         val element = resolved.element ?: return Response(
             false,
@@ -163,10 +170,8 @@ internal class UiAutomationCommands(
             if (!element.accessibilityNodeInfo.isEditable) {
                 return Response(false, errorCode = "NOT_INTERACTABLE", durationMs = elapsed(started))
             }
-            if (android.os.SystemClock.elapsedRealtime() >= started + request.timeoutMs) {
-                return Response(false, errorCode = "DEADLINE_EXCEEDED", durationMs = elapsed(started))
-            }
             val expected = requireNotNull(request.inputText)
+            context.markMutationStarted()
             element.text = expected
         } finally {
             element.recycle()
@@ -190,15 +195,17 @@ internal class UiAutomationCommands(
         else Response(false, errorCode = "ACTION_REJECTED", durationMs = elapsed(started))
     }
 
-    fun typeText(request: Request, started: Long): Response {
+    fun typeText(context: CommandContext, request: Request): Response {
+        val started = context.acceptedAtMs
         val requestSelector = requireNotNull(request.selector)
+        context.checkpoint()
         val resolved = objects.resolveUnique(requestSelector)
         val element = resolved.element ?: return Response(
             false,
             errorCode = requireNotNull(resolved.errorCode),
             durationMs = elapsed(started),
         )
-        val deadline = started + request.timeoutMs
+        val deadline = context.deadlineMs
         try {
             if (!element.accessibilityNodeInfo.isEditable) {
                 return Response(false, errorCode = "NOT_INTERACTABLE", durationMs = elapsed(started))
@@ -218,6 +225,8 @@ internal class UiAutomationCommands(
 
             val initialNode = element.accessibilityNodeInfo
             val initialText = if (initialNode.isShowingHintText) "" else initialNode.text?.toString().orEmpty()
+            // The focusing click is the first injected input; everything after it is definitive.
+            context.markMutationStarted()
             element.click()
             while (true) {
                 val focused = objects.findObject(requestSelector)
@@ -322,15 +331,17 @@ internal class UiAutomationCommands(
         }
     }
 
-    fun scrollUntil(request: Request, started: Long): Response {
+    fun scrollUntil(context: CommandContext, request: Request): Response {
+        val started = context.acceptedAtMs
         require(request.timeoutMs >= 0) { "timeoutMs must not be negative" }
         require(request.maxScrolls in 1..100) { "maxScrolls must be between 1 and 100" }
         val target = objects.selector(requireNotNull(request.selector))
         val containerSelector = requireNotNull(request.containerSelector)
-        val deadline = started + request.timeoutMs
+        val deadline = context.deadlineMs
         var noProgressAttempts = 0
 
         repeat(request.maxScrolls) {
+            context.checkCancelled()
             if (android.os.SystemClock.elapsedRealtime() >= deadline) {
                 return Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
             }
@@ -349,6 +360,8 @@ internal class UiAutomationCommands(
                 if (android.os.SystemClock.elapsedRealtime() >= deadline) {
                     return Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
                 }
+                // The first gesture makes the command definitive; later cancels are ignored.
+                context.markMutationStarted()
                 scrollable.scroll(Direction.DOWN, 0.8f)
                 fingerprint
             } finally {

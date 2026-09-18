@@ -13,6 +13,7 @@ internal enum class FaultPoint {
     AFTER_ACCEPTANCE,
     AFTER_MUTATION,
     LATE_UNINTERRUPTIBLE,
+    CANCEL_AFTER_MUTATION,
 }
 
 internal class FaultController(
@@ -32,6 +33,26 @@ internal class FaultController(
         triggered = true
         emit("TAP_FAULT point=${point.name} request=$requestId generation=${request.sessionGeneration}")
         return true
+    }
+
+    /**
+     * Keeps a tap command running for a bounded time after its click so the host can send
+     * `CANCEL` while the mutation is already definitive. The command must still return its
+     * real result; the pipeline ignores the cancel.
+     */
+    fun holdAfterMutation(request: Request, requestId: Long) {
+        if (
+            triggered || faultPoint != FaultPoint.CANCEL_AFTER_MUTATION ||
+            request.selector?.value != "fault_button"
+        ) {
+            return
+        }
+        triggered = true
+        emit(
+            "TAP_FAULT point=${FaultPoint.CANCEL_AFTER_MUTATION.name} phase=MUTATED " +
+                "request=$requestId generation=${request.sessionGeneration} holdMs=$CANCEL_HOLD_MS"
+        )
+        android.os.SystemClock.sleep(CANCEL_HOLD_MS)
     }
 
     fun injectLateUninterruptible(socket: Socket, request: Request, requestId: Long) {
@@ -74,3 +95,5 @@ internal class FaultController(
 }
 
 internal class InjectedTransportLoss : RuntimeException()
+
+private const val CANCEL_HOLD_MS = 3_000L

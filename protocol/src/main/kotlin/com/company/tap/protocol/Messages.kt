@@ -27,7 +27,10 @@ enum class FrameType(val wireValue: Byte) {
     AUTH_RESULT(4),
     REQUEST(5),
     RESPONSE(6),
-    CLOSE(7);
+    CLOSE(7),
+    CANCEL(8),
+    PING(9),
+    PONG(10);
 
     companion object {
         fun fromWireValue(value: Byte): FrameType =
