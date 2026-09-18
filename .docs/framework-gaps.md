@@ -155,6 +155,13 @@ platform level (the pool handles concurrency inside one JVM only), soak lane, be
 gates (per-command latency, session start time), the confidence-based reliability gate,
 release automation, upgrade/rollback procedure.
 
+## Second-language binding (design doc §8)
+
+Not started. The requirement is a Python binding; the analysis, the recommended host
+session service (single implementation of the lifecycle/journal/pool layer, language-neutral
+local API), the merged machine-wide device pool, packaging options, and the open decisions
+are in `multi-language-bindings.md`.
+
 ## Suggested order
 
 1. Fake-ADB JVM tests for `DeviceSession`/`DevicePool`/`TapExtension` failure paths.
