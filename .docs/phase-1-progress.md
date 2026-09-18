@@ -43,8 +43,11 @@ Latest successful generations:
 - [ ] Split the driver into an independent socket reader, bounded queue, serialized command
   executor, writer, and watchdog.
 - [ ] Implement safe cancellation and terminal command states without permitting late work.
-- [ ] Add duplicate editable-field and scroll-container fixtures to cover the implemented
-  exact-one behavior beyond the validated duplicate-tap case.
+- [ ] Wire the duplicate editable-field and scroll-container fixtures into host validation.
+  `AmbiguityActivity` (`activity_ambiguity.xml`) already contains duplicate `EditText`s and
+  duplicate `ScrollView`s, but nothing in `PhaseZeroMain` or the product probe exercises it
+  yet. The duplicate-button case referenced above was validated through the probe's
+  `!AMBIGUOUS:` step; the current fixture layout no longer contains that duplicate button.
 - [ ] Define selector AST limits, relations, matching modes, and native/fallback boundary.
 - [ ] Replace free-form remote error strings with the typed taxonomy and host exceptions.
 - [ ] Add screenshots with bounded binary transfer and checksum validation.
