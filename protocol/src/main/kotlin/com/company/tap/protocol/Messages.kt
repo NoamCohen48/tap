@@ -45,10 +45,16 @@ enum class FrameType(val wireValue: Byte) {
 
 enum class Operation {
     HEALTH,
+    DEVICE_INFO,
+    PRESS_KEY,
     EXISTS,
+    COUNT,
+    SNAPSHOT,
     TAP,
     LONG_TAP,
     WAIT_VISIBLE,
+    WAIT_GONE,
+    WAIT_APP_VISIBLE,
     DUMP_HIERARCHY,
     SET_TEXT,
     TYPE_TEXT,
@@ -71,6 +77,14 @@ enum class Direction {
 
 const val DEFAULT_GESTURE_PERCENT = 80
 const val MAX_SCROLLS = 100
+
+/** `COUNT` stops counting here; a screen with more matches reports this value. */
+const val MAX_MATCH_COUNT = 1_000
+
+/** Android key codes the host may name symbolically; any non-negative code is accepted. */
+const val KEYCODE_HOME = 3
+const val KEYCODE_BACK = 4
+const val KEYCODE_ENTER = 66
 
 enum class TargetScope {
     AUT,
@@ -151,6 +165,10 @@ data class Request(
     /** Gesture length as a percentage of the element's size, 1..100. */
     val distancePercent: Int = DEFAULT_GESTURE_PERCENT,
     val maxScrolls: Int = 20,
+    /** `PRESS_KEY`: an Android `KeyEvent` key code. */
+    val keyCode: Int? = null,
+    /** `WAIT_APP_VISIBLE`: the package whose focused window must appear. */
+    val packageName: String? = null,
     val observedPid: Int? = null,
     val observedStartToken: String? = null,
     val expectedProcessStartUuid: String? = null,
@@ -171,6 +189,12 @@ data class Response(
     val syncState: SyncState? = null,
     /** Set when the request transferred a blob; the bytes arrived in the preceding blob frames. */
     val artifact: ArtifactInfo? = null,
+    /** `COUNT`: matches found, capped at [MAX_MATCH_COUNT]. */
+    val count: Int? = null,
+    /** `SNAPSHOT`: the resolved element's accessibility state at one instant. */
+    val snapshot: ElementSnapshot? = null,
+    /** `DEVICE_INFO`. */
+    val deviceInfo: DeviceInfo? = null,
 ) {
     init {
         require(ok == (errorCode == null)) { "errorCode must be present exactly when ok is false" }
@@ -204,6 +228,46 @@ data class SyncState(
     val busyCount: Int,
     val lastTransitionElapsedMs: Long,
     val error: String? = null,
+)
+
+/** One accessibility node's state, read once; never a handle. */
+@Serializable
+data class ElementSnapshot(
+    val className: String? = null,
+    val packageName: String? = null,
+    val resourceName: String? = null,
+    val text: String? = null,
+    val contentDescription: String? = null,
+    val hint: String? = null,
+    val bounds: Bounds,
+    val checkable: Boolean,
+    val checked: Boolean,
+    val clickable: Boolean,
+    val enabled: Boolean,
+    val focusable: Boolean,
+    val focused: Boolean,
+    val longClickable: Boolean,
+    val scrollable: Boolean,
+    val selected: Boolean,
+    val childCount: Int,
+)
+
+@Serializable
+data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+    val width: Int get() = right - left
+    val height: Int get() = bottom - top
+}
+
+@Serializable
+data class DeviceInfo(
+    val apiLevel: Int,
+    val manufacturer: String,
+    val model: String,
+    val product: String,
+    val displayWidth: Int,
+    val displayHeight: Int,
+    val displayRotation: Int,
+    val currentPackage: String? = null,
 )
 
 data class Frame(

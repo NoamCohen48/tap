@@ -6,6 +6,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.UiWindow
 import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.MAX_MATCH_COUNT
 import com.company.tap.protocol.MatchLimit
 import com.company.tap.protocol.Selector
 
@@ -56,6 +57,13 @@ internal class UiObjectAccess(
         }
     } catch (_: StaleObjectException) {
         false
+    }
+
+    /** Number of matches in the focused window, capped at [MAX_MATCH_COUNT]. */
+    fun count(selector: Selector): Int = try {
+        findObjects(compile(selector), MAX_MATCH_COUNT).onEach(UiObject2::recycle).size
+    } catch (_: StaleObjectException) {
+        0
     }
 
     /** Presence of [target] inside an already resolved container. */
