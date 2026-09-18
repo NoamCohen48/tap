@@ -1,7 +1,8 @@
 # Tap
 
-Kotlin host-driven Android E2E framework. Phase 0 is complete; Phase 1 (contract and driver)
-is in progress. See `README.md` for build/run commands.
+Kotlin host-driven Android E2E framework. Phases 0 and 1 (contract and driver) are complete;
+Phase 2 (host SDK + JUnit 5) has a usable first cut in `:host:sdk`, `:host:junit5`, and
+`:samples:fixture-tests`. See `README.md` for build/run commands.
 
 ## Documents
 
@@ -12,6 +13,8 @@ is in progress. See `README.md` for build/run commands.
 - `.docs/project-architecture.md` — current module/file layout.
 - `.docs/phase-1-progress.md` — Phase 1 checklist. Keep it honest: only tick items that are
   implemented *and* exercised by a test or the device validation flow.
+- `.docs/framework-gaps.md` — the remaining delta to the plan, per section. Move an item out
+  of it only together with the test or device check that proves it.
 - `.docs/upstream-reference-audit.md` — adopt/adapt/do-not-copy decisions per upstream tool.
 
 ## Learning from other testing tools
@@ -51,8 +54,15 @@ Rules when doing so:
 
 ## Build notes
 
-- JDK 17 is required (`JAVA_HOME`); the workstation default JDK is not compatible with AGP.
-- The Phase 0 host flow (`host ... <serials> <apks>`) is destructive and reboots devices.
-  Do not run it against shared devices without asking. `host --no-reboot ...` skips only the
-  reboot scenario and is safe for routine validation on the local matrix.
+- JDK 17 is required: `export JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2`
+  on this workstation; the default JDK is not compatible with AGP.
+- The validation executable is `host/validation/build/install/host/bin/host`
+  (`:host:validation:installDist`). The full flow (`host <serials> <apks>`) is destructive
+  and reboots devices. Do not run it against shared devices without asking.
+  `host --no-reboot ...` skips only the reboot scenario and is safe for routine validation on
+  the local matrix (emulator-5554 API 34, 85e49002 Samsung SM-J810G API 29).
+- SDK/JUnit changes are validated with
+  `./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002`.
+- Product code must never depend on `:host:validation`; `PhaseZeroMain` is fault-injection
+  validation, not framework code.
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.
