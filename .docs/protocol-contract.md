@@ -1,6 +1,6 @@
 # Tap Protocol Contract
 
-Date: 2026-09-17
+Date: 2026-09-18
 
 Status: application protocol `1.0`; Phase 1 contract is additive and not yet complete.
 
@@ -27,8 +27,11 @@ and response payloads are UTF-8 JSON. Connection frames use request ID zero; req
 responses use a positive monotonically increasing ID.
 
 Implemented frame types are `HELLO` (1), `CHALLENGE` (2), `AUTH` (3), `AUTH_RESULT` (4),
-`REQUEST` (5), `RESPONSE` (6), and `CLOSE` (7). Unknown framing versions, frame types, flags,
-and invalid lengths fail the connection before payload decoding.
+`REQUEST` (5), `RESPONSE` (6), `CLOSE` (7), `CANCEL` (8), `PING` (9), and `PONG` (10). Unknown
+framing versions, frame types, flags, and invalid lengths fail the connection before payload
+decoding. After authentication only `REQUEST`, `CANCEL`, `PING`, and `CLOSE` are legal from the
+host; any other type fails the connection. `CANCEL` carries the target request ID and an empty
+payload; `PING`/`PONG` use request ID zero and an empty payload.
 
 ## Canonical JSON
 
@@ -96,6 +99,65 @@ validation and cannot be reused. IDs at or below the accepted watermark return
 Mutating element targets and scroll containers require exactly one match. Zero matches return
 `NOT_FOUND`; multiple matches return `AMBIGUOUS` before input is injected.
 
+## Execution Model
+
+The driver runs one authenticated connection through independent lanes:
+
+```text
+socket reader -> bounded queue (16) -> single command executor -> writer -> socket
+                                              ^
+                                           watchdog
+```
+
+- The reader thread never runs UI work. It validates the request-ID watermark, then enqueues.
+  `CANCEL`, `PING`, and connection closure are therefore observed while a command runs.
+- `timeoutMs` starts when the request is accepted. Queue residence consumes the deadline; a
+  command reaching the executor after expiry returns `DEADLINE_EXCEEDED` without running.
+- A full queue returns `OVERLOADED` immediately; the request ID is still consumed.
+- Every accepted request gets exactly one terminal `RESPONSE`, in whichever order commands
+  terminate. Hosts must demultiplex by request ID.
+- `PONG` is produced on the writer lane and does not wait for the executor.
+
+### Cancellation
+
+| Driver state at `CANCEL` | Result |
+|---|---|
+| Queued | Removed; `CANCELLED` |
+| Running, no mutation yet | Cooperative stop at the next checkpoint; `CANCELLED` |
+| Running, mutation started | Ignored; the definitive action result is returned |
+| Terminal or unknown ID | Ignored; never a second response |
+
+Commands checkpoint before selector resolution, between wait polls, and between scroll
+attempts. Immediately before the first irreversible platform call (`click`, text replacement,
+key injection, the first scroll gesture) the command passes an atomic gate that refuses on
+cancel, deadline, or a poisoned session and otherwise makes the command uncancellable. Waits
+that simply run out of time still report `WAIT_TIMEOUT`; `DEADLINE_EXCEEDED` is reserved for
+expiry outside a normal condition result.
+
+### Watchdog
+
+If the running command is still executing more than the uninterruptible grace period
+(default 10 s, instrumentation argument `tapUninterruptibleGraceMs`) after its deadline, the
+pipeline is poisoned: the running command terminates with `INDETERMINATE` if it had started
+mutating and `DRIVER_UNHEALTHY` otherwise, queued commands terminate with `DRIVER_UNHEALTHY`,
+later requests are refused with `DRIVER_UNHEALTHY`, and the mutation gate refuses everything.
+The driver emits a `TAP_POISONED` instrumentation status, stops listening, and kills its own
+process after a short flush grace. The host must rebuild the session with a new generation.
+Only the late-work fault scenario disables the self-kill, so the host's forced termination and
+reboot quarantine path can be validated against a genuinely hung driver. The test-only
+`CANCEL_AFTER_MUTATION` fault holds a fault-button tap open after its click so the host can prove
+that a cancel arriving after the mutation gate is ignored.
+
+### Host client
+
+The host writes each request ID and complete frame under one per-session transport mutex, so
+IDs are strictly increasing on the socket even with concurrent callers. A dedicated reader
+thread demultiplexes `RESPONSE` and `PONG`. `cancel` sends `CANCEL` only for a request in the
+`WRITTEN` state; the caller still awaits the driver's single terminal response. A missing
+terminal response, an unknown response ID, or any read failure poisons the client: in-flight
+mutating requests fail as `INDETERMINATE`, queries as `TRANSPORT_LOST`, and later submissions
+fail before writing.
+
 ## Compatibility Rules
 
 - Framing and application versions are independent.
@@ -111,7 +173,8 @@ key, and noncanonical JSON tests live under `protocol/src/test`.
 
 ## Not Yet Implemented
 
-Protocol 1.0 does not yet expose cancellation, heartbeats, events, binary blobs, screenshots,
-or a complete typed remote-error model. Those require the planned independent socket reader,
-bounded command queue, serialized executor, watchdog, and terminal-state machine. Adding frame
-enum values without that execution model would provide unsafe cancellation semantics.
+Protocol 1.0 does not yet expose events, binary blobs, screenshots, or a complete typed
+remote-error model. Error codes are still strings; the codes emitted by the execution pipeline
+are `CANCELLED`, `DEADLINE_EXCEEDED`, `OVERLOADED`, `DRIVER_UNHEALTHY`, `INDETERMINATE`, and
+`INTERNAL`. The driver does not yet require periodic host heartbeats; `PING` is host-initiated
+only.

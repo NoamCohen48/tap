@@ -43,16 +43,18 @@ fun main(arguments: Array<String>) {
             runProductProbe(arguments.drop(1))
             return@runBlocking
         }
-        require(arguments.size == 4) {
-            "Usage: host <serial[,serial...]> <driver.apk> <driver-test.apk> <fixture.apk> " +
+        val skipReboot = "--no-reboot" in arguments
+        val positional = arguments.filterNot { it == "--no-reboot" }
+        require(positional.size == 4) {
+            "Usage: host [--no-reboot] <serial[,serial...]> <driver.apk> <driver-test.apk> <fixture.apk> " +
                 "or host --product-probe <serial> <driver.apk> <driver-test.apk> <aut.apk> " +
                 "<package> <activity> <tap-text|ready-text|screen-name>..."
         }
-        val driverApk = Path.of(arguments[1])
-        val driverTestApk = Path.of(arguments[2])
-        val fixtureApk = Path.of(arguments[3])
+        val driverApk = Path.of(positional[1])
+        val driverTestApk = Path.of(positional[2])
+        val fixtureApk = Path.of(positional[3])
 
-        val serials = arguments[0]
+        val serials = positional[0]
             .split(',')
             .map(String::trim)
             .filter(String::isNotEmpty)
@@ -67,7 +69,7 @@ fun main(arguments: Array<String>) {
         serials
             .map { serial ->
                 async(Dispatchers.IO) {
-                    runDevice(serial, driverApk, driverTestApk, fixtureApk, disconnectProbe)
+                    runDevice(serial, driverApk, driverTestApk, fixtureApk, disconnectProbe, skipReboot)
                 }
             }
             .awaitAll()
@@ -80,6 +82,7 @@ private suspend fun runDevice(
     driverTestApk: Path,
     fixtureApk: Path,
     disconnectProbe: MultiDeviceDisconnectProbe?,
+    skipReboot: Boolean = false,
 ) = withContext(Dispatchers.IO) {
     val adb = Adb()
     val journalStore = SessionJournalStore(
@@ -159,15 +162,21 @@ private suspend fun runDevice(
         recoveredFencing.generation,
         journalStore,
     )
-    val lateReset = runLateMutationQuarantineScenario(
-        adb,
-        serial,
-        bootId,
-        recoveredTransport.generation,
-        journalStore,
-        driverApk,
-        driverTestApk,
-    )
+    // --no-reboot skips only the late-mutation quarantine, whose recovery reboots the device.
+    val lateReset = if (skipReboot) {
+        println("PHASE_0_LATE_MUTATION_SKIPPED serial=$serial reason=--no-reboot")
+        LateResetResult(recoveredTransport, bootId)
+    } else {
+        runLateMutationQuarantineScenario(
+            adb,
+            serial,
+            bootId,
+            recoveredTransport.generation,
+            journalStore,
+            driverApk,
+            driverTestApk,
+        )
+    }
     bootId = lateReset.bootId
     val sessionId = UUID.randomUUID().toString()
     val generation = Math.addExact(lateReset.journal.generation, 1L)
@@ -553,6 +562,7 @@ internal enum class TransportFaultPoint {
     AFTER_ACCEPTANCE,
     AFTER_MUTATION,
     LATE_UNINTERRUPTIBLE,
+    CANCEL_AFTER_MUTATION,
 }
 
 private data class FaultSession(
@@ -650,11 +660,65 @@ private fun runSessionFencingScenario(
         check(!unsupportedReplay.ok && unsupportedReplay.errorCode == "DUPLICATE_OR_STALE") {
             "Unsupported operation request ID was reusable: $unsupportedReplay"
         }
+        runCancellationChecks(serial, session.client)
         cleanupStarted = true
         return cleanupFaultSession(adb, serial, bootId, session, store)
     } finally {
         if (!cleanupStarted) cleanupFaultSession(adb, serial, bootId, session, store)
     }
+}
+
+/**
+ * Proves the driver's reader, queue, executor, and writer lanes are independent: a running wait
+ * is cancelled while the executor is busy, queued work is cancelled without running, queue
+ * residence consumes the request deadline, heartbeats bypass the executor, and the session stays
+ * reusable afterwards. Only non-mutating operations are used, so `CANCELLED` is always legal.
+ */
+private fun runCancellationChecks(serial: String, client: DriverClient) {
+    val absent = Selector(SelectorKind.TEXT, "tap-cancellation-probe-never-visible")
+
+    val idlePingMs = client.ping()
+
+    // Cancel a running wait: it must stop within the poll interval, not at its 30 s timeout.
+    val running = client.submit(Operation.WAIT_VISIBLE, absent, timeoutMs = 30_000)
+    Thread.sleep(500)
+    val busyPingMs = client.ping()
+    check(running.cancel()) {
+        "Running wait was not cancellable: state=${running.transmissionState} done=${running.isDone} " +
+            "response=${running.responseOrNull}"
+    }
+    val cancelStarted = System.nanoTime()
+    val cancelled = running.await()
+    val cancelLatencyMs = (System.nanoTime() - cancelStarted) / 1_000_000L
+    check(!cancelled.ok && cancelled.errorCode == "CANCELLED") { "Running wait was not cancelled: $cancelled" }
+    check(cancelLatencyMs < 5_000) { "Cancellation took $cancelLatencyMs ms" }
+    check(!running.cancel()) { "Terminal command accepted a second cancel" }
+
+    // Cancel queued work: the second wait must terminate before the first one does, and a
+    // short-deadline command queued behind a long one must expire without running.
+    val first = client.submit(Operation.WAIT_VISIBLE, absent, timeoutMs = 30_000)
+    val second = client.submit(Operation.WAIT_VISIBLE, absent, timeoutMs = 30_000)
+    val expiring = client.submit(Operation.HEALTH, timeoutMs = 200)
+    check(second.cancel())
+    val secondResult = second.await()
+    check(!secondResult.ok && secondResult.errorCode == "CANCELLED") { "Queued wait was not cancelled: $secondResult" }
+    check(!first.isDone) { "First wait completed before it was cancelled" }
+    Thread.sleep(300)
+    check(first.cancel())
+    val firstResult = first.await()
+    check(!firstResult.ok && firstResult.errorCode == "CANCELLED") { "First wait was not cancelled: $firstResult" }
+    val expired = expiring.await()
+    check(!expired.ok && expired.errorCode == "DEADLINE_EXCEEDED") {
+        "Queued command did not consume its deadline while waiting: $expired"
+    }
+
+    // The session is still usable after cancellations.
+    val health = client.execute(Operation.HEALTH)
+    check(health.ok) { "Session unusable after cancellation: $health" }
+    println(
+        "PHASE_1_CANCELLATION_OK serial=$serial idlePingMs=$idlePingMs busyPingMs=$busyPingMs " +
+            "cancelLatencyMs=$cancelLatencyMs"
+    )
 }
 
 private fun startPortOccupier(adb: Adb, serial: String, port: Int) {
@@ -929,7 +993,79 @@ private fun runTransportFaultScenarios(
             }
         }
     }
+
+    requireWithinDeadline()
+    requireCleanupBudget()
+    generation = Math.addExact(generation, 1L)
+    closed = runCancelAfterMutationScenario(
+        adb, serial, bootId, generation, store, workDeadline, fixtureProcess, ::commandTimeoutMs,
+    )
     return requireNotNull(closed)
+}
+
+/**
+ * Cancel arriving after the mutation gate: the driver holds a fault-button tap open for 3 s
+ * after its click, the host cancels during the hold, and the awaited result must be the
+ * definitive `ok` tap, not `CANCELLED`. The counter must advance exactly once and the session
+ * must remain usable.
+ */
+private fun runCancelAfterMutationScenario(
+    adb: Adb,
+    serial: String,
+    bootId: String,
+    generation: Long,
+    store: SessionJournalStore,
+    workDeadline: Long,
+    fixtureProcess: ProcessObservation,
+    commandTimeoutMs: (Long) -> Long,
+): SessionJournal {
+    val session = startFaultSession(
+        adb, serial, bootId, generation, TransportFaultPoint.CANCEL_AFTER_MUTATION, store, workDeadline,
+    )
+    val faultButton = Selector(
+        SelectorKind.ANDROID_RESOURCE,
+        value = "fault_button",
+        packageName = FIXTURE_PACKAGE,
+    )
+    var cleanupStarted = false
+    try {
+        check(
+            session.client.execute(
+                Operation.WAIT_VISIBLE,
+                Selector(SelectorKind.TEXT, "Fault taps: 1"),
+                commandTimeoutMs(10_000),
+            ).ok
+        ) { "Fault counter was not 1 before the cancel-after-mutation tap" }
+        val tap = session.client.submit(Operation.TAP, faultButton, timeoutMs = commandTimeoutMs(15_000))
+        val marker = "TAP_FAULT point=${TransportFaultPoint.CANCEL_AFTER_MUTATION.name} phase=MUTATED"
+        check(waitForInstrumentationMarker(session.running, marker, 10_000)) {
+            "Driver did not report the post-click hold"
+        }
+        check(tap.cancel()) { "In-flight tap was not cancellable at the host" }
+        val cancelSentAt = System.nanoTime()
+        val result = tap.await()
+        val awaitedMs = (System.nanoTime() - cancelSentAt) / 1_000_000L
+        check(result.ok && result.value == true) {
+            "Cancel after mutation did not return the definitive tap result: $result"
+        }
+        check(
+            session.client.execute(
+                Operation.WAIT_VISIBLE,
+                Selector(SelectorKind.TEXT, "Fault taps: 2"),
+                commandTimeoutMs(10_000),
+            ).ok
+        ) { "Cancelled-after-mutation tap did not take effect exactly once" }
+        Thread.sleep(500)
+        val stable = session.client.execute(Operation.EXISTS, Selector(SelectorKind.TEXT, "Fault taps: 2"))
+        check(stable.ok && stable.value == true) { "Fault counter moved after the cancelled tap" }
+        check(session.client.execute(Operation.HEALTH).ok) { "Session unusable after cancel-after-mutation" }
+        check(observeProcess(adb, serial) == fixtureProcess) { "AUT process changed during cancel scenario" }
+        println("PHASE_1_CANCEL_AFTER_MUTATION_OK serial=$serial awaitedAfterCancelMs=$awaitedMs")
+        cleanupStarted = true
+        return cleanupFaultSession(adb, serial, bootId, session, store)
+    } finally {
+        if (!cleanupStarted) runCatching { cleanupFaultSession(adb, serial, bootId, session, store) }
+    }
 }
 
 private fun runLateMutationQuarantineScenario(

@@ -18,5 +18,6 @@ rootProject.name = "tap"
 
 include(":protocol")
 include(":driver")
+include(":driver:command-engine")
 include(":host")
 include(":fixture-app")

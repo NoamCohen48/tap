@@ -3,6 +3,7 @@ package com.company.tap.driver
 import android.app.Instrumentation
 import android.os.Bundle
 import androidx.test.uiautomator.UiDevice
+import com.company.tap.driver.engine.CommandPipeline
 import com.company.tap.protocol.Authentication
 import com.company.tap.protocol.AuthenticationResult
 import com.company.tap.protocol.CanonicalJson
@@ -58,17 +59,42 @@ internal class TapDriverServer(
                     if (!authenticated) return@use
 
                     socket.soTimeout = 0
-                    ClientConnection(
+                    val connection = ClientConnection(
                         socket,
                         engine,
                         faults,
                         config.sessionId,
                         config.generation,
-                    ).run()
+                        config.uninterruptibleGraceMs,
+                        onPoisoned = { reason -> onPoisoned(server, reason) },
+                    )
+                    connection.run()
+                    if (connection.isPoisoned && config.watchdogKillsProcess) {
+                        // The executor never came back; nothing may run in this process again.
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                    }
                     return
                 }
             }
         }
+    }
+
+    /**
+     * Watchdog policy: after the pipeline is poisoned the session cannot be trusted. Report,
+     * stop listening, and kill the instrumentation process after a bounded grace so the
+     * pending terminal response can still be flushed. The late-work fault disables the kill
+     * because that scenario deliberately proves host-side termination of a hung driver.
+     */
+    private fun onPoisoned(server: ServerSocket, reason: String) {
+        val marker = "TAP_POISONED session=${config.sessionId} generation=${config.generation} reason=$reason"
+        println(marker)
+        instrumentation.sendStatus(2, Bundle().apply { putString("tapPoisoned", marker) })
+        if (!config.watchdogKillsProcess) return
+        Thread({
+            android.os.SystemClock.sleep(POISON_KILL_GRACE_MS)
+            runCatching { server.close() }
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, "tap-driver-poison-kill").apply { isDaemon = true }.start()
     }
 
     private fun announceReady() {
@@ -145,6 +171,8 @@ internal class TapDriverServer(
 
 }
 
+private const val POISON_KILL_GRACE_MS = 2_000L
+
 private data class SessionConfig(
     val sessionId: String,
     val generation: Long,
@@ -154,7 +182,11 @@ private data class SessionConfig(
     val syncAuthority: String,
     val allowedSystemPackages: Set<String>,
     val faultPoint: FaultPoint,
+    val uninterruptibleGraceMs: Long,
 ) {
+    /** The late-work fault must leave a hung driver for the host to terminate. */
+    val watchdogKillsProcess: Boolean get() = faultPoint != FaultPoint.LATE_UNINTERRUPTIBLE
+
     companion object {
         fun from(arguments: Bundle): SessionConfig {
             val sessionId = requireNotNull(arguments.getString("tapSession"))
@@ -171,6 +203,9 @@ private data class SessionConfig(
             val faultPoint = FaultPoint.valueOf(
                 arguments.getString("tapFaultPoint") ?: FaultPoint.NONE.name
             )
+            val uninterruptibleGraceMs = arguments.getString("tapUninterruptibleGraceMs")?.toLong()
+                ?: CommandPipeline.DEFAULT_UNINTERRUPTIBLE_GRACE_MS
+            require(uninterruptibleGraceMs >= 0)
             return SessionConfig(
                 sessionId,
                 generation,
@@ -180,6 +215,7 @@ private data class SessionConfig(
                 syncAuthority,
                 allowedSystemPackages,
                 faultPoint,
+                uninterruptibleGraceMs,
             )
         }
     }
