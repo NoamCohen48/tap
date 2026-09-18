@@ -22,6 +22,12 @@ class GoldenMessageTest {
 
     private val requests: Map<String, Request> = mapOf(
         "request-health" to request(Operation.HEALTH, timeoutMs = 5_000),
+        "request-device-info" to request(Operation.DEVICE_INFO, timeoutMs = 5_000),
+        "request-press-key" to request(Operation.PRESS_KEY, keyCode = KEYCODE_BACK),
+        "request-count" to request(Operation.COUNT, selector = Selector.text("Row", MatchMode.STARTS_WITH)),
+        "request-snapshot" to request(Operation.SNAPSHOT, selector = Selector.androidResource(AUT, "status")),
+        "request-wait-gone" to request(Operation.WAIT_GONE, selector = Selector.rawResource("spinner"), timeoutMs = 15_000),
+        "request-wait-app-visible" to request(Operation.WAIT_APP_VISIBLE, packageName = AUT, timeoutMs = 15_000),
         "request-exists" to request(Operation.EXISTS, selector = Selector.text("Sign in")),
         "request-tap" to request(Operation.TAP, selector = Selector.androidResource(AUT, "login")),
         "request-long-tap" to request(Operation.LONG_TAP, selector = Selector.contentDescription("More")),
@@ -92,6 +98,48 @@ class GoldenMessageTest {
         put("response-ok", Response(ok = true, durationMs = 12))
         put("response-ok-value", Response(ok = true, value = true, durationMs = 12))
         put("response-ok-text", Response(ok = true, text = "<hierarchy/>", durationMs = 120))
+        put("response-ok-count", Response(ok = true, count = 3, durationMs = 20))
+        put(
+            "response-ok-snapshot",
+            Response(
+                ok = true,
+                durationMs = 15,
+                snapshot = ElementSnapshot(
+                    className = "android.widget.Button",
+                    packageName = AUT,
+                    resourceName = "$AUT:id/login",
+                    text = "Sign in",
+                    bounds = Bounds(84, 1200, 996, 1320),
+                    checkable = false,
+                    checked = false,
+                    clickable = true,
+                    enabled = true,
+                    focusable = true,
+                    focused = false,
+                    longClickable = false,
+                    scrollable = false,
+                    selected = false,
+                    childCount = 0,
+                ),
+            ),
+        )
+        put(
+            "response-ok-device-info",
+            Response(
+                ok = true,
+                durationMs = 3,
+                deviceInfo = DeviceInfo(
+                    apiLevel = 34,
+                    manufacturer = "Google",
+                    model = "sdk_gphone64_x86_64",
+                    product = "sdk_gphone64_x86_64",
+                    displayWidth = 1080,
+                    displayHeight = 2400,
+                    displayRotation = 0,
+                    currentPackage = AUT,
+                ),
+            ),
+        )
         put(
             "response-ok-sync-state",
             Response(
@@ -187,6 +235,8 @@ class GoldenMessageTest {
         direction: Direction? = null,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         maxScrolls: Int = 20,
+        keyCode: Int? = null,
+        packageName: String? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -202,6 +252,8 @@ class GoldenMessageTest {
         direction = direction,
         distancePercent = distancePercent,
         maxScrolls = maxScrolls,
+        keyCode = keyCode,
+        packageName = packageName,
         observedPid = observedPid,
         observedStartToken = observedStartToken,
         expectedProcessStartUuid = expectedProcessStartUuid,

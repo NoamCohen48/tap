@@ -67,14 +67,24 @@ internal class DriverCommandEngine(
         val started = context.acceptedAtMs
         return when (request.operation) {
             Operation.HEALTH -> Response(true, value = true, durationMs = elapsed(started))
+            Operation.DEVICE_INFO -> ui.deviceInfo(context)
+            Operation.PRESS_KEY -> ui.pressKey(context, request)
             Operation.EXISTS -> Response(
                 true,
                 value = objects.hasObject(requireNotNull(request.selector)),
                 durationMs = elapsed(started),
             )
+            Operation.COUNT -> Response(
+                true,
+                count = objects.count(requireNotNull(request.selector)),
+                durationMs = elapsed(started),
+            )
+            Operation.SNAPSHOT -> ui.snapshot(context, request)
             Operation.TAP -> ui.tap(context, socket, request)
             Operation.LONG_TAP -> ui.longTap(context, request)
-            Operation.WAIT_VISIBLE -> ui.waitVisible(context, request)
+            Operation.WAIT_VISIBLE -> ui.waitVisible(context, request, expected = true)
+            Operation.WAIT_GONE -> ui.waitVisible(context, request, expected = false)
+            Operation.WAIT_APP_VISIBLE -> ui.waitAppVisible(context, request)
             Operation.DUMP_HIERARCHY -> ui.dumpHierarchy(started)
             Operation.SET_TEXT -> ui.setText(context, request)
             Operation.TYPE_TEXT -> ui.typeText(context, request)
@@ -89,8 +99,11 @@ internal class DriverCommandEngine(
     }
 
     private fun isInvalid(request: Request): Boolean = when (request.operation) {
-        Operation.EXISTS, Operation.TAP, Operation.LONG_TAP, Operation.WAIT_VISIBLE, Operation.CLEAR_TEXT ->
+        Operation.EXISTS, Operation.COUNT, Operation.SNAPSHOT, Operation.TAP, Operation.LONG_TAP,
+        Operation.WAIT_VISIBLE, Operation.WAIT_GONE, Operation.CLEAR_TEXT ->
             request.selector == null
+        Operation.PRESS_KEY -> (request.keyCode ?: -1) < 0
+        Operation.WAIT_APP_VISIBLE -> request.packageName.isNullOrBlank()
         Operation.SWIPE, Operation.SCROLL ->
             request.selector == null || request.direction == null || request.distancePercent !in 1..100
         Operation.SET_TEXT, Operation.TYPE_TEXT ->
@@ -99,7 +112,7 @@ internal class DriverCommandEngine(
         Operation.SCROLL_UNTIL ->
             request.selector == null || request.containerSelector == null ||
                 request.maxScrolls !in 1..MAX_SCROLLS || request.distancePercent !in 1..100
-        Operation.HEALTH, Operation.DUMP_HIERARCHY, Operation.SCREENSHOT -> false
+        Operation.HEALTH, Operation.DEVICE_INFO, Operation.DUMP_HIERARCHY, Operation.SCREENSHOT -> false
         Operation.SYNC_BOOTSTRAP ->
             request.observedPid == null || request.observedStartToken.isNullOrBlank() ||
                 request.expectedProcessStartUuid != null || request.expectedSessionIdentity != null

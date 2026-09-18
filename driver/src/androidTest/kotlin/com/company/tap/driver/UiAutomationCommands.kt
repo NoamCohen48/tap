@@ -2,16 +2,23 @@ package com.company.tap.driver
 
 import android.app.Instrumentation
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.SystemClock
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import com.company.tap.driver.engine.BlobTransfer
 import com.company.tap.driver.engine.CommandContext
+import com.company.tap.protocol.Bounds
+import com.company.tap.protocol.DeviceInfo
 import com.company.tap.protocol.Direction
+import com.company.tap.protocol.ElementSnapshot
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
+import com.company.tap.protocol.KEYCODE_BACK
+import com.company.tap.protocol.KEYCODE_HOME
 import com.company.tap.protocol.MAX_ARTIFACT_BYTES
 import com.company.tap.protocol.MAX_CONTROL_PAYLOAD
 import com.company.tap.protocol.Request
@@ -84,17 +91,86 @@ internal class UiAutomationCommands(
         return Response(true, value = value, durationMs = context.elapsed())
     }
 
-    fun waitVisible(context: CommandContext, request: Request): Response {
-        require(request.timeoutMs >= 0) { "timeoutMs must not be negative" }
+    /** Polls presence on the device until it equals [expected] (`WAIT_VISIBLE` / `WAIT_GONE`). */
+    fun waitVisible(context: CommandContext, request: Request, expected: Boolean): Response {
         val selector = requireNotNull(request.selector)
-        var found: Boolean
+        return pollUntil(context) { objects.hasObject(selector) == expected }
+    }
+
+    /** Waits until the named package owns a focused window. */
+    fun waitAppVisible(context: CommandContext, request: Request): Response {
+        val packageName = requireNotNull(request.packageName)
+        return pollUntil(context) { device.findWindow(By.Window.pkg(packageName).focused(true)) != null }
+    }
+
+    private inline fun pollUntil(context: CommandContext, condition: () -> Boolean): Response {
+        var satisfied: Boolean
         do {
             context.checkCancelled()
-            found = objects.hasObject(selector)
-            if (!found && context.remainingMs() > 0) context.sleep(50)
-        } while (!found && !context.isExpired())
-        return if (found) Response(true, value = true, durationMs = context.elapsed())
+            satisfied = condition()
+            if (!satisfied && context.remainingMs() > 0) context.sleep(50)
+        } while (!satisfied && !context.isExpired())
+        return if (satisfied) Response(true, value = true, durationMs = context.elapsed())
         else Response.failure(ErrorCode.WAIT_TIMEOUT, value = false, durationMs = context.elapsed())
+    }
+
+    fun deviceInfo(context: CommandContext): Response = Response(
+        true,
+        durationMs = context.elapsed(),
+        deviceInfo = DeviceInfo(
+            apiLevel = Build.VERSION.SDK_INT,
+            manufacturer = Build.MANUFACTURER,
+            model = Build.MODEL,
+            product = Build.PRODUCT,
+            displayWidth = device.displayWidth,
+            displayHeight = device.displayHeight,
+            displayRotation = device.displayRotation,
+            currentPackage = device.currentPackageName,
+        ),
+    )
+
+    /** Key injection is a mutation: it passes the gate and is never replayed. */
+    fun pressKey(context: CommandContext, request: Request): Response {
+        val keyCode = requireNotNull(request.keyCode)
+        context.checkpoint()
+        context.markMutationStarted()
+        val injected = when (keyCode) {
+            KEYCODE_BACK -> device.pressBack()
+            KEYCODE_HOME -> device.pressHome()
+            else -> device.pressKeyCode(keyCode)
+        }
+        return if (injected) Response(true, value = true, durationMs = context.elapsed())
+        else Response.failure(ErrorCode.ACTION_REJECTED, message = "Key $keyCode was not injected", durationMs = context.elapsed())
+    }
+
+    /** Reads one element's state at this instant; the object is recycled before returning. */
+    fun snapshot(context: CommandContext, request: Request): Response {
+        val element = resolveOrFail(context, requireNotNull(request.selector)) { return it }
+        val snapshot = try {
+            val bounds = element.visibleBounds
+            ElementSnapshot(
+                className = element.className,
+                packageName = element.applicationPackage,
+                resourceName = element.resourceName,
+                text = element.displayedText(),
+                contentDescription = element.contentDescription,
+                hint = element.hint,
+                bounds = Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                checkable = element.isCheckable,
+                checked = element.isChecked,
+                clickable = element.isClickable,
+                enabled = element.isEnabled,
+                focusable = element.isFocusable,
+                focused = element.isFocused,
+                longClickable = element.isLongClickable,
+                scrollable = element.isScrollable,
+                selected = element.isSelected,
+                childCount = element.childCount,
+            )
+        } finally {
+            element.recycle()
+        }
+        return Response(true, snapshot = snapshot, durationMs = context.elapsed())
     }
 
     fun dumpHierarchy(started: Long): Response {
@@ -217,8 +293,7 @@ internal class UiAutomationCommands(
                     durationMs = context.elapsed(),
                 )
 
-            val initialNode = element.accessibilityNodeInfo
-            val initialText = if (initialNode.isShowingHintText) "" else initialNode.text?.toString().orEmpty()
+            val initialText = element.displayedText().orEmpty()
             // The focusing click is the first injected input; everything after it is definitive.
             context.markMutationStarted()
             element.click()
@@ -407,7 +482,7 @@ internal class UiAutomationCommands(
     private fun currentText(selector: Selector): String? {
         val current = objects.resolve(selector).element ?: return null
         return try {
-            current.text.orEmpty()
+            current.displayedText().orEmpty()
         } finally {
             current.recycle()
         }
@@ -506,3 +581,13 @@ private class LimitedOutputStream(private val limit: Int) : OutputStream() {
 }
 
 private class OutputLimitExceeded : IOException()
+
+/**
+ * The node's text without a displayed hint. An empty `EditText` reports its hint as `text`
+ * (with `isShowingHintText` set) on API 26+, which would make a successful clear look like a
+ * mismatch and leak the hint into snapshots.
+ */
+internal fun UiObject2.displayedText(): String? {
+    val node = accessibilityNodeInfo
+    return if (node.isShowingHintText) null else node.text?.toString()
+}

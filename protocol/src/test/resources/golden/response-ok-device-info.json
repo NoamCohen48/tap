@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "durationMs": 3,
+  "deviceInfo": {
+    "apiLevel": 34,
+    "manufacturer": "Google",
+    "model": "sdk_gphone64_x86_64",
+    "product": "sdk_gphone64_x86_64",
+    "displayWidth": 1080,
+    "displayHeight": 2400,
+    "displayRotation": 0,
+    "currentPackage": "com.example.app"
+  }
+}
