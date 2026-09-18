@@ -1,4 +1,6 @@
-package com.company.tap.host
+package com.company.tap.host.validation
+
+import com.company.tap.host.*
 
 import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Direction
@@ -10,6 +12,7 @@ import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.HOST_BUILD_ID
 import com.company.tap.protocol.Hello
 import com.company.tap.protocol.InvalidSelectorException
+import com.company.tap.protocol.KEYCODE_BACK
 import com.company.tap.protocol.MatchMode
 import com.company.tap.protocol.NodeSelector
 import com.company.tap.protocol.Operation
@@ -34,15 +37,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-private const val DRIVER_PACKAGE = "com.company.tap.driver"
 private const val FIXTURE_PACKAGE = "com.company.tap.fixture"
-private const val DEVICE_PORT = 27183
-private val DEVICE_PORT_RANGE = 27183..27187
-private const val PERMISSION_CONTROLLER_PACKAGE = "com.google.android.permissioncontroller"
 private const val PERMISSION_RESOURCE_PACKAGE = "com.android.permissioncontroller"
 private const val SYNC_AUTHORITY = "$FIXTURE_PACKAGE.tap-sync"
 private const val FAULT_AUTHORITY = "$FIXTURE_PACKAGE.fault"
-private const val LATE_MUTATION_QUARANTINE = "UNINTERRUPTIBLE_MUTATION_RESET_REQUIRED"
 
 fun main(arguments: Array<String>) {
     runBlocking {
@@ -207,6 +205,9 @@ private suspend fun runDevice(
                 sessionId,
                 generation,
                 encodedSecret,
+                autPackage = FIXTURE_PACKAGE,
+                syncAuthority = SYNC_AUTHORITY,
+                driverArguments = fixtureDriverArguments(),
             ) { devicePort ->
                 journal = journal.copy(
                     state = JournalState.CREATING,
@@ -302,7 +303,7 @@ private suspend fun runDevice(
 
             val composeButton = Selector.rawResource("composeButton")
             check(it.execute(Operation.WAIT_VISIBLE, composeButton, 10_000).ok)
-            val processBeforeBootstrap = observeProcess(adb, serial)
+            val processBeforeBootstrap = observeProcess(adb, serial, FIXTURE_PACKAGE)
             val syncBootstrap = callSync(adb, serial, it, Operation.SYNC_BOOTSTRAP)
             check(syncBootstrap.ok) { "Sync bootstrap failed: $syncBootstrap" }
             val firstSyncIdentity = requireNotNull(syncBootstrap.syncState)
@@ -345,7 +346,7 @@ private suspend fun runDevice(
                 timeoutMs = 10_000,
             )
             check(it.execute(Operation.WAIT_VISIBLE, composeButton, 10_000).ok)
-            val restartedProcess = observeProcess(adb, serial)
+            val restartedProcess = observeProcess(adb, serial, FIXTURE_PACKAGE)
             check(restartedProcess != processBeforeBootstrap) { "AUT process identity did not change" }
             val staleSync = callSync(adb, serial, it, Operation.SYNC_STATE, firstSyncIdentity)
             check(!staleSync.ok && staleSync.errorCode == ErrorCode.AUT_MISMATCH && staleSync.detail == ErrorDetail.PROCESS_RESTARTED) {
@@ -380,6 +381,13 @@ private suspend fun runDevice(
             val unsupportedInput = it.execute(Operation.TYPE_TEXT, keyboardInput, inputText = "emoji \uD83D\uDE00")
             check(!unsupportedInput.ok && unsupportedInput.errorCode == ErrorCode.INVALID_REQUEST && unsupportedInput.detail == ErrorDetail.UNSUPPORTED_CHARACTERS)
             check(it.execute(Operation.EXISTS, Selector.text("keys 42")).value == true)
+            // A hinted field reports its hint as `text` once empty; clearing must still verify.
+            val clearedHinted = it.execute(Operation.CLEAR_TEXT, keyboardInput)
+            check(clearedHinted.ok) { "CLEAR_TEXT on a hinted field failed: $clearedHinted" }
+            val clearedSnapshot = it.execute(Operation.SNAPSHOT, keyboardInput).snapshot
+            check(clearedSnapshot?.text.isNullOrEmpty() && clearedSnapshot?.hint == "Keyboard input") {
+                "Cleared hinted field should snapshot as empty text with hint: $clearedSnapshot"
+            }
             adb.run(serial, "shell", "input", "keyevent", "KEYCODE_BACK")
 
             val composeScroll = it.execute(
@@ -649,17 +657,42 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
         "CLEAR_TEXT on a button should be NOT_INTERACTABLE: $notEditable"
     }
     println("PHASE_1_SELECTORS_OK serial=$serial")
+    runObservationAndKeyChecks(serial, client, gestureTarget)
 }
 
-private data class ProcessObservation(val pid: Int, val startToken: String)
+/**
+ * Query and key operations: `COUNT` against duplicates, `SNAPSHOT` state, `DEVICE_INFO`,
+ * `WAIT_APP_VISIBLE`, `PRESS_KEY` (back leaves the activity), and `WAIT_GONE`.
+ */
+private fun runObservationAndKeyChecks(serial: String, client: DriverClient, gestureTarget: Selector) {
+    val duplicates = client.execute(Operation.COUNT, Selector.text("Duplicate action"))
+    check(duplicates.ok && duplicates.count == 2) { "COUNT should report 2 duplicates: $duplicates" }
+    check(client.execute(Operation.COUNT, Selector.text("never on screen")).count == 0)
 
-internal data class RunningInstrumentation(
-    val process: Process,
-    val output: StringBuilder,
-    val outputThread: Thread,
-    val devicePort: Int,
-    val driverInstanceId: String,
-)
+    val snapshot = client.execute(Operation.SNAPSHOT, gestureTarget)
+    val state = requireNotNull(snapshot.snapshot) { "SNAPSHOT failed: $snapshot" }
+    check(state.clickable && state.longClickable && state.enabled && state.bounds.width > 0) {
+        "Unexpected gesture target snapshot: $state"
+    }
+    check(state.resourceName == "$FIXTURE_PACKAGE:id/gesture_target") { "Unexpected resource: $state" }
+    val ambiguousSnapshot = client.execute(Operation.SNAPSHOT, Selector.text("Duplicate action"))
+    check(ambiguousSnapshot.errorCode == ErrorCode.AMBIGUOUS) { "SNAPSHOT should be AMBIGUOUS: $ambiguousSnapshot" }
+
+    val info = requireNotNull(client.execute(Operation.DEVICE_INFO).deviceInfo)
+    check(info.apiLevel >= 26 && info.displayWidth > 0 && info.currentPackage == FIXTURE_PACKAGE) {
+        "Unexpected device info: $info"
+    }
+    check(client.execute(Operation.WAIT_APP_VISIBLE, packageName = FIXTURE_PACKAGE, timeoutMs = 5_000).ok)
+    val invalidKey = client.execute(Operation.PRESS_KEY, keyCode = -1)
+    check(invalidKey.errorCode == ErrorCode.INVALID_REQUEST) { "Negative key code should be invalid: $invalidKey" }
+
+    // Back finishes AmbiguityActivity; the fixture's main screen is underneath.
+    val back = client.execute(Operation.PRESS_KEY, keyCode = KEYCODE_BACK)
+    check(back.ok) { "PRESS_KEY back failed: $back" }
+    val gone = client.execute(Operation.WAIT_GONE, Selector.text("Ambiguity fixture ready"), timeoutMs = 10_000)
+    check(gone.ok) { "Ambiguity screen did not go away after back: $gone" }
+    println("PHASE_1_OBSERVATION_OK serial=$serial api=${info.apiLevel} model=${info.model}")
+}
 
 internal enum class TransportFaultPoint {
     NONE,
@@ -669,6 +702,12 @@ internal enum class TransportFaultPoint {
     LATE_UNINTERRUPTIBLE,
     CANCEL_AFTER_MUTATION,
 }
+
+/** Fixture-only instrumentation arguments: fault point and the fixture's fault provider. */
+private fun fixtureDriverArguments(faultPoint: TransportFaultPoint = TransportFaultPoint.NONE) = mapOf(
+    "tapFaultPoint" to faultPoint.name,
+    "tapFaultAuthority" to FAULT_AUTHORITY,
+)
 
 private data class FaultSession(
     var journal: SessionJournal,
@@ -852,16 +891,6 @@ private fun waitForPortState(adb: Adb, serial: String, port: Int, listening: Boo
     error("Device port $port did not become ${if (listening) "occupied" else "free"}")
 }
 
-private fun isPortListening(adb: Adb, serial: String, port: Int): Boolean {
-    val expectedPort = port.toString(16).uppercase().padStart(4, '0')
-    return adb.run(serial, "shell", "cat", "/proc/net/tcp", "/proc/net/tcp6")
-        .lineSequence()
-        .map { it.trim().split(Regex("\\s+")) }
-        .any { fields ->
-            fields.size > 3 && fields[1].endsWith(":$expectedPort") && fields[3] == "0A"
-        }
-}
-
 private fun verifyChangedBootQuarantine(
     adb: Adb,
     serial: String,
@@ -944,7 +973,7 @@ private fun runTransportFaultScenarios(
         "shell", "am", "start", "-W", "-n", "$FIXTURE_PACKAGE/.MainActivity",
         timeoutMs = 60_000,
     )
-    val fixtureProcess = observeProcess(adb, serial)
+    val fixtureProcess = observeProcess(adb, serial, FIXTURE_PACKAGE)
     val startedAt = System.nanoTime()
     val workDeadline = startedAt + 180_000_000_000L
     val scenarioDeadline = startedAt + 600_000_000_000L
@@ -1016,7 +1045,7 @@ private fun runTransportFaultScenarios(
             closed = cleanupFaultSession(adb, serial, bootId, session, store)
             val output = synchronized(session.running.output) { session.running.output.toString() }
             check("TAP_FAULT point=${point.name}" in output) { "Missing driver fault marker for $point" }
-            check(observeProcess(adb, serial) == fixtureProcess) {
+            check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) {
                 "AUT process changed during $point recovery"
             }
             requireWithinDeadline()
@@ -1062,7 +1091,7 @@ private fun runTransportFaultScenarios(
     var verificationCleanupStarted = false
     var verificationError: Throwable? = null
     try {
-        check(observeProcess(adb, serial) == fixtureProcess) { "AUT process changed before verification" }
+        check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT process changed before verification" }
         check(
             verification.client.execute(
                 Operation.WAIT_VISIBLE,
@@ -1076,7 +1105,7 @@ private fun runTransportFaultScenarios(
             Selector.text("Fault taps: 1"),
         )
         check(stableCount.ok && stableCount.value == true) { "Uncertain tap was replayed or completed late" }
-        check(observeProcess(adb, serial) == fixtureProcess) { "AUT process changed during verification" }
+        check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT process changed during verification" }
         verificationCleanupStarted = true
         closed = cleanupFaultSession(adb, serial, bootId, verification, store)
         requireWithinDeadline()
@@ -1218,7 +1247,7 @@ private fun runCancelAfterMutationScenario(
         val stable = session.client.execute(Operation.EXISTS, Selector.text("Fault taps: 2"))
         check(stable.ok && stable.value == true) { "Fault counter moved after the cancelled tap" }
         check(session.client.execute(Operation.HEALTH).ok) { "Session unusable after cancel-after-mutation" }
-        check(observeProcess(adb, serial) == fixtureProcess) { "AUT process changed during cancel scenario" }
+        check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT process changed during cancel scenario" }
         println("PHASE_1_CANCEL_AFTER_MUTATION_OK serial=$serial awaitedAfterCancelMs=$awaitedMs")
         cleanupStarted = true
         return cleanupFaultSession(adb, serial, bootId, session, store)
@@ -1243,7 +1272,7 @@ private fun runLateMutationQuarantineScenario(
         "shell", "am", "start", "-W", "-n", "$FIXTURE_PACKAGE/.MainActivity",
         timeoutMs = 60_000,
     )
-    val fixtureProcess = observeProcess(adb, serial)
+    val fixtureProcess = observeProcess(adb, serial, FIXTURE_PACKAGE)
     val generation = Math.addExact(previousGeneration, 1L)
     val workDeadline = minOf(System.nanoTime() + 180_000_000_000L, scenarioDeadline)
     val session = startFaultSession(
@@ -1288,7 +1317,7 @@ private fun runLateMutationQuarantineScenario(
         val oldPid = requireNotNull(session.journal.driverPid)
         check(oldPid in adb.processIds(serial, DRIVER_PACKAGE))
         check(processStartToken(adb, serial, oldPid) == session.journal.driverStartToken)
-        check(observeProcess(adb, serial) == fixtureProcess) { "AUT changed before late-work cleanup" }
+        check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT changed before late-work cleanup" }
 
         session.journal = session.journal.copy(
             state = JournalState.QUARANTINED,
@@ -1669,9 +1698,10 @@ private fun startFaultSession(
             sessionId,
             generation,
             encodedSecret,
-            faultPoint,
-            deadlineNanos,
-            driverArguments = driverArguments,
+            autPackage = FIXTURE_PACKAGE,
+            syncAuthority = SYNC_AUTHORITY,
+            overallDeadlineNanos = deadlineNanos,
+            driverArguments = fixtureDriverArguments(faultPoint) + driverArguments,
         ) { devicePort ->
             journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
             store.write(journal)
@@ -1723,26 +1753,6 @@ private fun startFaultSession(
             ?.let(error::addSuppressed)
         throw error
     }
-}
-
-internal enum class ResetRecoveryAction {
-    REBOOT,
-    COMPLETE,
-}
-
-internal fun resetRecoveryAction(record: SessionJournal, currentBootId: String): ResetRecoveryAction {
-    require(record.state == JournalState.QUARANTINED && record.resetRequired) {
-        "Journal does not require reset recovery"
-    }
-    val startedBootId = record.resetStartedBootId
-    if (startedBootId == null) {
-        require(record.bootId == currentBootId) {
-            "Reset was not durably started before boot identity changed"
-        }
-        return ResetRecoveryAction.REBOOT
-    }
-    require(record.bootId == startedBootId) { "Reset origin does not match quarantined boot identity" }
-    return if (currentBootId == startedBootId) ResetRecoveryAction.REBOOT else ResetRecoveryAction.COMPLETE
 }
 
 private fun waitForInstrumentationMarker(
@@ -1826,175 +1836,6 @@ private fun cleanupFaultSession(
     return closed
 }
 
-internal fun startDriverWithRetry(
-    adb: Adb,
-    serial: String,
-    sessionId: String,
-    generation: Long,
-    encodedSecret: String,
-    faultPoint: TransportFaultPoint = TransportFaultPoint.NONE,
-    overallDeadlineNanos: Long? = null,
-    autPackage: String = FIXTURE_PACKAGE,
-    syncAuthority: String = SYNC_AUTHORITY,
-    driverArguments: Map<String, String> = emptyMap(),
-    onStarting: (Int) -> Unit,
-): RunningInstrumentation {
-    var lastOutput = ""
-    for (devicePort in DEVICE_PORT_RANGE) {
-        check(overallDeadlineNanos == null || System.nanoTime() < overallDeadlineNanos) {
-            "Driver startup exceeded its containing deadline"
-        }
-        onStarting(devicePort)
-        val process = ProcessBuilder(
-            "adb", "-s", serial, "shell", "am", "instrument", "-w", "-r",
-            "-e", "class", "com.company.tap.driver.TapDriverServerTest",
-            "-e", "tapSession", sessionId,
-            "-e", "tapGeneration", generation.toString(),
-            "-e", "tapSecret", encodedSecret,
-            "-e", "tapPort", devicePort.toString(),
-            "-e", "tapAutPackage", autPackage,
-            "-e", "tapSystemPackages", PERMISSION_CONTROLLER_PACKAGE,
-            "-e", "tapSyncAuthority", syncAuthority,
-            "-e", "tapFaultPoint", faultPoint.name,
-            "-e", "tapFaultAuthority", FAULT_AUTHORITY,
-            *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
-            "$DRIVER_PACKAGE.test/androidx.test.runner.AndroidJUnitRunner",
-        ).redirectErrorStream(true).start()
-        val output = StringBuilder()
-        val outputThread = Thread {
-            process.inputStream.bufferedReader().forEachLine { line ->
-                synchronized(output) { output.appendLine(line) }
-                println(line)
-            }
-        }.apply {
-            isDaemon = true
-            start()
-        }
-        val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
-        val deadline = minOf(
-            System.nanoTime() + 10_000_000_000L,
-            overallDeadlineNanos ?: Long.MAX_VALUE,
-        )
-        var instanceId: String? = null
-        while (System.nanoTime() < deadline && process.isAlive) {
-            instanceId = synchronized(output) {
-                output.lineSequence()
-                    .firstOrNull { markerPrefix in it }
-                    ?.substringAfter(markerPrefix)
-                    ?.trim()
-            }
-            if (!instanceId.isNullOrEmpty()) break
-            Thread.sleep(25)
-        }
-        if (!instanceId.isNullOrEmpty()) {
-            return RunningInstrumentation(process, output, outputThread, devicePort, instanceId)
-        }
-
-        cleanupInstrumentation(
-            adb,
-            serial,
-            RunningInstrumentation(process, output, outputThread, devicePort, ""),
-        )
-        lastOutput = synchronized(output) { output.toString() }
-        check("already registered" !in lastOutput) {
-            "Another UiAutomation instrumentation session is active on $serial"
-        }
-        check("BindException" in lastOutput && "EADDRINUSE" in lastOutput) {
-            "Driver failed before readiness for a reason other than port occupancy: $lastOutput"
-        }
-        check(isPortListening(adb, serial, devicePort)) {
-            "Driver reported EADDRINUSE but the port was free after verified driver death"
-        }
-    }
-    error("Driver failed to bind any reserved port: $lastOutput")
-}
-
-internal fun cleanupInstrumentation(
-    adb: Adb,
-    serial: String,
-    running: RunningInstrumentation,
-) {
-    val driverCleanup = runCatching { forceStopDriverAndVerify(adb, serial) }
-    if (running.process.isAlive) running.process.destroyForcibly()
-    val childExited = running.process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
-    runCatching { running.process.inputStream.close() }
-    running.outputThread.join(1_000)
-    driverCleanup.getOrThrow()
-    check(childExited) { "Instrumentation child survived cleanup" }
-    check(!running.outputThread.isAlive) { "Instrumentation output thread survived cleanup" }
-}
-
-internal fun recoverJournal(
-    adb: Adb,
-    serial: String,
-    bootId: String,
-    store: SessionJournalStore,
-    allowResetRecovery: Boolean = false,
-): SessionJournal? {
-    val record = try {
-        store.read()
-    } catch (error: Throwable) {
-        forceStopDriverAndVerify(adb, serial)
-        store.preserveCorrupt()
-        store.replaceCorruptWith(
-            SessionJournal(
-                state = JournalState.QUARANTINED,
-                serial = serial,
-                bootId = bootId,
-                sessionId = UUID.randomUUID().toString(),
-                generation = 0,
-                devicePort = DEVICE_PORT,
-            )
-        )
-        throw IllegalStateException("Corrupt journal quarantined; no forwards were removed", error)
-    }
-    if (record == null) {
-        forceStopDriverAndVerify(adb, serial)
-        return null
-    }
-    check(record.serial == serial) { "Journal serial does not match leased device" }
-    check(record.version == 1) { "Unsupported journal version: ${record.version}" }
-    if (record.state == JournalState.QUARANTINED) {
-        if (
-            allowResetRecovery && record.resetRequired &&
-            record.quarantineReason == LATE_MUTATION_QUARANTINE
-        ) return record
-        error("Device is quarantined by its session journal")
-    }
-    if (record.devicePort !in DEVICE_PORT_RANGE) {
-        store.write(record.copy(state = JournalState.QUARANTINED))
-        error("Journal device port is outside the reserved framework range")
-    }
-
-    if (record.state != JournalState.CLOSED) {
-        if (record.bootId != bootId) {
-            store.write(record.copy(state = JournalState.QUARANTINED))
-            error("Active journal boot identity changed; device quarantined")
-        }
-        forceStopDriverAndVerify(adb, serial, record.driverPid, record.driverStartToken)
-        if (record.hostPort != null) {
-            removeExactForward(adb, serial, record.hostPort, record.devicePort)
-        } else {
-            adb.forwards(serial)
-                .filter { it.devicePort == record.devicePort }
-                .forEach { removeExactForward(adb, serial, it.hostPort, record.devicePort) }
-        }
-        if (adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id") != bootId) {
-            store.write(record.copy(state = JournalState.QUARANTINED))
-            error("Boot identity changed during recovery; device quarantined")
-        }
-        val closed = record.copy(
-            state = JournalState.CLOSED,
-            updatedAtEpochMs = System.currentTimeMillis(),
-        )
-        store.write(closed)
-        return closed
-    }
-
-    forceStopDriverAndVerify(adb, serial, record.driverPid, record.driverStartToken)
-    return record
-}
-
 private fun seedOrphanSession(
     adb: Adb,
     serial: String,
@@ -2053,73 +1894,6 @@ private fun waitForDriverPid(adb: Adb, serial: String): Int {
     error("Driver PID did not appear")
 }
 
-private fun forceStopDriverAndVerify(
-    adb: Adb,
-    serial: String,
-    oldPid: Int? = null,
-    oldStartToken: String? = null,
-) {
-    adb.run(serial, "shell", "am", "force-stop", DRIVER_PACKAGE)
-    val deadline = System.nanoTime() + 5_000_000_000L
-    while (System.nanoTime() < deadline) {
-        val packageGone = adb.processIds(serial, DRIVER_PACKAGE).isEmpty()
-        val oldIdentityGone = if (oldPid != null && oldStartToken != null) {
-            processIdentityIsGone(adb, serial, oldPid, oldStartToken)
-        } else {
-            true
-        }
-        if (packageGone && oldIdentityGone) return
-        Thread.sleep(50)
-    }
-    error("Driver process survived package force-stop")
-}
-
-private fun processIdentityIsGone(
-    adb: Adb,
-    serial: String,
-    pid: Int,
-    startToken: String,
-): Boolean {
-    val result = adb.runResult(serial, "shell", "cat", "/proc/$pid/stat")
-    if (result.exitCode != 0) {
-        check("No such file" in result.output || "No such process" in result.output) {
-            "Unable to verify old process identity: ${result.output}"
-        }
-        return true
-    }
-    val closingName = result.output.lastIndexOf(')')
-    check(closingName >= 0) { "Malformed /proc stat for PID $pid" }
-    val fieldsFromState = result.output.substring(closingName + 1).trim().split(Regex("\\s+"))
-    check(fieldsFromState.size > 19) { "Incomplete /proc stat for PID $pid" }
-    return fieldsFromState[19] != startToken
-}
-
-internal fun processStartToken(adb: Adb, serial: String, pid: Int): String {
-    val result = adb.runResult(serial, "shell", "cat", "/proc/$pid/stat")
-    check(result.exitCode == 0) { "Process $pid is not observable" }
-    val closingName = result.output.lastIndexOf(')')
-    check(closingName >= 0) { "Malformed /proc stat for PID $pid" }
-    val fieldsFromState = result.output.substring(closingName + 1).trim().split(Regex("\\s+"))
-    check(fieldsFromState.size > 19) { "Incomplete /proc stat for PID $pid" }
-    return fieldsFromState[19]
-}
-
-private fun removeExactForward(
-    adb: Adb,
-    serial: String,
-    hostPort: Int,
-    devicePort: Int,
-) {
-    val existing = adb.forwards(serial).firstOrNull { it.hostPort == hostPort } ?: return
-    check(existing.devicePort == devicePort) {
-        "Journal forward tcp:$hostPort does not target expected tcp:$devicePort"
-    }
-    adb.removeForward(serial, hostPort)
-    check(adb.forwards(serial).none { it.hostPort == hostPort }) {
-        "Forward tcp:$hostPort survived exact removal"
-    }
-}
-
 private fun callSync(
     adb: Adb,
     serial: String,
@@ -2128,7 +1902,7 @@ private fun callSync(
     expectedIdentity: SyncState? = null,
     timeoutMs: Long = 5_000,
 ): Response {
-    val before = observeProcess(adb, serial)
+    val before = observeProcess(adb, serial, FIXTURE_PACKAGE)
     val outcome = runCatching {
         client.execute(
             operation = operation,
@@ -2139,7 +1913,7 @@ private fun callSync(
             expectedSessionIdentity = expectedIdentity?.sessionIdentity,
         )
     }
-    val after = observeProcess(adb, serial)
+    val after = observeProcess(adb, serial, FIXTURE_PACKAGE)
     check(after == before) { "Synchronization call changed the AUT process: $before -> $after" }
     return outcome.getOrThrow()
 }
@@ -2180,34 +1954,6 @@ private fun awaitSyncIdle(
         }
         Thread.sleep(50)
     }
-}
-
-private fun observeProcess(adb: Adb, serial: String): ProcessObservation {
-    val deadline = System.nanoTime() + 30_000_000_000L
-    var lastFailure = "AUT process was absent"
-    while (System.nanoTime() < deadline) {
-        val pids = adb.processIds(serial, FIXTURE_PACKAGE)
-        if (pids.size == 1) {
-            val pid = pids.single()
-            val stat = adb.runResult(serial, "shell", "cat", "/proc/$pid/stat", timeoutMs = 5_000)
-            if (stat.exitCode == 0) {
-                val closingName = stat.output.lastIndexOf(')')
-                if (closingName >= 0) {
-                    val fieldsFromState = stat.output.substring(closingName + 1).trim().split(Regex("\\s+"))
-                    if (fieldsFromState.size > 19) return ProcessObservation(pid, fieldsFromState[19])
-                    lastFailure = "Incomplete /proc stat for PID $pid"
-                } else {
-                    lastFailure = "Malformed /proc stat for PID $pid"
-                }
-            } else {
-                lastFailure = "AUT PID $pid exited before its start token was observed"
-            }
-        } else {
-            lastFailure = "Expected one AUT process, got $pids"
-        }
-        Thread.sleep(50)
-    }
-    error(lastFailure)
 }
 
 private fun assertInvalidAuthenticationWithRetry(
@@ -2268,29 +2014,4 @@ private fun benchmark(serial: String, client: DriverClient, selector: Selector) 
     val dumpMs = (System.nanoTime() - dumpStarted) / 1_000_000.0 / 5
 
     println("PHASE_0_BENCHMARK serial=$serial directAvgMs=$directMs dumpAvgMs=$dumpMs")
-}
-
-private fun connectWithRetry(
-    hostPort: Int,
-    sessionId: String,
-    generation: Long,
-    secret: ByteArray,
-    overallDeadlineNanos: Long? = null,
-    serial: String? = null,
-    heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
-): DriverClient {
-    val deadline = minOf(
-        System.nanoTime() + 20_000_000_000L,
-        overallDeadlineNanos ?: Long.MAX_VALUE,
-    )
-    var lastError: Throwable? = null
-    while (System.nanoTime() < deadline) {
-        try {
-            return DriverClient(hostPort, sessionId, generation, secret, overallDeadlineNanos, serial, heartbeatIntervalMs)
-        } catch (error: Throwable) {
-            lastError = error
-            Thread.sleep(100)
-        }
-    }
-    throw IllegalStateException("Driver did not become ready", lastError)
 }

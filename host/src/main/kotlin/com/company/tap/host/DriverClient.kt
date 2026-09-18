@@ -208,6 +208,8 @@ class DriverClient(
         maxScrolls: Int = 20,
         direction: Direction? = null,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
+        keyCode: Int? = null,
+        packageName: String? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -221,6 +223,8 @@ class DriverClient(
         maxScrolls,
         direction,
         distancePercent,
+        keyCode,
+        packageName,
         observedPid,
         observedStartToken,
         expectedProcessStartUuid,
@@ -237,6 +241,12 @@ class DriverClient(
         maxScrolls: Int = 20,
         direction: Direction? = null,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
+        keyCode: Int? = null,
+        packageName: String? = null,
+        observedPid: Int? = null,
+        observedStartToken: String? = null,
+        expectedProcessStartUuid: String? = null,
+        expectedSessionIdentity: String? = null,
     ): Response = submit(
         operation,
         selector,
@@ -246,6 +256,12 @@ class DriverClient(
         maxScrolls,
         direction,
         distancePercent,
+        keyCode,
+        packageName,
+        observedPid,
+        observedStartToken,
+        expectedProcessStartUuid,
+        expectedSessionIdentity,
     ).awaitOrThrow()
 
     /**
@@ -261,6 +277,8 @@ class DriverClient(
         maxScrolls: Int = 20,
         direction: Direction? = null,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
+        keyCode: Int? = null,
+        packageName: String? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -283,6 +301,8 @@ class DriverClient(
             maxScrolls = maxScrolls,
             direction = direction,
             distancePercent = distancePercent,
+            keyCode = keyCode,
+            packageName = packageName,
             observedPid = observedPid,
             observedStartToken = observedStartToken,
             expectedProcessStartUuid = expectedProcessStartUuid,
@@ -358,7 +378,8 @@ class DriverClient(
         }
     }
 
-    internal fun executeValidationRequest(
+    /** Validation flow only: sends `HEALTH` with an explicit request ID / identity to probe fencing. */
+    fun executeValidationRequest(
         requestId: Long,
         requestSessionId: String = sessionId,
         requestGeneration: Long = generation,
@@ -382,7 +403,8 @@ class DriverClient(
         }
     }
 
-    internal fun disconnectForValidation() {
+    /** Validation flow only: poisons this client as if the transport had failed. */
+    fun disconnectForValidation() {
         synchronized(transportLock) {
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
         }
@@ -474,9 +496,10 @@ class DriverClient(
 
     private fun Operation.isMutating(): Boolean = when (this) {
         Operation.TAP, Operation.LONG_TAP, Operation.SET_TEXT, Operation.TYPE_TEXT, Operation.CLEAR_TEXT,
-        Operation.SWIPE, Operation.SCROLL, Operation.SCROLL_UNTIL -> true
-        Operation.HEALTH, Operation.EXISTS, Operation.WAIT_VISIBLE, Operation.DUMP_HIERARCHY, Operation.SCREENSHOT,
-        Operation.SYNC_BOOTSTRAP, Operation.SYNC_STATE -> false
+        Operation.SWIPE, Operation.SCROLL, Operation.SCROLL_UNTIL, Operation.PRESS_KEY -> true
+        Operation.HEALTH, Operation.DEVICE_INFO, Operation.EXISTS, Operation.COUNT, Operation.SNAPSHOT,
+        Operation.WAIT_VISIBLE, Operation.WAIT_GONE, Operation.WAIT_APP_VISIBLE, Operation.DUMP_HIERARCHY,
+        Operation.SCREENSHOT, Operation.SYNC_BOOTSTRAP, Operation.SYNC_STATE -> false
     }
 
     private fun authenticate() {
