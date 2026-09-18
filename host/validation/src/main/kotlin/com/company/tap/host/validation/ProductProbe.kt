@@ -1,4 +1,6 @@
-package com.company.tap.host
+package com.company.tap.host.validation
+
+import com.company.tap.host.*
 
 import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Selector
@@ -66,13 +68,12 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                 generation = generation,
                 encodedSecret = encodedSecret,
                 autPackage = autPackage,
-                syncAuthority = "$autPackage.tap-probe-unused",
             ) { devicePort ->
                 journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
                 store.write(journal)
             }
             hostPort = adb.forward(serial, running.devicePort)
-            val driverPid = adb.processIds(serial, "com.company.tap.driver").single()
+            val driverPid = adb.processIds(serial, DRIVER_PACKAGE).single()
             journal = journal.copy(
                 state = JournalState.ACTIVE,
                 hostPort = hostPort,

@@ -5,7 +5,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.absolutePathString
 
-class Adb(private val executable: String = "adb") {
+class Adb(val executable: String = "adb") {
     data class Result(val exitCode: Int, val output: String)
 
     fun run(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): String {

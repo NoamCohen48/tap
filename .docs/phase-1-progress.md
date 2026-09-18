@@ -82,7 +82,7 @@ Status: in progress.
   duplicate buttons/fields/scroll containers with fixture state unchanged, `.first()`/`.at(1)`
   taps, `.at(2)` → `NOT_FOUND`, ancestor/child relations, regex traversal, host-side rejection
   of an empty node, foreign resource package → `SCOPE_DENIED`.
-- `LONG_TAP`, `CLEAR_TEXT`, `SWIPE`, and single-segment `SCROLL` (value = content moved), and
+- `LONG_TAP`, `CLEAR_TEXT`, `SWIPE`, and single-segment `SCROLL` (value = more content remains), and
   `SCROLL_UNTIL` takes a `direction`/`distancePercent`; all share one gesture shape
   (checkpoint → exactly-one resolve → interactable check → mutation gate → act). Fixture
   `AmbiguityActivity` gained a long-press-aware gesture target and a prefilled field; the device
@@ -112,12 +112,33 @@ Status: in progress.
   success shape; `GoldenMessageTest` fails on decode or encoding drift and checks that no
   operation or code is missing a fixture.
 
-Latest successful generations:
+- Observation and key operations (`DEVICE_INFO`, `PRESS_KEY`, `COUNT`, `SNAPSHOT`,
+  `WAIT_GONE`, `WAIT_APP_VISIBLE`) with typed `DeviceInfo`/`ElementSnapshot`/`Bounds`
+  payloads and golden fixtures. `PHASE_1_OBSERVATION_OK` on API 29/34: `COUNT` = 2 for the
+  duplicate buttons and 0 for an absent selector, `SNAPSHOT` state flags and resource name,
+  `AMBIGUOUS` snapshot of duplicates, `DEVICE_INFO` API level and focused package,
+  `WAIT_APP_VISIBLE`, `PRESS_KEY -1` → `INVALID_REQUEST`, back key → `WAIT_GONE` of the
+  ambiguity screen.
+- Hint-aware text observation: an empty `EditText` reports its hint as accessibility text on
+  API 26+, which made `CLEAR_TEXT` on a hinted field fail as `TEXT_MISMATCH` and leaked hints
+  into `SNAPSHOT.text` (found by the SDK sample suite). One `displayedText()` helper now backs
+  `SNAPSHOT`, the text-verification loop, and key-event input; the validation flow clears the
+  hinted keyboard field and checks the snapshot reads empty text plus the hint.
+- Host split into a reusable library (`:host`: `Adb`, `DriverClient`, `DriverLifecycle`,
+  `DeviceSession`, `SessionJournal`) and the validation executable (`:host:validation`), so
+  product code never depends on `PhaseZeroMain`.
+- Phase 2 public API delivered on top (`:host:sdk`, `:host:junit5`, `:samples:fixture-tests`;
+  see `.docs/project-architecture.md` §5–7): `Device`/`App`/`Element`/`ElementWait`,
+  selector DSL, all-or-none device pool, `@TapTest` JUnit 5 extension with failure artifacts,
+  and nine sample tests that pass against the fixture app on API 29 + API 34 concurrently
+  (2026-09-18).
+
+Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2026-09-18):
 
 | Device | API | Generation |
 |---|---:|---:|
-| Android emulator | 34 | 317 |
-| Samsung SM-J810G | 29 | 168 |
+| Android emulator | 34 | 353 |
+| Samsung SM-J810G | 29 | 190 |
 
 ## Remaining Phase 1 Work
 
@@ -138,20 +159,21 @@ Latest successful generations:
 - [x] Add host-driven heartbeat expiry on the driver.
 - [ ] Re-run the late-mutation quarantine scenario (reboots the device) against the
   watchdog-aware driver. Needs an explicit go-ahead because it reboots both devices.
-- [ ] Plan §11 operations not yet implemented: `device.pressKey/pressBack/pressHome/wake`,
-  `device.info`, `session.shutdown`, `element.count`, `element.snapshot`,
-  `element.getProperty`, `wait.appVisible`, `wait.screenStable`, `sync.awaitIdle` (idle
-  waiting exists only as host-side sampling in the validation flow), `inspector.snapshot`.
+- [x] Plan §11 operations: `device.pressKey/pressBack/pressHome`, `device.info`,
+  `element.count`, `element.snapshot` (covers `getProperty`), `wait.appVisible`, `wait.gone`;
+  `sync.awaitIdle` is host-side (`App.awaitIdle` over `SYNC_BOOTSTRAP`/`SYNC_STATE`).
+- [ ] Plan §11 operations still missing: `device.wake`, `session.shutdown` (sessions end by
+  closing the socket and force-stopping the instrumentation), `wait.screenStable` (the
+  fingerprint-based stability check exists only inside `TYPE_TEXT`), `inspector.snapshot`.
 - [ ] Emit `AUT_CRASHED`/`AUT_ANR`/`AUT_NOT_INSTALLED` from observed process state (codes are
   defined and fixture-covered, not yet produced).
 - [ ] Driver `<queries>` lists only the fixture's provider authorities; a product AUT's
   `<pkg>.tap-sync` is invisible to the driver on API 30+ until visibility is solved.
-- [ ] Public Kotlin `Device`/`App`/`Element` API and JUnit 5 extension (Phase 2 per the plan;
-  the host still calls protocol operations directly).
+- [x] Public Kotlin `Device`/`App`/`Element` API and JUnit 5 extension (Phase 2; see above).
 
 The Phase 1 exit criteria (contract + fixture coverage for every implemented operation, no
 hierarchy dump on the hot path, cancellation reusable-or-poison, ambiguous-by-default,
-implementable protocol documentation) are met for the implemented operation set. Phase 1 is
-not a usable testing framework yet: nothing but `PhaseZeroMain` consumes `DriverClient`, and
-the public API, device pool, JUnit extension, and reports are Phase 2/3. Next: the missing
-§11 operations and the quarantine re-run (needs a reboot go-ahead), then Phase 2.
+implementable protocol documentation) are met for the implemented operation set, and the
+Phase 2 public API makes the framework usable for writing tests today (`README.md`,
+"Writing tests"). What is still missing before it is production-grade is tracked in
+`.docs/framework-gaps.md`.

@@ -95,14 +95,20 @@ operation version 1 for:
 | Operation | Required fields | Result |
 |---|---|---|
 | `HEALTH` | – | `value=true` |
+| `DEVICE_INFO` | – | `deviceInfo` = API level, manufacturer/model/product, display size and rotation, focused package |
+| `PRESS_KEY` | `keyCode` ≥ 0 | injects one key press (`3`/`4` route through `pressHome`/`pressBack`); `ACTION_REJECTED` if the platform refused it |
 | `EXISTS` | `selector` | `value` = at least one match now |
+| `COUNT` | `selector` | `count` = matches in the focused window, capped at 1 000 (ignores the match limit) |
+| `SNAPSHOT` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (hint excluded), description, hint, visible bounds, state flags, child count |
 | `WAIT_VISIBLE` | `selector` | `value=true`, or `WAIT_TIMEOUT` with `value=false` |
+| `WAIT_GONE` | `selector` | `value=true` once no match exists, or `WAIT_TIMEOUT` with `value=false` |
+| `WAIT_APP_VISIBLE` | `packageName` | `value=true` once that package owns the focused window, or `WAIT_TIMEOUT` |
 | `TAP`, `LONG_TAP` | `selector` (exactly one match) | `value=true` after the click |
 | `SET_TEXT` | `selector`, `inputText` (≤ 256 chars) | replaces the text; verified within 1 s |
 | `TYPE_TEXT` | `selector`, `inputText` (≤ 256 chars) | appends via key events; verified |
 | `CLEAR_TEXT` | `selector` | empties the field; verified |
 | `SWIPE` | `selector`, `direction`, `distancePercent` 1..100 | finger gesture across the element; `value=true` |
-| `SCROLL` | `selector` (scrollable), `direction`, `distancePercent` | one scroll segment; `value` = content moved |
+| `SCROLL` | `selector` (scrollable), `direction`, `distancePercent` | one scroll segment; `value=true` while more content remains in that direction (UiAutomator semantics), `false` at the end or when no scroll event was observed |
 | `SCROLL_UNTIL` | `selector`, `containerSelector`, `maxScrolls` 1..100 | scrolls `direction` (default `DOWN`) until the target is visible |
 | `DUMP_HIERARCHY` | – | `text` = accessibility XML (diagnostic only) |
 | `SCREENSHOT` | – | PNG blob + `artifact` metadata (capability `artifact.screenshot.v1`) |
@@ -111,6 +117,15 @@ operation version 1 for:
 `direction` is the direction the content moves for scrolls and the finger for swipes.
 `distancePercent` (default 80) is the gesture length as a percentage of the element's size.
 Missing or out-of-range fields return `INVALID_REQUEST` before any UI access.
+
+Text observations (`SNAPSHOT.text`, and the verification behind `SET_TEXT`/`TYPE_TEXT`/
+`CLEAR_TEXT`) exclude a displayed hint: an empty `EditText` reports its hint as accessibility
+text with `isShowingHintText` set, and the driver reads that as empty text. Text *selectors*
+still match what UiAutomator's `By.text` sees (see the gaps document).
+
+Waits (`WAIT_VISIBLE`, `WAIT_GONE`, `WAIT_APP_VISIBLE`) poll on the driver at 50 ms until the
+condition holds or the request deadline passes, and honour cancellation between polls. A
+timeout is `WAIT_TIMEOUT` with `value=false`, never an exception path.
 
 An unknown operation version returns `UNSUPPORTED`. Its request ID is accepted before
 validation and cannot be reused. IDs at or below the accepted watermark return
@@ -316,5 +331,6 @@ edit that made them drift.
 
 ## Not Yet Implemented
 
-Protocol 1.0 does not yet expose events or multi-touch gestures. `AUT_NOT_INSTALLED`,
-`AUT_CRASHED`, and `AUT_ANR` are defined but not yet emitted.
+Protocol 1.0 does not yet expose events, multi-touch gestures, `session.shutdown`,
+`wait.screenStable`, or `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
+`AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

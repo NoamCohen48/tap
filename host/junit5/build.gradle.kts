@@ -1,6 +1,5 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
-    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 kotlin {
@@ -8,8 +7,8 @@ kotlin {
 }
 
 dependencies {
-    api(project(":protocol"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
+    api(project(":host:sdk"))
+    api("org.junit.jupiter:junit-jupiter-api:5.13.4")
 
     testImplementation(kotlin("test"))
 }
