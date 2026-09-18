@@ -24,7 +24,7 @@ internal class BlobReceiver(private val start: BlobStart) {
     val bytes: ByteArray? get() = if (complete && failureDetail == null) buffer.toByteArray() else null
 
     init {
-        if (start.totalLength < 0 || start.totalLength > MAX_ARTIFACT_BYTES) fail(ErrorDetail.ARTIFACT_TOO_LARGE)
+        if (start.totalLength !in 0..MAX_ARTIFACT_BYTES) fail(ErrorDetail.ARTIFACT_TOO_LARGE)
     }
 
     fun chunk(payload: ByteArray) {
