@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <permission
+        android:name="com.company.tap.permission.SYNCHRONIZATION"
+        android:protectionLevel="signature" />
+
+    <application
+        android:name=".FixtureApplication"
+        android:allowBackup="false"
+        android:label="Tap Fixture"
+        android:theme="@style/AppTheme">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ViewListActivity"
+            android:exported="true" />
+        <activity
+            android:name=".AmbiguityActivity"
+            android:exported="true" />
+        <activity
+            android:name=".PermissionActivity"
+            android:exported="true" />
+        <activity
+            android:name=".PortOccupierActivity"
+            android:exported="true" />
+        <provider
+            android:name=".TapSynchronizationProvider"
+            android:authorities="com.company.tap.fixture.tap-sync"
+            android:exported="true"
+            android:permission="com.company.tap.permission.SYNCHRONIZATION" />
+    </application>
+</manifest>
