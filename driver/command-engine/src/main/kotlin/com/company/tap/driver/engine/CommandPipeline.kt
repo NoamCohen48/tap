@@ -1,5 +1,7 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Response
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -92,10 +94,13 @@ class CommandPipeline(
             }
         }
         when (admission) {
-            Admission.UNHEALTHY -> terminate(command, error(EngineErrorCodes.DRIVER_UNHEALTHY, poisonReason))
+            Admission.UNHEALTHY -> terminate(
+                command,
+                error(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG, poisonReason),
+            )
             Admission.OVERLOADED -> terminate(
                 command,
-                error(EngineErrorCodes.OVERLOADED, "Command queue holds $queueCapacity requests"),
+                error(ErrorCode.OVERLOADED, null, "Command queue holds $queueCapacity requests"),
             )
             Admission.QUEUED, Admission.CLOSED -> Unit
         }
@@ -123,7 +128,7 @@ class CommandPipeline(
                 null
             }
         }
-        if (removed != null) terminate(removed, error(EngineErrorCodes.CANCELLED, "Cancelled before execution"))
+        if (removed != null) terminate(removed, error(ErrorCode.CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE))
     }
 
     /**
@@ -137,7 +142,7 @@ class CommandPipeline(
             queued.forEach { it.phase = CommandPhase.TERMINAL }
             queued
         }
-        discarded.forEach { terminate(it, error(EngineErrorCodes.CANCELLED, "Transport closed before execution")) }
+        discarded.forEach { terminate(it, error(ErrorCode.CANCELLED, ErrorDetail.TRANSPORT_CLOSED)) }
     }
 
     /** Answers a `PING` on the writer lane without touching the executor. */
@@ -192,11 +197,11 @@ class CommandPipeline(
             while (queue.isNotEmpty()) {
                 val queued = queue.removeFirst()
                 queued.phase = CommandPhase.TERMINAL
-                doomed += queued to error(EngineErrorCodes.DRIVER_UNHEALTHY, reason)
+                doomed += queued to error(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG, reason)
             }
             running?.let { current ->
-                val code = if (current.mutationStarted) EngineErrorCodes.INDETERMINATE else EngineErrorCodes.DRIVER_UNHEALTHY
-                doomed += current to error(code, reason)
+                val code = if (current.mutationStarted) ErrorCode.INDETERMINATE else ErrorCode.DRIVER_UNHEALTHY
+                doomed += current to error(code, ErrorDetail.WATCHDOG, reason)
             }
             queueChanged.signalAll()
             true
@@ -212,10 +217,10 @@ class CommandPipeline(
 
     private fun mutationGate(command: Command) {
         lock.withLock {
-            if (poisoned) throw CommandInterrupted(EngineErrorCodes.DRIVER_UNHEALTHY)
-            if (command.isTerminal) throw CommandInterrupted(EngineErrorCodes.CANCELLED)
-            if (command.cancelRequested) throw CommandInterrupted(EngineErrorCodes.CANCELLED)
-            if (clock.nowMs() >= command.deadlineMs) throw CommandInterrupted(EngineErrorCodes.DEADLINE_EXCEEDED)
+            if (poisoned) throw CommandInterrupted(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG)
+            if (command.isTerminal) throw CommandInterrupted(ErrorCode.CANCELLED)
+            if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
+            if (clock.nowMs() >= command.deadlineMs) throw CommandInterrupted(ErrorCode.DEADLINE_EXCEEDED)
             command.mutationStarted = true
         }
     }
@@ -249,23 +254,27 @@ class CommandPipeline(
 
     private fun execute(command: Command) {
         val response = when {
-            command.cancelRequested -> error(EngineErrorCodes.CANCELLED, "Cancelled before execution")
-            clock.nowMs() >= command.deadlineMs ->
-                error(EngineErrorCodes.DEADLINE_EXCEEDED, "Deadline expired while queued")
+            command.cancelRequested -> error(ErrorCode.CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE)
+            clock.nowMs() >= command.deadlineMs -> error(ErrorCode.DEADLINE_EXCEEDED, ErrorDetail.EXPIRED_IN_QUEUE)
             else -> try {
                 command.work(CommandContext(command, clock, ::mutationGate))
             } catch (interrupted: CommandInterrupted) {
-                error(interrupted.errorCode, null, command)
+                error(interrupted.errorCode, interrupted.detail, null, command)
             } catch (error: Throwable) {
-                error(EngineErrorCodes.INTERNAL, error.message, command)
+                error(ErrorCode.INTERNAL, null, error.toString(), command)
             }
         }
         terminate(command, response)
     }
 
-    private fun error(code: String, message: String?, command: Command? = null): Response = Response(
-        ok = false,
-        errorCode = code,
+    private fun error(
+        code: ErrorCode,
+        detail: String?,
+        message: String? = null,
+        command: Command? = null,
+    ): Response = Response.failure(
+        code,
+        detail = detail,
         message = message,
         durationMs = command?.let { clock.nowMs() - it.acceptedAtMs } ?: 0,
     )

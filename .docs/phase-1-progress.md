@@ -58,12 +58,23 @@ Status: in progress.
   fencing checks can keep issuing commands (found on device: the first cancellation probe was
   rejected as `DUPLICATE_OR_STALE`).
 
+- Typed error taxonomy: `ErrorCode` enum on the wire (plan list plus `OVERLOADED`,
+  `PAYLOAD_TOO_LARGE`, host-only `UNKNOWN` decode fallback) with per-code may-have-mutated and
+  retryable properties, plus a stable `detail` sub-reason so former ad-hoc codes (`END_REACHED`,
+  `FOCUS_LOST`, `SYNC_*`, ...) no longer grow the enum. Post-mutation cardinality failures now
+  report `STALE_DURING_COMMAND` instead of `NOT_FOUND`/`AMBIGUOUS`, and partial key input is
+  `ACTION_REJECTED/PARTIAL_INPUT` instead of `DEADLINE_EXCEEDED`, so no retryable code can
+  follow a mutation. Host `CommandException` hierarchy (`RemoteCommandException`,
+  `CommandTransportException`) carries code, detail, operation, request ID, generation, serial,
+  rendered selector, timeout. 7 protocol tests (round-trip of every code, unknown fallback,
+  golden JSON, taxonomy list) and 3 client tests; full device flow re-passed on API 29/34.
+
 Latest successful generations:
 
 | Device | API | Generation |
 |---|---:|---:|
-| Android emulator | 34 | 261 |
-| Samsung SM-J810G | 29 | 121 |
+| Android emulator | 34 | 270 |
+| Samsung SM-J810G | 29 | 130 |
 
 ## Remaining Phase 1 Work
 
@@ -76,7 +87,7 @@ Latest successful generations:
   yet. The duplicate-button case referenced above was validated through the probe's
   `!AMBIGUOUS:` step; the current fixture layout no longer contains that duplicate button.
 - [ ] Define selector AST limits, relations, matching modes, and native/fallback boundary.
-- [ ] Replace free-form remote error strings with the typed taxonomy and host exceptions.
+- [x] Replace free-form remote error strings with the typed taxonomy and host exceptions.
 - [ ] Add screenshots with bounded binary transfer and checksum validation.
 - [ ] Add long tap, directional swipe/scroll, clear text, and fixture coverage.
 - [ ] Extract synchronization into an optional debug/E2E-only SDK module.
@@ -90,6 +101,7 @@ Latest successful generations:
 - [ ] Add host-driven heartbeat expiry on the driver (currently `PING` is answered but never
   required).
 
-Ambiguity-safe tap, the command execution state machine, and cancellation are implemented and
-device-proven. Next: the typed error taxonomy (folding in the pipeline's `CANCELLED`,
-`DEADLINE_EXCEEDED`, `OVERLOADED`, `DRIVER_UNHEALTHY`, `INDETERMINATE`), then the selector AST.
+Ambiguity-safe tap, the execution state machine, cancellation, and the typed error taxonomy
+are implemented and device-proven. Next: wire the duplicate editable-field/scroll-container
+fixtures into validation (cheap, exercises `AMBIGUOUS` on every mutating operation), then the
+selector AST.

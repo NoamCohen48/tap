@@ -9,6 +9,8 @@ import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.MAX_CONTROL_PAYLOAD
 import com.company.tap.protocol.Request
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Response
 import java.io.EOFException
 import java.net.Socket
@@ -84,7 +86,10 @@ internal class ClientConnection(
     private fun handleRequest(frame: Frame): Boolean {
         val request = json.decodeFromString<Request>(frame.payload.decodeToString())
         if (frame.requestId <= highestRequestId) {
-            writeResponse(frame.requestId, Response(false, errorCode = "DUPLICATE_OR_STALE", durationMs = 0))
+            writeResponse(
+                frame.requestId,
+                Response.failure(ErrorCode.DUPLICATE_OR_STALE, durationMs = 0),
+            )
             return !transportEnded.get()
         }
         if (faults.inject(FaultPoint.BEFORE_ACCEPTANCE, request, frame.requestId)) {
@@ -121,9 +126,8 @@ internal class ClientConnection(
         var payload = json.encodeToString(response).encodeToByteArray()
         if (payload.size > MAX_CONTROL_PAYLOAD) {
             payload = json.encodeToString(
-                Response(
-                    ok = false,
-                    errorCode = "PAYLOAD_TOO_LARGE",
+                Response.failure(
+                    ErrorCode.PAYLOAD_TOO_LARGE,
                     message = "Response exceeded $MAX_CONTROL_PAYLOAD bytes",
                     durationMs = response.durationMs,
                 )

@@ -84,7 +84,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
             )
             store.write(journal)
 
-            DriverClient(hostPort, sessionId, generation, secret).use { client ->
+            DriverClient(hostPort, sessionId, generation, secret, serial = serial).use { client ->
                 check(client.execute(Operation.HEALTH).ok)
                 journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                 store.write(journal)
@@ -110,7 +110,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                         if (expectedError == null) {
                             check(tap.ok) { "Could not navigate to ${screen.name}: $tap" }
                         } else {
-                            check(!tap.ok && tap.errorCode == expectedError) {
+                            check(!tap.ok && tap.errorCode?.name == expectedError) {
                                 "Expected $expectedError while entering ${screen.name}, got $tap"
                             }
                         }

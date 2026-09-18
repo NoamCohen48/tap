@@ -158,6 +158,60 @@ terminal response, an unknown response ID, or any read failure poisons the clien
 mutating requests fail as `INDETERMINATE`, queries as `TRANSPORT_LOST`, and later submissions
 fail before writing.
 
+## Errors
+
+A failed response has `ok=false`, exactly one `errorCode` from the closed taxonomy below, an
+optional stable `detail` sub-reason, and an optional free-text `message` that clients must not
+branch on. `ok=true` responses never carry a code. A host that receives a code it does not know
+decodes it as `UNKNOWN` (treated as may-have-mutated, not retryable); a driver never sends
+`UNKNOWN`. Adding a code is a minor protocol version change.
+
+Two properties are defined per code. **May have mutated** means device state may have changed;
+such a command must never be replayed blindly. **Retryable** is a hint for a caller-owned
+policy; Tap itself never retries.
+
+| Code | May have mutated | Retryable | Meaning / details |
+|---|:-:|:-:|---|
+| `INVALID_REQUEST` | no | no | Malformed or out-of-range request. `UNSUPPORTED_CHARACTERS`: text has no key-event mapping (rejected before input). |
+| `INVALID_SELECTOR` | no | no | Selector rejected. `SCOPE_DENIED`: package outside the AUT or the system allowlist. |
+| `UNSUPPORTED` | no | no | Unknown operation, operation version, or enum value. |
+| `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
+| `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
+| `DUPLICATE_OR_STALE` | no | no | Request ID at or below the watermark. |
+| `OVERLOADED` | no | yes | Command queue full; the ID is still consumed. |
+| `AUT_MISMATCH` | no | no | Observed AUT identity differs. `PROCESS_RESTARTED`, `PROCESS_MISMATCH` from synchronization. |
+| `NOT_FOUND` | no | yes | Zero matches. `END_REACHED`, `MAX_SCROLLS` for `SCROLL_UNTIL`. |
+| `AMBIGUOUS` | no | no | More than one match; returned before any input. |
+| `NOT_INTERACTABLE` | no | yes | Target exists but cannot take the action (for example not editable). |
+| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `FOCUS_LOST`, `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
+| `ACTION_REJECTED` | yes | no | Input was issued but did not take effect. `TEXT_MISMATCH`, `FOCUS_TIMEOUT`, `DEADLINE_AFTER_FOCUS`, `PARTIAL_INPUT`. |
+| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. |
+| `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
+| `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
+| `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |
+| `AUT_CRASHED` | yes | no | Reserved; not yet emitted. |
+| `AUT_ANR` | yes | no | Reserved; not yet emitted. |
+| `SYNC_PROVIDER_UNAVAILABLE` | no | yes | Synchronization provider unusable. `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `MALFORMED_STATE`, `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `PROVIDER_POISONED`. |
+| `DRIVER_UNHEALTHY` | no | no | Session poisoned by the watchdog (`WATCHDOG`); rebuild the session. |
+| `TRANSPORT_LOST` | no | no | Host-side: no response and no mutation risk. |
+| `INDETERMINATE` | yes | no | Mutation may have happened without a definitive result. `WATCHDOG`, `KEY_RELEASE_FAILED`. |
+| `ARTIFACT_TRANSFER_FAILED` | yes | no | Reserved for blob transfer. |
+| `PAYLOAD_TOO_LARGE` | yes | no | The command ran but its response exceeded the control payload limit. |
+| `INTERNAL` | yes | no | Unexpected driver failure. |
+
+`SCROLL_UNTIL` reports `NOT_FOUND`/`WAIT_TIMEOUT` after performing scroll gestures because
+re-issuing the search is safe; a container that stops resolving mid-search is
+`STALE_DURING_COMMAND`.
+
+### Host exceptions
+
+`CommandException` is sealed: `RemoteCommandException` wraps a driver error response (code,
+detail, remote message, duration) and `CommandTransportException` covers `TRANSPORT_LOST` and
+`INDETERMINATE` with the transmission state. Both carry operation, request ID, session
+generation, device serial, rendered selector, timeout, and the code's retryable/may-have-mutated
+flags. `DriverClient.execute` still returns the response; `executeOrThrow`/`awaitOrThrow`
+throw the typed exception.
+
 ## Compatibility Rules
 
 - Framing and application versions are independent.
@@ -173,8 +227,6 @@ key, and noncanonical JSON tests live under `protocol/src/test`.
 
 ## Not Yet Implemented
 
-Protocol 1.0 does not yet expose events, binary blobs, screenshots, or a complete typed
-remote-error model. Error codes are still strings; the codes emitted by the execution pipeline
-are `CANCELLED`, `DEADLINE_EXCEEDED`, `OVERLOADED`, `DRIVER_UNHEALTHY`, `INDETERMINATE`, and
-`INTERNAL`. The driver does not yet require periodic host heartbeats; `PING` is host-initiated
-only.
+Protocol 1.0 does not yet expose events, binary blobs, or screenshots. `AUT_NOT_INSTALLED`,
+`AUT_CRASHED`, `AUT_ANR`, and `ARTIFACT_TRANSFER_FAILED` are defined but not yet emitted. The
+driver does not yet require periodic host heartbeats; `PING` is host-initiated only.

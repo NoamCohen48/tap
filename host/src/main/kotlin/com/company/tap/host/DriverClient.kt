@@ -4,6 +4,7 @@ import com.company.tap.protocol.Authentication
 import com.company.tap.protocol.AuthenticationResult
 import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Challenge
+import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
@@ -40,6 +41,7 @@ class DriverClient(
     private val generation: Long,
     private val secret: ByteArray,
     private val overallDeadlineNanos: Long? = null,
+    private val serial: String? = null,
 ) : AutoCloseable {
     private val json = Json { ignoreUnknownKeys = true }
     private val socket = Socket()
@@ -84,6 +86,7 @@ class DriverClient(
         val requestId: Long,
         val operation: Operation,
         private val timeoutMs: Long,
+        private val selector: Selector? = null,
     ) {
         private val result = CompletableFuture<Response>()
         @Volatile var transmissionState: TransmissionState = TransmissionState.NOT_WRITTEN
@@ -130,13 +133,23 @@ class DriverClient(
             }
         }
 
+        /** Like [await] but converts a driver error response into [RemoteCommandException]. */
+        fun awaitOrThrow(): Response {
+            val response = await()
+            if (response.ok) return response
+            throw RemoteCommandException.from(response, operation, requestId, generation, serial, selector, timeoutMs)
+        }
+
         internal fun transportFailure(cause: Throwable): CommandTransportException {
             val code = if (operation.isMutating() && transmissionState != TransmissionState.NOT_WRITTEN) {
-                CommandErrorCode.INDETERMINATE
+                ErrorCode.INDETERMINATE
             } else {
-                CommandErrorCode.TRANSPORT_LOST
+                ErrorCode.TRANSPORT_LOST
             }
-            return CommandTransportException(code, operation, requestId, generation, transmissionState, cause)
+            return CommandTransportException(
+                code, operation, requestId, generation, transmissionState, cause,
+                serial, selector?.render(), timeoutMs,
+            )
         }
     }
 
@@ -163,6 +176,23 @@ class DriverClient(
         expectedProcessStartUuid,
         expectedSessionIdentity,
     ).await()
+
+    /** [execute] that throws [RemoteCommandException] instead of returning an error response. */
+    fun executeOrThrow(
+        operation: Operation,
+        selector: Selector? = null,
+        timeoutMs: Long = 5_000,
+        containerSelector: Selector? = null,
+        inputText: String? = null,
+        maxScrolls: Int = 20,
+    ): Response = submit(
+        operation,
+        selector,
+        timeoutMs,
+        containerSelector,
+        inputText,
+        maxScrolls,
+    ).awaitOrThrow()
 
     /**
      * Allocates the next request ID and writes the complete frame under the transport lock, so
@@ -200,12 +230,15 @@ class DriverClient(
         return synchronized(transportLock) {
             if (poisoned || closed) {
                 throw CommandTransportException(
-                    CommandErrorCode.TRANSPORT_LOST,
+                    ErrorCode.TRANSPORT_LOST,
                     operation,
                     -1,
                     generation,
                     TransmissionState.NOT_WRITTEN,
                     IllegalStateException("Driver connection is closed or poisoned"),
+                    serial,
+                    selector?.render(),
+                    timeoutMs,
                 )
             }
             transmit(nextRequestId++, request)
@@ -279,7 +312,7 @@ class DriverClient(
 
     // Caller holds transportLock.
     private fun transmit(requestId: Long, request: Request): PendingCommand {
-        val command = PendingCommand(requestId, request.operation, request.timeoutMs)
+        val command = PendingCommand(requestId, request.operation, request.timeoutMs, request.selector)
         check(pending.putIfAbsent(requestId, command) == null) { "Request $requestId is already pending" }
         // Explicit validation IDs consume the driver watermark too; never allocate below them.
         nextRequestId = maxOf(nextRequestId, Math.addExact(requestId, 1L))
@@ -431,27 +464,3 @@ class DriverClient(
         }
     }
 }
-
-enum class CommandErrorCode {
-    TRANSPORT_LOST,
-    INDETERMINATE,
-}
-
-enum class TransmissionState {
-    NOT_WRITTEN,
-    WRITING,
-    WRITTEN,
-    TERMINAL_RESPONSE,
-}
-
-class CommandTransportException(
-    val code: CommandErrorCode,
-    val operation: Operation,
-    val requestId: Long,
-    val sessionGeneration: Long,
-    val transmissionState: TransmissionState,
-    cause: Throwable,
-) : RuntimeException(
-    "$code during $operation request $requestId in generation $sessionGeneration ($transmissionState)",
-    cause,
-)
