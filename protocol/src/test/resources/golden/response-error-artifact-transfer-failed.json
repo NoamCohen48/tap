@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "ARTIFACT_TRANSFER_FAILED",
+  "detail": "BLOB_CHECKSUM_MISMATCH",
+  "message": "example",
+  "durationMs": 5
+}

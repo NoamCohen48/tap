@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "NOT_FOUND",
+  "detail": "END_REACHED",
+  "message": "example",
+  "durationMs": 5
+}

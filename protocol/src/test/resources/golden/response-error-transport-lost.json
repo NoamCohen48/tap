@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "TRANSPORT_LOST",
+  "detail": "TRANSPORT_CLOSED",
+  "message": "example",
+  "durationMs": 5
+}

@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "AUT_MISMATCH",
+  "detail": "PROCESS_MISMATCH",
+  "message": "example",
+  "durationMs": 5
+}

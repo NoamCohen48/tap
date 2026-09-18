@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "CANCELLED",
+  "detail": "CANCELLED_IN_QUEUE",
+  "message": "example",
+  "durationMs": 5
+}
