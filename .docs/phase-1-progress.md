@@ -138,11 +138,20 @@ Latest successful generations:
 - [x] Add host-driven heartbeat expiry on the driver.
 - [ ] Re-run the late-mutation quarantine scenario (reboots the device) against the
   watchdog-aware driver. Needs an explicit go-ahead because it reboots both devices.
+- [ ] Plan §11 operations not yet implemented: `device.pressKey/pressBack/pressHome/wake`,
+  `device.info`, `session.shutdown`, `element.count`, `element.snapshot`,
+  `element.getProperty`, `wait.appVisible`, `wait.screenStable`, `sync.awaitIdle` (idle
+  waiting exists only as host-side sampling in the validation flow), `inspector.snapshot`.
 - [ ] Emit `AUT_CRASHED`/`AUT_ANR`/`AUT_NOT_INSTALLED` from observed process state (codes are
   defined and fixture-covered, not yet produced).
+- [ ] Driver `<queries>` lists only the fixture's provider authorities; a product AUT's
+  `<pkg>.tap-sync` is invisible to the driver on API 30+ until visibility is solved.
 - [ ] Public Kotlin `Device`/`App`/`Element` API and JUnit 5 extension (Phase 2 per the plan;
   the host still calls protocol operations directly).
 
-Everything in the Phase 1 contract-and-driver list is implemented and device-proven except
-the reboot-only quarantine re-run. Next: the quarantine re-run when a reboot is acceptable,
-then the Phase 2 public API on top of `DriverClient`.
+The Phase 1 exit criteria (contract + fixture coverage for every implemented operation, no
+hierarchy dump on the hot path, cancellation reusable-or-poison, ambiguous-by-default,
+implementable protocol documentation) are met for the implemented operation set. Phase 1 is
+not a usable testing framework yet: nothing but `PhaseZeroMain` consumes `DriverClient`, and
+the public API, device pool, JUnit extension, and reports are Phase 2/3. Next: the missing
+§11 operations and the quarantine re-run (needs a reboot go-ahead), then Phase 2.
