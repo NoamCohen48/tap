@@ -15,6 +15,8 @@ Phase 2 (host SDK + JUnit 5) has a usable first cut in `:host:sdk`, `:host:junit
   implemented *and* exercised by a test or the device validation flow.
 - `.docs/framework-gaps.md` — the remaining delta to the plan, per section. Move an item out
   of it only together with the test or device check that proves it.
+- `.docs/multi-language-bindings.md` — analysis and proposal for a second (Python) binding
+  via a host session service; not implemented.
 - `.docs/upstream-reference-audit.md` — adopt/adapt/do-not-copy decisions per upstream tool.
 
 ## Learning from other testing tools

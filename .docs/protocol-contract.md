@@ -329,6 +329,56 @@ fixtures — one request per operation and one response per error code — live 
 with `./gradlew :protocol:test -Dtap.golden.update=true` in the same change as the contract
 edit that made them drift.
 
+## Design Rationale
+
+Why the contract looks the way it does; the choices marked *judgment call* are the ones
+worth revisiting, the last one is not optional.
+
+**One persistent framed socket rather than HTTP** (*judgment call*). HTTP would serve the
+request/response half — Appium UiAutomator2 runs NanoHTTPD inside its instrumentation — but
+the driver needs more than that on one connection: cancellation of an in-flight command
+(over HTTP a second request racing the first, correlated by an ID you invented anyway);
+driver-initiated frames (`PONG`, blob chunks streamed before the terminal response,
+poison notifications, events later), which HTTP only gets through long-polling or
+WebSocket; and the ordering guarantees (strictly increasing IDs, old generation rejected,
+one terminal response per accepted ID) that are trivial on one socket and awkward across
+independent connections and keep-alive pools. An HTTP server inside the instrumentation is
+also a dependency, startup time, and attack surface on a port every app on the device can
+reach. The 20-byte header is roughly WebSocket framing without the upgrade. A *host-side*
+service (`multi-language-bindings.md`) should nevertheless be HTTP/JSON-RPC; the trade-offs
+flip there.
+
+**JSON rather than protobuf** (*judgment call*). Payloads are tiny (a selector AST and a
+few fields) and latency is dominated by UiAutomator, not encoding; `kotlinx.serialization`
+is already shared by host and driver with no codegen in the Android build; fixtures and logs
+are readable; and the handshake needs a canonical byte form to authenticate, which is
+simple to define for JSON. The plan allowed either. What JSON lacks is a machine-readable
+schema for other languages — today the contract is Kotlin data classes plus golden
+fixtures. The cheap remedy is a JSON Schema generated from the models and checked against
+the fixtures; protobuf would give typed clients for free but is a protocol 2.0 change.
+
+**Challenge/response authentication** (*not optional*). The driver listens on a TCP port on
+the device and holds `UiAutomation`: it can inject input into any app and read any screen,
+including system dialogs. Without authentication, anything that reaches `localhost:27183` —
+any app on the device, anyone with ADB access to a shared lab device, a stale driver/host
+pairing from a previous run — can drive the phone. The handshake settles three things:
+
+1. *Host → driver*: only the process that launched this driver instance, and therefore
+   knows the per-launch secret, can send commands. Challenge/response keeps the secret off
+   the socket; nonces stop a recorded handshake from being replayed.
+2. *Driver → host*: the host proves it is talking to its own driver — this instance, this
+   session, this generation — not an orphan still listening on the port it just forwarded.
+   That was a real Phase 0 failure mode, and generation checking is how "never replay a
+   mutation" survives reconnects.
+3. *Negotiation binding*: the MAC covers `HELLO || CHALLENGE || NEGOTIATION`, so the
+   selected version and enabled capabilities cannot be downgraded in transit.
+
+HMAC with one per-launch 32-byte secret was chosen over TLS because there is no PKI on the
+device, self-signed certificates add key management for no gain in this threat model, and
+the secret is delivered out of band through instrumentation arguments. The known weakness —
+that argument is visible in `ps`/`dumpsys` on a rooted device for the process lifetime — is
+recorded in `framework-gaps.md` for the security review.
+
 ## Not Yet Implemented
 
 Protocol 1.0 does not yet expose events, multi-touch gestures, `session.shutdown`,
