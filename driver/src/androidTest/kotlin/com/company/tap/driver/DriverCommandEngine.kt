@@ -8,6 +8,8 @@ import com.company.tap.protocol.MAX_TEXT_INPUT_CHARS
 import com.company.tap.protocol.OPERATION_VERSION
 import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Request
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorKind
@@ -35,19 +37,23 @@ internal class DriverCommandEngine(
     ): Response {
         val started = context.acceptedAtMs
         if (request.sessionId != sessionId || request.sessionGeneration != generation) {
-            return Response(false, errorCode = "SESSION_MISMATCH", durationMs = elapsed(started))
+            return Response.failure(ErrorCode.SESSION_MISMATCH, durationMs = elapsed(started))
         }
         if (request.operationVersion != OPERATION_VERSION) {
-            return Response(false, errorCode = "UNSUPPORTED", durationMs = elapsed(started))
+            return Response.failure(ErrorCode.UNSUPPORTED, durationMs = elapsed(started))
         }
         if (request.timeoutMs !in 0..MAX_REQUEST_TIMEOUT_MS) {
-            return Response(false, errorCode = "INVALID_REQUEST", durationMs = elapsed(started))
+            return Response.failure(ErrorCode.INVALID_REQUEST, durationMs = elapsed(started))
         }
         if (isInvalid(request)) {
-            return Response(false, errorCode = "INVALID_REQUEST", durationMs = elapsed(started))
+            return Response.failure(ErrorCode.INVALID_REQUEST, durationMs = elapsed(started))
         }
         if (isScopeDenied(request)) {
-            return Response(false, errorCode = "SCOPE_DENIED", durationMs = elapsed(started))
+            return Response.failure(
+                ErrorCode.INVALID_SELECTOR,
+                detail = ErrorDetail.SCOPE_DENIED,
+                durationMs = elapsed(started),
+            )
         }
 
         context.checkpoint()

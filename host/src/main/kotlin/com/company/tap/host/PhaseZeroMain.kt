@@ -1,6 +1,8 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.CanonicalJson
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
@@ -271,7 +273,7 @@ private suspend fun runDevice(
             generation,
             wrongSecret,
         )
-        val client = connectWithRetry(hostPort, sessionId, generation, secret)
+        val client = connectWithRetry(hostPort, sessionId, generation, secret, serial = serial)
         client.use {
             check(it.driverInstanceId == running.driverInstanceId) {
                 "Authenticated driver instance did not match readiness signal"
@@ -349,7 +351,7 @@ private suspend fun runDevice(
             val restartedProcess = observeProcess(adb, serial)
             check(restartedProcess != processBeforeBootstrap) { "AUT process identity did not change" }
             val staleSync = callSync(adb, serial, it, Operation.SYNC_STATE, firstSyncIdentity)
-            check(!staleSync.ok && staleSync.errorCode == "SYNC_RESTARTED") {
+            check(!staleSync.ok && staleSync.errorCode == ErrorCode.AUT_MISMATCH && staleSync.detail == ErrorDetail.PROCESS_RESTARTED) {
                 "Synchronization restart was not detected: $staleSync"
             }
             val restartedBootstrap = callSync(adb, serial, it, Operation.SYNC_BOOTSTRAP)
@@ -379,7 +381,7 @@ private suspend fun runDevice(
             check(it.execute(Operation.WAIT_VISIBLE, Selector(SelectorKind.TEXT, "keys 42")).ok)
             check(it.execute(Operation.WAIT_VISIBLE, Selector(SelectorKind.TEXT, "Keyboard event received")).ok)
             val unsupportedInput = it.execute(Operation.TYPE_TEXT, keyboardInput, inputText = "emoji \uD83D\uDE00")
-            check(!unsupportedInput.ok && unsupportedInput.errorCode == "UNSUPPORTED_CHARACTERS")
+            check(!unsupportedInput.ok && unsupportedInput.errorCode == ErrorCode.INVALID_REQUEST && unsupportedInput.detail == ErrorDetail.UNSUPPORTED_CHARACTERS)
             check(it.execute(Operation.EXISTS, Selector(SelectorKind.TEXT, "keys 42")).value == true)
             adb.run(serial, "shell", "input", "keyevent", "KEYCODE_BACK")
 
@@ -398,7 +400,7 @@ private suspend fun runDevice(
                 containerSelector = Selector(SelectorKind.RAW_RESOURCE, "composeList"),
                 maxScrolls = 5,
             )
-            check(!composeEnd.ok && composeEnd.errorCode == "END_REACHED") {
+            check(!composeEnd.ok && composeEnd.errorCode == ErrorCode.NOT_FOUND && composeEnd.detail == ErrorDetail.END_REACHED) {
                 "Compose end detection failed: $composeEnd"
             }
 
@@ -428,7 +430,7 @@ private suspend fun runDevice(
                 containerSelector = viewList,
                 maxScrolls = 10,
             )
-            check(!viewEnd.ok && viewEnd.errorCode == "END_REACHED") {
+            check(!viewEnd.ok && viewEnd.errorCode == ErrorCode.NOT_FOUND && viewEnd.detail == ErrorDetail.END_REACHED) {
                 "View end detection failed: $viewEnd"
             }
 
@@ -461,7 +463,7 @@ private suspend fun runDevice(
                     scopePackage = "com.android.settings",
                 ),
             )
-            check(!deniedScope.ok && deniedScope.errorCode == "SCOPE_DENIED")
+            check(!deniedScope.ok && deniedScope.errorCode == ErrorCode.INVALID_SELECTOR && deniedScope.detail == ErrorDetail.SCOPE_DENIED)
             val allowPermission = Selector(
                 kind = SelectorKind.ANDROID_RESOURCE,
                 value = if (apiLevel >= 30) {
@@ -635,29 +637,29 @@ private fun runSessionFencingScenario(
     var cleanupStarted = false
     try {
         val duplicate = session.client.executeValidationRequest(requestId = 1)
-        check(!duplicate.ok && duplicate.errorCode == "DUPLICATE_OR_STALE") {
+        check(!duplicate.ok && duplicate.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
             "Same-generation duplicate request was not rejected: $duplicate"
         }
         val oldGeneration = session.client.executeValidationRequest(
             requestId = 2,
             requestGeneration = generation - 1,
         )
-        check(!oldGeneration.ok && oldGeneration.errorCode == "SESSION_MISMATCH") {
+        check(!oldGeneration.ok && oldGeneration.errorCode == ErrorCode.SESSION_MISMATCH) {
             "Old-generation request was not rejected: $oldGeneration"
         }
         val stale = session.client.executeValidationRequest(requestId = 2)
-        check(!stale.ok && stale.errorCode == "DUPLICATE_OR_STALE") {
+        check(!stale.ok && stale.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
             "Consumed request ID was not rejected: $stale"
         }
         val unsupported = session.client.executeValidationRequest(
             requestId = 3,
             operationVersion = 2,
         )
-        check(!unsupported.ok && unsupported.errorCode == "UNSUPPORTED") {
+        check(!unsupported.ok && unsupported.errorCode == ErrorCode.UNSUPPORTED) {
             "Unsupported operation version was not rejected: $unsupported"
         }
         val unsupportedReplay = session.client.executeValidationRequest(requestId = 3)
-        check(!unsupportedReplay.ok && unsupportedReplay.errorCode == "DUPLICATE_OR_STALE") {
+        check(!unsupportedReplay.ok && unsupportedReplay.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
             "Unsupported operation request ID was reusable: $unsupportedReplay"
         }
         runCancellationChecks(serial, session.client)
@@ -690,7 +692,7 @@ private fun runCancellationChecks(serial: String, client: DriverClient) {
     val cancelStarted = System.nanoTime()
     val cancelled = running.await()
     val cancelLatencyMs = (System.nanoTime() - cancelStarted) / 1_000_000L
-    check(!cancelled.ok && cancelled.errorCode == "CANCELLED") { "Running wait was not cancelled: $cancelled" }
+    check(!cancelled.ok && cancelled.errorCode == ErrorCode.CANCELLED) { "Running wait was not cancelled: $cancelled" }
     check(cancelLatencyMs < 5_000) { "Cancellation took $cancelLatencyMs ms" }
     check(!running.cancel()) { "Terminal command accepted a second cancel" }
 
@@ -701,14 +703,14 @@ private fun runCancellationChecks(serial: String, client: DriverClient) {
     val expiring = client.submit(Operation.HEALTH, timeoutMs = 200)
     check(second.cancel())
     val secondResult = second.await()
-    check(!secondResult.ok && secondResult.errorCode == "CANCELLED") { "Queued wait was not cancelled: $secondResult" }
+    check(!secondResult.ok && secondResult.errorCode == ErrorCode.CANCELLED) { "Queued wait was not cancelled: $secondResult" }
     check(!first.isDone) { "First wait completed before it was cancelled" }
     Thread.sleep(300)
     check(first.cancel())
     val firstResult = first.await()
-    check(!firstResult.ok && firstResult.errorCode == "CANCELLED") { "First wait was not cancelled: $firstResult" }
+    check(!firstResult.ok && firstResult.errorCode == ErrorCode.CANCELLED) { "First wait was not cancelled: $firstResult" }
     val expired = expiring.await()
-    check(!expired.ok && expired.errorCode == "DEADLINE_EXCEEDED") {
+    check(!expired.ok && expired.errorCode == ErrorCode.DEADLINE_EXCEEDED) {
         "Queued command did not consume its deadline while waiting: $expired"
     }
 
@@ -892,7 +894,7 @@ private fun runTransportFaultScenarios(
                 )
             }.exceptionOrNull()
             check(failure is CommandTransportException) { "$point did not lose transport: $failure" }
-            check(failure.code == CommandErrorCode.INDETERMINATE) {
+            check(failure.code == ErrorCode.INDETERMINATE) {
                 "$point produced ${failure.code} instead of INDETERMINATE"
             }
             check(failure.transmissionState == TransmissionState.WRITTEN) {
@@ -903,7 +905,7 @@ private fun runTransportFaultScenarios(
             }.exceptionOrNull()
             check(
                 poisonedFailure is CommandTransportException &&
-                    poisonedFailure.code == CommandErrorCode.TRANSPORT_LOST &&
+                    poisonedFailure.code == ErrorCode.TRANSPORT_LOST &&
                     poisonedFailure.transmissionState == TransmissionState.NOT_WRITTEN
             ) { "Lost connection accepted another command: $poisonedFailure" }
             session.journal = session.journal.copy(
@@ -1125,7 +1127,7 @@ private fun runLateMutationQuarantineScenario(
             remainingTimeoutMs(scenarioDeadline, 5_000),
         )
         check(lateWorkDelegated) { "Driver did not prove delegation of late mutation work" }
-        check(failure is CommandTransportException && failure.code == CommandErrorCode.INDETERMINATE) {
+        check(failure is CommandTransportException && failure.code == ErrorCode.INDETERMINATE) {
             "Late mutation did not produce INDETERMINATE: $failure"
         }
         check(failure.transmissionState == TransmissionState.WRITTEN)
@@ -1536,7 +1538,7 @@ private fun startFaultSession(
             updatedAtEpochMs = System.currentTimeMillis(),
         )
         store.write(journal)
-        client = connectWithRetry(hostPort, sessionId, generation, secret, deadlineNanos)
+        client = connectWithRetry(hostPort, sessionId, generation, secret, deadlineNanos, serial)
         check(System.nanoTime() < deadlineNanos) { "Connection exceeded transport deadline" }
         check(client.driverInstanceId == running.driverInstanceId)
         check(client.execute(Operation.HEALTH).ok)
@@ -2115,6 +2117,7 @@ private fun connectWithRetry(
     generation: Long,
     secret: ByteArray,
     overallDeadlineNanos: Long? = null,
+    serial: String? = null,
 ): DriverClient {
     val deadline = minOf(
         System.nanoTime() + 20_000_000_000L,
@@ -2123,7 +2126,7 @@ private fun connectWithRetry(
     var lastError: Throwable? = null
     while (System.nanoTime() < deadline) {
         try {
-            return DriverClient(hostPort, sessionId, generation, secret, overallDeadlineNanos)
+            return DriverClient(hostPort, sessionId, generation, secret, overallDeadlineNanos, serial)
         } catch (error: Throwable) {
             lastError = error
             Thread.sleep(100)

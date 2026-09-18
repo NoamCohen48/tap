@@ -4,6 +4,8 @@ import android.app.Instrumentation
 import android.content.pm.PackageManager
 import android.net.Uri
 import com.company.tap.protocol.Request
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.SyncState
 import java.util.concurrent.FutureTask
@@ -26,7 +28,11 @@ internal class SyncProviderClient(
             state.processStartUuid != request.expectedProcessStartUuid ||
             state.sessionIdentity != request.expectedSessionIdentity
         ) {
-            Response(false, errorCode = "SYNC_RESTARTED", durationMs = elapsed(started))
+            Response.failure(
+                ErrorCode.AUT_MISMATCH,
+                detail = ErrorDetail.PROCESS_RESTARTED,
+                durationMs = elapsed(started),
+            )
         } else {
             Response(true, value = state.busyCount == 0, durationMs = elapsed(started), syncState = state)
         }
@@ -38,7 +44,11 @@ internal class SyncProviderClient(
         block: (SyncState) -> Response,
     ): Response {
         if (poisoned) {
-            return Response(false, errorCode = "SYNC_PROVIDER_UNAVAILABLE", durationMs = elapsed(started))
+            return Response.failure(
+                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                detail = ErrorDetail.PROVIDER_POISONED,
+                durationMs = elapsed(started),
+            )
         }
         if (
             instrumentation.targetContext.packageManager.checkSignatures(
@@ -46,45 +56,65 @@ internal class SyncProviderClient(
                 instrumentation.targetContext.packageName,
             ) != PackageManager.SIGNATURE_MATCH
         ) {
-            return Response(false, errorCode = "SYNC_CERTIFICATE_MISMATCH", durationMs = elapsed(started))
+            return Response.failure(
+                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                detail = ErrorDetail.CERTIFICATE_MISMATCH,
+                durationMs = elapsed(started),
+            )
         }
         val provider = instrumentation.targetContext.packageManager.resolveContentProvider(syncAuthority, 0)
         if (provider?.packageName != expectedAut) {
-            return Response(false, errorCode = "SYNC_PROVIDER_UNAVAILABLE", durationMs = elapsed(started))
+            return Response.failure(
+                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                durationMs = elapsed(started),
+            )
         }
 
         return try {
             val remaining = request.timeoutMs - elapsed(started)
             if (remaining <= 0) {
-                return Response(false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                return Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = elapsed(started))
             }
             val state = readState(remaining)
             if (state.processId != request.observedPid) {
-                return Response(false, errorCode = "SYNC_PROCESS_MISMATCH", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.AUT_MISMATCH,
+                    detail = ErrorDetail.PROCESS_MISMATCH,
+                    durationMs = elapsed(started),
+                )
             }
             when {
                 !state.initialized || state.processStartUuid.isBlank() || state.sessionIdentity.isBlank() ->
-                    Response(false, errorCode = "SYNC_UNINITIALIZED", durationMs = elapsed(started))
+                    Response.failure(
+                        ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                        detail = ErrorDetail.UNINITIALIZED,
+                        durationMs = elapsed(started),
+                    )
                 state.generation < 0 || state.busyCount < 0 || state.lastTransitionElapsedMs < 0 ->
-                    Response(false, errorCode = "SYNC_MALFORMED", durationMs = elapsed(started))
-                state.error != null -> Response(
-                    false,
-                    errorCode = "SYNC_PROVIDER_ERROR",
+                    Response.failure(
+                        ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                        detail = ErrorDetail.MALFORMED_STATE,
+                        durationMs = elapsed(started),
+                    )
+                state.error != null -> Response.failure(
+                    ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                    detail = ErrorDetail.PROVIDER_ERROR,
                     message = state.error,
                     durationMs = elapsed(started),
                 )
                 elapsed(started) >= request.timeoutMs ->
-                    Response(false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                    Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = elapsed(started))
                 else -> block(state)
             }
         } catch (error: TimeoutException) {
             poisoned = true
-            Response(false, errorCode = "SYNC_PROVIDER_TIMEOUT", durationMs = elapsed(started))
+            Response.failure(
+                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
+                detail = ErrorDetail.PROVIDER_TIMEOUT,
+                durationMs = elapsed(started),
+            )
         } catch (error: Throwable) {
-            Response(
-                false,
-                errorCode = "SYNC_PROVIDER_UNAVAILABLE",
-                message = error.message,
+            Response.failure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, message = error.message,
                 durationMs = elapsed(started),
             )
         }

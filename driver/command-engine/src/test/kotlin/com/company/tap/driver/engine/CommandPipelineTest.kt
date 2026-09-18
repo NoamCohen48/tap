@@ -1,5 +1,6 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Response
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -79,7 +80,7 @@ class CommandPipelineTest {
 
         val overloaded = nextResponse()
         assertEquals(4L, overloaded.requestId)
-        assertEquals(EngineErrorCodes.OVERLOADED, overloaded.response.errorCode)
+        assertEquals(ErrorCode.OVERLOADED, overloaded.response.errorCode)
         release.countDown()
         assertEquals(listOf(1L, 2L, 3L), List(3) { nextResponse().requestId })
         assertFalse(ran.get())
@@ -97,7 +98,7 @@ class CommandPipelineTest {
 
         val cancelled = nextResponse()
         assertEquals(2L, cancelled.requestId)
-        assertEquals(EngineErrorCodes.CANCELLED, cancelled.response.errorCode)
+        assertEquals(ErrorCode.CANCELLED, cancelled.response.errorCode)
         assertEquals(emptyList(), pipeline.snapshot().queued)
         release.countDown()
         assertEquals(1L, nextResponse().requestId)
@@ -123,7 +124,7 @@ class CommandPipelineTest {
 
         val response = nextResponse()
         assertEquals(1L, response.requestId)
-        assertEquals(EngineErrorCodes.CANCELLED, response.response.errorCode)
+        assertEquals(ErrorCode.CANCELLED, response.response.errorCode)
         assertFalse(mutated.get())
     }
 
@@ -141,7 +142,7 @@ class CommandPipelineTest {
         assertTrue(entered.await(1, TimeUnit.SECONDS))
         pipeline.cancel(1)
 
-        assertEquals(EngineErrorCodes.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
         assertFalse(mutated.get())
     }
 
@@ -192,7 +193,7 @@ class CommandPipelineTest {
         assertEquals(1L, nextResponse().requestId)
         val expired = nextResponse()
         assertEquals(2L, expired.requestId)
-        assertEquals(EngineErrorCodes.DEADLINE_EXCEEDED, expired.response.errorCode)
+        assertEquals(ErrorCode.DEADLINE_EXCEEDED, expired.response.errorCode)
         assertFalse(ran.get())
     }
 
@@ -210,7 +211,7 @@ class CommandPipelineTest {
         now.addAndGet(100)
         advance.countDown()
 
-        assertEquals(EngineErrorCodes.DEADLINE_EXCEEDED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.DEADLINE_EXCEEDED, nextResponse().response.errorCode)
     }
 
     @Test
@@ -218,8 +219,8 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { throw IllegalStateException("boom") }
 
         val response = nextResponse()
-        assertEquals(EngineErrorCodes.INTERNAL, response.response.errorCode)
-        assertEquals("boom", response.response.message)
+        assertEquals(ErrorCode.INTERNAL, response.response.errorCode)
+        assertEquals("java.lang.IllegalStateException: boom", response.response.message)
     }
 
     @Test
@@ -244,8 +245,8 @@ class CommandPipelineTest {
         assertTrue(pipeline.checkWatchdog())
 
         val responses = List(2) { nextResponse() }.associateBy { it.requestId }
-        assertEquals(EngineErrorCodes.DRIVER_UNHEALTHY, responses.getValue(1L).response.errorCode)
-        assertEquals(EngineErrorCodes.DRIVER_UNHEALTHY, responses.getValue(2L).response.errorCode)
+        assertEquals(ErrorCode.DRIVER_UNHEALTHY, responses.getValue(1L).response.errorCode)
+        assertEquals(ErrorCode.DRIVER_UNHEALTHY, responses.getValue(2L).response.errorCode)
         assertEquals(1, poisonReasons.size)
         assertTrue(pipeline.isPoisoned)
 
@@ -253,7 +254,7 @@ class CommandPipelineTest {
             CommandPipeline.Admission.UNHEALTHY,
             pipeline.submit(3, 5_000) { ok() },
         )
-        assertEquals(EngineErrorCodes.DRIVER_UNHEALTHY, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.DRIVER_UNHEALTHY, nextResponse().response.errorCode)
 
         release.countDown()
         assertTrue(pipeline.awaitTermination(1_000))
@@ -277,7 +278,7 @@ class CommandPipelineTest {
         now.addAndGet(600)
         assertTrue(pipeline.checkWatchdog())
 
-        assertEquals(EngineErrorCodes.INDETERMINATE, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.INDETERMINATE, nextResponse().response.errorCode)
         release.countDown()
         pipeline.awaitTermination(1_000)
         assertNull(written.poll(100, TimeUnit.MILLISECONDS))
@@ -359,7 +360,7 @@ class CommandPipelineTest {
 
         pipeline.discardQueued()
 
-        assertEquals(EngineErrorCodes.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
         assertEquals(1L, pipeline.snapshot().running)
         release.countDown()
         assertEquals(1L, nextResponse().requestId)
@@ -374,12 +375,12 @@ class CommandPipelineTest {
             entered.countDown()
             proceed.await()
             ctx.checkCancelled()
-            Response(false, errorCode = "WAIT_TIMEOUT", durationMs = 0)
+            Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = 0)
         }
         assertTrue(entered.await(1, TimeUnit.SECONDS))
         now.addAndGet(500)
         proceed.countDown()
-        assertEquals("WAIT_TIMEOUT", nextResponse().response.errorCode)
+        assertEquals(ErrorCode.WAIT_TIMEOUT, nextResponse().response.errorCode)
 
         val entered2 = CountDownLatch(1)
         pipeline.submit(2, 5_000) { ctx ->
@@ -390,7 +391,7 @@ class CommandPipelineTest {
         }
         assertTrue(entered2.await(1, TimeUnit.SECONDS))
         pipeline.cancel(2)
-        assertEquals(EngineErrorCodes.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
     }
 
     private fun ok() = Response(true, durationMs = 0)

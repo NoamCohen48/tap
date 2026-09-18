@@ -11,6 +11,8 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import com.company.tap.driver.engine.CommandContext
 import com.company.tap.protocol.Request
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorKind
@@ -25,7 +27,7 @@ internal class UiObjectAccess(
     private val device: UiDevice,
     private val expectedAut: String,
 ) {
-    data class UniqueResolution(val element: UiObject2?, val errorCode: String?)
+    data class UniqueResolution(val element: UiObject2?, val errorCode: ErrorCode?)
 
     fun selector(selector: Selector): BySelector {
         val compiled = when (selector.kind) {
@@ -50,10 +52,10 @@ internal class UiObjectAccess(
 
     fun resolveUnique(selector: Selector): UniqueResolution {
         val elements = findObjects(selector)
-        if (elements.isEmpty()) return UniqueResolution(null, "NOT_FOUND")
+        if (elements.isEmpty()) return UniqueResolution(null, ErrorCode.NOT_FOUND)
         if (elements.size > 1) {
             elements.forEach(UiObject2::recycle)
-            return UniqueResolution(null, "AMBIGUOUS")
+            return UniqueResolution(null, ErrorCode.AMBIGUOUS)
         }
         return UniqueResolution(elements.single(), null)
     }
@@ -104,9 +106,8 @@ internal class UiAutomationCommands(
         val requestSelector = requireNotNull(request.selector)
         context.checkpoint()
         val resolved = objects.resolveUnique(requestSelector)
-        val element = resolved.element ?: return Response(
-            false,
-            errorCode = requireNotNull(resolved.errorCode),
+        val element = resolved.element ?: return Response.failure(
+            requireNotNull(resolved.errorCode),
             durationMs = elapsed(started),
         )
         try {
@@ -136,7 +137,7 @@ internal class UiAutomationCommands(
             if (!found && context.remainingMs() > 0) context.sleep(50)
         } while (!found && android.os.SystemClock.elapsedRealtime() < deadline)
         return if (found) Response(true, value = true, durationMs = elapsed(started))
-        else Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+        else Response.failure(ErrorCode.WAIT_TIMEOUT, value = false, durationMs = elapsed(started))
     }
 
     fun dumpHierarchy(started: Long): Response {
@@ -146,9 +147,8 @@ internal class UiAutomationCommands(
                 output.content()
             }
         } catch (_: OutputLimitExceeded) {
-            return Response(
-                false,
-                errorCode = "PAYLOAD_TOO_LARGE",
+            return Response.failure(
+                ErrorCode.PAYLOAD_TOO_LARGE,
                 message = "Hierarchy exceeded $MAX_HIERARCHY_BYTES bytes",
                 durationMs = elapsed(started),
             )
@@ -161,14 +161,13 @@ internal class UiAutomationCommands(
         val requestSelector = requireNotNull(request.selector)
         context.checkpoint()
         val resolved = objects.resolveUnique(requestSelector)
-        val element = resolved.element ?: return Response(
-            false,
-            errorCode = requireNotNull(resolved.errorCode),
+        val element = resolved.element ?: return Response.failure(
+            requireNotNull(resolved.errorCode),
             durationMs = elapsed(started),
         )
         try {
             if (!element.accessibilityNodeInfo.isEditable) {
-                return Response(false, errorCode = "NOT_INTERACTABLE", durationMs = elapsed(started))
+                return Response.failure(ErrorCode.NOT_INTERACTABLE, durationMs = elapsed(started))
             }
             val expected = requireNotNull(request.inputText)
             context.markMutationStarted()
@@ -192,7 +191,7 @@ internal class UiAutomationCommands(
             if (!changed) Thread.sleep(25)
         } while (!changed && android.os.SystemClock.elapsedRealtime() < verificationDeadline)
         return if (changed) Response(true, value = true, durationMs = elapsed(started))
-        else Response(false, errorCode = "ACTION_REJECTED", durationMs = elapsed(started))
+        else Response.failure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = elapsed(started))
     }
 
     fun typeText(context: CommandContext, request: Request): Response {
@@ -200,25 +199,24 @@ internal class UiAutomationCommands(
         val requestSelector = requireNotNull(request.selector)
         context.checkpoint()
         val resolved = objects.resolveUnique(requestSelector)
-        val element = resolved.element ?: return Response(
-            false,
-            errorCode = requireNotNull(resolved.errorCode),
+        val element = resolved.element ?: return Response.failure(
+            requireNotNull(resolved.errorCode),
             durationMs = elapsed(started),
         )
         val deadline = context.deadlineMs
         try {
             if (!element.accessibilityNodeInfo.isEditable) {
-                return Response(false, errorCode = "NOT_INTERACTABLE", durationMs = elapsed(started))
+                return Response.failure(ErrorCode.NOT_INTERACTABLE, durationMs = elapsed(started))
             }
             if (android.os.SystemClock.elapsedRealtime() >= deadline) {
-                return Response(false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                return Response.failure(ErrorCode.DEADLINE_EXCEEDED, durationMs = elapsed(started))
             }
 
             val text = requireNotNull(request.inputText)
             val events = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(text.toCharArray())
-                ?: return Response(
-                    false,
-                    errorCode = "UNSUPPORTED_CHARACTERS",
+                ?: return Response.failure(
+                    ErrorCode.INVALID_REQUEST,
+                    detail = ErrorDetail.UNSUPPORTED_CHARACTERS,
                     message = "Text cannot be represented as Android key events",
                     durationMs = elapsed(started),
                 )
@@ -238,31 +236,43 @@ internal class UiAutomationCommands(
                 if (hasFocus) break
                 val remaining = deadline - android.os.SystemClock.elapsedRealtime()
                 if (remaining <= 0) {
-                    return Response(false, errorCode = "FOCUS_TIMEOUT", durationMs = elapsed(started))
+                    return Response.failure(
+                        ErrorCode.ACTION_REJECTED,
+                        detail = ErrorDetail.FOCUS_TIMEOUT,
+                        durationMs = elapsed(started),
+                    )
                 }
                 Thread.sleep(minOf(25, remaining))
             }
 
             if (android.os.SystemClock.elapsedRealtime() >= deadline) {
-                return Response(false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.ACTION_REJECTED,
+                    detail = ErrorDetail.DEADLINE_AFTER_FOCUS,
+                    durationMs = elapsed(started),
+                )
             }
             device.waitForIdle(minOf(3_000L, deadline - android.os.SystemClock.elapsedRealtime()))
             val revalidation = objects.resolveUnique(requestSelector)
-            val revalidated = revalidation.element ?: return Response(
-                false,
-                errorCode = requireNotNull(revalidation.errorCode),
-                durationMs = elapsed(started),
-            )
+            val revalidated = revalidation.element ?: return staleTarget(revalidation, started)
             val stillFocused = try {
                 revalidated.isFocused
             } finally {
                 revalidated.recycle()
             }
             if (!stillFocused) {
-                return Response(false, errorCode = "FOCUS_LOST", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.STALE_DURING_COMMAND,
+                    detail = ErrorDetail.FOCUS_LOST,
+                    durationMs = elapsed(started),
+                )
             }
             if (android.os.SystemClock.elapsedRealtime() >= deadline) {
-                return Response(false, errorCode = "DEADLINE_EXCEEDED", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.ACTION_REJECTED,
+                    detail = ErrorDetail.DEADLINE_AFTER_FOCUS,
+                    durationMs = elapsed(started),
+                )
             }
             val pressedKeys = mutableSetOf<Int>()
             var rejected = false
@@ -302,13 +312,21 @@ internal class UiAutomationCommands(
                 }
             }
             if (cleanupFailed) {
-                return Response(false, errorCode = "INPUT_STATE_UNCERTAIN", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.INDETERMINATE,
+                    detail = ErrorDetail.KEY_RELEASE_FAILED,
+                    durationMs = elapsed(started),
+                )
             }
             if (deadlineExpired) {
-                return Response(false, errorCode = "DEADLINE_EXCEEDED", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.ACTION_REJECTED,
+                    detail = ErrorDetail.PARTIAL_INPUT,
+                    durationMs = elapsed(started),
+                )
             }
             if (rejected) {
-                return Response(false, errorCode = "ACTION_REJECTED", durationMs = elapsed(started))
+                return Response.failure(ErrorCode.ACTION_REJECTED, durationMs = elapsed(started))
             }
 
             val verificationDeadline = deadline
@@ -325,7 +343,7 @@ internal class UiAutomationCommands(
                 val remaining = verificationDeadline - android.os.SystemClock.elapsedRealtime()
                 if (remaining > 0) Thread.sleep(minOf(25, remaining))
             } while (android.os.SystemClock.elapsedRealtime() < verificationDeadline)
-            return Response(false, errorCode = "ACTION_REJECTED", durationMs = elapsed(started))
+            return Response.failure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = elapsed(started))
         } finally {
             element.recycle()
         }
@@ -343,12 +361,15 @@ internal class UiAutomationCommands(
         repeat(request.maxScrolls) {
             context.checkCancelled()
             if (android.os.SystemClock.elapsedRealtime() >= deadline) {
-                return Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.WAIT_TIMEOUT,
+                    value = false,
+                    durationMs = elapsed(started),
+                )
             }
             val resolved = objects.resolveUnique(containerSelector)
-            val scrollable = resolved.element ?: return Response(
-                false,
-                errorCode = requireNotNull(resolved.errorCode),
+            val scrollable = resolved.element ?: return Response.failure(
+                requireNotNull(resolved.errorCode),
                 message = "Scroll container was not uniquely resolved",
                 durationMs = elapsed(started),
             )
@@ -358,7 +379,11 @@ internal class UiAutomationCommands(
                 }
                 val fingerprint = visibleFingerprint(scrollable)
                 if (android.os.SystemClock.elapsedRealtime() >= deadline) {
-                    return Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                    return Response.failure(
+                        ErrorCode.WAIT_TIMEOUT,
+                        value = false,
+                        durationMs = elapsed(started),
+                    )
                 }
                 // The first gesture makes the command definitive; later cancels are ignored.
                 context.markMutationStarted()
@@ -369,15 +394,18 @@ internal class UiAutomationCommands(
             }
             val remaining = deadline - android.os.SystemClock.elapsedRealtime()
             if (remaining <= 0) {
-                return Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.WAIT_TIMEOUT,
+                    value = false,
+                    durationMs = elapsed(started),
+                )
             }
             Thread.sleep(minOf(100, remaining))
             val afterResolution = objects.resolveUnique(containerSelector)
-            val after = afterResolution.element ?: return Response(
-                false,
-                errorCode = requireNotNull(afterResolution.errorCode),
-                message = "Scroll container was not uniquely resolved after scrolling",
-                durationMs = elapsed(started),
+            val after = afterResolution.element ?: return staleTarget(
+                afterResolution,
+                started,
+                "Scroll container was not uniquely resolved after scrolling",
             )
             val (found, afterFingerprint) = try {
                 after.hasObject(target) to visibleFingerprint(after)
@@ -389,19 +417,27 @@ internal class UiAutomationCommands(
             }
             noProgressAttempts = if (afterFingerprint == before) noProgressAttempts + 1 else 0
             if (noProgressAttempts >= 2) {
-                return Response(false, value = false, errorCode = "END_REACHED", durationMs = elapsed(started))
+                return Response.failure(
+                    ErrorCode.NOT_FOUND,
+                    detail = ErrorDetail.END_REACHED,
+                    value = false,
+                    durationMs = elapsed(started),
+                )
             }
         }
 
         if (android.os.SystemClock.elapsedRealtime() >= deadline) {
-            return Response(false, value = false, errorCode = "WAIT_TIMEOUT", durationMs = elapsed(started))
+            return Response.failure(
+                ErrorCode.WAIT_TIMEOUT,
+                value = false,
+                durationMs = elapsed(started),
+            )
         }
         val finalResolution = objects.resolveUnique(containerSelector)
-        val finalContainer = finalResolution.element ?: return Response(
-            false,
-            errorCode = requireNotNull(finalResolution.errorCode),
-            message = "Scroll container was not uniquely resolved after the final attempt",
-            durationMs = elapsed(started),
+        val finalContainer = finalResolution.element ?: return staleTarget(
+            finalResolution,
+            started,
+            "Scroll container was not uniquely resolved after the final attempt",
         )
         val found = try {
             finalContainer.hasObject(target)
@@ -409,8 +445,32 @@ internal class UiAutomationCommands(
             finalContainer.recycle()
         }
         return if (found) Response(true, value = true, durationMs = elapsed(started))
-        else Response(false, value = false, errorCode = "MAX_SCROLLS", durationMs = elapsed(started))
+        else Response.failure(
+            ErrorCode.NOT_FOUND,
+            detail = ErrorDetail.MAX_SCROLLS,
+            value = false,
+            durationMs = elapsed(started),
+        )
     }
+
+    /**
+     * A target that resolved before the mutation but not after it. `NOT_FOUND`/`AMBIGUOUS`
+     * promise no mutation, so post-mutation cardinality failures report
+     * `STALE_DURING_COMMAND` with the cardinality as detail.
+     */
+    private fun staleTarget(
+        resolution: UiObjectAccess.UniqueResolution,
+        started: Long,
+        message: String? = null,
+    ): Response = Response.failure(
+        ErrorCode.STALE_DURING_COMMAND,
+        detail = when (requireNotNull(resolution.errorCode)) {
+            ErrorCode.AMBIGUOUS -> ErrorDetail.TARGET_AMBIGUOUS
+            else -> ErrorDetail.TARGET_GONE
+        },
+        message = message,
+        durationMs = elapsed(started),
+    )
 
     private fun visibleFingerprint(root: UiObject2): String = buildString {
         fun appendNode(node: UiObject2, depth: Int) {

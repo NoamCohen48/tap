@@ -153,11 +153,35 @@ data class Response(
     val ok: Boolean,
     val value: Boolean? = null,
     val text: String? = null,
-    val errorCode: String? = null,
+    val errorCode: ErrorCode? = null,
+    /** Stable sub-reason from [ErrorDetail]; null when the code alone is specific enough. */
+    val detail: String? = null,
+    /** Human-readable context. Not stable; never branch on it. */
     val message: String? = null,
     val durationMs: Long,
     val syncState: SyncState? = null,
-)
+) {
+    init {
+        require(ok == (errorCode == null)) { "errorCode must be present exactly when ok is false" }
+    }
+
+    companion object {
+        fun failure(
+            code: ErrorCode,
+            durationMs: Long,
+            detail: String? = null,
+            message: String? = null,
+            value: Boolean? = null,
+        ): Response = Response(
+            ok = false,
+            value = value,
+            errorCode = code,
+            detail = detail,
+            message = message,
+            durationMs = durationMs,
+        )
+    }
+}
 
 @Serializable
 data class SyncState(

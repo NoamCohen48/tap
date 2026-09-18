@@ -1,5 +1,6 @@
 package com.company.tap.host
 
+import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Request
@@ -62,8 +63,8 @@ class DriverClientTest {
         assertEquals(FrameType.CANCEL, cancel.type)
         assertEquals(wait.requestId, cancel.requestId)
 
-        driver.respond(wait.requestId, Response(false, errorCode = "CANCELLED", durationMs = 40))
-        assertEquals("CANCELLED", wait.await().errorCode)
+        driver.respond(wait.requestId, Response.failure(ErrorCode.CANCELLED, durationMs = 40))
+        assertEquals(ErrorCode.CANCELLED, wait.await().errorCode)
         assertFalse(wait.cancel(), "terminal command must not be cancellable")
     }
 
@@ -99,10 +100,10 @@ class DriverClientTest {
         driver.dropConnection()
 
         val tapFailure = assertFailsWith<CommandTransportException> { tap.await() }
-        assertEquals(CommandErrorCode.INDETERMINATE, tapFailure.code)
+        assertEquals(ErrorCode.INDETERMINATE, tapFailure.code)
         assertEquals(TransmissionState.WRITTEN, tapFailure.transmissionState)
         val existsFailure = assertFailsWith<CommandTransportException> { exists.await() }
-        assertEquals(CommandErrorCode.TRANSPORT_LOST, existsFailure.code)
+        assertEquals(ErrorCode.TRANSPORT_LOST, existsFailure.code)
 
         val poisoned = assertFailsWith<CommandTransportException> { client.execute(Operation.HEALTH) }
         assertEquals(TransmissionState.NOT_WRITTEN, poisoned.transmissionState)
@@ -117,7 +118,7 @@ class DriverClientTest {
         driver.respond(99, Response(true, durationMs = 0))
 
         val failure = assertFailsWith<CommandTransportException> { exists.await() }
-        assertEquals(CommandErrorCode.TRANSPORT_LOST, failure.code)
+        assertEquals(ErrorCode.TRANSPORT_LOST, failure.code)
     }
 
     @Test
@@ -141,14 +142,65 @@ class DriverClientTest {
         val request = json.decodeFromString<Request>(frame.payload.decodeToString())
         assertEquals(2, request.operationVersion)
         assertEquals(Operation.HEALTH, request.operation)
-        driver.respond(3, Response(false, errorCode = "UNSUPPORTED", durationMs = 0))
-        assertEquals("UNSUPPORTED", response.get().errorCode)
+        driver.respond(3, Response.failure(ErrorCode.UNSUPPORTED, durationMs = 0))
+        assertEquals(ErrorCode.UNSUPPORTED, response.get().errorCode)
 
         // Automatic allocation continues above the explicit ID the driver has already consumed.
         val next = client.submit(Operation.HEALTH)
         assertEquals(4L, driver.nextFrame().requestId)
         driver.respond(4, Response(true, durationMs = 0))
         assertTrue(next.await().ok)
+    }
+
+    @Test
+    fun awaitOrThrowRaisesTypedRemoteException() {
+        val tap = client.submit(Operation.TAP, selector, timeoutMs = 7_000)
+        driver.nextFrame()
+        driver.respond(
+            tap.requestId,
+            Response.failure(ErrorCode.AMBIGUOUS, durationMs = 9, message = "3 matches"),
+        )
+
+        val failure = assertFailsWith<RemoteCommandException> { tap.awaitOrThrow() }
+        assertEquals(ErrorCode.AMBIGUOUS, failure.code)
+        assertEquals(Operation.TAP, failure.operation)
+        assertEquals(tap.requestId, failure.requestId)
+        assertEquals(7L, failure.sessionGeneration)
+        assertEquals("text=\"hello\"", failure.selector)
+        assertEquals(7_000L, failure.timeoutMs)
+        assertEquals("3 matches", failure.remoteMessage)
+        assertEquals(9L, failure.durationMs)
+        assertFalse(failure.retryable)
+        assertFalse(failure.mayHaveMutated)
+        assertTrue("AMBIGUOUS from TAP text=\"hello\"" in failure.message.orEmpty(), failure.message)
+    }
+
+    @Test
+    fun executeOrThrowCarriesDetailAndRetryability() {
+        val pending = CompletableFuture.supplyAsync {
+            runCatching { client.executeOrThrow(Operation.SCROLL_UNTIL, selector, containerSelector = selector) }
+        }
+        val frame = driver.nextFrame()
+        driver.respond(frame.requestId, Response.failure(ErrorCode.NOT_FOUND, detail = "END_REACHED", durationMs = 1))
+
+        val failure = pending.get().exceptionOrNull() as RemoteCommandException
+        assertEquals(ErrorCode.NOT_FOUND, failure.code)
+        assertEquals("END_REACHED", failure.detail)
+        assertTrue(failure.retryable)
+        assertTrue("NOT_FOUND/END_REACHED" in failure.message.orEmpty())
+    }
+
+    @Test
+    fun transportExceptionsCarrySelectorAndTimeout() {
+        val tap = client.submit(Operation.TAP, selector, timeoutMs = 1_234)
+        driver.nextFrame()
+        driver.dropConnection()
+
+        val failure = assertFailsWith<CommandTransportException> { tap.await() }
+        assertEquals("text=\"hello\"", failure.selector)
+        assertEquals(1_234L, failure.timeoutMs)
+        assertTrue(failure.mayHaveMutated)
+        assertTrue(failure is CommandException)
     }
 
     @Test

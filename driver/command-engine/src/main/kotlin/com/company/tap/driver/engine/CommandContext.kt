@@ -1,5 +1,7 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.ErrorCode
+
 /**
  * Per-command view of the pipeline handed to command code running on the executor.
  *
@@ -33,8 +35,8 @@ class CommandContext internal constructor(
      */
     fun checkpoint() {
         if (command.mutationStarted) return
-        if (command.cancelRequested) throw CommandInterrupted(EngineErrorCodes.CANCELLED)
-        if (isExpired()) throw CommandInterrupted(EngineErrorCodes.DEADLINE_EXCEEDED)
+        if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
+        if (isExpired()) throw CommandInterrupted(ErrorCode.DEADLINE_EXCEEDED)
     }
 
     /**
@@ -43,7 +45,7 @@ class CommandContext internal constructor(
      */
     fun checkCancelled() {
         if (command.mutationStarted) return
-        if (command.cancelRequested) throw CommandInterrupted(EngineErrorCodes.CANCELLED)
+        if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
     }
 
     /**
