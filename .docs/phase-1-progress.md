@@ -69,39 +69,80 @@ Status: in progress.
   rendered selector, timeout. 7 protocol tests (round-trip of every code, unknown fallback,
   golden JSON, taxonomy list) and 3 client tests; full device flow re-passed on API 29/34.
 
+- Selector AST (`protocol/Selector.kt`): string properties with `EXACT`/`CONTAINS`/
+  `STARTS_WITH`/`ENDS_WITH`/`REGEX` modes, resource IDs, nine boolean properties,
+  parent/ancestor/child/descendant relations, `AUT`/`SYSTEM` scope, and `EXACTLY_ONE`/
+  `FIRST`/`AT` limits with explicit accessibility-order opt-in. One validator
+  (`SelectorValidation`) runs on the host before a request ID is allocated and on the driver
+  before any lookup: depth ≤ 32, ≤ 256 nodes, ≤ 1024 chars, non-empty nodes/values, RE2-only
+  regexes. The driver compiles non-regex selectors to a window-scoped `BySelector`
+  (`UiWindow.findObjects` on the scope package's focused window) and regex selectors to a
+  single-pass traversal predicate; no hierarchy dump on the hot path. 7 protocol tests plus
+  `PHASE_1_SELECTORS_OK` on API 29/34: `AMBIGUOUS` for every mutating operation against the
+  duplicate buttons/fields/scroll containers with fixture state unchanged, `.first()`/`.at(1)`
+  taps, `.at(2)` → `NOT_FOUND`, ancestor/child relations, regex traversal, host-side rejection
+  of an empty node, foreign resource package → `SCOPE_DENIED`.
+- `LONG_TAP`, `CLEAR_TEXT`, `SWIPE`, and single-segment `SCROLL` (value = content moved), and
+  `SCROLL_UNTIL` takes a `direction`/`distancePercent`; all share one gesture shape
+  (checkpoint → exactly-one resolve → interactable check → mutation gate → act). Fixture
+  `AmbiguityActivity` gained a long-press-aware gesture target and a prefilled field; the device
+  flow proves long press vs tap, clear text, `NOT_INTERACTABLE` for clear on a button, scroll
+  end detection (`SCROLL DOWN` at the end → `false`, `UP` → `true`), and `INVALID_REQUEST` for
+  a scroll without direction.
+- Screenshots (`SCREENSHOT`, capability `artifact.screenshot.v1`): `UiAutomation.takeScreenshot`
+  → PNG → `BLOB_START`/`BLOB_CHUNK` (≤ 256 KiB, indexed)/`BLOB_END` on the writer lane before
+  the terminal `RESPONSE` with `ArtifactInfo` (blob ID, media type, byte count, SHA-256,
+  size). 64 MiB cap; cancel/deadline honored between chunks; host `BlobReceiver` verifies order,
+  length, and checksum (`ARTIFACT_TRANSFER_FAILED` with `BLOB_*` details) and keeps the session
+  usable. 4 pipeline tests, 4 client tests (including FLIP_BYTE/DROP_CHUNK/REORDER/NO_END
+  corruption), `PHASE_1_SCREENSHOT_OK` on API 29/34 (720×1480 and 1080×2400 PNGs).
+- Driver-required heartbeat: any inbound frame resets the timer; silence for
+  `tapHeartbeatTimeoutMs` (default 30 s) poisons the session with `DRIVER_UNHEALTHY` /
+  `HEARTBEAT_EXPIRED`, emits `TAP_POISONED`, and self-kills. The host client pings after 5 s of
+  idle on a background thread. `PHASE_1_HEARTBEAT_EXPIRY_OK` on API 29/34 forces the 3 s
+  timeout with host pings disabled and observes the poison marker, the terminal code, and the
+  driver process exiting — the watchdog poisoning path is now device-proven without a reboot.
+- Synchronization extracted to the `:sync-sdk` Android library (`com.company.tap.sync`,
+  authority `${applicationId}.tap-sync`, signature permission declared in the library
+  manifest). The fixture-only late-mutation hook moved to `FixtureFaultProvider`
+  (`com.company.tap.fixture.fault`, driver argument `tapFaultAuthority`), so the SDK contains
+  nothing test-fixture specific. Full device flow re-passed through the extracted provider.
+- Golden wire fixtures under `protocol/src/test/resources/golden`: one request per operation
+  (plus relational and system-scoped selector shapes) and one response per error code and
+  success shape; `GoldenMessageTest` fails on decode or encoding drift and checks that no
+  operation or code is missing a fixture.
+
 Latest successful generations:
 
 | Device | API | Generation |
 |---|---:|---:|
-| Android emulator | 34 | 270 |
-| Samsung SM-J810G | 29 | 130 |
+| Android emulator | 34 | 317 |
+| Samsung SM-J810G | 29 | 168 |
 
 ## Remaining Phase 1 Work
 
 - [x] Split the driver into an independent socket reader, bounded queue, serialized command
   executor, writer, and watchdog.
 - [x] Implement safe cancellation and terminal command states without permitting late work.
-- [ ] Wire the duplicate editable-field and scroll-container fixtures into host validation.
-  `AmbiguityActivity` (`activity_ambiguity.xml`) already contains duplicate `EditText`s and
-  duplicate `ScrollView`s, but nothing in `PhaseZeroMain` or the product probe exercises it
-  yet. The duplicate-button case referenced above was validated through the probe's
-  `!AMBIGUOUS:` step; the current fixture layout no longer contains that duplicate button.
-- [ ] Define selector AST limits, relations, matching modes, and native/fallback boundary.
+- [x] Wire the duplicate editable-field and scroll-container fixtures into host validation
+  (`PHASE_1_SELECTORS_OK` exercises every mutating operation against them).
+- [x] Define selector AST limits, relations, matching modes, and native/fallback boundary.
 - [x] Replace free-form remote error strings with the typed taxonomy and host exceptions.
-- [ ] Add screenshots with bounded binary transfer and checksum validation.
-- [ ] Add long tap, directional swipe/scroll, clear text, and fixture coverage.
-- [ ] Extract synchronization into an optional debug/E2E-only SDK module.
-- [ ] Add golden request/response fixtures and coverage for every operation/error.
+- [x] Add screenshots with bounded binary transfer and checksum validation.
+- [x] Add long tap, directional swipe/scroll, clear text, and fixture coverage.
+- [x] Extract synchronization into an optional debug/E2E-only SDK module.
+- [x] Add golden request/response fixtures and coverage for every operation/error.
 - [x] Prove cancellation either leaves a session reusable or explicitly poisons it
-  (`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK` on API 29/34; watchdog
-  poisoning is JVM-tested, not yet forced on a device).
-- [ ] Re-run the late-mutation quarantine scenario (reboots the device) against the watchdog-
-  aware driver, and add a device fault that forces watchdog poisoning to observe
-  `TAP_POISONED` plus self-kill end to end.
-- [ ] Add host-driven heartbeat expiry on the driver (currently `PING` is answered but never
-  required).
+  (`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK`,
+  `PHASE_1_HEARTBEAT_EXPIRY_OK` on API 29/34).
+- [x] Add host-driven heartbeat expiry on the driver.
+- [ ] Re-run the late-mutation quarantine scenario (reboots the device) against the
+  watchdog-aware driver. Needs an explicit go-ahead because it reboots both devices.
+- [ ] Emit `AUT_CRASHED`/`AUT_ANR`/`AUT_NOT_INSTALLED` from observed process state (codes are
+  defined and fixture-covered, not yet produced).
+- [ ] Public Kotlin `Device`/`App`/`Element` API and JUnit 5 extension (Phase 2 per the plan;
+  the host still calls protocol operations directly).
 
-Ambiguity-safe tap, the execution state machine, cancellation, and the typed error taxonomy
-are implemented and device-proven. Next: wire the duplicate editable-field/scroll-container
-fixtures into validation (cheap, exercises `AMBIGUOUS` on every mutating operation), then the
-selector AST.
+Everything in the Phase 1 contract-and-driver list is implemented and device-proven except
+the reboot-only quarantine re-run. Next: the quarantine re-run when a reboot is acceptable,
+then the Phase 2 public API on top of `DriverClient`.

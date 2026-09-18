@@ -15,6 +15,7 @@ class CommandContext internal constructor(
     private val command: Command,
     private val clock: Clock,
     private val mutationGate: (Command) -> Unit,
+    private val transfer: (BlobTransfer) -> Unit,
 ) {
     val requestId: Long get() = command.requestId
     val acceptedAtMs: Long get() = command.acceptedAtMs
@@ -55,6 +56,17 @@ class CommandContext internal constructor(
      */
     fun markMutationStarted() {
         mutationGate(command)
+    }
+
+    /**
+     * Streams [bytes] to the host as blob frames ahead of this command's terminal response and
+     * blocks until the writer is done. Must be called before [markMutationStarted] for pure
+     * artifact commands so an aborted transfer can still report `CANCELLED`.
+     */
+    fun transferBlob(mediaType: String, bytes: ByteArray): Pair<BlobTransfer, BlobTransfer.Outcome> {
+        val blob = BlobTransfer(command, mediaType, bytes)
+        transfer(blob)
+        return blob to blob.await()
     }
 
     /**

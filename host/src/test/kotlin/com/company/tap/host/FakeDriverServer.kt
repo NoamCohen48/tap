@@ -1,6 +1,11 @@
 package com.company.tap.host
 
+import com.company.tap.protocol.ArtifactInfo
 import com.company.tap.protocol.Authentication
+import com.company.tap.protocol.BlobEnd
+import com.company.tap.protocol.BlobFrames
+import com.company.tap.protocol.BlobStart
+import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
 import com.company.tap.protocol.AuthenticationResult
 import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Challenge
@@ -25,6 +30,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.encodeToString
@@ -56,6 +62,32 @@ class FakeDriverServer(
     }
 
     fun pong() = write(Frame(FrameType.PONG, 0, byteArrayOf()))
+
+    /**
+     * Streams [bytes] as a blob followed by a successful artifact response. [corrupt] lets a
+     * test damage one aspect of the transfer after the frames were built.
+     */
+    fun sendArtifact(requestId: Long, bytes: ByteArray, corrupt: Corruption = Corruption.NONE): ArtifactInfo {
+        val blobId = UUID.randomUUID()
+        val sha256 = BlobFrames.sha256Hex(bytes)
+        val start = BlobStart(blobId.toString(), "image/png", bytes.size.toLong(), sha256)
+        write(Frame(FrameType.BLOB_START, requestId, json.encodeToString(start).encodeToByteArray()))
+        val chunks = bytes.toList().chunked(MAX_BLOB_CHUNK_BYTES).map { it.toByteArray() }
+        chunks.forEachIndexed { index, chunk ->
+            if (corrupt == Corruption.DROP_CHUNK && index == 0) return@forEachIndexed
+            val data = if (corrupt == Corruption.FLIP_BYTE && index == 0) chunk.copyOf().also { it[0] = (it[0] + 1).toByte() } else chunk
+            val wireIndex = if (corrupt == Corruption.REORDER && chunks.size > 1) chunks.size - 1 - index else index
+            write(Frame(FrameType.BLOB_CHUNK, requestId, BlobFrames.encodeChunk(blobId, wireIndex, data, 0, data.size)))
+        }
+        if (corrupt != Corruption.NO_END) {
+            write(Frame(FrameType.BLOB_END, requestId, json.encodeToString(BlobEnd(blobId.toString(), bytes.size.toLong(), sha256)).encodeToByteArray()))
+        }
+        val info = ArtifactInfo(blobId.toString(), "image/png", bytes.size.toLong(), sha256, 4, 4)
+        respond(requestId, Response(true, durationMs = 5, artifact = info))
+        return info
+    }
+
+    enum class Corruption { NONE, FLIP_BYTE, DROP_CHUNK, REORDER, NO_END }
 
     fun write(frame: Frame) {
         val socket = requireNotNull(client) { "No authenticated client" }

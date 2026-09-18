@@ -1,12 +1,15 @@
 package com.company.tap.host
 
+import com.company.tap.protocol.BlobStart
 import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
+import com.company.tap.protocol.Frame
+import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
-import com.company.tap.protocol.SelectorKind
 import java.security.SecureRandom
 import java.util.concurrent.CompletableFuture
 import kotlin.test.AfterTest
@@ -21,8 +24,8 @@ class DriverClientTest {
     private val json = Json { ignoreUnknownKeys = true }
     private val secret = ByteArray(32).also(SecureRandom()::nextBytes)
     private val driver = FakeDriverServer("session-1", 7, secret)
-    private val client = DriverClient(driver.port, "session-1", 7, secret)
-    private val selector = Selector(SelectorKind.TEXT, "hello")
+    private val client = DriverClient(driver.port, "session-1", 7, secret, heartbeatIntervalMs = 0)
+    private val selector = Selector.text("hello")
 
     @AfterTest
     fun tearDown() {
@@ -66,6 +69,82 @@ class DriverClientTest {
         driver.respond(wait.requestId, Response.failure(ErrorCode.CANCELLED, durationMs = 40))
         assertEquals(ErrorCode.CANCELLED, wait.await().errorCode)
         assertFalse(wait.cancel(), "terminal command must not be cancellable")
+    }
+
+    @Test
+    fun idleClientSendsHeartbeatPingsAndPoisonsWhenUnanswered() {
+        val heartbeatSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+        FakeDriverServer("session-2", 1, heartbeatSecret).use { fake ->
+            DriverClient(fake.port, "session-2", 1, heartbeatSecret, heartbeatIntervalMs = 100).use { beating ->
+                repeat(2) {
+                    assertEquals(FrameType.PING, fake.nextFrame(1_000).type)
+                    fake.pong()
+                }
+                // A regular command is host activity too; the next PING waits for another idle interval.
+                val health = beating.submit(Operation.HEALTH)
+                assertEquals(FrameType.REQUEST, fake.nextFrame().type)
+                fake.respond(health.requestId, Response(true, value = true, durationMs = 1))
+                assertTrue(health.await().ok)
+                assertEquals(FrameType.PING, fake.nextFrame(1_000).type)
+                // Not answering this one poisons the client.
+                val failed = assertFailsWith<CommandTransportException> {
+                    Thread.sleep(300)
+                    beating.execute(Operation.HEALTH)
+                }
+                assertEquals(ErrorCode.TRANSPORT_LOST, failed.code)
+            }
+        }
+    }
+
+    @Test
+    fun screenshotReassemblesAndVerifiesTheBlob() {
+        val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES * 2 + 5) { (it * 7).toByte() }
+        val pending = CompletableFuture.supplyAsync { client.screenshot() }
+        val request = driver.nextFrame()
+        assertEquals(Operation.SCREENSHOT, json.decodeFromString<Request>(request.payload.decodeToString()).operation)
+        val info = driver.sendArtifact(request.requestId, bytes)
+        val screenshot = pending.get()
+        assertTrue(bytes.contentEquals(screenshot.png))
+        assertEquals(info, screenshot.info)
+    }
+
+    @Test
+    fun corruptedBlobsBecomeArtifactTransferFailed() {
+        val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES + 1) { it.toByte() }
+        val expectations = mapOf(
+            FakeDriverServer.Corruption.FLIP_BYTE to ErrorDetail.BLOB_CHECKSUM_MISMATCH,
+            FakeDriverServer.Corruption.DROP_CHUNK to ErrorDetail.BLOB_OUT_OF_ORDER,
+            FakeDriverServer.Corruption.REORDER to ErrorDetail.BLOB_OUT_OF_ORDER,
+            FakeDriverServer.Corruption.NO_END to ErrorDetail.BLOB_INCOMPLETE,
+        )
+        expectations.forEach { (corruption, detail) ->
+            val command = client.submit(Operation.SCREENSHOT)
+            driver.sendArtifact(driver.nextFrame().requestId, bytes, corruption)
+            val response = command.await()
+            assertEquals(ErrorCode.ARTIFACT_TRANSFER_FAILED, response.errorCode, corruption.name)
+            assertEquals(detail, response.detail, corruption.name)
+            assertEquals(null, command.artifact(), corruption.name)
+        }
+        // The session is still usable: verification failures are per request.
+        val health = client.submit(Operation.HEALTH)
+        driver.respond(driver.nextFrame().requestId, Response(true, value = true, durationMs = 1))
+        assertTrue(health.await().ok)
+    }
+
+    @Test
+    fun driverFailureAfterPartialBlobIsKept() {
+        val command = client.submit(Operation.SCREENSHOT)
+        val requestId = driver.nextFrame().requestId
+        val blobId = java.util.UUID.randomUUID()
+        driver.write(
+            Frame(
+                FrameType.BLOB_START,
+                requestId,
+                json.encodeToString(BlobStart(blobId.toString(), "image/png", 10, "00")).encodeToByteArray(),
+            ),
+        )
+        driver.respond(requestId, Response.failure(ErrorCode.CANCELLED, durationMs = 3))
+        assertEquals(ErrorCode.CANCELLED, command.await().errorCode)
     }
 
     @Test

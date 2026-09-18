@@ -37,7 +37,7 @@ internal class TapDriverServer(
     private val config = SessionConfig.from(arguments)
     private val device = UiDevice.getInstance(instrumentation)
     private val driverInstanceId = UUID.randomUUID().toString()
-    private val faults = FaultController(instrumentation, config.faultPoint, config.syncAuthority)
+    private val faults = FaultController(instrumentation, config.faultPoint, config.faultAuthority)
     private val engine = DriverCommandEngine(
         instrumentation,
         device,
@@ -66,6 +66,7 @@ internal class TapDriverServer(
                         config.sessionId,
                         config.generation,
                         config.uninterruptibleGraceMs,
+                        config.heartbeatTimeoutMs,
                         onPoisoned = { reason -> onPoisoned(server, reason) },
                     )
                     connection.run()
@@ -180,9 +181,12 @@ private data class SessionConfig(
     val port: Int,
     val expectedAut: String,
     val syncAuthority: String,
+    /** Fixture-only provider used by the late-mutation fault; unset for product AUTs. */
+    val faultAuthority: String,
     val allowedSystemPackages: Set<String>,
     val faultPoint: FaultPoint,
     val uninterruptibleGraceMs: Long,
+    val heartbeatTimeoutMs: Long,
 ) {
     /** The late-work fault must leave a hung driver for the host to terminate. */
     val watchdogKillsProcess: Boolean get() = faultPoint != FaultPoint.LATE_UNINTERRUPTIBLE
@@ -195,6 +199,7 @@ private data class SessionConfig(
             val port = requireNotNull(arguments.getString("tapPort")).toInt()
             val expectedAut = requireNotNull(arguments.getString("tapAutPackage"))
             val syncAuthority = requireNotNull(arguments.getString("tapSyncAuthority"))
+            val faultAuthority = arguments.getString("tapFaultAuthority").orEmpty()
             val allowedSystemPackages = requireNotNull(arguments.getString("tapSystemPackages"))
                 .split(',')
                 .filter(String::isNotBlank)
@@ -206,6 +211,9 @@ private data class SessionConfig(
             val uninterruptibleGraceMs = arguments.getString("tapUninterruptibleGraceMs")?.toLong()
                 ?: CommandPipeline.DEFAULT_UNINTERRUPTIBLE_GRACE_MS
             require(uninterruptibleGraceMs >= 0)
+            val heartbeatTimeoutMs = arguments.getString("tapHeartbeatTimeoutMs")?.toLong()
+                ?: DEFAULT_HEARTBEAT_TIMEOUT_MS
+            require(heartbeatTimeoutMs > 0) { "The heartbeat timeout is bounded; it cannot be disabled" }
             return SessionConfig(
                 sessionId,
                 generation,
@@ -213,10 +221,15 @@ private data class SessionConfig(
                 port,
                 expectedAut,
                 syncAuthority,
+                faultAuthority,
                 allowedSystemPackages,
                 faultPoint,
                 uninterruptibleGraceMs,
+                heartbeatTimeoutMs,
             )
         }
     }
 }
+
+/** A silent host for this long means it is gone; the driver poisons itself and exits. */
+private const val DEFAULT_HEARTBEAT_TIMEOUT_MS = 30_000L

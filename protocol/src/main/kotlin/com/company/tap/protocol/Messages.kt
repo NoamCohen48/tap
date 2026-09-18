@@ -14,6 +14,7 @@ const val OPERATION_VERSION = 1
 
 val SUPPORTED_PROTOCOL_VERSIONS = listOf(ProtocolVersion(1, 0))
 val SUPPORTED_CAPABILITIES = listOf(
+    "artifact.screenshot.v1",
     "diagnostic.hierarchy.v1",
     "input.key-events.v1",
     "product.probe.v1",
@@ -30,7 +31,10 @@ enum class FrameType(val wireValue: Byte) {
     CLOSE(7),
     CANCEL(8),
     PING(9),
-    PONG(10);
+    PONG(10),
+    BLOB_START(11),
+    BLOB_CHUNK(12),
+    BLOB_END(13);
 
     companion object {
         fun fromWireValue(value: Byte): FrameType =
@@ -43,20 +47,30 @@ enum class Operation {
     HEALTH,
     EXISTS,
     TAP,
+    LONG_TAP,
     WAIT_VISIBLE,
     DUMP_HIERARCHY,
     SET_TEXT,
     TYPE_TEXT,
+    CLEAR_TEXT,
+    SWIPE,
+    SCROLL,
     SCROLL_UNTIL,
+    SCREENSHOT,
     SYNC_BOOTSTRAP,
     SYNC_STATE,
 }
 
-enum class SelectorKind {
-    TEXT,
-    RAW_RESOURCE,
-    ANDROID_RESOURCE,
+/** Gesture direction: the direction the content moves for scrolls, the finger for swipes. */
+enum class Direction {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
 }
+
+const val DEFAULT_GESTURE_PERCENT = 80
+const val MAX_SCROLLS = 100
 
 enum class TargetScope {
     AUT,
@@ -80,15 +94,6 @@ data class OperationSupport(val name: String, val version: Int)
 data class Negotiation(
     val enabledCapabilities: List<String>,
     val selectedVersion: ProtocolVersion,
-)
-
-@Serializable
-data class Selector(
-    val kind: SelectorKind,
-    val value: String,
-    val packageName: String? = null,
-    val scope: TargetScope = TargetScope.AUT,
-    val scopePackage: String? = null,
 )
 
 @Serializable
@@ -141,6 +146,10 @@ data class Request(
     val selector: Selector? = null,
     val containerSelector: Selector? = null,
     val inputText: String? = null,
+    /** `SWIPE`, `SCROLL`, `SCROLL_UNTIL`; defaults to `DOWN` for scrolls. */
+    val direction: Direction? = null,
+    /** Gesture length as a percentage of the element's size, 1..100. */
+    val distancePercent: Int = DEFAULT_GESTURE_PERCENT,
     val maxScrolls: Int = 20,
     val observedPid: Int? = null,
     val observedStartToken: String? = null,
@@ -160,6 +169,8 @@ data class Response(
     val message: String? = null,
     val durationMs: Long,
     val syncState: SyncState? = null,
+    /** Set when the request transferred a blob; the bytes arrived in the preceding blob frames. */
+    val artifact: ArtifactInfo? = null,
 ) {
     init {
         require(ok == (errorCode == null)) { "errorCode must be present exactly when ok is false" }

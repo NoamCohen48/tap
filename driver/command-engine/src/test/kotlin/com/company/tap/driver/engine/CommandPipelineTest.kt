@@ -1,6 +1,9 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.BlobFrames
 import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
+import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
 import com.company.tap.protocol.Response
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -22,15 +25,19 @@ class CommandPipelineTest {
     private val poisonReasons = LinkedBlockingQueue<String>()
     private val writeFailures = LinkedBlockingQueue<Throwable>()
     private val failWrites = AtomicBoolean(false)
+    private val cancelOnFirstChunk = AtomicBoolean(false)
     private val listener = object : PipelineListener {
         override fun onPoisoned(reason: String) { poisonReasons.put(reason) }
         override fun onWriteFailed(error: Throwable) { writeFailures.put(error) }
     }
-    private val pipeline = CommandPipeline(
+    private val pipeline: CommandPipeline = CommandPipeline(
         clock = clock,
         sink = { message ->
             if (failWrites.get()) throw IllegalStateException("transport down")
             written.put(message)
+            if (message is Outbound.BlobChunkFrame && cancelOnFirstChunk.compareAndSet(true, false)) {
+                pipeline.cancel(message.requestId)
+            }
         },
         listener = listener,
         queueCapacity = 2,
@@ -392,6 +399,100 @@ class CommandPipelineTest {
         assertTrue(entered2.await(1, TimeUnit.SECONDS))
         pipeline.cancel(2)
         assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
+    }
+
+    @Test
+    fun blobFramesPrecedeTheTerminalResponseInOrder() {
+        val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES * 2 + 17) { it.toByte() }
+        pipeline.submit(1, 5_000) { ctx ->
+            val (blob, outcome) = ctx.transferBlob("image/png", bytes)
+            assertEquals(BlobTransfer.Outcome.COMPLETED, outcome)
+            Response(true, durationMs = 0, artifact = blob.artifactInfo(1, 2))
+        }
+        val start = next<Outbound.BlobStartFrame>()
+        assertEquals(bytes.size.toLong(), start.start.totalLength)
+        assertEquals(BlobFrames.sha256Hex(bytes), start.start.sha256)
+        val reassembled = java.io.ByteArrayOutputStream()
+        repeat(3) { index ->
+            val chunk = BlobFrames.decodeChunk(next<Outbound.BlobChunkFrame>().payload)
+            assertEquals(index, chunk.index)
+            assertEquals(start.start.blobId, chunk.blobId.toString())
+            reassembled.write(chunk.data)
+        }
+        val end = next<Outbound.BlobEndFrame>()
+        assertEquals(start.start.blobId, end.end.blobId)
+        assertEquals(bytes.size.toLong(), end.end.byteCount)
+        assertTrue(bytes.contentEquals(reassembled.toByteArray()))
+        val response = nextResponse()
+        assertEquals(1L, response.requestId)
+        assertEquals(start.start.blobId, response.response.artifact?.blobId)
+        assertTrue(written.isEmpty())
+    }
+
+    @Test
+    fun cancelAbortsAnActiveBlobAtTheNextChunkBoundary() {
+        val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES * 4)
+        cancelOnFirstChunk.set(true)
+        pipeline.submit(1, 5_000) { ctx ->
+            val (_, outcome) = ctx.transferBlob("image/png", bytes)
+            assertEquals(BlobTransfer.Outcome.CANCELLED, outcome)
+            ctx.checkCancelled()
+            fail("continued after an aborted blob")
+        }
+        next<Outbound.BlobStartFrame>()
+        next<Outbound.BlobChunkFrame>()
+        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
+        assertTrue(written.isEmpty())
+    }
+
+    @Test
+    fun deadlineAbortsAnActiveBlob() {
+        val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES * 3)
+        pipeline.submit(1, 100) { ctx ->
+            now.addAndGet(200)
+            val (_, outcome) = ctx.transferBlob("image/png", bytes)
+            assertEquals(BlobTransfer.Outcome.DEADLINE_EXCEEDED, outcome)
+            Response.failure(ErrorCode.DEADLINE_EXCEEDED, durationMs = 0)
+        }
+        next<Outbound.BlobStartFrame>()
+        assertEquals(ErrorCode.DEADLINE_EXCEEDED, nextResponse().response.errorCode)
+    }
+
+    @Test
+    fun heartbeatSilencePoisonsEvenAnIdleExecutorAndInboundFramesResetIt() {
+        val heartbeatWritten = LinkedBlockingQueue<Outbound>()
+        val heartbeatPipeline = CommandPipeline(
+            clock = clock,
+            sink = { heartbeatWritten.put(it) },
+            listener = listener,
+            watchdogPollMs = 0,
+            heartbeatTimeoutMs = 1_000,
+        ).start()
+        try {
+            now.addAndGet(900)
+            assertFalse(heartbeatPipeline.checkWatchdog())
+            heartbeatPipeline.heartbeat()
+            now.addAndGet(900)
+            assertFalse(heartbeatPipeline.checkWatchdog(), "inbound frame must reset the heartbeat window")
+
+            val release = CountDownLatch(1)
+            heartbeatPipeline.submit(1, 30_000) { release.await(); ok() }
+            now.addAndGet(200)
+            assertTrue(heartbeatPipeline.checkWatchdog())
+            assertTrue(poisonReasons.poll(1, TimeUnit.SECONDS)!!.contains("heartbeat"))
+            val response = (heartbeatWritten.poll(2, TimeUnit.SECONDS) as Outbound.TerminalResponse).response
+            assertEquals(ErrorCode.DRIVER_UNHEALTHY, response.errorCode)
+            assertEquals(ErrorDetail.HEARTBEAT_EXPIRED, response.detail)
+            assertEquals(CommandPipeline.Admission.UNHEALTHY, heartbeatPipeline.submit(2, 1_000) { ok() })
+            release.countDown()
+        } finally {
+            heartbeatPipeline.awaitTermination(1_000)
+        }
+    }
+
+    private inline fun <reified T : Outbound> next(): T {
+        val message = written.poll(2, TimeUnit.SECONDS) ?: fail("Nothing written")
+        return message as? T ?: fail("Unexpected outbound $message")
     }
 
     private fun ok() = Response(true, durationMs = 0)
