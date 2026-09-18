@@ -1,0 +1,19 @@
+# Gradle / Kotlin build output
+.gradle/
+.kotlin/
+**/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Tap runtime state (per-device leases and session journals)
+.tap/
+
+# Tooling scratch output
+.playwright-mcp/
+
+# OS
+.DS_Store

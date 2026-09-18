@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ambiguity fixture ready" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/duplicate_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Duplicate input"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@id/duplicate_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Duplicate input"
+            android:inputType="text" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:orientation="horizontal">
+
+        <ScrollView
+            android:id="@+id/duplicate_scroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="12dp"
+                android:text="Left 1\nLeft 2\nLeft 3\nLeft 4\nLeft 5\nLeft 6\nLeft 7\nLeft 8\nLeft 9\nLeft 10\nLeft 11\nLeft 12" />
+        </ScrollView>
+
+        <ScrollView
+            android:id="@id/duplicate_scroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="12dp"
+                android:text="Right 1\nRight 2\nRight 3\nRight 4\nRight 5\nRight 6\nRight 7\nRight 8\nRight 9\nRight 10\nRight 11\nRight 12" />
+        </ScrollView>
+    </LinearLayout>
+</LinearLayout>

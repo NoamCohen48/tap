@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <Button
+        android:id="@+id/view_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Tap View" />
+
+    <TextView
+        android:id="@+id/view_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:text="View idle" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/ambiguous_button_left"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ambiguous tap" />
+
+        <Button
+            android:id="@+id/ambiguous_button_right"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ambiguous tap" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/ambiguous_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ambiguous taps: left=0 right=0" />
+
+    <Button
+        android:id="@+id/fault_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Fault tap" />
+
+    <TextView
+        android:id="@+id/fault_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Fault taps: 0" />
+
+    <Button
+        android:id="@+id/sync_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start synchronized work" />
+
+    <EditText
+        android:id="@+id/view_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Input"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/keyboard_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Keyboard input"
+        android:inputType="text" />
+
+    <TextView
+        android:id="@+id/keyboard_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="No keyboard event" />
+
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/compose_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+</LinearLayout>

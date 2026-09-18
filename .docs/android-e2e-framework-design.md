@@ -1,7 +1,12 @@
 # Custom Android E2E Test Framework — Design Notes
 
-Status: pre-decision design notes. Captures the reasoning from discussion, including
-rejected options and open questions.
+Status: feasibility validated; conditional go pending the Phase 0 spike. Captures the
+reasoning from discussion, including rejected options and open questions. See
+[`android-e2e-framework-feasibility.md`](android-e2e-framework-feasibility.md) for the
+research findings and primary sources. The normative build sequence, acceptance criteria,
+and estimates are in
+[`android-e2e-framework-implementation-plan.md`](android-e2e-framework-implementation-plan.md);
+they supersede the early estimates and abbreviated phase descriptions retained here.
 
 ---
 
@@ -9,9 +14,11 @@ rejected options and open questions.
 
 Existing options and why they fail for this use case:
 
-**Appium** — poor scripting ergonomics; slow. Root cause of the slowness is architectural
-(see §3.2), not a tuning problem. Broad multi-language support is part of *why* the
-experience is mediocre (see §8).
+**Appium** — poor scripting ergonomics for this use case; often slow in practice,
+especially when tests repeatedly request hierarchy XML or use XPath (see §3.2). Appium
+also supports device-side native selector strategies, so the performance problem is not
+accurately reduced to one universal query path. Broad multi-language support contributes
+to the API tradeoffs discussed in §8.
 
 **Maestro** — stable and fast, good developer feel, but:
 - Flows are YAML, not a programming language. No loops, helpers, debugger.
@@ -31,7 +38,7 @@ Appium and Maestro are the same shape underneath, and it is not a complicated sh
 ```
   HOST                                    DEVICE
   ┌────────────────────┐                  ┌──────────────────────────────┐
-  │ test logic         │   adb forward    │ instrumentation APK          │
+  │ test logic         │   adb forward    │ dedicated driver process     │
   │ client library     │ ◄──────────────► │  - command server            │
   │ runner / reporting │   (socket)       │  - androidx.test.uiautomator │
   └────────────────────┘                  └──────────────────────────────┘
@@ -40,7 +47,9 @@ Appium and Maestro are the same shape underneath, and it is not a complicated sh
 - Appium: `appium-uiautomator2-server`, HTTP/netty over adb port-forward.
 - Maestro: its own driver APK, gRPC.
 
-**All intelligence lives on the host. The device side is a dumb RPC executor.**
+**All test intelligence lives on the host. The device side is a dumb RPC executor.** The
+driver must be a dedicated helper package, separate from the application under test (AUT),
+so stopping, clearing, crashing, or reinstalling the AUT does not kill the server.
 
 Both original complaints dissolve as a consequence of this split:
 
@@ -78,27 +87,30 @@ flakiness shows up in month two, look here before blaming the framework.
 Implementation note: retry must be a **parameter on the primitive**, not a wrapper layer.
 That keeps the default flippable later.
 
-### 3.2 Selectors evaluate on the device — never serialize the tree
+### 3.2 Selectors evaluate in the device driver - never serialize the tree
 
 This is the single most important performance decision.
 
-UiAutomator does not read pixels or touch the app's view tree. It sits on the
-accessibility framework. Every property read on an `AccessibilityNodeInfo` is an **IPC
-call into the app process**. That one fact explains the entire performance cliff.
+UiAutomator does not read pixels or directly traverse the app's View or Compose tree. It
+operates on the accessibility representation exposed to the instrumentation process.
+Navigation, refreshes, actions, and uncached queries can involve Binder calls, but it is
+not correct to model every `AccessibilityNodeInfo` property getter as a separate IPC call.
 
-**The slow path (what Appium does):**
+**The slow dump-and-query path:**
 
-`dumpWindowHierarchy()` walks every node in every window, reads every property on each,
-serializes to XML. On a dense screen: thousands of IPC round-trips, 1–5 MB of XML, crossed
-over adb, parsed on host, then XPath'd. **500 ms – 3 s per query — for every single
-find.** A 40-step test spends most of its life here.
+`dumpWindowHierarchy()` walks the accessible hierarchy and serializes a fixed set of
+attributes to XML. The result crosses ADB, is parsed on the host, and is then queried there.
+On dense screens this can produce megabytes of XML and make repeated queries expensive.
 
 **The fast path:**
 
-`findObject(BySelector)` runs the same traversal *inside the device process*,
-short-circuits at the first match, and reads only the properties the selector actually
-mentions. **~50–150 ms.** Nothing serialized, nothing transferred. Same semantics, ~20×
-faster, and no XPath anywhere.
+`findObject(BySelector)` performs matching in the instrumentation/driver process and can
+short-circuit at the first match. It avoids hierarchy XML generation, ADB transfer, host
+parsing, and XPath. That is the correct reason to expect a substantial speedup.
+
+The previously proposed `50-150 ms`, `500 ms-3 s`, and `20x` values are hypotheses for
+Phase 0, not platform guarantees. Accessibility caching, window retrieval, idle behavior,
+watchers, hierarchy size, and selector complexity all affect the result.
 
 Dumps are not removed — they are reserved for the inspector tool (§6, Phase 4), where a
 human requests one on demand. **Keep them off the hot path.**
@@ -123,8 +135,9 @@ result. One round trip per action.
 Tempting alternative: device resolves once, stores the `UiObject2` in a map, returns an
 ID; host holds an `Element` with `.click()` / `.getText()`.
 
-**Do not do this.** `UiObject2` goes stale the moment a view is recycled or recomposed,
-and the team gets `StaleObjectException` at random.
+**Do not do this.** A `UiObject2` can go stale when its underlying node is replaced or
+destroyed, including during recycling or some recompositions, and the team gets
+`StaleObjectException` at timing-dependent points.
 
 **Instead:** the host-side `Element` is a value object wrapping a selector, re-resolved
 fresh on every use. Handles may exist only *inside* a single compound command on the
@@ -133,20 +146,27 @@ Maestro's don't go stale.
 
 ### Composition without XPath
 
-`BySelector` already chains: `hasChild`, `hasDescendant`, `hasParent`, `hasAncestor`, plus
-depth bounds and index. That covers essentially every relational query real tests need.
+`BySelector` already chains `hasChild`, `hasDescendant`, `hasParent`, and `hasAncestor`,
+and supports depth and display constraints. It does not provide a general index, OR, NOT,
+sibling, nearest-element, or nth-match operator, and some nested relational forms are
+restricted.
 
 And because the device side is our own Kotlin: anything `BySelector` lacks ("the button
 nearest this label", "next sibling") can be written directly against
 `AccessibilityNodeInfo` and added to the protocol. Not constrained by a query language we
 didn't design.
 
-### Two gotchas that bite in week one
+### Gotchas that bite in week one
 
-- `res()` matching needs the **fully-qualified** `com.your.pkg:id/name`, not the bare name.
+- Traditional View resource matching normally uses the fully qualified
+  `com.your.pkg:id/name`.
 - **Compose**: `Modifier.testTag` is invisible to UiAutomator unless
-  `testTagsAsResourceId = true` is set in the semantics. Otherwise you are matching on
-  text and content descriptions only.
+  `testTagsAsResourceId = true` is set in the relevant semantics subtree. Compose exposes
+  the tag verbatim as the resource name, so use the equivalent of `By.res("tag")`, not a
+  package-qualified resource selector. The protocol must represent both forms.
+- UiAutomator sees Compose's accessibility projection, not its testing semantics tree.
+  Semantics merging, pruning, clipping, `clearAndSetSemantics`, and lazy composition can
+  hide nodes. Avoid compressed hierarchy mode when tag-only nodes are required.
 
 ---
 
@@ -159,7 +179,9 @@ cancellation for teardown when one device fails. Interleaving then reads as ordi
 sequential code in a test function.
 
 **The real trap:** per-device timeouts that deadlock the whole test. Give each command its
-own deadline and let cancellation propagate.
+own deadline and let cancellation propagate. Use serial-specific ADB forwarding with a
+dynamically allocated host port, and treat the instrumentation process, forwarding rule,
+and socket as one disposable session that is rebuilt after device or `adbd` reconnection.
 
 ### Cross-device propagation
 
@@ -168,10 +190,18 @@ Handle with `awaitUntil` on device B. **Never a sleep.**
 
 ### The app-side idling hook — highest-leverage item on the list
 
-Since these are our own apps, expose a debug-only busy counter (OkHttp dispatcher +
-in-flight coroutines) over a ContentProvider. This is the Espresso `IdlingResource` trick.
+Since these are our own apps, expose debug-only busy state over `ContentProvider.call()`.
+The provider should exist only in an E2E/debug manifest, be exported for the separate
+driver UID, and be protected by a signature-level permission.
 
-~3 days on the app side. Kills the entire class of "assertion ran during a network call".
+Track explicit UI-affecting operations rather than trying to count every coroutine. An
+OkHttp dispatcher counter alone misses follow-up coroutine work, streaming bodies,
+WebSockets, other clients, database work, WorkManager, push processing, rendering, and
+Compose accessibility publication. Require zero counters for a short quiet interval with
+a stable generation, then still wait for the actual UI postcondition.
+
+~3 days on the app side. Substantially reduces the class of "assertion ran during a
+network call" failures but does not make the subsequent UiAutomator assertion atomic.
 
 **This is what would put the framework *above* Maestro on reliability, because Maestro
 cannot do it.** It is also the easiest item to skip. If reliability is the priority, do it
@@ -187,22 +217,32 @@ Focused engineering days, not calendar days.
 
 | Phase | Work | Days |
 |---|---|---|
-| 0 | **Spike** | 1–2 |
+| 0 | **Spike** | 5–8 |
 | 1 | Device side | 4–6 |
 | 2 | Host library | 4–6 |
 | 3 | Runner + artifacts | 4–6 |
 | 4 | Inspector (optional) | 3–5 |
 
-**Phase 0 — spike.** An `androidTest` APK whose single test method never returns: opens a
-`ServerSocket` and loops. Launch via `adb shell am instrument -w`, connect via
-`adb forward`. Prove one `find` + one `tap` over the wire. *This is the only part with
-genuine unknown-unknowns, and it is what makes everything after it boring. Do it first.*
-It also lets you measure the §3.2 speed claim directly.
+**Phase 0 — spike.** Build a dedicated driver APK plus an instrumentation APK that targets
+the driver, not the AUT. Its single test method never returns: it opens a loopback-only,
+per-session-authenticated `ServerSocket` and loops. Launch via
+`adb shell am instrument -w`, connect through serial-specific `adb forward tcp:0`, and
+prove `find`, `tap`, and `waitFor` over the wire. Also prove traditional View and Compose
+selection, AUT `force-stop` and `pm clear` survival, two-device interleaving, and
+deterministic recovery after one device reconnects. Benchmark direct matching against
+dump, transfer, host parsing, and host querying. *This is the only part with genuine
+unknown-unknowns. It must also test late-command isolation, fault timing, system-window
+scope, cross-UID synchronization, real-product accessibility coverage, and deterministic
+quarantine as defined by the normative implementation plan. Do it first.*
 
-**Phase 1 — device side.** Selector deserialization → `BySelector`; action set (tap,
-longTap, text input, swipe, scrollUntil, waitFor, assertions); screenshot; app lifecycle
-(launch / stop / clear-data); `dumpWindowHierarchy` reserved for the inspector. Mostly
-thin wrappers over UiAutomator. High AI leverage.
+**Phase 1 — device side.** Selector deserialization to the chosen current UiAutomator API;
+action set (tap, longTap, direct text input, keyboard input, swipe, container-based
+scroll-and-search, waitFor, assertions); screenshot; app lifecycle (launch / stop /
+clear-data); `dumpWindowHierarchy` reserved for the inspector. Evaluate current
+predicate-based matching, window-scoped search, stability waits, screenshots, lifecycle
+helpers, and permission watchers before freezing the protocol. Lifecycle commands that
+need shell privileges should run through host ADB or `UiAutomation.executeShellCommand`.
+Mostly thin wrappers over UiAutomator. High AI leverage.
 
 **Phase 2 — host library.** Device discovery and adb plumbing, connection lifecycle, the
 lazy-selector `Element` type, the DSL, one coroutine per device. *adb plumbing is fiddlier
@@ -218,12 +258,12 @@ the ~3 min cap per file).
 Studio equivalent). Skip initially; add when people start asking "why didn't it find the
 button".
 
-**Total: ≈3–4 weeks focused → 2–3 months part-time.** Then a genuine long tail of a day
-here and there for ~6 months as real screens surface real edge cases. That tail is
-unavoidable and is not a sign anything went wrong.
+**Early estimate, superseded:** the original thin-framework estimate was about 3-4 focused
+weeks. The normative production estimate is 60-80 engineering days, plus a four-week pilot
+observation gate and a reliability tail as real screens surface edge cases.
 
 Incremental edge-case work folded into the above: scroll-to-offscreen
-(`BySelector.scrollUntil`, `UiScrollable`), permission dialogs (known-selector helper),
+(`UiObject2.scrollUntil`, modern scrolling helpers, or `UiScrollable`), permission dialogs,
 keyboard state, animations, ANR/crash detection. ~1 day each, built as encountered, not
 upfront.
 
@@ -234,8 +274,9 @@ upfront.
 **Original two problems: solved, solidly.** Both are inherent to the architecture rather
 than features to be built.
 
-**Fast: yes**, and verifiable in Phase 0. Should land around Maestro's speed, since it's
-doing the same thing Maestro does.
+**Fast: likely**, and verifiable in Phase 0. The architecture removes hierarchy dumps,
+transfer, parsing, and XPath from the hot path, but the actual result must be measured on
+representative screens before claiming parity with Maestro.
 
 **Reliable: hold this one loosely.** Not because the design is wrong, but because
 reliability is not a property of a design — it is the accumulated residue of edge cases.
@@ -254,7 +295,9 @@ skipping the idling hook (§5).
 
 **What stays genuinely hard:**
 
-- **WebView support** — needs CDP bridging via chromedriver. Defer until actually needed.
+- **WebView support** — treat it as a separate DOM backend. Enable WebView debugging only
+  in E2E builds and initially use ChromeDriver, with CI WebView/driver version management.
+  Defer until actually needed.
 - **Apps we don't own** — no idling hook, back to black-box polling.
 
 ---
@@ -287,13 +330,11 @@ protobuf, documented as the contract — costs nothing, it's happening anyway), 
 **exactly one binding**. Adding the second later is a week, whenever someone actually
 needs it, and by then the DSL will have proven itself.
 
-Which one depends on who writes the tests:
-- **Android devs** → Kotlin. Shared types with the device side (the selector data class
-  can literally be shared), best concurrency.
-- **The ~7 manual testers graduating into automation** → Python. Lower barrier, and their
-  interleaving needs are probably coarse enough for asyncio.
-
-*Open question: who is actually writing these tests?*
+**Decision: Kotlin is the first and only initial binding.** It provides the strongest
+structured-concurrency and cancellation model for interleaved multi-device tests and can
+share pure protocol model definitions with the device implementation. Python remains the
+most likely second binding if manual testers need a lower entry barrier after the Kotlin
+DSL and protocol have proven stable.
 
 ---
 
@@ -307,8 +348,10 @@ stability work.
 - Covers **coarse-grained** hand-offs (A does a sequence, then B reacts).
 - Does **not** cover fine-grained interleaving — which is the actual requirement.
 
-**Keep this in the back pocket.** If a continuous three weeks isn't available, this is the
-better option: a half-finished test framework is worse than the YAML being escaped.
+**Keep this in the back pocket only if the requirement changes.** This fallback is acceptable
+only if stakeholders explicitly relax fine-grained interleaving to coarse-grained handoffs.
+It does not satisfy the current core requirement. A half-finished test framework is still
+worse than the YAML being escaped.
 
 **Plain UiAutomator instrumentation tests via Gradle.** Already a real language, no
 framework needed — but the test runs *on-device*, so coordinating two devices needs a host
@@ -348,8 +391,10 @@ runs" is a category of problem that doesn't respond well to text-based reasoning
 
 ## Open questions
 
-- [ ] Who writes the tests — Android devs or the manual testers? (Decides §8.)
-- [ ] Is a continuous ~3 weeks available? If not, take the §9 Maestro-orchestrator path.
+- [x] Initial binding: Kotlin. Reassess a Python binding after the Kotlin API stabilizes.
+- [ ] Is sufficient staffing available for the normative implementation plan? If not,
+      defer the framework or obtain explicit stakeholder approval to reduce the requirement
+      to coarse-grained handoffs before selecting the §9 Maestro-orchestrator path.
 - [ ] Are all products in Flowdeck's scope built in-house? (Decides whether the §5 idling
       hook covers everything or only part.)
 - [ ] Is the no-retry default worth revisiting after the first month of real use?
