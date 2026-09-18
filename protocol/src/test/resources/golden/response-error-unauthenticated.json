@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "errorCode": "UNAUTHENTICATED",
+  "message": "example",
+  "durationMs": 5
+}

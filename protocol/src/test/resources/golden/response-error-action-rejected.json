@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "ACTION_REJECTED",
+  "detail": "TEXT_MISMATCH",
+  "message": "example",
+  "durationMs": 5
+}

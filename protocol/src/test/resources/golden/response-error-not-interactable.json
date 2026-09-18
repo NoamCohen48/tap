@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "errorCode": "NOT_INTERACTABLE",
+  "detail": "FOCUS_TIMEOUT",
+  "message": "example",
+  "durationMs": 5
+}
