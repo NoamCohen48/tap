@@ -41,6 +41,7 @@ tap/
 +-- driver/
 |   +-- command-engine/
 +-- host/
++-- sync-sdk/
 +-- fixture-app/
 +-- .docs/
 +-- build.gradle.kts
@@ -53,8 +54,11 @@ The dependency direction is intentionally narrow:
 ```text
 host ----------------> protocol
 driver androidTest --> driver:command-engine --> protocol
-fixture-app            independent
+fixture-app ---------> sync-sdk
 ```
+
+`sync-sdk` is an Android library an AUT's debug/E2E build ships to expose busy state; it has
+no dependency on `protocol` and the driver reaches it only through a `ContentProvider` call.
 
 `driver:command-engine` is pure Kotlin/JVM (no Android types) so the execution state machine
 is unit-tested on the host JVM.
@@ -68,12 +72,16 @@ Location: `protocol/src/main/kotlin/com/company/tap/protocol/`
 
 The pure Kotlin protocol module is shared by the host and Android driver. It defines:
 
-- operations such as `TAP`, `SET_TEXT`, `TYPE_TEXT`, and `SCROLL_UNTIL`;
-- text, raw Compose resource-tag, and qualified Android resource selectors;
-- request, response, authentication, and framing models;
+- operations such as `TAP`, `LONG_TAP`, `SET_TEXT`, `TYPE_TEXT`, `CLEAR_TEXT`, `SWIPE`,
+  `SCROLL`, `SCROLL_UNTIL`, and `SCREENSHOT`;
+- the selector AST (`Selector.kt`): string properties with match modes, resource IDs,
+  boolean properties, parent/ancestor/child/descendant relations, scope, and match limits,
+  plus the shared validator (`SelectorValidation.kt`) that both sides run;
+- request, response, authentication, framing, and blob-transfer models;
+- the typed error taxonomy (`ErrorCode.kt`) with stable `detail` sub-reasons;
 - HMAC-SHA-256 mutual authentication;
 - monotonic request IDs; and
-- payload, text-input, and timeout limits.
+- payload, text-input, selector, artifact, and timeout limits.
 
 A request currently resembles:
 
@@ -82,10 +90,7 @@ Request(
     sessionId = "...",
     sessionGeneration = 1,
     operation = Operation.TAP,
-    selector = Selector(
-        kind = SelectorKind.RAW_RESOURCE,
-        value = "composeButton",
-    ),
+    selector = Selector.rawResource("composeButton"),
     timeoutMs = 5_000,
 )
 ```
@@ -99,8 +104,14 @@ TAP1 header | frame type | request ID | payload length | JSON payload
 Relevant files:
 
 - `protocol/src/main/kotlin/com/company/tap/protocol/Messages.kt`
+- `protocol/src/main/kotlin/com/company/tap/protocol/Selector.kt`,
+  `SelectorValidation.kt`
+- `protocol/src/main/kotlin/com/company/tap/protocol/Blob.kt`
+- `protocol/src/main/kotlin/com/company/tap/protocol/ErrorCode.kt`
 - `protocol/src/main/kotlin/com/company/tap/protocol/FrameCodec.kt`
 - `protocol/src/main/kotlin/com/company/tap/protocol/Authentication.kt`
+- `protocol/src/test/resources/golden/` — one golden request per operation and one response
+  per error code (`GoldenMessageTest`)
 
 ## Driver Module
 
@@ -121,23 +132,27 @@ The server:
 Because it is independent from the AUT, the driver survives AUT force-stop, clear-data, and
 relaunch operations.
 
-One authenticated connection runs through independent lanes (`ClientConnection` reads;
-`CommandPipeline` in `driver/command-engine` owns the bounded queue, single executor, writer,
-and watchdog). `DriverCommandEngine` and `UiAutomationCommands` receive a `CommandContext`
-carrying the acceptance-relative deadline, cooperative cancellation checkpoints, and the
-atomic mutation gate. See `protocol-contract.md` for the resulting semantics.
+One authenticated connection runs through independent lanes (`ClientConnection` reads and
+reports heartbeats; `CommandPipeline` in `driver/command-engine` owns the bounded queue,
+single executor, writer, blob streaming (`BlobTransfer`), and watchdog). `DriverCommandEngine`
+validates requests and selectors and dispatches; `UiAutomationCommands` receive a
+`CommandContext` carrying the acceptance-relative deadline, cooperative cancellation
+checkpoints, the atomic mutation gate, and blob transfer. `SelectorCompiler` turns the AST
+into a window-scoped `BySelector` (native plan) or a node predicate (traversal plan for
+regexes); `UiObjectAccess` resolves matches per the selector's limit and never keeps
+`UiObject2` handles across commands. See `protocol-contract.md` for the resulting semantics.
 
 Current operations are:
 
 ```text
 HEALTH
 EXISTS
-TAP
+TAP  LONG_TAP
 WAIT_VISIBLE
 DUMP_HIERARCHY
-SET_TEXT
-TYPE_TEXT
-SCROLL_UNTIL
+SET_TEXT  TYPE_TEXT  CLEAR_TEXT
+SWIPE  SCROLL  SCROLL_UNTIL
+SCREENSHOT
 SYNC_BOOTSTRAP
 SYNC_STATE
 ```
@@ -149,9 +164,24 @@ complete key sequences, and cleans up pressed keys after failures.
 `SCROLL_UNTIL` resolves a requested container, searches only inside that container, performs
 bounded scroll segments, and compares visible accessibility state to detect end-of-content.
 
-Most spike logic currently remains in
-`driver/src/androidTest/kotlin/com/company/tap/driver/TapDriverServerTest.kt`. It can be split
-into server, selector, and command-engine components after Phase 0 behavior stabilizes.
+Driver files (`driver/src/androidTest/kotlin/com/company/tap/driver/`): `TapDriverServer`
+(instrumentation entry, session config), `ClientConnection` (handshake, framing, reader),
+`DriverCommandEngine`, `SelectorCompiler`, `UiObjectAccess`, `UiAutomationCommands`,
+`SyncProviderClient`, and `FaultController` (test-only fault injection).
+
+## Synchronization SDK
+
+Location: `sync-sdk/`
+
+`com.company.tap.sync.TapSynchronization` tracks in-process busy work (`busy()` handles) and
+`TapSynchronizationProvider` serves it over `ContentResolver.call("state")` at authority
+`<applicationId>.tap-sync`, guarded by the signature permission
+`com.company.tap.permission.SYNCHRONIZATION` that the library manifest declares. An AUT adds
+`debugImplementation(project(":sync-sdk"))` (or the equivalent test-build dependency), wraps
+asynchronous work in `TapSynchronization.busy().use { ... }`, and signs its test build with
+the driver's certificate. The SDK has no fixture or fault hooks; the fixture keeps its
+delayed-mutation fault in its own `FixtureFaultProvider` (authority
+`com.company.tap.fixture.fault`).
 
 ## Host Module
 
@@ -277,8 +307,12 @@ It contains:
 - a Compose button and state;
 - a Compose `LazyColumn`; and
 - a separate native `ListView` activity; and
-- a loopback-only port-occupier activity used by startup retry fault validation; and
-- a signature-protected delayed-mutation hook used only by the late-work isolation gate.
+- a loopback-only port-occupier activity used by startup retry fault validation;
+- `AmbiguityActivity`: duplicate buttons, `EditText`s, and `ScrollView`s (every mutating
+  operation must return `AMBIGUOUS`), a long-press-aware gesture target, and a prefilled
+  field for `CLEAR_TEXT`; and
+- a signature-protected delayed-mutation hook (`FixtureFaultProvider`) used only by the
+  late-work isolation gate.
 
 Compose tags are projected into accessibility resource names with:
 
@@ -293,8 +327,11 @@ Relevant files:
 
 - `fixture-app/src/main/kotlin/com/company/tap/fixture/MainActivity.kt`
 - `fixture-app/src/main/kotlin/com/company/tap/fixture/ViewListActivity.kt`
+- `fixture-app/src/main/kotlin/com/company/tap/fixture/AmbiguityActivity.kt`
+- `fixture-app/src/main/kotlin/com/company/tap/fixture/FixtureFaultProvider.kt`
 - `fixture-app/src/main/res/layout/activity_main.xml`
 - `fixture-app/src/main/res/layout/activity_view_list.xml`
+- `fixture-app/src/main/res/layout/activity_ambiguity.xml`
 
 ## Build
 
@@ -304,7 +341,7 @@ The Android build currently requires JDK 17:
 JAVA_HOME="/tmp/opencode/temurin17" ./gradlew \
   :protocol:test :driver:command-engine:test :host:test \
   :fixture-app:assembleDebug \
-  :driver:assembleDebugAndroidTest \
+  :driver:assembleDebug :driver:assembleDebugAndroidTest \
   :host:installDist
 ```
 
@@ -324,10 +361,13 @@ The Phase 0 vertical slice currently proves:
 - a dedicated persistent driver process;
 - authenticated and bounded host/driver RPC;
 - concurrent multi-device execution;
-- View and Compose selectors;
+- View and Compose selectors through the selector AST (native `BySelector` and regex
+  traversal plans), with `AMBIGUOUS`/`NOT_FOUND` before input on every mutating operation;
 - explicit AUT package confinement and allowlisted system-window selectors;
-- direct and key-event text input;
+- direct and key-event text input, clear text, long tap, directional swipe and scroll;
 - View and Compose list scrolling with no-progress detection;
+- PNG screenshots streamed as checksummed blobs;
+- driver-side heartbeat expiry with watchdog poisoning and self-kill;
 - AUT lifecycle independence;
 - signature-protected cross-UID synchronization;
 - host-verified process identity and stable-idle observation;
@@ -344,7 +384,7 @@ Still to be built or proven:
 
 - public Kotlin `Device`, `App`, and `Element` APIs;
 - a JUnit 5 extension;
-- screenshots and failure artifacts; and
+- failure artifacts attached to reports; and
 - JUnit XML, JSON event, HTML, and Flowdeck reporting.
 
 The current host intentionally calls protocol operations directly. A polished SDK should be

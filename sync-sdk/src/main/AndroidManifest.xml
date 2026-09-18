@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Signature-level: only a driver signed with the same certificate as the app can read
+        synchronization state. The permission is defined here so every app that ships the SDK
+        declares it; Android requires all definers to share one signing certificate.
+    -->
+    <permission
+        android:name="com.company.tap.permission.SYNCHRONIZATION"
+        android:protectionLevel="signature" />
+
+    <application>
+        <provider
+            android:name="com.company.tap.sync.TapSynchronizationProvider"
+            android:authorities="${applicationId}.tap-sync"
+            android:exported="true"
+            android:permission="com.company.tap.permission.SYNCHRONIZATION" />
+    </application>
+</manifest>

@@ -1,11 +1,18 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.BlobEnd
+import com.company.tap.protocol.BlobStart
 import com.company.tap.protocol.Response
 
 /** Messages the writer lane delivers to the transport, in order, on a single thread. */
 sealed interface Outbound {
     data class TerminalResponse(val requestId: Long, val response: Response) : Outbound
     data class Pong(val requestId: Long) : Outbound
+    data class BlobStartFrame(val requestId: Long, val start: BlobStart) : Outbound
+
+    /** [payload] is the complete `BLOB_CHUNK` payload (header included). */
+    class BlobChunkFrame(val requestId: Long, val payload: ByteArray) : Outbound
+    data class BlobEndFrame(val requestId: Long, val end: BlobEnd) : Outbound
 }
 
 fun interface OutboundSink {

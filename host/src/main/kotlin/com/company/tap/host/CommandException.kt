@@ -4,7 +4,9 @@ import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
-import com.company.tap.protocol.SelectorKind
+import com.company.tap.protocol.MatchLimit
+import com.company.tap.protocol.MatchMode
+import com.company.tap.protocol.NodeSelector
 import com.company.tap.protocol.TargetScope
 
 /**
@@ -130,15 +132,28 @@ enum class TransmissionState {
 
 /** Compact, log-safe rendering used in exception messages and reports. */
 fun Selector.render(): String = buildString {
-    append(
-        when (kind) {
-            SelectorKind.TEXT -> "text"
-            SelectorKind.RAW_RESOURCE -> "res"
-            SelectorKind.ANDROID_RESOURCE -> "id"
-        },
-    )
-    append('=')
-    if (kind == SelectorKind.ANDROID_RESOURCE) append(packageName).append(':')
-    append('"').append(value).append('"')
+    append(node.render())
+    when (limit) {
+        MatchLimit.EXACTLY_ONE -> Unit
+        MatchLimit.FIRST -> append(".first()")
+        MatchLimit.AT -> append(".at(").append(index).append(')')
+    }
     if (scope == TargetScope.SYSTEM) append(" in system:").append(scopePackage)
+}
+
+fun NodeSelector.render(): String = buildString {
+    val parts = mutableListOf<String>()
+    stringProperties.forEach { (name, match) -> parts += "$name${match.mode.render()}\"${match.value}\"" }
+    resource?.let { parts += if (it.packageName == null) "res=\"${it.name}\"" else "id=${it.packageName}:\"${it.name}\"" }
+    booleanProperties.forEach { (name, value) -> parts += "$name=$value" }
+    relations.forEach { (name, related) -> parts += "$name(${related.render()})" }
+    append(parts.joinToString(" "))
+}
+
+private fun MatchMode.render(): String = when (this) {
+    MatchMode.EXACT -> "="
+    MatchMode.CONTAINS -> "~="
+    MatchMode.STARTS_WITH -> "^="
+    MatchMode.ENDS_WITH -> "$="
+    MatchMode.REGEX -> "/="
 }

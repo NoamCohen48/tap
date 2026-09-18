@@ -22,7 +22,9 @@ import kotlin.concurrent.withLock
  * [shutdown]; it never blocks on UI work, so `CANCEL`, `PING`, and transport closure are
  * observed while a command runs. Every accepted command gets exactly one terminal response.
  * The watchdog poisons the pipeline when the executor is stuck past a command's deadline plus
- * [uninterruptibleGraceMs]; from then on nothing new mutates the device.
+ * [uninterruptibleGraceMs], or when the host has been silent for [heartbeatTimeoutMs] (the
+ * reader reports every inbound frame through [heartbeat]); from then on nothing new mutates the
+ * device and the owner is expected to exit.
  */
 class CommandPipeline(
     private val clock: Clock,
@@ -31,6 +33,7 @@ class CommandPipeline(
     private val queueCapacity: Int = DEFAULT_QUEUE_CAPACITY,
     private val uninterruptibleGraceMs: Long = DEFAULT_UNINTERRUPTIBLE_GRACE_MS,
     private val watchdogPollMs: Long = DEFAULT_WATCHDOG_POLL_MS,
+    private val heartbeatTimeoutMs: Long = 0,
     threadNamePrefix: String = "tap-driver",
 ) {
     enum class Admission { QUEUED, OVERLOADED, UNHEALTHY, CLOSED }
@@ -49,6 +52,7 @@ class CommandPipeline(
     private var accepting = true
     private var poisoned = false
     private var poisonReason: String? = null
+    @Volatile private var lastInboundMs = clock.nowMs()
 
     private val outbound = LinkedBlockingQueue<OutboundItem>()
     private val executorDone = CountDownLatch(1)
@@ -62,6 +66,12 @@ class CommandPipeline(
     init {
         require(queueCapacity >= 1) { "queueCapacity must be positive" }
         require(uninterruptibleGraceMs >= 0) { "uninterruptibleGraceMs must not be negative" }
+        require(heartbeatTimeoutMs >= 0) { "heartbeatTimeoutMs must not be negative" }
+    }
+
+    /** Records inbound host activity (any authenticated frame) for heartbeat expiry. */
+    fun heartbeat() {
+        lastInboundMs = clock.nowMs()
     }
 
     fun start(): CommandPipeline {
@@ -150,6 +160,15 @@ class CommandPipeline(
         outbound.put(OutboundItem.Message(Outbound.Pong(requestId)))
     }
 
+    /** Queues a blob for the writer lane; called by [CommandContext.transferBlob] on the executor. */
+    internal fun transfer(blob: BlobTransfer) {
+        if (writeFailed) {
+            blob.finish(BlobTransfer.Outcome.WRITE_FAILED)
+            return
+        }
+        outbound.put(OutboundItem.Blob(blob))
+    }
+
     /** Stops accepting new commands. Queued commands still run; the caller awaits termination. */
     fun shutdown() {
         lock.withLock {
@@ -172,14 +191,22 @@ class CommandPipeline(
 
     /** Runs one watchdog check. Exposed so tests can drive it with a manual clock. */
     fun checkWatchdog(): Boolean {
-        val reason = lock.withLock {
-            val current = running ?: return false
+        val now = clock.nowMs()
+        val (reason, detail) = lock.withLock {
             if (poisoned) return false
-            val overdueAt = current.deadlineMs + uninterruptibleGraceMs
-            if (clock.nowMs() < overdueAt) return false
-            "Request ${current.requestId} exceeded its deadline by more than ${uninterruptibleGraceMs}ms"
+            val silentMs = now - lastInboundMs
+            val current = running
+            when {
+                heartbeatTimeoutMs > 0 && silentMs >= heartbeatTimeoutMs ->
+                    "Host sent nothing for ${silentMs}ms (heartbeat timeout ${heartbeatTimeoutMs}ms)" to
+                        ErrorDetail.HEARTBEAT_EXPIRED
+                current != null && now >= current.deadlineMs + uninterruptibleGraceMs ->
+                    "Request ${current.requestId} exceeded its deadline by more than ${uninterruptibleGraceMs}ms" to
+                        ErrorDetail.WATCHDOG
+                else -> return false
+            }
         }
-        poison(reason)
+        poison(reason, detail)
         return true
     }
 
@@ -188,7 +215,7 @@ class CommandPipeline(
      * command gets `INDETERMINATE` if it already mutated and `DRIVER_UNHEALTHY` otherwise, and
      * later mutation attempts are refused at the gate.
      */
-    fun poison(reason: String) {
+    fun poison(reason: String, detail: String = ErrorDetail.WATCHDOG) {
         val doomed = mutableListOf<Pair<Command, Response>>()
         val firstPoison = lock.withLock {
             if (poisoned) return@withLock false
@@ -197,11 +224,11 @@ class CommandPipeline(
             while (queue.isNotEmpty()) {
                 val queued = queue.removeFirst()
                 queued.phase = CommandPhase.TERMINAL
-                doomed += queued to error(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG, reason)
+                doomed += queued to error(ErrorCode.DRIVER_UNHEALTHY, detail, reason)
             }
             running?.let { current ->
                 val code = if (current.mutationStarted) ErrorCode.INDETERMINATE else ErrorCode.DRIVER_UNHEALTHY
-                doomed += current to error(code, ErrorDetail.WATCHDOG, reason)
+                doomed += current to error(code, detail, reason)
             }
             queueChanged.signalAll()
             true
@@ -257,7 +284,7 @@ class CommandPipeline(
             command.cancelRequested -> error(ErrorCode.CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE)
             clock.nowMs() >= command.deadlineMs -> error(ErrorCode.DEADLINE_EXCEEDED, ErrorDetail.EXPIRED_IN_QUEUE)
             else -> try {
-                command.work(CommandContext(command, clock, ::mutationGate))
+                command.work(CommandContext(command, clock, ::mutationGate, ::transfer))
             } catch (interrupted: CommandInterrupted) {
                 error(interrupted.errorCode, interrupted.detail, null, command)
             } catch (error: Throwable) {
@@ -290,14 +317,8 @@ class CommandPipeline(
             while (true) {
                 when (val item = outbound.take()) {
                     OutboundItem.Stop -> return
-                    is OutboundItem.Message -> if (!writeFailed) {
-                        try {
-                            sink.write(item.message)
-                        } catch (error: Throwable) {
-                            writeFailed = true
-                            listener.onWriteFailed(error)
-                        }
-                    }
+                    is OutboundItem.Message -> if (!writeFailed) write(item.message)
+                    is OutboundItem.Blob -> item.blob.finish(streamBlob(item.blob))
                 }
             }
         } catch (_: InterruptedException) {
@@ -318,8 +339,37 @@ class CommandPipeline(
         }
     }
 
+    private fun write(message: Outbound): Boolean {
+        if (writeFailed) return false
+        return try {
+            sink.write(message)
+            true
+        } catch (error: Throwable) {
+            writeFailed = true
+            listener.onWriteFailed(error)
+            false
+        }
+    }
+
+    /** Streams one blob, stopping at a chunk boundary on cancel, deadline, or write failure. */
+    private fun streamBlob(blob: BlobTransfer): BlobTransfer.Outcome {
+        val command = blob.command
+        val requestId = command.requestId
+        if (!write(Outbound.BlobStartFrame(requestId, blob.start()))) return BlobTransfer.Outcome.WRITE_FAILED
+        for (index in 0 until blob.chunkCount) {
+            if (command.cancelRequested) return BlobTransfer.Outcome.CANCELLED
+            if (clock.nowMs() >= command.deadlineMs) return BlobTransfer.Outcome.DEADLINE_EXCEEDED
+            if (!write(Outbound.BlobChunkFrame(requestId, blob.chunkPayload(index)))) {
+                return BlobTransfer.Outcome.WRITE_FAILED
+            }
+        }
+        if (!write(Outbound.BlobEndFrame(requestId, blob.end()))) return BlobTransfer.Outcome.WRITE_FAILED
+        return BlobTransfer.Outcome.COMPLETED
+    }
+
     private sealed interface OutboundItem {
         data class Message(val message: Outbound) : OutboundItem
+        class Blob(val blob: BlobTransfer) : OutboundItem
         data object Stop : OutboundItem
     }
 

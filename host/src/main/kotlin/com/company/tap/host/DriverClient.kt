@@ -1,10 +1,14 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.Authentication
+import com.company.tap.protocol.ArtifactInfo
 import com.company.tap.protocol.AuthenticationResult
+import com.company.tap.protocol.BlobEnd
+import com.company.tap.protocol.BlobStart
 import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Challenge
 import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
@@ -18,7 +22,10 @@ import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.ProtocolVersion
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
+import com.company.tap.protocol.DEFAULT_GESTURE_PERCENT
+import com.company.tap.protocol.Direction
 import com.company.tap.protocol.Selector
+import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -42,6 +49,8 @@ class DriverClient(
     private val secret: ByteArray,
     private val overallDeadlineNanos: Long? = null,
     private val serial: String? = null,
+    /** Idle `PING` cadence that keeps the driver's heartbeat window open; 0 disables (tests only). */
+    private val heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
 ) : AutoCloseable {
     private val json = Json { ignoreUnknownKeys = true }
     private val socket = Socket()
@@ -51,7 +60,10 @@ class DriverClient(
     private var nextRequestId = 1L
     @Volatile private var poisoned = false
     @Volatile private var closed = false
+    @Volatile private var lastWriteNanos = System.nanoTime()
+    private val pingLock = Any()
     private lateinit var reader: Thread
+    private var heartbeat: Thread? = null
     lateinit var driverInstanceId: String
         private set
     lateinit var negotiatedVersion: ProtocolVersion
@@ -70,6 +82,12 @@ class DriverClient(
             reader = Thread(::readFrames, "tap-driver-client-reader").apply {
                 isDaemon = true
                 start()
+            }
+            if (heartbeatIntervalMs > 0) {
+                heartbeat = Thread(::runHeartbeat, "tap-driver-client-heartbeat").apply {
+                    isDaemon = true
+                    start()
+                }
             }
         } catch (error: Throwable) {
             socket.close()
@@ -91,11 +109,39 @@ class DriverClient(
         private val result = CompletableFuture<Response>()
         @Volatile var transmissionState: TransmissionState = TransmissionState.NOT_WRITTEN
             internal set
+        internal var blob: BlobReceiver? = null
+        @Volatile private var artifactBytes: ByteArray? = null
 
+        /**
+         * Applies the blob verdict: a successful artifact response whose blob did not arrive
+         * intact becomes `ARTIFACT_TRANSFER_FAILED`; a driver failure is never replaced.
+         */
         internal fun complete(response: Response) {
             transmissionState = TransmissionState.TERMINAL_RESPONSE
-            result.complete(response)
+            val receiver = blob
+            val artifact = response.artifact
+            val terminal = when {
+                !response.ok -> response
+                artifact == null -> if (receiver == null) response else artifactFailure(response, ErrorDetail.BLOB_UNEXPECTED)
+                receiver == null -> artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
+                receiver.failureDetail != null -> artifactFailure(response, requireNotNull(receiver.failureDetail))
+                !receiver.complete -> artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
+                receiver.bytes?.size?.toLong() != artifact.byteCount ->
+                    artifactFailure(response, ErrorDetail.BLOB_LENGTH_MISMATCH)
+                else -> response.also { artifactBytes = receiver.bytes }
+            }
+            result.complete(terminal)
         }
+
+        private fun artifactFailure(response: Response, detail: String): Response = Response.failure(
+            ErrorCode.ARTIFACT_TRANSFER_FAILED,
+            detail = detail,
+            message = "Artifact ${response.artifact?.blobId} was not received intact",
+            durationMs = response.durationMs,
+        )
+
+        /** Verified artifact bytes of a successful artifact response; null otherwise. */
+        fun artifact(): ByteArray? = artifactBytes?.copyOf()
 
         internal fun fail(cause: Throwable) {
             result.completeExceptionally(cause)
@@ -160,6 +206,8 @@ class DriverClient(
         containerSelector: Selector? = null,
         inputText: String? = null,
         maxScrolls: Int = 20,
+        direction: Direction? = null,
+        distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -171,6 +219,8 @@ class DriverClient(
         containerSelector,
         inputText,
         maxScrolls,
+        direction,
+        distancePercent,
         observedPid,
         observedStartToken,
         expectedProcessStartUuid,
@@ -185,6 +235,8 @@ class DriverClient(
         containerSelector: Selector? = null,
         inputText: String? = null,
         maxScrolls: Int = 20,
+        direction: Direction? = null,
+        distancePercent: Int = DEFAULT_GESTURE_PERCENT,
     ): Response = submit(
         operation,
         selector,
@@ -192,6 +244,8 @@ class DriverClient(
         containerSelector,
         inputText,
         maxScrolls,
+        direction,
+        distancePercent,
     ).awaitOrThrow()
 
     /**
@@ -205,6 +259,8 @@ class DriverClient(
         containerSelector: Selector? = null,
         inputText: String? = null,
         maxScrolls: Int = 20,
+        direction: Direction? = null,
+        distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -213,6 +269,9 @@ class DriverClient(
         require(timeoutMs in 0..MAX_REQUEST_TIMEOUT_MS) {
             "timeoutMs must be between 0 and $MAX_REQUEST_TIMEOUT_MS"
         }
+        // Structural selector problems fail here, before a request ID is consumed.
+        selector?.let(SelectorValidation::validate)
+        containerSelector?.let(SelectorValidation::validate)
         val request = Request(
             sessionId = sessionId,
             sessionGeneration = generation,
@@ -222,6 +281,8 @@ class DriverClient(
             containerSelector = containerSelector,
             inputText = inputText,
             maxScrolls = maxScrolls,
+            direction = direction,
+            distancePercent = distancePercent,
             observedPid = observedPid,
             observedStartToken = observedStartToken,
             expectedProcessStartUuid = expectedProcessStartUuid,
@@ -245,9 +306,17 @@ class DriverClient(
         }
     }
 
+    /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
+    fun screenshot(timeoutMs: Long = 30_000): Screenshot {
+        val command = submit(Operation.SCREENSHOT, timeoutMs = timeoutMs)
+        val response = command.awaitOrThrow()
+        return Screenshot(requireNotNull(command.artifact()), requireNotNull(response.artifact))
+    }
+
     /** Round-trips a connection-level `PING` on the writer/reader lanes. Returns the latency in ms. */
-    fun ping(timeoutMs: Long = 5_000): Long {
+    fun ping(timeoutMs: Long = 5_000): Long = synchronized(pingLock) {
         val started = System.nanoTime()
+        pongs.clear()
         synchronized(transportLock) {
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
             try {
@@ -263,7 +332,30 @@ class DriverClient(
             poison(timeout)
             throw timeout
         }
-        return (System.nanoTime() - started) / 1_000_000L
+        (System.nanoTime() - started) / 1_000_000L
+    }
+
+    /**
+     * Keeps the driver's heartbeat window open while the caller is idle. Any frame counts as
+     * host activity on the driver, so a `PING` is only sent after [heartbeatIntervalMs] without
+     * a write. A missed `PONG` poisons the client like any other transport failure.
+     */
+    private fun runHeartbeat() {
+        try {
+            while (!poisoned && !closed) {
+                val idleMs = (System.nanoTime() - lastWriteNanos) / 1_000_000L
+                val waitMs = heartbeatIntervalMs - idleMs
+                if (waitMs > 0) {
+                    Thread.sleep(waitMs)
+                    continue
+                }
+                ping(heartbeatIntervalMs)
+            }
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } catch (_: Throwable) {
+            // ping() already poisoned the client; nothing else to do on this thread.
+        }
     }
 
     internal fun executeValidationRequest(
@@ -307,6 +399,7 @@ class DriverClient(
             socket.close()
         }
         failPending(IllegalStateException("Driver connection closed"))
+        heartbeat?.interrupt()
         if (::reader.isInitialized && Thread.currentThread() !== reader) reader.join(2_000)
     }
 
@@ -342,6 +435,16 @@ class DriverClient(
                         check(frame.requestId == 0L) { "PONG must use request ID 0" }
                         pongs.put(System.nanoTime())
                     }
+                    FrameType.BLOB_START -> {
+                        val command = pendingFor(frame)
+                        val start = json.decodeFromString<BlobStart>(frame.payload.decodeToString())
+                        check(command.blob == null) { "Second BLOB_START for request ${frame.requestId}" }
+                        command.blob = BlobReceiver(start)
+                    }
+                    FrameType.BLOB_CHUNK -> pendingFor(frame).blob?.chunk(frame.payload)
+                        ?: throw IllegalStateException("BLOB_CHUNK before BLOB_START for request ${frame.requestId}")
+                    FrameType.BLOB_END -> pendingFor(frame).blob?.end(json.decodeFromString<BlobEnd>(frame.payload.decodeToString()))
+                        ?: throw IllegalStateException("BLOB_END before BLOB_START for request ${frame.requestId}")
                     else -> throw IllegalStateException("Unexpected ${frame.type} frame from driver")
                 }
             }
@@ -349,6 +452,9 @@ class DriverClient(
             if (!closed) poison(error)
         }
     }
+
+    private fun pendingFor(frame: Frame): PendingCommand =
+        pending[frame.requestId] ?: throw IllegalStateException("${frame.type} for unknown request ${frame.requestId}")
 
     /** Transport can no longer be trusted: close it and fail every in-flight command. */
     private fun poison(cause: Throwable) {
@@ -367,8 +473,10 @@ class DriverClient(
     }
 
     private fun Operation.isMutating(): Boolean = when (this) {
-        Operation.TAP, Operation.SET_TEXT, Operation.TYPE_TEXT, Operation.SCROLL_UNTIL -> true
-        else -> false
+        Operation.TAP, Operation.LONG_TAP, Operation.SET_TEXT, Operation.TYPE_TEXT, Operation.CLEAR_TEXT,
+        Operation.SWIPE, Operation.SCROLL, Operation.SCROLL_UNTIL -> true
+        Operation.HEALTH, Operation.EXISTS, Operation.WAIT_VISIBLE, Operation.DUMP_HIERARCHY, Operation.SCREENSHOT,
+        Operation.SYNC_BOOTSTRAP, Operation.SYNC_STATE -> false
     }
 
     private fun authenticate() {
@@ -441,6 +549,7 @@ class DriverClient(
     }
 
     private fun writeFrame(frame: Frame, timeoutMs: Int) {
+        lastWriteNanos = System.nanoTime()
         val write = FutureTask {
             FrameCodec.write(socket.getOutputStream(), frame)
         }
@@ -464,3 +573,8 @@ class DriverClient(
         }
     }
 }
+
+class Screenshot(val png: ByteArray, val info: ArtifactInfo)
+
+/** Well under the driver's default 30 s heartbeat timeout. */
+const val DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000L

@@ -4,6 +4,7 @@
     <uses-permission android:name="com.company.tap.permission.SYNCHRONIZATION" />
     <queries>
         <provider android:authorities="com.company.tap.fixture.tap-sync" />
+        <provider android:authorities="com.company.tap.fixture.fault" />
     </queries>
     <application
         android:allowBackup="false"

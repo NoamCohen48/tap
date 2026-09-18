@@ -7,12 +7,20 @@ is not a production release.
 
 - Dedicated driver APK and instrumentation APK, independent from the AUT.
 - Length-prefixed authenticated socket protocol over serial-specific ADB forwarding.
-- Device-side UiAutomator lookup for text, raw Compose resource names, and Android resource
-  IDs.
+- A versioned selector AST (text/description/hint/class with exact, contains, prefix,
+  suffix, and RE2 regex modes; resource IDs; boolean properties; parent/ancestor/child/
+  descendant relations; `first()`/`at(n)` limits) validated identically on host and driver,
+  compiled to window-scoped `BySelector`s or a single hierarchy traversal — never XPath or a
+  hierarchy dump on the hot path.
 - AUT-confined selectors and explicitly allowlisted system-package selectors.
-- Health, exists, tap, direct and key-event text input, bounded View/Compose list
-  scroll-and-search with end detection, explicit wait, and diagnostic hierarchy-dump
-  commands.
+- Health, exists, tap, long tap, direct and key-event text input, clear text, directional
+  swipe and scroll, bounded View/Compose list scroll-and-search with end detection, explicit
+  wait, PNG screenshots streamed as checksummed blobs, and diagnostic hierarchy-dump commands.
+- Every mutating command requires exactly one match and returns `AMBIGUOUS`/`NOT_FOUND`
+  before any input; a typed error taxonomy with stable detail sub-reasons.
+- Driver execution lanes (reader, bounded queue, single executor, writer, watchdog) with
+  cooperative cancellation, an atomic mutation gate, heartbeat expiry, and self-poisoning.
+- An optional `sync-sdk` Android library apps ship in E2E builds to expose busy state.
 - One Kotlin host process controlling multiple devices concurrently.
 - Mixed View/Compose fixture with `testTagsAsResourceId`, merged semantics, and a lazy list.
 - Driver-survival checks across AUT force-stop, data clearing, and relaunch.
@@ -66,9 +74,9 @@ devices.
 
 The run prints `PHASE_0_OK` only after the device flow and instrumentation process both
 finish successfully. Pass `--no-reboot` (anywhere in the arguments) to skip only the
-late-mutation quarantine scenario; every other check, including the Phase 1 cancellation
-proofs (`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK`), still runs and no
-device is rebooted.
+late-mutation quarantine scenario; every other check, including the Phase 1 proofs
+(`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK`, `PHASE_1_HEARTBEAT_EXPIRY_OK`,
+`PHASE_1_SCREENSHOT_OK`, `PHASE_1_SELECTORS_OK`), still runs and no device is rebooted.
 
 To benchmark and inventory screens in an arbitrary installed product shape without adding
 product logic to Tap, use product-probe mode. Each final argument is
@@ -91,5 +99,5 @@ For framework fault validation, prefix a tap step with `!ERROR_CODE:`, for examp
 ## Design
 
 The normative design is in
-`.docs/android-e2e-framework-implementation-plan.md`. Current spike status and remaining
-gates are in `.docs/phase-0-progress.md`.
+`.docs/android-e2e-framework-implementation-plan.md`. Current status and remaining gates
+are in `.docs/phase-1-progress.md`; module layout is in `.docs/project-architecture.md`.

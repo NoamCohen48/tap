@@ -30,6 +30,7 @@ internal class ClientConnection(
     private val sessionId: String,
     private val generation: Long,
     private val uninterruptibleGraceMs: Long,
+    private val heartbeatTimeoutMs: Long,
     private val onPoisoned: (reason: String) -> Unit,
 ) : PipelineListener {
     private val json = Json { ignoreUnknownKeys = true }
@@ -40,6 +41,7 @@ internal class ClientConnection(
         sink = ::writeOutbound,
         listener = this,
         uninterruptibleGraceMs = uninterruptibleGraceMs,
+        heartbeatTimeoutMs = heartbeatTimeoutMs,
     )
 
     val isPoisoned: Boolean get() = pipeline.isPoisoned
@@ -53,6 +55,7 @@ internal class ClientConnection(
                 } catch (_: EOFException) {
                     return
                 }
+                pipeline.heartbeat()
                 if (!handle(frame)) return
             }
         } finally {
@@ -79,7 +82,7 @@ internal class ClientConnection(
             true
         }
         FrameType.HELLO, FrameType.CHALLENGE, FrameType.AUTH, FrameType.AUTH_RESULT,
-        FrameType.RESPONSE, FrameType.PONG ->
+        FrameType.RESPONSE, FrameType.PONG, FrameType.BLOB_START, FrameType.BLOB_CHUNK, FrameType.BLOB_END ->
             error("Illegal frame ${frame.type} after authentication")
     }
 
@@ -116,9 +119,20 @@ internal class ClientConnection(
 
     private fun writeOutbound(message: Outbound) {
         if (transportEnded.get()) return
+        val output = socket.getOutputStream()
         when (message) {
             is Outbound.TerminalResponse -> writeResponse(message.requestId, message.response)
-            is Outbound.Pong -> FrameCodec.write(socket.getOutputStream(), Frame(FrameType.PONG, 0, byteArrayOf()))
+            is Outbound.Pong -> FrameCodec.write(output, Frame(FrameType.PONG, 0, byteArrayOf()))
+            is Outbound.BlobStartFrame -> FrameCodec.write(
+                output,
+                Frame(FrameType.BLOB_START, message.requestId, json.encodeToString(message.start).encodeToByteArray()),
+            )
+            is Outbound.BlobChunkFrame ->
+                FrameCodec.write(output, Frame(FrameType.BLOB_CHUNK, message.requestId, message.payload))
+            is Outbound.BlobEndFrame -> FrameCodec.write(
+                output,
+                Frame(FrameType.BLOB_END, message.requestId, json.encodeToString(message.end).encodeToByteArray()),
+            )
         }
     }
 

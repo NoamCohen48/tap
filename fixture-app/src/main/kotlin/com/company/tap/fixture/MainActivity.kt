@@ -1,6 +1,7 @@
 package com.company.tap.fixture
 
 import android.os.Bundle
+import com.company.tap.sync.TapSynchronization
 import android.os.Handler
 import android.os.Looper
 import android.widget.Button

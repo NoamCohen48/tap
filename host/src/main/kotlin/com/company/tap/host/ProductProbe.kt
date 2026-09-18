@@ -2,7 +2,6 @@ package com.company.tap.host
 
 import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Selector
-import com.company.tap.protocol.SelectorKind
 import java.io.StringReader
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -115,7 +114,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                             }
                         }
                     }
-                    val selector = Selector(SelectorKind.TEXT, screen.readyText)
+                    val selector = Selector.text(screen.readyText)
                     val ready = client.execute(Operation.WAIT_VISIBLE, selector, timeoutMs = 15_000)
                     check(ready.ok) { "Screen ${screen.name} did not become ready: $ready" }
                     printProbeResult(serial, autPackage, screen.name, selector, client)
@@ -154,7 +153,7 @@ private fun executeProbeAction(
         val resource = action.substringAfter('@')
         client.execute(
             Operation.SET_TEXT,
-            Selector(SelectorKind.ANDROID_RESOURCE, resource, packageName = autPackage),
+            Selector.androidResource(autPackage, resource),
             timeoutMs = 10_000,
             inputText = "must-not-write",
         )
@@ -163,18 +162,14 @@ private fun executeProbeAction(
         val resource = action.substringAfter('@')
         client.execute(
             Operation.SCROLL_UNTIL,
-            selector = Selector(SelectorKind.TEXT, "Missing target"),
-            containerSelector = Selector(
-                SelectorKind.ANDROID_RESOURCE,
-                resource,
-                packageName = autPackage,
-            ),
+            selector = Selector.text("Missing target"),
+            containerSelector = Selector.androidResource(autPackage, resource),
             timeoutMs = 10_000,
         )
     }
     else -> client.execute(
         Operation.TAP,
-        Selector(SelectorKind.TEXT, action),
+        Selector.text(action),
         timeoutMs = 10_000,
     )
 }
@@ -213,7 +208,7 @@ private fun printProbeResult(
         val started = System.nanoTime()
         val document = parseHierarchy(hierarchy)
         val nodes = document.getElementsByTagName("node")
-        check((0 until nodes.length).any { nodes.item(it).attributes?.getNamedItem("text")?.nodeValue == selector.value })
+        check((0 until nodes.length).any { nodes.item(it).attributes?.getNamedItem("text")?.nodeValue == selector.node.text?.value })
         elapsedMs(started)
     }
     val inventory = inventory(hierarchy, autPackage)

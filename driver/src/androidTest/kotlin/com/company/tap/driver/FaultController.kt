@@ -19,14 +19,14 @@ internal enum class FaultPoint {
 internal class FaultController(
     private val instrumentation: Instrumentation,
     private val faultPoint: FaultPoint,
-    private val syncAuthority: String,
+    private val faultAuthority: String,
 ) {
     private var triggered = false
 
     fun inject(point: FaultPoint, request: Request, requestId: Long): Boolean {
         if (
             triggered || faultPoint != point || request.operation != Operation.TAP ||
-            request.selector?.value != "fault_button"
+            !request.targetsFaultButton()
         ) {
             return false
         }
@@ -43,7 +43,7 @@ internal class FaultController(
     fun holdAfterMutation(request: Request, requestId: Long) {
         if (
             triggered || faultPoint != FaultPoint.CANCEL_AFTER_MUTATION ||
-            request.selector?.value != "fault_button"
+            !request.targetsFaultButton()
         ) {
             return
         }
@@ -58,7 +58,7 @@ internal class FaultController(
     fun injectLateUninterruptible(socket: Socket, request: Request, requestId: Long) {
         if (
             triggered || faultPoint != FaultPoint.LATE_UNINTERRUPTIBLE ||
-            request.selector?.value != "fault_button"
+            !request.targetsFaultButton()
         ) {
             return
         }
@@ -66,7 +66,7 @@ internal class FaultController(
         val delayMs = 15_000L
         val result = requireNotNull(
             instrumentation.targetContext.contentResolver.call(
-                Uri.parse("content://$syncAuthority"),
+                Uri.parse("content://$faultAuthority"),
                 "scheduleFaultMutation",
                 delayMs.toString(),
                 null,
@@ -97,3 +97,5 @@ internal class FaultController(
 internal class InjectedTransportLoss : RuntimeException()
 
 private const val CANCEL_HOLD_MS = 3_000L
+
+private fun Request.targetsFaultButton(): Boolean = selector?.node?.resource?.name == "fault_button"
