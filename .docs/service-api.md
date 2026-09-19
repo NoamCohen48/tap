@@ -87,6 +87,12 @@ Two tests keep the mirror honest: `EnumMirrorTest` (every proto enum equals the 
 enum, prefixed) and `GoldenRoundTripTest` (every golden request/response fixture survives a
 proto round trip unchanged). A protocol change therefore touches `protocol-contract.md`, the
 golden fixtures, `contracts/api/proto/tap.proto` and the committed Python stubs in the same commit.
+`ResourceId.aut_package = true` is the one field with no protocol counterpart: the service
+replaces it with the session's AUT package (`Open.aut_package`) before the command reaches the
+driver, so a test can say "resource `login` of the app under test" without knowing the package.
+It is mutually exclusive with `package_name` and needs a session (`INVALID_ARGUMENT`
+otherwise); the resolved id is then subject to the normal scope rules, so an AUT resource under
+`SCOPE_SYSTEM` is still rejected. `AutResourceTest` covers it.
 `Command.stable_for_ms` and `stable_signal` (`StabilitySignal`: `STABILITY_TREE`,
 `STABILITY_PIXELS`, `STABILITY_ALL`; unspecified = `ALL`) belong to `OP_WAIT_SCREEN_STABLE`
 together with `package_name`; the service forwards them unchanged and the driver applies the

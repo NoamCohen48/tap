@@ -89,7 +89,7 @@ class SmokeTest {
         app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
         app.coldLaunch()                             // resolves the launcher activity, waits for its window
         device.await(text("Welcome")).visible()
-        device.element(resId(app.packageName, "search")).setText("socks")
+        device.element(res("search")).setText("socks")
     }
 }
 ```
@@ -117,14 +117,14 @@ tap_aut = com.shop
 ```
 
 ```python
-from tap import text, res_id
+from tap import text, res
 
 def test_opens_the_home_screen(tap_device):
     app = tap_device.app()
     app.install("build/outputs/apk/debug/shop-debug.apk")
     app.cold_launch()
     tap_device.wait(text("Welcome")).visible()
-    tap_device.element(res_id(app.package_name, "search")).set_text("socks")
+    tap_device.element(res("search")).set_text("socks")
 ```
 
 ```bash

@@ -248,7 +248,7 @@ class SessionServicer(
         commandExecutor.execute {
             reply(observer) {
                 val session = service.session(request.sessionId)
-                val arguments = Conversions.command(request.command, session.defaultTimeoutMs)
+                val arguments = Conversions.command(request.command, session.defaultTimeoutMs, session.device.config.autPackage)
                 val (response, requestId) = service.execute(session, arguments) { pending ->
                     pendingRef.set(pending)
                     if (cancelled.get()) pending.cancel()

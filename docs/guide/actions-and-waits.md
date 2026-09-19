@@ -40,7 +40,7 @@ Directions are `UP`/`DOWN`/`LEFT`/`RIGHT` (`Direction.DIR_*` in the Kotlin proto
 constants exported by both SDKs).
 
 ```kotlin
-val list = device.element(resId("com.shop", "results"))
+val list = device.element(res("results"))
 list.scrollUntil(text("Wool socks"), timeout = 30.seconds).tap()
 ```
 
@@ -58,8 +58,8 @@ terminal method waits until the condition holds or the timeout elapses, and then
 
 ```kotlin
 device.await(text("Order placed")).visible()
-device.await(resId("com.shop", "pay")).enabled().tap()
-device.await(resId("com.shop", "spinner"), timeout = 30.seconds).gone()
+device.await(res("pay")).enabled().tap()
+device.await(res("spinner"), timeout = 30.seconds).gone()
 ```
 
 | Method | Condition |

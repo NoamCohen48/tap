@@ -196,12 +196,14 @@ class StringMatch(_message.Message):
     def __init__(self, value: _Optional[str] = ..., mode: _Optional[_Union[MatchMode, str]] = ...) -> None: ...
 
 class ResourceId(_message.Message):
-    __slots__ = ("name", "package_name")
+    __slots__ = ("name", "package_name", "aut_package")
     NAME_FIELD_NUMBER: _ClassVar[int]
     PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     name: str
     package_name: str
-    def __init__(self, name: _Optional[str] = ..., package_name: _Optional[str] = ...) -> None: ...
+    aut_package: bool
+    def __init__(self, name: _Optional[str] = ..., package_name: _Optional[str] = ..., aut_package: _Optional[bool] = ...) -> None: ...
 
 class NodeSelector(_message.Message):
     __slots__ = ("text", "content_description", "hint", "class_name", "resource", "enabled", "checked", "checkable", "clickable", "focused", "focusable", "long_clickable", "scrollable", "selected", "parent", "ancestor", "child", "descendant")

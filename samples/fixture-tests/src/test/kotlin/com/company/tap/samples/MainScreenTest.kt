@@ -3,6 +3,7 @@ package com.company.tap.samples
 import com.company.tap.api.v1.Direction
 import com.company.tap.api.v1.ErrorCode
 import com.company.tap.junit5.TapTest
+import com.company.tap.sdk.res
 import com.company.tap.sdk.CommandException
 import com.company.tap.sdk.Device
 import com.company.tap.sdk.WaitTimeoutException
@@ -22,7 +23,7 @@ class MainScreenTest {
     fun tapsViewAndComposeButtons(device: Device) {
         Fixture.launch(device)
 
-        device.element(Fixture.id("view_button")).tap()
+        device.element(res("view_button")).tap()
         device.await(text("View tapped")).visible()
 
         device.element(rawRes("composeButton")).tap()
@@ -32,8 +33,8 @@ class MainScreenTest {
     @Test
     fun typesAndClearsText(device: Device) {
         Fixture.launch(device)
-        val input = device.element(Fixture.id("view_input"))
-        val keyboard = device.element(Fixture.id("keyboard_input"))
+        val input = device.element(res("view_input"))
+        val keyboard = device.element(res("keyboard_input"))
 
         input.setText("hello tap")
         assertEquals("hello tap", input.text())
@@ -72,10 +73,10 @@ class MainScreenTest {
         }
         assertEquals(ErrorCode.ERR_AMBIGUOUS, failure.code)
         assertEquals(2, device.element(ambiguous).count())
-        assertEquals("Ambiguous taps: left=0 right=0", device.element(Fixture.id("ambiguous_status")).text())
+        assertEquals("Ambiguous taps: left=0 right=0", device.element(res("ambiguous_status")).text())
 
         // Disambiguate by resource id (or by relation/index) instead of relaxing the invariant.
-        device.element(Fixture.id("ambiguous_button_right").andText("AMBIGUOUS TAP")).tap()
+        device.element(res("ambiguous_button_right").andText("AMBIGUOUS TAP")).tap()
         device.await(text("Ambiguous taps: left=0 right=1")).visible()
     }
 
@@ -83,10 +84,10 @@ class MainScreenTest {
     fun waitsForAppOwnedSynchronization(device: Device) {
         val app = Fixture.launch(device)
 
-        device.element(Fixture.id("sync_button")).tap()
+        device.element(res("sync_button")).tap()
         device.await(text("Synchronized work running")).visible()
         app.awaitIdle(timeout = 15.seconds)
-        assertEquals("Synchronized work complete", device.element(Fixture.id("view_status")).text())
+        assertEquals("Synchronized work complete", device.element(res("view_status")).text())
     }
 
     @Test

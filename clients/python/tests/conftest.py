@@ -13,7 +13,7 @@ import threading
 
 import pytest
 
-from tap import App, Device, Selector, res_id
+from tap import App, Device
 
 PACKAGE = "com.company.tap.fixture"
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -23,10 +23,6 @@ os.environ.setdefault("TAP_AUT", PACKAGE)
 
 _installed: set[str] = set()
 _lock = threading.Lock()
-
-
-def fixture_id(name: str) -> Selector:
-    return res_id(PACKAGE, name)
 
 
 def launch(device: Device, activity: str = ".MainActivity") -> App:

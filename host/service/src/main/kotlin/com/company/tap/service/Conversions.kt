@@ -91,8 +91,12 @@ object Conversions {
 
     // ---- selectors ---------------------------------------------------------------------------
 
-    fun selector(proto: ProtoSelector): Selector = Selector(
-        node = node(proto.node),
+    /**
+     * [autPackage] fills in `ResourceId.aut_package` resources; null (no session, as in the golden
+     * round trip) rejects them.
+     */
+    fun selector(proto: ProtoSelector, autPackage: String? = null): Selector = Selector(
+        node = node(proto.node, autPackage),
         scope = scope(proto.scope),
         scopePackage = if (proto.hasScopePackage()) proto.scopePackage else null,
         limit = matchLimit(proto.limit),
@@ -109,12 +113,12 @@ object Conversions {
         acceptAccessibilityOrder = value.acceptAccessibilityOrder
     }.build()
 
-    private fun node(proto: ProtoNodeSelector): NodeSelector = NodeSelector(
+    private fun node(proto: ProtoNodeSelector, autPackage: String?): NodeSelector = NodeSelector(
         text = proto.takeIf { it.hasText() }?.text?.let(::stringMatch),
         contentDescription = proto.takeIf { it.hasContentDescription() }?.contentDescription?.let(::stringMatch),
         hint = proto.takeIf { it.hasHint() }?.hint?.let(::stringMatch),
         className = proto.takeIf { it.hasClassName() }?.className?.let(::stringMatch),
-        resource = proto.takeIf { it.hasResource() }?.resource?.let(::resource),
+        resource = proto.takeIf { it.hasResource() }?.resource?.let { resource(it, autPackage) },
         enabled = proto.takeIf { it.hasEnabled() }?.enabled,
         checked = proto.takeIf { it.hasChecked() }?.checked,
         checkable = proto.takeIf { it.hasCheckable() }?.checkable,
@@ -124,10 +128,10 @@ object Conversions {
         longClickable = proto.takeIf { it.hasLongClickable() }?.longClickable,
         scrollable = proto.takeIf { it.hasScrollable() }?.scrollable,
         selected = proto.takeIf { it.hasSelected() }?.selected,
-        parent = proto.takeIf { it.hasParent() }?.parent?.let(::node),
-        ancestor = proto.takeIf { it.hasAncestor() }?.ancestor?.let(::node),
-        child = proto.takeIf { it.hasChild() }?.child?.let(::node),
-        descendant = proto.takeIf { it.hasDescendant() }?.descendant?.let(::node),
+        parent = proto.takeIf { it.hasParent() }?.parent?.let { node(it, autPackage) },
+        ancestor = proto.takeIf { it.hasAncestor() }?.ancestor?.let { node(it, autPackage) },
+        child = proto.takeIf { it.hasChild() }?.child?.let { node(it, autPackage) },
+        descendant = proto.takeIf { it.hasDescendant() }?.descendant?.let { node(it, autPackage) },
     )
 
     private fun node(value: NodeSelector): ProtoNodeSelector = ProtoNodeSelector.newBuilder().apply {
@@ -155,7 +159,13 @@ object Conversions {
     private fun stringMatch(value: StringMatch): ProtoStringMatch =
         ProtoStringMatch.newBuilder().setValue(value.value).setMode(matchMode(value.mode)).build()
 
-    private fun resource(proto: ProtoResourceId) = ResourceId(proto.name, if (proto.hasPackageName()) proto.packageName else null)
+    private fun resource(proto: ProtoResourceId, autPackage: String?): ResourceId {
+        val explicit = if (proto.hasPackageName()) proto.packageName else null
+        if (!proto.autPackage) return ResourceId(proto.name, explicit)
+        require(explicit == null) { "ResourceId '${proto.name}': package_name and aut_package are mutually exclusive" }
+        requireNotNull(autPackage) { "ResourceId '${proto.name}': aut_package needs a session" }
+        return ResourceId(proto.name, autPackage)
+    }
     private fun resource(value: ResourceId): ProtoResourceId = ProtoResourceId.newBuilder().apply {
         name = value.name
         value.packageName?.let { packageName = it }
@@ -183,11 +193,11 @@ object Conversions {
         val expectedSessionIdentity: String?,
     )
 
-    fun command(proto: Command, defaultTimeoutMs: Long): CommandArguments = CommandArguments(
+    fun command(proto: Command, defaultTimeoutMs: Long, autPackage: String? = null): CommandArguments = CommandArguments(
         operation = operation(proto.operation),
         timeoutMs = if (proto.timeoutMs > 0) proto.timeoutMs else defaultTimeoutMs,
-        selector = proto.takeIf { it.hasSelector() }?.selector?.let(::selector),
-        containerSelector = proto.takeIf { it.hasContainerSelector() }?.containerSelector?.let(::selector),
+        selector = proto.takeIf { it.hasSelector() }?.selector?.let { selector(it, autPackage) },
+        containerSelector = proto.takeIf { it.hasContainerSelector() }?.containerSelector?.let { selector(it, autPackage) },
         inputText = proto.takeIf { it.hasInputText() }?.inputText,
         direction = proto.takeIf { it.hasDirection() }?.direction?.let(::direction),
         distancePercent = if (proto.hasDistancePercent()) proto.distancePercent else DEFAULT_GESTURE_PERCENT,

@@ -13,7 +13,7 @@ deliberately different.
 | `launchApp: { clearState: true }` | `app.clearData(); app.coldLaunch()` | |
 | `stopApp` | `app.forceStop()` | verified: no process left |
 | `tapOn: "Text"` | `device.element(text("Text")).tap()` | Maestro tries text *or* id; Tap is explicit |
-| `tapOn: { id: "x" }` | `device.element(resId(pkg, "x")).tap()` | |
+| `tapOn: { id: "x" }` | `device.element(res("x")).tap()` | |
 | `tapOn: { text: "Add", index: 1 }` | `device.element(text("Add").at(1)).tap()` | without `at`, two matches are `AMBIGUOUS` |
 | `tapOn: { point: "50%,50%" }` | — | no coordinates by design |
 | `longPressOn` | `element.longTap()` | |
@@ -40,7 +40,7 @@ fixtures, helpers and assertions come from JUnit / pytest.
 | Appium | Tap | Note |
 |---|---|---|
 | `AppiumDriver(url, caps)` | `@TapTest` + `Device` parameter / `tap_device` fixture | no server URL, no capabilities: the service is found or started |
-| `findElement(By.id("x"))` | `device.element(resId(pkg, "x"))` | returns a lazy element, never a handle |
+| `findElement(By.id("x"))` | `device.element(res("x"))` | returns a lazy element, never a handle |
 | `findElement(AppiumBy.accessibilityId("x"))` | `device.element(desc("x"))` | |
 | `findElement(AppiumBy.androidUIAutomator("…"))` | selector DSL | no string queries |
 | `findElement(By.xpath("…"))` | selector relations (`hasDescendant`, `descendant`, `child`, `hasParent`) | no XPath by design |

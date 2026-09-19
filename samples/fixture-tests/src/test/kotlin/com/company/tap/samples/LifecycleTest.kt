@@ -1,6 +1,7 @@
 package com.company.tap.samples
 
 import com.company.tap.junit5.TapTest
+import com.company.tap.sdk.res
 import com.company.tap.sdk.Device
 import com.company.tap.sdk.text
 import kotlin.test.assertEquals
@@ -16,7 +17,7 @@ class LifecycleTest {
         val app = Fixture.launch(device)
         val first = app.process()
 
-        device.element(Fixture.id("fault_button")).tap()
+        device.element(res("fault_button")).tap()
         device.await(text("Fault taps: 1")).visible()
 
         app.forceStop()
@@ -24,12 +25,12 @@ class LifecycleTest {
         val second = app.coldLaunch(".MainActivity")
         assertNotEquals(first, second)
         // The in-process counter is gone with the old process.
-        assertEquals("Fault taps: 0", device.element(Fixture.id("fault_status")).text())
+        assertEquals("Fault taps: 0", device.element(res("fault_status")).text())
 
         app.clearData()
         assertFalse(app.isRunning())
         app.launch(".MainActivity")
-        assertTrue(device.element(Fixture.id("view_button")).exists())
+        assertTrue(device.element(res("view_button")).exists())
 
         val info = device.info()
         assertEquals(Fixture.PACKAGE, info.currentPackage)

@@ -13,7 +13,7 @@ class CheckoutTest {
     @Test
     fun buysAnItem(device: Device) {
         device.app().coldLaunch()
-        device.element(resId("com.shop", "buy_button")).tap()
+        device.element(res("buy_button")).tap()
         device.await(text("Order placed")).visible()
     }
 }
@@ -22,7 +22,7 @@ class CheckoutTest {
 ```python
 def test_buys_an_item(tap_device):
     tap_device.app().cold_launch()
-    tap_device.element(res_id("com.shop", "buy_button")).tap()
+    tap_device.element(res("buy_button")).tap()
     tap_device.wait(text("Order placed")).visible()
 ```
 

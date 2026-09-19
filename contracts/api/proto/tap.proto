@@ -133,11 +133,14 @@ message StringMatch {
   MatchMode mode = 2; // UNSPECIFIED = EXACT
 }
 
-// A resource id; `package_name` omitted means a Compose testTag (testTagsAsResourceId) or an
-// id of the scope package.
+// A resource id. With `package_name`: the View id `package_name:id/name`. With `aut_package`:
+// the same, with the session's app under test filled in by the service (so the selector stays
+// session-free); mutually exclusive with `package_name`. With neither: the exact, unqualified
+// resource name, which is how a Compose testTag appears under testTagsAsResourceId.
 message ResourceId {
   string name = 1;
   optional string package_name = 2;
+  bool aut_package = 3;
 }
 
 // Constraints on one accessibility node. Every set field must hold; relations nest further

@@ -41,6 +41,8 @@ class Selector internal constructor(val proto: SelectorProto) {
     /** Also require the resource id `packageName:id/name`. */
     fun andRes(packageName: String, name: String): Selector =
         node { resource = ResourceId.newBuilder().setName(name).setPackageName(packageName).build() }
+    /** Also require the app-under-test resource id `name` (see [res]). */
+    fun andRes(name: String): Selector = node { resource = ResourceId.newBuilder().setName(name).setAutPackage(true).build() }
 
     /** Require `isCheckable == value`. */
     fun checkable(value: Boolean = true): Selector = node { checkable = value }
@@ -143,6 +145,13 @@ fun rawRes(name: String): Selector = selector { resource = ResourceId.newBuilder
 /** Android View resource id `packageName:id/name`. */
 fun resId(packageName: String, name: String): Selector =
     selector { resource = ResourceId.newBuilder().setName(name).setPackageName(packageName).build() }
+
+/**
+ * View resource id `name` of the **app under test**: `<aut>:id/name`, with the package filled in
+ * by the service from the session, so the same selector works on every device and role. Use
+ * [resId] for another package (a system dialog with [Selector.inSystemPackage]).
+ */
+fun res(name: String): Selector = selector { resource = ResourceId.newBuilder().setName(name).setAutPackage(true).build() }
 
 /** Widget class name, e.g. `android.widget.EditText`. */
 fun className(value: String, mode: MatchMode = MatchMode.MATCH_EXACT): Selector = selector { className = match(value, mode) }
