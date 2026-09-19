@@ -7,11 +7,24 @@ import com.google.protobuf.gradle.id
  */
 plugins {
     `java-library`
+    `maven-publish`
     id("com.google.protobuf") version "0.9.5"
 }
 
 java {
     toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
+    withSourcesJar()
+}
+
+// Published as com.company.tap:tap-api (engine version); the Kotlin client depends on it.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "tap-api"
+            from(components["java"])
+            pom { name.set("tap-api"); description.set("tap.v1 host service API: generated gRPC/protobuf stubs") }
+        }
+    }
 }
 
 val grpcVersion = "1.75.0"

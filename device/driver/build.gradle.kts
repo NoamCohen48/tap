@@ -10,8 +10,10 @@ android {
         applicationId = "com.company.tap.driver"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // From gradle.properties tap.version.engine: 1.2.3 -> 10203 (pre-release suffixes ignored).
+        versionName = project.version.toString()
+        versionCode = versionName!!.substringBefore('-').split('.').map { it.toInt() }
+            .let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

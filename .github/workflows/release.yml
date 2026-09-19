@@ -1,0 +1,252 @@
+name: Release
+
+# One tag per artifact family (see .docs/release-engineering.md):
+#   service/v1.2.3        tap service: native binaries + JVM dist on a GitHub Release,
+#                         com.company.tap:tap-api to GitHub Packages (same engine version)
+#   client-kotlin/v1.2.3  com.company.tap:tap-client + tap-junit5 to GitHub Packages
+#   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when enabled)
+#   sync-sdk/v1.2.3       com.company.tap:tap-sync-sdk (AAR) to GitHub Packages
+# The tag's version must equal the one in gradle.properties / pyproject.toml.
+on:
+  push:
+    tags:
+      - "service/v*"
+      - "client-kotlin/v*"
+      - "client-python/v*"
+      - "sync-sdk/v*"
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  resolve:
+    name: Resolve tag
+    runs-on: ubuntu-latest
+    outputs:
+      family: ${{ steps.tag.outputs.family }}
+      version: ${{ steps.tag.outputs.version }}
+      engine: ${{ steps.tag.outputs.engine }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: |
+          python3 .github/scripts/release_version.py "${GITHUB_REF_NAME}" | tee -a "$GITHUB_OUTPUT"
+          echo "engine=$(sed -n 's/^tap.version.engine=//p' gradle.properties)" >> "$GITHUB_OUTPUT"
+
+  # ---- service/v* -----------------------------------------------------------------------------
+  service-native:
+    name: Service native (${{ matrix.label }})
+    needs: resolve
+    if: needs.resolve.outputs.family == 'service'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86_64
+          - os: macos-latest
+            label: macos-aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: 21
+          distribution: graalvm-community
+      - run: echo "GRAALVM_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.0.0 platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :host:service:nativeCompile
+      - name: Smoke and rename
+        run: |
+          out=host/service/build/native/nativeCompile/tap
+          "$out" version | tee version.txt
+          grep -qx "tap service ${{ needs.resolve.outputs.version }}" version.txt
+          mkdir -p release
+          cp "$out" "release/tap-${{ needs.resolve.outputs.version }}-${{ matrix.label }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-${{ matrix.label }}
+          path: release/*
+          if-no-files-found: error
+
+  service-jvm:
+    name: Service JVM dist + tap-api
+    needs: resolve
+    if: needs.resolve.outputs.family == 'service'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.0.0 platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Tests that guard the contract
+        run: ./gradlew :contracts:protocol:test :host:core:test :host:service:test
+      - name: JVM distribution
+        run: |
+          ./gradlew :host:service:distZip
+          mkdir -p release
+          cp host/service/build/distributions/tap-${{ needs.resolve.outputs.version }}.zip \
+             "release/tap-${{ needs.resolve.outputs.version }}-jvm.zip"
+      - name: Publish tap-api ${{ needs.resolve.outputs.version }} to GitHub Packages
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :contracts:api:publishAllPublicationsToGitHubPackagesRepository
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-jvm
+          path: release/*
+          if-no-files-found: error
+
+  service-release:
+    name: GitHub Release (service)
+    needs: [resolve, service-native, service-jvm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: service-*
+          merge-multiple: true
+          path: release
+      - name: Checksums
+        run: cd release && sha256sum * > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: tap service ${{ needs.resolve.outputs.version }}
+          files: release/*
+          body: |
+            `tap serve` host service ${{ needs.resolve.outputs.version }} with the bundled driver.
+
+            - `tap-${{ needs.resolve.outputs.version }}-linux-x86_64`, `tap-${{ needs.resolve.outputs.version }}-macos-aarch64`: native binaries (`chmod +x`, put on `PATH` as `tap`)
+            - `tap-${{ needs.resolve.outputs.version }}-jvm.zip`: JVM distribution (`bin/tap`, needs JDK 17+)
+            - Maven: `com.company.tap:tap-api:${{ needs.resolve.outputs.version }}` (GitHub Packages)
+
+  # ---- client-kotlin/v* -----------------------------------------------------------------------
+  client-kotlin:
+    name: Kotlin client to GitHub Packages
+    needs: resolve
+    if: needs.resolve.outputs.family == 'client-kotlin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: tap-api ${{ needs.resolve.outputs.engine }} must already be published
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          engine=${{ needs.resolve.outputs.engine }}
+          url="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/com/company/tap/tap-api/${engine}/tap-api-${engine}.pom"
+          if ! curl -fsSL -o /dev/null -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" "$url"; then
+            echo "::error::tap-client ${{ needs.resolve.outputs.version }} depends on tap-api ${engine}, which is not in GitHub Packages. Tag service/v${engine} first."
+            exit 1
+          fi
+      - run: ./gradlew :clients:kotlin:sdk:test :clients:kotlin:junit5:test
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          ./gradlew
+          :clients:kotlin:sdk:publishAllPublicationsToGitHubPackagesRepository
+          :clients:kotlin:junit5:publishAllPublicationsToGitHubPackagesRepository
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: tap Kotlin client ${{ needs.resolve.outputs.version }}
+          body: |
+            ```kotlin
+            testImplementation("com.company.tap:tap-junit5:${{ needs.resolve.outputs.version }}")   // brings tap-client and tap-api ${{ needs.resolve.outputs.engine }}
+            ```
+            Published to this repository's GitHub Packages Maven registry
+            (`https://maven.pkg.github.com/${{ github.repository }}`, read access needs a token with `read:packages`).
+            Requires a `tap` service of engine version ${{ needs.resolve.outputs.engine }} (tag `service/v${{ needs.resolve.outputs.engine }}`).
+
+  # ---- client-python/v* -----------------------------------------------------------------------
+  client-python:
+    name: Python client
+    needs: resolve
+    if: needs.resolve.outputs.family == 'client-python'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install --quiet build "grpcio-tools==$(sed -n 's/^GENERATOR_VERSION = "\(.*\)"$/\1/p' clients/python/scripts/gen_stubs.py)"
+          python clients/python/scripts/gen_stubs.py --check
+          python -m build --outdir dist clients/python
+          python -m pip install --quiet dist/tap_e2e-${{ needs.resolve.outputs.version }}-py3-none-any.whl
+          python -c "import tap, sys; sys.exit(tap.__version__ != '${{ needs.resolve.outputs.version }}')"
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: tap Python client ${{ needs.resolve.outputs.version }}
+          files: dist/*
+          body: |
+            ```bash
+            pip install https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/tap_e2e-${{ needs.resolve.outputs.version }}-py3-none-any.whl
+            ```
+            Requires a `tap` service of engine version ${{ needs.resolve.outputs.engine }} (tag `service/v${{ needs.resolve.outputs.engine }}`).
+      # Opt in by setting the repository variable PUBLISH_TO_PYPI=true and registering this
+      # workflow as a trusted publisher of the tap-e2e project on PyPI.
+      - name: Publish to PyPI
+        if: vars.PUBLISH_TO_PYPI == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  # ---- sync-sdk/v* ----------------------------------------------------------------------------
+  sync-sdk:
+    name: sync-sdk to GitHub Packages
+    needs: resolve
+    if: needs.resolve.outputs.family == 'sync-sdk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.0.0 platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :device:sync-sdk:publishAllPublicationsToGitHubPackagesRepository
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: tap sync-sdk ${{ needs.resolve.outputs.version }}
+          body: |
+            ```kotlin
+            implementation("com.company.tap:tap-sync-sdk:${{ needs.resolve.outputs.version }}")   // E2E build flavour of the app under test
+            ```
+            Published to this repository's GitHub Packages Maven registry.

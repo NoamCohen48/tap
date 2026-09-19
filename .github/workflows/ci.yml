@@ -1,0 +1,230 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  # The tap.v1 API: the proto must lint, must stay wire-compatible with the base branch, must
+  # round-trip the golden TAP1 fixtures (:host:service:test) and the committed Python stubs must
+  # match it. This is the cheap job that fails first when a contract change is wrong.
+  api-contract:
+    name: API contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: buf lint
+        run: buf lint contracts/api
+      - name: buf breaking (against the base branch)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base commit; skipping"; exit 0
+          fi
+          if ! git cat-file -e "$BASE:contracts/api/proto/tap.proto" 2>/dev/null; then
+            echo "base $BASE has no tap.proto; skipping"; exit 0
+          fi
+          buf breaking contracts/api --against ".git#ref=$BASE,subdir=contracts/api/proto"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python stubs are current
+        run: |
+          python -m pip install --quiet "grpcio-tools==$(sed -n 's/^GENERATOR_VERSION = "\(.*\)"$/\1/p' clients/python/scripts/gen_stubs.py)"
+          python clients/python/scripts/gen_stubs.py --check
+
+  # Everything that compiles and tests on the JVM without a device, plus the artifacts every
+  # release is made of (driver APKs, service distribution, Maven POMs, validation executable).
+  jvm:
+    name: JVM build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.0.0 platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests
+        run: >
+          ./gradlew
+          :contracts:protocol:test :host:core:test :host:service:test
+          :device:driver:command-engine:test :clients:kotlin:sdk:test :clients:kotlin:junit5:test
+      - name: Assemble driver, fixture, service and validation
+        run: >
+          ./gradlew
+          :device:driver:assembleDebug :device:driver:assembleDebugAndroidTest
+          :fixture-app:assembleDebug :host:service:installDist :host:service:distZip
+          :host:validation:installDist
+      - name: Publish Maven artifacts to the local repository (POM sanity)
+        run: >
+          ./gradlew
+          :contracts:api:publishToMavenLocal :clients:kotlin:sdk:publishToMavenLocal
+          :clients:kotlin:junit5:publishToMavenLocal :device:sync-sdk:publishToMavenLocal
+      - name: Service version matches gradle.properties
+        run: |
+          expected=$(sed -n 's/^tap.version.engine=//p' gradle.properties)
+          actual=$(host/service/build/install/tap/bin/tap version)
+          echo "$actual"; [ "$actual" = "tap service $expected" ]
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tap-service-jvm
+          path: host/service/build/distributions/tap-*.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: jvm-test-reports
+          path: "**/build/reports/tests"
+          if-no-files-found: ignore
+
+  python:
+    name: Python client (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install and build
+        run: |
+          python -m pip install --quiet build "clients/python[dev]"
+          python -c "import tap; print('tap-e2e', tap.__version__)"
+          python -m build --outdir dist clients/python
+      - name: Plugin loads (the sample suite itself needs a device and the fixture APK)
+        run: python -c "import tap.pytest_plugin, tap._gen.tap_pb2_grpc"
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.13'
+        with:
+          name: tap-e2e-python
+          path: dist/*
+
+  # Real-device proof: the fixture-test sample suites (Kotlin + Python) against an API 34
+  # emulator through an auto-started service. One serial, so the two-device tests are skipped.
+  device-tests:
+    name: Device tests (API 34 emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [api-contract, jvm]
+    steps:
+      # ubuntu-latest ships ~14 GB of toolchains we never use; the API 34 image plus the AVD's
+      # userdata partition do not fit next to them (the emulator aborts with "Not enough space
+      # to create userdata partition").
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /usr/local/.ghcup \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost 2>/dev/null || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h / | tail -1
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.0.0 platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build what the device run needs
+        run: ./gradlew :fixture-app:assembleDebug :host:service:installDist
+      - name: Install the Python client
+        run: python -m pip install --quiet "clients/python[dev]"
+      - name: Run the sample suites on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disk-size: 2G
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            adb -s emulator-5554 wait-for-device
+            # A 2-vCPU swiftshader emulator throws "Process system isn't responding" ANR dialogs
+            # (package android) over the AUT, which then never owns the focused window.
+            adb -s emulator-5554 shell settings put global hide_error_dialogs 1
+            adb -s emulator-5554 shell settings put global window_animation_scale 0
+            adb -s emulator-5554 shell settings put global transition_animation_scale 0
+            adb -s emulator-5554 shell settings put global animator_duration_scale 0
+            adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+            adb -s emulator-5554 shell wm dismiss-keyguard
+            adb -s emulator-5554 shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
+            ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554
+            TAP_BIN="$PWD/host/service/build/install/tap/bin/tap" TAP_SERIALS=emulator-5554 python -m pytest -q clients/python/tests
+            host/service/build/install/tap/bin/tap stop || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: device-test-artifacts
+          path: |
+            samples/fixture-tests/build/tap-artifacts
+            tap-artifacts
+            samples/fixture-tests/build/reports/tests
+          if-no-files-found: ignore
+
+  # The native image is what `service/v*` releases ship; build it on main so a new reflective
+  # dependency (missing native-image metadata) is caught before a release.
+  native-image:
+    name: Native image (linux-x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request'
+    needs: [jvm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: 21
+          distribution: graalvm-community
+      - name: Keep GraalVM for native-image only; Gradle compiles with JDK 17
+        run: echo "GRAALVM_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;36.0.0 platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :host:service:nativeCompile
+      - name: Smoke
+        run: |
+          host/service/build/native/nativeCompile/tap version
+          host/service/build/native/nativeCompile/tap status || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tap-service-linux-x86_64
+          path: host/service/build/native/nativeCompile/tap
+          if-no-files-found: error

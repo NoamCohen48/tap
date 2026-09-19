@@ -17,6 +17,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 API = ROOT / "contracts" / "api" / "proto"
 OUT = ROOT / "clients" / "python" / "tap" / "_gen"
 FILES = ("tap_pb2.py", "tap_pb2_grpc.py", "tap_pb2.pyi")
+# protoc output depends on the generator release; CI installs exactly this one for --check.
+GENERATOR_VERSION = "1.84.0"
 
 
 def generate(into: pathlib.Path) -> None:
@@ -35,7 +37,16 @@ def generate(into: pathlib.Path) -> None:
     (into / "__init__.py").write_text("# Generated from contracts/api/proto/tap.proto by scripts/gen_stubs.py; do not edit.\n")
 
 
+def check_generator() -> None:
+    from importlib.metadata import version
+
+    installed = version("grpcio-tools")
+    if installed != GENERATOR_VERSION:
+        print(f"warning: grpcio-tools {installed} installed, stubs are pinned to {GENERATOR_VERSION}", file=sys.stderr)
+
+
 def main(argv: list[str]) -> int:
+    check_generator()
     if "--check" in argv:
         with tempfile.TemporaryDirectory() as tmp:
             fresh = pathlib.Path(tmp)
