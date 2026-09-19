@@ -4,6 +4,20 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.3.20" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.3.20" apply false
+    id("org.jetbrains.dokka") version "2.1.0"
+}
+
+/*
+ * Generated Kotlin API reference (docs/reference/kotlin): Dokka over the two client modules
+ * only. `./gradlew :dokkaGenerate` aggregates them into build/dokka/html.
+ */
+dependencies {
+    dokka(project(":clients:kotlin:sdk"))
+    dokka(project(":clients:kotlin:junit5"))
+}
+
+dokka {
+    moduleName.set("Tap Kotlin client")
 }
 
 /*

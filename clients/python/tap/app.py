@@ -13,11 +13,17 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ProcessIdentity:
+    """PID plus a start token that changes on every process start."""
+
     pid: int
     start_token: str
 
 
 class App:
+    """Lifecycle of one package, executed by the service over ADB and verified against a
+    postcondition; failures are ``AppLifecycleError``. Obtain with ``Device.app()``.
+    """
+
     def __init__(self, device: "Device", package_name: str):
         self.device = device
         self.package_name = package_name
@@ -34,22 +40,28 @@ class App:
             return method(request, timeout=(timeout or self.device.timeouts.lifecycle) + 60)
 
     def is_installed(self) -> bool:
+        """Whether the package is installed."""
         return self._call(self._apps.IsInstalled, self._request(None), None).value
 
     def install(self, apk_path: str, timeout: float | None = None) -> None:
+        """``adb install -r -t`` of the APK at ``apk_path`` (a path on the service's machine)."""
         timeout = timeout or self.device.timeouts.lifecycle
         self._call(self._apps.Install, pb.AppInstallRequest(app=self._request(timeout), apk_path=str(apk_path)), timeout + 120)
 
     def uninstall(self) -> None:
+        """``pm uninstall``, verified."""
         self._call(self._apps.Uninstall, self._request(None), 120)
 
     def force_stop(self, timeout: float | None = None) -> None:
+        """``am force-stop`` plus proof that no process of the package remains."""
         self._call(self._apps.ForceStop, self._request(timeout or self.device.timeouts.action), timeout)
 
     def clear_data(self, timeout: float | None = None) -> None:
+        """``pm clear``: data, cache and runtime permissions are gone; the app is left stopped."""
         self._call(self._apps.ClearData, self._request(timeout or self.device.timeouts.action), timeout)
 
     def grant_permission(self, permission: str) -> None:
+        """``pm grant`` a runtime permission, e.g. ``android.permission.CAMERA``."""
         self._call(self._apps.GrantPermission, pb.AppGrantRequest(app=self._request(None), permission=permission), None)
 
     def launch(self, activity: str | None = None, timeout: float | None = None) -> None:
@@ -68,10 +80,12 @@ class App:
         return ProcessIdentity(identity.pid, identity.start_token)
 
     def process(self, timeout: float | None = None) -> ProcessIdentity:
+        """The single current process identity; waits briefly for it to exist."""
         identity = self._call(self._apps.Process, self._request(timeout or self.device.timeouts.action), timeout)
         return ProcessIdentity(identity.pid, identity.start_token)
 
     def is_running(self) -> bool:
+        """Whether any process of the package is alive."""
         return self._call(self._apps.IsRunning, self._request(None), None).value
 
     def await_idle(self, timeout: float | None = None, stable_for: float = 0.2) -> None:

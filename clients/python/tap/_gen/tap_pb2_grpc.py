@@ -31,6 +31,8 @@ class RunServiceStub:
     Attach stream breaks (client exited), the service closes its sessions and frees its devices.
     ---------------------------------------------------------------------------------------------
 
+    A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
+    stream breaks (the client exited) the service closes its sessions and frees its devices.
     """
 
     def __init__(self, channel):
@@ -67,10 +69,13 @@ class RunServiceServicer:
     Attach stream breaks (client exited), the service closes its sessions and frees its devices.
     ---------------------------------------------------------------------------------------------
 
+    A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
+    stream breaks (the client exited) the service closes its sessions and frees its devices.
     """
 
     def Open(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Creates a run; call Attach next.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -84,13 +89,15 @@ class RunServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Close(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Closes every session and releases every device of the run.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Info(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Service version, protocol version and configuration.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -132,6 +139,8 @@ class RunService:
     Attach stream breaks (client exited), the service closes its sessions and frees its devices.
     ---------------------------------------------------------------------------------------------
 
+    A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
+    stream breaks (the client exited) the service closes its sessions and frees its devices.
     """
 
     @staticmethod
@@ -248,6 +257,7 @@ class PoolServiceStub:
     Pool: one machine-wide pool of devices with all-or-none role acquisition.
     ---------------------------------------------------------------------------------------------
 
+    One machine-wide pool of devices with all-or-none role acquisition.
     """
 
     def __init__(self, channel):
@@ -278,10 +288,12 @@ class PoolServiceServicer:
     Pool: one machine-wide pool of devices with all-or-none role acquisition.
     ---------------------------------------------------------------------------------------------
 
+    One machine-wide pool of devices with all-or-none role acquisition.
     """
 
     def Inventory(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Every device ADB lists, with pool state.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -295,7 +307,8 @@ class PoolServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Release(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Releases the run's devices (all, or the listed serials).
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -331,6 +344,7 @@ class PoolService:
     Pool: one machine-wide pool of devices with all-or-none role acquisition.
     ---------------------------------------------------------------------------------------------
 
+    One machine-wide pool of devices with all-or-none role acquisition.
     """
 
     @staticmethod
@@ -420,6 +434,7 @@ class SessionServiceStub:
     Sessions: one driver session on one leased device.
     ---------------------------------------------------------------------------------------------
 
+    One driver session on one leased device, for one app under test.
     """
 
     def __init__(self, channel):
@@ -460,16 +475,19 @@ class SessionServiceServicer:
     Sessions: one driver session on one leased device.
     ---------------------------------------------------------------------------------------------
 
+    One driver session on one leased device, for one app under test.
     """
 
     def Open(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Starts (installing if needed) the driver and opens an authenticated session.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Close(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Stops the driver and releases the forward; reports whether cleanup was clean.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -483,13 +501,15 @@ class SessionServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Screenshot(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """PNG of the screen, inline or written to a host path.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def DriverLog(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """The driver's log lines for the session.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -535,6 +555,7 @@ class SessionService:
     Sessions: one driver session on one leased device.
     ---------------------------------------------------------------------------------------------
 
+    One driver session on one leased device, for one app under test.
     """
 
     @staticmethod
@@ -679,6 +700,8 @@ class AppServiceStub:
     truth for verification rules). Failures are gRPC FAILED_PRECONDITION with a message.
     ---------------------------------------------------------------------------------------------
 
+    App lifecycle on a session's device: each call is executed over ADB and verified against a
+    postcondition. Failures are gRPC FAILED_PRECONDITION with a message.
     """
 
     def __init__(self, channel):
@@ -750,16 +773,20 @@ class AppServiceServicer:
     truth for verification rules). Failures are gRPC FAILED_PRECONDITION with a message.
     ---------------------------------------------------------------------------------------------
 
+    App lifecycle on a session's device: each call is executed over ADB and verified against a
+    postcondition. Failures are gRPC FAILED_PRECONDITION with a message.
     """
 
     def Install(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """`adb install -r -t`, verified.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Uninstall(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """`pm uninstall`, verified.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -771,49 +798,57 @@ class AppServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def ForceStop(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """`am force-stop` plus proof that no process remains.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ClearData(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """`pm clear`; data, cache and runtime permissions gone, app left stopped.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GrantPermission(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """`pm grant` a runtime permission.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Launch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Start the activity (or the launcher) and wait for the package to own the focused window.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ColdLaunch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Verified force-stop, launch, then a new process identity in the foreground.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Process(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """The single current process identity.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def IsRunning(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Whether any process of the package is alive.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AwaitIdle(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Wait until the app's sync-sdk busy count is zero and stable for `stable_for_ms`.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -890,6 +925,8 @@ class AppService:
     truth for verification rules). Failures are gRPC FAILED_PRECONDITION with a message.
     ---------------------------------------------------------------------------------------------
 
+    App lifecycle on a session's device: each call is executed over ADB and verified against a
+    postcondition. Failures are gRPC FAILED_PRECONDITION with a message.
     """
 
     @staticmethod

@@ -1,0 +1,73 @@
+name: Docs
+
+# Builds the public documentation (docs/ + generated Kotlin, Python and gRPC references) with
+# scripts/build-docs.sh in two editions, both uploaded as workflow artifacts on every run:
+#   site     the website (build/site), also deployed to GitHub Pages from main once Pages is
+#            enabled (Settings → Pages → Source: GitHub Actions) and DEPLOY_DOCS=true is set
+#   docs-md  tap-docs-md.zip: the same guide and references as plain Markdown files
+on:
+  push:
+    branches: [main]
+    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, .github/workflows/docs.yml]
+  pull_request:
+    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, .github/workflows/docs.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: protoc-gen-doc
+        run: |
+          curl -fsSL https://github.com/pseudomuto/protoc-gen-doc/releases/download/v1.5.1/protoc-gen-doc_1.5.1_linux_amd64.tar.gz \
+            | tar -xz -C /usr/local/bin protoc-gen-doc
+      - name: Python deps
+        run: python -m pip install --quiet -r docs/requirements.txt -e "clients/python[dev]"
+      - run: scripts/build-docs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: build/site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-md
+          path: build/tap-docs-md.zip
+      - if: github.event_name != 'pull_request' && vars.DEPLOY_DOCS == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request' && vars.DEPLOY_DOCS == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

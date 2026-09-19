@@ -88,6 +88,16 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 Not in CI, still local: `host --no-reboot`/full validation flow (needs the two-device local
 matrix and reboots), the Samsung API 29 lane.
 
+## Docs (`docs.yml`)
+
+Runs on changes to `docs/`, `mkdocs.yml`, the clients or the API proto: `scripts/build-docs.sh`
+(Dokka → `docs/reference/kotlin/`, protoc-gen-doc → `docs/reference/grpc.md`, mkdocstrings at
+build time, `mkdocs build --strict`; then Dokka GFM + lazydocs into `build/docs-md/`) and
+uploads `build/site` as the `site` artifact and `tap-docs-md.zip` as `docs-md`. Deploy to
+GitHub Pages is gated on the `DEPLOY_DOCS=true` repository variable (Pages must be enabled with
+"GitHub Actions" as the source; on a private repository it needs a plan that allows private
+Pages, otherwise the artifact is the deliverable).
+
 ## Releases (`release.yml`, on tags)
 
 `resolve` maps the tag to a family and checks the version; then one job set per family (see
