@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 64" width="200" height="64" role="img" aria-label="Tap">
+  <!-- Mark + wordmark. Wordmark set in Sora (falls back to the system geometric sans). -->
+  <rect x="15" y="5" width="34" height="54" rx="8" fill="none" stroke="#17202A" stroke-width="4"/>
+  <line x1="27" y1="52" x2="37" y2="52" stroke="#17202A" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="29" r="11.5" fill="none" stroke="#FF6A3D" stroke-width="3"/>
+  <circle cx="32" cy="29" r="5" fill="#FF6A3D"/>
+  <text x="66" y="45" fill="#17202A" font-family="Sora, 'Avenir Next', 'Segoe UI', system-ui, sans-serif" font-size="40" font-weight="600" letter-spacing="-1">tap</text>
+</svg>

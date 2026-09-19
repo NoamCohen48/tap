@@ -1,0 +1,13 @@
+/* Tap brand: ink header, coral accent, logo mark sized to the header. */
+:root {
+  --md-primary-fg-color: #17202A;
+  --md-primary-fg-color--light: #2A3644;
+  --md-primary-fg-color--dark: #0F151B;
+  --md-accent-fg-color: #FF6A3D;
+  --md-accent-fg-color--transparent: rgba(255, 106, 61, 0.1);
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0F151B;
+  --md-typeset-a-color: #FF8A66;
+}
+.md-header__button.md-logo img, .md-header__button.md-logo svg { height: 1.6rem; width: auto; }

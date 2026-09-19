@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Tap">
+  <!-- Tap mark: a device and one precise touch. The device takes currentColor; the touch is the brand coral. -->
+  <rect x="15" y="5" width="34" height="54" rx="8" fill="none" stroke="currentColor" stroke-width="4"/>
+  <line x1="27" y1="52" x2="37" y2="52" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="29" r="11.5" fill="none" stroke="#FF6A3D" stroke-width="3"/>
+  <circle cx="32" cy="29" r="5" fill="#FF6A3D"/>
+</svg>

@@ -1,5 +1,7 @@
 # Tap
 
+<img src="assets/logo-lockup.svg" alt="Tap" width="200" height="64" style="display:block;margin:0 0 1rem">
+
 **Host-driven end-to-end testing for Android.** Your tests run on the host, in Kotlin (JUnit 5)
 or Python (pytest). A per-machine service (`tap serve`) owns ADB, the devices and a small
 on-device driver; the tests talk to it over gRPC. Nothing about your app changes: the driver

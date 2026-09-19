@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-lockup-dark.svg">
+    <img src="docs/assets/logo-lockup-light.svg" alt="Tap" width="220" height="70">
+  </picture>
+</p>
+
 # Tap
 
 Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host

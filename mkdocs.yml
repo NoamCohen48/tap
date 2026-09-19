@@ -10,6 +10,8 @@ strict: false
 
 theme:
   name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
   features:
     - navigation.sections
     - navigation.expand
@@ -20,12 +22,17 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep purple
+      primary: custom
+      accent: custom
       toggle: { icon: material/brightness-7, name: Dark mode }
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep purple
+      primary: custom
+      accent: custom
       toggle: { icon: material/brightness-4, name: Light mode }
+
+extra_css:
+  - stylesheets/brand.css
 
 markdown_extensions:
   - admonition
