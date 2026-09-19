@@ -14,9 +14,14 @@ sample suite.
 
 A product team can write and run real tests today:
 
-- `:host:sdk` — `Device`, `App`, `Element`, `ElementWait`, selector DSL, typed exceptions.
-- `:host:junit5` — `@TapTest`, `Device`/`Devices` parameter injection, named roles,
-  all-or-none device pool, failure artifacts, `tap.*` system-property / `TAP_*` env config.
+- `:host:service` (`tap serve`) — the one host process: ADB, journals, leases, driver
+  lifecycle, `AppLifecycle`, machine-wide constrained device pool; JVM dist or native image.
+- `:clients:kotlin:sdk` — `TapClient`/`Run`, `Device`, `App`, `Element`, `ElementWait`,
+  selector DSL, typed exceptions; a gRPC client of the service.
+- `:clients:kotlin:junit5` — `@TapTest`, `Device`/`Devices` parameter injection, named roles,
+  all-or-none acquisition from the service pool, failure artifacts, `tap.*` system-property /
+  `TAP_*` env config.
+- `clients/python` — the same API and a pytest plugin.
 - `:samples:fixture-tests` — nine tests (single-device journeys, ambiguity, text input,
   Compose list scrolling, app-owned idle sync, lifecycle, one two-device test) passing on
   API 29 and API 34 concurrently.
@@ -44,7 +49,7 @@ The driver manifest's `<queries>` lists only the fixture's authorities
 AUT's `${applicationId}.tap-sync` provider is invisible to the driver, so `App.awaitIdle`
 fails with `SYNC_*` details for any app other than the fixture. Options, in order of
 preference: `<queries><intent>` with a Tap-specific provider action declared by
-`:sync-sdk`; `QUERY_ALL_PACKAGES` on the debug-only driver; or generating the driver APK per
+`:device:sync-sdk`; `QUERY_ALL_PACKAGES` on the debug-only driver; or generating the driver APK per
 AUT. This blocks "idling-integrated journeys" for real products and must be decided before
 the CI pilot.
 
@@ -57,8 +62,8 @@ the CI pilot.
 | `WaitOptions.stableFor` | Host-polled waits (`enabled`, `textEquals`, `count`, …) have `timeout` and `pollInterval` only; no "condition held for N ms". | Small. |
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
-| Device constraints | Pool selects by serial and pinned role only; no API range, model, emulator/physical, locale, orientation or capability constraints. | Needs `DEVICE_INFO`-backed matching in `DevicePool`. |
-| Fake ADB / fake driver coverage for the SDK | `DriverClient` has loopback tests; `DeviceSession`, `Device`, `App`, `Element`, `DevicePool` and `TapExtension` are exercised only on real devices via the sample suite. Failure paths (install failure, forward conflict, pool timeout, artifact capture failure) have no JVM tests. | Highest-value testing gap; a fake `Adb` + the existing `FakeDriverServer` would cover most of it. |
+| Device constraints | The service pool matches serial, API range, emulator/physical and model substring; no locale, orientation or capability constraints, and the JUnit extension exposes only serial pinning (`DeviceConstraints` is available from the SDK). | Extend `DeviceConstraints` + `Facts`; add a `@TapDevice(minApi = …)` style annotation. |
+| Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; `DeviceSession`, `AppLifecycle`, `TapService`, the Kotlin `Device`/`App`/`Element` and `TapExtension` are exercised only on real devices via the sample suites. Failure paths (install failure, forward conflict, pool timeout, artifact capture failure) have no JVM tests. | Highest-value testing gap; a fake `Adb` + the existing `FakeDriverServer` would cover most of it. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
 ## JUnit 5 integration (plan §18) — Phase 3
@@ -158,26 +163,27 @@ release automation, upgrade/rollback procedure.
 ## Second-language binding (design doc §8)
 
 Implemented (2026-09-19): the host session service (`:host:service`, `service-api.md`),
-its native image, and the Python client + pytest plugin (`python/`), with the sample suite
-passing on API 29 and API 34 through the service. The pool now has per-role constraints
-(serial, API range, emulator, model) and immediate release on client death. Remaining:
+its native image, and the Python client + pytest plugin (`clients/python/`), with the sample suite
+passing on API 29 and API 34 through the service. The pool has per-role constraints
+(serial, API range, emulator, model) and immediate release on client death. The Kotlin
+SDK/JUnit extension is a gRPC client of the same service (2026-09-19): one pool serves both
+languages and nothing under `host/` depends on `clients/`. Remaining:
 
 | Gap | Impact | Notes |
 |---|---|---|
-| Kotlin JUnit path still uses `:host` directly | Two lifecycle processes per machine (in-JVM `DevicePool` + service pool); they only exclude each other through the journal lease, without queueing | Route `TapExtension` through the service (gRPC client in `:host:junit5`), then delete `DevicePool`. |
 | pytest plugin exposes pinned serials only | `min_api`/`emulator`/`model_contains` are reachable from scripts but not from a marker | Add `@pytest.mark.tap_devices(left={"min_api": 30}, ...)`. |
 | No CI job for `gen_stubs.py --check`, `:host:service:test`, or the native build | Stub drift and native-image regressions are only caught locally | Part of the CI lanes item below. |
-| `tap-e2e` is not published; `pip install -e python` only | Consumers need the checkout | Wheel + release job once the API settles. |
+| `tap-e2e` is not published; `pip install -e clients/python` only | Consumers need the checkout | Wheel + release job once the API settles. |
 | Service has no per-run structured event stream | Bindings cannot build reports from service events | Belongs with plan §19 events. |
 | Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later, as with the Kotlin coroutine façade. |
 
 ## Suggested order
 
-1. Fake-ADB JVM tests for `DeviceSession`/`DevicePool`/`TapExtension` failure paths.
+1. Fake-ADB JVM tests for `DeviceSession`/`AppLifecycle`/`TapService` failure paths and
+   in-process gRPC tests for the Kotlin client and `TapExtension`.
 2. Provider visibility decision + `session.shutdown` + `wait.screenStable` (small protocol
    additions; update `protocol-contract.md` and golden fixtures in the same change).
 3. Logcat + `dumpsys` in failure artifacts, run layout, JSONL events, then JUnit XML/HTML.
 4. Crash/ANR codes with a crashing fixture activity.
 5. Coroutine façade (`tapTest`, `DeviceBarrier`) once the synchronous API has settled.
 6. Quarantine re-run and the remaining Phase 3 JUnit contracts.
-7. Move the Kotlin JUnit extension onto the service so one pool serves both languages.

@@ -7,7 +7,7 @@ kotlin {
 }
 
 dependencies {
-    testImplementation(project(":host:junit5"))
+    testImplementation(project(":clients:kotlin:junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
     testImplementation(kotlin("test"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -16,25 +16,28 @@ dependencies {
 /*
  * Real-device sample suite. Run with:
  *   ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554[,SERIAL]
- * Without -Ptap.serials the task is skipped. The fixture app and the driver APKs are built
- * and installed automatically.
+ * Without -Ptap.serials the task is skipped. The fixture app and the host service (which
+ * bundles the driver) are built automatically; the tests talk to a running `tap serve` or
+ * auto-start the JVM distribution built here.
  */
 val serials = providers.gradleProperty("tap.serials")
-val fixtureApk = layout.projectDirectory.file("../../fixture-app/build/outputs/apk/debug/fixture-app-debug.apk")
-val driverApk = layout.projectDirectory.file("../../driver/build/outputs/apk/debug/driver-debug.apk")
-val driverTestApk = layout.projectDirectory.file("../../driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk")
+val fixtureApk = rootProject.layout.projectDirectory.file("fixture-app/build/outputs/apk/debug/fixture-app-debug.apk")
+val serviceBin = rootProject.layout.projectDirectory.file("host/service/build/install/tap/bin/tap")
 
 tasks.test {
     useJUnitPlatform()
     enabled = serials.isPresent
-    dependsOn(":fixture-app:assembleDebug", ":driver:assembleDebug", ":driver:assembleDebugAndroidTest")
+    dependsOn(":fixture-app:assembleDebug", ":host:service:installDist")
     outputs.upToDateWhen { false }
     systemProperty("tap.serials", serials.getOrElse(""))
     systemProperty("tap.autPackage", "com.company.tap.fixture")
-    systemProperty("tap.driverApk", driverApk.asFile.absolutePath)
-    systemProperty("tap.driverTestApk", driverTestApk.asFile.absolutePath)
+    systemProperty("tap.bin", serviceBin.asFile.absolutePath)
     systemProperty("tap.fixtureApk", fixtureApk.asFile.absolutePath)
     systemProperty("tap.artifactsDir", layout.buildDirectory.dir("tap-artifacts").get().asFile.absolutePath)
+    // Optional overrides: -Ptap.acquireTimeoutSeconds=…, -Ptap.service=host:port
+    listOf("tap.acquireTimeoutSeconds", "tap.service").forEach { name ->
+        providers.gradleProperty(name).orNull?.let { systemProperty(name, it) }
+    }
     // Devices are the unit of parallelism; JUnit runs test classes concurrently when configured.
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
     systemProperty("junit.jupiter.execution.parallel.mode.default", "same_thread")

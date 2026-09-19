@@ -2,7 +2,7 @@ package com.company.tap.samples
 
 import com.company.tap.sdk.App
 import com.company.tap.sdk.Device
-import com.company.tap.protocol.Selector
+import com.company.tap.sdk.Selector
 import com.company.tap.sdk.resId
 import java.nio.file.Path
 

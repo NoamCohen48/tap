@@ -2,14 +2,16 @@ package com.company.tap.service
 
 import com.company.tap.api.v1.DeviceConstraints
 import com.company.tap.host.Adb
+import com.company.tap.host.AppLifecycle
 import com.company.tap.host.CommandTransportException
+import com.company.tap.host.DeviceSession
 import com.company.tap.host.DeviceSessionConfig
 import com.company.tap.host.DriverClient
 import com.company.tap.host.JournalState
 import com.company.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import com.company.tap.host.SessionJournalStore
 import com.company.tap.protocol.Response
-import com.company.tap.sdk.Device
+import com.google.protobuf.TextFormat
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -52,7 +54,12 @@ class Run(val id: String, val name: String) {
     val onClose = ConcurrentHashMap.newKeySet<() -> Unit>()
 }
 
-class ManagedSession(val id: String, val run: Run, val device: Device, val defaultTimeoutMs: Long, val log: RingLog)
+class ManagedSession(val id: String, val run: Run, val device: DeviceSession, val defaultTimeoutMs: Long, val log: RingLog) {
+    private val apps = ConcurrentHashMap<String, AppLifecycle>()
+
+    /** One [AppLifecycle] per package so the sync identity survives across calls. */
+    fun app(packageName: String): AppLifecycle = apps.computeIfAbsent(packageName) { AppLifecycle(device, it) }
+}
 
 /** Bounded driver log kept per session for failure artifacts. */
 class RingLog(private val capacity: Int = 2_000) {
@@ -147,6 +154,8 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
                 lastReason = "free=${candidates.map { it.serial }} leased=${leases.keys}"
                 val remaining = deadline - System.nanoTime()
                 if (remaining <= 0) {
+                    val wanted = roles.joinToString { (role, c) -> "$role=${TextFormat.shortDebugString(c).ifEmpty { "any" }}" }
+                    config.log("run ${run.id} acquire timed out after ${timeoutMs}ms: roles {$wanted} $lastReason")
                     throw AcquireTimeoutException("Timed out after ${timeoutMs}ms acquiring roles ${roles.map { it.first }} ($lastReason)")
                 }
                 poolChanged.await(minOf(remaining, TimeUnit.SECONDS.toNanos(2)), TimeUnit.NANOSECONDS)
@@ -224,7 +233,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         val installBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null && driverInstalled.add(serial)
         val log = RingLog()
         val device = try {
-            Device.connect(
+            DeviceSession.open(
                 DeviceSessionConfig(
                     serial = serial,
                     autPackage = autPackage,
@@ -244,7 +253,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         val session = ManagedSession(UUID.randomUUID().toString(), run, device, options.defaultTimeoutMs, log)
         sessions[session.id] = session
         run.sessions[session.id] = session
-        config.log("session ${session.id} open on $serial (generation ${device.session.generation}) for run ${run.id}")
+        config.log("session ${session.id} open on $serial (generation ${device.generation}) for run ${run.id}")
         return session
     }
 
