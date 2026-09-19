@@ -51,12 +51,13 @@ class MainScreenTest {
         Fixture.launch(device)
 
         val list = device.element(rawRes("composeList"))
-        val item = list.scrollUntil(rawRes("item-40"), maxScrolls = 30)
+        // Up to 30 gestures in one command: give it more than the 10 s action default (slow CI emulators).
+        val item = list.scrollUntil(rawRes("item-40"), maxScrolls = 30, timeout = 30.seconds)
         assertTrue(item.exists())
         assertEquals("Item 40", item.text())
 
         // Back up: UiAutomator scroll direction names the content edge you move towards.
-        val first = list.scrollUntil(rawRes("item-1"), direction = Direction.DIR_UP, maxScrolls = 30)
+        val first = list.scrollUntil(rawRes("item-1"), direction = Direction.DIR_UP, maxScrolls = 30, timeout = 30.seconds)
         assertEquals("Item 1", first.text())
     }
 

@@ -35,12 +35,13 @@ def test_scrolls_compose_list_until_item_is_visible(tap_device):
     launch(tap_device)
 
     lst = tap_device.element(raw_res("composeList"))
-    item = lst.scroll_until(raw_res("item-40"), max_scrolls=30)
+    # Up to 30 gestures in one command: more than the 10 s action default (slow CI emulators).
+    item = lst.scroll_until(raw_res("item-40"), max_scrolls=30, timeout=30)
     assert item.exists()
     assert item.text() == "Item 40"
 
     # Back up: UiAutomator scroll direction names the content edge you move towards.
-    first = lst.scroll_until(raw_res("item-1"), direction=UP, max_scrolls=30)
+    first = lst.scroll_until(raw_res("item-1"), direction=UP, max_scrolls=30, timeout=30)
     assert first.text() == "Item 1"
 
 
