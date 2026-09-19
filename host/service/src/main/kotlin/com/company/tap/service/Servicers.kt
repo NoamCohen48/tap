@@ -40,12 +40,13 @@ import com.company.tap.api.v1.RunServiceGrpc
 import com.company.tap.api.v1.ScreenshotRequest
 import com.company.tap.api.v1.ScreenshotResponse
 import com.company.tap.api.v1.SessionServiceGrpc
+import com.company.tap.host.AppLifecycle
+import com.company.tap.host.AppLifecycleException
 import com.company.tap.host.DriverClient
+import com.company.tap.host.HostWaitTimeoutException
 import com.company.tap.host.ProcessObservation
 import com.company.tap.protocol.HOST_BUILD_ID
-import com.company.tap.sdk.App
-import com.company.tap.sdk.AppLifecycleException
-import com.company.tap.sdk.WaitTimeoutException
+import com.company.tap.protocol.Operation
 import com.google.protobuf.ByteString
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
@@ -58,16 +59,20 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.time.Duration.Companion.milliseconds
 
 const val SERVICE_VERSION = "0.1.0"
+
+/** Defaults applied when a request leaves its timeout at 0. */
+const val DEFAULT_ACTION_TIMEOUT_MS = 10_000L
+const val DEFAULT_WAIT_TIMEOUT_MS = 10_000L
+const val DEFAULT_LIFECYCLE_TIMEOUT_MS = 30_000L
 
 /** Maps service exceptions to gRPC status codes; everything else is INTERNAL with the message. */
 internal fun Throwable.toStatus(): StatusRuntimeException = when (this) {
     is StatusRuntimeException -> this
     is UnknownRunException, is UnknownSessionException -> Status.NOT_FOUND.withDescription(message).asRuntimeException()
     is IllegalArgumentException -> Status.INVALID_ARGUMENT.withDescription(message).asRuntimeException()
-    is AcquireTimeoutException, is WaitTimeoutException -> Status.DEADLINE_EXCEEDED.withDescription(message).asRuntimeException()
+    is AcquireTimeoutException, is HostWaitTimeoutException -> Status.DEADLINE_EXCEEDED.withDescription(message).asRuntimeException()
     is AppLifecycleException, is IllegalStateException -> Status.FAILED_PRECONDITION.withDescription(message).asRuntimeException()
     else -> Status.INTERNAL.withDescription("${this::class.simpleName}: $message").withCause(this).asRuntimeException()
 }
@@ -206,8 +211,14 @@ class SessionServicer(
         OpenSessionResponse.newBuilder()
             .setSessionId(session.id)
             .setSerial(session.device.serial)
-            .setGeneration(session.device.session.generation)
-            .setDeviceInfo(Conversions.deviceInfo(session.device.info()))
+            .setGeneration(session.device.generation)
+            .setDeviceInfo(
+                Conversions.deviceInfo(
+                    requireNotNull(
+                        session.device.client.executeOrThrow(Operation.DEVICE_INFO, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS).deviceInfo,
+                    ),
+                ),
+            )
             .build()
     }
 
@@ -239,7 +250,7 @@ class SessionServicer(
                     pendingRef.set(pending)
                     if (cancelled.get()) pending.cancel()
                 }
-                Conversions.result(response, requestId, session.device.session.generation)
+                Conversions.result(response, requestId, session.device.generation)
             }
         }
     }
@@ -266,19 +277,19 @@ class SessionServicer(
     }
 }
 
-/** Delegates to the SDK's [App] so lifecycle verification rules exist once. */
+/** Delegates to [AppLifecycle] in host core so lifecycle verification rules exist once. */
 class AppServicer(private val service: TapService) : AppServiceGrpc.AppServiceImplBase() {
-    private fun app(request: AppRequest): Pair<App, Long> {
+    private fun app(request: AppRequest): Pair<AppLifecycle, Long> {
         require(request.packageName.isNotBlank()) { "package_name is required" }
         val session = service.session(request.sessionId)
-        return session.device.app(request.packageName) to (if (request.timeoutMs > 0) request.timeoutMs else 0L)
+        return session.app(request.packageName) to (if (request.timeoutMs > 0) request.timeoutMs else 0L)
     }
 
-    private fun timeout(ms: Long, default: kotlin.time.Duration) = if (ms > 0) ms.milliseconds else default
+    private fun timeout(ms: Long, default: Long) = if (ms > 0) ms else default
 
     override fun install(request: AppInstallRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
         val (app, ms) = app(request.app)
-        app.install(Path.of(request.apkPath), timeout(ms, app.device.timeouts.lifecycle))
+        app.install(Path.of(request.apkPath), timeout(ms, DEFAULT_LIFECYCLE_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
@@ -293,13 +304,13 @@ class AppServicer(private val service: TapService) : AppServiceGrpc.AppServiceIm
 
     override fun forceStop(request: AppRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
         val (app, ms) = app(request)
-        app.forceStop(timeout(ms, app.device.timeouts.action))
+        app.forceStop(timeout(ms, DEFAULT_ACTION_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
     override fun clearData(request: AppRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
         val (app, ms) = app(request)
-        app.clearData(timeout(ms, app.device.timeouts.action))
+        app.clearData(timeout(ms, DEFAULT_ACTION_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
@@ -310,18 +321,18 @@ class AppServicer(private val service: TapService) : AppServiceGrpc.AppServiceIm
 
     override fun launch(request: AppLaunchRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
         val (app, ms) = app(request.app)
-        app.launch(request.takeIf { it.hasActivity() }?.activity, timeout(ms, app.device.timeouts.lifecycle))
+        app.launch(request.takeIf { it.hasActivity() }?.activity, timeout(ms, DEFAULT_LIFECYCLE_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
     override fun coldLaunch(request: AppLaunchRequest, observer: StreamObserver<ProcessIdentity>) = reply(observer) {
         val (app, ms) = app(request.app)
-        app.coldLaunch(request.takeIf { it.hasActivity() }?.activity, timeout(ms, app.device.timeouts.lifecycle)).toProto()
+        app.coldLaunch(request.takeIf { it.hasActivity() }?.activity, timeout(ms, DEFAULT_LIFECYCLE_TIMEOUT_MS)).toProto()
     }
 
     override fun process(request: AppRequest, observer: StreamObserver<ProcessIdentity>) = reply(observer) {
         val (app, ms) = app(request)
-        app.process(timeout(ms, app.device.timeouts.action)).toProto()
+        app.process(timeout(ms, DEFAULT_ACTION_TIMEOUT_MS)).toProto()
     }
 
     override fun isRunning(request: AppRequest, observer: StreamObserver<AppBool>) = reply(observer) {
@@ -330,10 +341,7 @@ class AppServicer(private val service: TapService) : AppServiceGrpc.AppServiceIm
 
     override fun awaitIdle(request: AppAwaitIdleRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
         val (app, ms) = app(request.app)
-        app.awaitIdle(
-            timeout(ms, app.device.timeouts.wait),
-            if (request.stableForMs > 0) request.stableForMs.milliseconds else 200.milliseconds,
-        )
+        app.awaitIdle(timeout(ms, DEFAULT_WAIT_TIMEOUT_MS), if (request.stableForMs > 0) request.stableForMs else 200)
         AppEmpty.getDefaultInstance()
     }
 

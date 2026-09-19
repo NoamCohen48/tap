@@ -14,6 +14,6 @@ application {
 }
 
 dependencies {
-    implementation(project(":host"))
+    implementation(project(":host:core"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }

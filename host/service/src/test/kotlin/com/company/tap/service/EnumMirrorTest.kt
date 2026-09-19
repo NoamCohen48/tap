@@ -15,7 +15,7 @@ import com.company.tap.protocol.TargetScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** `api/tap.proto` enums must be exactly the protocol enums, prefixed, plus `*_UNSPECIFIED`. */
+/** `contracts/api/proto/tap.proto` enums must be exactly the protocol enums, prefixed, plus `*_UNSPECIFIED`. */
 class EnumMirrorTest {
     @Test
     fun `proto enums mirror protocol enums`() {
@@ -36,6 +36,6 @@ class EnumMirrorTest {
 
     private fun assertMirror(prefix: String, proto: List<String>, kotlin: List<String>) {
         val mirrored = proto.filter { it != "UNRECOGNIZED" && !it.endsWith("UNSPECIFIED") }
-        assertEquals(kotlin.map { prefix + it }, mirrored, "$prefix enum drifted between api/tap.proto and the protocol")
+        assertEquals(kotlin.map { prefix + it }, mirrored, "$prefix enum drifted between contracts/api/proto/tap.proto and the protocol")
     }
 }

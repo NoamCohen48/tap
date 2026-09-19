@@ -1,12 +1,11 @@
 package com.company.tap.samples
 
-import com.company.tap.host.RemoteCommandException
+import com.company.tap.api.v1.Direction
+import com.company.tap.api.v1.ErrorCode
 import com.company.tap.junit5.TapTest
-import com.company.tap.protocol.Direction
-import com.company.tap.protocol.ErrorCode
+import com.company.tap.sdk.CommandException
 import com.company.tap.sdk.Device
 import com.company.tap.sdk.WaitTimeoutException
-import com.company.tap.sdk.andText
 import com.company.tap.sdk.rawRes
 import com.company.tap.sdk.text
 import com.company.tap.sdk.textMatches
@@ -57,7 +56,7 @@ class MainScreenTest {
         assertEquals("Item 40", item.text())
 
         // Back up: UiAutomator scroll direction names the content edge you move towards.
-        val first = list.scrollUntil(rawRes("item-1"), direction = Direction.UP, maxScrolls = 30)
+        val first = list.scrollUntil(rawRes("item-1"), direction = Direction.DIR_UP, maxScrolls = 30)
         assertEquals("Item 1", first.text())
     }
 
@@ -67,10 +66,10 @@ class MainScreenTest {
 
         // Material buttons expose their all-caps rendering as accessibility text.
         val ambiguous = textMatches("(?i)ambiguous tap")
-        val failure = assertFailsWith<RemoteCommandException> {
+        val failure = assertFailsWith<CommandException> {
             device.element(ambiguous).tap()
         }
-        assertEquals(ErrorCode.AMBIGUOUS, failure.code)
+        assertEquals(ErrorCode.ERR_AMBIGUOUS, failure.code)
         assertEquals(2, device.element(ambiguous).count())
         assertEquals("Ambiguous taps: left=0 right=0", device.element(Fixture.id("ambiguous_status")).text())
 
