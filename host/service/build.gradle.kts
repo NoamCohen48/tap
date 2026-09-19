@@ -3,6 +3,7 @@ import com.google.protobuf.gradle.id
 plugins {
     id("org.jetbrains.kotlin.jvm")
     id("com.google.protobuf") version "0.9.5"
+    id("org.graalvm.buildtools.native") version "0.11.3"
     application
 }
 
@@ -73,4 +74,28 @@ tasks.test {
         "tap.goldenDir",
         rootProject.layout.projectDirectory.dir("protocol/src/test/resources/golden").asFile.absolutePath,
     )
+}
+
+/*
+ * Self-contained binary. Requires a GraalVM JDK (21+) at GRAALVM_HOME; the regular Kotlin
+ * compilation still uses the JDK 17 toolchain. Reflection/resource metadata for the shaded
+ * Netty transport and the JSON protocol classes is committed under
+ * src/main/resources/META-INF/native-image and was recorded with the tracing agent
+ * (see README "Native image").
+ */
+graalvmNative {
+    toolchainDetection.set(false)
+    metadataRepository { enabled.set(true) }
+    binaries {
+        named("main") {
+            imageName.set("tap")
+            mainClass.set("com.company.tap.service.ServiceMainKt")
+            buildArgs.addAll(
+                "--no-fallback",
+                "-H:+ReportExceptionStackTraces",
+                "-march=compatibility",
+                "--initialize-at-build-time=kotlin",
+            )
+        }
+    }
 }
