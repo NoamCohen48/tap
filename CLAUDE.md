@@ -25,6 +25,9 @@ See `README.md` for build/run commands.
 - `.docs/multi-language-bindings.md` — analysis behind the service + Python binding, with
   the outcome section recording what was decided.
 - `.docs/upstream-reference-audit.md` — adopt/adapt/do-not-copy decisions per upstream tool.
+- `.docs/release-engineering.md` — artifact families, version lines (`gradle.properties`
+  `tap.version.*`, `pyproject.toml`), CI jobs and tag-driven releases. Versions are bumped
+  there, never in code (`ENGINE_VERSION` is generated).
 
 ## Learning from other testing tools
 
@@ -82,7 +85,9 @@ Rules when doing so:
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.
 - `contracts/api/proto/tap.proto` is the single source for the service API. After editing it: run
   `:host:service:test` (enum mirror + golden round trip), regenerate the committed Python stubs
-  with `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools`), and update `.docs/service-api.md`.
+  with `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools` at the version pinned in
+  the script), and update `.docs/service-api.md`. CI also runs `buf lint`/`buf breaking`
+  (`contracts/api/buf.yaml`): only add fields/values; never remove, renumber or retype.
 - Native image: `GRAALVM_HOME=~/.local/share/graalvm/graalvm-community-openjdk-21.0.2+13.1
   ./gradlew :host:service:nativeCompile` (JAVA_HOME stays JDK 17). If a new dependency uses
   reflection, re-record `host/service/src/main/resources/META-INF/native-image` with the

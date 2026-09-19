@@ -235,6 +235,20 @@ and an AUT-scoped accessibility inventory. It does not define a second test DSL.
 For framework fault validation, prefix a tap step with `!ERROR_CODE:`, for example
 `'!AMBIGUOUS:Duplicate label|Unchanged status|ambiguous-tap'`.
 
+## Versioning, CI and releases
+
+Four independently versioned artifact families: the **engine** (`tap` service binary/JVM
+dist with the bundled driver, plus the `com.company.tap:tap-api` stubs; `tap.version.engine`
+in `gradle.properties`), the **Kotlin client** (`tap-client`, `tap-junit5`;
+`tap.version.client.kotlin`), the **Python client** (`tap-e2e`; `clients/python/pyproject.toml`)
+and **sync-sdk** (`tap-sync-sdk`; `tap.version.sync-sdk`). Tag `service/vX.Y.Z`,
+`client-kotlin/vX.Y.Z`, `client-python/vX.Y.Z` or `sync-sdk/vX.Y.Z` on a commit whose
+version matches and `.github/workflows/release.yml` publishes to GitHub Packages (Maven) and
+GitHub Releases (binaries, wheel). `ci.yml` lints the proto, checks it for breaking changes
+and stub drift, runs the JVM/Python builds and unit tests, the sample suites on an API 34
+emulator and the native image. Details and rationale (why the driver is not a separate
+package): [`.docs/release-engineering.md`](.docs/release-engineering.md).
+
 ## Design
 
 The normative design is in

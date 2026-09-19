@@ -45,6 +45,7 @@ import com.company.tap.host.AppLifecycleException
 import com.company.tap.host.DriverClient
 import com.company.tap.host.HostWaitTimeoutException
 import com.company.tap.host.ProcessObservation
+import com.company.tap.protocol.ENGINE_VERSION
 import com.company.tap.protocol.HOST_BUILD_ID
 import com.company.tap.protocol.Operation
 import com.google.protobuf.ByteString
@@ -60,7 +61,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-const val SERVICE_VERSION = "0.1.0"
+const val SERVICE_VERSION = ENGINE_VERSION
 
 /** Defaults applied when a request leaves its timeout at 0. */
 const val DEFAULT_ACTION_TIMEOUT_MS = 10_000L

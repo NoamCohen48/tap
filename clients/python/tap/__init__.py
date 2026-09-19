@@ -10,6 +10,8 @@
             device.element(res_id("com.example.app", "login")).tap()
             device.wait(text("Welcome")).visible()
 """
+from importlib.metadata import PackageNotFoundError, version as _dist_version
+
 from ._gen import tap_pb2 as pb
 from .app import App, ProcessIdentity
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
@@ -33,3 +35,8 @@ __all__ = [
     "raw_res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
     "DeviceFacts", "Run", "Service", "resolve_address",
 ]
+
+try:
+    __version__ = _dist_version("tap-e2e")
+except PackageNotFoundError:  # running from a checkout without an install
+    __version__ = "0.0.0+unknown"

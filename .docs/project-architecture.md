@@ -186,6 +186,7 @@ tap/
 |       +-- MultiDeviceTest.kt   @TapDevices("left","right") concurrent two-device journey
 |       +-- MotionTest.kt        awaitAnimationEnd / awaitAppSettled: wait out an animation, time out on a ticking screen
 |
++-- .github/                     CI (ci.yml) and tag-driven releases (release.yml, scripts/release_version.py); see release-engineering.md
 +-- fixture-app/                 Android app used only by the validation flow and the samples
     +-- src/main/AndroidManifest.xml
     +-- src/main/kotlin/com/company/tap/fixture/

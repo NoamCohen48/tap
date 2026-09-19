@@ -154,10 +154,16 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 
 ## CI, benchmarks, reliability gates (plan §23–24, Phase 3–4)
 
-Not started: clean-worker emulator provisioning, sharding across devices at the JUnit
-platform level (the pool handles concurrency inside one JVM only), soak lane, benchmark
+Done (2026-09-19, `release-engineering.md`): GitHub Actions CI (API contract lint/breaking +
+stub check, JVM unit tests and artifacts, Python build, API 34 emulator sample suites, native
+image on `main`) and tag-driven releases per artifact family (service binaries + `tap-api`,
+Kotlin client, Python wheel, sync-sdk) with per-family versions. Not yet proven on a GitHub
+runner (no push since it was written).
+
+Not started: sharding across devices at the JUnit platform level (the pool handles
+concurrency inside one JVM only), a physical-device / API 29 CI lane, soak lane, benchmark
 gates (per-command latency, session start time), the confidence-based reliability gate,
-release automation, upgrade/rollback procedure.
+upgrade/rollback procedure, run-time client↔service version skew check.
 
 ## Second-language binding (design doc §8)
 
@@ -171,8 +177,6 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 | Gap | Impact | Notes |
 |---|---|---|
 | pytest plugin exposes pinned serials only | `min_api`/`emulator`/`model_contains` are reachable from scripts but not from a marker | Add `@pytest.mark.tap_devices(left={"min_api": 30}, ...)`. |
-| No CI job for `gen_stubs.py --check`, `:host:service:test`, or the native build | Stub drift and native-image regressions are only caught locally | Part of the CI lanes item below. |
-| `tap-e2e` is not published; `pip install -e clients/python` only | Consumers need the checkout | Wheel + release job once the API settles. |
 | Service has no per-run structured event stream | Bindings cannot build reports from service events | Belongs with plan §19 events. |
 | Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later, as with the Kotlin coroutine façade. |
 
