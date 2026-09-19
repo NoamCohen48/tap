@@ -8,6 +8,11 @@ This document describes the implemented wire contract. Planned but unimplemented
 (events, typed element handles, multi-gesture input) remain design work in
 `android-e2e-framework-implementation-plan.md` and are not part of protocol 1.0 yet.
 
+`api/tap.proto` (the host service API, `service-api.md`) mirrors this contract's enums,
+selector AST and request/response models; `EnumMirrorTest` and `GoldenRoundTripTest` in
+`:host:service` fail when they drift. A change here therefore also updates the proto and the
+committed Python stubs (`python/scripts/gen_stubs.py`).
+
 ## Framing
 
 Every frame uses this big-endian header:

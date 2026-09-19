@@ -157,10 +157,19 @@ release automation, upgrade/rollback procedure.
 
 ## Second-language binding (design doc §8)
 
-Not started. The requirement is a Python binding; the analysis, the recommended host
-session service (single implementation of the lifecycle/journal/pool layer, language-neutral
-local API), the merged machine-wide device pool, packaging options, and the open decisions
-are in `multi-language-bindings.md`.
+Implemented (2026-09-19): the host session service (`:host:service`, `service-api.md`),
+its native image, and the Python client + pytest plugin (`python/`), with the sample suite
+passing on API 29 and API 34 through the service. The pool now has per-role constraints
+(serial, API range, emulator, model) and immediate release on client death. Remaining:
+
+| Gap | Impact | Notes |
+|---|---|---|
+| Kotlin JUnit path still uses `:host` directly | Two lifecycle processes per machine (in-JVM `DevicePool` + service pool); they only exclude each other through the journal lease, without queueing | Route `TapExtension` through the service (gRPC client in `:host:junit5`), then delete `DevicePool`. |
+| pytest plugin exposes pinned serials only | `min_api`/`emulator`/`model_contains` are reachable from scripts but not from a marker | Add `@pytest.mark.tap_devices(left={"min_api": 30}, ...)`. |
+| No CI job for `gen_stubs.py --check`, `:host:service:test`, or the native build | Stub drift and native-image regressions are only caught locally | Part of the CI lanes item below. |
+| `tap-e2e` is not published; `pip install -e python` only | Consumers need the checkout | Wheel + release job once the API settles. |
+| Service has no per-run structured event stream | Bindings cannot build reports from service events | Belongs with plan §19 events. |
+| Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later, as with the Kotlin coroutine façade. |
 
 ## Suggested order
 
@@ -171,3 +180,4 @@ are in `multi-language-bindings.md`.
 4. Crash/ANR codes with a crashing fixture activity.
 5. Coroutine façade (`tapTest`, `DeviceBarrier`) once the synchronous API has settled.
 6. Quarantine re-run and the remaining Phase 3 JUnit contracts.
+7. Move the Kotlin JUnit extension onto the service so one pool serves both languages.

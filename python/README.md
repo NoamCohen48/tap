@@ -29,7 +29,6 @@ from tap import Service, text, res_id
 
 service = Service()
 with service.open_run("smoke") as run:                  # attaches: if this process dies, the
-    run.acquire({"device": {"emulator": True}}, 60)      # service releases everything it held
     facts = run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)["device"]
     with run.open_device(facts.serial, "com.company.tap.fixture") as device:
         device.app().cold_launch(".MainActivity")
