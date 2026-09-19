@@ -1,9 +1,12 @@
 # Tap
 
-Kotlin host-driven Android E2E framework. Phases 0 and 1 (contract and driver) are complete;
-Phase 2 (host SDK + JUnit 5) has a usable first cut in `:host:sdk`, `:host:junit5`, and
-`:samples:fixture-tests`. `:host:service` (`tap serve`, gRPC over loopback, native image)
-exposes the same SDK to other languages; `python/` is the Python client + pytest plugin.
+Kotlin host-driven Android E2E framework in three components, mirrored by the layout:
+`device/` (driver, sync-sdk), `host/` (`:host:core` session infrastructure, `:host:service` =
+`tap serve` over loopback gRPC / native image, `:host:validation`), `clients/` (Kotlin SDK +
+JUnit 5, Python + pytest — all gRPC clients of the service), with `contracts/` holding the
+TAP1 device protocol and the `tap.v1` service API. Phases 0 and 1 (contract and driver) are
+complete; Phase 2 (service + clients) has a usable first cut with `:samples:fixture-tests`.
+Nothing under `host/` may depend on `clients/`; clients depend only on `:contracts:api`.
 See `README.md` for build/run commands.
 
 ## Documents
@@ -17,7 +20,7 @@ See `README.md` for build/run commands.
   implemented *and* exercised by a test or the device validation flow.
 - `.docs/framework-gaps.md` — the remaining delta to the plan, per section. Move an item out
   of it only together with the test or device check that proves it.
-- `.docs/service-api.md` — the host service contract (`api/tap.proto`, `tap.v1`): run
+- `.docs/service-api.md` — the host service contract (`contracts/api/proto/tap.proto`, `tap.v1`): run
   liveness, pool, sessions, status mapping, native build. Update it with any proto change.
 - `.docs/multi-language-bindings.md` — analysis behind the service + Python binding, with
   the outcome section recording what was decided.
@@ -57,6 +60,8 @@ Rules when doing so:
 - Never replay a transmitted mutation; transport loss after acceptance is `INDETERMINATE`.
 - Request IDs are strictly increasing per session generation; old generations are rejected.
 - Every ADB call is serial-specific (`-s`); never `forward --remove-all`.
+- Layering: `clients/*` → `:contracts:api` only; `host/*` never references `clients/`; all
+  ADB/journal/lease/driver/app lifecycle lives in `:host:core` and is reached through the service.
 
 ## Build notes
 
@@ -67,20 +72,23 @@ Rules when doing so:
   and reboots devices. Do not run it against shared devices without asking.
   `host --no-reboot ...` skips only the reboot scenario and is safe for routine validation on
   the local matrix (emulator-5554 API 34, 85e49002 Samsung SM-J810G API 29).
-- SDK/JUnit changes are validated with
-  `./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002`.
+- Client/service changes are validated with
+  `./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (auto-starts the
+  JVM service dist, which keeps running; `host/service/build/install/tap/bin/tap stop`) and the
+  Python suite below. Unit tests: `:host:core:test :host:service:test :contracts:protocol:test
+  :device:driver:command-engine:test`.
 - Product code must never depend on `:host:validation`; `PhaseZeroMain` is fault-injection
   validation, not framework code.
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.
-- `api/tap.proto` is the single source for the service API. After editing it: run
+- `contracts/api/proto/tap.proto` is the single source for the service API. After editing it: run
   `:host:service:test` (enum mirror + golden round trip), regenerate the committed Python stubs
-  with `python/scripts/gen_stubs.py` (needs `grpcio-tools`), and update `.docs/service-api.md`.
+  with `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools`), and update `.docs/service-api.md`.
 - Native image: `GRAALVM_HOME=~/.local/share/graalvm/graalvm-community-openjdk-21.0.2+13.1
   ./gradlew :host:service:nativeCompile` (JAVA_HOME stays JDK 17). If a new dependency uses
   reflection, re-record `host/service/src/main/resources/META-INF/native-image` with the
   tracing agent (`JAVA_OPTS=-agentlib:native-image-agent=config-output-dir=...` on the JVM
   dist while running the smoke flow).
 - Python: system Python has no pip; use a venv (`python -m venv .venv && .venv/bin/pip install
-  -e python[dev]`). `TAP_BIN=<native tap> TAP_SERIALS=emulator-5554,85e49002 pytest python/tests`
+  -e clients/python[dev]`). `TAP_BIN=<native tap> TAP_SERIALS=emulator-5554,85e49002 pytest clients/python/tests`
   validates the service + client on the local matrix. An auto-started service keeps running;
   `tap stop` ends it.

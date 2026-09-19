@@ -1,14 +1,16 @@
 # Tap
 
-Kotlin host-driven Android E2E framework with a Python binding. Phases 0 and 1
-(feasibility, contract, driver) are complete, the first usable cut of Phase 2 (host SDK +
-JUnit 5) is in, and a host session service (`tap serve`, gRPC, native image) backs the
-Python client and pytest plugin; this is not a production release. What is still missing is listed in
-[`.docs/framework-gaps.md`](.docs/framework-gaps.md).
+Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host
+service per machine (`host/`, `tap serve`: ADB, driver lifecycle, sessions, device pool; gRPC
+over loopback, JVM or native image) and thin language clients (`clients/`: Kotlin SDK +
+JUnit 5, Python + pytest). `contracts/` holds what they agree on (the TAP1 device protocol
+and the `tap.v1` service API). Phases 0 and 1 (feasibility, contract, driver) are complete
+and the first usable cut of Phase 2 (service + clients) is in; this is not a production
+release. What is still missing is listed in [`.docs/framework-gaps.md`](.docs/framework-gaps.md).
 
 ## Writing tests
 
-Add `:host:junit5` to a JUnit 5 test source set and annotate the class with `@TapTest`:
+Add `:clients:kotlin:junit5` to a JUnit 5 test source set and annotate the class with `@TapTest`:
 
 ```kotlin
 @TapTest
@@ -32,7 +34,7 @@ class CheckoutTest {
 ```
 
 - `device.element(selector)` is lazy; every action resolves the selector again on the device
-  and requires exactly one match (`RemoteCommandException` with `AMBIGUOUS`/`NOT_FOUND`
+  and requires exactly one match (`CommandException` with `ERR_AMBIGUOUS`/`ERR_NOT_FOUND`
   otherwise). Use `resId`, `rawRes` (Compose `testTag`), `text*`, `desc`, `hint`,
   `className`, refinements (`.clickable()`, `.andText(...)`), relations
   (`.hasDescendant(...)`, `.child(...)`) and `.first()`/`.at(n)`.
@@ -44,14 +46,18 @@ class CheckoutTest {
 - On failure the extension writes a screenshot, hierarchy XML, device info and the driver log
   under `tap.artifactsDir/<class>/<method>/`.
 
-Configuration is read from system properties or environment variables:
+The extension is a gRPC client of `tap serve`, the per-machine host service that owns ADB,
+driver lifecycle (the driver APKs are bundled in it), journals, leases and the device pool
+(`.docs/service-api.md`). It discovers a running service or starts one. Configuration is
+read from system properties or environment variables:
 
 | Property | Env | Meaning |
 |---|---|---|
-| `tap.serials` | `TAP_SERIALS` | comma-separated device pool (required) |
 | `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
-| `tap.driverApk`, `tap.driverTestApk` | `TAP_DRIVERAPK`, `TAP_DRIVERTESTAPK` | driver APKs to install once per device (optional if already installed) |
+| `tap.serials` | `TAP_SERIALS` | comma-separated serials to pin roles to, in order (default: any free device in the pool) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
+| `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: `<state dir>/service.json`, else auto-start) |
+| `tap.bin` | `TAP_BIN` | the `tap` executable to auto-start (default: `tap` on `PATH`) |
 | `tap.artifactsDir` | `TAP_ARTIFACTSDIR` | failure artifacts (default `build/tap-artifacts`) |
 | `tap.acquireTimeoutSeconds` | `TAP_ACQUIRETIMEOUTSECONDS` | device pool wait (default 300) |
 
@@ -61,19 +67,20 @@ Configuration is read from system properties or environment variables:
 ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554[,SERIAL]
 ```
 
-It builds and installs the fixture app and the driver, runs nine tests (including a two-device
-test that is skipped with one serial) and runs test classes concurrently across the pool.
+It builds the fixture app and the service distribution, auto-starts the service (which
+installs the driver), runs nine tests (including a two-device test that is skipped with one
+serial) and runs test classes concurrently across the pool. The service stays up afterwards
+(`host/service/build/install/tap/bin/tap stop`).
 
-## Python tests through the host service
+## Python tests
 
-Tests in any language talk to `tap serve`, a loopback gRPC daemon that owns ADB, driver
-lifecycle, journals, leases and the machine-wide device pool (`.docs/service-api.md`). Build
-it as a single executable (needs a GraalVM 21 at `GRAALVM_HOME`; the JVM distribution from
-`:host:service:installDist` is the fallback):
+The Python client talks to the same service. Build it as a single executable (needs a
+GraalVM 21 at `GRAALVM_HOME`; the JVM distribution from `:host:service:installDist` is the
+fallback):
 
 ```bash
 ./gradlew :host:service:nativeCompile        # -> host/service/build/native/nativeCompile/tap
-pip install -e python                        # the tap-e2e package
+pip install -e clients/python                # the tap-e2e package
 ```
 
 The Python API mirrors the Kotlin one; `tap_device` is a per-test session from the pool:
@@ -93,12 +100,12 @@ def test_two_devices(tap_devices): ...
 
 ```bash
 TAP_BIN=$PWD/host/service/build/native/nativeCompile/tap TAP_SERIALS=emulator-5554[,SERIAL] \
-  pytest python/tests
+  pytest clients/python/tests
 ```
 
 The plugin discovers a running service (`TAP_SERVICE`, or `~/.tap/service.json`) or starts
 one, which then stays up like the ADB server (`tap stop`). Failure artifacts land in
-`tap-artifacts/<nodeid>/`. See `python/README.md`.
+`tap-artifacts/<nodeid>/`. See `clients/python/README.md`.
 
 ## Current slice
 
@@ -134,9 +141,11 @@ one, which then stays up like the ADB server (`tap stop`). Failure artifacts lan
   AUT-state reset, and fresh-generation isolation verification.
 - Authenticated application-protocol version, operation-version, capability, build, and
   device-contract negotiation.
-- Public Kotlin SDK (`Device`/`App`/`Element`/waits/selectors), a reusable `DeviceSession`
-  state machine, an all-or-none named-role device pool, and a JUnit 5 extension with failure
-  artifacts, proven by a sample suite on API 29 and API 34.
+- A per-machine host service (`tap serve`, gRPC, native image) with a reusable
+  `DeviceSession` state machine, `AppLifecycle`, and an all-or-none named-role device pool
+  with constraints; a Kotlin SDK (`Device`/`App`/`Element`/waits/selectors) and JUnit 5
+  extension with failure artifacts, and a Python client and pytest plugin, all gRPC clients of
+  the service, proven by sample suites on API 29 and API 34.
 
 The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/protocol-contract.md).
 
@@ -153,22 +162,29 @@ lives at `~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2` on the current works
 ## Build
 
 ```bash
-./gradlew :protocol:test :driver:command-engine:test :host:test :host:validation:installDist \
-  :driver:assembleDebug :driver:assembleDebugAndroidTest \
+./gradlew :contracts:protocol:test :device:driver:command-engine:test :host:core:test :host:validation:installDist \
+  :device:driver:assembleDebug :device:driver:assembleDebugAndroidTest \
   :fixture-app:assembleDebug
 ```
 
-Modules: `:protocol` (wire contract), `:driver` + `:driver:command-engine` (on-device
-driver), `:host` (ADB, sessions, `DriverClient`), `:host:sdk` (public API),
-`:host:junit5` (JUnit 5 extension), `:host:service` (gRPC host service, `tap` executable),
-`:host:validation` (the `host` validation executable), `:sync-sdk`, `:fixture-app`,
-`:samples:fixture-tests`; `api/tap.proto` (service API) and `python/` (tap-e2e).
+Modules, by component:
+
+- `contracts/` — `:contracts:protocol` (TAP1 device wire contract), `:contracts:api`
+  (`contracts/api/proto/tap.proto`, the `tap.v1` service API + generated Java stubs).
+- `device/` — `:device:driver` + `:device:driver:command-engine` (on-device driver),
+  `:device:sync-sdk` (optional AUT library).
+- `host/` — `:host:core` (ADB, journals, sessions, `DriverClient`, `AppLifecycle`),
+  `:host:service` (gRPC host service, `tap` executable), `:host:validation` (the `host`
+  validation executable). Nothing here depends on `clients/`.
+- `clients/` — `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `clients/python` (tap-e2e);
+  each depends only on `contracts/api`.
+- `:fixture-app`, `:samples:fixture-tests`.
 
 Service and Python checks:
 
 ```bash
 ./gradlew :host:service:test                      # proto mirror + golden round-trip tests
-python/scripts/gen_stubs.py --check               # committed Python stubs match api/tap.proto
+clients/python/scripts/gen_stubs.py --check               # committed Python stubs match contracts/api/proto/tap.proto
 GRAALVM_HOME=... ./gradlew :host:service:nativeCompile
 ```
 
@@ -183,8 +199,8 @@ devices.
 ```bash
 ./host/validation/build/install/host/bin/host \
   emulator-5554,DEVICE_SERIAL \
-  "$PWD/driver/build/outputs/apk/debug/driver-debug.apk" \
-  "$PWD/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk" \
+  "$PWD/device/driver/build/outputs/apk/debug/driver-debug.apk" \
+  "$PWD/device/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk" \
   "$PWD/fixture-app/build/outputs/apk/debug/fixture-app-debug.apk"
 ```
 
@@ -202,8 +218,8 @@ product logic to Tap, use product-probe mode. Each final argument is
 ```bash
 ./host/validation/build/install/host/bin/host --product-probe \
   emulator-5554 \
-  "$PWD/driver/build/outputs/apk/debug/driver-debug.apk" \
-  "$PWD/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk" \
+  "$PWD/device/driver/build/outputs/apk/debug/driver-debug.apk" \
+  "$PWD/device/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk" \
   /path/to/app.apk com.example.app .MainActivity \
   '-|Home|home' 'Settings|Appearance|settings'
 ```

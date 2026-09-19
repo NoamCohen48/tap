@@ -8,10 +8,10 @@ This document describes the implemented wire contract. Planned but unimplemented
 (events, typed element handles, multi-gesture input) remain design work in
 `android-e2e-framework-implementation-plan.md` and are not part of protocol 1.0 yet.
 
-`api/tap.proto` (the host service API, `service-api.md`) mirrors this contract's enums,
+`contracts/api/proto/tap.proto` (the host service API, `service-api.md`) mirrors this contract's enums,
 selector AST and request/response models; `EnumMirrorTest` and `GoldenRoundTripTest` in
 `:host:service` fail when they drift. A change here therefore also updates the proto and the
-committed Python stubs (`python/scripts/gen_stubs.py`).
+committed Python stubs (`clients/python/scripts/gen_stubs.py`).
 
 ## Framing
 
@@ -328,10 +328,10 @@ throw the typed exception.
 - Connection loss never causes automatic mutation replay.
 
 Golden canonical payload, negotiation, transcript-binding, incompatible-version, duplicate
-key, and noncanonical JSON tests live under `protocol/src/test`. Golden request/response
+key, and noncanonical JSON tests live under `contracts/protocol/src/test`. Golden request/response
 fixtures — one request per operation and one response per error code — live under
-`protocol/src/test/resources/golden` and are checked by `GoldenMessageTest`; regenerate them
-with `./gradlew :protocol:test -Dtap.golden.update=true` in the same change as the contract
+`contracts/protocol/src/test/resources/golden` and are checked by `GoldenMessageTest`; regenerate them
+with `./gradlew :contracts:protocol:test -Dtap.golden.update=true` in the same change as the contract
 edit that made them drift.
 
 ## Design Rationale

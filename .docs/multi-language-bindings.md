@@ -3,7 +3,7 @@
 Date: 2026-09-18
 
 Status: implemented on 2026-09-19 along the lines recommended below (option 2.3, proxy
-variant) — see `service-api.md` for the contract, `:host:service` and `python/` for the
+variant) — see `service-api.md` for the contract, `:host:service` and `clients/python/` for the
 code, and §7 for what was decided differently from the sketch. The rest of this document is
 the analysis behind the "Python (or any second) binding" requirement, kept so the
 trade-offs stay visible. The design doc already anticipated this
@@ -19,9 +19,9 @@ different difficulty. Sizes are the current Kotlin line counts.
 
 | Layer | Kotlin | Port effort | Notes |
 |---|---:|---|---|
-| Wire client — framing, canonical JSON, HMAC handshake, request IDs, reader thread, blob reassembly (`DriverClient`, `BlobReceiver`, `FrameCodec`, `Authentication`) | ~800 | 2–3 days | Mechanical. The golden fixtures under `protocol/src/test/resources/golden` are a ready-made conformance suite. |
-| Test DSL — `Device`, `App`, `Element`, waits, selector builders, exceptions (`:host:sdk`) | ~570 | ~2 days | Thin; builds JSON. |
-| Runner integration — roles, device pool, configuration, failure artifacts (`:host:junit5` → a pytest plugin) | ~350 | 2–3 days | Fixtures plus an `xdist`-safe pool. |
+| Wire client — framing, canonical JSON, HMAC handshake, request IDs, reader thread, blob reassembly (`DriverClient`, `BlobReceiver`, `FrameCodec`, `Authentication`) | ~800 | 2–3 days | Mechanical. The golden fixtures under `contracts/protocol/src/test/resources/golden` are a ready-made conformance suite. |
+| Test DSL — `Device`, `App`, `Element`, waits, selector builders, exceptions (`:clients:kotlin:sdk`) | ~570 | ~2 days | Thin; builds JSON. |
+| Runner integration — roles, device pool, configuration, failure artifacts (`:clients:kotlin:junit5` → a pytest plugin) | ~350 | 2–3 days | Fixtures plus an `xdist`-safe pool. |
 | **Session infrastructure** — ADB control plane, driver start with retry, port forwarding, `/proc` start-token process identity, fsync'd journals, machine-wide leases, orphan recovery, quarantine (`Adb`, `DriverLifecycle`, `DeviceSession`, `SessionJournal`) | ~750 | **1–2 weeks, and the risk** | This is the code the Phase 0 fault scenarios exist for. A second copy means every invariant in `CLAUDE.md` is enforced twice and every lifecycle fix lands twice; the destructive validation flow would need a Python twin to prove it. |
 
 "A Python client" is therefore about one week. "A Python client as safe as the Kotlin one"
@@ -110,7 +110,7 @@ the wire contract.
 
 ### The pool
 
-Today there are two half-pools: `DevicePool` in `:host:junit5` (the `tap.serials` list,
+Today there are two half-pools: `DevicePool` in `:clients:kotlin:junit5` (the `tap.serials` list,
 in-memory, all-or-none, visible only inside that JVM) and the `SessionJournalStore` lease
 (`~/.tap/sessions/<serial>.lock`, machine-wide exclusion with no queueing, roles, or
 constraints). The service merges them into one pool per machine:
@@ -147,7 +147,7 @@ Two things hold at every level:
   is a later option.
 - **The driver APKs ship inside the binary** as resources so `tap serve` can install the
   matching driver on any device without a checkout. That couples the service build to
-  `:driver:assembleDebug` / `:driver:assembleDebugAndroidTest`.
+  `:device:driver:assembleDebug` / `:device:driver:assembleDebugAndroidTest`.
 
 ## 5. Schema for bindings
 
@@ -178,14 +178,17 @@ Decisions taken against §6, and where the implementation departs from the sketc
    as a reduced client.
 2. **Proxy command path.** The service owns the `DriverClient`; Python has no wire code.
 3. **Synchronous API**, threads for multi-device, mirroring the Kotlin SDK.
-4. **Kotlin JUnit not yet moved** onto the service; tracked in `framework-gaps.md`.
-5. **gRPC + protobuf instead of JSON-RPC over a Unix socket.** One `api/tap.proto` is the
+4. **Kotlin JUnit moved onto the service** (2026-09-19): `:clients:kotlin:sdk` and
+   `:clients:kotlin:junit5` are gRPC clients under `clients/`, `App` lifecycle lives in
+   `host/core` (`AppLifecycle`), the in-JVM `DevicePool` is gone, and the layout is
+   `contracts/ device/ host/ clients/` so the host never depends on a client.
+5. **gRPC + protobuf instead of JSON-RPC over a Unix socket.** One `contracts/api/proto/tap.proto` is the
    source of truth for every binding; Kotlin stubs are generated at build time, Python stubs
    are committed with a `--check` script. Loopback TCP with a `service.json` descriptor
    replaced the socket/token file (same on every OS).
 6. **The proto mirrors the protocol's selector/command model** rather than tunnelling
    opaque JSON, so bindings get typed selectors; the mirror is guarded by an enum-name test
-   and a golden round-trip test against `protocol/src/test/resources/golden`.
+   and a golden round-trip test against `contracts/protocol/src/test/resources/golden`.
 7. **Native image first, not jlink.** GraalVM 21 builds a single ~39 MB executable in under
    a minute with committed reachability metadata; the JVM `installDist` distribution remains
    the fallback. `adb` is still required (§4).
