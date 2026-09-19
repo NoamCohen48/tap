@@ -36,14 +36,17 @@ class App internal constructor(
             block(apps.withDeadlineAfter(((timeout ?: device.timeouts.lifecycle) + 60.seconds).inWholeMilliseconds, TimeUnit.MILLISECONDS))
         }
 
+    /** Whether the package is installed. */
     fun isInstalled(): Boolean = call(null) { it.isInstalled(request(null)) }.value
 
+    /** `adb install -r -t` of [apk] (a path on the service's machine), verified. */
     fun install(apk: Path, timeout: Duration = device.timeouts.lifecycle) {
         call(timeout + 120.seconds) {
             it.install(AppInstallRequest.newBuilder().setApp(request(timeout)).setApkPath(apk.absolutePathString()).build())
         }
     }
 
+    /** `pm uninstall`, verified. */
     fun uninstall() {
         call(120.seconds) { it.uninstall(request(null)) }
     }
@@ -58,6 +61,7 @@ class App internal constructor(
         call(timeout) { it.clearData(request(timeout)) }
     }
 
+    /** `pm grant` a runtime permission, e.g. `android.permission.CAMERA`. */
     fun grantPermission(permission: String) {
         call(null) { it.grantPermission(AppGrantRequest.newBuilder().setApp(request(null)).setPermission(permission).build()) }
     }
@@ -75,6 +79,7 @@ class App internal constructor(
     fun process(timeout: Duration = device.timeouts.action): ProcessIdentity =
         call(timeout) { it.process(request(timeout)) }.let { ProcessIdentity(it.pid, it.startToken) }
 
+    /** Whether any process of the package is alive. */
     fun isRunning(): Boolean = call(null) { it.isRunning(request(null)) }.value
 
     /**

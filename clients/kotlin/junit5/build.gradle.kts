@@ -1,6 +1,7 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
     `maven-publish`
+    id("org.jetbrains.dokka")
 }
 
 kotlin {

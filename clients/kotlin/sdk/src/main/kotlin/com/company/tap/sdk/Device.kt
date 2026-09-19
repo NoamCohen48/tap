@@ -94,15 +94,21 @@ class Device internal constructor(
 
     // --- Elements and waits -------------------------------------------------------------------------
 
+    /** A lazy [Element] for [selector]. */
     fun element(selector: Selector): Element = Element(this, selector)
 
+    /** An [ElementWait] on [selector]. */
     fun await(selector: Selector, timeout: Duration = timeouts.wait): ElementWait = ElementWait(this, selector, timeout)
 
+    /** The [App] for [packageName] (default: the app under test). */
     fun app(packageName: String = autPackage): App = App(this, packageName)
 
+    /** Serial, API level, model and display size. */
     fun info(): DeviceInfo = executeOrThrow(Operation.OP_DEVICE_INFO).deviceInfo
 
+    /** Send `KEYCODE_BACK`. */
     fun pressBack() = pressKey(KEYCODE_BACK)
+    /** Send `KEYCODE_HOME`. */
     fun pressHome() = pressKey(KEYCODE_HOME)
 
     /** Injects one Android key code (a mutation: never replayed on transport loss). */

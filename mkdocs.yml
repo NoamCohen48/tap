@@ -1,0 +1,75 @@
+# Public documentation site. Build with scripts/build-docs.sh (generates the Kotlin, Python
+# and gRPC references first) or `mkdocs serve` for the hand-written pages alone.
+site_name: Tap
+site_description: Host-driven Android end-to-end testing — one service per machine, thin Kotlin and Python clients.
+repo_url: https://github.com/NoamCohen48/tap
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: build/site
+strict: false
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      toggle: { icon: material/brightness-4, name: Light mode }
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed: { alternate_style: true }
+  - pymdownx.highlight: { anchor_linenums: false }
+  - pymdownx.inlinehilite
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [clients/python]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            docstring_style: google
+            filters: ["!^_", "!^pb$"]
+            show_if_no_docstring: true
+
+nav:
+  - Home: index.md
+  - Guide:
+      - Getting started: guide/getting-started.md
+      - How it works: guide/how-it-works.md
+      - Selectors: guide/selectors.md
+      - Actions and waits: guide/actions-and-waits.md
+      - App lifecycle and sync: guide/app-lifecycle.md
+      - Multi-device tests: guide/multi-device.md
+      - Configuration and the tap CLI: guide/configuration.md
+      - Errors and failure artifacts: guide/errors.md
+      - Coming from Maestro or Appium: guide/coming-from.md
+  - Reference:
+      - Overview: reference/index.md
+      - Kotlin client: reference/kotlin.md
+      - Python client: reference/python.md
+      - gRPC service API (tap.v1): reference/grpc.md
+      - Releases and versions: reference/releases.md

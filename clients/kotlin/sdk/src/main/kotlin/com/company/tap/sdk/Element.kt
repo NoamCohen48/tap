@@ -18,6 +18,7 @@ class Element internal constructor(
 
     // --- Queries ------------------------------------------------------------------------------
 
+    /** True when at least one node matches right now (any number of matches is fine). */
     fun exists(timeout: Duration? = null): Boolean = run(Operation.OP_EXISTS, timeout).value
 
     /** Matches in the focused window right now, ignoring the selector's match limit. */
@@ -26,16 +27,21 @@ class Element internal constructor(
     /** State of the one matching node at this instant (`AMBIGUOUS`/`NOT_FOUND` otherwise). */
     fun snapshot(timeout: Duration? = null): ElementSnapshot = run(Operation.OP_SNAPSHOT, timeout).snapshot
 
+    /** Text of the one matching node, or null when it has none (an empty field's hint is not text). */
     fun text(timeout: Duration? = null): String? = snapshot(timeout).let { if (it.hasText()) it.text else null }
+    /** `snapshot().enabled` of the one matching node. */
     fun isEnabled(timeout: Duration? = null): Boolean = snapshot(timeout).enabled
+    /** `snapshot().checked` of the one matching node. */
     fun isChecked(timeout: Duration? = null): Boolean = snapshot(timeout).checked
 
     // --- Actions (exactly one match required) -------------------------------------------------
 
+    /** Click at the centre of the one matching node's visible bounds. */
     fun tap(timeout: Duration? = null) {
         run(Operation.OP_TAP, timeout)
     }
 
+    /** Long click on the one matching node. */
     fun longTap(timeout: Duration? = null) {
         run(Operation.OP_LONG_TAP, timeout)
     }
@@ -50,6 +56,7 @@ class Element internal constructor(
         run(Operation.OP_TYPE_TEXT, timeout) { inputText = value }
     }
 
+    /** Focus the one matching editable node and clear its text. */
     fun clearText(timeout: Duration? = null) {
         run(Operation.OP_CLEAR_TEXT, timeout)
     }
@@ -89,10 +96,15 @@ class Element internal constructor(
 
     // --- Derived elements ---------------------------------------------------------------------
 
+    /** An [ElementWait] on this selector. */
     fun await(timeout: Duration = device.timeouts.wait): ElementWait = ElementWait(device, selector, timeout)
+    /** The node matching [other] somewhere below this one. */
     fun descendant(other: Selector): Element = Element(device, selector.descendant(other))
+    /** The direct child of this node matching [other]. */
     fun child(other: Selector): Element = Element(device, selector.child(other))
+    /** Accept the first match in accessibility order instead of requiring exactly one. */
     fun first(): Element = Element(device, selector.first())
+    /** Accept the [index]-th match (0-based) in accessibility order. */
     fun at(index: Int): Element = Element(device, selector.at(index))
 
     override fun toString(): String = "Element(${selector.render()} on ${device.serial})"

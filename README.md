@@ -8,6 +8,9 @@ and the `tap.v1` service API). Phases 0 and 1 (feasibility, contract, driver) ar
 and the first usable cut of Phase 2 (service + clients) is in; this is not a production
 release. What is still missing is listed in [`.docs/framework-gaps.md`](.docs/framework-gaps.md).
 
+User documentation lives in [`docs/`](docs/index.md) (guide + generated Kotlin/Python/gRPC
+references); build the site with `scripts/build-docs.sh` (see [Docs](#docs)).
+
 ## Writing tests
 
 Add `:clients:kotlin:junit5` to a JUnit 5 test source set and annotate the class with `@TapTest`:
@@ -248,6 +251,19 @@ GitHub Releases (binaries, wheel). `ci.yml` lints the proto, checks it for break
 and stub drift, runs the JVM/Python builds and unit tests, the sample suites on an API 34
 emulator and the native image. Details and rationale (why the driver is not a separate
 package): [`.docs/release-engineering.md`](.docs/release-engineering.md).
+
+## Docs
+
+`docs/` is the public documentation (MkDocs Material, `mkdocs.yml`): a hand-written guide and
+three generated references — Kotlin (Dokka, `./gradlew :dokkaGenerate`), Python (mkdocstrings
+from the docstrings of `clients/python/tap`) and the `tap.v1` gRPC API (protoc-gen-doc from
+`tap.proto`). `scripts/build-docs.sh` runs the generators and `mkdocs build --strict` into
+`build/site`; it needs JDK 17, `buf`, `protoc-gen-doc` and
+`pip install -r docs/requirements.txt -e clients/python`. `mkdocs serve` previews the guide
+alone. `.github/workflows/docs.yml` builds the site on every change and deploys it to GitHub
+Pages once the `DEPLOY_DOCS` repository variable is `true`. Public API additions need a
+KDoc/docstring, since that is what the references are generated from. `.docs/` remains the
+internal design record.
 
 ## Design
 

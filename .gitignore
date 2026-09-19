@@ -26,3 +26,8 @@ tap-artifacts/
 
 # Python build output
 dist/
+
+# generated documentation inputs (scripts/build-docs.sh)
+docs/reference/kotlin/
+docs/reference/grpc.md
+build/site/

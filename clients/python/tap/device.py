@@ -55,6 +55,7 @@ class Device:
         sync_authority: str | None = None,
         allowed_system_packages: list[str] | None = None,
     ) -> "Device":
+        """Open a driver session on ``serial`` for ``aut_package`` (used by ``Run.open_device``)."""
         timeouts = timeouts or Timeouts()
         request = pb.OpenSessionRequest(
             run_id=run.id, serial=serial, aut_package=aut_package,
@@ -95,6 +96,7 @@ class Device:
             )
 
     def execute_or_raise(self, operation: int, selector: Selector | None = None, timeout: float | None = None, **fields) -> pb.CommandResult:
+        """Send one raw command; raises ``CommandError`` on ``ok == False``."""
         result = self.execute(operation, selector, timeout, **fields)
         if not result.ok:
             raise CommandError(result, pb.Operation.Name(operation)[len("OP_"):], self.serial, selector.render() if selector else None)
@@ -103,21 +105,27 @@ class Device:
     # --- elements and waits ---------------------------------------------------------------------
 
     def element(self, selector: Selector) -> Element:
+        """A lazy ``Element`` for ``selector``."""
         return Element(self, selector)
 
     def wait(self, selector: Selector, timeout: float | None = None) -> ElementWait:
+        """An ``ElementWait`` on ``selector`` (default timeout ``timeouts.wait``)."""
         return ElementWait(self, selector, self.timeouts.wait if timeout is None else timeout)
 
     def app(self, package_name: str | None = None) -> App:
+        """The ``App`` for ``package_name`` (default: the app under test)."""
         return App(self, package_name or self.aut_package)
 
     def info(self) -> pb.DeviceInfo:
+        """Serial, API level, model and display size."""
         return self.execute_or_raise(pb.OP_DEVICE_INFO).device_info
 
     def press_back(self) -> None:
+        """Send ``KEYCODE_BACK``."""
         self.press_key(KEYCODE_BACK)
 
     def press_home(self) -> None:
+        """Send ``KEYCODE_HOME``."""
         self.press_key(KEYCODE_HOME)
 
     def press_key(self, key_code: int) -> None:
@@ -138,6 +146,7 @@ class Device:
         return self.execute_or_raise(pb.OP_DUMP_HIERARCHY, timeout=timeout or self.timeouts.lifecycle).text
 
     def driver_log(self) -> list[str]:
+        """The driver's log lines for this session."""
         with mapped_errors(self.serial):
             return list(self.service.sessions.DriverLog(pb.DriverLogRequest(session_id=self.session_id), timeout=30).lines)
 

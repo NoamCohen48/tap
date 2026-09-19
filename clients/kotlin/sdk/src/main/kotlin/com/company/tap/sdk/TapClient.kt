@@ -91,8 +91,10 @@ class TapClient(address: String? = null, autostart: Boolean = true) : AutoClosea
     internal val sessions: SessionServiceGrpc.SessionServiceBlockingStub = SessionServiceGrpc.newBlockingStub(channel)
     internal val apps: AppServiceGrpc.AppServiceBlockingStub = AppServiceGrpc.newBlockingStub(channel)
 
+    /** Service version, protocol version, ADB executable, state dir, bundled driver. */
     fun info(): InfoResponse = mapped { runs.withDeadlineAfter(10, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance()) }
 
+    /** Every device in the pool with its state (`FREE`, `LEASED`, `QUARANTINED`, `OFFLINE`). */
     fun inventory(): List<PoolDevice> =
         mapped { pool.withDeadlineAfter(30, TimeUnit.SECONDS).inventory(InventoryRequest.getDefaultInstance()).devicesList }
 
@@ -162,6 +164,7 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
             .release(ReleaseRequest.newBuilder().setRunId(id).addAllSerials(serials).build()).released
     }
 
+    /** Open a driver session on [serial] for [autPackage]. */
     fun openDevice(
         serial: String,
         autPackage: String,

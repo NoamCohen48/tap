@@ -25,12 +25,19 @@ class ElementWait internal constructor(
         deviceWait(Operation.OP_WAIT_GONE, "${selector.render()} to be gone")
     }
 
+    /** Wait until the one matching node is enabled. */
     fun enabled(): Element = property("enabled") { it.enabled }
+    /** Wait until the one matching node is disabled. */
     fun disabled(): Element = property("disabled") { !it.enabled }
+    /** Wait until the one matching node is checked. */
     fun checked(): Element = property("checked") { it.checked }
+    /** Wait until the one matching node is unchecked. */
     fun unchecked(): Element = property("unchecked") { !it.checked }
+    /** Wait until the one matching node has focus. */
     fun focused(): Element = property("focused") { it.focused }
+    /** Wait until the one matching node's text equals [expected]. */
     fun textEquals(expected: String): Element = property("text == \"$expected\"") { it.hasText() && it.text == expected }
+    /** Wait until the one matching node's text contains [part]. */
     fun textContains(part: String): Element = property("text containing \"$part\"") { it.hasText() && part in it.text }
 
     /** Waits until exactly [expected] matches are visible. */

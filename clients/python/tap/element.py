@@ -19,6 +19,13 @@ DEFAULT_GESTURE_PERCENT = 80
 
 
 class Element:
+    """A selector bound to a device.
+
+    Nothing is resolved until a method is called; every call sends the selector to the device
+    again, so an Element can be kept for the whole test. Actions require exactly one match
+    and raise ``CommandError`` (``AMBIGUOUS``/``NOT_FOUND``) before any input otherwise.
+    """
+
     def __init__(self, device: "Device", selector: Selector):
         self.device = device
         self.selector = selector
@@ -29,6 +36,7 @@ class Element:
     # --- queries ----------------------------------------------------------------------------------
 
     def exists(self, timeout: float | None = None) -> bool:
+        """True when at least one node matches right now (any number of matches is fine)."""
         return self._run(pb.OP_EXISTS, timeout).value
 
     def count(self, timeout: float | None = None) -> int:
@@ -40,21 +48,26 @@ class Element:
         return self._run(pb.OP_SNAPSHOT, timeout).snapshot
 
     def text(self, timeout: float | None = None) -> str | None:
+        """Text of the one matching node, or None when it has none (an empty field's hint is not text)."""
         snapshot = self.snapshot(timeout)
         return snapshot.text if snapshot.HasField("text") else None
 
     def is_enabled(self, timeout: float | None = None) -> bool:
+        """``snapshot().enabled`` of the one matching node."""
         return self.snapshot(timeout).enabled
 
     def is_checked(self, timeout: float | None = None) -> bool:
+        """``snapshot().checked`` of the one matching node."""
         return self.snapshot(timeout).checked
 
     # --- actions (exactly one match required) -----------------------------------------------------
 
     def tap(self, timeout: float | None = None) -> None:
+        """Click at the centre of the one matching node's visible bounds."""
         self._run(pb.OP_TAP, timeout)
 
     def long_tap(self, timeout: float | None = None) -> None:
+        """Long click on the one matching node."""
         self._run(pb.OP_LONG_TAP, timeout)
 
     def set_text(self, value: str, timeout: float | None = None) -> None:
@@ -66,9 +79,11 @@ class Element:
         self._run(pb.OP_TYPE_TEXT, timeout, input_text=value)
 
     def clear_text(self, timeout: float | None = None) -> None:
+        """Focus the one matching editable node and clear its text."""
         self._run(pb.OP_CLEAR_TEXT, timeout)
 
     def swipe(self, direction: int, distance_percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> None:
+        """One swipe gesture across the node in the direction the finger moves (``UP``/``DOWN``/``LEFT``/``RIGHT``)."""
         self._run(pb.OP_SWIPE, timeout, direction=direction, distance_percent=distance_percent)
 
     def scroll(self, direction: int, distance_percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> bool:
@@ -96,18 +111,23 @@ class Element:
     # --- derived ----------------------------------------------------------------------------------
 
     def wait(self, timeout: float | None = None) -> "ElementWait":
+        """An ``ElementWait`` on this selector (default timeout ``timeouts.wait``)."""
         return ElementWait(self.device, self.selector, self.device.timeouts.wait if timeout is None else timeout)
 
     def descendant(self, other: Selector) -> "Element":
+        """The node matching ``other`` somewhere below this one."""
         return Element(self.device, self.selector.descendant(other))
 
     def child(self, other: Selector) -> "Element":
+        """The direct child of this node matching ``other``."""
         return Element(self.device, self.selector.child(other))
 
     def first(self) -> "Element":
+        """Accept the first match in accessibility order instead of requiring exactly one."""
         return Element(self.device, self.selector.first())
 
     def at(self, index: int) -> "Element":
+        """Accept the ``index``-th match (0-based) in accessibility order."""
         return Element(self.device, self.selector.at(index))
 
     def __repr__(self) -> str:
@@ -124,34 +144,44 @@ class ElementWait:
         self.timeout = timeout
 
     def visible(self) -> Element:
+        """Wait until at least one node matches; polled on the device in one RPC."""
         self._device_wait(pb.OP_WAIT_VISIBLE, f"{self.selector.render()} to be visible")
         return Element(self.device, self.selector)
 
     def gone(self) -> None:
+        """Wait until no node matches; polled on the device in one RPC."""
         self._device_wait(pb.OP_WAIT_GONE, f"{self.selector.render()} to be gone")
 
     def enabled(self) -> Element:
+        """Wait until the one matching node is enabled."""
         return self._property("enabled", lambda s: s.enabled)
 
     def disabled(self) -> Element:
+        """Wait until the one matching node is disabled."""
         return self._property("disabled", lambda s: not s.enabled)
 
     def checked(self) -> Element:
+        """Wait until the one matching node is checked."""
         return self._property("checked", lambda s: s.checked)
 
     def unchecked(self) -> Element:
+        """Wait until the one matching node is unchecked."""
         return self._property("unchecked", lambda s: not s.checked)
 
     def focused(self) -> Element:
+        """Wait until the one matching node has focus."""
         return self._property("focused", lambda s: s.focused)
 
     def text_equals(self, expected: str) -> Element:
+        """Wait until the one matching node's text equals ``expected``."""
         return self._property(f'text == "{expected}"', lambda s: s.HasField("text") and s.text == expected)
 
     def text_contains(self, part: str) -> Element:
+        """Wait until the one matching node's text contains ``part``."""
         return self._property(f'text containing "{part}"', lambda s: s.HasField("text") and part in s.text)
 
     def count(self, expected: int) -> Element:
+        """Wait until exactly ``expected`` nodes match."""
         element = Element(self.device, self.selector)
         last: dict[str, int | None] = {"count": None}
 

@@ -26,6 +26,7 @@ from .errors import AppLifecycleError, ServiceError, TapError, WaitTimeoutError
 
 
 def state_dir() -> pathlib.Path:
+    """``TAP_STATE_DIR`` or ``~/.tap``: where ``tap serve`` writes ``service.json``."""
     return pathlib.Path(os.environ.get("TAP_STATE_DIR") or pathlib.Path.home() / ".tap")
 
 
@@ -49,6 +50,7 @@ def _alive(address: str, timeout: float = 2.0) -> bool:
 
 
 def find_binary() -> str | None:
+    """``TAP_BIN`` or ``tap`` on PATH."""
     return os.environ.get("TAP_BIN") or shutil.which("tap")
 
 
@@ -90,6 +92,7 @@ def start_service(binary: str, directory: pathlib.Path, adb: str | None = None, 
 
 
 def resolve_address(autostart: bool = True, binary: str | None = None, adb: str | None = None) -> str:
+    """Address of a service to use: ``TAP_SERVICE``, a live ``service.json``, else auto-start."""
     explicit = os.environ.get("TAP_SERVICE")
     if explicit:
         return explicit
@@ -127,6 +130,8 @@ def mapped_errors(serial: str | None = None) -> Iterator[None]:
 
 @dataclass(frozen=True)
 class DeviceFacts:
+    """What the pool knows about a device: serial, API level, manufacturer, model, emulator."""
+
     serial: str
     api_level: int
     manufacturer: str
@@ -153,14 +158,17 @@ class Service:
         self.apps = rpc.AppServiceStub(self.channel)
 
     def info(self) -> pb.InfoResponse:
+        """Service version, protocol version, ADB executable, state dir, bundled driver."""
         with mapped_errors():
             return self.runs.Info(pb.InfoRequest(), timeout=10)
 
     def inventory(self) -> list[pb.PoolDevice]:
+        """Every device in the pool with its state (``FREE``, ``LEASED``, ``QUARANTINED``, ``OFFLINE``)."""
         with mapped_errors():
             return list(self.pool.Inventory(pb.InventoryRequest(), timeout=30).devices)
 
     def open_run(self, name: str) -> "Run":
+        """Open and attach a run named ``name``; use as a context manager."""
         with mapped_errors():
             run_id = self.runs.Open(pb.OpenRunRequest(name=name), timeout=10).run_id
         return Run(self, run_id)
@@ -208,10 +216,12 @@ class Run:
         return {a.role: DeviceFacts.of(a.device) for a in response.assignments}
 
     def release(self, serials: list[str] | None = None) -> int:
+        """Release the given serials (default: every device of this run); returns how many were released."""
         with mapped_errors():
             return self.service.pool.Release(pb.ReleaseRequest(run_id=self.id, serials=serials or []), timeout=30).released
 
     def open_device(self, serial: str, aut_package: str, **options) -> "Device":
+        """Open a driver session on ``serial`` for ``aut_package``; ``options`` are ``Device.open`` keywords."""
         from .device import Device  # circular import at module load
         return Device.open(self, serial, aut_package, **options)
 
