@@ -281,7 +281,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         val pending = client.submit(
             arguments.operation, arguments.selector, arguments.timeoutMs, arguments.containerSelector,
             arguments.inputText, arguments.maxScrolls, arguments.direction, arguments.distancePercent,
-            arguments.keyCode, arguments.packageName, arguments.observedPid, arguments.observedStartToken,
+            arguments.keyCode, arguments.packageName, arguments.stableForMs, arguments.observedPid, arguments.observedStartToken,
             arguments.expectedProcessStartUuid, arguments.expectedSessionIdentity,
         )
         onStarted(pending)

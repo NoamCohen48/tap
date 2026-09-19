@@ -28,6 +28,9 @@
         <activity
             android:name=".PortOccupierActivity"
             android:exported="true" />
+        <activity
+            android:name=".MotionActivity"
+            android:exported="true" />
         <!-- Synchronization state comes from the :sync-sdk manifest (authority <applicationId>.tap-sync). -->
         <provider
             android:name=".FixtureFaultProvider"

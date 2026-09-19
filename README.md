@@ -41,6 +41,9 @@ class CheckoutTest {
 - `device.await(selector).visible()/gone()` and `device.awaitAppVisible(pkg)` wait on the
   device; `.enabled()/.textEquals()/.count(n)` poll from the host; timeouts throw
   `WaitTimeoutException` with elapsed time and polls.
+- `device.awaitScreenStable(stableFor = 500.milliseconds)` waits until the AUT's window has
+  stopped changing (accessibility tree + pixels) — the explicit way to wait out an animation.
+  Nothing waits for a quiet screen implicitly, so actions stay fast on busy screens.
 - `device.app(pkg)` handles install/launch/coldLaunch/forceStop/clearData/grantPermission and
   `awaitIdle()` for apps that ship `sync-sdk`.
 - On failure the extension writes a screenshot, hierarchy XML, device info and the driver log
@@ -68,7 +71,7 @@ read from system properties or environment variables:
 ```
 
 It builds the fixture app and the service distribution, auto-starts the service (which
-installs the driver), runs nine tests (including a two-device test that is skipped with one
+installs the driver), runs eleven tests (including a two-device test that is skipped with one
 serial) and runs test classes concurrently across the pool. The service stays up afterwards
 (`host/service/build/install/tap/bin/tap stop`).
 
@@ -119,7 +122,8 @@ one, which then stays up like the ADB server (`tap stop`). Failure artifacts lan
 - AUT-confined selectors and explicitly allowlisted system-package selectors.
 - Health, device info, key presses, exists, count, element snapshots, tap, long tap, direct
   and key-event text input, clear text, directional swipe and scroll, bounded View/Compose
-  list scroll-and-search with end detection, visible/gone/app-visible waits, PNG screenshots
+  list scroll-and-search with end detection, visible/gone/app-visible waits, an explicit
+  screen-stability wait (tree fingerprint + pixel grid), PNG screenshots
   streamed as checksummed blobs, and diagnostic hierarchy-dump commands.
 - Every mutating command requires exactly one match and returns `AMBIGUOUS`/`NOT_FOUND`
   before any input; a typed error taxonomy with stable detail sub-reasons.

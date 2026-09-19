@@ -36,7 +36,7 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
         val devices = try {
             openAll(assignment, config)
         } catch (error: Throwable) {
-            TapRun.run.release(assignment.values)
+            runCatching { TapRun.run.release(assignment.values) }.exceptionOrNull()?.let(error::addSuppressed)
             throw error
         }
         context.store.put(KEY, TestDevices(devices, assignment))

@@ -153,6 +153,22 @@ class Device:
                 last = None
             raise WaitTimeoutError(f"package {package_name} to be in the foreground", self.serial, result.duration_ms, 0, last)
 
+    def await_screen_stable(self, stable_for: float = 0.5, timeout: float | None = None, package_name: str | None = None) -> None:
+        """Waits on the device until the AUT's focused window has stopped changing for
+        ``stable_for`` seconds: no content-changed events, an unchanged accessibility tree and
+        unchanged pixels (0.5 % tolerance). Call it explicitly after an action that starts an
+        animation or transition; nothing waits for this implicitly because every sample costs a
+        screenshot. A screen that keeps animating times out with detail ``SCREEN_CHANGING``."""
+        package_name = package_name or self.aut_package
+        timeout = self.timeouts.wait if timeout is None else timeout
+        result = self.execute(
+            pb.OP_WAIT_SCREEN_STABLE, timeout=timeout, package_name=package_name, stable_for_ms=int(stable_for * 1000)
+        )
+        if not result.ok:
+            raise WaitTimeoutError(
+                f"the {package_name} screen to stay unchanged for {stable_for:g}s", self.serial, result.duration_ms, 0, result.detail or None
+            )
+
     def await_until(
         self,
         description: str,

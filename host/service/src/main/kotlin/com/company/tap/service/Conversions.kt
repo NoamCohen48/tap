@@ -168,6 +168,7 @@ object Conversions {
         val maxScrolls: Int,
         val keyCode: Int?,
         val packageName: String?,
+        val stableForMs: Long?,
         val observedPid: Int?,
         val observedStartToken: String?,
         val expectedProcessStartUuid: String?,
@@ -185,6 +186,7 @@ object Conversions {
         maxScrolls = if (proto.hasMaxScrolls()) proto.maxScrolls else 20,
         keyCode = proto.takeIf { it.hasKeyCode() }?.keyCode,
         packageName = proto.takeIf { it.hasPackageName() }?.packageName,
+        stableForMs = proto.takeIf { it.hasStableForMs() }?.stableForMs,
         observedPid = proto.takeIf { it.hasObservedPid() }?.observedPid,
         observedStartToken = proto.takeIf { it.hasObservedStartToken() }?.observedStartToken,
         expectedProcessStartUuid = proto.takeIf { it.hasExpectedProcessStartUuid() }?.expectedProcessStartUuid,
@@ -203,6 +205,7 @@ object Conversions {
         maxScrolls = request.maxScrolls
         request.keyCode?.let { keyCode = it }
         request.packageName?.let { packageName = it }
+        request.stableForMs?.let { stableForMs = it }
         request.observedPid?.let { observedPid = it }
         request.observedStartToken?.let { observedStartToken = it }
         request.expectedProcessStartUuid?.let { expectedProcessStartUuid = it }
@@ -222,6 +225,7 @@ object Conversions {
         maxScrolls = arguments.maxScrolls,
         keyCode = arguments.keyCode,
         packageName = arguments.packageName,
+        stableForMs = arguments.stableForMs,
         observedPid = arguments.observedPid,
         observedStartToken = arguments.observedStartToken,
         expectedProcessStartUuid = arguments.expectedProcessStartUuid,

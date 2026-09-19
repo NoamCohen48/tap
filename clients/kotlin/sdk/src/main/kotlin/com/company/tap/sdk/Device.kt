@@ -138,6 +138,30 @@ class Device internal constructor(
     }
 
     /**
+     * Waits on the device until the AUT's focused window has stopped changing for [stableFor]:
+     * no content-changed events, an unchanged accessibility tree and unchanged pixels (0.5 %
+     * tolerance). Use it explicitly after an action that starts an animation or a transition;
+     * no command waits for this implicitly, because each sample costs a screenshot. A screen
+     * that keeps animating (indeterminate spinner, video) times out with `SCREEN_CHANGING`.
+     */
+    fun awaitScreenStable(
+        stableFor: Duration = 500.milliseconds,
+        timeout: Duration = timeouts.wait,
+        packageName: String = autPackage,
+    ) {
+        val result = execute(Operation.OP_WAIT_SCREEN_STABLE, timeout = timeout) {
+            setPackageName(packageName)
+            setStableForMs(stableFor.inWholeMilliseconds)
+        }
+        if (!result.ok) {
+            throw WaitTimeoutException(
+                "the $packageName screen to stay unchanged for $stableFor", serial, result.durationMs, 0,
+                result.detail.ifEmpty { null },
+            )
+        }
+    }
+
+    /**
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,
      * backend state). Prefer [await] for UI conditions: it polls on the device in one RPC.
      */

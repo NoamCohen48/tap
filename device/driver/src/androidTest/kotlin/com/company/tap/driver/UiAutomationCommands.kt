@@ -2,16 +2,21 @@ package com.company.tap.driver
 
 import android.app.Instrumentation
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import com.company.tap.driver.engine.BlobTransfer
 import com.company.tap.driver.engine.CommandContext
 import com.company.tap.protocol.Bounds
+import com.company.tap.protocol.DEFAULT_STABLE_FOR_MS
 import com.company.tap.protocol.DeviceInfo
 import com.company.tap.protocol.Direction
 import com.company.tap.protocol.ElementSnapshot
@@ -28,6 +33,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
 import java.net.Socket
+import java.util.concurrent.TimeoutException
 
 internal class UiAutomationCommands(
     private val instrumentation: Instrumentation,
@@ -101,6 +107,147 @@ internal class UiAutomationCommands(
     fun waitAppVisible(context: CommandContext, request: Request): Response {
         val packageName = requireNotNull(request.packageName)
         return pollUntil(context) { device.findWindow(By.Window.pkg(packageName).focused(true)) != null }
+    }
+
+    /**
+     * `WAIT_SCREEN_STABLE`: succeeds once the package's focused window has been quiet for
+     * `stableForMs` — no `WINDOW_CONTENT_CHANGED` events from it, an unchanged accessibility
+     * tree fingerprint and (down-sampled) pixels. This is an explicit wait a test asks for;
+     * no other command settles implicitly. Reads raw accessibility windows so a running
+     * animation cannot stall the sampler in UiAutomator's idle wait.
+     */
+    fun waitScreenStable(context: CommandContext, request: Request): Response {
+        val packageName = requireNotNull(request.packageName)
+        val stableFor = request.stableForMs ?: DEFAULT_STABLE_FOR_MS
+        var reference: ScreenSample? = null
+        var stableSince = 0L
+        var windowSeen = false
+        while (true) {
+            context.checkCancelled()
+            val now = context.nowMs()
+            val sample = sampleScreen(packageName)
+            when {
+                sample == null -> reference = null
+                reference == null || sample.changedFrom(reference) -> {
+                    windowSeen = true
+                    reference = sample
+                    stableSince = now
+                }
+                now - stableSince >= stableFor -> return Response(true, value = true, durationMs = context.elapsed())
+            }
+            val remaining = context.remainingMs()
+            if (remaining <= 0) break
+            val slice = minOf(remaining, if (reference == null) 50L else 100L)
+            // Event-driven early exit: a content or state change from the package restarts the
+            // quiet period. UiAutomation directly, not UiDevice.waitForWindowUpdate, which first
+            // runs the implicit idle wait a changing screen can never satisfy.
+            val before = context.nowMs()
+            if (awaitWindowEvent(packageName, slice)) reference = null
+            val waited = context.nowMs() - before
+            if (waited < slice) context.sleep(slice - waited)
+        }
+        return Response.failure(
+            ErrorCode.WAIT_TIMEOUT,
+            detail = if (windowSeen) ErrorDetail.SCREEN_CHANGING else ErrorDetail.APP_NOT_VISIBLE,
+            value = false,
+            durationMs = context.elapsed(),
+        )
+    }
+
+    private fun awaitWindowEvent(packageName: String, timeoutMs: Long): Boolean = try {
+        instrumentation.uiAutomation.executeAndWaitForEvent(
+            {},
+            { event ->
+                (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) &&
+                    event.packageName?.toString() == packageName
+            },
+            timeoutMs,
+        )
+        true
+    } catch (timeout: TimeoutException) {
+        false
+    }
+
+    private class ScreenSample(val treeHash: Long, val pixels: IntArray) {
+        fun changedFrom(other: ScreenSample): Boolean {
+            if (treeHash != other.treeHash) return true
+            if (pixels.size != other.pixels.size) return true
+            if (pixels.isEmpty()) return false
+            var differing = 0
+            for (i in pixels.indices) if (pixels[i] != other.pixels[i]) differing++
+            return differing > pixels.size * PIXEL_DIFF_THRESHOLD
+        }
+    }
+
+    /** The focused application window of [packageName], or null when it has none right now. */
+    private fun sampleScreen(packageName: String): ScreenSample? {
+        val windows = instrumentation.uiAutomation.windows ?: return null
+        val window = windows.firstOrNull {
+            it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isFocused &&
+                runCatching { it.root?.packageName?.toString() }.getOrNull() == packageName
+        } ?: return null
+        val root = window.root ?: return null
+        val bounds = Rect().also(window::getBoundsInScreen)
+        val treeHash = try {
+            fingerprint(root)
+        } finally {
+            runCatching { root.recycle() }
+        }
+        return ScreenSample(treeHash, samplePixels(bounds))
+    }
+
+    private fun fingerprint(root: AccessibilityNodeInfo): Long {
+        var hash = 1_469_598_103_934_665_603L
+        var nodes = 0
+        val bounds = Rect()
+        fun mix(value: Any?) {
+            hash = (hash xor (value?.hashCode() ?: 0).toLong()) * 1_099_511_628_211L
+        }
+        fun visit(node: AccessibilityNodeInfo, depth: Int) {
+            if (depth > 64 || ++nodes > MAX_FINGERPRINT_NODES) return
+            node.getBoundsInScreen(bounds)
+            mix(node.className); mix(node.viewIdResourceName); mix(node.text?.toString()); mix(node.contentDescription?.toString())
+            mix(bounds.left); mix(bounds.top); mix(bounds.right); mix(bounds.bottom)
+            mix(node.isVisibleToUser); mix(node.isEnabled); mix(node.isChecked); mix(node.isSelected); mix(node.isFocused)
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                try {
+                    visit(child, depth + 1)
+                } finally {
+                    runCatching { child.recycle() }
+                }
+            }
+        }
+        visit(root, 0)
+        return hash
+    }
+
+    /** A coarse grid of quantised pixels inside [bounds]; empty when the capture fails. */
+    private fun samplePixels(bounds: Rect): IntArray {
+        val captured = instrumentation.uiAutomation.takeScreenshot() ?: return IntArray(0)
+        val bitmap = if (captured.config == Bitmap.Config.HARDWARE) {
+            captured.copy(Bitmap.Config.ARGB_8888, false).also { captured.recycle() }
+        } else {
+            captured
+        }
+        try {
+            val area = Rect(bounds).apply { intersect(0, 0, bitmap.width, bitmap.height) }
+            if (area.isEmpty) return IntArray(0)
+            val result = IntArray(PIXEL_GRID_COLUMNS * PIXEL_GRID_ROWS)
+            var i = 0
+            for (row in 0 until PIXEL_GRID_ROWS) {
+                val y = area.top + (area.height() * (2 * row + 1)) / (2 * PIXEL_GRID_ROWS)
+                for (column in 0 until PIXEL_GRID_COLUMNS) {
+                    val x = area.left + (area.width() * (2 * column + 1)) / (2 * PIXEL_GRID_COLUMNS)
+                    // Drop the low bits of each channel so compression/dithering noise does not register.
+                    result[i++] = bitmap.getPixel(x, y) and 0x00F0F0F0
+                }
+            }
+            return result
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     private inline fun pollUntil(context: CommandContext, condition: () -> Boolean): Response {
@@ -557,6 +704,13 @@ internal class UiAutomationCommands(
 internal fun CommandContext.elapsed(): Long = nowMs() - acceptedAtMs
 
 private const val MAX_HIERARCHY_BYTES = (MAX_CONTROL_PAYLOAD - 1_024) / 2
+
+// WAIT_SCREEN_STABLE sampling: a 48x96 grid (4 608 points) with a 0.5 % tolerance, as in
+// Maestro's screen-static check, so a blinking caret or the status-bar clock do not count.
+private const val PIXEL_GRID_COLUMNS = 48
+private const val PIXEL_GRID_ROWS = 96
+private const val PIXEL_DIFF_THRESHOLD = 0.005
+private const val MAX_FINGERPRINT_NODES = 4_000
 
 private class LimitedOutputStream(private val limit: Int) : OutputStream() {
     private val output = ByteArrayOutputStream()

@@ -21,6 +21,7 @@ class Operation(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     OP_WAIT_VISIBLE: _ClassVar[Operation]
     OP_WAIT_GONE: _ClassVar[Operation]
     OP_WAIT_APP_VISIBLE: _ClassVar[Operation]
+    OP_WAIT_SCREEN_STABLE: _ClassVar[Operation]
     OP_DUMP_HIERARCHY: _ClassVar[Operation]
     OP_SET_TEXT: _ClassVar[Operation]
     OP_TYPE_TEXT: _ClassVar[Operation]
@@ -112,6 +113,7 @@ OP_LONG_TAP: Operation
 OP_WAIT_VISIBLE: Operation
 OP_WAIT_GONE: Operation
 OP_WAIT_APP_VISIBLE: Operation
+OP_WAIT_SCREEN_STABLE: Operation
 OP_DUMP_HIERARCHY: Operation
 OP_SET_TEXT: Operation
 OP_TYPE_TEXT: Operation
@@ -247,7 +249,7 @@ class Selector(_message.Message):
     def __init__(self, node: _Optional[_Union[NodeSelector, _Mapping]] = ..., scope: _Optional[_Union[TargetScope, str]] = ..., scope_package: _Optional[str] = ..., limit: _Optional[_Union[MatchLimit, str]] = ..., index: _Optional[int] = ..., accept_accessibility_order: _Optional[bool] = ...) -> None: ...
 
 class Command(_message.Message):
-    __slots__ = ("operation", "timeout_ms", "selector", "container_selector", "input_text", "direction", "distance_percent", "max_scrolls", "key_code", "package_name", "observed_pid", "observed_start_token", "expected_process_start_uuid", "expected_session_identity")
+    __slots__ = ("operation", "timeout_ms", "selector", "container_selector", "input_text", "direction", "distance_percent", "max_scrolls", "key_code", "package_name", "observed_pid", "observed_start_token", "expected_process_start_uuid", "expected_session_identity", "stable_for_ms")
     OPERATION_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
@@ -262,6 +264,7 @@ class Command(_message.Message):
     OBSERVED_START_TOKEN_FIELD_NUMBER: _ClassVar[int]
     EXPECTED_PROCESS_START_UUID_FIELD_NUMBER: _ClassVar[int]
     EXPECTED_SESSION_IDENTITY_FIELD_NUMBER: _ClassVar[int]
+    STABLE_FOR_MS_FIELD_NUMBER: _ClassVar[int]
     operation: Operation
     timeout_ms: int
     selector: Selector
@@ -276,7 +279,8 @@ class Command(_message.Message):
     observed_start_token: str
     expected_process_start_uuid: str
     expected_session_identity: str
-    def __init__(self, operation: _Optional[_Union[Operation, str]] = ..., timeout_ms: _Optional[int] = ..., selector: _Optional[_Union[Selector, _Mapping]] = ..., container_selector: _Optional[_Union[Selector, _Mapping]] = ..., input_text: _Optional[str] = ..., direction: _Optional[_Union[Direction, str]] = ..., distance_percent: _Optional[int] = ..., max_scrolls: _Optional[int] = ..., key_code: _Optional[int] = ..., package_name: _Optional[str] = ..., observed_pid: _Optional[int] = ..., observed_start_token: _Optional[str] = ..., expected_process_start_uuid: _Optional[str] = ..., expected_session_identity: _Optional[str] = ...) -> None: ...
+    stable_for_ms: int
+    def __init__(self, operation: _Optional[_Union[Operation, str]] = ..., timeout_ms: _Optional[int] = ..., selector: _Optional[_Union[Selector, _Mapping]] = ..., container_selector: _Optional[_Union[Selector, _Mapping]] = ..., input_text: _Optional[str] = ..., direction: _Optional[_Union[Direction, str]] = ..., distance_percent: _Optional[int] = ..., max_scrolls: _Optional[int] = ..., key_code: _Optional[int] = ..., package_name: _Optional[str] = ..., observed_pid: _Optional[int] = ..., observed_start_token: _Optional[str] = ..., expected_process_start_uuid: _Optional[str] = ..., expected_session_identity: _Optional[str] = ..., stable_for_ms: _Optional[int] = ...) -> None: ...
 
 class SyncState(_message.Message):
     __slots__ = ("initialized", "process_id", "process_start_uuid", "session_identity", "generation", "busy_count", "last_transition_elapsed_ms", "error")

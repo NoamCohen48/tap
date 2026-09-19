@@ -1,6 +1,7 @@
 {
   "ok": false,
   "errorCode": "WAIT_TIMEOUT",
+  "detail": "SCREEN_CHANGING",
   "message": "example",
   "durationMs": 5
 }

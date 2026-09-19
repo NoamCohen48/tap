@@ -108,6 +108,7 @@ operation version 1 for:
 | `WAIT_VISIBLE` | `selector` | `value=true`, or `WAIT_TIMEOUT` with `value=false` |
 | `WAIT_GONE` | `selector` | `value=true` once no match exists, or `WAIT_TIMEOUT` with `value=false` |
 | `WAIT_APP_VISIBLE` | `packageName` | `value=true` once that package owns the focused window, or `WAIT_TIMEOUT` |
+| `WAIT_SCREEN_STABLE` | `packageName`, `stableForMs` 1..30 000 (default 500) | `value=true` once that package's focused window has not changed for `stableForMs`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `TAP`, `LONG_TAP` | `selector` (exactly one match) | `value=true` after the click |
 | `SET_TEXT` | `selector`, `inputText` (≤ 256 chars) | replaces the text; verified within 1 s |
 | `TYPE_TEXT` | `selector`, `inputText` (≤ 256 chars) | appends via key events; verified |
@@ -131,6 +132,24 @@ still match what UiAutomator's `By.text` sees (see the gaps document).
 Waits (`WAIT_VISIBLE`, `WAIT_GONE`, `WAIT_APP_VISIBLE`) poll on the driver at 50 ms until the
 condition holds or the request deadline passes, and honour cancellation between polls. A
 timeout is `WAIT_TIMEOUT` with `value=false`, never an exception path.
+
+`WAIT_SCREEN_STABLE` is the only settle primitive and it is **explicit**: no other command waits
+for animations or a quiet screen, and the driver never retries a command because the screen did
+not change. Given `packageName` and `stableForMs`, the driver samples that package's focused
+application window — a fingerprint of the accessibility tree (class, id, text, description,
+bounds, state flags; capped at 4 000 nodes, no XML dump) plus a downscaled 48×96 grid of the
+window's pixels — and succeeds once neither changed for `stableForMs` (a pixel change is more
+than 0.5 % of grid cells differing after colour quantisation). Between samples it blocks on
+`TYPE_WINDOW_CONTENT_CHANGED`/`TYPE_WINDOW_STATE_CHANGED` accessibility events from that package
+for at most 100 ms, so a change restarts the quiet period immediately while an idle screen still
+costs one screenshot per 100 ms. The request deadline bounds the whole wait; the timeout detail
+says whether the screen kept changing (`SCREEN_CHANGING`) or was never that package's
+(`APP_NOT_VISIBLE`).
+
+Independently, the driver bounds UiAutomator's implicit `waitForIdle` (run before every
+`UiDevice`/`UiObject2` interaction) to 1 s instead of the 10 s default, so a permanently
+animating screen slows a command by at most one second rather than pushing every request past
+its deadline and poisoning the session.
 
 An unknown operation version returns `UNSUPPORTED`. Its request ID is accepted before
 validation and cannot be reused. IDs at or below the accepted watermark return
@@ -290,7 +309,7 @@ policy; Tap itself never retries.
 | `NOT_INTERACTABLE` | no | yes | Target exists but cannot take the action (not editable, not scrollable, focus never arrived: `FOCUS_TIMEOUT`). |
 | `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `FOCUS_LOST`, `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
 | `ACTION_REJECTED` | yes | no | Input was issued but did not take effect. `TEXT_MISMATCH`, `FOCUS_TIMEOUT`, `DEADLINE_AFTER_FOCUS`, `PARTIAL_INPUT`. |
-| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. |
+| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
 | `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |
@@ -386,6 +405,6 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 1.0 does not yet expose events, multi-touch gestures, `session.shutdown`,
-`wait.screenStable`, or `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
+Protocol 1.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
+`inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
 `AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

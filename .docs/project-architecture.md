@@ -184,6 +184,7 @@ tap/
 |       +-- MainScreenTest.kt    taps, text input, Compose list scrolling, ambiguity, app-owned sync, wait diagnostics, back key
 |       +-- LifecycleTest.kt     cold launch identity, force-stop, clear-data, DEVICE_INFO
 |       +-- MultiDeviceTest.kt   @TapDevices("left","right") concurrent two-device journey
+|       +-- MotionTest.kt        awaitScreenStable: waits out an animation, times out on a ticking screen
 |
 +-- fixture-app/                 Android app used only by the validation flow and the samples
     +-- src/main/AndroidManifest.xml
@@ -192,10 +193,11 @@ tap/
     |   +-- ViewListActivity.kt      native ListView with end-of-content
     |   +-- AmbiguityActivity.kt     duplicate buttons/fields/scroll views, gesture target, prefilled field
     |   +-- PermissionActivity.kt    real runtime permission dialog
+    |   +-- MotionActivity.kt        2 s handler-driven animation and an endless 100 ms ticker (screen-stability waits)
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults
     |   +-- FixtureFaultProvider.kt  delayed-mutation hook for the late-work fault (authority ...fixture.fault)
     |   +-- FixtureApplication.kt    Application + FaultTapCounter
-    +-- src/main/res/layout/         activity_main, activity_view_list, activity_ambiguity, activity_permission
+    +-- src/main/res/layout/         activity_main, activity_view_list, activity_ambiguity, activity_permission, activity_motion
 ```
 
 Gradle projects: `:contracts:protocol`, `:contracts:api`, `:device:driver`,
@@ -473,9 +475,11 @@ device.close(); run.close(); client.close()
   `CommandResult` failure becomes `CommandException` (proto `ErrorCode`, detail, selector,
   request identity); transport loss reported by the service is the same exception with
   `ERR_TRANSPORT_LOST`/`ERR_INDETERMINATE`. gRPC-level failures are `ServiceException`.
-- `ElementWait.visible()/gone()` and `Device.awaitAppVisible` are driver-side
-  (`WAIT_VISIBLE`/`WAIT_GONE`/`WAIT_APP_VISIBLE`); a `WAIT_TIMEOUT` becomes
-  `WaitTimeoutException` with elapsed time and the selector. Property waits (`enabled`,
+- `ElementWait.visible()/gone()`, `Device.awaitAppVisible` and `Device.awaitScreenStable`
+  are driver-side (`WAIT_VISIBLE`/`WAIT_GONE`/`WAIT_APP_VISIBLE`/`WAIT_SCREEN_STABLE`); a
+  `WAIT_TIMEOUT` becomes `WaitTimeoutException` with elapsed time, the selector and the
+  driver detail (`SCREEN_CHANGING`/`APP_NOT_VISIBLE` for stability waits). Settling is
+  explicit: no action waits for animations on its own. Property waits (`enabled`,
   `textEquals`, `count(n)`, …) and `Device.awaitUntil` poll from the host via `SNAPSHOT`/
   `COUNT`.
 - `App` calls `AppService` (`Install`, `Launch`, `ColdLaunch`, `ForceStop`, `ClearData`,
@@ -562,7 +566,7 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Execution engine | `device/driver/command-engine/src/test` | 23 | ordering, overload, cancel states, mutation gate, deadlines, watchdog, heartbeat, blob streaming, shutdown |
 | Host client | `host/core/src/test` | 17 + 6 | real handshake against `FakeDriverServer`: demux, cancel, ping/heartbeat, transport-loss classification, blob corruption; journal atomicity |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
-| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 9 | Kotlin API + JUnit extension through an auto-started service, two-device concurrency |
+| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 11 | Kotlin API + JUnit extension through an auto-started service, two-device concurrency |
 | Device, Python client | `TAP_BIN=… TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
 | Service | `:host:service:test` | 2 classes | proto enums mirror the protocol enums; golden fixtures round-trip through the proto conversions |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
@@ -604,7 +608,7 @@ the service (the in-JVM `DevicePool` and `Device.connect` are gone; `AppLifecycl
 service.
 
 Not yet built — see [`framework-gaps.md`](framework-gaps.md) for the full, per-section list:
-`session.shutdown`, `wait.screenStable`, `inspector.snapshot`, crash/ANR codes, provider
+`session.shutdown`, `inspector.snapshot`, crash/ANR codes, provider
 visibility for non-fixture AUTs, the coroutine `tapTest` façade and `DeviceBarrier`, device
 fake-ADB JVM coverage for the host core and in-process service tests for the clients,
 logcat/dumpsys/JSONL/HTML artifacts and reports, per-test deadlines and the remaining JUnit

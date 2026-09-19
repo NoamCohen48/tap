@@ -2,6 +2,7 @@ package com.company.tap.driver
 
 import android.app.Instrumentation
 import android.os.Bundle
+import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import com.company.tap.driver.engine.CommandPipeline
 import com.company.tap.protocol.Authentication
@@ -35,7 +36,13 @@ internal class TapDriverServer(
     arguments: Bundle,
 ) {
     private val config = SessionConfig.from(arguments)
-    private val device = UiDevice.getInstance(instrumentation)
+    private val device = UiDevice.getInstance(instrumentation).also {
+        // Every UiAutomator lookup first waits for the accessibility event stream to go quiet
+        // (default: up to 10 s). On a screen that never settles — a ticker, an indeterminate
+        // spinner — that turns each command into a 10 s stall and a watchdog poison. Bound it
+        // (Maestro uses 0, Appium's default is 10 s); stability is an explicit wait in Tap.
+        Configurator.getInstance().waitForIdleTimeout = UI_AUTOMATOR_IDLE_TIMEOUT_MS
+    }
     private val driverInstanceId = UUID.randomUUID().toString()
     private val faults = FaultController(instrumentation, config.faultPoint, config.faultAuthority)
     private val engine = DriverCommandEngine(
@@ -233,3 +240,6 @@ private data class SessionConfig(
 
 /** A silent host for this long means it is gone; the driver poisons itself and exits. */
 private const val DEFAULT_HEARTBEAT_TIMEOUT_MS = 30_000L
+
+/** Upper bound for UiAutomator's implicit wait-for-idle before each lookup or gesture. */
+private const val UI_AUTOMATOR_IDLE_TIMEOUT_MS = 1_000L

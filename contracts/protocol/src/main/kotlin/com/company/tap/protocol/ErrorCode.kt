@@ -87,6 +87,10 @@ object ErrorDetail {
     const val END_REACHED = "END_REACHED"
     const val MAX_SCROLLS = "MAX_SCROLLS"
 
+    // WAIT_TIMEOUT (screen stability)
+    const val SCREEN_CHANGING = "SCREEN_CHANGING"
+    const val APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
+
     // ACTION_REJECTED / STALE_DURING_COMMAND / INDETERMINATE (key input)
     const val FOCUS_TIMEOUT = "FOCUS_TIMEOUT"
     const val FOCUS_LOST = "FOCUS_LOST"
