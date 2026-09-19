@@ -1,13 +1,13 @@
 """Tap Python client: drives Android devices through the Tap host service.
 
-    from tap import Service, text, res_id
+    from tap import Service, text, res
 
     service = Service()                                  # discovers or starts `tap serve`
     with service.open_run("smoke") as run:
         run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)
         with run.open_device("emulator-5554", "com.example.app") as device:
             device.app().cold_launch()
-            device.element(res_id("com.example.app", "login")).tap()
+            device.element(res("login")).tap()
             device.wait(text("Welcome")).visible()
 """
 from importlib.metadata import PackageNotFoundError, version as _dist_version
@@ -22,7 +22,7 @@ STABILITY_PIXELS = pb.STABILITY_PIXELS
 STABILITY_ALL = pb.STABILITY_ALL
 from .errors import AppLifecycleError, CommandError, ErrorCode, ServiceError, TapError, WaitTimeoutError
 from .selectors import (
-    CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res_id,
+    CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res, res_id,
     scrollable, text, text_contains, text_matches, text_starts_with,
 )
 from .service import DeviceFacts, Run, Service, resolve_address
@@ -32,7 +32,7 @@ __all__ = [
     "Element", "ElementWait", "DOWN", "UP", "LEFT", "RIGHT",
     "AppLifecycleError", "CommandError", "ErrorCode", "ServiceError", "TapError", "WaitTimeoutError",
     "Selector", "EXACT", "CONTAINS", "STARTS_WITH", "REGEX", "class_name", "clickable", "desc", "hint",
-    "raw_res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
+    "raw_res", "res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
     "DeviceFacts", "Run", "Service", "resolve_address",
 ]
 

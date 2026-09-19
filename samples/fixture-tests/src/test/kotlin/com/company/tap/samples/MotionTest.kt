@@ -1,6 +1,7 @@
 package com.company.tap.samples
 
 import com.company.tap.junit5.TapTest
+import com.company.tap.sdk.res
 import com.company.tap.sdk.Device
 import com.company.tap.sdk.WaitTimeoutException
 import kotlin.test.assertEquals
@@ -16,9 +17,9 @@ class MotionTest {
     @Test
     fun waitsForAnimationToEnd(device: Device) {
         Fixture.launch(device, ".MotionActivity")
-        val status = device.element(Fixture.id("motion_status"))
+        val status = device.element(res("motion_status"))
 
-        device.element(Fixture.id("motion_button")).tap()
+        device.element(res("motion_button")).tap()
         val started = System.nanoTime()
         device.awaitAnimationEnd(stableFor = 500.milliseconds, timeout = 10.seconds)
         val waitedMs = (System.nanoTime() - started) / 1_000_000
@@ -31,9 +32,9 @@ class MotionTest {
     @Test
     fun settlesAfterTheHierarchyStopsMoving(device: Device) {
         Fixture.launch(device, ".MotionActivity")
-        val status = device.element(Fixture.id("motion_status"))
+        val status = device.element(res("motion_status"))
 
-        device.element(Fixture.id("motion_button")).tap()
+        device.element(res("motion_button")).tap()
         val started = System.nanoTime()
         device.awaitAppSettled(stableFor = 500.milliseconds, timeout = 10.seconds)
         val waitedMs = (System.nanoTime() - started) / 1_000_000
@@ -46,7 +47,7 @@ class MotionTest {
     @Test
     fun screenThatKeepsChangingTimesOut(device: Device) {
         Fixture.launch(device, ".MotionActivity")
-        val ticker = device.element(Fixture.id("ticker_button"))
+        val ticker = device.element(res("ticker_button"))
         ticker.tap()
         try {
             val failure = assertFailsWith<WaitTimeoutException> {
@@ -58,6 +59,6 @@ class MotionTest {
             ticker.tap()
         }
         device.awaitScreenStable(timeout = 5.seconds)
-        assertEquals("Ticker stopped", device.element(Fixture.id("ticker_status")).text())
+        assertEquals("Ticker stopped", device.element(res("ticker_status")).text())
     }
 }

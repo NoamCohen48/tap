@@ -2,16 +2,16 @@ import time
 
 import pytest
 
-from tap import WaitTimeoutError
+from tap import WaitTimeoutError, res
 
-from conftest import fixture_id, launch
+from conftest import launch
 
 
 def test_waits_for_animation_to_end(tap_device):
     launch(tap_device, ".MotionActivity")
-    status = tap_device.element(fixture_id("motion_status"))
+    status = tap_device.element(res("motion_status"))
 
-    tap_device.element(fixture_id("motion_button")).tap()
+    tap_device.element(res("motion_button")).tap()
     started = time.monotonic()
     tap_device.await_animation_end(stable_for=0.5, timeout=10)
     waited = time.monotonic() - started
@@ -23,9 +23,9 @@ def test_waits_for_animation_to_end(tap_device):
 
 def test_settles_after_the_hierarchy_stops_moving(tap_device):
     launch(tap_device, ".MotionActivity")
-    status = tap_device.element(fixture_id("motion_status"))
+    status = tap_device.element(res("motion_status"))
 
-    tap_device.element(fixture_id("motion_button")).tap()
+    tap_device.element(res("motion_button")).tap()
     started = time.monotonic()
     tap_device.await_app_settled(stable_for=0.5, timeout=10)
     waited = time.monotonic() - started
@@ -37,7 +37,7 @@ def test_settles_after_the_hierarchy_stops_moving(tap_device):
 
 def test_screen_that_keeps_changing_times_out(tap_device):
     launch(tap_device, ".MotionActivity")
-    ticker = tap_device.element(fixture_id("ticker_button"))
+    ticker = tap_device.element(res("ticker_button"))
     ticker.tap()
     try:
         with pytest.raises(WaitTimeoutError) as failure:
@@ -47,4 +47,4 @@ def test_screen_that_keeps_changing_times_out(tap_device):
     finally:
         ticker.tap()
     tap_device.await_screen_stable(timeout=5)
-    assert tap_device.element(fixture_id("ticker_status")).text() == "Ticker stopped"
+    assert tap_device.element(res("ticker_status")).text() == "Ticker stopped"

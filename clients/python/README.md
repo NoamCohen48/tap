@@ -25,14 +25,14 @@ concurrent test processes on one machine share the same device pool and leases.
 ## Script usage
 
 ```python
-from tap import Service, text, res_id
+from tap import Service, text, res
 
 service = Service()
 with service.open_run("smoke") as run:                  # attaches: if this process dies, the
     facts = run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)["device"]
     with run.open_device(facts.serial, "com.company.tap.fixture") as device:
         device.app().cold_launch(".MainActivity")
-        device.element(res_id("com.company.tap.fixture", "view_button")).tap()
+        device.element(res("view_button")).tap()
         device.wait(text("View tapped")).visible()
         png = device.screenshot()
 ```

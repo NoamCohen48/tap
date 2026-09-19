@@ -9,7 +9,7 @@ whose every action resolves the selector again on the device, so there is nothin
     ```kotlin
     import com.company.tap.sdk.*
 
-    device.element(resId("com.shop", "buy_button")).tap()
+    device.element(res("buy_button")).tap()          // <aut>:id/buy_button
     device.element(text("Add to cart").clickable()).tap()
     device.element(className("android.widget.EditText").andHint("Search")).setText("socks")
     ```
@@ -17,9 +17,9 @@ whose every action resolves the selector again on the device, so there is nothin
 === "Python"
 
     ```python
-    from tap import res_id, text, class_name
+    from tap import res, text, class_name
 
-    device.element(res_id("com.shop", "buy_button")).tap()
+    device.element(res("buy_button")).tap()          # <aut>:id/buy_button
     device.element(text("Add to cart").clickable()).tap()
     device.element(class_name("android.widget.EditText").and_hint("Search")).set_text("socks")
     ```
@@ -28,7 +28,8 @@ whose every action resolves the selector again on the device, so there is nothin
 
 | Kotlin | Python | Matches |
 |---|---|---|
-| `resId(pkg, name)` | `res_id(pkg, name)` | resource id `pkg:id/name` |
+| `res(name)` | `res(name)` | View resource id `name` of the **app under test** — `<aut>:id/name`, with the package filled in by the service from the session, so the same selector works on every device and role |
+| `resId(pkg, name)` | `res_id(pkg, name)` | resource id `pkg:id/name` in an explicit package (a system dialog, another app) |
 | `rawRes(name)` | `raw_res(name)` | the exact, unqualified resource name — a Compose `testTag` when the app sets `testTagsAsResourceId`. It does **not** match View ids, whose name is always `pkg:id/name` |
 | `text(value)` | `text(value)` | exact text |
 | `textContains(v)`, `textStartsWith(v)` | `text_contains`, `text_starts_with` | substring / prefix |
@@ -54,7 +55,7 @@ Everything after the entry point narrows the same node:
 
 | Kotlin | Python |
 |---|---|
-| `.andText(v)`, `.andDesc(v)`, `.andHint(v)`, `.andClassName(v)`, `.andRes(pkg, name)` | `.and_text`, `.and_desc`, `.and_hint`, `.and_class_name`, `.and_res` |
+| `.andText(v)`, `.andDesc(v)`, `.andHint(v)`, `.andClassName(v)`, `.andRes(name)`, `.andRes(pkg, name)` | `.and_text`, `.and_desc`, `.and_hint`, `.and_class_name`, `.and_res_aut(name)`, `.and_res(pkg, name)` |
 | `.clickable()`, `.longClickable()`, `.scrollable()`, `.checkable()`, `.checked()`, `.enabled()`, `.focusable()`, `.focused()`, `.selected()` — each takes an optional `Boolean` | same, snake_case |
 
 ```kotlin

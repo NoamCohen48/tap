@@ -20,7 +20,7 @@ when its run stream closes.
             val receiver = devices["receiver"]
             sender.app().coldLaunch()
             receiver.app().coldLaunch()
-            sender.element(resId("com.chat", "compose")).setText("hi")
+            sender.element(res("compose")).setText("hi")
             sender.element(text("Send")).tap()
             receiver.await(text("hi"), timeout = 20.seconds).visible()
         }
@@ -38,7 +38,7 @@ when its run stream closes.
         sender, receiver = tap_devices["sender"], tap_devices["receiver"]
         sender.app().cold_launch()
         receiver.app().cold_launch()
-        sender.element(res_id("com.chat", "compose")).set_text("hi")
+        sender.element(res("compose")).set_text("hi")
         sender.element(text("Send")).tap()
         receiver.wait(text("hi"), timeout=20).visible()
     ```

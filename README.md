@@ -30,7 +30,7 @@ class CheckoutTest {
         val app = device.app()                    // the configured AUT package
         app.clearData()
         app.launch()                              // resolves the launcher activity, waits for the window
-        device.element(resId(app.packageName, "buy_button")).tap()
+        device.element(res("buy_button")).tap()  // <aut>:id/buy_button
         device.await(text("Order placed")).visible()
     }
 
@@ -102,11 +102,11 @@ The Python API mirrors the Kotlin one; `tap_device` is a per-test session from t
 
 ```python
 import pytest
-from tap import text, res_id
+from tap import text, res
 
 def test_view_button(tap_device):
     tap_device.app().cold_launch(".MainActivity")
-    tap_device.element(res_id("com.company.tap.fixture", "view_button")).tap()
+    tap_device.element(res("view_button")).tap()
     tap_device.wait(text("View tapped")).visible()
 
 @pytest.mark.tap_devices("left", "right")

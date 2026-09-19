@@ -1,14 +1,14 @@
 import pytest
 
-from tap import UP, CommandError, ErrorCode, WaitTimeoutError, raw_res, text, text_matches, text_starts_with
+from tap import UP, CommandError, ErrorCode, WaitTimeoutError, raw_res, res, text, text_matches, text_starts_with
 
-from conftest import fixture_id, launch
+from conftest import launch
 
 
 def test_taps_view_and_compose_buttons(tap_device):
     launch(tap_device)
 
-    tap_device.element(fixture_id("view_button")).tap()
+    tap_device.element(res("view_button")).tap()
     tap_device.wait(text("View tapped")).visible()
 
     tap_device.element(raw_res("composeButton")).tap()
@@ -17,8 +17,8 @@ def test_taps_view_and_compose_buttons(tap_device):
 
 def test_types_and_clears_text(tap_device):
     launch(tap_device)
-    field = tap_device.element(fixture_id("view_input"))
-    keyboard = tap_device.element(fixture_id("keyboard_input"))
+    field = tap_device.element(res("view_input"))
+    keyboard = tap_device.element(res("keyboard_input"))
 
     field.set_text("hello tap")
     assert field.text() == "hello tap"
@@ -54,20 +54,20 @@ def test_ambiguous_tap_fails_before_any_input(tap_device):
         tap_device.element(ambiguous).tap()
     assert failure.value.code == ErrorCode.AMBIGUOUS
     assert tap_device.element(ambiguous).count() == 2
-    assert tap_device.element(fixture_id("ambiguous_status")).text() == "Ambiguous taps: left=0 right=0"
+    assert tap_device.element(res("ambiguous_status")).text() == "Ambiguous taps: left=0 right=0"
 
     # Disambiguate by resource id (or by relation/index) instead of relaxing the invariant.
-    tap_device.element(fixture_id("ambiguous_button_right").and_text("AMBIGUOUS TAP")).tap()
+    tap_device.element(res("ambiguous_button_right").and_text("AMBIGUOUS TAP")).tap()
     tap_device.wait(text("Ambiguous taps: left=0 right=1")).visible()
 
 
 def test_waits_for_app_owned_synchronization(tap_device):
     app = launch(tap_device)
 
-    tap_device.element(fixture_id("sync_button")).tap()
+    tap_device.element(res("sync_button")).tap()
     tap_device.wait(text("Synchronized work running")).visible()
     app.await_idle(timeout=15)
-    assert tap_device.element(fixture_id("view_status")).text() == "Synchronized work complete"
+    assert tap_device.element(res("view_status")).text() == "Synchronized work complete"
 
 
 def test_wait_timeout_is_diagnosable(tap_device):

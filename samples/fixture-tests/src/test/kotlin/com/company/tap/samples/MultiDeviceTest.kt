@@ -3,6 +3,7 @@ package com.company.tap.samples
 import com.company.tap.junit5.Devices
 import com.company.tap.junit5.TapDevices
 import com.company.tap.junit5.TapTest
+import com.company.tap.sdk.res
 import com.company.tap.sdk.text
 import java.util.concurrent.Executors
 import kotlin.test.assertEquals
@@ -24,7 +25,7 @@ class MultiDeviceTest {
                 pool.submit<String> {
                     val device = devices[role]
                     Fixture.launch(device)
-                    device.element(Fixture.id("view_button")).tap()
+                    device.element(res("view_button")).tap()
                     device.await(text("View tapped")).visible()
                     device.info().model
                 }

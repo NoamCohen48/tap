@@ -62,6 +62,10 @@ class Selector:
         """Also require the resource id ``package_name:id/name``."""
         return self._node(resource=pb.ResourceId(name=name, package_name=package_name))
 
+    def and_res_aut(self, name: str) -> "Selector":
+        """Also require the app-under-test resource id ``name`` (see ``res``)."""
+        return self._node(resource=pb.ResourceId(name=name, aut_package=True))
+
     def checkable(self, value: bool = True) -> "Selector":
         """Require ``isCheckable == value``."""
         return self._node(checkable=value)
@@ -214,6 +218,13 @@ def raw_res(name: str) -> Selector:
 def res_id(package_name: str, name: str) -> Selector:
     """Android View resource id ``package:id/name``."""
     return _selector(resource=pb.ResourceId(name=name, package_name=package_name))
+
+
+def res(name: str) -> Selector:
+    """View resource id ``name`` of the **app under test**: ``<aut>:id/name``, with the package
+    filled in by the service from the session, so the same selector works on every device and
+    role. Use ``res_id`` for another package (a system dialog with ``in_system_package``)."""
+    return _selector(resource=pb.ResourceId(name=name, aut_package=True))
 
 
 def class_name(value: str, mode: int = EXACT) -> Selector:
