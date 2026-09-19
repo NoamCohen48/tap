@@ -261,7 +261,7 @@ from the docstrings of `clients/python/tap`) and the `tap.v1` gRPC API (protoc-g
 `build/site`, and also assembles `build/docs-md/` (+ `build/tap-docs-md.zip`): the same guide
 and references as plain Markdown (Dokka GFM and lazydocs instead of Dokka HTML and
 mkdocstrings). It needs JDK 17, `buf`, `protoc-gen-doc` and
-`pip install -r docs/requirements.txt -e clients/python`. `mkdocs serve` previews the guide
+`pip install -r docs/requirements.txt -e "clients/python[dev]"`. `mkdocs serve` previews the guide
 alone. `.github/workflows/docs.yml` builds both on every change (artifacts `site` and
 `docs-md`) and deploys the site to GitHub Pages once the `DEPLOY_DOCS` repository variable is
 `true`. Public API additions need a

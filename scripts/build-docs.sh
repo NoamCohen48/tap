@@ -13,8 +13,8 @@
 #   build/docs-md/reference/python/ lazydocs Markdown of the same modules
 #
 # Requirements: JDK 17 on JAVA_HOME (Gradle), `buf` and `protoc-gen-doc` on PATH (or set BUF /
-# PROTOC_GEN_DOC), and a Python with `pip install -r docs/requirements.txt -e clients/python`
-# (mkdocs, mkdocstrings, lazydocs; the client so `tap` imports).
+# PROTOC_GEN_DOC), and a Python with `pip install -r docs/requirements.txt -e "clients/python[dev]"`
+# (mkdocs, mkdocstrings, lazydocs; the client with its dev extra so `tap.pytest_plugin` imports).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -37,7 +37,7 @@ cp -r clients/kotlin/junit5/build/dokka/gfm "$MD/reference/kotlin/tap-junit5"
 echo "== Python reference for the Markdown bundle (lazydocs)"
 "$LAZYDOCS" tap.device tap.element tap.selectors tap.app tap.service tap.errors tap.pytest_plugin \
   --output-path "$MD/reference/python" --overview-file index.md --no-watermark \
-  --src-base-url https://github.com/NoamCohen48/tap/blob/main/ > /dev/null
+  --src-base-url https://github.com/NoamCohen48/tap/blob/main/ | grep -v "^Generating\|^Writing"
 rm -f "$MD/reference/python/.pages"
 
 echo "== gRPC reference (protoc-gen-doc)"
