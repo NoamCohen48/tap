@@ -17,3 +17,9 @@ local.properties
 
 # OS
 .DS_Store
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+tap-artifacts/

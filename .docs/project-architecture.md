@@ -66,7 +66,8 @@ These are the invariants the code is organized around (see `CLAUDE.md` for the s
 ```text
 tap/
 +-- build.gradle.kts             root plugins (AGP 9.0.1, Kotlin 2.3.20), no logic
-+-- settings.gradle.kts          includes :protocol :driver :driver:command-engine :host :host:validation :host:sdk :host:junit5 :fixture-app :sync-sdk :samples:fixture-tests
++-- settings.gradle.kts          includes :protocol :driver :driver:command-engine :host :host:validation :host:sdk :host:junit5 :host:service :fixture-app :sync-sdk :samples:fixture-tests
++-- api/tap.proto                language-neutral host service API (tap.v1); single source for Kotlin and Python stubs
 +-- gradle.properties, gradlew*, gradle/wrapper/
 +-- CLAUDE.md                    working rules for agents/contributors
 +-- README.md                    build/run instructions
@@ -152,6 +153,25 @@ tap/
 |       +-- TapSynchronization.kt          busy() handles, generation, identity snapshot
 |       +-- TapSynchronizationProvider.kt  ContentResolver.call("state") -> Bundle
 |
++-- host/service/                gRPC host session service, `tap` executable (JVM dist + GraalVM native image)
+|   +-- build.gradle.kts         protobuf/grpc codegen from ../../api, bundles the driver APKs as resources, native-image config
+|   +-- src/main/kotlin/com/company/tap/service/
+|   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
+|   |   +-- TapService.kt        runs, machine-wide pool (inventory/acquire/release), managed sessions, execute with transport-loss-as-data
+|   |   +-- Servicers.kt         gRPC servicers for Run/Pool/Session/App; status mapping; off-thread Execute so cancel reaches the driver
+|   |   +-- Conversions.kt       proto <-> protocol models (enums by name, selectors, commands, results)
+|   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
+|   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
+|   +-- src/test/kotlin/...      EnumMirrorTest, GoldenRoundTripTest
+|
++-- python/                      tap-e2e: Python client + pytest plugin (thin layer over the service)
+|   +-- pyproject.toml, README.md
+|   +-- scripts/gen_stubs.py     regenerates tap/_gen from api/tap.proto; --check for CI
+|   +-- tap/_gen/                committed generated stubs (tap_pb2, tap_pb2_grpc, .pyi)
+|   +-- tap/{service,device,element,app,selectors,errors}.py   Service/Run, Device, Element/ElementWait, App, selector DSL, typed errors
+|   +-- tap/pytest_plugin.py     tap_device / tap_devices fixtures, @pytest.mark.tap_devices, failure artifacts
+|   +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
+|
 +-- fixture-app/                 Android app used only by the validation flow
     +-- src/main/AndroidManifest.xml
     +-- src/main/kotlin/com/company/tap/fixture/
@@ -170,6 +190,8 @@ Dependency direction:
 ```text
 samples:fixture-tests --> host:junit5 --> host:sdk --> host --> protocol
 host:validation ---------------------------------> host
+host:service (tap) -----------------> host:sdk --> host --> protocol
+python/tap (tap-e2e) --gRPC--> host:service
 driver androidTest --> driver:command-engine --> protocol
 fixture-app ---------> sync-sdk
 ```
@@ -181,11 +203,15 @@ fixture-app ---------> sync-sdk
   validation executable uses kotlinx.coroutines for its per-device fan-out.
 - Product test suites depend on `:host:junit5` (which exposes `:host:sdk` and `:host` as
   `api`) and never on `:host:validation`.
+- `:host:service` depends on `:host:sdk` only, so service and JUnit share one lifecycle
+  implementation. Bindings depend on the service over gRPC and contain no session logic.
 
 Generated artifacts:
 
 ```text
 host/validation/build/install/host/bin/host
+host/service/build/install/tap/bin/tap                 JVM distribution of the service
+host/service/build/native/nativeCompile/tap            GraalVM native image of the service
 driver/build/outputs/apk/debug/driver-debug.apk
 driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk
 fixture-app/build/outputs/apk/debug/fixture-app-debug.apk
@@ -432,6 +458,27 @@ then `TAP_*` environment).
 Class-level JUnit parallelism is safe: the pool serialises devices, and the sample suite
 runs its classes concurrently across two devices.
 
+### Host session service (`:host:service`)
+
+`tap serve` exposes the `:host:sdk` layer over loopback gRPC (`api/tap.proto`, package
+`tap.v1`) so non-Kotlin bindings reuse the same ADB control plane, journals, leases, driver
+lifecycle and app operations. It owns a machine-wide pool (inventory from `adb devices` +
+`DEVICE_INFO` facts, all-or-none acquisition with per-role constraints, quarantine read from
+the journal), proxies `Execute` to the session's `DriverClient` (driver failures and transport
+loss are returned as `CommandResult` data, never gRPC errors; gRPC cancellation forwards a
+protocol `CANCEL`), and closes everything a run holds when the run's `Attach` stream drops.
+The driver APKs are embedded. The full contract is `service-api.md`.
+
+### Python binding (`python/`)
+
+`tap-e2e` is a generated gRPC client plus a thin mirror of the Kotlin SDK: `Service`/`Run`,
+`Device`, `Element`/`ElementWait`, `App`, selector builders over the proto `Selector`, and
+typed errors (`CommandError` with `ErrorCode`, `WaitTimeoutError`, `AppLifecycleError`,
+`ServiceError`). The pytest plugin mirrors `TapExtension`: per-test sessions, all-or-none
+roles via `@pytest.mark.tap_devices`, skip when fewer serials are configured, failure
+artifacts (screenshot, hierarchy, device info, driver log). Service discovery: `TAP_SERVICE`,
+then `<state dir>/service.json`, then auto-start of `TAP_BIN`/`tap` on `PATH`.
+
 ## 7. Synchronization SDK
 
 `sync-sdk` is what a product app adds to its E2E/debug build:
@@ -496,11 +543,17 @@ Also implemented and device-proven (2026-09-18): observation/key operations (`DE
 the selector DSL; the all-or-none device pool; the `@TapTest` JUnit 5 extension with failure
 artifacts; and a sample suite that passes on two devices concurrently.
 
+Also implemented and device-proven (2026-09-19): the gRPC host session service with a
+machine-wide constrained pool, run liveness and cancel forwarding; its GraalVM native image;
+the Python client and pytest plugin; the sample suite ported to pytest and passing on both
+devices through the native service.
+
 Not yet built — see [`framework-gaps.md`](framework-gaps.md) for the full, per-section list:
 `session.shutdown`, `wait.screenStable`, `inspector.snapshot`, crash/ANR codes, provider
 visibility for non-fixture AUTs, the coroutine `tapTest` façade and `DeviceBarrier`, device
 constraints in the pool, fake-ADB JVM coverage for the SDK, logcat/dumpsys/JSONL/HTML
-artifacts and reports, per-test deadlines and the remaining JUnit contracts, CI lanes.
+artifacts and reports, per-test deadlines and the remaining JUnit contracts, CI lanes,
+routing the Kotlin JUnit path through the service.
 
 `PhaseZeroMain.kt` (≈2 300 lines) remains validation code, not framework code; it should
 keep exercising faults the SDK cannot inject, and nothing outside `:host:validation` may

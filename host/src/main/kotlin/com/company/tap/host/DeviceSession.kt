@@ -79,6 +79,7 @@ class DeviceSession private constructor(
             try {
                 val bootId = adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")
                 val prior = recoverJournal(adb, serial, bootId, store)
+                adb.wakeAndDismissKeyguard(serial)
                 config.driverApk?.let { adb.install(serial, it) }
                 config.driverTestApk?.let { adb.install(serial, it) }
 

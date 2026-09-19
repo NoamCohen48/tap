@@ -2,9 +2,11 @@
 
 Date: 2026-09-18
 
-Status: proposal. Nothing in this document is implemented. It records the analysis behind
-the "Python (or any second) binding" requirement so the decision is made once, with the
-trade-offs visible, before anyone starts on it. The design doc already anticipated this
+Status: implemented on 2026-09-19 along the lines recommended below (option 2.3, proxy
+variant) — see `service-api.md` for the contract, `:host:service` and `python/` for the
+code, and §7 for what was decided differently from the sketch. The rest of this document is
+the analysis behind the "Python (or any second) binding" requirement, kept so the
+trade-offs stay visible. The design doc already anticipated this
 (`android-e2e-framework-design.md` §8: "Kotlin first; Python is the most likely second
 binding once the Kotlin API and protocol are proven"). The Kotlin API and protocol are now
 proven on two API levels (`phase-1-progress.md`), so the question is open.
@@ -166,3 +168,29 @@ free but is a protocol 2.0 decision (see the rationale section of `protocol-cont
    multi-device story later.
 4. Whether the Kotlin JUnit path moves onto the service in the same change (recommended,
    so there is one lifecycle implementation) or later.
+
+## 7. Outcome (2026-09-19)
+
+Decisions taken against §6, and where the implementation departs from the sketch in §3–§5:
+
+1. **Parity, not a reduced client.** The Python binding covers the full SDK surface
+   (elements, waits, app lifecycle, multi-device) because the service makes that as cheap
+   as a reduced client.
+2. **Proxy command path.** The service owns the `DriverClient`; Python has no wire code.
+3. **Synchronous API**, threads for multi-device, mirroring the Kotlin SDK.
+4. **Kotlin JUnit not yet moved** onto the service; tracked in `framework-gaps.md`.
+5. **gRPC + protobuf instead of JSON-RPC over a Unix socket.** One `api/tap.proto` is the
+   source of truth for every binding; Kotlin stubs are generated at build time, Python stubs
+   are committed with a `--check` script. Loopback TCP with a `service.json` descriptor
+   replaced the socket/token file (same on every OS).
+6. **The proto mirrors the protocol's selector/command model** rather than tunnelling
+   opaque JSON, so bindings get typed selectors; the mirror is guarded by an enum-name test
+   and a golden round-trip test against `protocol/src/test/resources/golden`.
+7. **Native image first, not jlink.** GraalVM 21 builds a single ~39 MB executable in under
+   a minute with committed reachability metadata; the JVM `installDist` distribution remains
+   the fallback. `adb` is still required (§4).
+8. **Service lifetime follows the ADB server model**: an auto-started `tap serve` stays up
+   for other clients; `tap stop` ends it.
+9. **Cancellation** is expressed as gRPC call cancellation, forwarded as a protocol `CANCEL`;
+   there is no separate `session.cancel` RPC.
+10. **JSON Schema (§5) was not needed**: the proto is the schema.

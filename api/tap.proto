@@ -1,0 +1,505 @@
+// Tap host session service API.
+//
+// This file is the single source of truth for every binding (Kotlin, Python, ...). Bindings
+// generate their stubs from it; the Kotlin service implements it. It sits *above* the device
+// wire protocol (`.docs/protocol-contract.md`, JSON protocol 1.0): the Selector, Command and
+// CommandResult messages mirror the protocol's Request/Response shapes one-to-one, and the
+// service converts between them. `EnumMirrorTest` and `GoldenRoundTripTest` in :host:service
+// fail the build if this file and the Kotlin protocol drift apart.
+//
+// Conventions: enums carry a zero UNSPECIFIED value (proto3), everything that is nullable in
+// the protocol is `optional` here, and names are the protocol names in snake_case.
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "com.company.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "TapApiProto";
+
+// ---------------------------------------------------------------------------------------------
+// Protocol mirrors (protocol/Selector.kt, protocol/Messages.kt, protocol/ErrorCode.kt)
+// ---------------------------------------------------------------------------------------------
+
+enum Operation {
+  OP_UNSPECIFIED = 0;
+  OP_HEALTH = 1;
+  OP_DEVICE_INFO = 2;
+  OP_PRESS_KEY = 3;
+  OP_EXISTS = 4;
+  OP_COUNT = 5;
+  OP_SNAPSHOT = 6;
+  OP_TAP = 7;
+  OP_LONG_TAP = 8;
+  OP_WAIT_VISIBLE = 9;
+  OP_WAIT_GONE = 10;
+  OP_WAIT_APP_VISIBLE = 11;
+  OP_DUMP_HIERARCHY = 12;
+  OP_SET_TEXT = 13;
+  OP_TYPE_TEXT = 14;
+  OP_CLEAR_TEXT = 15;
+  OP_SWIPE = 16;
+  OP_SCROLL = 17;
+  OP_SCROLL_UNTIL = 18;
+  OP_SCREENSHOT = 19;
+  OP_SYNC_BOOTSTRAP = 20;
+  OP_SYNC_STATE = 21;
+}
+
+enum ErrorCode {
+  ERR_UNSPECIFIED = 0;
+  ERR_INVALID_REQUEST = 1;
+  ERR_INVALID_SELECTOR = 2;
+  ERR_UNSUPPORTED = 3;
+  ERR_UNAUTHENTICATED = 4;
+  ERR_SESSION_MISMATCH = 5;
+  ERR_DUPLICATE_OR_STALE = 6;
+  ERR_OVERLOADED = 7;
+  ERR_AUT_MISMATCH = 8;
+  ERR_NOT_FOUND = 9;
+  ERR_AMBIGUOUS = 10;
+  ERR_NOT_INTERACTABLE = 11;
+  ERR_STALE_DURING_COMMAND = 12;
+  ERR_ACTION_REJECTED = 13;
+  ERR_WAIT_TIMEOUT = 14;
+  ERR_CANCELLED = 15;
+  ERR_DEADLINE_EXCEEDED = 16;
+  ERR_AUT_NOT_INSTALLED = 17;
+  ERR_AUT_CRASHED = 18;
+  ERR_AUT_ANR = 19;
+  ERR_SYNC_PROVIDER_UNAVAILABLE = 20;
+  ERR_DRIVER_UNHEALTHY = 21;
+  ERR_TRANSPORT_LOST = 22;
+  ERR_INDETERMINATE = 23;
+  ERR_ARTIFACT_TRANSFER_FAILED = 24;
+  ERR_PAYLOAD_TOO_LARGE = 25;
+  ERR_INTERNAL = 26;
+  ERR_UNKNOWN = 27;
+}
+
+enum Direction {
+  DIR_UNSPECIFIED = 0;
+  DIR_UP = 1;
+  DIR_DOWN = 2;
+  DIR_LEFT = 3;
+  DIR_RIGHT = 4;
+}
+
+enum MatchMode {
+  MATCH_UNSPECIFIED = 0;
+  MATCH_EXACT = 1;
+  MATCH_CONTAINS = 2;
+  MATCH_STARTS_WITH = 3;
+  MATCH_ENDS_WITH = 4;
+  MATCH_REGEX = 5;
+}
+
+enum MatchLimit {
+  LIMIT_UNSPECIFIED = 0;
+  LIMIT_EXACTLY_ONE = 1;
+  LIMIT_FIRST = 2;
+  LIMIT_AT = 3;
+}
+
+enum TargetScope {
+  SCOPE_UNSPECIFIED = 0;
+  SCOPE_AUT = 1;
+  SCOPE_SYSTEM = 2;
+}
+
+message StringMatch {
+  string value = 1;
+  MatchMode mode = 2; // UNSPECIFIED = EXACT
+}
+
+message ResourceId {
+  string name = 1;
+  optional string package_name = 2;
+}
+
+message NodeSelector {
+  optional StringMatch text = 1;
+  optional StringMatch content_description = 2;
+  optional StringMatch hint = 3;
+  optional StringMatch class_name = 4;
+  optional ResourceId resource = 5;
+  optional bool enabled = 6;
+  optional bool checked = 7;
+  optional bool checkable = 8;
+  optional bool clickable = 9;
+  optional bool focused = 10;
+  optional bool focusable = 11;
+  optional bool long_clickable = 12;
+  optional bool scrollable = 13;
+  optional bool selected = 14;
+  optional NodeSelector parent = 15;
+  optional NodeSelector ancestor = 16;
+  optional NodeSelector child = 17;
+  optional NodeSelector descendant = 18;
+}
+
+message Selector {
+  NodeSelector node = 1;
+  TargetScope scope = 2; // UNSPECIFIED = AUT
+  optional string scope_package = 3;
+  MatchLimit limit = 4; // UNSPECIFIED = EXACTLY_ONE
+  optional int32 index = 5;
+  bool accept_accessibility_order = 6;
+}
+
+// One protocol request minus session identity (the service owns session id, generation,
+// request ids and operation version).
+message Command {
+  Operation operation = 1;
+  int64 timeout_ms = 2; // 0 = the session's default action timeout
+  optional Selector selector = 3;
+  optional Selector container_selector = 4;
+  optional string input_text = 5;
+  optional Direction direction = 6;
+  optional int32 distance_percent = 7; // default 80
+  optional int32 max_scrolls = 8; // default 20
+  optional int32 key_code = 9;
+  optional string package_name = 10;
+  optional int32 observed_pid = 11;
+  optional string observed_start_token = 12;
+  optional string expected_process_start_uuid = 13;
+  optional string expected_session_identity = 14;
+}
+
+message SyncState {
+  bool initialized = 1;
+  int32 process_id = 2;
+  string process_start_uuid = 3;
+  string session_identity = 4;
+  int64 generation = 5;
+  int32 busy_count = 6;
+  int64 last_transition_elapsed_ms = 7;
+  optional string error = 8;
+}
+
+message ArtifactInfo {
+  string blob_id = 1;
+  string media_type = 2;
+  int64 byte_count = 3;
+  string sha256 = 4;
+  optional int32 width = 5;
+  optional int32 height = 6;
+}
+
+message Bounds {
+  int32 left = 1;
+  int32 top = 2;
+  int32 right = 3;
+  int32 bottom = 4;
+}
+
+message ElementSnapshot {
+  optional string class_name = 1;
+  optional string package_name = 2;
+  optional string resource_name = 3;
+  optional string text = 4;
+  optional string content_description = 5;
+  optional string hint = 6;
+  Bounds bounds = 7;
+  bool checkable = 8;
+  bool checked = 9;
+  bool clickable = 10;
+  bool enabled = 11;
+  bool focusable = 12;
+  bool focused = 13;
+  bool long_clickable = 14;
+  bool scrollable = 15;
+  bool selected = 16;
+  int32 child_count = 17;
+}
+
+message DeviceInfo {
+  int32 api_level = 1;
+  string manufacturer = 2;
+  string model = 3;
+  string product = 4;
+  int32 display_width = 5;
+  int32 display_height = 6;
+  int32 display_rotation = 7;
+  optional string current_package = 8;
+}
+
+// One protocol response. Driver-side failures and driver-transport loss are data (ok=false +
+// error_code, including TRANSPORT_LOST / INDETERMINATE with `detail` = transmission state),
+// never a gRPC error: gRPC status codes are reserved for the client↔service call itself
+// (unknown session, invalid argument, cancelled, service down).
+message CommandResult {
+  bool ok = 1;
+  optional bool value = 2;
+  optional string text = 3;
+  optional ErrorCode error_code = 4;
+  optional string detail = 5;
+  optional string message = 6;
+  int64 duration_ms = 7;
+  optional SyncState sync_state = 8;
+  optional ArtifactInfo artifact = 9;
+  optional int32 count = 10;
+  optional ElementSnapshot snapshot = 11;
+  optional DeviceInfo device_info = 12;
+  // Identity of the protocol request the service issued, for diagnostics.
+  int64 request_id = 13;
+  int64 session_generation = 14;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Runs: a client's unit of ownership. Devices and sessions belong to a run; when the run's
+// Attach stream breaks (client exited), the service closes its sessions and frees its devices.
+// ---------------------------------------------------------------------------------------------
+
+service RunService {
+  rpc Open(OpenRunRequest) returns (OpenRunResponse);
+  // Long-lived stream the client keeps open for the life of the run. Server-side cancellation
+  // of this stream is the liveness signal; the messages are informational.
+  rpc Attach(AttachRequest) returns (stream RunEvent);
+  rpc Close(CloseRunRequest) returns (CloseRunResponse);
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
+
+message OpenRunRequest {
+  string name = 1; // free text for diagnostics (e.g. "pytest 12345 on host")
+}
+
+message OpenRunResponse {
+  string run_id = 1;
+}
+
+message AttachRequest {
+  string run_id = 1;
+}
+
+message RunEvent {
+  int64 at_epoch_ms = 1;
+  string message = 2;
+}
+
+message CloseRunRequest {
+  string run_id = 1;
+}
+
+message CloseRunResponse {
+  int32 sessions_closed = 1;
+  int32 devices_released = 2;
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  string service_version = 1;
+  string host_build_id = 2;
+  string protocol_version = 3;
+  string adb_executable = 4;
+  string state_dir = 5;
+  bool bundled_driver = 6;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pool: one machine-wide pool of devices with all-or-none role acquisition.
+// ---------------------------------------------------------------------------------------------
+
+service PoolService {
+  rpc Inventory(InventoryRequest) returns (InventoryResponse);
+  // Blocks until every role can be satisfied at once or the deadline passes
+  // (DEADLINE_EXCEEDED); partial assignments are never handed out.
+  rpc Acquire(AcquireRequest) returns (AcquireResponse);
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+}
+
+enum DeviceState {
+  DEVICE_STATE_UNSPECIFIED = 0;
+  DEVICE_FREE = 1;
+  DEVICE_LEASED = 2;
+  DEVICE_QUARANTINED = 3;
+  DEVICE_OFFLINE = 4;
+}
+
+message DeviceFacts {
+  string serial = 1;
+  int32 api_level = 2;
+  string manufacturer = 3;
+  string model = 4;
+  bool emulator = 5;
+}
+
+message PoolDevice {
+  DeviceFacts facts = 1;
+  DeviceState state = 2;
+  optional string leased_by_run = 3;
+  optional string leased_role = 4;
+  optional string quarantine_reason = 5;
+}
+
+message InventoryRequest {}
+
+message InventoryResponse {
+  repeated PoolDevice devices = 1;
+}
+
+message DeviceConstraints {
+  optional string serial = 1;
+  optional int32 min_api = 2;
+  optional int32 max_api = 3;
+  optional bool emulator = 4;
+  optional string model_contains = 5;
+}
+
+message RoleRequest {
+  string role = 1;
+  DeviceConstraints constraints = 2;
+}
+
+message AcquireRequest {
+  string run_id = 1;
+  repeated RoleRequest roles = 2;
+  int64 timeout_ms = 3;
+}
+
+message Assignment {
+  string role = 1;
+  DeviceFacts device = 2;
+}
+
+message AcquireResponse {
+  repeated Assignment assignments = 1;
+}
+
+message ReleaseRequest {
+  string run_id = 1;
+  repeated string serials = 2; // empty = everything the run holds
+}
+
+message ReleaseResponse {
+  int32 released = 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sessions: one driver session on one leased device.
+// ---------------------------------------------------------------------------------------------
+
+service SessionService {
+  rpc Open(OpenSessionRequest) returns (OpenSessionResponse);
+  rpc Close(CloseSessionRequest) returns (CloseSessionResponse);
+  // One protocol command. Cancelling the call cancels the protocol request (the driver's
+  // cancellation rules apply: a mutation past its gate still completes).
+  rpc Execute(ExecuteRequest) returns (CommandResult);
+  rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
+  rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
+}
+
+message OpenSessionRequest {
+  string run_id = 1;
+  string serial = 2;
+  string aut_package = 3;
+  // Install the driver APKs before starting. When omitted the service installs its bundled
+  // driver once per device per service lifetime.
+  optional string driver_apk = 4;
+  optional string driver_test_apk = 5;
+  optional bool skip_driver_install = 6;
+  optional string sync_authority = 7;
+  repeated string allowed_system_packages = 8;
+  optional int64 default_timeout_ms = 9; // used when Command.timeout_ms is 0
+}
+
+message OpenSessionResponse {
+  string session_id = 1;
+  string serial = 2;
+  int64 generation = 3;
+  DeviceInfo device_info = 4;
+}
+
+message CloseSessionRequest {
+  string session_id = 1;
+}
+
+message CloseSessionResponse {
+  // false when cleanup could not be proven and the device was quarantined.
+  bool clean = 1;
+  optional string detail = 2;
+}
+
+message ExecuteRequest {
+  string session_id = 1;
+  Command command = 2;
+}
+
+message ScreenshotRequest {
+  string session_id = 1;
+  int64 timeout_ms = 2;
+  // When set, the PNG is written to this host path and `png` is left empty.
+  optional string write_to = 3;
+}
+
+message ScreenshotResponse {
+  bytes png = 1;
+  ArtifactInfo artifact = 2;
+  optional string path = 3;
+}
+
+message DriverLogRequest {
+  string session_id = 1;
+}
+
+message DriverLogResponse {
+  repeated string lines = 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// App lifecycle on a session's device, implemented by the Kotlin SDK's App (one source of
+// truth for verification rules). Failures are gRPC FAILED_PRECONDITION with a message.
+// ---------------------------------------------------------------------------------------------
+
+service AppService {
+  rpc Install(AppInstallRequest) returns (AppEmpty);
+  rpc Uninstall(AppRequest) returns (AppEmpty);
+  rpc IsInstalled(AppRequest) returns (AppBool);
+  rpc ForceStop(AppRequest) returns (AppEmpty);
+  rpc ClearData(AppRequest) returns (AppEmpty);
+  rpc GrantPermission(AppGrantRequest) returns (AppEmpty);
+  rpc Launch(AppLaunchRequest) returns (AppEmpty);
+  rpc ColdLaunch(AppLaunchRequest) returns (ProcessIdentity);
+  rpc Process(AppRequest) returns (ProcessIdentity);
+  rpc IsRunning(AppRequest) returns (AppBool);
+  rpc AwaitIdle(AppAwaitIdleRequest) returns (AppEmpty);
+}
+
+message AppRequest {
+  string session_id = 1;
+  string package_name = 2;
+  int64 timeout_ms = 3; // 0 = session default
+}
+
+message AppInstallRequest {
+  AppRequest app = 1;
+  string apk_path = 2; // host path
+}
+
+message AppGrantRequest {
+  AppRequest app = 1;
+  string permission = 2;
+}
+
+message AppLaunchRequest {
+  AppRequest app = 1;
+  optional string activity = 2; // omitted = launcher activity
+}
+
+message AppAwaitIdleRequest {
+  AppRequest app = 1;
+  int64 stable_for_ms = 2; // 0 = 200
+}
+
+message ProcessIdentity {
+  int32 pid = 1;
+  string start_token = 2;
+}
+
+message AppBool {
+  bool value = 1;
+}
+
+message AppEmpty {}

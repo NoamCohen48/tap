@@ -1,8 +1,9 @@
 # Tap
 
-Kotlin host-driven Android E2E framework. Phases 0 and 1 (feasibility, contract, driver) are
-complete and the first usable cut of Phase 2 (host SDK + JUnit 5) is in; this is not a
-production release. What is still missing is listed in
+Kotlin host-driven Android E2E framework with a Python binding. Phases 0 and 1
+(feasibility, contract, driver) are complete, the first usable cut of Phase 2 (host SDK +
+JUnit 5) is in, and a host session service (`tap serve`, gRPC, native image) backs the
+Python client and pytest plugin; this is not a production release. What is still missing is listed in
 [`.docs/framework-gaps.md`](.docs/framework-gaps.md).
 
 ## Writing tests
@@ -62,6 +63,42 @@ Configuration is read from system properties or environment variables:
 
 It builds and installs the fixture app and the driver, runs nine tests (including a two-device
 test that is skipped with one serial) and runs test classes concurrently across the pool.
+
+## Python tests through the host service
+
+Tests in any language talk to `tap serve`, a loopback gRPC daemon that owns ADB, driver
+lifecycle, journals, leases and the machine-wide device pool (`.docs/service-api.md`). Build
+it as a single executable (needs a GraalVM 21 at `GRAALVM_HOME`; the JVM distribution from
+`:host:service:installDist` is the fallback):
+
+```bash
+./gradlew :host:service:nativeCompile        # -> host/service/build/native/nativeCompile/tap
+pip install -e python                        # the tap-e2e package
+```
+
+The Python API mirrors the Kotlin one; `tap_device` is a per-test session from the pool:
+
+```python
+import pytest
+from tap import text, res_id
+
+def test_view_button(tap_device):
+    tap_device.app().cold_launch(".MainActivity")
+    tap_device.element(res_id("com.company.tap.fixture", "view_button")).tap()
+    tap_device.wait(text("View tapped")).visible()
+
+@pytest.mark.tap_devices("left", "right")
+def test_two_devices(tap_devices): ...
+```
+
+```bash
+TAP_BIN=$PWD/host/service/build/native/nativeCompile/tap TAP_SERIALS=emulator-5554[,SERIAL] \
+  pytest python/tests
+```
+
+The plugin discovers a running service (`TAP_SERVICE`, or `~/.tap/service.json`) or starts
+one, which then stays up like the ADB server (`tap stop`). Failure artifacts land in
+`tap-artifacts/<nodeid>/`. See `python/README.md`.
 
 ## Current slice
 
@@ -123,8 +160,17 @@ lives at `~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2` on the current works
 
 Modules: `:protocol` (wire contract), `:driver` + `:driver:command-engine` (on-device
 driver), `:host` (ADB, sessions, `DriverClient`), `:host:sdk` (public API),
-`:host:junit5` (JUnit 5 extension), `:host:validation` (the `host` validation executable),
-`:sync-sdk`, `:fixture-app`, `:samples:fixture-tests`.
+`:host:junit5` (JUnit 5 extension), `:host:service` (gRPC host service, `tap` executable),
+`:host:validation` (the `host` validation executable), `:sync-sdk`, `:fixture-app`,
+`:samples:fixture-tests`; `api/tap.proto` (service API) and `python/` (tap-e2e).
+
+Service and Python checks:
+
+```bash
+./gradlew :host:service:test                      # proto mirror + golden round-trip tests
+python/scripts/gen_stubs.py --check               # committed Python stubs match api/tap.proto
+GRAALVM_HOME=... ./gradlew :host:service:nativeCompile
+```
 
 ## Run the validation flow
 
@@ -172,4 +218,5 @@ For framework fault validation, prefix a tap step with `!ERROR_CODE:`, for examp
 The normative design is in
 `.docs/android-e2e-framework-implementation-plan.md`. Current status is in
 `.docs/phase-1-progress.md`, the remaining delta to the plan in `.docs/framework-gaps.md`,
-and the module layout in `.docs/project-architecture.md`.
+the module layout in `.docs/project-architecture.md`, the device wire protocol in
+`.docs/protocol-contract.md` and the host service API in `.docs/service-api.md`.

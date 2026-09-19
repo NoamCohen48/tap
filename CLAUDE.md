@@ -2,7 +2,9 @@
 
 Kotlin host-driven Android E2E framework. Phases 0 and 1 (contract and driver) are complete;
 Phase 2 (host SDK + JUnit 5) has a usable first cut in `:host:sdk`, `:host:junit5`, and
-`:samples:fixture-tests`. See `README.md` for build/run commands.
+`:samples:fixture-tests`. `:host:service` (`tap serve`, gRPC over loopback, native image)
+exposes the same SDK to other languages; `python/` is the Python client + pytest plugin.
+See `README.md` for build/run commands.
 
 ## Documents
 
@@ -15,8 +17,10 @@ Phase 2 (host SDK + JUnit 5) has a usable first cut in `:host:sdk`, `:host:junit
   implemented *and* exercised by a test or the device validation flow.
 - `.docs/framework-gaps.md` — the remaining delta to the plan, per section. Move an item out
   of it only together with the test or device check that proves it.
-- `.docs/multi-language-bindings.md` — analysis and proposal for a second (Python) binding
-  via a host session service; not implemented.
+- `.docs/service-api.md` — the host service contract (`api/tap.proto`, `tap.v1`): run
+  liveness, pool, sessions, status mapping, native build. Update it with any proto change.
+- `.docs/multi-language-bindings.md` — analysis behind the service + Python binding, with
+  the outcome section recording what was decided.
 - `.docs/upstream-reference-audit.md` — adopt/adapt/do-not-copy decisions per upstream tool.
 
 ## Learning from other testing tools
@@ -68,3 +72,15 @@ Rules when doing so:
 - Product code must never depend on `:host:validation`; `PhaseZeroMain` is fault-injection
   validation, not framework code.
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.
+- `api/tap.proto` is the single source for the service API. After editing it: run
+  `:host:service:test` (enum mirror + golden round trip), regenerate the committed Python stubs
+  with `python/scripts/gen_stubs.py` (needs `grpcio-tools`), and update `.docs/service-api.md`.
+- Native image: `GRAALVM_HOME=~/.local/share/graalvm/graalvm-community-openjdk-21.0.2+13.1
+  ./gradlew :host:service:nativeCompile` (JAVA_HOME stays JDK 17). If a new dependency uses
+  reflection, re-record `host/service/src/main/resources/META-INF/native-image` with the
+  tracing agent (`JAVA_OPTS=-agentlib:native-image-agent=config-output-dir=...` on the JVM
+  dist while running the smoke flow).
+- Python: system Python has no pip; use a venv (`python -m venv .venv && .venv/bin/pip install
+  -e python[dev]`). `TAP_BIN=<native tap> TAP_SERIALS=emulator-5554,85e49002 pytest python/tests`
+  validates the service + client on the local matrix. An auto-started service keeps running;
+  `tap stop` ends it.
