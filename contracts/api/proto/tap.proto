@@ -35,6 +35,7 @@ enum Operation {
   OP_WAIT_VISIBLE = 9;
   OP_WAIT_GONE = 10;
   OP_WAIT_APP_VISIBLE = 11;
+  OP_WAIT_SCREEN_STABLE = 22; // declared in protocol order; numbers are append-only
   OP_DUMP_HIERARCHY = 12;
   OP_SET_TEXT = 13;
   OP_TYPE_TEXT = 14;
@@ -84,6 +85,13 @@ enum Direction {
   DIR_DOWN = 2;
   DIR_LEFT = 3;
   DIR_RIGHT = 4;
+}
+
+enum StabilitySignal {
+  STABILITY_UNSPECIFIED = 0; // = STABILITY_ALL
+  STABILITY_TREE = 1;
+  STABILITY_PIXELS = 2;
+  STABILITY_ALL = 3;
 }
 
 enum MatchMode {
@@ -165,6 +173,8 @@ message Command {
   optional string observed_start_token = 12;
   optional string expected_process_start_uuid = 13;
   optional string expected_session_identity = 14;
+  optional int64 stable_for_ms = 15; // OP_WAIT_SCREEN_STABLE: quiet period, default 500
+  optional StabilitySignal stable_signal = 16; // OP_WAIT_SCREEN_STABLE: default STABILITY_ALL
 }
 
 message SyncState {

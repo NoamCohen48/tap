@@ -22,9 +22,9 @@ A product team can write and run real tests today:
   all-or-none acquisition from the service pool, failure artifacts, `tap.*` system-property /
   `TAP_*` env config.
 - `clients/python` — the same API and a pytest plugin.
-- `:samples:fixture-tests` — nine tests (single-device journeys, ambiguity, text input,
-  Compose list scrolling, app-owned idle sync, lifecycle, one two-device test) passing on
-  API 29 and API 34 concurrently.
+- `:samples:fixture-tests` — twelve tests (single-device journeys, ambiguity, text input,
+  Compose list scrolling, app-owned idle sync, explicit screen-stability waits, lifecycle, one
+  two-device test) passing on API 29 and API 34 concurrently.
 
 Everything below is what separates that from the production-grade framework the plan
 describes.
@@ -34,7 +34,6 @@ describes.
 | Gap | Impact | Notes |
 |---|---|---|
 | `session.shutdown` | Sessions end by closing the socket and `am force-stop` of the instrumentation. Works, but the driver never gets a graceful close and the journal cannot distinguish "host asked" from "connection died". | Small; add an operation + a driver-side clean exit. |
-| `wait.screenStable` | No public way to wait for the UI to stop changing (e.g. after animations). The visible-fingerprint stability check exists only privately inside `TYPE_TEXT`. | Reuse `visibleFingerprint`; needs `stableFor` in the request. |
 | `device.wake` / screen state | Tests assume the screen is on and unlocked. | `UiDevice.wakeUp()` + keyguard dismissal; validation on a device with a lock screen. |
 | `inspector.snapshot` | No JSON hierarchy with selector suggestions; `DUMP_HIERARCHY` returns raw UiAutomator XML only. | Phase 5 inspector UI depends on it; failure artifacts use the XML for now. |
 | `AUT_CRASHED` / `AUT_ANR` / `AUT_NOT_INSTALLED` emission | Crashes surface as `NOT_FOUND`/`WAIT_TIMEOUT` plus a process-identity change, not as a first-class code. | Requires driver-side process observation (`am`/`dumpsys activity` or `ActivityManager` crash/ANR detection) and a fixture that crashes/ANRs on demand. |
@@ -181,7 +180,7 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 
 1. Fake-ADB JVM tests for `DeviceSession`/`AppLifecycle`/`TapService` failure paths and
    in-process gRPC tests for the Kotlin client and `TapExtension`.
-2. Provider visibility decision + `session.shutdown` + `wait.screenStable` (small protocol
+2. Provider visibility decision + `session.shutdown` (small protocol
    additions; update `protocol-contract.md` and golden fixtures in the same change).
 3. Logcat + `dumpsys` in failure artifacts, run layout, JSONL events, then JUnit XML/HTML.
 4. Crash/ANR codes with a crashing fixture activity.

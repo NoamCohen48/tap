@@ -162,9 +162,14 @@ Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2
 - [x] Plan §11 operations: `device.pressKey/pressBack/pressHome`, `device.info`,
   `element.count`, `element.snapshot` (covers `getProperty`), `wait.appVisible`, `wait.gone`;
   `sync.awaitIdle` is host-side (`App.awaitIdle` over `SYNC_BOOTSTRAP`/`SYNC_STATE`).
+- [x] `wait.screenStable` as the explicit `WAIT_SCREEN_STABLE` operation (`Device.awaitScreenStable`
+  / `await_screen_stable`, with `awaitAppSettled` and `awaitAnimationEnd` selecting one
+  signal): tree fingerprint and/or downscaled pixel grid, accessibility-event
+  driven, `SCREEN_CHANGING`/`APP_NOT_VISIBLE` timeout details; proven by `MotionTest` and
+  `test_motion.py` against the fixture's `MotionActivity` on API 29 and API 34. No command
+  waits for a quiet screen implicitly.
 - [ ] Plan §11 operations still missing: `device.wake`, `session.shutdown` (sessions end by
-  closing the socket and force-stopping the instrumentation), `wait.screenStable` (the
-  fingerprint-based stability check exists only inside `TYPE_TEXT`), `inspector.snapshot`.
+  closing the socket and force-stopping the instrumentation), `inspector.snapshot`.
 - [ ] Emit `AUT_CRASHED`/`AUT_ANR`/`AUT_NOT_INSTALLED` from observed process state (codes are
   defined and fixture-covered, not yet produced).
 - [ ] Driver `<queries>` lists only the fixture's provider authorities; a product AUT's

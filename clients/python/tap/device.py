@@ -153,6 +153,44 @@ class Device:
                 last = None
             raise WaitTimeoutError(f"package {package_name} to be in the foreground", self.serial, result.duration_ms, 0, last)
 
+    def await_screen_stable(
+        self,
+        stable_for: float = 0.5,
+        timeout: float | None = None,
+        package_name: str | None = None,
+        signal: int = pb.STABILITY_ALL,
+    ) -> None:
+        """Waits on the device until the AUT's focused window has stopped changing for
+        ``stable_for`` seconds according to ``signal``: the accessibility tree
+        (``STABILITY_TREE``), the window pixels (``STABILITY_PIXELS``, 0.5 % tolerance) or both
+        (default). Call it explicitly after an action that starts an animation or transition;
+        nothing waits for this implicitly. A screen that keeps changing times out with detail
+        ``SCREEN_CHANGING``. ``await_app_settled`` / ``await_animation_end`` are the shorthands."""
+        package_name = package_name or self.aut_package
+        timeout = self.timeouts.wait if timeout is None else timeout
+        result = self.execute(
+            pb.OP_WAIT_SCREEN_STABLE,
+            timeout=timeout,
+            package_name=package_name,
+            stable_for_ms=int(stable_for * 1000),
+            stable_signal=signal,
+        )
+        if not result.ok:
+            what = {pb.STABILITY_TREE: "hierarchy", pb.STABILITY_PIXELS: "pixels"}.get(signal, "screen")
+            raise WaitTimeoutError(
+                f"the {package_name} {what} to stay unchanged for {stable_for:g}s", self.serial, result.duration_ms, 0, result.detail or None
+            )
+
+    def await_app_settled(self, stable_for: float = 0.5, timeout: float | None = None, package_name: str | None = None) -> None:
+        """Maestro's ``waitForAppToSettle``, on request only: the accessibility hierarchy has
+        not changed for ``stable_for`` seconds. Cheap (no screenshots); misses pure drawing."""
+        self.await_screen_stable(stable_for, timeout, package_name, pb.STABILITY_TREE)
+
+    def await_animation_end(self, stable_for: float = 0.5, timeout: float | None = None, package_name: str | None = None) -> None:
+        """Maestro's ``waitForAnimationToEnd``, on request only: the window pixels have not
+        changed (beyond 0.5 %) for ``stable_for`` seconds. One screenshot per 100 ms."""
+        self.await_screen_stable(stable_for, timeout, package_name, pb.STABILITY_PIXELS)
+
     def await_until(
         self,
         description: str,

@@ -14,6 +14,10 @@ from ._gen import tap_pb2 as pb
 from .app import App, ProcessIdentity
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
+
+STABILITY_TREE = pb.STABILITY_TREE
+STABILITY_PIXELS = pb.STABILITY_PIXELS
+STABILITY_ALL = pb.STABILITY_ALL
 from .errors import AppLifecycleError, CommandError, ErrorCode, ServiceError, TapError, WaitTimeoutError
 from .selectors import (
     CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res_id,

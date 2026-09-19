@@ -24,6 +24,7 @@ import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.DEFAULT_GESTURE_PERCENT
 import com.company.tap.protocol.Direction
+import com.company.tap.protocol.StabilitySignal
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
@@ -210,6 +211,8 @@ class DriverClient(
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         keyCode: Int? = null,
         packageName: String? = null,
+        stableForMs: Long? = null,
+        stableSignal: StabilitySignal? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -225,6 +228,8 @@ class DriverClient(
         distancePercent,
         keyCode,
         packageName,
+        stableForMs,
+        stableSignal,
         observedPid,
         observedStartToken,
         expectedProcessStartUuid,
@@ -243,6 +248,8 @@ class DriverClient(
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         keyCode: Int? = null,
         packageName: String? = null,
+        stableForMs: Long? = null,
+        stableSignal: StabilitySignal? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -258,6 +265,8 @@ class DriverClient(
         distancePercent,
         keyCode,
         packageName,
+        stableForMs,
+        stableSignal,
         observedPid,
         observedStartToken,
         expectedProcessStartUuid,
@@ -279,6 +288,8 @@ class DriverClient(
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         keyCode: Int? = null,
         packageName: String? = null,
+        stableForMs: Long? = null,
+        stableSignal: StabilitySignal? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -303,6 +314,8 @@ class DriverClient(
             distancePercent = distancePercent,
             keyCode = keyCode,
             packageName = packageName,
+            stableForMs = stableForMs,
+            stableSignal = stableSignal,
             observedPid = observedPid,
             observedStartToken = observedStartToken,
             expectedProcessStartUuid = expectedProcessStartUuid,
@@ -498,8 +511,8 @@ class DriverClient(
         Operation.TAP, Operation.LONG_TAP, Operation.SET_TEXT, Operation.TYPE_TEXT, Operation.CLEAR_TEXT,
         Operation.SWIPE, Operation.SCROLL, Operation.SCROLL_UNTIL, Operation.PRESS_KEY -> true
         Operation.HEALTH, Operation.DEVICE_INFO, Operation.EXISTS, Operation.COUNT, Operation.SNAPSHOT,
-        Operation.WAIT_VISIBLE, Operation.WAIT_GONE, Operation.WAIT_APP_VISIBLE, Operation.DUMP_HIERARCHY,
-        Operation.SCREENSHOT, Operation.SYNC_BOOTSTRAP, Operation.SYNC_STATE -> false
+        Operation.WAIT_VISIBLE, Operation.WAIT_GONE, Operation.WAIT_APP_VISIBLE, Operation.WAIT_SCREEN_STABLE,
+        Operation.DUMP_HIERARCHY, Operation.SCREENSHOT, Operation.SYNC_BOOTSTRAP, Operation.SYNC_STATE -> false
     }
 
     private fun authenticate() {

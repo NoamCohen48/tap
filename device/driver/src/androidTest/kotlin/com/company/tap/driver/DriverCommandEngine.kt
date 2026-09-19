@@ -3,11 +3,13 @@ package com.company.tap.driver
 import android.app.Instrumentation
 import androidx.test.uiautomator.UiDevice
 import com.company.tap.driver.engine.CommandContext
+import com.company.tap.protocol.DEFAULT_STABLE_FOR_MS
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.InvalidSelectorException
 import com.company.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import com.company.tap.protocol.MAX_SCROLLS
+import com.company.tap.protocol.MAX_STABLE_FOR_MS
 import com.company.tap.protocol.MAX_TEXT_INPUT_CHARS
 import com.company.tap.protocol.OPERATION_VERSION
 import com.company.tap.protocol.Operation
@@ -85,6 +87,7 @@ internal class DriverCommandEngine(
             Operation.WAIT_VISIBLE -> ui.waitVisible(context, request, expected = true)
             Operation.WAIT_GONE -> ui.waitVisible(context, request, expected = false)
             Operation.WAIT_APP_VISIBLE -> ui.waitAppVisible(context, request)
+            Operation.WAIT_SCREEN_STABLE -> ui.waitScreenStable(context, request)
             Operation.DUMP_HIERARCHY -> ui.dumpHierarchy(started)
             Operation.SET_TEXT -> ui.setText(context, request)
             Operation.TYPE_TEXT -> ui.typeText(context, request)
@@ -104,6 +107,8 @@ internal class DriverCommandEngine(
             request.selector == null
         Operation.PRESS_KEY -> (request.keyCode ?: -1) < 0
         Operation.WAIT_APP_VISIBLE -> request.packageName.isNullOrBlank()
+        Operation.WAIT_SCREEN_STABLE ->
+            request.packageName.isNullOrBlank() || (request.stableForMs ?: DEFAULT_STABLE_FOR_MS) !in 1..MAX_STABLE_FOR_MS
         Operation.SWIPE, Operation.SCROLL ->
             request.selector == null || request.direction == null || request.distancePercent !in 1..100
         Operation.SET_TEXT, Operation.TYPE_TEXT ->

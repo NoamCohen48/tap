@@ -55,6 +55,7 @@ enum class Operation {
     WAIT_VISIBLE,
     WAIT_GONE,
     WAIT_APP_VISIBLE,
+    WAIT_SCREEN_STABLE,
     DUMP_HIERARCHY,
     SET_TEXT,
     TYPE_TEXT,
@@ -75,8 +76,22 @@ enum class Direction {
     RIGHT,
 }
 
+/** What `WAIT_SCREEN_STABLE` observes. */
+enum class StabilitySignal {
+    /** Accessibility tree only (cheap: no screenshots) — Maestro's "app settled". */
+    TREE,
+    /** Window pixels only — Maestro's "animation ended". */
+    PIXELS,
+    /** Both must be quiet at once. */
+    ALL,
+}
+
 const val DEFAULT_GESTURE_PERCENT = 80
 const val MAX_SCROLLS = 100
+
+/** `WAIT_SCREEN_STABLE`: how long the AUT window must stay unchanged; bounded by the request timeout. */
+const val DEFAULT_STABLE_FOR_MS = 500L
+const val MAX_STABLE_FOR_MS = 30_000L
 
 /** `COUNT` stops counting here; a screen with more matches reports this value. */
 const val MAX_MATCH_COUNT = 1_000
@@ -167,8 +182,12 @@ data class Request(
     val maxScrolls: Int = 20,
     /** `PRESS_KEY`: an Android `KeyEvent` key code. */
     val keyCode: Int? = null,
-    /** `WAIT_APP_VISIBLE`: the package whose focused window must appear. */
+    /** `WAIT_APP_VISIBLE`, `WAIT_SCREEN_STABLE`: the package whose focused window is observed. */
     val packageName: String? = null,
+    /** `WAIT_SCREEN_STABLE`: required quiet period, 1..[MAX_STABLE_FOR_MS] (default [DEFAULT_STABLE_FOR_MS]). */
+    val stableForMs: Long? = null,
+    /** `WAIT_SCREEN_STABLE`: which signal must be quiet (default [StabilitySignal.ALL]). */
+    val stableSignal: StabilitySignal? = null,
     val observedPid: Int? = null,
     val observedStartToken: String? = null,
     val expectedProcessStartUuid: String? = null,

@@ -208,17 +208,19 @@ class SessionServicer(
                 defaultTimeoutMs = if (request.hasDefaultTimeoutMs() && request.defaultTimeoutMs > 0) request.defaultTimeoutMs else 10_000,
             ),
         )
+        // The session is registered by now; a failed first command must not leave it behind,
+        // or the client could never release the device it never received.
+        val info = try {
+            requireNotNull(session.device.client.executeOrThrow(Operation.DEVICE_INFO, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS).deviceInfo)
+        } catch (error: Exception) {
+            runCatching { service.closeSession(session.id) }
+            throw error
+        }
         OpenSessionResponse.newBuilder()
             .setSessionId(session.id)
             .setSerial(session.device.serial)
             .setGeneration(session.device.generation)
-            .setDeviceInfo(
-                Conversions.deviceInfo(
-                    requireNotNull(
-                        session.device.client.executeOrThrow(Operation.DEVICE_INFO, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS).deviceInfo,
-                    ),
-                ),
-            )
+            .setDeviceInfo(Conversions.deviceInfo(info))
             .build()
     }
 
