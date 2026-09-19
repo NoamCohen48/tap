@@ -15,6 +15,10 @@ import kotlin.system.exitProcess
 /**
  * `tap serve [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]`
  * `tap status [--state-dir DIR]`
+ * `tap stop [--state-dir DIR]`
+ *
+ * Like the ADB server, a started service stays up until stopped: clients that auto-start it
+ * do not own it, so a second client on the same machine can share it.
  *
  * The server binds loopback only and writes `<state-dir>/service.json` (port, pid, version) so
  * clients can find it. There is no authentication between client and service: both run as the
@@ -27,6 +31,7 @@ fun main(args: Array<String>) {
     when (command) {
         "serve" -> serve(options, stateDir)
         "status" -> status(stateDir)
+        "stop" -> stop(stateDir)
         "version" -> println("tap service $SERVICE_VERSION")
         else -> usage()
     }
@@ -37,6 +42,7 @@ private fun usage(): Nothing {
         """
         usage: tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]
                tap status  [--state-dir DIR]
+               tap stop    [--state-dir DIR]
                tap version
         """.trimIndent(),
     )
@@ -110,6 +116,25 @@ private fun status(stateDir: Path) {
         exitProcess(1)
     }
     println(Files.readString(descriptor))
+}
+
+private fun stop(stateDir: Path) {
+    val descriptor = stateDir.resolve("service.json")
+    if (!Files.exists(descriptor)) {
+        println("no service running (no descriptor at $descriptor)")
+        return
+    }
+    val pid = Regex(""""pid":(\d+)""").find(Files.readString(descriptor))?.groupValues?.get(1)?.toLong()
+    val handle = pid?.let { ProcessHandle.of(it).orElse(null) }
+    if (handle == null) {
+        println("stale descriptor (pid $pid not running); removing it")
+        Files.deleteIfExists(descriptor)
+        return
+    }
+    handle.destroy()
+    handle.onExit().get(15, TimeUnit.SECONDS)
+    Files.deleteIfExists(descriptor)
+    println("stopped service pid $pid")
 }
 
 private fun writeAtomically(target: Path, content: String) {
