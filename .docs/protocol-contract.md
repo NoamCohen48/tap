@@ -173,7 +173,7 @@ Selector {
 }
 NodeSelector {
   text, contentDescription, hint, className: StringMatch { value, mode }
-  resource: ResourceId { name, packageName? }   packageName defaults to the scope package
+  resource: ResourceId { name, packageName? }   with packageName: `packageName:id/name`; without: the exact resource name (Compose testTag)
   checkable, checked, clickable, enabled, focusable, focused,
   longClickable, scrollable, selected: Boolean?
   parent, ancestor, child, descendant: NodeSelector?

@@ -29,7 +29,7 @@ whose every action resolves the selector again on the device, so there is nothin
 | Kotlin | Python | Matches |
 |---|---|---|
 | `resId(pkg, name)` | `res_id(pkg, name)` | resource id `pkg:id/name` |
-| `rawRes(name)` | `raw_res(name)` | a resource name without a package — Compose `testTag` when the app sets `testTagsAsResourceId`, or ids of the scope package |
+| `rawRes(name)` | `raw_res(name)` | the exact, unqualified resource name — a Compose `testTag` when the app sets `testTagsAsResourceId`. It does **not** match View ids, whose name is always `pkg:id/name` |
 | `text(value)` | `text(value)` | exact text |
 | `textContains(v)`, `textStartsWith(v)` | `text_contains`, `text_starts_with` | substring / prefix |
 | `textMatches(re2)` | `text_matches(re2)` | RE2 regular expression (full match) |
