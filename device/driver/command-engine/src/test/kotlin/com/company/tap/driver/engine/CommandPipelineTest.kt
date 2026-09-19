@@ -59,6 +59,7 @@ class CommandPipelineTest {
             synchronized(order) { order += ctx.requestId }
             Response(true, durationMs = 0)
         }
+        awaitRunning(1)
         pipeline.submit(2, 5_000) { ctx ->
             synchronized(order) { order += ctx.requestId }
             Response(true, value = true, durationMs = 0)
