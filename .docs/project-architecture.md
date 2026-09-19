@@ -82,7 +82,8 @@ tap/
 +-- .docs/                       design, plan, contract, progress, audits (internal)
 +-- docs/, mkdocs.yml            public documentation site: guide/ + reference/ (Kotlin via Dokka,
 |                                Python via mkdocstrings, gRPC via protoc-gen-doc; generated files are
-|                                ignored); scripts/build-docs.sh builds it, .github/workflows/docs.yml publishes it
+|                                ignored); scripts/build-docs.sh builds the site and a Markdown bundle
+|                                (Dokka GFM + lazydocs), .github/workflows/docs.yml publishes both
 |
 +-- contracts/                   what the three components agree on
 |   +-- protocol/                :contracts:protocol — TAP1 device wire contract, pure Kotlin/JVM, shared by host and driver

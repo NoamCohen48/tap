@@ -92,7 +92,8 @@ matrix and reboots), the Samsung API 29 lane.
 
 Runs on changes to `docs/`, `mkdocs.yml`, the clients or the API proto: `scripts/build-docs.sh`
 (Dokka → `docs/reference/kotlin/`, protoc-gen-doc → `docs/reference/grpc.md`, mkdocstrings at
-build time, `mkdocs build --strict`) and uploads `build/site` as the `site` artifact. Deploy to
+build time, `mkdocs build --strict`; then Dokka GFM + lazydocs into `build/docs-md/`) and
+uploads `build/site` as the `site` artifact and `tap-docs-md.zip` as `docs-md`. Deploy to
 GitHub Pages is gated on the `DEPLOY_DOCS=true` repository variable (Pages must be enabled with
 "GitHub Actions" as the source; on a private repository it needs a plan that allows private
 Pages, otherwise the artifact is the deliverable).

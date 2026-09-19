@@ -1,9 +1,10 @@
 name: Docs
 
-# Builds the public documentation site (docs/ + generated Kotlin, Python and gRPC references)
-# with scripts/build-docs.sh. The site is uploaded as a workflow artifact on every run and
-# deployed to GitHub Pages from main once Pages is enabled for the repository (Settings → Pages
-# → Source: GitHub Actions); until then the deploy job is skipped by the DEPLOY_DOCS variable.
+# Builds the public documentation (docs/ + generated Kotlin, Python and gRPC references) with
+# scripts/build-docs.sh in two editions, both uploaded as workflow artifacts on every run:
+#   site     the website (build/site), also deployed to GitHub Pages from main once Pages is
+#            enabled (Settings → Pages → Source: GitHub Actions) and DEPLOY_DOCS=true is set
+#   docs-md  tap-docs-md.zip: the same guide and references as plain Markdown files
 on:
   push:
     branches: [main]
@@ -50,6 +51,10 @@ jobs:
         with:
           name: site
           path: build/site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-md
+          path: build/tap-docs-md.zip
       - if: github.event_name != 'pull_request' && vars.DEPLOY_DOCS == 'true'
         uses: actions/upload-pages-artifact@v3
         with:

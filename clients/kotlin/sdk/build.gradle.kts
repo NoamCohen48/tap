@@ -35,3 +35,19 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+/*
+ * Markdown edition of the API reference (the docs-md bundle, scripts/build-docs.sh). Dokka's GFM
+ * renderer replaces the HTML one inside the same publication, so it is opted into per invocation
+ * and written to build/dokka/gfm:
+ * `./gradlew -Ptap.dokkaFormat=gfm :clients:kotlin:sdk:dokkaGeneratePublicationHtml`.
+ * Without the property this module feeds the root HTML aggregation (`:dokkaGenerate`).
+ */
+if (providers.gradleProperty("tap.dokkaFormat").orNull == "gfm") {
+    dependencies { dokkaPlugin("org.jetbrains.dokka:gfm-plugin:2.1.0") }
+    dokka {
+        moduleName.set("tap-client")
+        dokkaPublications.named("html") { outputDirectory.set(layout.buildDirectory.dir("dokka/gfm")) }
+    }
+}
+
