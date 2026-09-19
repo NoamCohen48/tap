@@ -17,6 +17,7 @@ import com.company.tap.driver.engine.BlobTransfer
 import com.company.tap.driver.engine.CommandContext
 import com.company.tap.protocol.Bounds
 import com.company.tap.protocol.DEFAULT_STABLE_FOR_MS
+import com.company.tap.protocol.StabilitySignal
 import com.company.tap.protocol.DeviceInfo
 import com.company.tap.protocol.Direction
 import com.company.tap.protocol.ElementSnapshot
@@ -119,13 +120,14 @@ internal class UiAutomationCommands(
     fun waitScreenStable(context: CommandContext, request: Request): Response {
         val packageName = requireNotNull(request.packageName)
         val stableFor = request.stableForMs ?: DEFAULT_STABLE_FOR_MS
+        val signal = request.stableSignal ?: StabilitySignal.ALL
         var reference: ScreenSample? = null
         var stableSince = 0L
         var windowSeen = false
         while (true) {
             context.checkCancelled()
             val now = context.nowMs()
-            val sample = sampleScreen(packageName)
+            val sample = sampleScreen(packageName, signal)
             when {
                 sample == null -> reference = null
                 reference == null || sample.changedFrom(reference) -> {
@@ -181,7 +183,7 @@ internal class UiAutomationCommands(
     }
 
     /** The focused application window of [packageName], or null when it has none right now. */
-    private fun sampleScreen(packageName: String): ScreenSample? {
+    private fun sampleScreen(packageName: String, signal: StabilitySignal): ScreenSample? {
         val windows = instrumentation.uiAutomation.windows ?: return null
         val window = windows.firstOrNull {
             it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isFocused &&
@@ -190,11 +192,12 @@ internal class UiAutomationCommands(
         val root = window.root ?: return null
         val bounds = Rect().also(window::getBoundsInScreen)
         val treeHash = try {
-            fingerprint(root)
+            if (signal == StabilitySignal.PIXELS) 0L else fingerprint(root)
         } finally {
             runCatching { root.recycle() }
         }
-        return ScreenSample(treeHash, samplePixels(bounds))
+        val pixels = if (signal == StabilitySignal.TREE) IntArray(0) else samplePixels(bounds)
+        return ScreenSample(treeHash, pixels)
     }
 
     private fun fingerprint(root: AccessibilityNodeInfo): Long {

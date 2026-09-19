@@ -87,9 +87,10 @@ Two tests keep the mirror honest: `EnumMirrorTest` (every proto enum equals the 
 enum, prefixed) and `GoldenRoundTripTest` (every golden request/response fixture survives a
 proto round trip unchanged). A protocol change therefore touches `protocol-contract.md`, the
 golden fixtures, `contracts/api/proto/tap.proto` and the committed Python stubs in the same commit.
-`Command.stable_for_ms` (protocol `stableForMs`) belongs to `OP_WAIT_SCREEN_STABLE` together with
-`package_name`; the service forwards it unchanged and the driver applies the 500 ms default and
-the 1..30 000 range (`.docs/protocol-contract.md`).
+`Command.stable_for_ms` and `stable_signal` (`StabilitySignal`: `STABILITY_TREE`,
+`STABILITY_PIXELS`, `STABILITY_ALL`; unspecified = `ALL`) belong to `OP_WAIT_SCREEN_STABLE`
+together with `package_name`; the service forwards them unchanged and the driver applies the
+500 ms default and the 1..30 000 range (`.docs/protocol-contract.md`).
 
 ### AppService — AUT lifecycle
 

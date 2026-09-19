@@ -24,6 +24,7 @@ import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.DEFAULT_GESTURE_PERCENT
 import com.company.tap.protocol.Direction
+import com.company.tap.protocol.StabilitySignal
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
@@ -211,6 +212,7 @@ class DriverClient(
         keyCode: Int? = null,
         packageName: String? = null,
         stableForMs: Long? = null,
+        stableSignal: StabilitySignal? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -227,6 +229,7 @@ class DriverClient(
         keyCode,
         packageName,
         stableForMs,
+        stableSignal,
         observedPid,
         observedStartToken,
         expectedProcessStartUuid,
@@ -246,6 +249,7 @@ class DriverClient(
         keyCode: Int? = null,
         packageName: String? = null,
         stableForMs: Long? = null,
+        stableSignal: StabilitySignal? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -262,6 +266,7 @@ class DriverClient(
         keyCode,
         packageName,
         stableForMs,
+        stableSignal,
         observedPid,
         observedStartToken,
         expectedProcessStartUuid,
@@ -284,6 +289,7 @@ class DriverClient(
         keyCode: Int? = null,
         packageName: String? = null,
         stableForMs: Long? = null,
+        stableSignal: StabilitySignal? = null,
         observedPid: Int? = null,
         observedStartToken: String? = null,
         expectedProcessStartUuid: String? = null,
@@ -309,6 +315,7 @@ class DriverClient(
             keyCode = keyCode,
             packageName = packageName,
             stableForMs = stableForMs,
+            stableSignal = stableSignal,
             observedPid = observedPid,
             observedStartToken = observedStartToken,
             expectedProcessStartUuid = expectedProcessStartUuid,

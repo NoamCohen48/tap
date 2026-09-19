@@ -4,5 +4,6 @@
   "operation": "WAIT_SCREEN_STABLE",
   "timeoutMs": 15000,
   "packageName": "com.example.app",
-  "stableForMs": 750
+  "stableForMs": 750,
+  "stableSignal": "PIXELS"
 }

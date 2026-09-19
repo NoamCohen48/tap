@@ -87,6 +87,13 @@ enum Direction {
   DIR_RIGHT = 4;
 }
 
+enum StabilitySignal {
+  STABILITY_UNSPECIFIED = 0; // = STABILITY_ALL
+  STABILITY_TREE = 1;
+  STABILITY_PIXELS = 2;
+  STABILITY_ALL = 3;
+}
+
 enum MatchMode {
   MATCH_UNSPECIFIED = 0;
   MATCH_EXACT = 1;
@@ -167,6 +174,7 @@ message Command {
   optional string expected_process_start_uuid = 13;
   optional string expected_session_identity = 14;
   optional int64 stable_for_ms = 15; // OP_WAIT_SCREEN_STABLE: quiet period, default 500
+  optional StabilitySignal stable_signal = 16; // OP_WAIT_SCREEN_STABLE: default STABILITY_ALL
 }
 
 message SyncState {

@@ -108,7 +108,7 @@ operation version 1 for:
 | `WAIT_VISIBLE` | `selector` | `value=true`, or `WAIT_TIMEOUT` with `value=false` |
 | `WAIT_GONE` | `selector` | `value=true` once no match exists, or `WAIT_TIMEOUT` with `value=false` |
 | `WAIT_APP_VISIBLE` | `packageName` | `value=true` once that package owns the focused window, or `WAIT_TIMEOUT` |
-| `WAIT_SCREEN_STABLE` | `packageName`, `stableForMs` 1..30 000 (default 500) | `value=true` once that package's focused window has not changed for `stableForMs`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
+| `WAIT_SCREEN_STABLE` | `packageName`, `stableForMs` 1..30 000 (default 500), `stableSignal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `value=true` once that package's focused window has not changed (per `stableSignal`) for `stableForMs`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `TAP`, `LONG_TAP` | `selector` (exactly one match) | `value=true` after the click |
 | `SET_TEXT` | `selector`, `inputText` (≤ 256 chars) | replaces the text; verified within 1 s |
 | `TYPE_TEXT` | `selector`, `inputText` (≤ 256 chars) | appends via key events; verified |
@@ -135,11 +135,13 @@ timeout is `WAIT_TIMEOUT` with `value=false`, never an exception path.
 
 `WAIT_SCREEN_STABLE` is the only settle primitive and it is **explicit**: no other command waits
 for animations or a quiet screen, and the driver never retries a command because the screen did
-not change. Given `packageName` and `stableForMs`, the driver samples that package's focused
-application window — a fingerprint of the accessibility tree (class, id, text, description,
-bounds, state flags; capped at 4 000 nodes, no XML dump) plus a downscaled 48×96 grid of the
-window's pixels — and succeeds once neither changed for `stableForMs` (a pixel change is more
-than 0.5 % of grid cells differing after colour quantisation). Between samples it blocks on
+not change. Given `packageName`, `stableForMs` and `stableSignal`, the driver samples that
+package's focused application window and succeeds once the chosen signal has not changed for
+`stableForMs`. `TREE` (Maestro's "app settled") is a fingerprint of the accessibility tree
+(class, id, text, description, bounds, state flags; capped at 4 000 nodes, no XML dump) and
+takes no screenshots; `PIXELS` (Maestro's "animation ended") is a downscaled 48×96 grid of the
+window's pixels, changed when more than 0.5 % of cells differ after colour quantisation; `ALL`
+requires both. Between samples it blocks on
 `TYPE_WINDOW_CONTENT_CHANGED`/`TYPE_WINDOW_STATE_CHANGED` accessibility events from that package
 for at most 100 ms, so a change restarts the quiet period immediately while an idle screen still
 costs one screenshot per 100 ms. The request deadline bounds the whole wait; the timeout detail

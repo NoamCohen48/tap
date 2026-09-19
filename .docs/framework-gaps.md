@@ -22,7 +22,7 @@ A product team can write and run real tests today:
   all-or-none acquisition from the service pool, failure artifacts, `tap.*` system-property /
   `TAP_*` env config.
 - `clients/python` — the same API and a pytest plugin.
-- `:samples:fixture-tests` — eleven tests (single-device journeys, ambiguity, text input,
+- `:samples:fixture-tests` — twelve tests (single-device journeys, ambiguity, text input,
   Compose list scrolling, app-owned idle sync, explicit screen-stability waits, lifecycle, one
   two-device test) passing on API 29 and API 34 concurrently.
 

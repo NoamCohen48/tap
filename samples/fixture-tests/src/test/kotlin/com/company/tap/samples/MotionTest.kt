@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import org.junit.jupiter.api.Test
 
-/** `awaitScreenStable` is explicit: nothing here settles on its own; the test asks for it. */
+/** Settling is explicit: nothing here waits on its own; each test asks for the signal it needs. */
 @TapTest
 class MotionTest {
     @Test
@@ -20,10 +20,25 @@ class MotionTest {
 
         device.element(Fixture.id("motion_button")).tap()
         val started = System.nanoTime()
-        device.awaitScreenStable(stableFor = 500.milliseconds, timeout = 10.seconds)
+        device.awaitAnimationEnd(stableFor = 500.milliseconds, timeout = 10.seconds)
         val waitedMs = (System.nanoTime() - started) / 1_000_000
 
-        // The box moves for 2 s; the wait must have outlived it without any status wait.
+        // The box moves for 2 s; the pixel wait must have outlived it without any status wait.
+        assertEquals("Animation done", status.text())
+        assertTrue(waitedMs >= 2_000, "returned after ${waitedMs}ms, before the motion ended")
+    }
+
+    @Test
+    fun settlesAfterTheHierarchyStopsMoving(device: Device) {
+        Fixture.launch(device, ".MotionActivity")
+        val status = device.element(Fixture.id("motion_status"))
+
+        device.element(Fixture.id("motion_button")).tap()
+        val started = System.nanoTime()
+        device.awaitAppSettled(stableFor = 500.milliseconds, timeout = 10.seconds)
+        val waitedMs = (System.nanoTime() - started) / 1_000_000
+
+        // The moving box changes its accessibility bounds every frame; no screenshots involved.
         assertEquals("Animation done", status.text())
         assertTrue(waitedMs >= 2_000, "returned after ${waitedMs}ms, before the motion ended")
     }
@@ -35,7 +50,7 @@ class MotionTest {
         ticker.tap()
         try {
             val failure = assertFailsWith<WaitTimeoutException> {
-                device.awaitScreenStable(stableFor = 500.milliseconds, timeout = 3.seconds)
+                device.awaitAppSettled(stableFor = 500.milliseconds, timeout = 3.seconds)
             }
             assertEquals("SCREEN_CHANGING", failure.lastObservation)
             assertTrue(failure.elapsedMs >= 3_000, "gave up after ${failure.elapsedMs}ms")

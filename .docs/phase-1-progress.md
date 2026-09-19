@@ -163,7 +163,8 @@ Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2
   `element.count`, `element.snapshot` (covers `getProperty`), `wait.appVisible`, `wait.gone`;
   `sync.awaitIdle` is host-side (`App.awaitIdle` over `SYNC_BOOTSTRAP`/`SYNC_STATE`).
 - [x] `wait.screenStable` as the explicit `WAIT_SCREEN_STABLE` operation (`Device.awaitScreenStable`
-  / `await_screen_stable`): tree fingerprint + downscaled pixel grid, accessibility-event
+  / `await_screen_stable`, with `awaitAppSettled` and `awaitAnimationEnd` selecting one
+  signal): tree fingerprint and/or downscaled pixel grid, accessibility-event
   driven, `SCREEN_CHANGING`/`APP_NOT_VISIBLE` timeout details; proven by `MotionTest` and
   `test_motion.py` against the fixture's `MotionActivity` on API 29 and API 34. No command
   waits for a quiet screen implicitly.

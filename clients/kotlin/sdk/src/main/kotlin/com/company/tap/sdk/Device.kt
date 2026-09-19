@@ -5,6 +5,7 @@ import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.CommandResult
 import com.company.tap.api.v1.DeviceInfo
 import com.company.tap.api.v1.Direction
+import com.company.tap.api.v1.StabilitySignal
 import com.company.tap.api.v1.DriverLogRequest
 import com.company.tap.api.v1.ExecuteRequest
 import com.company.tap.api.v1.OpenSessionRequest
@@ -138,28 +139,58 @@ class Device internal constructor(
     }
 
     /**
-     * Waits on the device until the AUT's focused window has stopped changing for [stableFor]:
-     * no content-changed events, an unchanged accessibility tree and unchanged pixels (0.5 %
-     * tolerance). Use it explicitly after an action that starts an animation or a transition;
-     * no command waits for this implicitly, because each sample costs a screenshot. A screen
-     * that keeps animating (indeterminate spinner, video) times out with `SCREEN_CHANGING`.
+     * Waits on the device until the AUT's focused window has stopped changing for [stableFor]
+     * according to [signal]: the accessibility tree ([StabilitySignal.STABILITY_TREE]), the
+     * window pixels ([StabilitySignal.STABILITY_PIXELS], 0.5 % tolerance) or both (default).
+     * Content-changed events restart the quiet period. Use it explicitly after an action that
+     * starts an animation or a transition; no command waits for this implicitly. A screen that
+     * keeps changing (indeterminate spinner, ticker, video) times out with `SCREEN_CHANGING`.
+     * [awaitAppSettled] and [awaitAnimationEnd] are the two single-signal shorthands.
      */
     fun awaitScreenStable(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
+        signal: StabilitySignal = StabilitySignal.STABILITY_ALL,
     ) {
         val result = execute(Operation.OP_WAIT_SCREEN_STABLE, timeout = timeout) {
             setPackageName(packageName)
             setStableForMs(stableFor.inWholeMilliseconds)
+            setStableSignal(signal)
         }
         if (!result.ok) {
+            val what = when (signal) {
+                StabilitySignal.STABILITY_TREE -> "hierarchy"
+                StabilitySignal.STABILITY_PIXELS -> "pixels"
+                else -> "screen"
+            }
             throw WaitTimeoutException(
-                "the $packageName screen to stay unchanged for $stableFor", serial, result.durationMs, 0,
+                "the $packageName $what to stay unchanged for $stableFor", serial, result.durationMs, 0,
                 result.detail.ifEmpty { null },
             )
         }
     }
+
+    /**
+     * Maestro's `waitForAppToSettle`, on request only: the accessibility hierarchy of the AUT's
+     * window has not changed for [stableFor]. Cheap (no screenshots); sees layout, text and
+     * state changes but not pure drawing (a canvas animation, video).
+     */
+    fun awaitAppSettled(
+        stableFor: Duration = 500.milliseconds,
+        timeout: Duration = timeouts.wait,
+        packageName: String = autPackage,
+    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.STABILITY_TREE)
+
+    /**
+     * Maestro's `waitForAnimationToEnd`, on request only: the AUT's window pixels have not
+     * changed (beyond 0.5 %) for [stableFor]. Costs one screenshot per 100 ms while waiting.
+     */
+    fun awaitAnimationEnd(
+        stableFor: Duration = 500.milliseconds,
+        timeout: Duration = timeouts.wait,
+        packageName: String = autPackage,
+    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.STABILITY_PIXELS)
 
     /**
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,

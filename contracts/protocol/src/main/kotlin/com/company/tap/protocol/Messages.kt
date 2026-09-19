@@ -76,6 +76,16 @@ enum class Direction {
     RIGHT,
 }
 
+/** What `WAIT_SCREEN_STABLE` observes. */
+enum class StabilitySignal {
+    /** Accessibility tree only (cheap: no screenshots) — Maestro's "app settled". */
+    TREE,
+    /** Window pixels only — Maestro's "animation ended". */
+    PIXELS,
+    /** Both must be quiet at once. */
+    ALL,
+}
+
 const val DEFAULT_GESTURE_PERCENT = 80
 const val MAX_SCROLLS = 100
 
@@ -176,6 +186,8 @@ data class Request(
     val packageName: String? = null,
     /** `WAIT_SCREEN_STABLE`: required quiet period, 1..[MAX_STABLE_FOR_MS] (default [DEFAULT_STABLE_FOR_MS]). */
     val stableForMs: Long? = null,
+    /** `WAIT_SCREEN_STABLE`: which signal must be quiet (default [StabilitySignal.ALL]). */
+    val stableSignal: StabilitySignal? = null,
     val observedPid: Int? = null,
     val observedStartToken: String? = null,
     val expectedProcessStartUuid: String? = null,

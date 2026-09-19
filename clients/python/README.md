@@ -40,8 +40,9 @@ with service.open_run("smoke") as run:                  # attaches: if this proc
 Driver failures are raised as `CommandError` with `.code` (an `ErrorCode`, e.g. `AMBIGUOUS`,
 `NOT_FOUND`, `INDETERMINATE`), `.detail` and the request id/generation; waits raise
 `WaitTimeoutError` (`.last_observation` carries the driver detail, e.g. `SCREEN_CHANGING` from
-`device.await_screen_stable(stable_for=0.5)`, the explicit way to wait out an animation — no
-command settles implicitly); app lifecycle problems raise `AppLifecycleError`; service refusals raise
+`device.await_app_settled()` (hierarchy quiet), `device.await_animation_end()` (pixels quiet) or
+`device.await_screen_stable()` (both) — the explicit ways to wait out an animation; no command
+settles implicitly); app lifecycle problems raise `AppLifecycleError`; service refusals raise
 `ServiceError`. Cancelling a gRPC call (e.g. a thread interrupt) forwards a protocol `CANCEL`
 to the driver, which is honoured only before the mutation gate.
 

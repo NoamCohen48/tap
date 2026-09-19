@@ -6,6 +6,7 @@ import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.CommandResult
 import com.company.tap.api.v1.DeviceInfo as ProtoDeviceInfo
 import com.company.tap.api.v1.Direction as ProtoDirection
+import com.company.tap.api.v1.StabilitySignal as ProtoStabilitySignal
 import com.company.tap.api.v1.ElementSnapshot as ProtoElementSnapshot
 import com.company.tap.api.v1.ErrorCode as ProtoErrorCode
 import com.company.tap.api.v1.MatchLimit as ProtoMatchLimit
@@ -22,6 +23,7 @@ import com.company.tap.protocol.Bounds
 import com.company.tap.protocol.DEFAULT_GESTURE_PERCENT
 import com.company.tap.protocol.DeviceInfo
 import com.company.tap.protocol.Direction
+import com.company.tap.protocol.StabilitySignal
 import com.company.tap.protocol.ElementSnapshot
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.MatchLimit
@@ -48,6 +50,7 @@ object Conversions {
     private const val MATCH = "MATCH_"
     private const val LIMIT = "LIMIT_"
     private const val SCOPE = "SCOPE_"
+    private const val STABILITY = "STABILITY_"
 
     // ---- enums -------------------------------------------------------------------------------
 
@@ -59,6 +62,10 @@ object Conversions {
 
     fun direction(proto: ProtoDirection): Direction = Direction.valueOf(named(proto.name, DIR, "direction"))
     fun direction(value: Direction): ProtoDirection = ProtoDirection.valueOf(DIR + value.name)
+
+    fun stabilitySignal(proto: ProtoStabilitySignal): StabilitySignal =
+        StabilitySignal.valueOf(named(proto.name, STABILITY, "stableSignal"))
+    fun stabilitySignal(value: StabilitySignal): ProtoStabilitySignal = ProtoStabilitySignal.valueOf(STABILITY + value.name)
 
     private fun matchMode(proto: ProtoMatchMode): MatchMode =
         if (proto == ProtoMatchMode.MATCH_UNSPECIFIED) MatchMode.EXACT else MatchMode.valueOf(named(proto.name, MATCH, "mode"))
@@ -169,6 +176,7 @@ object Conversions {
         val keyCode: Int?,
         val packageName: String?,
         val stableForMs: Long?,
+        val stableSignal: StabilitySignal?,
         val observedPid: Int?,
         val observedStartToken: String?,
         val expectedProcessStartUuid: String?,
@@ -187,6 +195,8 @@ object Conversions {
         keyCode = proto.takeIf { it.hasKeyCode() }?.keyCode,
         packageName = proto.takeIf { it.hasPackageName() }?.packageName,
         stableForMs = proto.takeIf { it.hasStableForMs() }?.stableForMs,
+        stableSignal = proto.takeIf { it.hasStableSignal() && it.stableSignal != ProtoStabilitySignal.STABILITY_UNSPECIFIED }
+            ?.stableSignal?.let(::stabilitySignal),
         observedPid = proto.takeIf { it.hasObservedPid() }?.observedPid,
         observedStartToken = proto.takeIf { it.hasObservedStartToken() }?.observedStartToken,
         expectedProcessStartUuid = proto.takeIf { it.hasExpectedProcessStartUuid() }?.expectedProcessStartUuid,
@@ -206,6 +216,7 @@ object Conversions {
         request.keyCode?.let { keyCode = it }
         request.packageName?.let { packageName = it }
         request.stableForMs?.let { stableForMs = it }
+        request.stableSignal?.let { stableSignal = stabilitySignal(it) }
         request.observedPid?.let { observedPid = it }
         request.observedStartToken?.let { observedStartToken = it }
         request.expectedProcessStartUuid?.let { expectedProcessStartUuid = it }
@@ -226,6 +237,7 @@ object Conversions {
         keyCode = arguments.keyCode,
         packageName = arguments.packageName,
         stableForMs = arguments.stableForMs,
+        stableSignal = arguments.stableSignal,
         observedPid = arguments.observedPid,
         observedStartToken = arguments.observedStartToken,
         expectedProcessStartUuid = arguments.expectedProcessStartUuid,
