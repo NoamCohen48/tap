@@ -35,9 +35,9 @@ cp -r clients/kotlin/sdk/build/dokka/gfm "$MD/reference/kotlin/tap-client"
 cp -r clients/kotlin/junit5/build/dokka/gfm "$MD/reference/kotlin/tap-junit5"
 
 echo "== Python reference for the Markdown bundle (lazydocs)"
-"$LAZYDOCS" tap.device tap.element tap.selectors tap.app tap.service tap.errors tap.pytest_plugin \
+lazy_log=$("$LAZYDOCS" tap.device tap.element tap.selectors tap.app tap.service tap.errors tap.pytest_plugin \
   --output-path "$MD/reference/python" --overview-file index.md --no-watermark \
-  --src-base-url https://github.com/NoamCohen48/tap/blob/main/ | grep -v "^Generating\|^Writing"
+  --src-base-url https://github.com/NoamCohen48/tap/blob/main/ 2>&1) || { echo "$lazy_log" >&2; exit 1; }
 rm -f "$MD/reference/python/.pages"
 
 echo "== gRPC reference (protoc-gen-doc)"
