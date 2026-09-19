@@ -172,6 +172,15 @@ jobs:
           disable-animations: false
           script: |
             adb -s emulator-5554 wait-for-device
+            # A 2-vCPU swiftshader emulator throws "Process system isn't responding" ANR dialogs
+            # (package android) over the AUT, which then never owns the focused window.
+            adb -s emulator-5554 shell settings put global hide_error_dialogs 1
+            adb -s emulator-5554 shell settings put global window_animation_scale 0
+            adb -s emulator-5554 shell settings put global transition_animation_scale 0
+            adb -s emulator-5554 shell settings put global animator_duration_scale 0
+            adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+            adb -s emulator-5554 shell wm dismiss-keyguard
+            adb -s emulator-5554 shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
             ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554
             TAP_BIN="$PWD/host/service/build/install/tap/bin/tap" TAP_SERIALS=emulator-5554 python -m pytest -q clients/python/tests
             host/service/build/install/tap/bin/tap stop || true
