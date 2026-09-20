@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
- * `tap start  [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]` — start in the background
- * `tap serve  [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]` — run in the foreground
+ * `tap start  [--port N] [--state-dir DIR] [--adb PATH]` — start in the background
+ * `tap serve  [--port N] [--state-dir DIR] [--adb PATH]` — run in the foreground
  * `tap status [--state-dir DIR]`
  * `tap stop   [--state-dir DIR]`
  *
@@ -40,6 +40,10 @@ import kotlin.system.exitProcess
 fun main(args: Array<String>) {
     val command = args.firstOrNull() ?: usage()
     val options = parseOptions(args.drop(1))
+    (options.keys - KNOWN_OPTIONS).firstOrNull()?.let { unknown ->
+        System.err.println("unknown option $unknown")
+        usage()
+    }
     val stateDir = Path.of(options["--state-dir"] ?: defaultStateDir()).toAbsolutePath()
     when (command) {
         "start" -> start(options, stateDir)
@@ -54,8 +58,8 @@ fun main(args: Array<String>) {
 private fun usage(): Nothing {
     System.err.println(
         """
-        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]   (background; reuses a running service)
-               tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]   (foreground)
+        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH]   (background; reuses a running service)
+               tap serve   [--port N] [--state-dir DIR] [--adb PATH]   (foreground)
                tap status  [--state-dir DIR]
                tap stop    [--state-dir DIR]
                tap version
@@ -63,6 +67,8 @@ private fun usage(): Nothing {
     )
     exitProcess(2)
 }
+
+private val KNOWN_OPTIONS = setOf("--port", "--state-dir", "--adb")
 
 private fun defaultStateDir(): String = System.getenv("TAP_STATE_DIR")
     ?: Path.of(System.getProperty("user.home"), ".tap").toString()
@@ -85,13 +91,12 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     Files.createDirectories(stateDir)
     val port = options["--port"]?.toInt() ?: 0
     val adb = Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb")
-    val serials = options["--serials"]?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)?.toSet()
     val log: (String) -> Unit = { line -> println("[tap] $line") }
 
     val bundled = BundledDriver.extract(stateDir)
     if (bundled == null) log("no bundled driver in this build; sessions must pass driver_apk/driver_test_apk or skip_driver_install")
 
-    val service = TapService(ServiceConfig(adb, stateDir, allowedSerials = serials, bundledDriver = bundled, log = log))
+    val service = TapService(ServiceConfig(adb, stateDir, bundledDriver = bundled, log = log))
     val scheduler = Executors.newSingleThreadScheduledExecutor { Thread(it, "tap-scheduler").apply { isDaemon = true } }
     // Commands block for up to two minutes each; never let them share a fixed-size pool.
     val executor = Executors.newCachedThreadPool { Thread(it, "tap-rpc").apply { isDaemon = true } }
@@ -138,7 +143,7 @@ private fun start(options: Map<String, String>, stateDir: Path) {
     val port = options["--port"]?.toInt()?.takeIf { it > 0 } ?: freePort()
     val log = stateDir.resolve("service.log").toFile()
     val command = relaunchCommand() + listOf("serve", "--port", port.toString(), "--state-dir", stateDir.toString()) +
-        options.filterKeys { it == "--adb" || it == "--serials" }.flatMap { (key, value) -> listOf(key, value) }
+        options.filterKeys { it == "--adb" }.flatMap { (key, value) -> listOf(key, value) }
     val process = ProcessBuilder(command)
         .redirectErrorStream(true)
         .redirectOutput(ProcessBuilder.Redirect.appendTo(log))

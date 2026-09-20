@@ -56,7 +56,7 @@ descriptor remains for what it was always for: later discovery by clients, `tap 
   starter exiting does not signal them.
 - `--port 0` (dynamic) is still the `serve` default for foreground use; `start` always passes an
   explicit port because that is what it polls.
-- `--adb` and `--serials` are forwarded from `start` to `serve`; `--state-dir` always is.
+- `--adb` is forwarded from `start` to `serve`; `--state-dir` always is.
 - JUnit: `TapLauncherSessionListener` (registered in `META-INF/services`) calls
   `TapConnection.shutdown()` when the launcher session closes, so `tap stop` runs after the last
   test rather than in a JVM shutdown hook; the hook remains as a fallback and the shutdown is

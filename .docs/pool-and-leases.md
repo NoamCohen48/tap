@@ -78,6 +78,65 @@ expire or reconcile. It is also the only thing that stops `host/validation` (whi
 `:host:core` directly, by design), a stray second `tap serve`, or a future non-service client
 from stepping on a live session. Removing it would mean building a worse replacement.
 
+## Decision 4 — no service-side device allow-list (September 2026)
+
+`tap serve --serials a,b` (`ServiceConfig.allowedSerials`) is removed. It only filtered
+`ListDevices`; `OpenSession` never checked it, so it was an advertising knob that looked like
+access control. Device choice is the client's (`tap.serials` / `tap_serials`, Decision 1), and
+isolating two groups of devices on one machine is done with two services on two `--state-dir`s.
+The service offers every device ADB lists.
+
+## Why the lock and the journal at all — compared with Appium and Maestro
+
+Asked in September 2026: why not just kill and reinstall the driver when a connection opens,
+like other tools? The honest answer separates the two mechanisms.
+
+**The lock is essential and cheap.** Tap's model is several independent processes (a Gradle
+test JVM and a pytest run, or two JVMs) sharing one machine's devices through one service.
+Two processes driving one device is garbage — a second `am instrument` kills the first, and
+interleaved input corrupts both tests — so something must say "this serial is taken". An OS
+file lock is the smallest possible arbiter: no lease table, no expiry, no heartbeat, released
+by the kernel when the holder dies.
+
+Appium and Maestro do not have this lock because they do not have this problem: they are
+**single-owner by convention**. Appium runs one session per UDID and a second session on the
+same device simply kills the previous UiAutomator2 server and takes over; allocation across
+processes is pushed up to Selenium Grid / DeviceFarmer / the CI's device pool. Maestro is one
+CLI process that picks a device and never coordinates with another Maestro. If Tap ever became
+"one process per machine", the lock would be redundant; as long as the shared service is the
+model, it is the minimum.
+
+**The journal is more than the minimum.** "Reconcile by force on open" — kill any running
+driver instrumentation, remove our forward, reinstall the driver APK only when its
+version/checksum differs, start fresh, remember nothing — is exactly what Appium and Maestro
+do, and it works. Tap already does most of that (`recoverJournal` → `forceStopDriverAndVerify`,
+forward cleanup; the driver is installed once per serial per process, not per session —
+reinstalling every session would cost ~3–5 s each, prohibitive with per-test sessions). What
+the journal adds beyond reconcile-on-open, ranked by how much it earns its keep:
+
+1. **The generation counter.** The invariant "request IDs strictly increasing per generation;
+   old generations rejected" needs the next session to know the previous generation. This is
+   the one thing that genuinely must survive across processes. (A random 64-bit per-session
+   nonce would give the same rejection property without persistence; the plan chose monotonic.)
+2. **Quarantine memory.** "The previous host died mid-reset / its cleanup could not be verified"
+   is something Appium cannot remember — it hands the device out and the next test fails
+   mysteriously. Tap refuses the device and says why in `ListDevices`. Real value on a
+   long-lived shared pool; near-zero on a CI runner whose emulator is discarded after the job.
+3. **Driver identity** (`pid` / start token / instance id) distinguishes "same driver still
+   running, reuse" from "stale, kill". Reconcile-by-killing reaches the same state at the cost
+   of a restart.
+4. **`bootId`** — a reboot makes all prior state moot; cheap and useful.
+
+All of it descends from the implementation plan's "a crashed host must not leave a device
+half-used", which is a device-farm requirement.
+
+**Standing position.** Keep it as is — it works and the device validation flow exercises it —
+but do not grow it. If the real deployment turns out to be "ephemeral CI emulators plus a
+developer's local phone", the honest simplification is: keep the lock and the generation
+counter (a ~50-line file), drop quarantine / reset recovery, and reconcile by force on open like
+Appium. That would be a deliberate departure from the plan and needs the user's approval and a
+note here before it happens.
+
 ## Resulting model
 
 - **Service**: sessions, commands, app lifecycle, journals. `ListDevices` is a view.

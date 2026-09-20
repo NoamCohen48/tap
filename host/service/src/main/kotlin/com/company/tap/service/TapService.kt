@@ -19,7 +19,6 @@ class ServiceConfig(
     val stateDir: Path,
     val journalRoot: Path = stateDir.resolve("sessions"),
     /** Restrict the service to these serials; null = every device ADB lists. */
-    val allowedSerials: Set<String>? = null,
     val bundledDriver: BundledDriver?,
     val log: (String) -> Unit = ::println,
 )
@@ -112,7 +111,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
 
     /** Every device ADB lists with what the journal and the per-serial lock say about it. */
     fun devices(): List<DeviceEntry> =
-        config.adb.devices().filter { config.allowedSerials?.contains(it) ?: true }.map { serial ->
+        config.adb.devices().map { serial ->
             val store = SessionJournalStore(config.journalRoot, serial)
             val status = quarantine(store)?.let { DeviceStatus.Quarantined(it) }
                 ?: sessions.values.firstOrNull { it.device.serial == serial }?.let { DeviceStatus.Held(it.connection.id) }
