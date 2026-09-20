@@ -1,10 +1,10 @@
-"""pytest integration: per-test device sessions from the service pool.
+"""pytest integration: per-test device sessions through the Tap service.
 
 Configuration (ini option, or environment variable):
 
     tap_aut       / TAP_AUT        AUT package (required)
     tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
-                                   order. Unset = whatever the service inventory offers.
+                                   order. Unset = whatever the service's device list offers.
     tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
     tap_service   / TAP_SERVICE    host:port of a running service (default: discover/auto-start)
     tap_acquire_timeout            seconds to wait for a device another session holds (default 120)
@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from .device import Device
-from .service import Run, Service
+from .service import Connection, Service
 
 DEFAULT_ROLE = "device"
 
@@ -93,12 +93,12 @@ def tap_service(tap_config: TapConfig) -> Service:
 
 
 @pytest.fixture(scope="session")
-def tap_run(tap_service: Service, request: pytest.FixtureRequest) -> Run:
-    """One run per pytest session; the service tears everything down if this process dies."""
-    run = tap_service.open_run(f"pytest {os.getpid()} {request.config.rootpath.name}")
-    run.attach()
-    yield run
-    run.close()
+def tap_connection(tap_service: Service, request: pytest.FixtureRequest) -> Connection:
+    """One ``Connection`` per pytest session; the service tears everything down if this process dies."""
+    connection = tap_service.connect(f"pytest {os.getpid()} {request.config.rootpath.name}")
+    connection.attach()
+    yield connection
+    connection.close()
 
 
 def _declared_roles(item: pytest.Item) -> list[str]:
@@ -107,14 +107,14 @@ def _declared_roles(item: pytest.Item) -> list[str]:
     return list(dict.fromkeys(roles))
 
 
-def _open_all(run: Run, config: TapConfig, assignment: dict[str, str]) -> dict[str, Device]:
+def _open_all(connection: Connection, config: TapConfig, assignment: dict[str, str]) -> dict[str, Device]:
     """Opens the sessions one at a time in sorted serial order. Every process takes device locks
     in the same order, so two tests wanting the same two devices cannot deadlock; the second
     waits (up to ``tap_acquire_timeout``) for the first to finish."""
     opened: dict[str, Device] = {}
     try:
         for role, serial in sorted(assignment.items(), key=lambda item: item[1]):
-            opened[role] = run.open_device(serial, config.aut, wait_for_device=config.acquire_timeout)
+            opened[role] = connection.open_device(serial, config.aut, wait_for_device=config.acquire_timeout)
     except BaseException:
         for device in opened.values():
             try:
@@ -126,15 +126,15 @@ def _open_all(run: Run, config: TapConfig, assignment: dict[str, str]) -> dict[s
 
 
 @pytest.fixture
-def tap_devices(request: pytest.FixtureRequest, tap_run: Run, tap_config: TapConfig) -> dict[str, Device]:
+def tap_devices(request: pytest.FixtureRequest, tap_connection: Connection, tap_config: TapConfig) -> dict[str, Device]:
     roles = _declared_roles(request.node)
     # Roles → serials is decided here, in declaration order; the service only knows serials.
-    available = tap_config.serials or tap_run.available_serials()
+    available = tap_config.serials or tap_connection.available_serials()
     if len(roles) > len(available):
-        where = f"tap_serials lists {tap_config.serials}" if tap_config.serials else f"the inventory has {available}"
+        where = f"tap_serials lists {tap_config.serials}" if tap_config.serials else f"the service lists {available}"
         pytest.skip(f"{request.node.name} needs {len(roles)} devices but {where}")
     assignment = dict(zip(roles, available))
-    devices = _open_all(tap_run, tap_config, assignment)
+    devices = _open_all(tap_connection, tap_config, assignment)
     state = TestDevices(devices, list(assignment.values()))
     request.node._tap_state = state  # type: ignore[attr-defined]
     yield devices

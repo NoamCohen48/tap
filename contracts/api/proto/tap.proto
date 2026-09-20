@@ -284,43 +284,44 @@ message CommandResult {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Runs: a client's unit of ownership. Devices and sessions belong to a run; when the run's
-// Attach stream breaks (client exited), the service closes its sessions and frees its devices.
+// Connections: a client process's connection to the service, and its unit of ownership.
+// Sessions belong to a connection; when its Attach stream breaks (the client exited) the
+// service closes those sessions, which frees their devices.
 // ---------------------------------------------------------------------------------------------
 
-// A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
-// stream breaks (the client exited) the service closes its sessions and frees its devices.
-service RunService {
-  rpc Open(OpenRunRequest) returns (OpenRunResponse); // Creates a run; call Attach next.
-  // Long-lived stream the client keeps open for the life of the run. Server-side cancellation
-  // of this stream is the liveness signal; the messages are informational.
-  rpc Attach(AttachRequest) returns (stream RunEvent);
-  rpc Close(CloseRunRequest) returns (CloseRunResponse); // Closes every session and releases every device of the run.
+service ConnectionService {
+  rpc Open(OpenConnectionRequest) returns (OpenConnectionResponse); // Creates a connection; call Attach next.
+  // Long-lived stream the client keeps open for the life of the connection. Server-side
+  // cancellation of this stream is the liveness signal; the messages are informational.
+  rpc Attach(AttachRequest) returns (stream ConnectionEvent);
+  rpc Close(CloseConnectionRequest) returns (CloseConnectionResponse); // Closes every session of the connection.
   rpc Info(InfoRequest) returns (InfoResponse); // Service version, protocol version and configuration.
 }
 
-message OpenRunRequest {
+message OpenConnectionRequest {
   string name = 1; // free text for diagnostics (e.g. "pytest 12345 on host")
 }
 
-message OpenRunResponse {
-  string run_id = 1;
+message OpenConnectionResponse {
+  string connection_id = 1;
 }
 
 message AttachRequest {
-  string run_id = 1;
+  string connection_id = 2;
+  reserved 1;
+  reserved "run_id";
 }
 
-message RunEvent {
+message ConnectionEvent {
   int64 at_epoch_ms = 1;
   string message = 2;
 }
 
-message CloseRunRequest {
-  string run_id = 1;
+message CloseConnectionRequest {
+  string connection_id = 1;
 }
 
-message CloseRunResponse {
+message CloseConnectionResponse {
   int32 sessions_closed = 1;
   reserved 2;
   reserved "devices_released";
@@ -338,17 +339,17 @@ message InfoResponse {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
-// exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
-// `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
-// death of the session's process releases. Clients pick serials from the inventory.
+// Devices: the devices on this machine and their state. There is no lease RPC: a device is
+// in use exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`),
+// which `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or
+// the death of the session's process releases. Clients pick serials from this list.
 // ---------------------------------------------------------------------------------------------
 
-service PoolService {
-  rpc Inventory(InventoryRequest) returns (InventoryResponse); // Every device ADB lists, with its state.
+service DeviceService {
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse); // Every device ADB lists, with its state.
 }
 
-// State of a device in the inventory.
+// State of a listed device.
 enum DeviceState {
   DEVICE_STATE_UNSPECIFIED = 0;
   DEVICE_FREE = 1;
@@ -357,21 +358,21 @@ enum DeviceState {
   DEVICE_OFFLINE = 4;
 }
 
-// A device in the inventory with its state. Anything richer than the serial (API level,
-// model, ...) comes from the driver's DeviceInfo once a session is open.
-message PoolDevice {
+// One listed device. Anything richer than the serial (API level, model, ...) comes from the
+// driver's DeviceInfo once a session is open.
+message DeviceEntry {
   string serial = 6;
   DeviceState state = 2;
-  optional string leased_by_run = 3; // set when the session holding the lock belongs to this service
+  optional string held_by_connection = 7; // set when the session holding the lock belongs to this service
   optional string quarantine_reason = 5;
-  reserved 1, 4;
-  reserved "facts", "leased_role";
+  reserved 1, 3, 4;
+  reserved "facts", "leased_by_run", "leased_role";
 }
 
-message InventoryRequest {}
+message ListDevicesRequest {}
 
-message InventoryResponse {
-  repeated PoolDevice devices = 1;
+message ListDevicesResponse {
+  repeated DeviceEntry devices = 1;
 }
 
 
@@ -390,9 +391,9 @@ service SessionService {
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse); // The driver's log lines for the session.
 }
 
-// Session-open options. The run must hold a lease on `serial`.
+// Session-open options.
 message OpenSessionRequest {
-  string run_id = 1;
+  string connection_id = 11;
   string serial = 2;
   string aut_package = 3;
   // Install the driver APKs before starting. When omitted the service installs its bundled
@@ -406,6 +407,8 @@ message OpenSessionRequest {
   // How long to wait for another session's lock on `serial` before failing DEADLINE_EXCEEDED.
   // 0 (default) fails at once when the device is in use.
   int64 lease_timeout_ms = 10;
+  reserved 1;
+  reserved "run_id";
 }
 
 // The opened session; `generation` increments whenever the driver is rebuilt.

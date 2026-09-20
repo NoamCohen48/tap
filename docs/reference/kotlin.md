@@ -1,6 +1,6 @@
 # Kotlin client
 
-Artifacts `com.company.tap:tap-client` (the SDK: `TapClient`, `Run`, `Device`, `Element`,
+Artifacts `com.company.tap:tap-client` (the SDK: `TapClient`, `Connection`, `Device`, `Element`,
 `ElementWait`, `App`, the selector DSL) and `com.company.tap:tap-junit5` (`@TapTest`,
 `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`).
 
@@ -17,7 +17,7 @@ Artifacts `com.company.tap:tap-client` (the SDK: `TapClient`, `Run`, `Device`, `
 
 | Package | Module | Contents |
 |---|---|---|
-| `com.company.tap.sdk` | tap-client | `TapClient`, `Run`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
+| `com.company.tap.sdk` | tap-client | `TapClient`, `Connection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
 | `com.company.tap.junit5` | tap-junit5 | `@TapTest`, `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`, `TapExtension` |
 | `com.company.tap.api.v1` | tap-api (transitive) | the generated protobuf/gRPC types (`Selector`, `Command`, `ErrorCode`, `Direction`, `StabilitySignal`, …) |
 

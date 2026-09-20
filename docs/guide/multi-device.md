@@ -49,7 +49,7 @@ Sessions are opened **one at a time in sorted serial order**, waiting up to
 `tap.acquireTimeoutSeconds` / `tap_acquire_timeout` for a device another session holds. Every
 process takes device locks in the same order, so two tests that both want the same two devices
 cannot deadlock: the second simply waits for the first to finish. A test that needs more
-devices than the inventory offers is skipped (a JUnit assumption failure in Kotlin,
+devices than the service lists is skipped (a JUnit assumption failure in Kotlin,
 `pytest.skip` in Python).
 
 ## Which serial plays which role
@@ -59,14 +59,15 @@ Decided by the client, in this order:
 - `tap.device.<role>=<serial>` pins one role (JUnit).
 - `tap.serials=a,b` / `TAP_SERIALS` limits the process to those devices; roles take them in
   declaration order.
-- With nothing configured, the client asks the service for its inventory and takes devices that
+- With nothing configured, the client asks the service for its device list and takes devices that
   are online and not quarantined — free ones first, then ones another session holds.
 
-From the SDK you do the same by hand: `run.availableSerials()` / `run.available_serials()` to
-look, then `run.openDevice(serial, aut, options = DeviceOptions(waitForDevice = 60.seconds))` /
-`run.open_device(serial, aut, wait_for_device=60)` to open; without a wait, a busy device fails
-at once with `DeviceBusyException` / `DeviceBusyError`. The inventory carries only serials and
-states; anything richer (API level, model) comes from `device.info()` once a session is open,
+From the SDK you do the same by hand: `connection.availableSerials()` /
+`connection.available_serials()` to look, then
+`connection.openDevice(serial, aut, options = DeviceOptions(waitForDevice = 60.seconds))` /
+`connection.open_device(serial, aut, wait_for_device=60)` to open; without a wait, a busy device fails
+at once with `DeviceBusyException` / `DeviceBusyError`. The device list carries only serials
+and states; anything richer (API level, model) comes from `device.info()` once a session is open,
 or from `adb -s <serial> shell getprop` if you need it before.
 
 ## Cross-device waits
@@ -76,23 +77,24 @@ The receiver's UI is a normal `await(...)`. For conditions that span devices or 
 
 ## Inspecting the devices
 
-`tap status` prints the running service's address, PID and version. The pool itself is one
+`tap status` prints the running service's address, PID and version. The device list is one
 call away in either client:
 
 === "Kotlin"
 
     ```kotlin
-    TapClient().use { client -> client.inventory().forEach(::println) }
+    TapClient().use { client -> client.devices().forEach(::println) }
     ```
 
 === "Python"
 
     ```python
-    for d in Service().inventory():
-        print(d.serial, pb.DeviceState.Name(d.state), d.leased_by_run, d.quarantine_reason)
+    for d in Service().devices():
+        print(d.serial, pb.DeviceState.Name(d.state), d.held_by_connection, d.quarantine_reason)
     ```
 
-Each device is `FREE`, `LEASED` (with the run and role holding it), `OFFLINE`, or
+Each device is `FREE`, `LEASED` (with the connection holding it, when it is one of this
+service's), `OFFLINE`, or
 `QUARANTINED` with a reason. A device is quarantined when a session could not leave it provably
 clean — the driver could not be stopped, the journal is corrupt, the boot identity changed
 under an active session, or a mutation may still be in flight. It stays out of circulation until

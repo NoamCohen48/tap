@@ -19,7 +19,7 @@ class TapError(Exception):
 
 
 class ServiceError(TapError):
-    """The host service rejected or failed a call (unknown run/session, bad argument, ...)."""
+    """The host service rejected or failed a call (unknown connection/session, bad argument, ...)."""
 
     def __init__(self, code: str, details: str):
         super().__init__(f"{code}: {details}")

@@ -82,8 +82,8 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     val executor = Executors.newCachedThreadPool { Thread(it, "tap-rpc").apply { isDaemon = true } }
     val server: Server = NettyServerBuilder.forAddress(InetSocketAddress("127.0.0.1", port))
         .executor(executor)
-        .addService(RunServicer(service, scheduler))
-        .addService(PoolServicer(service))
+        .addService(ConnectionServicer(service, scheduler))
+        .addService(DeviceServicer(service))
         .addService(SessionServicer(service, executor))
         .addService(AppServicer(service))
         .maxInboundMessageSize(8 * 1024 * 1024)

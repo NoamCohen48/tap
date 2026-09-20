@@ -30,11 +30,11 @@ from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, Dev
 
 ::: tap.app.ProcessIdentity
 
-## Service and runs
+## Service and connection
 
 ::: tap.service.Service
 
-::: tap.service.Run
+::: tap.service.Connection
 
 ## Errors
 
@@ -48,6 +48,6 @@ from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, Dev
         - TapConfig
         - tap_config
         - tap_service
-        - tap_run
+        - tap_connection
         - tap_devices
         - tap_device

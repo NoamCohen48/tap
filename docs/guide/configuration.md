@@ -17,7 +17,7 @@ tap version
 | `serve` | runs the service in the foreground on loopback (`--port 0` = ephemeral, the default), writes `<state-dir>/service.json` (`port`, `pid`, `version`, `adb`), and keeps running until `tap stop` |
 | `--state-dir` | where `service.json`, `sessions/` (leases and journals) and the extracted driver live; default `$TAP_STATE_DIR` or `~/.tap` |
 | `--adb` | the ADB executable; default `$TAP_ADB` or `adb` on `PATH` |
-| `--serials` | restrict the inventory to these devices; default every device ADB lists |
+| `--serials` | restrict the service to these devices; default every device ADB lists |
 | `status` | prints `service.json` (exit 1 when no service is running) |
 | `stop` | terminates the service recorded in `service.json` |
 
@@ -45,7 +45,7 @@ name upper-cased and dotted → underscored (`tap.autPackage` → `TAP_AUTPACKAG
 | Property | Meaning | Default |
 |---|---|---|
 | `tap.autPackage` (or `tap.aut`) | the application under test | **required** |
-| `tap.serials` | comma-separated serials to use; roles map to them in order | any device in the inventory |
+| `tap.serials` | comma-separated serials to use; roles map to them in order | any device the service lists |
 | `tap.device.<role>` | pin one role to a serial (must be in `tap.serials` when that is set) | — |
 | `tap.artifactsDir` | failure artifacts root | `build/tap-artifacts` |
 | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds | `300` |
@@ -78,7 +78,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | ini | Environment | Meaning | Default |
 |---|---|---|---|
 | `tap_aut` | `TAP_AUT` | the application under test | **required** |
-| `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order | any device in the inventory |
+| `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order | any device the service lists |
 | `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
 | `tap_service` | `TAP_SERVICE` | `host:port` of a running service | discover / auto-start |
 | `tap_acquire_timeout` | — | seconds to wait for a device another session holds | `120` |
@@ -86,7 +86,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | — | `TAP_STATE_DIR` | state dir shared with the service | `~/.tap` |
 
 Fixtures: `tap_device` (the default role), `tap_devices` (dict role → `Device`), plus
-`tap_run`, `tap_service` and `tap_config` for scripts that want the lower layers. Marker:
+`tap_connection`, `tap_service` and `tap_config` for scripts that want the lower layers. Marker:
 `@pytest.mark.tap_devices("a", "b")`.
 
 ## Session options

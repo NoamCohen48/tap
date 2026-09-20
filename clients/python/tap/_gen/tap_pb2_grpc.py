@@ -25,14 +25,13 @@ if _version_not_supported:
     )
 
 
-class RunServiceStub:
+class ConnectionServiceStub:
     """---------------------------------------------------------------------------------------------
-    Runs: a client's unit of ownership. Devices and sessions belong to a run; when the run's
-    Attach stream breaks (client exited), the service closes its sessions and frees its devices.
+    Connections: a client process's connection to the service, and its unit of ownership.
+    Sessions belong to a connection; when its Attach stream breaks (the client exited) the
+    service closes those sessions, which frees their devices.
     ---------------------------------------------------------------------------------------------
 
-    A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
-    stream breaks (the client exited) the service closes its sessions and frees its devices.
     """
 
     def __init__(self, channel):
@@ -42,54 +41,53 @@ class RunServiceStub:
             channel: A grpc.Channel.
         """
         self.Open = channel.unary_unary(
-                '/tap.v1.RunService/Open',
-                request_serializer=tap__pb2.OpenRunRequest.SerializeToString,
-                response_deserializer=tap__pb2.OpenRunResponse.FromString,
+                '/tap.v1.ConnectionService/Open',
+                request_serializer=tap__pb2.OpenConnectionRequest.SerializeToString,
+                response_deserializer=tap__pb2.OpenConnectionResponse.FromString,
                 _registered_method=True)
         self.Attach = channel.unary_stream(
-                '/tap.v1.RunService/Attach',
+                '/tap.v1.ConnectionService/Attach',
                 request_serializer=tap__pb2.AttachRequest.SerializeToString,
-                response_deserializer=tap__pb2.RunEvent.FromString,
+                response_deserializer=tap__pb2.ConnectionEvent.FromString,
                 _registered_method=True)
         self.Close = channel.unary_unary(
-                '/tap.v1.RunService/Close',
-                request_serializer=tap__pb2.CloseRunRequest.SerializeToString,
-                response_deserializer=tap__pb2.CloseRunResponse.FromString,
+                '/tap.v1.ConnectionService/Close',
+                request_serializer=tap__pb2.CloseConnectionRequest.SerializeToString,
+                response_deserializer=tap__pb2.CloseConnectionResponse.FromString,
                 _registered_method=True)
         self.Info = channel.unary_unary(
-                '/tap.v1.RunService/Info',
+                '/tap.v1.ConnectionService/Info',
                 request_serializer=tap__pb2.InfoRequest.SerializeToString,
                 response_deserializer=tap__pb2.InfoResponse.FromString,
                 _registered_method=True)
 
 
-class RunServiceServicer:
+class ConnectionServiceServicer:
     """---------------------------------------------------------------------------------------------
-    Runs: a client's unit of ownership. Devices and sessions belong to a run; when the run's
-    Attach stream breaks (client exited), the service closes its sessions and frees its devices.
+    Connections: a client process's connection to the service, and its unit of ownership.
+    Sessions belong to a connection; when its Attach stream breaks (the client exited) the
+    service closes those sessions, which frees their devices.
     ---------------------------------------------------------------------------------------------
 
-    A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
-    stream breaks (the client exited) the service closes its sessions and frees its devices.
     """
 
     def Open(self, request, context):
-        """Creates a run; call Attach next.
+        """Creates a connection; call Attach next.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Attach(self, request, context):
-        """Long-lived stream the client keeps open for the life of the run. Server-side cancellation
-        of this stream is the liveness signal; the messages are informational.
+        """Long-lived stream the client keeps open for the life of the connection. Server-side
+        cancellation of this stream is the liveness signal; the messages are informational.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Close(self, request, context):
-        """Closes every session and releases every device of the run.
+        """Closes every session of the connection.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -103,22 +101,22 @@ class RunServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
 
-def add_RunServiceServicer_to_server(servicer, server):
+def add_ConnectionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Open': grpc.unary_unary_rpc_method_handler(
                     servicer.Open,
-                    request_deserializer=tap__pb2.OpenRunRequest.FromString,
-                    response_serializer=tap__pb2.OpenRunResponse.SerializeToString,
+                    request_deserializer=tap__pb2.OpenConnectionRequest.FromString,
+                    response_serializer=tap__pb2.OpenConnectionResponse.SerializeToString,
             ),
             'Attach': grpc.unary_stream_rpc_method_handler(
                     servicer.Attach,
                     request_deserializer=tap__pb2.AttachRequest.FromString,
-                    response_serializer=tap__pb2.RunEvent.SerializeToString,
+                    response_serializer=tap__pb2.ConnectionEvent.SerializeToString,
             ),
             'Close': grpc.unary_unary_rpc_method_handler(
                     servicer.Close,
-                    request_deserializer=tap__pb2.CloseRunRequest.FromString,
-                    response_serializer=tap__pb2.CloseRunResponse.SerializeToString,
+                    request_deserializer=tap__pb2.CloseConnectionRequest.FromString,
+                    response_serializer=tap__pb2.CloseConnectionResponse.SerializeToString,
             ),
             'Info': grpc.unary_unary_rpc_method_handler(
                     servicer.Info,
@@ -127,20 +125,19 @@ def add_RunServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'tap.v1.RunService', rpc_method_handlers)
+            'tap.v1.ConnectionService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('tap.v1.RunService', rpc_method_handlers)
+    server.add_registered_method_handlers('tap.v1.ConnectionService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class RunService:
+class ConnectionService:
     """---------------------------------------------------------------------------------------------
-    Runs: a client's unit of ownership. Devices and sessions belong to a run; when the run's
-    Attach stream breaks (client exited), the service closes its sessions and frees its devices.
+    Connections: a client process's connection to the service, and its unit of ownership.
+    Sessions belong to a connection; when its Attach stream breaks (the client exited) the
+    service closes those sessions, which frees their devices.
     ---------------------------------------------------------------------------------------------
 
-    A run is a client's unit of ownership: devices and sessions belong to it, and when its Attach
-    stream breaks (the client exited) the service closes its sessions and frees its devices.
     """
 
     @staticmethod
@@ -157,9 +154,9 @@ class RunService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/tap.v1.RunService/Open',
-            tap__pb2.OpenRunRequest.SerializeToString,
-            tap__pb2.OpenRunResponse.FromString,
+            '/tap.v1.ConnectionService/Open',
+            tap__pb2.OpenConnectionRequest.SerializeToString,
+            tap__pb2.OpenConnectionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -184,9 +181,9 @@ class RunService:
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/tap.v1.RunService/Attach',
+            '/tap.v1.ConnectionService/Attach',
             tap__pb2.AttachRequest.SerializeToString,
-            tap__pb2.RunEvent.FromString,
+            tap__pb2.ConnectionEvent.FromString,
             options,
             channel_credentials,
             insecure,
@@ -211,9 +208,9 @@ class RunService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/tap.v1.RunService/Close',
-            tap__pb2.CloseRunRequest.SerializeToString,
-            tap__pb2.CloseRunResponse.FromString,
+            '/tap.v1.ConnectionService/Close',
+            tap__pb2.CloseConnectionRequest.SerializeToString,
+            tap__pb2.CloseConnectionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -238,7 +235,7 @@ class RunService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/tap.v1.RunService/Info',
+            '/tap.v1.ConnectionService/Info',
             tap__pb2.InfoRequest.SerializeToString,
             tap__pb2.InfoResponse.FromString,
             options,
@@ -252,12 +249,12 @@ class RunService:
             _registered_method=True)
 
 
-class PoolServiceStub:
+class DeviceServiceStub:
     """---------------------------------------------------------------------------------------------
-    Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
-    exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
-    `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
-    death of the session's process releases. Clients pick serials from the inventory.
+    Devices: the devices on this machine and their state. There is no lease RPC: a device is
+    in use exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`),
+    which `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or
+    the death of the session's process releases. Clients pick serials from this list.
     ---------------------------------------------------------------------------------------------
 
     """
@@ -268,24 +265,24 @@ class PoolServiceStub:
         Args:
             channel: A grpc.Channel.
         """
-        self.Inventory = channel.unary_unary(
-                '/tap.v1.PoolService/Inventory',
-                request_serializer=tap__pb2.InventoryRequest.SerializeToString,
-                response_deserializer=tap__pb2.InventoryResponse.FromString,
+        self.ListDevices = channel.unary_unary(
+                '/tap.v1.DeviceService/ListDevices',
+                request_serializer=tap__pb2.ListDevicesRequest.SerializeToString,
+                response_deserializer=tap__pb2.ListDevicesResponse.FromString,
                 _registered_method=True)
 
 
-class PoolServiceServicer:
+class DeviceServiceServicer:
     """---------------------------------------------------------------------------------------------
-    Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
-    exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
-    `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
-    death of the session's process releases. Clients pick serials from the inventory.
+    Devices: the devices on this machine and their state. There is no lease RPC: a device is
+    in use exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`),
+    which `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or
+    the death of the session's process releases. Clients pick serials from this list.
     ---------------------------------------------------------------------------------------------
 
     """
 
-    def Inventory(self, request, context):
+    def ListDevices(self, request, context):
         """Every device ADB lists, with its state.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -293,33 +290,33 @@ class PoolServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
 
-def add_PoolServiceServicer_to_server(servicer, server):
+def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'Inventory': grpc.unary_unary_rpc_method_handler(
-                    servicer.Inventory,
-                    request_deserializer=tap__pb2.InventoryRequest.FromString,
-                    response_serializer=tap__pb2.InventoryResponse.SerializeToString,
+            'ListDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDevices,
+                    request_deserializer=tap__pb2.ListDevicesRequest.FromString,
+                    response_serializer=tap__pb2.ListDevicesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'tap.v1.PoolService', rpc_method_handlers)
+            'tap.v1.DeviceService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('tap.v1.PoolService', rpc_method_handlers)
+    server.add_registered_method_handlers('tap.v1.DeviceService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class PoolService:
+class DeviceService:
     """---------------------------------------------------------------------------------------------
-    Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
-    exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
-    `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
-    death of the session's process releases. Clients pick serials from the inventory.
+    Devices: the devices on this machine and their state. There is no lease RPC: a device is
+    in use exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`),
+    which `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or
+    the death of the session's process releases. Clients pick serials from this list.
     ---------------------------------------------------------------------------------------------
 
     """
 
     @staticmethod
-    def Inventory(request,
+    def ListDevices(request,
             target,
             options=(),
             channel_credentials=None,
@@ -332,9 +329,9 @@ class PoolService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/tap.v1.PoolService/Inventory',
-            tap__pb2.InventoryRequest.SerializeToString,
-            tap__pb2.InventoryResponse.FromString,
+            '/tap.v1.DeviceService/ListDevices',
+            tap__pb2.ListDevicesRequest.SerializeToString,
+            tap__pb2.ListDevicesResponse.FromString,
             options,
             channel_credentials,
             insecure,

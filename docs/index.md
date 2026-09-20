@@ -54,11 +54,11 @@ def test_buys_an_item(tap_device):
 | | |
 |---|---|
 | [Getting started](guide/getting-started.md) | install the service, run the first test in Kotlin or Python |
-| [How it works](guide/how-it-works.md) | service, driver, sessions, inventory — the model behind the API |
+| [How it works](guide/how-it-works.md) | service, driver, sessions, device list — the model behind the API |
 | [Selectors](guide/selectors.md) | the selector DSL, scoping rules, what is deliberately not supported |
 | [Actions and waits](guide/actions-and-waits.md) | taps, text, gestures, scrolling, every kind of wait |
 | [App lifecycle and sync](guide/app-lifecycle.md) | launch/cold launch, clear data, permissions, app-owned idle |
-| [Multi-device tests](guide/multi-device.md) | roles, serials, the inventory |
+| [Multi-device tests](guide/multi-device.md) | roles, serials, the device list |
 | [Configuration](guide/configuration.md) | properties, environment, the `tap` CLI |
 | [Errors and artifacts](guide/errors.md) | the error codes, what they mean, what to look at |
 | [Coming from Maestro or Appium](guide/coming-from.md) | mapping table |

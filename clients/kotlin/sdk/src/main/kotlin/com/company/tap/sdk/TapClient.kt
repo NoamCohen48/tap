@@ -2,16 +2,16 @@ package com.company.tap.sdk
 
 import com.company.tap.api.v1.AppServiceGrpc
 import com.company.tap.api.v1.AttachRequest
-import com.company.tap.api.v1.CloseRunRequest
+import com.company.tap.api.v1.CloseConnectionRequest
+import com.company.tap.api.v1.ConnectionEvent
+import com.company.tap.api.v1.ConnectionServiceGrpc
+import com.company.tap.api.v1.DeviceEntry
+import com.company.tap.api.v1.DeviceServiceGrpc
 import com.company.tap.api.v1.DeviceState
 import com.company.tap.api.v1.InfoRequest
 import com.company.tap.api.v1.InfoResponse
-import com.company.tap.api.v1.InventoryRequest
-import com.company.tap.api.v1.OpenRunRequest
-import com.company.tap.api.v1.PoolDevice
-import com.company.tap.api.v1.PoolServiceGrpc
-import com.company.tap.api.v1.RunEvent
-import com.company.tap.api.v1.RunServiceGrpc
+import com.company.tap.api.v1.ListDevicesRequest
+import com.company.tap.api.v1.OpenConnectionRequest
 import com.company.tap.api.v1.SessionServiceGrpc
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
@@ -48,7 +48,7 @@ internal inline fun <T> mapped(serial: String? = null, block: () -> T): T = try 
 }
 
 /**
- * One connection to a Tap host service. Discovery order: [address]; the `tap.service` system
+ * A channel to a Tap host service. Discovery order: [address]; the `tap.service` system
  * property / `TAP_SERVICE` (`host:port`); a live `service.json` in the state dir
  * (`TAP_STATE_DIR`, default `~/.tap`); otherwise `tap serve` is started from `tap.bin` /
  * `TAP_BIN` / `tap` on `PATH`. A started service stays up like the ADB server (`tap stop`).
@@ -59,23 +59,26 @@ class TapClient(address: String? = null, autostart: Boolean = true) : AutoClosea
         .usePlaintext()
         .maxInboundMessageSize(64 * 1024 * 1024)
         .build()
-    internal val runs: RunServiceGrpc.RunServiceBlockingStub = RunServiceGrpc.newBlockingStub(channel)
-    internal val runsAsync: RunServiceGrpc.RunServiceStub = RunServiceGrpc.newStub(channel)
-    internal val pool: PoolServiceGrpc.PoolServiceBlockingStub = PoolServiceGrpc.newBlockingStub(channel)
+    internal val connections: ConnectionServiceGrpc.ConnectionServiceBlockingStub = ConnectionServiceGrpc.newBlockingStub(channel)
+    internal val connectionsAsync: ConnectionServiceGrpc.ConnectionServiceStub = ConnectionServiceGrpc.newStub(channel)
+    internal val devices: DeviceServiceGrpc.DeviceServiceBlockingStub = DeviceServiceGrpc.newBlockingStub(channel)
     internal val sessions: SessionServiceGrpc.SessionServiceBlockingStub = SessionServiceGrpc.newBlockingStub(channel)
     internal val apps: AppServiceGrpc.AppServiceBlockingStub = AppServiceGrpc.newBlockingStub(channel)
 
     /** Service version, protocol version, ADB executable, state dir, bundled driver. */
-    fun info(): InfoResponse = mapped { runs.withDeadlineAfter(10, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance()) }
+    fun info(): InfoResponse = mapped { connections.withDeadlineAfter(10, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance()) }
 
-    /** Every device in the pool with its state (`FREE`, `LEASED`, `QUARANTINED`, `OFFLINE`). */
-    fun inventory(): List<PoolDevice> =
-        mapped { pool.withDeadlineAfter(30, TimeUnit.SECONDS).inventory(InventoryRequest.getDefaultInstance()).devicesList }
+    /** Every device ADB lists, with its state (`FREE`, `LEASED`, `QUARANTINED`, `OFFLINE`). */
+    fun devices(): List<DeviceEntry> =
+        mapped { devices.withDeadlineAfter(30, TimeUnit.SECONDS).listDevices(ListDevicesRequest.getDefaultInstance()).devicesList }
 
-    /** Opens and attaches a run: if this process dies, the service closes every session it opened. */
-    fun openRun(name: String): Run {
-        val id = mapped { runs.withDeadlineAfter(10, TimeUnit.SECONDS).open(OpenRunRequest.newBuilder().setName(name).build()).runId }
-        return Run(this, id).also { it.attach() }
+    /**
+     * Opens a [Connection] and attaches its liveness stream: if this process dies, the service
+     * closes every session the connection opened.
+     */
+    fun connect(name: String): Connection {
+        val id = mapped { connections.withDeadlineAfter(10, TimeUnit.SECONDS).open(OpenConnectionRequest.newBuilder().setName(name).build()).connectionId }
+        return Connection(this, id).also { it.attach() }
     }
 
     override fun close() {
@@ -84,8 +87,12 @@ class TapClient(address: String? = null, autostart: Boolean = true) : AutoClosea
     }
 }
 
-/** Ownership scope for sessions; see [TapClient.openRun]. */
-class Run internal constructor(val client: TapClient, val id: String) : AutoCloseable {
+/**
+ * This process's identity at the service: every [Device] it opens belongs to it and is closed
+ * with it — explicitly by [close], or by the service when the process goes away. One per process
+ * is the norm; see [TapClient.connect].
+ */
+class Connection internal constructor(val client: TapClient, val id: String) : AutoCloseable {
     private val events = CopyOnWriteArrayList<String>()
     @Volatile private var stream: ClientCallStreamObserver<AttachRequest>? = null
 
@@ -95,14 +102,14 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
     internal fun attach() {
         val acknowledged = CountDownLatch(1)
         var failure: Throwable? = null
-        client.runsAsync.attach(
-            AttachRequest.newBuilder().setRunId(id).build(),
-            object : ClientResponseObserver<AttachRequest, RunEvent> {
+        client.connectionsAsync.attach(
+            AttachRequest.newBuilder().setConnectionId(id).build(),
+            object : ClientResponseObserver<AttachRequest, ConnectionEvent> {
                 override fun beforeStart(requestStream: ClientCallStreamObserver<AttachRequest>) {
                     stream = requestStream
                 }
 
-                override fun onNext(value: RunEvent) {
+                override fun onNext(value: ConnectionEvent) {
                     events.add(value.message)
                     if (events.size > 200) events.removeAt(0)
                     acknowledged.countDown()
@@ -121,11 +128,11 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
     }
 
     /**
-     * Serials a test can use, from the service inventory: online and not quarantined, free ones
+     * Serials a test can use, from [TapClient.devices]: online and not quarantined, free ones
      * first, then ones another session holds (opening then waits, see [DeviceOptions.waitForDevice]).
      * Exclusive use is enforced by the session itself, so there is nothing to acquire beforehand.
      */
-    fun availableSerials(): List<String> = client.inventory()
+    fun availableSerials(): List<String> = client.devices()
         .filter { it.state == DeviceState.DEVICE_FREE || it.state == DeviceState.DEVICE_LEASED }
         .sortedBy { it.state != DeviceState.DEVICE_FREE }
         .map { it.serial }
@@ -145,9 +152,9 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
     /** Closes explicitly (recorded as a client request), then drops the liveness stream. */
     override fun close() {
         try {
-            mapped { client.runs.withDeadlineAfter(60, TimeUnit.SECONDS).close(CloseRunRequest.newBuilder().setRunId(id).build()) }
+            mapped { client.connections.withDeadlineAfter(60, TimeUnit.SECONDS).close(CloseConnectionRequest.newBuilder().setConnectionId(id).build()) }
         } finally {
-            stream?.cancel("run closed", null)
+            stream?.cancel("connection closed", null)
             stream = null
         }
     }
@@ -185,7 +192,7 @@ object ServiceDiscovery {
     private fun alive(address: String): Boolean {
         val channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build()
         return try {
-            RunServiceGrpc.newBlockingStub(channel).withDeadlineAfter(2, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance())
+            ConnectionServiceGrpc.newBlockingStub(channel).withDeadlineAfter(2, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance())
             true
         } catch (_: StatusRuntimeException) {
             false

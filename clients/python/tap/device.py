@@ -10,7 +10,7 @@ from .app import App
 from .element import Element, ElementWait
 from .errors import CommandError, WaitTimeoutError
 from .selectors import Selector
-from .service import Run, mapped_errors
+from .service import Connection, mapped_errors
 
 KEYCODE_HOME = 3
 KEYCODE_BACK = 4
@@ -32,9 +32,9 @@ class Device:
     selector that every action resolves again, and mutations fail with AMBIGUOUS/NOT_FOUND
     before any input when the selector does not match exactly one node."""
 
-    def __init__(self, run: Run, response: pb.OpenSessionResponse, aut_package: str, timeouts: Timeouts):
-        self.run = run
-        self.service = run.service
+    def __init__(self, connection: Connection, response: pb.OpenSessionResponse, aut_package: str, timeouts: Timeouts):
+        self.connection = connection
+        self.service = connection.service
         self.session_id = response.session_id
         self.serial = response.serial
         self.generation = response.generation
@@ -45,7 +45,7 @@ class Device:
     @classmethod
     def open(
         cls,
-        run: Run,
+        connection: Connection,
         serial: str,
         aut_package: str,
         timeouts: Timeouts | None = None,
@@ -56,12 +56,12 @@ class Device:
         allowed_system_packages: list[str] | None = None,
         wait_for_device: float = 0,
     ) -> "Device":
-        """Open a driver session on ``serial`` for ``aut_package`` (used by ``Run.open_device``).
+        """Open a driver session on ``serial`` for ``aut_package`` (used by ``Connection.open_device``).
         The session holds the device's per-serial lock until ``close``; if another session holds
         it the open raises ``DeviceBusyError`` — at once, or after ``wait_for_device`` seconds."""
         timeouts = timeouts or Timeouts()
         request = pb.OpenSessionRequest(
-            run_id=run.id, serial=serial, aut_package=aut_package,
+            connection_id=connection.id, serial=serial, aut_package=aut_package,
             default_timeout_ms=int(timeouts.action * 1000),
             lease_timeout_ms=int(wait_for_device * 1000),
             allowed_system_packages=allowed_system_packages or [],
@@ -75,8 +75,8 @@ class Device:
         if sync_authority:
             request.sync_authority = sync_authority
         with mapped_errors(serial):
-            response = run.service.sessions.Open(request, timeout=180 + wait_for_device)
-        return cls(run, response, aut_package, timeouts)
+            response = connection.service.sessions.Open(request, timeout=180 + wait_for_device)
+        return cls(connection, response, aut_package, timeouts)
 
     # --- raw protocol escape hatch --------------------------------------------------------------
 
@@ -237,7 +237,7 @@ class Device:
 
     def close(self) -> str | None:
         """Closes the session. Returns the quarantine detail when the device could not be left
-        clean (the pool keeps it out of circulation), else None."""
+        clean (the service keeps it out of circulation), else None."""
         if self._closed:
             return None
         self._closed = True

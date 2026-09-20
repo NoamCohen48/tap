@@ -25,7 +25,7 @@ Test process (any language)
         | gRPC over loopback  (contracts/api/proto/tap.proto, package tap.v1)
         v
 Host service `tap serve` (one per machine, JVM dist or GraalVM native image)
-+-- :host:service    runs (liveness via Attach), device inventory, sessions, Execute proxy, App lifecycle RPCs
++-- :host:service    connections (liveness via Attach), device list, sessions, Execute proxy, App lifecycle RPCs
 +-- :host:core       Adb, SessionJournal, DriverLifecycle, DeviceSession, DriverClient, AppLifecycle
 +-- :host:validation `host` executable: PhaseZeroMain fault/validation flow, ProductProbe (uses :host:core directly)
         |
@@ -146,8 +146,8 @@ tap/
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
 |   |   +-- src/main/kotlin/com/company/tap/service/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
-|   |   |   +-- TapService.kt        runs, device inventory (serials; lock probe + journal), managed sessions + AppLifecycle per package, execute with transport-loss-as-data
-|   |   |   +-- Servicers.kt         gRPC servicers for Run/Pool/Session/App; status mapping; off-thread Execute so cancel reaches the driver
+|   |   |   +-- TapService.kt        connections, device list (serials; lock probe + journal), sessions + AppLifecycle per package, execute with transport-loss-as-data
+|   |   |   +-- Servicers.kt         gRPC servicers for Connection/Device/Session/App; status mapping; off-thread Execute so cancel reaches the driver
 |   |   |   +-- Conversions.kt       proto <-> protocol models (enums by name, selectors, commands, results)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
@@ -161,7 +161,7 @@ tap/
 |   +-- kotlin/
 |   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package com.company.tap.sdk)
 |   |   |   +-- src/main/kotlin/com/company/tap/sdk/
-|   |   |       +-- TapClient.kt         TapClient (channel, stubs, openRun), Run (attach/availableSerials/openDevice), ServiceDiscovery (descriptor, autostart)
+|   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), Connection (attach/availableSerials/openDevice), ServiceDiscovery (descriptor, autostart)
 |   |   |       +-- Device.kt            Device.open(run, serial, …), execute/element/await/app/info/pressKey/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll/scrollUntil, first/at/descendant/child
@@ -172,13 +172,13 @@ tap/
 |   |       +-- src/main/kotlin/com/company/tap/junit5/
 |   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
 |   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles
-|   |           +-- TapRun.kt            one TapClient + Run per JVM (lazy, closed by a shutdown hook)
+|   |           +-- TapConnection.kt     one TapClient + Connection per JVM (lazy, closed by a shutdown hook)
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the service)
 |       +-- pyproject.toml, README.md
 |       +-- scripts/gen_stubs.py     regenerates tap/_gen from contracts/api/proto/tap.proto; --check for CI
 |       +-- tap/_gen/                committed generated stubs (tap_pb2, tap_pb2_grpc, .pyi)
-|       +-- tap/{service,device,element,app,selectors,errors}.py   Service/Run, Device, Element/ElementWait, App, selector DSL, typed errors
+|       +-- tap/{service,device,element,app,selectors,errors}.py   Service/Connection, Device, Element/ElementWait, App, selector DSL, typed errors
 |       +-- tap/pytest_plugin.py     tap_device / tap_devices fixtures, @pytest.mark.tap_devices, failure artifacts
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
 |
@@ -445,11 +445,11 @@ process observation (`coldLaunch` returns the new `ProcessObservation`; `forceSt
 
 `tap serve` exposes `:host:core` over loopback gRPC (`contracts/api/proto/tap.proto`,
 package `tap.v1`) so every client — Kotlin and Python alike — reuses the same ADB control
-plane, journals, leases, driver lifecycle and app operations. It reports the device inventory (`adb devices`, `LEASED` by probing
+plane, journals, leases, driver lifecycle and app operations. It lists the devices (`adb devices`, `LEASED` by probing
 the per-serial lock, quarantine read from the journal) but leases nothing itself: exclusive use
 is the lock a live `DeviceSession` holds, and `Open` can wait for it (`pool-and-leases.md`). It proxies `Execute` to the session's `DriverClient` (driver failures and transport
 loss are returned as `CommandResult` data, never gRPC errors; gRPC cancellation forwards a
-protocol `CANCEL`), and closes everything a run holds when the run's `Attach` stream drops.
+protocol `CANCEL`), and closes everything a connection holds when its `Attach` stream drops.
 The driver APKs are embedded. The full contract is `service-api.md`.
 
 ## 7. Clients
@@ -461,21 +461,21 @@ lifecycle code; the language-facing shape is the same in Kotlin and Python.
 
 ```kotlin
 val client = TapClient()                      // discovers or starts `tap serve`
-val run = client.openRun("checkout")          // Attach stream = liveness
-val serial = run.availableSerials().first()   // the service leases nothing; the session holds the device lock
-val device = run.openDevice(serial, autPackage)
+val connection = client.connect("checkout")   // Attach stream = liveness
+val serial = connection.availableSerials().first()   // the service leases nothing; the session holds the device lock
+val device = connection.openDevice(serial, autPackage)
 val app = device.app()                        // autPackage by default
 app.install(apk); app.coldLaunch(".MainActivity")
 device.element(resId(pkg, "view_button")).tap()           // exactly one match or AMBIGUOUS/NOT_FOUND
 device.await(text("View tapped")).visible()               // one driver-side wait RPC
 device.element(rawRes("composeList")).scrollUntil(rawRes("item-40"))
 app.awaitIdle()                                           // sync-sdk busy state, identity-guarded
-device.close(); run.close(); client.close()
+device.close(); connection.close(); client.close()
 ```
 
 - The client is a thin gRPC layer over `contracts/api`: no ADB, journals, leases or driver
-  lifecycle. `TapClient` owns the channel and the blocking stubs; `Run` owns one run
-  (attach, `availableSerials`, `openDevice`); `Device` wraps one service session and
+  lifecycle. `TapClient` owns the channel and the blocking stubs; `Connection` is this process's
+  identity at the service (attach, `availableSerials`, `openDevice`); `Device` wraps one service session and
   `Timeouts(action 10 s, wait 10 s, lifecycle 30 s, poll 100 ms)`, overridable per call.
 - `Element` is a proto `Selector` plus the device; each terminal call is one `Execute`. A
   `CommandResult` failure becomes `CommandException` (proto `ErrorCode`, detail, selector,
@@ -511,9 +511,9 @@ class CheckoutTest {
 `TapExtension` (`BeforeEachCallback`, `AfterEachCallback`, `ParameterResolver`,
 `TestExecutionExceptionHandler`) collects roles from `@TapDevices` (method or class),
 `@TapDevice` parameters, and bare `Device` parameters; maps roles to serials itself (pinned
-by `tap.device.<role>`, then the `tap.serials` order, otherwise the pool's inventory, free
+by `tap.device.<role>`, then the `tap.serials` order, otherwise the service's device list, free
 devices first); skips the test (assumption) when fewer devices exist than roles; opens the sessions one at
-a time in sorted serial order through the JVM-wide `TapRun` (one `TapClient` + `Run`, closed
+a time in sorted serial order through the JVM-wide `TapConnection` (one `TapClient` + `Connection`, closed
 by a shutdown hook), each waiting up to `tap.acquireTimeoutSeconds` for a device another
 session holds; stores them
 in a per-method namespace; on a test failure captures `<artifactsDir>/<class>/<method>/
@@ -530,7 +530,7 @@ pytest run) respect each other because the lock is a file under the shared state
 
 ### Python binding (`clients/python/`)
 
-`tap-e2e` is a generated gRPC client plus a thin mirror of the Kotlin SDK: `Service`/`Run`,
+`tap-e2e` is a generated gRPC client plus a thin mirror of the Kotlin SDK: `Service`/`Connection`,
 `Device`, `Element`/`ElementWait`, `App`, selector builders over the proto `Selector`, and
 typed errors (`CommandError` with `ErrorCode`, `WaitTimeoutError`, `AppLifecycleError`,
 `ServiceError`). The pytest plugin mirrors `TapExtension`: per-test sessions, all-or-none
@@ -606,7 +606,7 @@ the selector DSL; per-device locks across processes; the `@TapTest` JUnit 5 exte
 artifacts; and a sample suite that passes on two devices concurrently.
 
 Also implemented and device-proven (2026-09-19): the gRPC host session service with a
-device inventory, run liveness and cancel forwarding; its GraalVM native image;
+device list, connection liveness and cancel forwarding; its GraalVM native image;
 the Python client and pytest plugin; the sample suite ported to pytest and passing on both
 devices through the native service; the repository split into `contracts/`, `device/`,
 `host/` and `clients/`, with the Kotlin SDK and JUnit extension rewritten as gRPC clients of

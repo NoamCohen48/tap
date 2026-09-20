@@ -8,7 +8,7 @@
 # Tap
 
 Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host
-service per machine (`host/`, `tap serve`: ADB, driver lifecycle, sessions, device inventory; gRPC
+service per machine (`host/`, `tap serve`: ADB, driver lifecycle, sessions, device list; gRPC
 over loopback, JVM or native image) and thin language clients (`clients/`: Kotlin SDK +
 JUnit 5, Python + pytest). `contracts/` holds what they agree on (the TAP1 device protocol
 and the `tap.v1` service API). Phases 0 and 1 (feasibility, contract, driver) are complete
@@ -62,14 +62,14 @@ class CheckoutTest {
   under `tap.artifactsDir/<class>/<method>/`.
 
 The extension is a gRPC client of `tap serve`, the per-machine host service that owns ADB,
-driver lifecycle (the driver APKs are bundled in it), journals, device locks and the inventory
+driver lifecycle (the driver APKs are bundled in it), journals, device locks and the device list
 (`.docs/service-api.md`). It discovers a running service or starts one. Configuration is
 read from system properties or environment variables:
 
 | Property | Env | Meaning |
 |---|---|---|
 | `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
-| `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order (default: any device in the inventory) |
+| `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order (default: any device the service lists) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
 | `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: `<state dir>/service.json`, else auto-start) |
 | `tap.bin` | `TAP_BIN` | the `tap` executable to auto-start (default: `tap` on `PATH`) |

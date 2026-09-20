@@ -22,7 +22,7 @@ test is the runner's business, and the runners (JUnit extension, pytest plugin) 
 the role names; they now map roles to serials themselves: `tap.device.<role>` pins, then
 `tap.serials` in declaration order, otherwise the service inventory (free devices first).
 
-`DeviceFacts` first stayed in `Inventory` as information, then went too (the commit after
+`DeviceFacts` first stayed in the device list (then `Inventory`, now `ListDevices`) as information, then went too (the commit after
 4213140): with no matcher there is nothing to feed, the inventory's job is "which serials
 exist and are they free or quarantined", and anything richer is in the driver's `DeviceInfo`
 once a session is open. It also removes a `getprop` round trip per new serial. A client that
@@ -48,9 +48,9 @@ bookkeeping. Measured against it the pool lease added:
 
 So the pool lease was a second, softer copy of the lock plus scheduling rules the service had
 to maintain and expose (`LEASED(run)`, "acquire before open", "close before release"). It is
-gone: `PoolService` has only `Inventory`; `Run` has no leases; `CloseRunResponse.devices_released`
-is reserved. `Inventory` still reports `LEASED` — derived by probing the lock (`isLeased()`),
-with `leased_by_run` set when the holder is one of this service's own sessions. The removed
+gone: the device service only lists devices; the connection (then `Run`) has no leases;
+`CloseConnectionResponse.devices_released` is reserved. `ListDevices` still reports `LEASED` — derived by probing the lock (`isLeased()`),
+with `held_by_connection` set when the holder is one of this service's own sessions. The removed
 code is under `archive/pool-leases/`.
 
 ## Decision 3 — the journal lock stays
@@ -80,7 +80,7 @@ from stepping on a live session. Removing it would mean building a worse replace
 
 ## Resulting model
 
-- **Service**: sessions, commands, app lifecycle, journals. `Inventory` is a view.
+- **Service**: sessions, commands, app lifecycle, journals. `ListDevices` is a view.
 - **Exclusive use** = the per-serial file lock, held by a live session. `Open` may wait for it.
 - **Roles / device choice / ordering** = the client. Runners open in sorted serial order and
   skip a test when the inventory has fewer usable devices than roles.

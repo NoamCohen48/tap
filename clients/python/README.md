@@ -28,8 +28,8 @@ concurrent test processes on one machine respect each other's device locks.
 from tap import Service, text, res
 
 service = Service()
-with service.open_run("smoke") as run:                  # attaches: if this process dies, the
-    with run.open_device("emulator-5554", "com.company.tap.fixture") as device:
+with service.connect("smoke") as connection:           # attaches: if this process dies, the
+    with connection.open_device("emulator-5554", "com.company.tap.fixture") as device:
         device.app().cold_launch(".MainActivity")
         device.element(res("view_button")).tap()
         device.wait(text("View tapped")).visible()

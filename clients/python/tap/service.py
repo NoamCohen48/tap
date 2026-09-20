@@ -1,4 +1,4 @@
-"""Connection to the Tap host service and run ownership.
+"""The Tap host service: discovery, the gRPC channel and this process's ``Connection``.
 
 Discovery order: ``TAP_SERVICE=host:port`` → ``<state dir>/service.json`` written by ``tap serve``
 (state dir = ``TAP_STATE_DIR`` or ``~/.tap``) → auto-start ``tap serve`` (binary from
@@ -41,7 +41,7 @@ def _read_descriptor(directory: pathlib.Path) -> dict | None:
 def _alive(address: str, timeout: float = 2.0) -> bool:
     channel = grpc.insecure_channel(address)
     try:
-        rpc.RunServiceStub(channel).Info(pb.InfoRequest(), timeout=timeout)
+        rpc.ConnectionServiceStub(channel).Info(pb.InfoRequest(), timeout=timeout)
         return True
     except grpc.RpcError:
         return False
@@ -143,44 +143,46 @@ class Service:
             self.address,
             options=[("grpc.max_receive_message_length", 64 * 1024 * 1024)],
         )
-        self.runs = rpc.RunServiceStub(self.channel)
-        self.pool = rpc.PoolServiceStub(self.channel)
+        self.connections = rpc.ConnectionServiceStub(self.channel)
+        self.devices_stub = rpc.DeviceServiceStub(self.channel)
         self.sessions = rpc.SessionServiceStub(self.channel)
         self.apps = rpc.AppServiceStub(self.channel)
 
     def info(self) -> pb.InfoResponse:
         """Service version, protocol version, ADB executable, state dir, bundled driver."""
         with mapped_errors():
-            return self.runs.Info(pb.InfoRequest(), timeout=10)
+            return self.connections.Info(pb.InfoRequest(), timeout=10)
 
-    def inventory(self) -> list[pb.PoolDevice]:
-        """Every device in the pool with its state (``FREE``, ``LEASED``, ``QUARANTINED``, ``OFFLINE``)."""
+    def devices(self) -> list[pb.DeviceEntry]:
+        """Every device ADB lists, with its state (``FREE``, ``LEASED``, ``QUARANTINED``, ``OFFLINE``)."""
         with mapped_errors():
-            return list(self.pool.Inventory(pb.InventoryRequest(), timeout=30).devices)
+            return list(self.devices_stub.ListDevices(pb.ListDevicesRequest(), timeout=30).devices)
 
-    def open_run(self, name: str) -> "Run":
-        """Open and attach a run named ``name``; use as a context manager."""
+    def connect(self, name: str) -> "Connection":
+        """Open a ``Connection`` named ``name``; as a context manager it attaches on enter and
+        closes on exit."""
         with mapped_errors():
-            run_id = self.runs.Open(pb.OpenRunRequest(name=name), timeout=10).run_id
-        return Run(self, run_id)
+            connection_id = self.connections.Open(pb.OpenConnectionRequest(name=name), timeout=10).connection_id
+        return Connection(self, connection_id)
 
     def close(self) -> None:
         self.channel.close()
 
 
-class Run:
-    """Ownership scope for sessions. ``attach`` starts the liveness stream: if this process dies,
-    the service closes every session of the run, which frees its devices."""
+class Connection:
+    """This process's identity at the service: every ``Device`` it opens belongs to it and is
+    closed with it. ``attach`` starts the liveness stream: if this process dies, the service
+    closes every session of the connection, which frees its devices."""
 
-    def __init__(self, service: Service, run_id: str):
+    def __init__(self, service: Service, connection_id: str):
         self.service = service
-        self.id = run_id
+        self.id = connection_id
         self._stream = None
         self._events: list[str] = []
         self.on_event: Callable[[str], None] | None = None
 
     def attach(self) -> None:
-        stream = self.service.runs.Attach(pb.AttachRequest(run_id=self.id))
+        stream = self.service.connections.Attach(pb.AttachRequest(connection_id=self.id))
         first = next(stream)  # server acknowledges before we return
         self._events.append(first.message)
         self._stream = stream
@@ -194,14 +196,14 @@ class Run:
             except grpc.RpcError:
                 pass  # cancelled by close(), or the service went away
 
-        threading.Thread(target=pump, name=f"tap-run-{self.id[:8]}", daemon=True).start()
+        threading.Thread(target=pump, name=f"tap-connection-{self.id[:8]}", daemon=True).start()
 
     def available_serials(self) -> list[str]:
-        """Serials a test can use, from the service inventory: online and not quarantined, free
+        """Serials a test can use, from ``Service.devices``: online and not quarantined, free
         ones first, then ones another session holds (``open_device`` then waits for them when
         ``wait_for_device`` is set). Exclusive use is enforced by the session itself, so there is
         nothing to acquire beforehand."""
-        devices = [d for d in self.service.inventory() if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)]
+        devices = [d for d in self.service.devices() if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)]
         devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
         return [d.serial for d in devices]
 
@@ -210,12 +212,12 @@ class Run:
         from .device import Device  # circular import at module load
         return Device.open(self, serial, aut_package, **options)
 
-    def close(self) -> pb.CloseRunResponse:
+    def close(self) -> pb.CloseConnectionResponse:
         # Close explicitly before dropping the liveness stream, so the service records a client
         # request rather than a detach.
         try:
             with mapped_errors():
-                return self.service.runs.Close(pb.CloseRunRequest(run_id=self.id), timeout=60)
+                return self.service.connections.Close(pb.CloseConnectionRequest(connection_id=self.id), timeout=60)
         finally:
             if self._stream is not None:
                 self._stream.cancel()
@@ -225,7 +227,7 @@ class Run:
     def events(self) -> list[str]:
         return list(self._events)
 
-    def __enter__(self) -> "Run":
+    def __enter__(self) -> "Connection":
         self.attach()
         return self
 
