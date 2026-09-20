@@ -35,6 +35,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import java.security.SecureRandom
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -220,14 +222,61 @@ class DriverClientTest {
         }
 
     @Test
-    fun writtenNeverRegressesTerminalResponse() =
+    fun writtenNeverRegressesTerminalResponseWhenReaderCompletesBeforeWriterCas() =
         runBlocking {
-            val command = client.submit(Exists(selector))
-            driver.nextFrame()
-            command.complete(Response.ok(BoolResult(true), durationMs = 1))
-            command.markWritten()
-            assertEquals(TransmissionState.TERMINAL_RESPONSE, command.transmissionState)
-            assertEquals(BoolResult(true), command.await().result)
+            val reachedTransition = CountDownLatch(1)
+            val terminalInstalled = CountDownLatch(1)
+            val releaseTransition = CountDownLatch(1)
+            client.afterTerminalResponse = { terminalInstalled.countDown() }
+            client.beforeMarkWritten = {
+                reachedTransition.countDown()
+                check(releaseTransition.await(5, TimeUnit.SECONDS))
+            }
+            try {
+                val submitted = async(Dispatchers.IO) { client.submit(Exists(selector)) }
+                val request = driver.nextFrame()
+                assertTrue(reachedTransition.await(2, TimeUnit.SECONDS))
+                driver.respond(request.requestId, Response.ok(BoolResult(true), durationMs = 1))
+                assertTrue(terminalInstalled.await(2, TimeUnit.SECONDS))
+                releaseTransition.countDown()
+                val command = submitted.await()
+                assertEquals(TransmissionState.TERMINAL_RESPONSE, command.transmissionState)
+                assertEquals(BoolResult(true), command.await().result)
+            } finally {
+                releaseTransition.countDown()
+                client.beforeMarkWritten = null
+                client.afterTerminalResponse = null
+            }
+        }
+
+    @Test
+    fun awaitCancellationIsPromptWhileCancelWaitsForTransportMutex() =
+        runBlocking {
+            val tap = client.submit(Tap(selector))
+            assertEquals(FrameType.REQUEST, driver.nextFrame().type)
+            val mutexHeld = CompletableDeferred<Unit>()
+            val releaseMutex = CompletableDeferred<Unit>()
+            val holder =
+                launch(Dispatchers.IO) {
+                    client.withTransportLock {
+                        mutexHeld.complete(Unit)
+                        releaseMutex.await()
+                    }
+                }
+            mutexHeld.await()
+
+            val awaiting = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { tap.await() }
+            awaiting.cancel()
+            withTimeout(500) { assertFailsWith<CancellationException> { awaiting.await() } }
+            assertFalse(client.isPoisoned)
+
+            releaseMutex.complete(Unit)
+            holder.join()
+            val cancel = driver.nextFrame()
+            assertEquals(FrameType.CANCEL, cancel.type)
+            assertEquals(tap.requestId, cancel.requestId)
+            driver.respond(tap.requestId, Response.ok(Done, durationMs = 1))
+            withTimeout(2_000) { while (tap.responseOrNull == null) delay(10) }
         }
 
     @Test
@@ -565,7 +614,7 @@ class DriverClientTest {
             assertEquals("text=\"hello\"", failure.selector)
             assertEquals(1_234L, failure.timeoutMs)
             assertTrue(failure.mayHaveMutated)
-            assertTrue(failure is CommandException)
+            assertTrue(CommandException::class.java.isAssignableFrom(failure.javaClass))
         }
 
     @Test

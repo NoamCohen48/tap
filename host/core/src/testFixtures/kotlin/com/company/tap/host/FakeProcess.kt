@@ -13,13 +13,16 @@ import kotlin.concurrent.thread
  * A controllable [Process] stand-in. [stdout] is the complete output the drain reads;
  * [exitCode] is reported once the process exits. With [exitDelayMs] the process exits on its
  * own after that long; with [NEVER] it only exits when destroyed, like a hung child. Death by
- * [destroy]/[destroyForcibly] is recorded in [destroyed]/[destroyedForcibly] and releases any
- * thread parked in [waitFor], so tests can prove children are reaped without real subprocesses.
+ * [destroy]/[destroyForcibly] is recorded in [destroyed]/[destroyedForcibly]. Tests can make a
+ * stubborn child with [survivesDestroy] and a drain that ignores close with [blockingStdout].
  */
 class FakeProcess(
     stdout: String = "",
     private val exitCode: Int = 0,
     exitDelayMs: Long = 0,
+    private val survivesDestroy: Boolean = false,
+    blockingStdout: Boolean = false,
+    private val timedWaitAlwaysFalse: Boolean = false,
 ) : Process() {
     companion object {
         const val NEVER = Long.MAX_VALUE
@@ -28,8 +31,50 @@ class FakeProcess(
     private val exited = CountDownLatch(1)
     val destroyed = AtomicBoolean(false)
     val destroyedForcibly = AtomicBoolean(false)
-    private val input = ByteArrayInputStream(stdout.toByteArray())
-    private val output = ByteArrayOutputStream()
+    val stdinClosed = AtomicBoolean(false)
+    val stdoutClosed = AtomicBoolean(false)
+    val stderrClosed = AtomicBoolean(false)
+    private val stdoutRelease = CountDownLatch(if (blockingStdout) 1 else 0)
+    private val input: InputStream =
+        if (blockingStdout) {
+            object : InputStream() {
+                override fun read(): Int {
+                    while (true) {
+                        try {
+                            stdoutRelease.await()
+                            return -1
+                        } catch (_: InterruptedException) {
+                            // Model a native/blocking drain that does not respond to cancellation.
+                        }
+                    }
+                }
+
+                override fun close() {
+                    stdoutClosed.set(true)
+                }
+            }
+        } else {
+            object : ByteArrayInputStream(stdout.toByteArray()) {
+                override fun close() {
+                    stdoutClosed.set(true)
+                    super.close()
+                }
+            }
+        }
+    private val output =
+        object : ByteArrayOutputStream() {
+            override fun close() {
+                stdinClosed.set(true)
+                super.close()
+            }
+        }
+    private val error =
+        object : ByteArrayInputStream(ByteArray(0)) {
+            override fun close() {
+                stderrClosed.set(true)
+                super.close()
+            }
+        }
 
     init {
         if (exitDelayMs != NEVER) {
@@ -40,11 +85,15 @@ class FakeProcess(
         }
     }
 
+    fun releaseStdout() = stdoutRelease.countDown()
+
+    fun forceExit() = exited.countDown()
+
     override fun getInputStream(): InputStream = input
 
     override fun getOutputStream(): OutputStream = output
 
-    override fun getErrorStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+    override fun getErrorStream(): InputStream = error
 
     override fun waitFor(): Int {
         exited.await()
@@ -54,7 +103,7 @@ class FakeProcess(
     override fun waitFor(
         timeout: Long,
         unit: TimeUnit,
-    ): Boolean = exited.await(timeout, unit)
+    ): Boolean = if (timedWaitAlwaysFalse) false else exited.await(timeout, unit)
 
     override fun exitValue(): Int {
         if (exited.count > 0) throw IllegalThreadStateException("process has not exited")
@@ -63,12 +112,12 @@ class FakeProcess(
 
     override fun destroy() {
         destroyed.set(true)
-        exited.countDown()
+        if (!survivesDestroy) exited.countDown()
     }
 
     override fun destroyForcibly(): Process {
         destroyedForcibly.set(true)
-        exited.countDown()
+        if (!survivesDestroy) exited.countDown()
         return this
     }
 

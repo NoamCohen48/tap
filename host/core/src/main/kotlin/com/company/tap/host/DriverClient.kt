@@ -59,6 +59,7 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import com.company.tap.protocol.Screenshot as ScreenshotCommand
 
 class DriverClient private constructor(
@@ -96,6 +97,12 @@ class DriverClient private constructor(
     /** Test seam: invoked inside the writer task after the physical write attempt finishes
      * (success or failure), so a test can observe that the writer is gone. Null in production. */
     internal var afterPhysicalWrite: (() -> Unit)? = null
+
+    /** Test seam: invoked after a request frame was written but before WRITING -> WRITTEN. */
+    internal var beforeMarkWritten: (() -> Unit)? = null
+
+    /** Test seam: invoked after the reader installs a terminal transmission state. */
+    internal var afterTerminalResponse: (() -> Unit)? = null
 
     /** Test seam for the physical write itself; the default is the real socket write. */
     internal var frameSink: FrameSink = FrameSink { frame -> FrameCodec.write(socket.getOutputStream(), frame) }
@@ -169,8 +176,8 @@ class DriverClient private constructor(
          * value instead of reading the deferred, so product code needs no experimental API. */
         @Volatile private var terminal: Response? = null
 
-        @Volatile var transmissionState: TransmissionState = TransmissionState.NOT_WRITTEN
-            internal set
+        private val transmission = AtomicReference(TransmissionState.NOT_WRITTEN)
+        val transmissionState: TransmissionState get() = transmission.get()
         internal var blob: BlobReceiver? = null
 
         @Volatile private var artifactBytes: ByteArray? = null
@@ -222,7 +229,8 @@ class DriverClient private constructor(
                     }
                 }
             terminal = terminalResponse
-            transmissionState = TransmissionState.TERMINAL_RESPONSE
+            transmission.getAndSet(TransmissionState.TERMINAL_RESPONSE)
+            afterTerminalResponse?.invoke()
             deadlineWatcher?.cancel()
             result.complete(terminalResponse)
         }
@@ -253,31 +261,48 @@ class DriverClient private constructor(
 
         /** Records `WRITTEN` only from `WRITING`: a reader response that already set
          * `TERMINAL_RESPONSE` must never regress. */
-        internal fun markWritten() {
-            if (transmissionState == TransmissionState.WRITING) {
-                transmissionState = TransmissionState.WRITTEN
-            }
+        internal fun beginWriting() {
+            check(transmission.compareAndSet(TransmissionState.NOT_WRITTEN, TransmissionState.WRITING))
         }
 
+        internal fun resetNotWritten() {
+            transmission.compareAndSet(TransmissionState.WRITING, TransmissionState.NOT_WRITTEN)
+        }
+
+        internal fun markWritten() {
+            beforeMarkWritten?.invoke()
+            transmission.compareAndSet(TransmissionState.WRITING, TransmissionState.WRITTEN)
+        }
+
+        private val cancelQueued = AtomicBoolean(false)
+
         /**
-         * Sends `CANCEL` if the request is in flight. Returns false when there was nothing to
-         * cancel. Runs non-cancellably: a cooperative cancel is a best-effort signal that must
-         * still reach the driver when the caller itself is being cancelled.
+         * Queues a cooperative `CANCEL` in the client-owned scope if the request is in flight.
+         * The caller never waits for the transport mutex: after acquiring it, the queued task
+         * rechecks that the command and transport are still usable before writing.
          */
-        suspend fun cancel(): Boolean =
-            withContext(NonCancellable) {
-                if (result.isCompleted || transmissionState != TransmissionState.WRITTEN) return@withContext false
+        suspend fun cancel(): Boolean {
+            if (result.isCompleted || transmissionState != TransmissionState.WRITTEN) return false
+            if (!cancelQueued.compareAndSet(false, true)) return false
+            scope.launch {
                 transportMutex.withLock {
-                    if (poisoned || closed || result.isCompleted) return@withContext false
+                    if (
+                        poisoned || closed || result.isCompleted ||
+                        transmissionState != TransmissionState.WRITTEN
+                    ) {
+                        return@withLock
+                    }
                     try {
                         writeFrame(Frame(FrameType.CANCEL, requestId, byteArrayOf()), remainingTimeoutMs(5_000))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (error: Throwable) {
                         poison(error)
-                        return@withContext false
                     }
                 }
-                return@withContext true
             }
+            return true
+        }
 
         /**
          * Returns the single terminal response; transport loss throws [CommandTransportException].
@@ -307,7 +332,7 @@ class DriverClient private constructor(
                 if (response != null) return response
                 throw poisonAsLoss(budgetMs)
             } catch (cancelled: CancellationException) {
-                runCatching { cancel() }
+                cancel()
                 terminal?.let { return it }
                 throw cancelled
             } catch (failure: Throwable) {
@@ -422,6 +447,9 @@ class DriverClient private constructor(
             transmit(nextRequestId++, request)
         }
     }
+
+    /** Test seam for deterministic cancellation while another operation owns the transport. */
+    internal suspend fun withTransportLock(block: suspend () -> Unit) = transportMutex.withLock { block() }
 
     /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
     suspend fun screenshot(timeoutMs: Long = 30_000): Screenshot {
@@ -556,7 +584,7 @@ class DriverClient private constructor(
         check(pending.putIfAbsent(requestId, command) == null) { "Request $requestId is already pending" }
         // Explicit validation IDs consume the driver watermark too; never allocate below them.
         nextRequestId = maxOf(nextRequestId, Math.addExact(requestId, 1L))
-        command.transmissionState = TransmissionState.WRITING
+        command.beginWriting()
         try {
             writeFrame(Frame(FrameType.REQUEST, requestId, payload), remainingTimeoutMs(10_000)) {
                 command.writeStarted = true
@@ -567,7 +595,7 @@ class DriverClient private constructor(
                 // The writer never touched the socket: the transport is intact, so the command
                 // leaves no trace and a mutation is still NOT_WRITTEN, never INDETERMINATE.
                 pending.remove(requestId, command)
-                command.transmissionState = TransmissionState.NOT_WRITTEN
+                command.resetNotWritten()
                 throw cancelled
             }
             poison(cancelled)
@@ -575,7 +603,7 @@ class DriverClient private constructor(
         } catch (error: Throwable) {
             if (!command.writeStarted) {
                 pending.remove(requestId, command)
-                command.transmissionState = TransmissionState.NOT_WRITTEN
+                command.resetNotWritten()
             }
             poison(error)
             throw command.transportFailure(error)

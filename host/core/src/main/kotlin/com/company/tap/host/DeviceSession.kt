@@ -1,7 +1,13 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.Health
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
@@ -9,6 +15,7 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
@@ -39,7 +46,13 @@ data class DeviceSessionConfig(
      * driver the loser was still going to install.
      */
     val installDriver: () -> Boolean = { true },
-)
+) {
+    /** Test-only ownership-transfer gate. Production leaves this as the no-op default. */
+    internal var beforeOwnershipTransfer: suspend () -> Unit = {}
+
+    /** Test-only observer proving cancellation cleanup completed and its scope was stopped. */
+    internal var afterCancellationCleanup: () -> Unit = {}
+}
 
 /**
  * One disposable session unit: device lease, journal, driver instrumentation, ADB forward,
@@ -71,8 +84,9 @@ class DeviceSession private constructor(
      */
     fun app(packageName: String = config.autPackage): AppLifecycle = apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
 
-    @Volatile
-    private var closed = false
+    private val closeStarted = AtomicBoolean(false)
+    private val cancellationCleanupScheduled = AtomicBoolean(false)
+    private val cancellationCleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Releases in reverse — client, exact forward, instrumentation — then finalizes the journal
@@ -83,8 +97,7 @@ class DeviceSession private constructor(
      */
     suspend fun close(timeoutMs: Long = DEVICE_SESSION_CLOSE_TIMEOUT_MS) {
         withContext(NonCancellable) {
-            if (closed) return@withContext
-            closed = true
+            if (!closeStarted.compareAndSet(false, true)) return@withContext
             var firstFailure: Throwable? = null
             val finished =
                 withTimeoutOrNull(timeoutMs) {
@@ -116,8 +129,27 @@ class DeviceSession private constructor(
                 )
             } finally {
                 lease.close()
+                cancellationCleanupScope.cancel()
             }
             firstFailure?.let { throw it }
+        }
+    }
+
+    /**
+     * Called synchronously by the cancellable return handoff. Scheduling is synchronous and
+     * exactly once through [cancellationCleanupScheduled]; cleanup itself stays suspend, bounded, NonCancellable,
+     * and owned by this session rather than GlobalScope. Caller cancellation remains prompt and
+     * may complete before journal/lease finalization; the cleanup job self-closes its scope.
+     */
+    private fun scheduleCancellationCleanup() {
+        if (!cancellationCleanupScheduled.compareAndSet(false, true)) return
+        cancellationCleanupScope.launch {
+            try {
+                close(DEVICE_OPEN_CLEANUP_TIMEOUT_MS)
+            } finally {
+                cancellationCleanupScope.cancel()
+                config.afterCancellationCleanup()
+            }
         }
     }
 
@@ -127,6 +159,7 @@ class DeviceSession private constructor(
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)
             val lease = store.acquireLease(config.leaseTimeoutMs)
+            var leaseOwnedBySession = false
             try {
                 val bootId = adb.bootId(serial)
                 val prior = recoverJournal(adb, serial, bootId, store)
@@ -154,6 +187,8 @@ class DeviceSession private constructor(
                 var running: RunningInstrumentation? = null
                 var hostPort: Int? = null
                 var client: DriverClient? = null
+                var session: DeviceSession? = null
+                var transferAttempted = false
                 try {
                     running =
                         startDriverWithRetry(
@@ -197,8 +232,33 @@ class DeviceSession private constructor(
                     client.execute(Health)
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
-                    return DeviceSession(config, lease, store, journal, running, hostPort, client)
+                    session = DeviceSession(config, lease, store, journal, running, hostPort, client)
+                    leaseOwnedBySession = true
+                    // Cancellation may arrive after READY but before the caller accepts the
+                    // returned value. Keep the deterministic seam non-cancellable, then use a
+                    // cancellable continuation as the ownership-transfer point: cancellation
+                    // that wins that race throws into this catch and cleans the still-owned
+                    // session; successful resumption transfers cleanup responsibility.
+                    withContext(NonCancellable) { config.beforeOwnershipTransfer() }
+                    transferAttempted = true
+                    return suspendCancellableCoroutine { continuation ->
+                        continuation.resume(session) { _, unaccepted, _ ->
+                            unaccepted.scheduleCancellationCleanup()
+                        }
+                    }
                 } catch (error: Throwable) {
+                    if (session != null) {
+                        if (!transferAttempted) {
+                            try {
+                                session.close(DEVICE_OPEN_CLEANUP_TIMEOUT_MS)
+                            } catch (cleanup: Throwable) {
+                                error.addSuppressed(cleanup)
+                            }
+                        }
+                        // Once transfer was attempted, resume(onCancellation) synchronously
+                        // scheduled cleanup before this cancellation reached the catch.
+                        throw error
+                    }
                     // Failure cleanup runs bounded NonCancellable: journal finalization and lease
                     // release below always run, even when the failure is a coroutine cancellation.
                     // The primary failure is preserved; cleanup failures are suppressed into it.
@@ -245,7 +305,9 @@ class DeviceSession private constructor(
                     throw error
                 }
             } catch (error: Throwable) {
-                lease.close()
+                // A constructed session owns the lease; either close() finalized it or the
+                // cancellable return handoff scheduled the session-owned cleanup job.
+                if (!leaseOwnedBySession) lease.close()
                 throw error
             }
         }

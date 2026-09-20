@@ -5,7 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
@@ -121,12 +123,15 @@ open class Adb(
         timeoutMessage: () -> String,
     ): Pair<Int, String> =
         coroutineScope {
-            val process =
-                withContext(Dispatchers.IO) {
-                    processStarter.start(command)
-                }
+            lateinit var process: Process
+            // Install cleanup ownership before returning to the caller's cancellable context. A
+            // cancellation while start() is returning cannot discard an already-created child.
+            withContext(NonCancellable) {
+                process = withContext(Dispatchers.IO) { processStarter.start(command) }
+            }
             val drain = async(Dispatchers.IO) { process.inputStream.bufferedReader().use { it.readText() } }
             try {
+                currentCoroutineContext().ensureActive()
                 // `Process.waitFor` is not cancellable, so the deadline is a polling loop.
                 val exited =
                     withTimeoutOrNull(timeoutMs) {
@@ -151,8 +156,7 @@ open class Adb(
         drain: Deferred<String>,
     ) {
         runCatching { if (process.isAlive) process.destroy() }
-        runCatching { process.inputStream.close() }
-        runCatching { process.errorStream.close() }
+        closeProcessStreams(process)
         drain.cancel()
         withContext(NonCancellable) {
             withTimeoutOrNull(ADB_REAP_TIMEOUT_MS) { drain.join() }
@@ -340,6 +344,27 @@ open class Adb(
         val hostPort: Int,
         val devicePort: Int,
     )
+}
+
+internal fun closeProcessStreams(
+    process: Process,
+    recordFailure: (Throwable) -> Unit = {},
+) {
+    try {
+        process.outputStream.close()
+    } catch (error: Throwable) {
+        recordFailure(error)
+    }
+    try {
+        process.inputStream.close()
+    } catch (error: Throwable) {
+        recordFailure(error)
+    }
+    try {
+        process.errorStream.close()
+    } catch (error: Throwable) {
+        recordFailure(error)
+    }
 }
 
 /** Starts an OS process; a `fun interface` so tests can substitute a [FakeProcess]. */

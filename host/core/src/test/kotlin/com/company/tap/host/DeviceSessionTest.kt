@@ -4,6 +4,7 @@ import com.company.tap.protocol.Done
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Response
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -13,6 +14,8 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import java.security.SecureRandom
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -149,7 +152,100 @@ class DeviceSessionTest {
                 "cancelled attempt must destroy its child",
             )
             withTimeout(2_000) { while (process.isAlive) delay(10) }
+            assertTrue(process.stdinClosed.get())
+            assertTrue(process.stdoutClosed.get())
+            assertTrue(process.stderrClosed.get())
             assertTrue(adb.calls.any { "force-stop" in it }, "cancelled attempt must force-stop")
+        }
+
+    @Test
+    fun `cancellation during instrumentation process start retains cleanup ownership`() =
+        runBlocking {
+            val adb =
+                FakeAdb(
+                    mapOf(
+                        "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                        "shell pidof $DRIVER_PACKAGE" to Adb.Result(1, ""),
+                    ),
+                )
+            val child = FakeProcess(exitDelayMs = FakeProcess.NEVER)
+            val published = CountDownLatch(1)
+            val releaseReturn = CountDownLatch(1)
+            val starter =
+                ProcessStarter {
+                    published.countDown()
+                    check(releaseReturn.await(5, TimeUnit.SECONDS))
+                    child
+                }
+            val starting =
+                async(Dispatchers.IO) {
+                    startDriverWithRetry(
+                        adb,
+                        serial,
+                        "session-1",
+                        1,
+                        "secret",
+                        "com.example",
+                        processStarter = starter,
+                        onStarting = {},
+                    )
+                }
+            assertTrue(published.await(2, TimeUnit.SECONDS))
+            val original = CancellationException("original cancellation")
+            starting.cancel(original)
+            assertFalse(starting.isCompleted, "process return must install cleanup ownership")
+            releaseReturn.countDown()
+            val thrown = assertFailsWith<CancellationException> { starting.await() }
+            assertEquals(original.message, thrown.message)
+            assertTrue(child.destroyed.get() || child.destroyedForcibly.get())
+            assertFalse(child.isAlive)
+            assertTrue(child.stdinClosed.get())
+            assertTrue(child.stdoutClosed.get())
+            assertTrue(child.stderrClosed.get())
+        }
+
+    @Test
+    fun `failed attempt aborts retries when child or drain cannot be reaped`() =
+        runBlocking {
+            val adb =
+                FakeAdb(
+                    mapOf(
+                        "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                        "shell pidof $DRIVER_PACKAGE" to Adb.Result(1, ""),
+                    ),
+                )
+            val stubborn =
+                FakeProcess(
+                    exitDelayMs = FakeProcess.NEVER,
+                    survivesDestroy = true,
+                    blockingStdout = true,
+                    timedWaitAlwaysFalse = true,
+                )
+            var attempts = 0
+            try {
+                val failure =
+                    assertFailsWith<IllegalStateException> {
+                        startDriverWithRetry(
+                            adb,
+                            serial,
+                            "session-1",
+                            1,
+                            "secret",
+                            "com.example",
+                            overallDeadlineNanos = System.nanoTime() + 100_000_000L,
+                            processStarter = ProcessStarter { stubborn },
+                            onStarting = { attempts++ },
+                        )
+                    }
+                assertTrue("child survived" in failure.message.orEmpty(), failure.message.orEmpty())
+                assertEquals(1, attempts, "an unreaped attempt must prevent the next port retry")
+                assertTrue(stubborn.stdinClosed.get())
+                assertTrue(stubborn.stdoutClosed.get())
+                assertTrue(stubborn.stderrClosed.get())
+            } finally {
+                stubborn.releaseStdout()
+                stubborn.forceExit()
+            }
         }
 
     @Test
@@ -190,6 +286,56 @@ class DeviceSessionTest {
                     "journal must be finalized, was ${record.state}",
                 )
                 // The lease is free again for the next session.
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `open cancellation after ready cleans up before ownership transfer`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-ready-handoff", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val config = sessionConfig(adb, fake, processes)
+                val reachedTransfer = CompletableDeferred<Unit>()
+                val releaseTransfer = CompletableDeferred<Unit>()
+                val cleanupFinished = CompletableDeferred<Unit>()
+                config.beforeOwnershipTransfer = {
+                    reachedTransfer.complete(Unit)
+                    releaseTransfer.await()
+                }
+                config.afterCancellationCleanup = { cleanupFinished.complete(Unit) }
+                val opening = async(Dispatchers.IO) { DeviceSession.open(config) }
+                val health = fake.nextFrame(5_000)
+                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                withTimeout(5_000) { reachedTransfer.await() }
+                assertEquals(JournalState.READY, journalStore().read()?.state)
+
+                val original = CancellationException("cancel at ready handoff")
+                opening.cancel(original)
+                assertFalse(opening.isCompleted, "the ownership transfer gate is still held")
+                releaseTransfer.complete(Unit)
+                val thrown = assertFailsWith<CancellationException> { opening.await() }
+                assertEquals(original.message, thrown.message)
+
+                withTimeout(5_000) { cleanupFinished.await() }
+                assertEquals(
+                    1,
+                    adb.calls.count { it.contains("forward --remove tcp:${fake.port}") },
+                    adb.calls.toString(),
+                )
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                assertEquals(1, processes.size)
+                val process = processes.single()
+                assertTrue(process.destroyed.get() || process.destroyedForcibly.get())
+                assertFalse(process.isAlive)
+                assertTrue(process.stdinClosed.get())
+                assertTrue(process.stdoutClosed.get())
+                assertTrue(process.stderrClosed.get())
                 journalStore().acquireLease(0).close()
             } finally {
                 fake.close()

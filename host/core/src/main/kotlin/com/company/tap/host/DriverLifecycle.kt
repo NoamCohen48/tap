@@ -7,7 +7,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -117,47 +119,53 @@ suspend fun startDriverWithRetry(
             "Driver startup exceeded its containing deadline"
         }
         onStarting(devicePort)
-        val process =
-            withContext(Dispatchers.IO) {
-                processStarter.start(
-                    listOf(
-                        adb.executable,
-                        "-s",
-                        serial,
-                        "shell",
-                        "am",
-                        "instrument",
-                        "-w",
-                        "-r",
-                        "-e",
-                        "class",
-                        "com.company.tap.driver.TapDriverServerTest",
-                        "-e",
-                        "tapSession",
-                        sessionId,
-                        "-e",
-                        "tapGeneration",
-                        generation.toString(),
-                        "-e",
-                        "tapSecret",
-                        encodedSecret,
-                        "-e",
-                        "tapPort",
-                        devicePort.toString(),
-                        "-e",
-                        "tapAutPackage",
-                        autPackage,
-                        "-e",
-                        "tapSystemPackages",
-                        allowedSystemPackages.joinToString(","),
-                        "-e",
-                        "tapSyncAuthority",
-                        syncAuthority,
-                        *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
-                        DRIVER_TEST_RUNNER,
-                    ),
-                )
-            }
+        lateinit var process: Process
+        // Creation and ownership installation are one non-cancellable step. If cancellation
+        // arrives after the OS child exists but before start() returns, the returned Process
+        // cannot be discarded before the attempt's finally owns it.
+        withContext(NonCancellable) {
+            process =
+                withContext(Dispatchers.IO) {
+                    processStarter.start(
+                        listOf(
+                            adb.executable,
+                            "-s",
+                            serial,
+                            "shell",
+                            "am",
+                            "instrument",
+                            "-w",
+                            "-r",
+                            "-e",
+                            "class",
+                            "com.company.tap.driver.TapDriverServerTest",
+                            "-e",
+                            "tapSession",
+                            sessionId,
+                            "-e",
+                            "tapGeneration",
+                            generation.toString(),
+                            "-e",
+                            "tapSecret",
+                            encodedSecret,
+                            "-e",
+                            "tapPort",
+                            devicePort.toString(),
+                            "-e",
+                            "tapAutPackage",
+                            autPackage,
+                            "-e",
+                            "tapSystemPackages",
+                            allowedSystemPackages.joinToString(","),
+                            "-e",
+                            "tapSyncAuthority",
+                            syncAuthority,
+                            *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
+                            DRIVER_TEST_RUNNER,
+                        ),
+                    )
+                }
+        }
         val output = StringBuilder()
         val drainScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val outputDrain =
@@ -172,6 +180,7 @@ suspend fun startDriverWithRetry(
         var handedOff = false
         var attemptCleanupError: Throwable? = null
         try {
+            currentCoroutineContext().ensureActive()
             val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
             val deadline =
                 minOf(
@@ -232,15 +241,22 @@ private suspend fun cleanupAttempt(
 ): Throwable? =
     withContext(NonCancellable) {
         var failure: Throwable? = null
-        cleanupStep({ failure = it }) { forceStopDriverAndVerify(adb, serial) }
-        if (process.isAlive) process.destroyForcibly()
-        withContext(Dispatchers.IO) {
-            cleanupStep({ failure = failure ?: it }) { process.waitFor(3, TimeUnit.SECONDS) }
+        cleanupStep({ failure = failure ?: it }) { forceStopDriverAndVerify(adb, serial) }
+        cleanupStep({ failure = failure ?: it }) {
+            if (process.isAlive) process.destroyForcibly()
         }
         withContext(Dispatchers.IO) {
-            cleanupStep({ failure = failure ?: it }) { process.inputStream.close() }
+            cleanupStep({ failure = failure ?: it }) {
+                check(process.waitFor(3, TimeUnit.SECONDS)) {
+                    "Instrumentation child survived failed startup cleanup"
+                }
+            }
         }
-        withTimeoutOrNull(1_000) { outputDrain.join() }
+        closeProcessStreams(process) { failure = failure ?: it }
+        val drainCompleted = withTimeoutOrNull(1_000) { outputDrain.join(); true } == true
+        if (!drainCompleted || !outputDrain.isCompleted) {
+            failure = failure ?: IllegalStateException("Instrumentation output drain survived failed startup cleanup")
+        }
         drainScope.cancel()
         failure
     }
@@ -253,16 +269,23 @@ suspend fun cleanupInstrumentation(
 ) {
     var driverFailure: Throwable? = null
     cleanupStep({ driverFailure = it }) { forceStopDriverAndVerify(adb, serial) }
-    if (running.process.isAlive) running.process.destroyForcibly()
-    val childExited = withContext(Dispatchers.IO) { running.process.waitFor(3, TimeUnit.SECONDS) }
-    withContext(Dispatchers.IO) {
-        cleanupStep({ driverFailure = driverFailure ?: it }) { running.process.inputStream.close() }
+    cleanupStep({ driverFailure = driverFailure ?: it }) {
+        if (running.process.isAlive) running.process.destroyForcibly()
     }
-    withTimeoutOrNull(1_000) { running.outputDrain.join() }
+    withContext(Dispatchers.IO) {
+        cleanupStep({ driverFailure = driverFailure ?: it }) {
+            check(running.process.waitFor(3, TimeUnit.SECONDS)) {
+                "Instrumentation child survived cleanup"
+            }
+        }
+    }
+    closeProcessStreams(running.process) { driverFailure = driverFailure ?: it }
+    val drainCompleted = withTimeoutOrNull(1_000) { running.outputDrain.join(); true } == true
+    if (!drainCompleted || !running.outputDrain.isCompleted) {
+        driverFailure = driverFailure ?: IllegalStateException("Instrumentation output drain survived cleanup")
+    }
     running.drainScope.cancel()
     driverFailure?.let { throw it }
-    check(childExited) { "Instrumentation child survived cleanup" }
-    check(running.outputDrain.isCompleted) { "Instrumentation output drain survived cleanup" }
 }
 
 /**

@@ -1,11 +1,15 @@
 package com.company.tap.host
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -98,6 +102,9 @@ class AdbTest {
                 "timed-out child must be destroyed",
             )
             withTimeout(2_000) { while (child.isAlive) delay(10) }
+            assertTrue(child.stdinClosed.get(), "timed-out child stdin must close")
+            assertTrue(child.stdoutClosed.get(), "timed-out child stdout must close")
+            assertTrue(child.stderrClosed.get(), "timed-out child stderr must close")
         }
 
     @Test
@@ -114,6 +121,37 @@ class AdbTest {
                 "cancelled child must be destroyed",
             )
             withTimeout(2_000) { while (child.isAlive) delay(10) }
+            assertTrue(child.stdinClosed.get(), "cancelled child stdin must close")
+            assertTrue(child.stdoutClosed.get(), "cancelled child stdout must close")
+            assertTrue(child.stderrClosed.get(), "cancelled child stderr must close")
+        }
+
+    @Test
+    fun `cancellation during process start cannot discard the created child`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val child = FakeProcess(exitDelayMs = FakeProcess.NEVER)
+            val published = CountDownLatch(1)
+            val releaseReturn = CountDownLatch(1)
+            adb.processStarter =
+                ProcessStarter {
+                    published.countDown()
+                    check(releaseReturn.await(5, TimeUnit.SECONDS))
+                    child
+                }
+            val running = async(Dispatchers.IO) { adb.devices(timeoutMs = 30_000) }
+            assertTrue(published.await(2, TimeUnit.SECONDS), "starter did not publish child")
+            val original = CancellationException("original cancellation")
+            running.cancel(original)
+            assertFalse(running.isCompleted, "ownership installation must finish before cancellation")
+            releaseReturn.countDown()
+            val thrown = assertFailsWith<CancellationException> { running.await() }
+            assertEquals(original.message, thrown.message)
+            assertTrue(child.destroyed.get() || child.destroyedForcibly.get())
+            assertFalse(child.isAlive)
+            assertTrue(child.stdinClosed.get())
+            assertTrue(child.stdoutClosed.get())
+            assertTrue(child.stderrClosed.get())
         }
 
     @Test
