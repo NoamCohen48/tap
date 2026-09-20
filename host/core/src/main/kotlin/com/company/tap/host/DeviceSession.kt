@@ -6,6 +6,8 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
@@ -50,7 +52,7 @@ class DeviceSession private constructor(
     private val running: RunningInstrumentation,
     private val hostPort: Int,
     val client: DriverClient,
-) : AutoCloseable {
+) {
     val serial: String get() = config.serial
     val generation: Long get() = journal.generation
     val sessionId: String get() = journal.sessionId
@@ -69,29 +71,31 @@ class DeviceSession private constructor(
     @Volatile
     private var closed = false
 
-    override fun close() {
+    suspend fun close() {
         if (closed) return
-        closed = true
-        var cleanupSuccessful = true
-        runCatching { client.close() }.onFailure { cleanupSuccessful = false }
-        runCatching { adb.removeForward(serial, hostPort) }.onFailure { cleanupSuccessful = false }
-        runCatching { cleanupInstrumentation(adb, serial, running) }.onFailure { cleanupSuccessful = false }
-        try {
-            store.write(
-                journal.copy(
-                    state = if (cleanupSuccessful) JournalState.CLOSED else JournalState.QUARANTINED,
-                    quarantineReason = if (cleanupSuccessful) null else "SESSION_CLEANUP_UNCERTAIN",
-                    updatedAtEpochMs = System.currentTimeMillis(),
+        withContext(NonCancellable) {
+            closed = true
+            var cleanupSuccessful = true
+            runCatching { client.close() }.onFailure { cleanupSuccessful = false }
+            runCatching { adb.removeForward(serial, hostPort) }.onFailure { cleanupSuccessful = false }
+            runCatching { cleanupInstrumentation(adb, serial, running) }.onFailure { cleanupSuccessful = false }
+            try {
+                store.write(
+                    journal.copy(
+                        state = if (cleanupSuccessful) JournalState.CLOSED else JournalState.QUARANTINED,
+                        quarantineReason = if (cleanupSuccessful) null else "SESSION_CLEANUP_UNCERTAIN",
+                        updatedAtEpochMs = System.currentTimeMillis(),
+                    )
                 )
-            )
-        } finally {
-            lease.close()
+            } finally {
+                lease.close()
+            }
+            check(cleanupSuccessful) { "Session cleanup on $serial was uncertain; device quarantined" }
         }
-        check(cleanupSuccessful) { "Session cleanup on $serial was uncertain; device quarantined" }
     }
 
     companion object {
-        fun open(config: DeviceSessionConfig): DeviceSession {
+        suspend fun open(config: DeviceSessionConfig): DeviceSession {
             val adb = config.adb
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)

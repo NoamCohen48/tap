@@ -9,6 +9,7 @@ import com.company.tap.protocol.SyncPoll
 import com.company.tap.protocol.SyncState
 import com.company.tap.protocol.WaitAppVisible
 import java.nio.file.Path
+import kotlinx.coroutines.delay
 
 /** An AUT lifecycle postcondition did not hold (process still alive, window never appeared...). */
 class AppLifecycleException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
@@ -47,36 +48,36 @@ class AppLifecycle(
     @Volatile
     private var syncIdentity: SyncState? = null
 
-    fun isInstalled(): Boolean = adb.isInstalled(serial, packageName)
+    suspend fun isInstalled(): Boolean = adb.isInstalled(serial, packageName)
 
-    fun install(apk: Path, timeoutMs: Long) {
+    suspend fun install(apk: Path, timeoutMs: Long) {
         adb.install(serial, apk, timeoutMs)
         if (!isInstalled()) throw AppLifecycleException("$packageName is not installed after install on $serial")
         syncIdentity = null
     }
 
-    fun uninstall() {
+    suspend fun uninstall() {
         val output = adb.uninstall(serial, packageName)
         if (isInstalled()) throw AppLifecycleException("$packageName still installed after uninstall on $serial: $output")
         syncIdentity = null
     }
 
     /** `am force-stop` plus proof that no process of the package remains. */
-    fun forceStop(timeoutMs: Long) {
+    suspend fun forceStop(timeoutMs: Long) {
         adb.forceStop(serial, packageName)
         awaitNoProcess(timeoutMs, "force-stop")
         syncIdentity = null
     }
 
     /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped. */
-    fun clearData(timeoutMs: Long) {
+    suspend fun clearData(timeoutMs: Long) {
         val output = adb.clearData(serial, packageName)
         if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
         awaitNoProcess(timeoutMs, "pm clear")
         syncIdentity = null
     }
 
-    fun grantPermission(permission: String) {
+    suspend fun grantPermission(permission: String) {
         adb.grantPermission(serial, packageName, permission)
     }
 
@@ -84,7 +85,7 @@ class AppLifecycle(
      * Starts [activity] (or the launcher activity) and waits until the package owns the
      * focused window. Does not assert anything about prior process state; see [coldLaunch].
      */
-    fun launch(activity: String?, timeoutMs: Long) {
+    suspend fun launch(activity: String?, timeoutMs: Long) {
         val component = "$packageName/${activity ?: launcherActivity()}"
         val output = adb.startActivity(serial, component, timeoutMs)
         if ("Error" in output || "Exception" in output) {
@@ -94,19 +95,19 @@ class AppLifecycle(
     }
 
     /** Verified force-stop, launch, then proof of a *new* process identity in the foreground. */
-    fun coldLaunch(activity: String?, timeoutMs: Long, stopTimeoutMs: Long = 10_000): ProcessObservation {
+    suspend fun coldLaunch(activity: String?, timeoutMs: Long, stopTimeoutMs: Long = 10_000): ProcessObservation {
         forceStop(stopTimeoutMs)
         launch(activity, timeoutMs)
         return observeProcess(adb, serial, packageName, timeoutMs)
     }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
-    fun process(timeoutMs: Long): ProcessObservation = observeProcess(adb, serial, packageName, timeoutMs)
+    suspend fun process(timeoutMs: Long): ProcessObservation = observeProcess(adb, serial, packageName, timeoutMs)
 
-    fun isRunning(): Boolean = adb.processIds(serial, packageName).isNotEmpty()
+    suspend fun isRunning(): Boolean = adb.processIds(serial, packageName).isNotEmpty()
 
     /** Waits on the device until the package owns the focused window. */
-    fun awaitAppVisible(timeoutMs: Long) {
+    suspend fun awaitAppVisible(timeoutMs: Long) {
         val response = client.send(WaitAppVisible(packageName), timeoutMs = timeoutMs)
         if (!response.ok) {
             val current = runCatching {
@@ -124,7 +125,7 @@ class AppLifecycle(
      * call after a launch/clear bootstraps the process identity; a process restart in between
      * fails with `AUT_MISMATCH` rather than silently re-bootstrapping.
      */
-    fun awaitIdle(timeoutMs: Long, stableForMs: Long = 200) {
+    suspend fun awaitIdle(timeoutMs: Long, stableForMs: Long = 200) {
         val deadline = System.nanoTime() + timeoutMs * 1_000_000
         val identity = syncIdentity ?: bootstrapSync(remainingMs(deadline)).also { syncIdentity = it }
         var zeroGeneration: Long? = null
@@ -151,15 +152,15 @@ class AppLifecycle(
             } else {
                 zeroGeneration = null
             }
-            Thread.sleep(pollIntervalMs.coerceAtMost(50))
+            delay(pollIntervalMs.coerceAtMost(50))
         }
     }
 
-    private fun bootstrapSync(timeoutMs: Long): SyncState =
+    private suspend fun bootstrapSync(timeoutMs: Long): SyncState =
         callSync(timeoutMs.coerceIn(1, 5_000)) { before -> SyncBootstrap(before.pid, before.startToken) }
 
     /** The driver checks identity against the process the host observed around the call. */
-    private inline fun <C> callSync(timeoutMs: Long, command: (ProcessObservation) -> C): SyncState
+    private suspend inline fun <C> callSync(timeoutMs: Long, command: (ProcessObservation) -> C): SyncState
         where C : Command, C : Returning<SyncResult> {
         val before = process(5_000)
         val state = client.execute(command(before), timeoutMs = timeoutMs).state
@@ -168,13 +169,13 @@ class AppLifecycle(
         return state
     }
 
-    private fun launcherActivity(): String {
+    private suspend fun launcherActivity(): String {
         val component = adb.launcherActivity(serial, packageName)
             ?: throw AppLifecycleException("No launcher activity for $packageName on $serial")
         return component.substringAfter('/')
     }
 
-    private fun awaitNoProcess(timeoutMs: Long, action: String) {
+    private suspend fun awaitNoProcess(timeoutMs: Long, action: String) {
         val started = System.nanoTime()
         val deadline = started + timeoutMs * 1_000_000
         var polls = 0
@@ -188,7 +189,7 @@ class AppLifecycle(
                     (System.nanoTime() - started) / 1_000_000, polls, "pids=$pids",
                 )
             }
-            Thread.sleep(pollIntervalMs)
+            delay(pollIntervalMs)
         }
     }
 

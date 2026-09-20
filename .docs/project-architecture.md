@@ -140,7 +140,7 @@ tap/
 |   |   |   +-- SessionJournal.kt    JournalState, SessionJournal, SessionJournalStore (lease + fsync'd atomic write)
 |   |   |   +-- DriverLifecycle.kt   start-with-retry, port range, forward, process observation, journal recovery, cleanup
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
-|   |   |   +-- DriverClient.kt      handshake, request IDs, reader thread, heartbeat thread, PendingCommand, screenshot()
+|   |   |   +-- DriverClient.kt      handshake, request IDs, reader/heartbeat coroutines, PendingCommand, screenshot()
 |   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits)
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
 |   |   |   +-- CommandException.kt  RemoteCommandException / CommandTransportException, selector rendering
@@ -231,13 +231,16 @@ fixture-app --------------> device:sync-sdk
   leases, driver lifecycle and app lifecycle, and only `:host:service` and `:host:validation`
   link it.
 - `contracts:protocol` has no Android, host, or coroutine dependency (kotlinx.serialization +
-  RE2/J only). `contracts:api` is generated Java only (protobuf + grpc-stub).
+  RE2/J only). `contracts:api` generates Java stubs plus grpc-kotlin coroutine stubs
+  (`*CoroutineImplBase`, `*CoroutineStub`) and carries `grpc-kotlin-stub` +
+  `kotlinx-coroutines-core` as `api` dependencies.
 - `device:driver:command-engine` has no Android types so the state machine is JVM-tested.
 - `device:sync-sdk` depends on nothing from Tap; the driver reaches it only through a
   provider call.
-- `host:core`, the Kotlin clients and the service have no Android API or coroutine
-  dependency; only the validation executable uses kotlinx.coroutines for its per-device
-  fan-out.
+- `host:core` and the service are coroutine-based (`suspend` throughout, structured scopes);
+  they have no Android API dependency. The Kotlin clients stay synchronous until step 4
+  (`framework-gaps.md`: "Synchronous API instead of `tapTest`"). Only the validation
+  executable fans out per device, as before.
 - Product test suites depend on `:clients:kotlin:junit5` (which exposes `:clients:kotlin:sdk`
   and `:contracts:api` as `api`) and never on `:host:*`.
 
@@ -401,13 +404,14 @@ be verified, so a test's teardown failure is visible rather than silently leavin
 ### DriverClient
 
 ```text
-DriverClient(hostPort, sessionId, generation, secret, serial, heartbeatIntervalMs = 5000)
+DriverClient.connect(hostPort, sessionId, generation, secret, serial, heartbeatIntervalMs = 5000)
   connect: HELLO -> CHALLENGE -> negotiate -> AUTH -> AUTH_RESULT (HMAC both ways)
-  submit(op, selector, ...) : validates selector, allocates ID + writes frame under transportLock
+  submit(op, selector, ...) : validates selector, allocates ID + writes frame under the transport Mutex
   PendingCommand.await()/cancel()  -> one terminal Response; state NOT_WRITTEN/WRITING/WRITTEN/TERMINAL_RESPONSE
-  reader thread: RESPONSE, PONG, BLOB_* demultiplexed by request ID; BlobReceiver verifies artifacts
-  heartbeat thread: PING after heartbeatIntervalMs idle (0 disables)
-  execute()/executeOrThrow()/screenshot()/ping()/close()
+  cancelling await() sends CANCEL but keeps the entry registered until the terminal frame arrives
+  reader coroutine: RESPONSE, PONG, BLOB_* demultiplexed by request ID; BlobReceiver verifies artifacts
+  heartbeat coroutine: PING after heartbeatIntervalMs idle (0 disables)
+  execute()/executeOrThrow()/screenshot()/ping()/close() are suspend; close() is NonCancellable
   any read failure or unknown ID poisons the client: mutating in-flight -> INDETERMINATE, queries -> TRANSPORT_LOST
 ```
 
