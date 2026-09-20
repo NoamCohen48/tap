@@ -171,14 +171,18 @@ Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
 (connections, sessions, the once-per-serial driver install memo); it has no gRPC types and is
 what the unit tests drive. Each proto service has one servicer in `servicer/` that only adds
 what is gRPC-specific: unwrap the request, call `TapService` or the session's `:host:core`
-objects, wrap the reply. Two helpers are shared (`servicer/common.kt`):
+objects, wrap the reply. The four adapters extend the generated grpc-kotlin
+`*CoroutineImplBase` classes: unary RPCs are `suspend` functions and `Attach` returns a
+`Flow<ConnectionEvent>`. Two helpers are shared (`servicer/common.kt`):
 
 - `Throwable.toStatus()` — the status mapping in §3: unknown connection/session →
   `NOT_FOUND`; `IllegalArgumentException` → `INVALID_ARGUMENT`; `DeviceBusyException` →
   `FAILED_PRECONDITION` (no wait asked) or `DEADLINE_EXCEEDED` (waited and gave up);
   `HostWaitTimeoutException` → `DEADLINE_EXCEEDED`; `AppLifecycleException` /
   `IllegalStateException` → `FAILED_PRECONDITION`; anything else → `INTERNAL` with the class name.
-- `reply(observer) { … }` — run the block, send its one message, or the mapped status.
+- `reply { … }` — suspend wrapper for unary calls: return the block's value, preserve
+  `CancellationException` so grpc-kotlin reports caller cancellation, or throw the mapped gRPC
+  status. Moving from observers to coroutine servicers did not change the mapping in §3.
 
 | Servicer | Does |
 |---|---|
@@ -195,8 +199,9 @@ exactly as long as the client process does, and gRPC tells the server when it st
 
 1. `attach` returns a `Flow<ConnectionEvent>` (grpc-kotlin `ConnectionServiceCoroutineImplBase`).
    There is no cancel handler to install: collection *is* the call.
-2. `service.connection(id)` resolves the connection; unknown *or already closed* throws
-   `NOT_FOUND` on the stream and nothing is registered.
+2. `TapService.attachAcquire` resolves the connection and atomically claims its one Attach owner
+   while registering the close callback. Unknown or already closed is `NOT_FOUND`; a second
+   Attach is `FAILED_PRECONDITION` and does not disturb the valid stream.
 3. A heartbeat event is emitted every 15 s from a `delay` loop. It is not
    how the client's death is detected; it is outbound traffic so an idle-connection timeout in a
    proxy or the OS never closes a stream that is legitimately silent for an hour.
@@ -213,7 +218,7 @@ exactly as long as the client process does, and gRPC tells the server when it st
    one cancels the `attach` collection, so the stream ends instead of heartbeating a dead
    connection. Both paths are idempotent: `closeConnection` returns 0 for a
    connection already marked closed, so "client closed, then cancelled the stream" tears down once.
-6. The first event, `attached to connection <id>`, is sent synchronously. Clients block on it
+6. The first event, `attached to connection <id>`, is the first Flow emission. Clients block on it
    before returning from `connect()` / `attach()`, which guarantees the hooks are installed
    before any session is opened — there is never a session whose connection is not watched.
 
@@ -235,7 +240,26 @@ on transport loss after acceptance, never a replay). There is no executor hop an
 handler: the `AtomicReference`/`AtomicBoolean`/`setOnCancelHandler` dance is gone. Defaults
 for the command timeout and the AUT package come from the session. The exception → status
 mapping is unchanged (unknown session → `NOT_FOUND`, bad request → `INVALID_ARGUMENT`,
-waits → `DEADLINE_EXCEEDED`, lifecycle violations → `FAILED_PRECONDITION`).
+waits → `DEADLINE_EXCEEDED`, lifecycle violations → `FAILED_PRECONDITION`). An in-process gRPC
+regression test cancels the coroutine stub call after the TAP1 request is observed, verifies the
+protocol `CANCEL`, then proves that the late terminal response is consumed and the transport
+remains usable.
+
+### Connection/session lifecycle and shutdown
+
+`TapService` uses one short synchronized state boundary for connection closed state, the sole
+Attach owner and close hook, in-flight session opens, and both the global and per-connection
+session maps. No monitor is held while device open/close suspends. Registration and removal from
+the two session maps are one transaction: close wins over an in-flight open by preventing
+registration, after which the newly opened `DeviceSession` is closed before it can be returned;
+a session taken by either explicit Session Close or connection teardown is closed exactly once.
+
+The service shutdown hook has one total deadline covering `TapService.close` and gRPC server
+termination. The remaining budget is divided across connections and sessions and passed through
+to `DeviceSession.close(timeoutMs)`. A service-side independent waiter bounds even a
+NonCancellable core cleanup; timed-out core cleanup continues under its own deadline so it can
+journal quarantine and release the lease while shutdown attempts later sessions. Ordinary
+explicit Connection Close and Session Close retain their existing replies and status mapping.
 
 ## 4. Client expectations
 

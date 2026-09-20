@@ -4,6 +4,7 @@ import com.company.tap.api.v1.AttachRequest
 import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.ExecuteRequest
 import com.company.tap.api.v1.Health
+import com.company.tap.api.v1.SessionServiceGrpcKt
 import com.company.tap.host.Adb
 import com.company.tap.host.AppLifecycle
 import com.company.tap.host.DeviceSessionConfig
@@ -16,12 +17,17 @@ import com.company.tap.service.servicer.ConnectionServicer
 import com.company.tap.service.servicer.SessionServicer
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
+import io.grpc.inprocess.InProcessChannelBuilder
+import io.grpc.inprocess.InProcessServerBuilder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
 import java.security.SecureRandom
@@ -54,9 +60,12 @@ private class FakeDevice(
     override val autPackage: String = "com.test",
     var closeGate: CompletableDeferred<Unit>? = null,
     var closeError: Throwable? = null,
+    private val closeAction: (suspend () -> Unit)? = null,
     private val realClient: DriverClient? = null,
 ) : ServiceDevice {
     val closeCalls = AtomicInteger(0)
+    val closeEntered = Channel<Unit>(Channel.UNLIMITED)
+    val closeCompleted = CompletableDeferred<Unit>()
     override val client: DriverClient
         get() = realClient ?: error("no client in lifecycle fake")
 
@@ -64,9 +73,17 @@ private class FakeDevice(
 
     override suspend fun close(timeoutMs: Long) {
         closeCalls.incrementAndGet()
-        // Ignores timeoutMs on purpose: proves the service outer bound, not fake cooperation.
-        closeGate?.await()
-        closeError?.let { throw it }
+        closeEntered.trySend(Unit)
+        try {
+            // Ignore both the timeout argument and caller cancellation: production core cleanup
+            // is NonCancellable too, so this proves the service's independent outer bound.
+            withContext(NonCancellable) {
+                if (closeAction != null) closeAction.invoke() else closeGate?.await()
+            }
+            closeError?.let { throw it }
+        } finally {
+            closeCompleted.complete(Unit)
+        }
     }
 }
 
@@ -168,6 +185,34 @@ class TapServiceLifecycleTest {
         }
 
     @Test
+    fun `detach closes its session exactly once`() =
+        runBlocking {
+            val opener = FakeOpener()
+            val device = FakeDevice(serial = "detach")
+            opener.queue.add(device)
+            val service = TapService(testConfig(), opener)
+            val connection = service.openConnection("detach-conn")
+            service.openSession(connection, "detach", "com.test", testOptions())
+            val servicer = ConnectionServicer(service, heartbeatIntervalMs = 50)
+            val attached = CompletableDeferred<Unit>()
+            val attachJob =
+                launch {
+                    servicer.attach(AttachRequest.newBuilder().setConnectionId(connection.id).build()).collect {
+                        attached.complete(Unit)
+                    }
+                }
+            withTimeout(2_000) { attached.await() }
+
+            attachJob.cancel()
+            withTimeout(2_000) { attachJob.join() }
+            assertEquals(1, device.closeCalls.get())
+            assertTrue(service.sessionIds().isEmpty())
+            assertFalse(service.connectionExists(connection.id))
+            assertEquals(0, service.closeConnection(connection.id, "already detached"))
+            assertEquals(1, device.closeCalls.get())
+        }
+
+    @Test
     fun `close winning over a suspended open closes the orphan and registers nothing`() =
         runBlocking {
             val opener = FakeOpener()
@@ -228,16 +273,45 @@ class TapServiceLifecycleTest {
             // Idempotent teardown: already-closed connection closes zero sessions.
             assertEquals(0, service.closeConnection(connection.id, "again"))
             assertFailsWith<UnknownSessionException> { service.closeSession(s2.id) }
-            assertEquals(1, (s2.device as FakeDevice).closeCalls.get())
+            assertEquals(1, s2.device.closeCalls.get())
+        }
+
+    @Test
+    fun `racing session and connection close still closes the device exactly once`() =
+        runBlocking {
+            val opener = FakeOpener()
+            val device = FakeDevice(serial = "race", closeGate = CompletableDeferred())
+            opener.queue.add(device)
+            val service = TapService(testConfig(), opener)
+            val connection = service.openConnection("race-conn")
+            val session = service.openSession(connection, "race", "com.test", testOptions())
+
+            // Session Close wins the atomic take, then suspends in cleanup.
+            val sessionClose = async { service.closeSession(session.id) }
+            withTimeout(2_000) { device.closeEntered.receive() }
+            assertEquals(0, service.closeConnection(connection.id, "racing connection close"))
+            assertFailsWith<UnknownSessionException> { service.closeSession(session.id) }
+            device.closeGate!!.complete(Unit)
+            withTimeout(2_000) { sessionClose.await() }
+            assertEquals(1, device.closeCalls.get())
+            assertTrue(service.sessionIds().isEmpty())
+            assertFalse(service.connectionExists(connection.id))
         }
 
     @Test
     fun `a hanging cleanup cannot exceed the shutdown budget and later sessions still close`() =
         runBlocking {
             val opener = FakeOpener()
-            val hanging = FakeDevice(serial = "hang", closeGate = CompletableDeferred())
-            val quick = FakeDevice(serial = "quick")
-            opener.queue.addAll(listOf(hanging, quick))
+            val attempts = AtomicInteger(0)
+            val firstCloseGate = CompletableDeferred<Unit>()
+            val closeAction: suspend () -> Unit = {
+                // Whichever session shutdown attempts first is uncooperative. This avoids relying
+                // on HashMap/UUID iteration order to prove a later session is still attempted.
+                if (attempts.incrementAndGet() == 1) firstCloseGate.await()
+            }
+            val firstDevice = FakeDevice(serial = "first", closeAction = closeAction)
+            val secondDevice = FakeDevice(serial = "second", closeAction = closeAction)
+            opener.queue.addAll(listOf(firstDevice, secondDevice))
             // Short configured budget: total 600 ms, 250 ms per session.
             val service = TapService(testConfig(), opener, shutdownTotalMs = 600, shutdownSessionMs = 250)
             val c1 = service.openConnection("hang-conn")
@@ -247,15 +321,24 @@ class TapServiceLifecycleTest {
 
             // Bounded shutdown: returns despite the hanging close, attempts the later session.
             withTimeout(5_000) { service.close() }
-            assertEquals(1, hanging.closeCalls.get())
-            assertEquals(1, quick.closeCalls.get())
+            assertEquals(2, attempts.get())
+            assertEquals(1, firstDevice.closeCalls.get())
+            assertEquals(1, secondDevice.closeCalls.get())
             assertTrue(service.sessionIds().isEmpty())
             assertFalse(service.connectionExists(c1.id))
             assertFalse(service.connectionExists(c2.id))
+            assertFailsWith<ServiceClosingException> { service.openConnection("too-late") }
+
+            // Do not leave the deliberately uncooperative test cleanup running.
+            firstCloseGate.complete(Unit)
+            withTimeout(2_000) {
+                firstDevice.closeCompleted.await()
+                secondDevice.closeCompleted.await()
+            }
         }
 
     @Test
-    fun `cancelled execute propagates cancellation with CANCEL and no transport-loss response`() =
+    fun `grpc caller cancellation propagates CANCEL and retains the terminal response`(): Unit =
         runBlocking {
             val sessionId = "cancel-session"
             val generation = 7L
@@ -283,6 +366,16 @@ class TapServiceLifecycleTest {
                     val connection = service.openConnection("cancel-conn")
                     val session = service.openSession(connection, "cancel-serial", "com.test", testOptions())
                     val servicer = SessionServicer(service)
+                    val serverName = InProcessServerBuilder.generateName()
+                    val grpcServer =
+                        InProcessServerBuilder
+                            .forName(serverName)
+                            .directExecutor()
+                            .addService(servicer)
+                            .build()
+                            .start()
+                    val channel = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                    val stub = SessionServiceGrpcKt.SessionServiceCoroutineStub(channel)
                     val request =
                         ExecuteRequest
                             .newBuilder()
@@ -290,36 +383,36 @@ class TapServiceLifecycleTest {
                             .setCommand(Command.newBuilder().setHealth(Health.getDefaultInstance()).setTimeoutMs(10_000))
                             .build()
 
-                    // The execute is in flight on the driver; the REQUEST frame is the barrier.
-                    val executeJob = async { servicer.execute(request) }
-                    val submitted = withTimeout(2_000) { server.nextFrame() }
-                    assertEquals(FrameType.REQUEST, submitted.type)
+                    try {
+                        // The Execute RPC is in flight on the driver; REQUEST is the barrier.
+                        val executeJob = async { stub.execute(request) }
+                        val submitted = withTimeout(2_000) { withContext(Dispatchers.IO) { server.nextFrame() } }
+                        assertEquals(FrameType.REQUEST, submitted.type)
 
-                    // Caller cancellation propagates as cancellation, never as a result value.
-                    executeJob.cancel()
-                    assertFailsWith<CancellationException> {
-                        withTimeout(2_000) { executeJob.await() }
+                        // Cancel the grpc-kotlin client call, not a direct servicer invocation.
+                        executeJob.cancel()
+                        assertFailsWith<CancellationException> {
+                            withTimeout(2_000) { executeJob.await() }
+                        }
+
+                        // Core forwarded cooperative CANCEL while retaining the pending entry.
+                        val cancelFrame = withTimeout(2_000) { withContext(Dispatchers.IO) { server.nextFrame() } }
+                        assertEquals(FrameType.CANCEL, cancelFrame.type)
+                        assertEquals(submitted.requestId, cancelFrame.requestId)
+
+                        // A late terminal response is consumed rather than poisoning the transport.
+                        server.respond(submitted.requestId, Response.ok(Done, durationMs = 1))
+                        val secondJob = async { stub.execute(request) }
+                        val secondFrame = withTimeout(2_000) { withContext(Dispatchers.IO) { server.nextFrame() } }
+                        assertEquals(FrameType.REQUEST, secondFrame.type)
+                        server.respond(secondFrame.requestId, Response.ok(Done, durationMs = 1))
+                        withTimeout(2_000) { secondJob.await() }
+                    } finally {
+                        channel.shutdownNow()
+                        grpcServer.shutdownNow()
+                        channel.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+                        grpcServer.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
                     }
-
-                    // Core forwarded the cooperative CANCEL while keeping the entry registered.
-                    val cancelFrame = withTimeout(2_000) { server.nextFrame() }
-                    assertEquals(FrameType.CANCEL, cancelFrame.type)
-                    assertEquals(submitted.requestId, cancelFrame.requestId)
-
-                    // The driver's late terminal response is still consumed, not an unknown id:
-                    // the transport stays usable for the next command.
-                    server.respond(submitted.requestId, Response.ok(Done, durationMs = 1))
-                    val second =
-                        ExecuteRequest
-                            .newBuilder()
-                            .setSessionId(session.id)
-                            .setCommand(Command.newBuilder().setHealth(Health.getDefaultInstance()).setTimeoutMs(10_000))
-                            .build()
-                    val secondJob = async { servicer.execute(second) }
-                    val secondFrame = withTimeout(2_000) { server.nextFrame() }
-                    assertEquals(FrameType.REQUEST, secondFrame.type)
-                    server.respond(secondFrame.requestId, Response.ok(Done, durationMs = 1))
-                    withTimeout(2_000) { secondJob.await() }
                 } finally {
                     runCatching { client.close() }
                 }

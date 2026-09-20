@@ -22,7 +22,6 @@ import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** Explicit total budget for the shutdown hook before `server.awaitTermination`. */
 const val SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS = SERVICE_SHUTDOWN_TOTAL_MS
@@ -120,23 +119,24 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     Runtime.getRuntime().addShutdownHook(Thread {
         log("shutting down")
         server.shutdown()
-        // Bounded shutdown: service.close() itself propagates a remaining deadline to every
-        // session close, and this hook adds an outer bound so a stuck cleanup can never hold
-        // the hook forever before server.awaitTermination. Never runBlocking(NonCancellable).
+        // One deadline covers both device cleanup and gRPC termination. Device cleanup is
+        // independently bounded inside TapService, so runBlocking cannot hold this hook past the
+        // budget even though core cleanup is deliberately NonCancellable.
+        val shutdownDeadlineNanos = System.nanoTime() + SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS * 1_000_000L
         runBlocking {
-            val finished =
-                withTimeoutOrNull(SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS) {
-                    runCatching { service.close(SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS) }
-                        .onFailure { log("shutdown cleanup failed: ${it.message}") }
-                    true
-                }
-            if (finished == null) log("shutdown budget ${SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS}ms exceeded; some devices may be quarantined")
+            runCatching { service.close(remainingShutdownMs(shutdownDeadlineNanos)) }
+                .onFailure { log("shutdown cleanup failed: ${it.message}") }
         }
-        server.awaitTermination(10, TimeUnit.SECONDS)
+        val grpcTerminationMs = remainingShutdownMs(shutdownDeadlineNanos)
+        if (grpcTerminationMs > 0L) server.awaitTermination(grpcTerminationMs, TimeUnit.MILLISECONDS)
+        if (!server.isTerminated) log("shutdown budget ${SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS}ms exceeded; forcing process exit")
         runCatching { Files.deleteIfExists(descriptor) }
     })
     server.awaitTermination()
 }
+
+private fun remainingShutdownMs(deadlineNanos: Long): Long =
+    ((deadlineNanos - System.nanoTime()).coerceAtLeast(0L) / 1_000_000L)
 
 /**
  * Starts `serve` in the background and waits until it answers `Info`. Readiness is the health

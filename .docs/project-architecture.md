@@ -149,8 +149,13 @@ tap/
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
 |   |   +-- src/main/kotlin/com/company/tap/service/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
-|   |   |   +-- TapService.kt        connections, device list (serials; lock probe + journal), sessions, execute with transport-loss-as-data
-|   |   |   +-- Servicers.kt         gRPC coroutine servicers for Connection/Device/Session/App; status mapping; gRPC cancel arrives as coroutine cancellation
+|   |   |   +-- TapService.kt        one atomic connection/session lifecycle boundary, device list, bounded teardown, transport-loss-as-data
+|   |   |   +-- servicer/
+|   |   |   |   +-- ConnectionServicer.kt  coroutine Open/Close/Info + exactly-one Flow Attach liveness
+|   |   |   |   +-- DeviceServicer.kt      coroutine device-list adapter
+|   |   |   |   +-- SessionServicer.kt     coroutine session/Execute/artifact adapter; gRPC cancel propagates
+|   |   |   |   +-- AppServicer.kt         coroutine AppLifecycle adapter
+|   |   |   |   +-- common.kt              suspend reply wrapper and unchanged exception/status mapping
 |   |   |   +-- Conversions.kt       proto <-> protocol extension functions (toProto / toCommand / toSelector / toResponse)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
@@ -458,12 +463,24 @@ process observation (`coldLaunch` returns the new `ProcessObservation`; `forceSt
 
 `tap serve` exposes `:host:core` over loopback gRPC (`contracts/api/proto/*.proto`,
 package `tap.v1`) so every client — Kotlin and Python alike — reuses the same ADB control
-plane, journals, leases, driver lifecycle and app operations. It lists the devices (`adb devices`, `LEASED` by probing
-the per-serial lock, quarantine read from the journal) but leases nothing itself: exclusive use
-is the lock a live `DeviceSession` holds, and `Open` can wait for it (`pool-and-leases.md`). It proxies `Execute` to the session's `DriverClient` (driver failures and transport
-loss are returned as `CommandResult` data, never gRPC errors; gRPC cancellation forwards a
-protocol `CANCEL`), and closes everything a connection holds when its `Attach` stream drops.
-The driver APKs are embedded. The full contract is `service-api.md`.
+plane, journals, leases, driver lifecycle and app operations. Its generated grpc-kotlin
+servicers use suspend unary methods and a `Flow` for `Attach`; the shared suspend reply wrapper
+preserves caller cancellation and keeps the established exception/status mapping. It lists the
+devices (`adb devices`, `LEASED` by probing the per-serial lock, quarantine read from the
+journal) but leases nothing itself: exclusive use is the lock a live `DeviceSession` holds, and
+`Open` can wait for it (`pool-and-leases.md`). It proxies `Execute` to the session's
+`DriverClient` (driver failures and transport loss are returned as `CommandResult` data, never
+gRPC errors; gRPC cancellation forwards a protocol `CANCEL`).
+
+One short synchronized lifecycle boundary owns connection close state, the sole Attach
+registration, in-flight opens, and global/per-connection session registration/removal; no
+monitor crosses suspension. If close wins while a device open is suspended, the completed
+`DeviceSession` is closed before exposure. Attach drop, explicit Close and service shutdown all
+remove each session once before bounded cleanup. The shutdown hook divides one total deadline
+across connection/session cleanup and gRPC termination; timed-out core cleanup continues under
+its own `DeviceSession.close(timeoutMs)` deadline so quarantine/lease finalization can finish
+without preventing later attempts. The driver APKs are embedded. The full contract is
+`service-api.md`.
 
 ## 7. Clients
 
@@ -590,7 +607,7 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
 | Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 12 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), two-device concurrency |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
-| Service | `:host:service:test` | 2 classes | proto enums mirror the protocol enums; golden fixtures round-trip through the proto conversions |
+| Service | `:host:service:test` | 4 classes | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
 
 Build and JVM tests:

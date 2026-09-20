@@ -5,16 +5,36 @@ refactor lands and mark each step with the commit that delivered it.
 
 ## Status
 
-**Decided, not started.** On 2026-09-20 the user decided that all three layers — `:host:core`,
-`:host:service` and the Kotlin client (`:clients:kotlin:sdk` + `:clients:kotlin:junit5`) —
-move to `kotlinx.coroutines` (`suspend` functions, structured concurrency), replacing the
-thread + `CompletableFuture` + blocking-stub design. The Python client is out of scope (an
-`asyncio` façade stays a later item in `framework-gaps.md`).
+**In progress: host core and service landed; final review in progress.** On 2026-09-20 the
+user decided that all three layers — `:host:core`, `:host:service` and the Kotlin client
+(`:clients:kotlin:sdk` + `:clients:kotlin:junit5`) — move to `kotlinx.coroutines` (`suspend`
+functions, structured concurrency), replacing the thread + `CompletableFuture` + blocking-stub
+design. The host core and coroutine service checkpoints are now in the tree; the Kotlin client
+and `tapTest` step has not started. The Python client is out of scope (an `asyncio` façade stays
+a later item in `framework-gaps.md`).
 
-This reverses a recorded invariant: `.docs/project-architecture.md` ("`host:core`, the Kotlin
-clients and the service have no Android API or coroutine dependency; only the validation
-executable uses kotlinx.coroutines") and its "The API is synchronous" note. Both must be
-rewritten in the same change that lands the first coroutine dependency. It is *not* a
+Landed checkpoints, still under final review:
+
+- `38358c0` — host core `DriverClient` suspend API, coroutine reader/heartbeat scope and the
+  first coroutine conversion of ADB/session lifecycle callers.
+- `b88d2e8` — grpc-kotlin coroutine servicers, suspend status wrapper, Flow-based `Attach`, and
+  direct cancellation propagation into `PendingCommand.await()`.
+- `8c1332f` — host-core follow-up for caller cancellation, bounded socket writes, bounded
+  non-cancellable session cleanup, and deterministic cancellation/cleanup tests.
+- `1ce2b7b` — service lifecycle checkpoint: one connection/session state boundary,
+  exactly-one Attach, close-vs-open handling, bounded shutdown propagation, and service
+  lifecycle tests. This checkpoint is being audited before the lane is considered complete.
+
+Verification recorded for this lane is intentionally **non-device only**: host core/service JVM
+unit tests plus protocol tests and compilation/install tasks for validation, fixture tests and
+the JVM service distribution. No validation executable, fixture/device suite, Python suite or
+native image build has been run for these coroutine checkpoints; device-matrix and native-image
+verification remain pending.
+
+This reverses a recorded invariant from the pre-migration architecture ("`host:core`, the
+Kotlin clients and the service have no Android API or coroutine dependency; only the validation
+executable uses kotlinx.coroutines"). The current architecture now records the landed host
+state while retaining the synchronous Kotlin-client note. It is *not* a
 departure from the implementation plan: plan §12 always specified a coroutine test surface
 (`tapTest`, one coroutine per device, `DeviceBarrier`, root job cancelled by JUnit timeout,
 bounded non-cancellable teardown); the synchronous API was a deliberate simplification
@@ -45,7 +65,7 @@ Done while discussing this, all verified with `:host:service:test`, `:host:core:
 The awkwardness of that callback is what prompted the question "why futures and not
 `suspend`?" and this record.
 
-## What exists today (the thing being replaced)
+## Pre-migration baseline (historical; host core/service have now been replaced)
 
 ### `:host:core`
 
@@ -175,9 +195,9 @@ recommendation is kept here only as the record of the trade-off.
 - `ConnectionServicer` liveness: the `ScheduledExecutorService` → a coroutine with `delay`
   in a service-owned scope, cancelled in the shutdown hook.
 - `ServiceMain`: keep Netty; drop the cached thread pool; `runBlocking` only at the very top.
-- `reply(observer) { … }` helper in `servicer/common.kt` (status mapping) becomes a plain
-  `suspend` wrapper that maps exceptions to `StatusException` — keep the status mapping in
-  `service-api.md` unchanged and tested.
+- `reply { … }` in `servicer/common.kt` is the plain suspend wrapper: it preserves caller
+  cancellation and maps other exceptions to the same gRPC statuses recorded in
+  `service-api.md`.
 - Native image: re-record `META-INF/native-image` with the tracing agent on the JVM dist
   while running the smoke flow (procedure in `CLAUDE.md` build notes). kotlinx.coroutines
   itself is native-image friendly; grpc-kotlin adds no reflection of its own, but verify.
@@ -250,10 +270,11 @@ commit. The lane may contain two commits, but the tree compiles at the end of th
 Each step is its own commit with explicit paths, verified before the next starts. The
 device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 
-1. **`contracts/api`: grpc-kotlin generation.** Java stubs remain, but the module gains the
-   Kotlin plugin and a coroutines dependency (amendment 1). Verify `:host:service:test`,
-   `:samples:fixture-tests:compileTestKotlin`, CI `API contract` job.
-2. **`:host:core` → coroutines, then `:host:service` → coroutine servicers, in one lane**
+1. **Landed before this lane: `contracts/api` grpc-kotlin generation** (`78cfed3`, pin note
+   `875c512`). Java stubs remain; the module also generates coroutine stubs and exports the
+   grpc-kotlin/coroutines dependencies.
+2. **Landed, under final review: `:host:core` → coroutines, then `:host:service` → coroutine servicers**
+   (`38358c0`, `b88d2e8`, follow-ups `8c1332f`, `1ce2b7b`) **in one lane**
    (staging decision above; steps 2 and 3 below are the two commits of that lane).
    `:host:core`: `DriverClient`, `Adb`, `DriverLifecycle`, `AppLifecycle`,
    `DeviceSession`, `SessionJournal`. Update `DriverClientTest` (fake driver) to
@@ -267,10 +288,10 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    dist, then `nativeCompile` + re-record native-image config + `TAP_BIN=<native>
    TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` (Python client is the
    unchanged consumer, so it proves wire compatibility).
-4. **Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** Fixture tests rewritten; docs guide,
+4. **Pending: Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** Fixture tests rewritten; docs guide,
    README, KDoc; `framework-gaps.md` rows "Synchronous API instead of `tapTest`" and
    "No `DeviceBarrier`" moved out only with the test that proves cancellation of a sibling.
-5. **Docs sweep**: `service-api.md` (status mapping unchanged but the servicer description),
+5. **In progress: docs sweep**: `service-api.md` (status mapping unchanged but the servicer description),
    `project-architecture.md` module table and threading notes, `release-engineering.md`
    version lines, `phase-1-progress.md` if any checklist row is touched, this file's status.
 
@@ -279,10 +300,10 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 - **Cancellation vs. the mutation gate.** The protocol's `INDETERMINATE` / never-replay rules
   are about transport loss after acceptance. Coroutine cancellation must map onto the
   existing `CANCEL` frame and never onto closing the socket mid-command; a cancelled
-  `await()` must still let the reader record the terminal response. This needs a regression
-  test in `DriverClientTest` (cancel while awaiting a mutation → `CANCEL` written, terminal
-  frame still consumed, no poison) and a validation scenario next to
-  `PHASE_1_CANCEL_AFTER_MUTATION_OK`.
+  `await()` must still let the reader record the terminal response. JVM regressions now cover
+  this in `DriverClientTest` and through an in-process grpc-kotlin `Execute` call in
+  `TapServiceLifecycleTest` (`CANCEL` written, terminal consumed, no poison). The device
+  validation scenario next to `PHASE_1_CANCEL_AFTER_MUTATION_OK` remains pending.
 - **Blocking reads are not cancellable.** Socket reads and `Process.waitFor` only unblock by
   closing/destroying. Scope cancellation must close the resource, which is the existing
   `close()` behaviour — keep `close()` idempotent and callable from a `finally`.

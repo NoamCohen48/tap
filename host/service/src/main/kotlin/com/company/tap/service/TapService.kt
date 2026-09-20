@@ -11,7 +11,11 @@ import com.company.tap.host.JournalState
 import com.company.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import com.company.tap.host.SessionJournalStore
 import com.company.tap.protocol.Response
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
@@ -38,6 +42,9 @@ class UnknownSessionException(
 class DuplicateAttachException(
     id: String,
 ) : IllegalStateException("Connection $id already has an Attach stream")
+
+/** A new connection attempted after service shutdown began. Maps to FAILED_PRECONDITION. */
+class ServiceClosingException : IllegalStateException("Service is shutting down")
 
 sealed class DeviceStatus {
     object Free : DeviceStatus()
@@ -86,7 +93,7 @@ class Connection internal constructor(
  * The service's view of one open driver session: lifecycle metadata plus how to close it.
  * Production wraps `:host:core` [DeviceSession]; tests substitute a fake through [DeviceOpener].
  */
-interface ServiceDevice {
+internal interface ServiceDevice {
     val serial: String
     val generation: Long
     val autPackage: String
@@ -98,7 +105,7 @@ interface ServiceDevice {
 }
 
 /** Opens one [ServiceDevice]; production delegates to [DeviceSession.open]. */
-interface DeviceOpener {
+internal interface DeviceOpener {
     suspend fun open(config: DeviceSessionConfig): ServiceDevice
 }
 
@@ -107,7 +114,7 @@ private object RealDeviceOpener : DeviceOpener {
 }
 
 /** Production [ServiceDevice]: a live `:host:core` session. */
-class CoreDevice(
+private class CoreDevice(
     val delegate: DeviceSession,
 ) : ServiceDevice {
     override val serial: String get() = delegate.serial
@@ -125,10 +132,10 @@ class CoreDevice(
  * forward, authenticated client, per-package app) plus what the service adds — the owning
  * [connection], the default command timeout and the captured driver log.
  */
-class Session(
+class Session internal constructor(
     val id: String,
     val connection: Connection,
-    val device: ServiceDevice,
+    internal val device: ServiceDevice,
     val defaultTimeoutMs: Long,
     val log: DriverLogBuffer,
 )
@@ -169,13 +176,26 @@ const val SERVICE_SHUTDOWN_SESSION_MS = 10_000L
  */
 class TapService(
     val config: ServiceConfig,
-    private val opener: DeviceOpener = RealDeviceOpener,
-    private val shutdownTotalMs: Long = SERVICE_SHUTDOWN_TOTAL_MS,
-    private val shutdownSessionMs: Long = SERVICE_SHUTDOWN_SESSION_MS,
 ) {
+    internal constructor(
+        config: ServiceConfig,
+        opener: DeviceOpener,
+        shutdownTotalMs: Long = SERVICE_SHUTDOWN_TOTAL_MS,
+        shutdownSessionMs: Long = SERVICE_SHUTDOWN_SESSION_MS,
+    ) : this(config) {
+        this.opener = opener
+        this.shutdownTotalMs = shutdownTotalMs
+        this.shutdownSessionMs = shutdownSessionMs
+    }
+
+    private var opener: DeviceOpener = RealDeviceOpener
+    private var shutdownTotalMs: Long = SERVICE_SHUTDOWN_TOTAL_MS
+    private var shutdownSessionMs: Long = SERVICE_SHUTDOWN_SESSION_MS
     private val lifecycleLock = Any()
     private val connections = HashMap<String, Connection>()
     private val sessions = HashMap<String, Session>()
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var closing = false
 
     /** Serials whose bundled driver this service process already installed. */
     private val driverInstalled = HashSet<String>()
@@ -184,7 +204,10 @@ class TapService(
 
     fun openConnection(name: String): Connection {
         val connection = Connection(UUID.randomUUID().toString(), name)
-        synchronized(lifecycleLock) { connections[connection.id] = connection }
+        synchronized(lifecycleLock) {
+            if (closing) throw ServiceClosingException()
+            connections[connection.id] = connection
+        }
         config.log("connection ${connection.id} opened ($name)")
         return connection
     }
@@ -235,6 +258,13 @@ class TapService(
         id: String,
         reason: String,
         perSessionMs: Long = DEVICE_SESSION_CLOSE_TIMEOUT_MS,
+    ): Int = closeConnectionWithin(id, reason, perSessionMs, totalTimeoutMs = null)
+
+    private suspend fun closeConnectionWithin(
+        id: String,
+        reason: String,
+        perSessionMs: Long,
+        totalTimeoutMs: Long?,
     ): Int =
         withContext(NonCancellable) {
             val snapshot: Snapshot? =
@@ -255,14 +285,23 @@ class TapService(
                     Snapshot(connection, owned, hooks)
                 }
             if (snapshot == null) return@withContext 0
+            // End Attach promptly once close owns the state transition. Device cleanup may take
+            // its full bound and must not keep a dead liveness stream heartbeating meanwhile.
+            snapshot.hooks.forEach { runCatching(it) }
+            val deadlineNanos = totalTimeoutMs?.let(::deadlineAfterMs)
             var closedSessions = 0
-            snapshot.sessions.forEach { session ->
-                val detail = closeDeviceBounded(session.device, perSessionMs, "session ${session.id}")
+            snapshot.sessions.forEachIndexed { index, session ->
+                val sessionsLeft = snapshot.sessions.size - index
+                val timeoutMs =
+                    deadlineNanos?.let { deadline ->
+                        val remainingMs = remainingMs(deadline).coerceAtLeast(1L)
+                        minOf(perSessionMs, (remainingMs / sessionsLeft).coerceAtLeast(1L))
+                    } ?: perSessionMs
+                val detail = closeDeviceBounded(session.device, timeoutMs, "session ${session.id}")
                 if (detail != null) config.log("session ${session.id} close quarantined: $detail")
                 config.log("session ${session.id} closed" + (detail?.let { " (quarantined: $it)" } ?: ""))
                 closedSessions++
             }
-            snapshot.hooks.forEach { runCatching(it) }
             config.log("connection $id closed ($reason): sessions=$closedSessions")
             return@withContext closedSessions
         }
@@ -274,28 +313,38 @@ class TapService(
     )
 
     /**
-     * Bounded device close inside NonCancellable. Returns null on clean cleanup, otherwise the
-     * quarantine detail (failure message or timeout). Never throws: the outer
-     * [withTimeoutOrNull] fires even when the device ignores [timeoutMs], so an uncooperative
-     * cleanup cannot hold the shutdown budget.
+     * Returns null on clean cleanup, otherwise the quarantine detail (failure message or timeout).
+     * The close runs in an independent service scope because the production [DeviceSession.close]
+     * is deliberately NonCancellable. Merely wrapping it in `withTimeoutOrNull` would therefore
+     * not bound this caller. On a service-side timeout the core close keeps running under its own
+     * deadline so it can still journal quarantine and release the lease, while shutdown proceeds
+     * to later sessions.
      */
     private suspend fun closeDeviceBounded(
         device: ServiceDevice,
         timeoutMs: Long,
         label: String,
     ): String? {
-        var completed = false
-        val detail =
-            withTimeoutOrNull(timeoutMs) {
-                runCatching { device.close(timeoutMs) }.exceptionOrNull()?.message.also { completed = true }
-            }
-        if (!completed) {
-            val timeoutDetail = "SESSION_CLEANUP_TIMEOUT: $label exceeded ${timeoutMs}ms; device quarantined"
+        val close = cleanupScope.async { runCatching { device.close(timeoutMs) } }
+        val outcome = withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) { close.await() }
+        if (outcome == null) {
+            val timeoutDetail = "SESSION_CLEANUP_TIMEOUT: $label exceeded ${timeoutMs}ms; cleanup continues under its core deadline"
             config.log(timeoutDetail)
+            close.invokeOnCompletion { error ->
+                if (error != null) config.log("$label eventual cleanup failed: ${error.message}")
+            }
             return timeoutDetail
         }
-        return detail
+        return outcome.exceptionOrNull()?.message
     }
+
+    private fun deadlineAfterMs(timeoutMs: Long): Long {
+        val timeoutNanos = timeoutMs.coerceAtLeast(0L).coerceAtMost(Long.MAX_VALUE / 1_000_000L) * 1_000_000L
+        return System.nanoTime().let { now -> if (Long.MAX_VALUE - now < timeoutNanos) Long.MAX_VALUE else now + timeoutNanos }
+    }
+
+    private fun remainingMs(deadlineNanos: Long): Long =
+        ((deadlineNanos - System.nanoTime()).coerceAtLeast(0L) / 1_000_000L)
 
     // ---- devices -----------------------------------------------------------------------------
 
@@ -455,22 +504,30 @@ class TapService(
      */
     suspend fun close(timeoutMs: Long = shutdownTotalMs) {
         withContext(NonCancellable) {
-            val deadlineNanos = System.nanoTime() + timeoutMs * 1_000_000L
-            val ids = synchronized(lifecycleLock) { connections.keys.toList() }
-            ids.forEach { id ->
-                val remainingMs = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(0L)
+            val deadlineNanos = deadlineAfterMs(timeoutMs)
+            val ids =
+                synchronized(lifecycleLock) {
+                    closing = true
+                    connections.keys.toList()
+                }
+            ids.forEachIndexed { index, id ->
+                val remainingConnections = ids.size - index
+                val remainingMs = remainingMs(deadlineNanos)
                 if (remainingMs <= 0L) {
                     config.log("service shutdown budget ${timeoutMs}ms exceeded; connection $id may remain")
-                    return@forEach
+                    return@forEachIndexed
                 }
-                val perSessionMs = minOf(shutdownSessionMs, remainingMs)
-                val finished =
-                    withTimeoutOrNull(remainingMs) {
-                        runCatching { closeConnection(id, "service shutdown", perSessionMs) }
-                            .onFailure { config.log("connection $id shutdown failed: ${it.message}") }
-                        true
-                    }
-                if (finished == null) config.log("service shutdown budget exceeded while closing connection $id")
+                // Reserve a share for every later connection. closeConnection applies the same
+                // rule to its sessions, so one stuck cleanup never consumes all remaining time.
+                val connectionBudgetMs = (remainingMs / remainingConnections).coerceAtLeast(1L)
+                runCatching {
+                    closeConnectionWithin(
+                        id,
+                        "service shutdown",
+                        perSessionMs = minOf(shutdownSessionMs, connectionBudgetMs),
+                        totalTimeoutMs = connectionBudgetMs,
+                    )
+                }.onFailure { config.log("connection $id shutdown failed: ${it.message}") }
             }
         }
     }
