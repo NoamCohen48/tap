@@ -1,8 +1,9 @@
 # Multi-device tests
 
 The service keeps a **machine-wide pool** of every device ADB can see (optionally restricted with
-`tap serve --serials a,b`). Test processes do not pick devices; they ask for **roles** and the
-pool leases devices to them. Leases live in `~/.tap/sessions`, so two processes — a Gradle test
+`tap serve --serials a,b`). The service knows nothing but **serials**: a run leases some,
+all at once or not at all. Naming devices — *roles* such as `sender` and `receiver` — is the
+client's job; the JUnit extension and the pytest plugin map roles to serials before asking. Leases live in `~/.tap/sessions`, so two processes — a Gradle test
 JVM and a pytest run, say — never share a device, and a crashed process's devices are reclaimed
 when its run stream closes.
 
@@ -43,19 +44,27 @@ when its run stream closes.
         receiver.wait(text("hi"), timeout=20).visible()
     ```
 
-Acquisition is **all-or-none**: the test either gets every role or waits (up to
-`tap.acquireTimeoutSeconds` / `tap_acquire_timeout`), so two tests each holding one of two
-devices can never deadlock. Requests are queued fairly; a request that cannot be satisfied by
-the pool at all (more roles than devices) fails fast in Kotlin and skips the test in pytest.
+Acquisition is **all-or-none**: the test either leases every serial it asked for or waits (up
+to `tap.acquireTimeoutSeconds` / `tap_acquire_timeout`) until all of them are free at the same
+time, so two tests each holding one of two devices can never deadlock. A test that needs more
+devices than there are is skipped (a JUnit assumption failure in Kotlin, `pytest.skip` in
+Python).
 
-## Pinning and constraints
+## Which serial plays which role
 
-- `tap.serials=a,b` / `TAP_SERIALS` limits the process to those devices and pins roles to them
-  in declaration order.
+Decided by the client, in this order:
+
 - `tap.device.<role>=<serial>` pins one role (JUnit).
-- From the SDK, `run.acquire(mapOf("phone" to DeviceConstraints(minApi = 33, emulator = false)))`
-  takes per-role constraints: `serial`, `minApi`, `maxApi`, `emulator`, `modelContains`.
-  Python: `run.acquire({"phone": {"min_api": 33, "emulator": False}})`.
+- `tap.serials=a,b` / `TAP_SERIALS` limits the process to those devices; roles take them in
+  declaration order.
+- With nothing configured, the client asks the service for its inventory and takes devices that
+  are online and not quarantined — free ones first, then ones another run holds (the lease
+  call then waits for them).
+
+From the SDK you do the same by hand: `run.freeSerials()` / `run.free_serials()` to look, then
+`run.acquire(listOf("a", "b"))` / `run.acquire(["a", "b"], timeout=60)` to lease. `DeviceFacts`
+in the inventory (`api_level`, `model`, `emulator`, …) is there so a client can choose; the
+service never filters on it.
 
 ## Cross-device waits
 

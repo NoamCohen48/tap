@@ -3,7 +3,7 @@
 Configuration (ini option, or environment variable):
 
     tap_aut       / TAP_AUT        AUT package (required)
-    tap_serials   / TAP_SERIALS    comma-separated serials to use; roles are pinned to them in
+    tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
                                    order. Unset = any device in the pool.
     tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
     tap_service   / TAP_SERVICE    host:port of a running service (default: discover/auto-start)
@@ -131,14 +131,13 @@ def _open_all(run: Run, config: TapConfig, assignment: dict[str, str]) -> dict[s
 @pytest.fixture
 def tap_devices(request: pytest.FixtureRequest, tap_run: Run, tap_config: TapConfig) -> dict[str, Device]:
     roles = _declared_roles(request.node)
-    if tap_config.serials and len(roles) > len(tap_config.serials):
-        pytest.skip(f"{request.node.name} needs {len(roles)} devices but tap_serials lists {tap_config.serials}")
-    constraints = {
-        role: ({"serial": tap_config.serials[i]} if tap_config.serials else {})
-        for i, role in enumerate(roles)
-    }
-    facts = tap_run.acquire(constraints, tap_config.acquire_timeout)
-    assignment = {role: facts[role].serial for role in roles}
+    # Roles → serials is decided here, in declaration order; the pool only leases serials.
+    available = tap_config.serials or tap_run.free_serials()
+    if len(roles) > len(available):
+        where = f"tap_serials lists {tap_config.serials}" if tap_config.serials else f"the pool has {available}"
+        pytest.skip(f"{request.node.name} needs {len(roles)} devices but {where}")
+    assignment = dict(zip(roles, available))
+    tap_run.acquire(list(assignment.values()), tap_config.acquire_timeout)
     try:
         devices = _open_all(tap_run, tap_config, assignment)
     except BaseException:

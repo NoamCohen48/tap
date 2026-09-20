@@ -4,7 +4,7 @@
 
     service = Service()                                  # discovers or starts `tap serve`
     with service.open_run("smoke") as run:
-        run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)
+        run.acquire(["emulator-5554"], timeout=60)
         with run.open_device("emulator-5554", "com.example.app") as device:
             device.app().cold_launch()
             device.element(res("login")).tap()

@@ -34,10 +34,11 @@ the Kotlin `Device`/`Element` and the Python `Device`/`Element` build the same p
 
 - A **run** is a test process's connection to the service. It stays attached over a stream;
   if the process dies, the service closes the run's sessions and frees its devices.
-- A run **acquires** devices by **role** (`"device"`, or `"sender"`/`"receiver"`), each role
-  with optional constraints (serial, API range, emulator or not, model). Acquisition is
-  all-or-none and queued: you get every role or you wait, never half a set. Devices are
-  leased machine-wide, so two processes never share one.
+- A run **acquires** devices by **serial**, all-or-none: you lease every serial you asked for
+  or you wait, never half a set. Devices are leased machine-wide, so two processes never share
+  one. **Roles** (`"device"`, or `"sender"`/`"receiver"`) exist only in the clients: the JUnit
+  extension and the pytest plugin decide which serial plays which role, then ask for the
+  serials.
 - A **session** is one driver connection to one device for one app under test. The JUnit
   extension and the pytest plugin open a session per role before each test and close it after
   — a session never outlives a test. Sessions carry a *generation*: after any loss or restart

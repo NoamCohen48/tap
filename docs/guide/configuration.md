@@ -45,10 +45,10 @@ name upper-cased and dotted → underscored (`tap.autPackage` → `TAP_AUTPACKAG
 | Property | Meaning | Default |
 |---|---|---|
 | `tap.autPackage` (or `tap.aut`) | the application under test | **required** |
-| `tap.serials` | comma-separated serials to use; roles are pinned to them in order | any pool device |
+| `tap.serials` | comma-separated serials to use; roles map to them in order | any pool device |
 | `tap.device.<role>` | pin one role to a serial (must be in `tap.serials` when that is set) | — |
 | `tap.artifactsDir` | failure artifacts root | `build/tap-artifacts` |
-| `tap.acquireTimeoutSeconds` | all-or-none role acquisition timeout | `300` |
+| `tap.acquireTimeoutSeconds` | all-or-none device lease timeout | `300` |
 | `tap.service` | `host:port` of a running service | discover / auto-start |
 | `tap.bin` | the `tap` executable to auto-start | `TAP_BIN`, then `PATH` |
 
@@ -78,7 +78,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | ini | Environment | Meaning | Default |
 |---|---|---|---|
 | `tap_aut` | `TAP_AUT` | the application under test | **required** |
-| `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles pinned in order | any pool device |
+| `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order | any pool device |
 | `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
 | `tap_service` | `TAP_SERVICE` | `host:port` of a running service | discover / auto-start |
 | `tap_acquire_timeout` | — | seconds to wait for devices | `120` |

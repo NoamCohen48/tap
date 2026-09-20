@@ -205,15 +205,22 @@ class Run:
 
         threading.Thread(target=pump, name=f"tap-run-{self.id[:8]}", daemon=True).start()
 
-    def acquire(self, roles: dict[str, dict], timeout: float) -> dict[str, DeviceFacts]:
-        """All-or-none lease of one device per role. Constraint keys: serial, min_api, max_api,
-        emulator, model_contains."""
-        request = pb.AcquireRequest(run_id=self.id, timeout_ms=int(timeout * 1000))
-        for role, constraints in roles.items():
-            request.roles.append(pb.RoleRequest(role=role, constraints=pb.DeviceConstraints(**constraints)))
+    def acquire(self, serials: list[str], timeout: float) -> list[DeviceFacts]:
+        """Lease every one of ``serials`` for this run, all or none, waiting up to ``timeout``
+        seconds for them to be free at the same time. Returns their facts in request order.
+        The pool only knows serials; naming devices (roles) is up to the caller — see
+        :meth:`free_serials` to pick some."""
+        request = pb.AcquireRequest(run_id=self.id, serials=list(serials), timeout_ms=int(timeout * 1000))
         with mapped_errors():
             response = self.service.pool.Acquire(request, timeout=timeout + 30)
-        return {a.role: DeviceFacts.of(a.device) for a in response.assignments}
+        return [DeviceFacts.of(d) for d in response.devices]
+
+    def free_serials(self) -> list[str]:
+        """Serials worth acquiring when none are configured: online, not quarantined, free ones
+        first, then ones leased to another run (``acquire`` then waits for them)."""
+        devices = [d for d in self.service.inventory() if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)]
+        devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
+        return [d.facts.serial for d in devices]
 
     def release(self, serials: list[str] | None = None) -> int:
         """Release the given serials (default: every device of this run); returns how many were released."""

@@ -80,6 +80,7 @@ tap/
 +-- README.md                    build/run instructions
 +-- THIRD_PARTY_NOTICES.md       copied/adapted upstream code (currently none)
 +-- .docs/                       design, plan, contract, progress, audits (internal)
++-- archive/                     code removed from the product but kept for reference; never on a build path (pool-roles/: the service-side role/constraint matcher)
 +-- docs/, mkdocs.yml            public documentation site: guide/ + reference/ (Kotlin via Dokka,
 |                                Python via mkdocstrings, gRPC via protoc-gen-doc; generated files are
 |                                ignored); scripts/build-docs.sh builds the site and a Markdown bundle
@@ -145,7 +146,7 @@ tap/
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
 |   |   +-- src/main/kotlin/com/company/tap/service/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
-|   |   |   +-- TapService.kt        runs, machine-wide pool (inventory/acquire/release), managed sessions + AppLifecycle per package, execute with transport-loss-as-data
+|   |   |   +-- TapService.kt        runs, machine-wide pool (inventory/acquire(serials)/release), managed sessions + AppLifecycle per package, execute with transport-loss-as-data
 |   |   |   +-- Servicers.kt         gRPC servicers for Run/Pool/Session/App; status mapping; off-thread Execute so cancel reaches the driver
 |   |   |   +-- Conversions.kt       proto <-> protocol models (enums by name, selectors, commands, results)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
@@ -160,7 +161,7 @@ tap/
 |   +-- kotlin/
 |   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package com.company.tap.sdk)
 |   |   |   +-- src/main/kotlin/com/company/tap/sdk/
-|   |   |       +-- TapClient.kt         TapClient (channel, stubs, openRun), Run (attach/acquire/release/openDevice), DeviceConstraints, ServiceDiscovery (descriptor, autostart)
+|   |   |       +-- TapClient.kt         TapClient (channel, stubs, openRun), Run (attach/acquire(serials)/freeSerials/release/openDevice), ServiceDiscovery (descriptor, autostart)
 |   |   |       +-- Device.kt            Device.open(run, serial, …), execute/element/await/app/info/pressKey/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll/scrollUntil, first/at/descendant/child
@@ -445,7 +446,7 @@ process observation (`coldLaunch` returns the new `ProcessObservation`; `forceSt
 `tap serve` exposes `:host:core` over loopback gRPC (`contracts/api/proto/tap.proto`,
 package `tap.v1`) so every client — Kotlin and Python alike — reuses the same ADB control
 plane, journals, leases, driver lifecycle and app operations. It owns a machine-wide pool (inventory from `adb devices` +
-`DEVICE_INFO` facts, all-or-none acquisition with per-role constraints, quarantine read from
+`DEVICE_INFO` facts, all-or-none acquisition by serial — roles and device constraints live in the clients, see `archive/pool-roles/` — quarantine read from
 the journal), proxies `Execute` to the session's `DriverClient` (driver failures and transport
 loss are returned as `CommandResult` data, never gRPC errors; gRPC cancellation forwards a
 protocol `CANCEL`), and closes everything a run holds when the run's `Attach` stream drops.
@@ -461,7 +462,7 @@ lifecycle code; the language-facing shape is the same in Kotlin and Python.
 ```kotlin
 val client = TapClient()                      // discovers or starts `tap serve`
 val run = client.openRun("checkout")          // Attach stream = liveness
-val serial = run.acquire(mapOf("device" to DeviceConstraints.ANY)).getValue("device").serial
+val serial = run.freeSerials().first(); run.acquire(listOf(serial))   // the pool leases serials; roles are client-side
 val device = run.openDevice(serial, autPackage)
 val app = device.app()                        // autPackage by default
 app.install(apk); app.coldLaunch(".MainActivity")
@@ -509,11 +510,11 @@ class CheckoutTest {
 
 `TapExtension` (`BeforeEachCallback`, `AfterEachCallback`, `ParameterResolver`,
 `TestExecutionExceptionHandler`) collects roles from `@TapDevices` (method or class),
-`@TapDevice` parameters, and bare `Device` parameters; skips the test (assumption) when
-`tap.serials` is set and lists fewer devices than roles; acquires all roles from the
-service pool through the JVM-wide `TapRun` (one `TapClient` + `Run`, closed by a shutdown
-hook) with `tap.acquireTimeoutSeconds` — roles pinned by `tap.device.<role>`, then the
-`tap.serials` order, otherwise any free device; opens every session in parallel; stores them
+`@TapDevice` parameters, and bare `Device` parameters; maps roles to serials itself (pinned
+by `tap.device.<role>`, then the `tap.serials` order, otherwise the pool's inventory, free
+devices first); skips the test (assumption) when fewer devices exist than roles; leases the
+serials all-or-none through the JVM-wide `TapRun` (one `TapClient` + `Run`, closed by a
+shutdown hook) with `tap.acquireTimeoutSeconds`; opens every session in parallel; stores them
 in a per-method namespace; on a test failure captures `<artifactsDir>/<class>/<method>/
 <role>-<serial>.png|.xml|.device-info.txt|.driver.log` plus `failure.txt` while sessions are
 live; then closes sessions and releases the leases. Cleanup failures are attached to the

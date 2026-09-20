@@ -69,7 +69,7 @@ read from system properties or environment variables:
 | Property | Env | Meaning |
 |---|---|---|
 | `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
-| `tap.serials` | `TAP_SERIALS` | comma-separated serials to pin roles to, in order (default: any free device in the pool) |
+| `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order (default: any free device in the pool) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
 | `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: `<state dir>/service.json`, else auto-start) |
 | `tap.bin` | `TAP_BIN` | the `tap` executable to auto-start (default: `tap` on `PATH`) |

@@ -40,7 +40,7 @@ def test_buys_an_item(tap_device):
   mutation to guess its way out.
 - **Failure artifacts for free.** Screenshot, accessibility hierarchy, device info and the
   driver log per failed test, captured while the session is still live.
-- **Multi-device out of the box.** A machine-wide pool with leases; tests declare named roles
+- **Multi-device out of the box.** A machine-wide pool of serials with leases; tests declare named roles
   (`@TapDevices("sender", "receiver")`) and get them all-or-none, across processes and
   languages.
 - **Survives the app.** The driver lives outside the app under test: force-stop, clear data
@@ -58,7 +58,7 @@ def test_buys_an_item(tap_device):
 | [Selectors](guide/selectors.md) | the selector DSL, scoping rules, what is deliberately not supported |
 | [Actions and waits](guide/actions-and-waits.md) | taps, text, gestures, scrolling, every kind of wait |
 | [App lifecycle and sync](guide/app-lifecycle.md) | launch/cold launch, clear data, permissions, app-owned idle |
-| [Multi-device tests](guide/multi-device.md) | roles, constraints, the pool |
+| [Multi-device tests](guide/multi-device.md) | roles, serials, the pool |
 | [Configuration](guide/configuration.md) | properties, environment, the `tap` CLI |
 | [Errors and artifacts](guide/errors.md) | the error codes, what they mean, what to look at |
 | [Coming from Maestro or Appium](guide/coming-from.md) | mapping table |

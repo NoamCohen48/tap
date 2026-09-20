@@ -510,18 +510,16 @@ class DeviceFacts(_message.Message):
     def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ...) -> None: ...
 
 class PoolDevice(_message.Message):
-    __slots__ = ("facts", "state", "leased_by_run", "leased_role", "quarantine_reason")
+    __slots__ = ("facts", "state", "leased_by_run", "quarantine_reason")
     FACTS_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     LEASED_BY_RUN_FIELD_NUMBER: _ClassVar[int]
-    LEASED_ROLE_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
     facts: DeviceFacts
     state: DeviceState
     leased_by_run: str
-    leased_role: str
     quarantine_reason: str
-    def __init__(self, facts: _Optional[_Union[DeviceFacts, _Mapping]] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., leased_role: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    def __init__(self, facts: _Optional[_Union[DeviceFacts, _Mapping]] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
 
 class InventoryRequest(_message.Message):
     __slots__ = ()
@@ -533,51 +531,21 @@ class InventoryResponse(_message.Message):
     devices: _containers.RepeatedCompositeFieldContainer[PoolDevice]
     def __init__(self, devices: _Optional[_Iterable[_Union[PoolDevice, _Mapping]]] = ...) -> None: ...
 
-class DeviceConstraints(_message.Message):
-    __slots__ = ("serial", "min_api", "max_api", "emulator", "model_contains")
-    SERIAL_FIELD_NUMBER: _ClassVar[int]
-    MIN_API_FIELD_NUMBER: _ClassVar[int]
-    MAX_API_FIELD_NUMBER: _ClassVar[int]
-    EMULATOR_FIELD_NUMBER: _ClassVar[int]
-    MODEL_CONTAINS_FIELD_NUMBER: _ClassVar[int]
-    serial: str
-    min_api: int
-    max_api: int
-    emulator: bool
-    model_contains: str
-    def __init__(self, serial: _Optional[str] = ..., min_api: _Optional[int] = ..., max_api: _Optional[int] = ..., emulator: _Optional[bool] = ..., model_contains: _Optional[str] = ...) -> None: ...
-
-class RoleRequest(_message.Message):
-    __slots__ = ("role", "constraints")
-    ROLE_FIELD_NUMBER: _ClassVar[int]
-    CONSTRAINTS_FIELD_NUMBER: _ClassVar[int]
-    role: str
-    constraints: DeviceConstraints
-    def __init__(self, role: _Optional[str] = ..., constraints: _Optional[_Union[DeviceConstraints, _Mapping]] = ...) -> None: ...
-
 class AcquireRequest(_message.Message):
-    __slots__ = ("run_id", "roles", "timeout_ms")
+    __slots__ = ("run_id", "serials", "timeout_ms")
     RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    ROLES_FIELD_NUMBER: _ClassVar[int]
+    SERIALS_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     run_id: str
-    roles: _containers.RepeatedCompositeFieldContainer[RoleRequest]
+    serials: _containers.RepeatedScalarFieldContainer[str]
     timeout_ms: int
-    def __init__(self, run_id: _Optional[str] = ..., roles: _Optional[_Iterable[_Union[RoleRequest, _Mapping]]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
-
-class Assignment(_message.Message):
-    __slots__ = ("role", "device")
-    ROLE_FIELD_NUMBER: _ClassVar[int]
-    DEVICE_FIELD_NUMBER: _ClassVar[int]
-    role: str
-    device: DeviceFacts
-    def __init__(self, role: _Optional[str] = ..., device: _Optional[_Union[DeviceFacts, _Mapping]] = ...) -> None: ...
+    def __init__(self, run_id: _Optional[str] = ..., serials: _Optional[_Iterable[str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
 
 class AcquireResponse(_message.Message):
-    __slots__ = ("assignments",)
-    ASSIGNMENTS_FIELD_NUMBER: _ClassVar[int]
-    assignments: _containers.RepeatedCompositeFieldContainer[Assignment]
-    def __init__(self, assignments: _Optional[_Iterable[_Union[Assignment, _Mapping]]] = ...) -> None: ...
+    __slots__ = ("devices",)
+    DEVICES_FIELD_NUMBER: _ClassVar[int]
+    devices: _containers.RepeatedCompositeFieldContainer[DeviceFacts]
+    def __init__(self, devices: _Optional[_Iterable[_Union[DeviceFacts, _Mapping]]] = ...) -> None: ...
 
 class ReleaseRequest(_message.Message):
     __slots__ = ("run_id", "serials")

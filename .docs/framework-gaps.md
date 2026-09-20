@@ -61,7 +61,7 @@ the CI pilot.
 | `WaitOptions.stableFor` | Host-polled waits (`enabled`, `textEquals`, `count`, …) have `timeout` and `pollInterval` only; no "condition held for N ms". | Small. |
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
-| Device constraints | The service pool matches serial, API range, emulator/physical and model substring; no locale, orientation or capability constraints, and the JUnit extension exposes only serial pinning (`DeviceConstraints` is available from the SDK). | Extend `DeviceConstraints` + `Facts`; add a `@TapDevice(minApi = …)` style annotation. |
+| Device constraints | The service leases by serial only (decided 2026-09-20: the service stays simple; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier service-side matcher is archived under `archive/pool-roles/`. | Client-side selection over `DeviceFacts` from `Inventory`; a `@TapDevice(minApi = …)` style annotation. |
 | Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; `DeviceSession`, `AppLifecycle`, `TapService`, the Kotlin `Device`/`App`/`Element` and `TapExtension` are exercised only on real devices via the sample suites. Failure paths (install failure, forward conflict, pool timeout, artifact capture failure) have no JVM tests. | Highest-value testing gap; a fake `Adb` + the existing `FakeDriverServer` would cover most of it. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
@@ -169,8 +169,8 @@ upgrade/rollback procedure, run-time client↔service version skew check.
 
 Implemented (2026-09-19): the host session service (`:host:service`, `service-api.md`),
 its native image, and the Python client + pytest plugin (`clients/python/`), with the sample suite
-passing on API 29 and API 34 through the service. The pool has per-role constraints
-(serial, API range, emulator, model) and immediate release on client death. The Kotlin
+passing on API 29 and API 34 through the service. The pool leases by serial (roles are
+client-side since 2026-09-20) and releases immediately on client death. The Kotlin
 SDK/JUnit extension is a gRPC client of the same service (2026-09-19): one pool serves both
 languages and nothing under `host/` depends on `clients/`. Remaining:
 

@@ -10,7 +10,6 @@ import com.company.tap.api.v1.AppInstallRequest
 import com.company.tap.api.v1.AppLaunchRequest
 import com.company.tap.api.v1.AppRequest
 import com.company.tap.api.v1.AppServiceGrpc
-import com.company.tap.api.v1.Assignment
 import com.company.tap.api.v1.AttachRequest
 import com.company.tap.api.v1.CloseRunRequest
 import com.company.tap.api.v1.CloseRunResponse
@@ -158,11 +157,8 @@ class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServic
 
     override fun acquire(request: AcquireRequest, observer: StreamObserver<AcquireResponse>) = reply(observer) {
         val run = service.run(request.runId)
-        val roles = request.rolesList.map { it.role to it.constraints }
-        val assignment = service.acquire(run, roles, if (request.timeoutMs > 0) request.timeoutMs else 300_000)
-        AcquireResponse.newBuilder().addAllAssignments(
-            assignment.map { (role, facts) -> Assignment.newBuilder().setRole(role).setDevice(facts(facts)).build() },
-        ).build()
+        val leased = service.acquire(run, request.serialsList, if (request.timeoutMs > 0) request.timeoutMs else 300_000)
+        AcquireResponse.newBuilder().addAllDevices(leased.map(::facts)).build()
     }
 
     override fun release(request: ReleaseRequest, observer: StreamObserver<ReleaseResponse>) = reply(observer) {
@@ -176,7 +172,6 @@ class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServic
             is DeviceStatus.Leased -> {
                 state = DeviceState.DEVICE_LEASED
                 leasedByRun = status.runId
-                leasedRole = status.role
             }
             is DeviceStatus.Quarantined -> {
                 state = DeviceState.DEVICE_QUARANTINED

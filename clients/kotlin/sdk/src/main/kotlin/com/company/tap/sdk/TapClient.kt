@@ -5,6 +5,7 @@ import com.company.tap.api.v1.AppServiceGrpc
 import com.company.tap.api.v1.AttachRequest
 import com.company.tap.api.v1.CloseRunRequest
 import com.company.tap.api.v1.DeviceFacts
+import com.company.tap.api.v1.DeviceState
 import com.company.tap.api.v1.InfoRequest
 import com.company.tap.api.v1.InfoResponse
 import com.company.tap.api.v1.InventoryRequest
@@ -12,7 +13,6 @@ import com.company.tap.api.v1.OpenRunRequest
 import com.company.tap.api.v1.PoolDevice
 import com.company.tap.api.v1.PoolServiceGrpc
 import com.company.tap.api.v1.ReleaseRequest
-import com.company.tap.api.v1.RoleRequest
 import com.company.tap.api.v1.RunEvent
 import com.company.tap.api.v1.RunServiceGrpc
 import com.company.tap.api.v1.SessionServiceGrpc
@@ -29,33 +29,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import com.company.tap.api.v1.DeviceConstraints as DeviceConstraintsProto
-
-/** Per-role pool constraints for [Run.acquire]. Null means unconstrained. */
-data class DeviceConstraints(
-    val serial: String? = null,
-    val minApi: Int? = null,
-    val maxApi: Int? = null,
-    val emulator: Boolean? = null,
-    val modelContains: String? = null,
-) {
-    internal fun toProto(): DeviceConstraintsProto {
-        // Not `apply`: inside the builder scope the unqualified field names resolve to the
-        // builder's getters, which would set every optional field to its default.
-        val b = DeviceConstraintsProto.newBuilder()
-        serial?.let(b::setSerial)
-        minApi?.let(b::setMinApi)
-        maxApi?.let(b::setMaxApi)
-        emulator?.let(b::setEmulator)
-        modelContains?.let(b::setModelContains)
-        return b.build()
-    }
-
-    companion object {
-        val ANY = DeviceConstraints()
-        fun serial(serial: String) = DeviceConstraints(serial = serial)
-    }
-}
 
 /**
  * Converts gRPC failures into the client's exceptions. Driver outcomes never arrive this way
@@ -146,17 +119,26 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
         failure?.let { cause -> mapped<Unit> { throw cause } }
     }
 
-    /** All-or-none lease of one device per role, queued until [timeout]. */
-    fun acquire(roles: Map<String, DeviceConstraints>, timeout: Duration = 300.seconds): Map<String, DeviceFacts> {
-        val request = AcquireRequest.newBuilder().setRunId(id).setTimeoutMs(timeout.inWholeMilliseconds)
-        roles.forEach { (role, constraints) ->
-            request.addRoles(RoleRequest.newBuilder().setRole(role).setConstraints(constraints.toProto()))
-        }
+    /**
+     * Leases every one of [serials] for this run, all or none, waiting up to [timeout] for them
+     * to be free at the same time. Returns their facts in request order. The pool only knows
+     * serials; naming devices (roles) is up to the caller — see [freeSerials] to pick some.
+     */
+    fun acquire(serials: Collection<String>, timeout: Duration = 300.seconds): List<DeviceFacts> {
+        val request = AcquireRequest.newBuilder().setRunId(id).setTimeoutMs(timeout.inWholeMilliseconds).addAllSerials(serials)
         return mapped {
-            client.pool.withDeadlineAfter(timeout.inWholeSeconds + 30, TimeUnit.SECONDS).acquire(request.build())
-                .assignmentsList.associate { it.role to it.device }
+            client.pool.withDeadlineAfter(timeout.inWholeSeconds + 30, TimeUnit.SECONDS).acquire(request.build()).devicesList
         }
     }
+
+    /**
+     * Serials worth asking [acquire] for when none are configured: online, not quarantined, free
+     * ones first, then ones leased to another run (acquire then waits for them).
+     */
+    fun freeSerials(): List<String> = client.inventory()
+        .filter { it.state == DeviceState.DEVICE_FREE || it.state == DeviceState.DEVICE_LEASED }
+        .sortedBy { it.state != DeviceState.DEVICE_FREE }
+        .map { it.facts.serial }
 
     /** Releases [serials] (empty = everything this run holds). Sessions on them are closed first. */
     fun release(serials: Collection<String> = emptyList()): Int = mapped {

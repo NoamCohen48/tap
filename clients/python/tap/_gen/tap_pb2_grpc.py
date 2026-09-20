@@ -254,10 +254,10 @@ class RunService:
 
 class PoolServiceStub:
     """---------------------------------------------------------------------------------------------
-    Pool: one machine-wide pool of devices with all-or-none role acquisition.
+    Pool: one machine-wide pool of devices leased by serial.
     ---------------------------------------------------------------------------------------------
 
-    One machine-wide pool of devices with all-or-none role acquisition.
+    One machine-wide pool of devices, leased by serial, all-or-none per call.
     """
 
     def __init__(self, channel):
@@ -285,10 +285,10 @@ class PoolServiceStub:
 
 class PoolServiceServicer:
     """---------------------------------------------------------------------------------------------
-    Pool: one machine-wide pool of devices with all-or-none role acquisition.
+    Pool: one machine-wide pool of devices leased by serial.
     ---------------------------------------------------------------------------------------------
 
-    One machine-wide pool of devices with all-or-none role acquisition.
+    One machine-wide pool of devices, leased by serial, all-or-none per call.
     """
 
     def Inventory(self, request, context):
@@ -299,8 +299,8 @@ class PoolServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Acquire(self, request, context):
-        """Blocks until every role can be satisfied at once or the deadline passes
-        (DEADLINE_EXCEEDED); partial assignments are never handed out.
+        """Blocks until every requested serial is free at once or the deadline passes
+        (DEADLINE_EXCEEDED); partial leases are never handed out.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -341,10 +341,10 @@ def add_PoolServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class PoolService:
     """---------------------------------------------------------------------------------------------
-    Pool: one machine-wide pool of devices with all-or-none role acquisition.
+    Pool: one machine-wide pool of devices leased by serial.
     ---------------------------------------------------------------------------------------------
 
-    One machine-wide pool of devices with all-or-none role acquisition.
+    One machine-wide pool of devices, leased by serial, all-or-none per call.
     """
 
     @staticmethod

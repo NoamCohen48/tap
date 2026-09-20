@@ -1,6 +1,5 @@
 package com.company.tap.service
 
-import com.company.tap.api.v1.DeviceConstraints
 import com.company.tap.host.Adb
 import com.company.tap.host.AppLifecycle
 import com.company.tap.host.CommandTransportException
@@ -11,7 +10,6 @@ import com.company.tap.host.JournalState
 import com.company.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import com.company.tap.host.SessionJournalStore
 import com.company.tap.protocol.Response
-import com.google.protobuf.TextFormat
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -33,12 +31,12 @@ class UnknownRunException(id: String) : NoSuchElementException("Unknown run $id"
 class UnknownSessionException(id: String) : NoSuchElementException("Unknown session $id")
 class AcquireTimeoutException(message: String) : RuntimeException(message)
 
-/** Facts gathered once per serial; the emulator flag and API level drive constraints. */
+/** Static facts gathered once per serial, for clients choosing devices from the inventory. */
 data class Facts(val serial: String, val apiLevel: Int, val manufacturer: String, val model: String, val emulator: Boolean)
 
 sealed class DeviceStatus {
     object Free : DeviceStatus()
-    data class Leased(val runId: String, val role: String) : DeviceStatus()
+    data class Leased(val runId: String) : DeviceStatus()
     data class Quarantined(val reason: String) : DeviceStatus()
 }
 
@@ -46,8 +44,7 @@ data class PoolEntry(val facts: Facts, val status: DeviceStatus)
 
 class Run(val id: String, val name: String) {
     val sessions = ConcurrentHashMap<String, ManagedSession>()
-    /** serial → role */
-    val leases = ConcurrentHashMap<String, String>()
+    val leases: MutableSet<String> = ConcurrentHashMap.newKeySet()
     @Volatile
     var closed = false
     /** Invoked once when the run closes, so an Attach stream can complete. */
@@ -129,34 +126,39 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     }
 
     /**
-     * All-or-none assignment of [roles] (role → constraints) for [run]. Waits until every role
-     * can be satisfied simultaneously or the deadline passes.
+     * Leases every one of [serials] for [run], all or none. Waits until all of them are free at
+     * once or the deadline passes. Which device plays which part in a test is the client's
+     * concern; the pool only knows serials.
      */
-    fun acquire(run: Run, roles: List<Pair<String, DeviceConstraints>>, timeoutMs: Long): Map<String, Facts> {
-        require(roles.isNotEmpty()) { "at least one role is required" }
-        require(roles.map { it.first }.distinct().size == roles.size) { "roles must be unique: ${roles.map { it.first }}" }
+    fun acquire(run: Run, serials: List<String>, timeoutMs: Long): List<Facts> {
+        require(serials.isNotEmpty()) { "at least one serial is required" }
+        require(serials.distinct().size == serials.size) { "serials must be unique: $serials" }
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0))
-        var lastReason = ""
         while (true) {
-            val candidates = inventory().filter { it.status == DeviceStatus.Free }.map { it.facts }
+            val entries = inventory().associateBy { it.facts.serial }
             poolLock.withLock {
                 if (run.closed) throw UnknownRunException(run.id)
-                val assignment = assign(roles, candidates.filter { it.serial !in leases })
-                if (assignment != null) {
-                    assignment.forEach { (role, device) ->
-                        val lease = DeviceStatus.Leased(run.id, role)
-                        leases[device.serial] = lease
-                        run.leases[device.serial] = role
+                val free = serials.filter { entries[it]?.status == DeviceStatus.Free && it !in leases }
+                if (free.size == serials.size) {
+                    serials.forEach { serial ->
+                        leases[serial] = DeviceStatus.Leased(run.id)
+                        run.leases += serial
                     }
-                    config.log("run ${run.id} acquired ${assignment.mapValues { it.value.serial }}")
-                    return assignment
+                    config.log("run ${run.id} acquired $serials")
+                    return serials.map { entries.getValue(it).facts }
                 }
-                lastReason = "free=${candidates.map { it.serial }} leased=${leases.keys}"
+                val blocking = serials.filter { it !in free }.joinToString { serial ->
+                    "$serial=" + when (val status = entries[serial]?.status) {
+                        null -> "offline"
+                        DeviceStatus.Free -> "leased"
+                        is DeviceStatus.Leased -> "leased by run ${status.runId}"
+                        is DeviceStatus.Quarantined -> "quarantined (${status.reason})"
+                    }
+                }
                 val remaining = deadline - System.nanoTime()
                 if (remaining <= 0) {
-                    val wanted = roles.joinToString { (role, c) -> "$role=${TextFormat.shortDebugString(c).ifEmpty { "any" }}" }
-                    config.log("run ${run.id} acquire timed out after ${timeoutMs}ms: roles {$wanted} $lastReason")
-                    throw AcquireTimeoutException("Timed out after ${timeoutMs}ms acquiring roles ${roles.map { it.first }} ($lastReason)")
+                    config.log("run ${run.id} acquire timed out after ${timeoutMs}ms: $blocking")
+                    throw AcquireTimeoutException("Timed out after ${timeoutMs}ms acquiring $serials ($blocking)")
                 }
                 poolChanged.await(minOf(remaining, TimeUnit.SECONDS.toNanos(2)), TimeUnit.NANOSECONDS)
             }
@@ -164,7 +166,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     }
 
     fun release(run: Run, serials: List<String>): Int = poolLock.withLock {
-        val toRelease = if (serials.isEmpty()) run.leases.keys.toList() else serials.filter { run.leases.containsKey(it) }
+        val toRelease = if (serials.isEmpty()) run.leases.toList() else serials.filter { it in run.leases }
         toRelease.forEach { serial ->
             require(run.sessions.values.none { it.device.serial == serial }) { "close the session on $serial before releasing it" }
             leases.remove(serial)
@@ -173,29 +175,6 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         poolChanged.signalAll()
         toRelease.size
     }
-
-    private fun assign(roles: List<Pair<String, DeviceConstraints>>, free: List<Facts>): Map<String, Facts>? {
-        // Pinned and most-constrained roles first so a generic role cannot steal the only match.
-        val ordered = roles.sortedByDescending { (_, c) -> constraintWeight(c) }
-        val remaining = free.toMutableList()
-        val result = linkedMapOf<String, Facts>()
-        for ((role, constraints) in ordered) {
-            val pick = remaining.firstOrNull { satisfies(it, constraints) } ?: return null
-            remaining.remove(pick)
-            result[role] = pick
-        }
-        return roles.associate { (role, _) -> role to result.getValue(role) }
-    }
-
-    private fun constraintWeight(c: DeviceConstraints): Int =
-        (if (c.hasSerial()) 100 else 0) + listOf(c.hasMinApi(), c.hasMaxApi(), c.hasEmulator(), c.hasModelContains()).count { it }
-
-    private fun satisfies(facts: Facts, c: DeviceConstraints): Boolean =
-        (!c.hasSerial() || c.serial == facts.serial) &&
-            (!c.hasMinApi() || facts.apiLevel >= c.minApi) &&
-            (!c.hasMaxApi() || facts.apiLevel <= c.maxApi) &&
-            (!c.hasEmulator() || facts.emulator == c.emulator) &&
-            (!c.hasModelContains() || facts.model.contains(c.modelContains, ignoreCase = true))
 
     private fun factsOf(serial: String): Facts = facts.getOrPut(serial) {
         val adb = config.adb
@@ -227,7 +206,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     )
 
     fun openSession(run: Run, serial: String, autPackage: String, options: OpenSessionOptions): ManagedSession {
-        require((run.leases as Map<String, String>).containsKey(serial)) { "run ${run.id} does not hold a lease on $serial; acquire it first" }
+        require(serial in run.leases) { "run ${run.id} does not hold a lease on $serial; acquire it first" }
         require(run.sessions.values.none { it.device.serial == serial }) { "run ${run.id} already has a session on $serial" }
         val explicitApks = options.driverApk != null || options.driverTestApk != null
         val installBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null && driverInstalled.add(serial)

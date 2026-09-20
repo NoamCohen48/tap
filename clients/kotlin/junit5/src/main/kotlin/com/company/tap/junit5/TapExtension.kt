@@ -1,7 +1,6 @@
 package com.company.tap.junit5
 
 import com.company.tap.sdk.Device
-import com.company.tap.sdk.DeviceConstraints
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Executors
@@ -28,11 +27,14 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
     override fun beforeEach(context: ExtensionContext) {
         val config = TapConfig.current
         val roles = declaredRoles(context)
+        val available = config.serials.ifEmpty { TapRun.run.freeSerials() }
         // Fewer devices than roles is an environment precondition, not a test failure.
-        assumeTrue(config.serials.isEmpty() || roles.size <= config.serials.size) {
-            "${context.requiredTestMethod.name} needs ${roles.size} devices but tap.serials lists ${config.serials}"
+        assumeTrue(roles.size <= available.size) {
+            "${context.requiredTestMethod.name} needs ${roles.size} devices but " +
+                (if (config.serials.isEmpty()) "the pool has $available" else "tap.serials lists ${config.serials}")
         }
-        val assignment = TapRun.run.acquire(constraints(roles, config), config.acquireTimeout).mapValues { it.value.serial }
+        val assignment = assignSerials(roles, available, config.pinnedRoles)
+        TapRun.run.acquire(assignment.values, config.acquireTimeout)
         val devices = try {
             openAll(assignment, config)
         } catch (error: Throwable) {
@@ -99,15 +101,13 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
     }
 
     /**
-     * Roles are pinned explicitly (`tap.device.<role>`), then to `tap.serials` in declaration
-     * order; with no serials configured the service pool assigns any free device.
+     * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then
+     * [available] in declaration order. [available] is `tap.serials` or, when none are
+     * configured, what the service pool reports. The pool itself only leases serials.
      */
-    private fun constraints(roles: List<String>, config: TapConfig): Map<String, DeviceConstraints> {
-        val free = config.serials.filter { it !in config.pinnedRoles.values }.toMutableList()
-        return roles.associateWith { role ->
-            val pinned = config.pinnedRoles[role] ?: free.removeFirstOrNull()
-            if (pinned != null) DeviceConstraints.serial(pinned) else DeviceConstraints.ANY
-        }
+    private fun assignSerials(roles: List<String>, available: List<String>, pinned: Map<String, String>): Map<String, String> {
+        val free = available.filter { it !in pinned.values }.toMutableList()
+        return roles.associateWith { role -> pinned[role] ?: free.removeFirst() }
     }
 
     private fun openAll(assignment: Map<String, String>, config: TapConfig): Map<String, Device> {

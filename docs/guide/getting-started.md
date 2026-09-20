@@ -137,15 +137,15 @@ gives several. Failure artifacts land in `tap-artifacts/<nodeid>/`.
 ## 4. Without a test framework
 
 Both clients can be used from a script. The shape is the same: a *run* attaches to the
-service, acquires devices by role, opens a session per device.
+service, leases devices by serial, opens a session per device.
 
 === "Kotlin"
 
     ```kotlin
     TapClient().use { client ->
         val run = client.openRun("smoke")
-        val facts = run.acquire(mapOf("device" to DeviceConstraints.serial("emulator-5554")))
-        run.openDevice(facts.getValue("device").serial, "com.shop").use { device ->
+        run.acquire(listOf("emulator-5554"))
+        run.openDevice("emulator-5554", "com.shop").use { device ->
             device.app().coldLaunch()
             println(device.element(text("Welcome")).exists())
         }
@@ -159,8 +159,8 @@ service, acquires devices by role, opens a session per device.
     from tap import Service, text
 
     with Service().open_run("smoke") as run:
-        facts = run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)["device"]
-        with run.open_device(facts.serial, "com.shop") as device:
+        run.acquire(["emulator-5554"], timeout=60)
+        with run.open_device("emulator-5554", "com.shop") as device:
             device.app().cold_launch()
             print(device.element(text("Welcome")).exists())
     ```
