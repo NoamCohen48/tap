@@ -26,12 +26,22 @@ JUnit (Kotlin)   --gRPC (loopback)-->  (same service, same devices)
 
 - `tap serve [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]` binds `127.0.0.1`
   only and writes `<state-dir>/service.json` = `{"port","pid","version","adb"}` atomically.
-  It prints `TAP_SERVICE_READY port=N` on stdout once listening. State dir defaults to
-  `TAP_STATE_DIR` or `~/.tap`; journals and device locks live in `<state-dir>/sessions`, the
-  same root the `host` validation executable uses, so the two respect each other's locks
-  when they share the default state dir.
+  State dir defaults to `TAP_STATE_DIR` or `~/.tap`; journals and device locks live in
+  `<state-dir>/sessions`, the same root the `host` validation executable uses, so the two
+  respect each other's locks when they share the default state dir.
+- `tap start [same options]` is the only thing that spawns a service, and starting is explicit:
+  **clients never start one**. It is idempotent (a live descriptor → `running 127.0.0.1:PORT
+  pid=PID`, nothing spawned); otherwise it reserves a free port, re-executes itself as
+  `serve --port N` detached (output to `<state-dir>/service.log`), and polls
+  `ConnectionService.Info` until it answers (`started …`), the child exits, or 30 s pass
+  (exit 1). Readiness is the health RPC on a caller-chosen port — there is no ready line to
+  parse; `.docs/service-startup.md` has the alternatives considered.
 - `tap status`, `tap stop`, `tap version`. Like the ADB server, a started service stays up
-  until `tap stop`; clients that auto-start it do not own it and may share it.
+  until `tap stop`; whoever started it does not own it and every client may share it. The
+  clients expose the pair as `TapServiceProcess.start()/stop()` (Kotlin) and
+  `tap.start_service()/stop_service()` (Python), and the test runners run them around a whole
+  run when told to (`tap.manageService` / `tap_manage_service`), stopping only a service they
+  started.
 - No client authentication: client and service run as the same user on the same machine
   (loopback). Device access is still gated by the per-session driver secret, which never
   leaves the service.
@@ -140,7 +150,7 @@ objects, wrap the reply. Two helpers are shared (`servicer/common.kt`):
 
 | Servicer | Does |
 |---|---|
-| `ConnectionServicer` | `Open` → `openConnection(name)`. `Attach` → the liveness stream (below). `Close` → `closeConnection(id, "client request")`. `Info` → versions, ADB path, state dir, bundled driver; also what `ServiceDiscovery` pings to see whether a service is alive. |
+| `ConnectionServicer` | `Open` → `openConnection(name)`. `Attach` → the liveness stream (below). `Close` → `closeConnection(id, "client request")`. `Info` → versions, ADB path, state dir, bundled driver; also what `ServiceDiscovery`, `running_service` and `tap start` ping to see whether a service is alive. |
 | `DeviceServicer` | `ListDevices` → `TapService.devices()` mapped to `DeviceEntry`. A view: `FREE`, `LEASED` (+ `held_by_connection` when the holder is one of this service's sessions; probing the per-serial lock says "held" for another process), `QUARANTINED` + reason from the journal. |
 | `SessionServicer` | `Open` → validates `serial`/`aut_package`, resolves the connection, `openSession` (lock → journal recovery → driver install/start → forward → authenticate), then runs one `DEVICE_INFO` command so the response carries device info; if that first command fails the session is closed again, otherwise the client would hold a device it never received. `Close` → `closeSession`, `clean` or the quarantine detail. `Execute` → the hot path, see below. `Screenshot` → driver PNG inline or written to a host path. `DriverLog` → the session's `DriverLogBuffer`. |
 | `AppServicer` | One call per RPC on `session.device.app(package)` — the per-package `AppLifecycle` in `:host:core` (install, uninstall, isInstalled, forceStop, clearData, grantPermission, launch, coldLaunch → verified new process identity, process, isRunning, awaitIdle). No logic of its own beyond the timeout from the request. |

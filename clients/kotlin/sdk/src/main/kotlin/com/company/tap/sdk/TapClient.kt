@@ -50,11 +50,12 @@ internal inline fun <T> mapped(serial: String? = null, block: () -> T): T = try 
 /**
  * A channel to a Tap host service. Discovery order: [address]; the `tap.service` system
  * property / `TAP_SERVICE` (`host:port`); a live `service.json` in the state dir
- * (`TAP_STATE_DIR`, default `~/.tap`); otherwise `tap serve` is started from `tap.bin` /
- * `TAP_BIN` / `tap` on `PATH`. A started service stays up like the ADB server (`tap stop`).
+ * (`TAP_STATE_DIR`, default `~/.tap`). The client never starts a service: run `tap start`
+ * (or [TapServiceProcess.start]) first. A started service stays up like the ADB server
+ * until `tap stop`.
  */
-class TapClient(address: String? = null, autostart: Boolean = true) : AutoCloseable {
-    val address: String = address ?: ServiceDiscovery.resolve(autostart)
+class TapClient(address: String? = null) : AutoCloseable {
+    val address: String = address ?: ServiceDiscovery.resolve()
     val channel: ManagedChannel = ManagedChannelBuilder.forTarget(this.address)
         .usePlaintext()
         .maxInboundMessageSize(64 * 1024 * 1024)
@@ -162,22 +163,26 @@ class Connection internal constructor(val client: TapClient, val id: String) : A
 }
 
 /** Locates or starts the host service. */
+/** Finds a running service; never starts one (see [TapServiceProcess]). */
 object ServiceDiscovery {
     fun stateDir(): Path = System.getenv("TAP_STATE_DIR")?.let(Path::of)
         ?: Path.of(System.getProperty("user.home"), ".tap")
 
-    fun resolve(autostart: Boolean = true): String {
+    /** `tap.service` / `TAP_SERVICE`, else the address in a live `service.json`. */
+    fun resolve(): String {
         (System.getProperty("tap.service") ?: System.getenv("TAP_SERVICE"))?.takeIf { it.isNotBlank() }?.let { return it }
         val dir = stateDir()
-        descriptorPort(dir)?.let { port ->
-            val address = "127.0.0.1:$port"
-            if (alive(address)) return address
-        }
-        if (!autostart) throw TapException("no running tap service (no live descriptor in $dir); start one with `tap serve`")
-        val binary = findBinary() ?: throw TapException("no running tap service and no `tap` binary found (set tap.bin / TAP_BIN or add it to PATH)")
-        return start(binary, dir)
+        return running(dir) ?: throw TapException("no running tap service (no live descriptor in $dir); run `tap start`")
     }
 
+    /** Address of the service `service.json` in [dir] points at, if it answers `Info`. */
+    fun running(dir: Path = stateDir()): String? {
+        val port = descriptorPort(dir) ?: return null
+        val address = "127.0.0.1:$port"
+        return if (alive(address)) address else null
+    }
+
+    /** The `tap` executable: `tap.bin` / `TAP_BIN`, else `tap` on `PATH`. */
     fun findBinary(): String? =
         (System.getProperty("tap.bin") ?: System.getenv("TAP_BIN"))?.takeIf { it.isNotBlank() }
             ?: System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator)
@@ -200,26 +205,49 @@ object ServiceDiscovery {
             channel.shutdownNow()
         }
     }
+}
 
-    /** Spawns `tap serve` detached and returns its address once it prints `TAP_SERVICE_READY`. */
-    fun start(binary: String, dir: Path, timeout: Duration = 30.seconds): String {
-        Files.createDirectories(dir)
-        val log = dir.resolve("service.log").toFile()
-        val process = ProcessBuilder(binary, "serve", "--state-dir", dir.toString())
-            .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
-            .start()
-            .also { it.outputStream.close() }
-        val deadline = System.nanoTime() + timeout.inWholeNanoseconds
-        while (System.nanoTime() < deadline) {
-            descriptorPort(dir)?.let { port ->
-                val address = "127.0.0.1:$port"
-                if (alive(address)) return address
-            }
-            if (!process.isAlive) break
-            Thread.sleep(100)
+/**
+ * Explicit service lifecycle from a test process: `tap start` and `tap stop` through the `tap`
+ * executable ([ServiceDiscovery.findBinary]). The executable is the only thing that spawns a
+ * service; it picks the port, detaches the process and waits for `Info` to answer.
+ */
+object TapServiceProcess {
+    /** [address] of the service and whether this call [started] it (false = it was already running). */
+    data class StartResult(val address: String, val started: Boolean)
+
+    /**
+     * Starts a service in the background unless one is already running in [stateDir]. Extra
+     * `tap serve` options (`--adb`, `--serials`) go in [options].
+     */
+    fun start(
+        binary: String? = null,
+        stateDir: Path = ServiceDiscovery.stateDir(),
+        options: List<String> = emptyList(),
+        timeout: Duration = 45.seconds,
+    ): StartResult {
+        val output = run(binary, listOf("start", "--state-dir", stateDir.toString()) + options, timeout)
+        val match = Regex("""^(started|running) (\S+)""", RegexOption.MULTILINE).find(output)
+            ?: throw TapException("unexpected `tap start` output: $output")
+        return StartResult(match.groupValues[2], started = match.groupValues[1] == "started")
+    }
+
+    /** Stops the service recorded in [stateDir]; a no-op when none is running. */
+    fun stop(binary: String? = null, stateDir: Path = ServiceDiscovery.stateDir(), timeout: Duration = 30.seconds) {
+        run(binary, listOf("stop", "--state-dir", stateDir.toString()), timeout)
+    }
+
+    private fun run(binary: String?, args: List<String>, timeout: Duration): String {
+        val executable = binary ?: ServiceDiscovery.findBinary()
+            ?: throw TapException("no `tap` executable found (set tap.bin / TAP_BIN or add it to PATH)")
+        val process = ProcessBuilder(listOf(executable) + args).redirectErrorStream(true).start()
+        process.outputStream.close()
+        val output = process.inputStream.bufferedReader().readText()
+        if (!process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)) {
+            process.destroyForcibly()
+            throw TapException("`tap ${args.first()}` did not finish within $timeout: $output")
         }
-        process.destroy()
-        throw TapException("tap serve did not become ready within $timeout (see $log)")
+        if (process.exitValue() != 0) throw TapException("`tap ${args.first()}` failed (exit ${process.exitValue()}): ${output.trim()}")
+        return output
     }
 }

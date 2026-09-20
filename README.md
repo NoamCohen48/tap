@@ -8,7 +8,7 @@
 # Tap
 
 Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host
-service per machine (`host/`, `tap serve`: ADB, driver lifecycle, sessions, device list; gRPC
+service per machine (`host/`, `tap start`: ADB, driver lifecycle, sessions, device list; gRPC
 over loopback, JVM or native image) and thin language clients (`clients/`: Kotlin SDK +
 JUnit 5, Python + pytest). `contracts/` holds what they agree on (the TAP1 device protocol
 and the `tap.v1` service API). Phases 0 and 1 (feasibility, contract, driver) are complete
@@ -61,18 +61,20 @@ class CheckoutTest {
 - On failure the extension writes a screenshot, hierarchy XML, device info and the driver log
   under `tap.artifactsDir/<class>/<method>/`.
 
-The extension is a gRPC client of `tap serve`, the per-machine host service that owns ADB,
+The extension is a gRPC client of the `tap` service, the per-machine host service that owns ADB,
 driver lifecycle (the driver APKs are bundled in it), journals, device locks and the device list
-(`.docs/service-api.md`). It discovers a running service or starts one. Configuration is
-read from system properties or environment variables:
+(`.docs/service-api.md`). The service is started explicitly — `tap start` — and shared by every
+test process on the machine until `tap stop`; a test run can also be told to start and stop it
+itself. Configuration is read from system properties or environment variables:
 
 | Property | Env | Meaning |
 |---|---|---|
 | `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
 | `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order (default: any device the service lists) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
-| `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: `<state dir>/service.json`, else auto-start) |
-| `tap.bin` | `TAP_BIN` | the `tap` executable to auto-start (default: `tap` on `PATH`) |
+| `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: the one in `<state dir>/service.json`) |
+| `tap.manageService` | `TAP_MANAGESERVICE` | `true` = `tap start` before the first test and `tap stop` after the last one if that start created the service (default `false`) |
+| `tap.bin` | `TAP_BIN` | the `tap` executable `tap.manageService` runs (default: `tap` on `PATH`) |
 | `tap.artifactsDir` | `TAP_ARTIFACTSDIR` | failure artifacts (default `build/tap-artifacts`) |
 | `tap.acquireTimeoutSeconds` | `TAP_ACQUIRETIMEOUTSECONDS` | wait for a device another session holds (default 300) |
 
@@ -82,10 +84,10 @@ read from system properties or environment variables:
 ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554[,SERIAL]
 ```
 
-It builds the fixture app and the service distribution, auto-starts the service (which
-installs the driver), runs twelve tests (including a two-device test that is skipped with one
-serial) and runs test classes concurrently across the devices. The service stays up afterwards
-(`host/service/build/install/tap/bin/tap stop`).
+It builds the fixture app and the service distribution, starts the service (`tap.manageService`,
+which installs the driver), runs twelve tests (including a two-device test that is skipped with
+one serial) concurrently across the devices, and stops the service again unless one was already
+running (`-Ptap.manageService=false` to require a running one).
 
 ## Python tests
 
@@ -114,13 +116,14 @@ def test_two_devices(tap_devices): ...
 ```
 
 ```bash
-TAP_BIN=$PWD/host/service/build/native/nativeCompile/tap TAP_SERIALS=emulator-5554[,SERIAL] \
+TAP_BIN=$PWD/host/service/build/native/nativeCompile/tap TAP_MANAGE_SERVICE=1 TAP_SERIALS=emulator-5554[,SERIAL] \
   pytest clients/python/tests
 ```
 
-The plugin discovers a running service (`TAP_SERVICE`, or `~/.tap/service.json`) or starts
-one, which then stays up like the ADB server (`tap stop`). Failure artifacts land in
-`tap-artifacts/<nodeid>/`. See `clients/python/README.md`.
+The plugin connects to a running service (`TAP_SERVICE`, or `~/.tap/service.json` written by
+`tap start`); with `TAP_MANAGE_SERVICE=1` it starts one from `TAP_BIN` before the run and stops
+it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid>/`. See
+`clients/python/README.md`.
 
 ## Current slice
 
@@ -157,7 +160,7 @@ one, which then stays up like the ADB server (`tap stop`). Failure artifacts lan
   AUT-state reset, and fresh-generation isolation verification.
 - Authenticated application-protocol version, operation-version, capability, build, and
   device-contract negotiation.
-- A per-machine host service (`tap serve`, gRPC, native image) with a reusable
+- A per-machine host service (`tap start`, gRPC, native image) with a reusable
   `DeviceSession` state machine, `AppLifecycle`, and per-device locks shared across processes
   with constraints; a Kotlin SDK (`Device`/`App`/`Element`/waits/selectors) and JUnit 5
   extension with failure artifacts, and a Python client and pytest plugin, all gRPC clients of

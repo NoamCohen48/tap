@@ -71,6 +71,9 @@ graalvmNative {
                 "-H:+ReportExceptionStackTraces",
                 "-march=compatibility",
                 "--initialize-at-build-time=kotlin",
+                // `tap start` opens a client channel (ManagedChannelBuilder) to poll Info; that makes
+                // Netty's SSL classes reachable, and their static init must not run in the builder.
+                "--initialize-at-run-time=io.grpc.netty.shaded.io.netty.handler.ssl,io.grpc.netty.shaded.io.netty.internal.tcnative",
             )
         }
     }

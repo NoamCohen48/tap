@@ -1,14 +1,20 @@
 package com.company.tap.service
 
+import com.company.tap.api.v1.ConnectionServiceGrpc
+import com.company.tap.api.v1.InfoRequest
 import com.company.tap.host.Adb
 import com.company.tap.service.servicer.AppServicer
 import com.company.tap.service.servicer.ConnectionServicer
 import com.company.tap.service.servicer.DeviceServicer
 import com.company.tap.service.servicer.SERVICE_VERSION
 import com.company.tap.service.servicer.SessionServicer
+import io.grpc.ManagedChannelBuilder
 import io.grpc.Server
+import io.grpc.StatusRuntimeException
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
+import java.io.File
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -18,12 +24,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
- * `tap serve [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]`
+ * `tap start  [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]` — start in the background
+ * `tap serve  [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]` — run in the foreground
  * `tap status [--state-dir DIR]`
- * `tap stop [--state-dir DIR]`
+ * `tap stop   [--state-dir DIR]`
  *
- * Like the ADB server, a started service stays up until stopped: clients that auto-start it
- * do not own it, so a second client on the same machine can share it.
+ * Starting the service is explicit: clients never spawn it. `start` is idempotent — a live
+ * service is reported and reused — and like the ADB server a started service stays up until
+ * `stop`, so every test process on the machine shares it.
  *
  * The server binds loopback only and writes `<state-dir>/service.json` (port, pid, version) so
  * clients can find it. There is no authentication between client and service: both run as the
@@ -34,6 +42,7 @@ fun main(args: Array<String>) {
     val options = parseOptions(args.drop(1))
     val stateDir = Path.of(options["--state-dir"] ?: defaultStateDir()).toAbsolutePath()
     when (command) {
+        "start" -> start(options, stateDir)
         "serve" -> serve(options, stateDir)
         "status" -> status(stateDir)
         "stop" -> stop(stateDir)
@@ -45,7 +54,8 @@ fun main(args: Array<String>) {
 private fun usage(): Nothing {
     System.err.println(
         """
-        usage: tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]
+        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]   (background; reuses a running service)
+               tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]   (foreground)
                tap status  [--state-dir DIR]
                tap stop    [--state-dir DIR]
                tap version
@@ -101,8 +111,6 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
         """{"port":${server.port},"pid":${ProcessHandle.current().pid()},"version":"${SERVICE_VERSION}","adb":"${adb.executable}"}""",
     )
     log("listening on 127.0.0.1:${server.port} (state $stateDir, adb ${adb.executable}, bundled driver ${bundled != null})")
-    println("TAP_SERVICE_READY port=${server.port}")
-    System.out.flush()
 
     Runtime.getRuntime().addShutdownHook(Thread {
         log("shutting down")
@@ -112,6 +120,83 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
         runCatching { Files.deleteIfExists(descriptor) }
     })
     server.awaitTermination()
+}
+
+/**
+ * Starts `serve` in the background and waits until it answers `Info`. Readiness is the health
+ * RPC itself on a port chosen here (no output parsing): a port is reserved, handed to the child
+ * with `--port`, and polled until it answers or the child exits. Prints
+ * `running 127.0.0.1:PORT pid=PID` when a live service already exists (nothing started), or
+ * `started 127.0.0.1:PORT pid=PID`; exits non-zero when the child died or never became ready.
+ */
+private fun start(options: Map<String, String>, stateDir: Path) {
+    Files.createDirectories(stateDir)
+    liveService(stateDir)?.let { (port, pid) ->
+        println("running 127.0.0.1:$port pid=$pid")
+        return
+    }
+    val port = options["--port"]?.toInt()?.takeIf { it > 0 } ?: freePort()
+    val log = stateDir.resolve("service.log").toFile()
+    val command = relaunchCommand() + listOf("serve", "--port", port.toString(), "--state-dir", stateDir.toString()) +
+        options.filterKeys { it == "--adb" || it == "--serials" }.flatMap { (key, value) -> listOf(key, value) }
+    val process = ProcessBuilder(command)
+        .redirectErrorStream(true)
+        .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
+        .redirectInput(ProcessBuilder.Redirect.from(File(if (File.separatorChar == '\\') "NUL" else "/dev/null")))
+        .start()
+    val address = "127.0.0.1:$port"
+    val deadline = System.nanoTime() + START_TIMEOUT_MS * 1_000_000
+    while (System.nanoTime() < deadline) {
+        if (!process.isAlive) {
+            System.err.println("tap serve exited with ${process.exitValue()} before becoming ready (see $log)")
+            exitProcess(1)
+        }
+        if (infoAnswers(address)) {
+            println("started $address pid=${process.pid()}")
+            return
+        }
+        Thread.sleep(100)
+    }
+    process.destroyForcibly()
+    System.err.println("tap serve did not become ready within ${START_TIMEOUT_MS / 1000}s (see $log)")
+    exitProcess(1)
+}
+
+private const val START_TIMEOUT_MS = 30_000L
+
+/** `(port, pid)` of the service the descriptor points at, if it answers `Info`. */
+private fun liveService(stateDir: Path): Pair<Int, Long>? {
+    val descriptor = stateDir.resolve("service.json").takeIf(Files::exists) ?: return null
+    val text = runCatching { Files.readString(descriptor) }.getOrNull() ?: return null
+    val port = Regex(""""port":(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    val pid = Regex(""""pid":(\d+)""").find(text)?.groupValues?.get(1)?.toLongOrNull() ?: return null
+    return if (infoAnswers("127.0.0.1:$port")) port to pid else null
+}
+
+private fun infoAnswers(address: String): Boolean {
+    val channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build()
+    return try {
+        ConnectionServiceGrpc.newBlockingStub(channel).withDeadlineAfter(2, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance())
+        true
+    } catch (_: StatusRuntimeException) {
+        false
+    } finally {
+        channel.shutdownNow()
+    }
+}
+
+/** A port that was free a moment ago; `serve` fails fast if something else takes it first. */
+private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+
+/**
+ * How to run this same program again: the native executable itself, or the current JVM with
+ * the current class path and main class (the JVM dist's launcher script is not re-entered).
+ */
+private fun relaunchCommand(): List<String> {
+    val command = ProcessHandle.current().info().command().orElse(null)
+    if (System.getProperty("org.graalvm.nativeimage.imagecode") != null && command != null) return listOf(command)
+    val java = Path.of(System.getProperty("java.home"), "bin", if (File.separatorChar == '\\') "java.exe" else "java")
+    return listOf(java.toString(), "-cp", System.getProperty("java.class.path"), "com.company.tap.service.ServiceMainKt")
 }
 
 private fun status(stateDir: Path) {

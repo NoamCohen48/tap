@@ -13,6 +13,8 @@ data class TapConfig(
     val acquireTimeout: Duration,
     /** Explicit role → serial pins (`tap.device.<role>`). */
     val pinnedRoles: Map<String, String>,
+    /** `tap.manageService`: run `tap start` before the first session and `tap stop` after the run if it started the service. */
+    val manageService: Boolean = false,
 ) {
     companion object {
         val current: TapConfig by lazy { load() }
@@ -45,6 +47,7 @@ data class TapConfig(
                 artifactsDir = Path.of(property("tap.artifactsDir") ?: "build/tap-artifacts"),
                 acquireTimeout = (property("tap.acquireTimeoutSeconds")?.toLong() ?: 300L).seconds,
                 pinnedRoles = pinned,
+                manageService = (property("tap.manageService") ?: property("tap.manage_service"))?.toBoolean() ?: false,
             )
         }
     }

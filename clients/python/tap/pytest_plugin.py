@@ -6,7 +6,11 @@ Configuration (ini option, or environment variable):
     tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
                                    order. Unset = whatever the service's device list offers.
     tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
-    tap_service   / TAP_SERVICE    host:port of a running service (default: discover/auto-start)
+    tap_service   / TAP_SERVICE    host:port of a running service (default: the one `tap start` recorded)
+    tap_manage_service / TAP_MANAGE_SERVICE
+                                   true = run `tap start` before the first test and `tap stop`
+                                   after the last one if that start created the service
+                                   (default false: a service must already be running)
     tap_acquire_timeout            seconds to wait for a device another session holds (default 120)
 
 Fixtures: ``tap_device`` (role "device") and ``tap_devices`` (dict role → Device).
@@ -27,7 +31,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from .device import Device
-from .service import Connection, Service
+from .service import Connection, Service, start_service, stop_service
 
 DEFAULT_ROLE = "device"
 
@@ -37,6 +41,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("tap_serials", "comma-separated device serials")
     parser.addini("tap_artifacts", "failure artifact directory", default="tap-artifacts")
     parser.addini("tap_service", "host:port of a running tap service")
+    parser.addini("tap_manage_service", "start the service before the run and stop it afterwards if started here", default="false")
     parser.addini("tap_acquire_timeout", "seconds to wait for a device another session holds", default="120")
 
 
@@ -51,6 +56,7 @@ class TapConfig:
     artifacts: pathlib.Path
     service: str | None
     acquire_timeout: float
+    manage_service: bool
 
     @classmethod
     def from_pytest(cls, config: pytest.Config) -> "TapConfig":
@@ -64,6 +70,7 @@ class TapConfig:
             artifacts=pathlib.Path(option("tap_artifacts", "TAP_ARTIFACTS", "tap-artifacts")),
             service=option("tap_service", "TAP_SERVICE") or None,
             acquire_timeout=float(option("tap_acquire_timeout", "TAP_ACQUIRE_TIMEOUT", "120")),
+            manage_service=option("tap_manage_service", "TAP_MANAGE_SERVICE", "false").lower() in ("1", "true", "yes"),
         )
 
 
@@ -85,11 +92,19 @@ def tap_config(pytestconfig: pytest.Config) -> TapConfig:
 
 @pytest.fixture(scope="session")
 def tap_service(tap_config: TapConfig) -> Service:
+    """The service channel. With ``tap_manage_service`` the service is started here and, if
+    that start created it, stopped after the session; one already running is left alone."""
+    started = False
     if tap_config.service:
-        os.environ["TAP_SERVICE"] = tap_config.service
-    service = Service()
+        service = Service(tap_config.service)
+    else:
+        if tap_config.manage_service:
+            started = start_service().started
+        service = Service()
     yield service
     service.close()
+    if started:
+        stop_service()
 
 
 @pytest.fixture(scope="session")

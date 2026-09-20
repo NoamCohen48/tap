@@ -1,9 +1,9 @@
 """The Tap host service: discovery, the gRPC channel and this process's ``Connection``.
 
-Discovery order: ``TAP_SERVICE=host:port`` → ``<state dir>/service.json`` written by ``tap serve``
-(state dir = ``TAP_STATE_DIR`` or ``~/.tap``) → auto-start ``tap serve`` (binary from
-``TAP_BIN`` or ``tap`` on PATH). An auto-started service is left running, like the ADB server;
-``tap stop`` shuts it down.
+Discovery order: ``TAP_SERVICE=host:port`` → ``<state dir>/service.json`` written by a running
+service (state dir = ``TAP_STATE_DIR`` or ``~/.tap``). The client never starts a service:
+``tap start`` (or :func:`start_service`) does, and like the ADB server it stays up until
+``tap stop`` / :func:`stop_service`.
 """
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import contextlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import threading
-import time
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
@@ -26,7 +26,7 @@ from .errors import AppLifecycleError, DeviceBusyError, ServiceError, TapError, 
 
 
 def state_dir() -> pathlib.Path:
-    """``TAP_STATE_DIR`` or ``~/.tap``: where ``tap serve`` writes ``service.json``."""
+    """``TAP_STATE_DIR`` or ``~/.tap``: where the service writes ``service.json``."""
     return pathlib.Path(os.environ.get("TAP_STATE_DIR") or pathlib.Path.home() / ".tap")
 
 
@@ -50,64 +50,76 @@ def _alive(address: str, timeout: float = 2.0) -> bool:
 
 
 def find_binary() -> str | None:
-    """``TAP_BIN`` or ``tap`` on PATH."""
+    """The ``tap`` executable: ``TAP_BIN`` or ``tap`` on PATH."""
     return os.environ.get("TAP_BIN") or shutil.which("tap")
 
 
-def start_service(binary: str, directory: pathlib.Path, adb: str | None = None, timeout: float = 30.0) -> str:
-    """Spawns ``tap serve`` detached and returns its address once it prints TAP_SERVICE_READY."""
-    directory.mkdir(parents=True, exist_ok=True)
-    args = [binary, "serve", "--state-dir", str(directory)]
-    if adb:
-        args += ["--adb", adb]
-    log = open(directory / "service.log", "ab")
-    process = subprocess.Popen(
-        args, stdout=subprocess.PIPE, stderr=log, stdin=subprocess.DEVNULL,
-        start_new_session=True, text=True,
-    )
-    deadline = time.monotonic() + timeout
-    port = None
-    assert process.stdout is not None
-    while time.monotonic() < deadline:
-        line = process.stdout.readline()
-        if not line:
-            break
-        log.write(line.encode())
-        log.flush()
-        if line.startswith("TAP_SERVICE_READY"):
-            port = int(line.split("port=")[1].strip())
-            break
-    if port is None:
-        process.kill()
-        raise TapError(f"tap serve did not become ready within {timeout}s (see {directory / 'service.log'})")
-
-    # Keep draining stdout so the service never blocks on a full pipe.
-    def drain() -> None:
-        for chunk in process.stdout:
-            log.write(chunk.encode())
-            log.flush()
-
-    threading.Thread(target=drain, name="tap-service-stdout", daemon=True).start()
-    return f"127.0.0.1:{port}"
+def running_service(directory: pathlib.Path | None = None) -> str | None:
+    """Address of the service ``service.json`` points at, if it answers ``Info``."""
+    descriptor = _read_descriptor(directory or state_dir())
+    if not descriptor:
+        return None
+    address = f"127.0.0.1:{descriptor['port']}"
+    return address if _alive(address) else None
 
 
-def resolve_address(autostart: bool = True, binary: str | None = None, adb: str | None = None) -> str:
-    """Address of a service to use: ``TAP_SERVICE``, a live ``service.json``, else auto-start."""
+def resolve_address() -> str:
+    """Address of a service to use: ``TAP_SERVICE``, else a live ``service.json``; never starts one."""
     explicit = os.environ.get("TAP_SERVICE")
     if explicit:
         return explicit
     directory = state_dir()
-    descriptor = _read_descriptor(directory)
-    if descriptor:
-        address = f"127.0.0.1:{descriptor['port']}"
-        if _alive(address):
-            return address
-    if not autostart:
-        raise TapError(f"no running tap service (no live descriptor in {directory}); start one with `tap serve`")
-    binary = binary or find_binary()
-    if binary is None:
-        raise TapError("no running tap service and no `tap` binary found (set TAP_BIN or add it to PATH)")
-    return start_service(binary, directory, adb)
+    address = running_service(directory)
+    if address is None:
+        raise TapError(f"no running tap service (no live descriptor in {directory}); run `tap start`")
+    return address
+
+
+@dataclass(frozen=True)
+class StartResult:
+    """``address`` of the service; ``started`` is False when it was already running."""
+    address: str
+    started: bool
+
+
+def _tap(binary: str | None, args: list[str], timeout: float) -> str:
+    executable = binary or find_binary()
+    if executable is None:
+        raise TapError("no `tap` executable found (set TAP_BIN or add it to PATH)")
+    try:
+        result = subprocess.run(
+            [executable, *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise TapError(f"`tap {args[0]}` did not finish within {timeout}s: {error.output}") from None
+    if result.returncode != 0:
+        raise TapError(f"`tap {args[0]}` failed (exit {result.returncode}): {result.stdout.strip()}")
+    return result.stdout
+
+
+def start_service(
+    binary: str | None = None,
+    directory: pathlib.Path | None = None,
+    adb: str | None = None,
+    timeout: float = 45.0,
+) -> StartResult:
+    """``tap start``: starts a service in the background unless one is already running in the
+    state dir. The executable picks the port, detaches the process and waits for ``Info`` to
+    answer; nothing is parsed from the service itself."""
+    args = ["start", "--state-dir", str(directory or state_dir())]
+    if adb:
+        args += ["--adb", adb]
+    output = _tap(binary, args, timeout)
+    match = re.search(r"^(started|running) (\S+)", output, re.MULTILINE)
+    if not match:
+        raise TapError(f"unexpected `tap start` output: {output}")
+    return StartResult(match.group(2), started=match.group(1) == "started")
+
+
+def stop_service(binary: str | None = None, directory: pathlib.Path | None = None, timeout: float = 30.0) -> None:
+    """``tap stop``: stops the service recorded in the state dir; a no-op when none is running."""
+    _tap(binary, ["stop", "--state-dir", str(directory or state_dir())], timeout)
 
 
 # The service's wording for a held per-serial lock (``DeviceBusyException`` in ``:host:core``).
@@ -137,8 +149,8 @@ def mapped_errors(serial: str | None = None) -> Iterator[None]:
 class Service:
     """One gRPC channel to a host service. Cheap to create; share one per process."""
 
-    def __init__(self, address: str | None = None, **resolve_options):
-        self.address = address or resolve_address(**resolve_options)
+    def __init__(self, address: str | None = None):
+        self.address = address or resolve_address()
         self.channel = grpc.insecure_channel(
             self.address,
             options=[("grpc.max_receive_message_length", 64 * 1024 * 1024)],
