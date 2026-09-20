@@ -6,10 +6,10 @@
     "op": "wait_visible",
     "selector": {
       "node": {
-        "text": {
-          "value": "Welcome",
-          "mode": "STARTS_WITH"
-        }
+        "kind": "match",
+        "property": "TEXT",
+        "value": "Welcome",
+        "mode": "STARTS_WITH"
       }
     }
   }

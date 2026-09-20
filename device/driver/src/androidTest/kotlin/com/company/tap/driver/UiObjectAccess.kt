@@ -7,7 +7,7 @@ import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.UiWindow
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.MAX_MATCH_COUNT
-import com.company.tap.protocol.MatchLimit
+import com.company.tap.protocol.Pick
 import com.company.tap.protocol.Selector
 
 /**
@@ -24,27 +24,28 @@ internal class UiObjectAccess(
     fun compile(selector: Selector): CompiledSelector = compiler.compile(selector)
 
     /**
-     * Resolves an action target according to the selector's [MatchLimit]. `EXACTLY_ONE` stops
-     * after a second match and reports `AMBIGUOUS`; `FIRST`/`AT` pick from traversal order.
+     * Resolves an action target according to the selector's [Pick]. `ExactlyOne` stops after a
+     * second match and reports `AMBIGUOUS`; `First`/`At` pick from traversal order.
      */
     fun resolve(selector: Selector): Resolution {
         val compiled = compile(selector)
-        val wanted = when (selector.limit) {
-            MatchLimit.EXACTLY_ONE -> 2
-            MatchLimit.FIRST -> 1
-            MatchLimit.AT -> requireNotNull(selector.index) + 1
+        val pick = selector.pick
+        val wanted = when (pick) {
+            Pick.ExactlyOne -> 2
+            Pick.First -> 1
+            is Pick.At -> pick.index + 1
         }
         val elements = findObjects(compiled, wanted)
-        val chosenIndex = when (selector.limit) {
-            MatchLimit.EXACTLY_ONE -> if (elements.size == 1) 0 else -1
-            MatchLimit.FIRST -> 0
-            MatchLimit.AT -> requireNotNull(selector.index)
+        val chosenIndex = when (pick) {
+            Pick.ExactlyOne -> if (elements.size == 1) 0 else -1
+            Pick.First -> 0
+            is Pick.At -> pick.index
         }
         val chosen = elements.getOrNull(chosenIndex)
         elements.forEachIndexed { index, element -> if (index != chosenIndex) element.recycle() }
         return when {
             chosen != null -> Resolution(chosen, null)
-            selector.limit == MatchLimit.EXACTLY_ONE && elements.size > 1 -> Resolution(null, ErrorCode.AMBIGUOUS)
+            pick == Pick.ExactlyOne && elements.size > 1 -> Resolution(null, ErrorCode.AMBIGUOUS)
             else -> Resolution(null, ErrorCode.NOT_FOUND)
         }
     }

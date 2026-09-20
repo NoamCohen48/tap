@@ -4,6 +4,7 @@ import android.app.Instrumentation
 import android.net.Uri
 import android.os.Bundle
 import com.company.tap.protocol.Command
+import com.company.tap.protocol.Node
 import com.company.tap.protocol.Tap
 import java.net.Socket
 
@@ -84,4 +85,4 @@ internal class InjectedTransportLoss : RuntimeException()
 private const val CANCEL_HOLD_MS = 3_000L
 
 /** Only a `tap` on the fixture's fault button arms a fault. */
-private fun Command.targetsFaultButton(): Boolean = this is Tap && selector.node.resource?.name == "fault_button"
+private fun Command.targetsFaultButton(): Boolean = this is Tap && (selector.node as? Node.Resource)?.name == "fault_button"

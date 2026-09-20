@@ -6,17 +6,16 @@
     "op": "scroll_until",
     "selector": {
       "node": {
-        "text": {
-          "value": "Row 40"
-        }
+        "kind": "match",
+        "property": "TEXT",
+        "value": "Row 40"
       }
     },
     "container": {
       "node": {
-        "resource": {
-          "name": "list",
-          "packageName": "com.example.app"
-        }
+        "kind": "resource",
+        "name": "list",
+        "packageName": "com.example.app"
       }
     },
     "maxScrolls": 10

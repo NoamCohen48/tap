@@ -21,8 +21,8 @@ STABILITY_PIXELS = pb.STABILITY_PIXELS
 STABILITY_ALL = pb.STABILITY_ALL
 from .errors import AppLifecycleError, CommandError, DeviceBusyError, ErrorCode, ServiceError, TapError, WaitTimeoutError
 from .selectors import (
-    CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res, res_id,
-    scrollable, text, text_contains, text_matches, text_starts_with,
+    CONTAINS, ENDS_WITH, EXACT, REGEX, STARTS_WITH, Selector, all_of, any_of, class_name, clickable, desc, hint,
+    raw_res, res, res_id, scrollable, text, text_contains, text_matches, text_starts_with,
 )
 from .service import Connection, Service, StartResult, resolve_address, running_service, start_service, stop_service
 
@@ -30,8 +30,8 @@ __all__ = [
     "pb", "App", "ProcessIdentity", "Device", "Timeouts", "KEYCODE_BACK", "KEYCODE_HOME",
     "Element", "ElementWait", "DOWN", "UP", "LEFT", "RIGHT",
     "AppLifecycleError", "CommandError", "DeviceBusyError", "ErrorCode", "ServiceError", "TapError", "WaitTimeoutError",
-    "Selector", "EXACT", "CONTAINS", "STARTS_WITH", "REGEX", "class_name", "clickable", "desc", "hint",
-    "raw_res", "res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
+    "Selector", "EXACT", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "REGEX", "all_of", "any_of", "class_name", "clickable",
+    "desc", "hint", "raw_res", "res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
     "Connection", "Service", "StartResult", "resolve_address", "running_service", "start_service", "stop_service",
 ]
 

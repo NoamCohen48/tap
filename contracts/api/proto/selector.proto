@@ -1,8 +1,10 @@
 // tap.v1 — element selectors.
 //
 // Part of the Tap host service API (see README.proto for the file map). Mirrors
-// protocol/Selector.kt one-to-one; the service converts between the two and `EnumMirrorTest`
-// fails the build if an enum drifts.
+// protocol/Selector.kt one-to-one: every protocol sum type is a `oneof` here (`Node.kind`,
+// `Selector.scope`, `Selector.pick`), so each variant carries exactly its own fields. The
+// service converts between the two and `EnumMirrorTest` fails the build if an enum or a
+// `oneof` case drifts.
 
 syntax = "proto3";
 
@@ -12,7 +14,7 @@ option java_package = "com.company.tap.api.v1";
 option java_multiple_files = true;
 option java_outer_classname = "SelectorProto";
 
-// How a StringMatch compares; REGEX is RE2 syntax, full match.
+// How a Match compares; REGEX is RE2 syntax, full match.
 enum MatchMode {
   MATCH_UNSPECIFIED = 0; // = MATCH_EXACT
   MATCH_EXACT = 1;
@@ -22,27 +24,49 @@ enum MatchMode {
   MATCH_REGEX = 5;
 }
 
-// How many matches a selector accepts for a mutation: exactly one (default), the first, or
-// the one at `index` in accessibility order.
-enum MatchLimit {
-  LIMIT_UNSPECIFIED = 0; // = LIMIT_EXACTLY_ONE
-  LIMIT_EXACTLY_ONE = 1;
-  LIMIT_FIRST = 2;
-  LIMIT_AT = 3;
+// The string-valued node properties a Match can constrain.
+enum TextProperty {
+  PROPERTY_UNSPECIFIED = 0; // rejected
+  PROPERTY_TEXT = 1;
+  PROPERTY_CONTENT_DESCRIPTION = 2;
+  PROPERTY_HINT = 3;
+  PROPERTY_CLASS_NAME = 4;
 }
 
-// Which windows a selector may match: the app under test (default) or an allowlisted system
-// package named in `scope_package` (permission dialogs).
-enum TargetScope {
-  SCOPE_UNSPECIFIED = 0; // = SCOPE_AUT
-  SCOPE_AUT = 1;
-  SCOPE_SYSTEM = 2;
+// The boolean node properties a Flag can constrain.
+enum NodeFlag {
+  FLAG_UNSPECIFIED = 0; // rejected
+  FLAG_ENABLED = 1;
+  FLAG_CHECKED = 2;
+  FLAG_CHECKABLE = 3;
+  FLAG_CLICKABLE = 4;
+  FLAG_FOCUSED = 5;
+  FLAG_FOCUSABLE = 6;
+  FLAG_LONG_CLICKABLE = 7;
+  FLAG_SCROLLABLE = 8;
+  FLAG_SELECTED = 9;
 }
 
-// A string constraint on one node property.
-message StringMatch {
-  string value = 1;
-  MatchMode mode = 2;
+// Which relative a Related constrains.
+enum Relation {
+  RELATION_UNSPECIFIED = 0; // rejected
+  RELATION_PARENT = 1;      // the direct parent matches
+  RELATION_ANCESTOR = 2;    // some ancestor matches
+  RELATION_CHILD = 3;       // at least one direct child matches
+  RELATION_DESCENDANT = 4;  // at least one descendant matches
+}
+
+// A string property compared against `value` under `mode`.
+message Match {
+  TextProperty property = 1;
+  string value = 2;
+  MatchMode mode = 3;
+}
+
+// A boolean property that must equal `value`.
+message Flag {
+  NodeFlag property = 1;
+  bool value = 2;
 }
 
 // A resource id. With `package_name`: the View id `package_name:id/name`. With `aut_package`:
@@ -55,36 +79,62 @@ message ResourceId {
   bool aut_package = 3;
 }
 
-// Constraints on one accessibility node. Every set field must hold; relations nest further
-// nodes. Limits: depth ≤ 32, ≤ 256 nodes, strings ≤ 1024 chars, no empty node.
-message NodeSelector {
-  optional StringMatch text = 1;
-  optional StringMatch content_description = 2;
-  optional StringMatch hint = 3;
-  optional StringMatch class_name = 4;
-  optional ResourceId resource = 5;
-  optional bool enabled = 6;
-  optional bool checked = 7;
-  optional bool checkable = 8;
-  optional bool clickable = 9;
-  optional bool focused = 10;
-  optional bool focusable = 11;
-  optional bool long_clickable = 12;
-  optional bool scrollable = 13;
-  optional bool selected = 14;
-  optional NodeSelector parent = 15;
-  optional NodeSelector ancestor = 16;
-  optional NodeSelector child = 17;
-  optional NodeSelector descendant = 18;
+// The `relation` of the node must satisfy `node`.
+message Related {
+  Relation relation = 1;
+  Node node = 2;
 }
 
-// A complete selector: the node, its scope and its match limit. Built by the client DSLs and
-// validated identically by the service and the driver.
+// Conjunction: every operand must hold. At least two operands.
+message AllOf {
+  repeated Node nodes = 1;
+}
+
+// Disjunction: at least one operand must hold. At least two operands. Evaluated by the
+// driver's traversal plan rather than a native BySelector.
+message AnyOf {
+  repeated Node nodes = 1;
+}
+
+// One node predicate of the selector expression tree. Limits over the whole tree: depth ≤ 32,
+// ≤ 256 nodes, strings ≤ 1024 chars.
+message Node {
+  oneof kind {
+    Match match = 1;
+    Flag flag = 2;
+    ResourceId resource = 3;
+    Related related = 4;
+    AllOf all_of = 5;
+    AnyOf any_of = 6;
+  }
+}
+
+// Scope variants: the focused window of the app under test (default), or of an allowlisted
+// system package (permission dialogs).
+message AutScope {}
+message SystemScope {
+  string package_name = 1;
+}
+
+// Pick variants: exactly one match (default; more is AMBIGUOUS), the first in accessibility
+// order, or the zero-based `index`-th in accessibility order (NOT_FOUND when absent).
+message ExactlyOne {}
+message First {}
+message At {
+  int32 index = 1;
+}
+
+// A complete selector: the node tree, its scope and how an action picks among matches.
+// Built by the client DSLs and validated identically by the service and the driver.
 message Selector {
-  NodeSelector node = 1;
-  TargetScope scope = 2;
-  optional string scope_package = 3;
-  MatchLimit limit = 4;
-  optional int32 index = 5;
-  bool accept_accessibility_order = 6;
+  Node node = 1;
+  oneof scope {
+    AutScope aut = 2;
+    SystemScope system = 3;
+  }
+  oneof pick {
+    ExactlyOne exactly_one = 4;
+    First first = 5;
+    At at = 6;
+  }
 }

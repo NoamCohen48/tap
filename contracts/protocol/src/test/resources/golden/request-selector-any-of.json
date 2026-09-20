@@ -1,0 +1,43 @@
+{
+  "sessionId": "0d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+  "generation": 3,
+  "timeoutMs": 10000,
+  "command": {
+    "op": "exists",
+    "selector": {
+      "node": {
+        "kind": "all_of",
+        "nodes": [
+          {
+            "kind": "any_of",
+            "nodes": [
+              {
+                "kind": "match",
+                "property": "TEXT",
+                "value": "Allow"
+              },
+              {
+                "kind": "match",
+                "property": "TEXT",
+                "value": "Allow only while using the app"
+              },
+              {
+                "kind": "match",
+                "property": "CONTENT_DESCRIPTION",
+                "value": "Allow"
+              }
+            ]
+          },
+          {
+            "kind": "flag",
+            "property": "ENABLED"
+          }
+        ]
+      },
+      "scope": {
+        "kind": "system",
+        "packageName": "com.google.android.permissioncontroller"
+      }
+    }
+  }
+}

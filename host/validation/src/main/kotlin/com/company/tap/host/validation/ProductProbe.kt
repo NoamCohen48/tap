@@ -6,6 +6,7 @@ import com.company.tap.protocol.DumpHierarchy
 import com.company.tap.protocol.Exists
 import com.company.tap.protocol.Health
 import com.company.tap.protocol.ScrollUntil
+import com.company.tap.protocol.Node
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SetText
 import com.company.tap.protocol.Tap
@@ -205,7 +206,7 @@ private fun printProbeResult(
         val started = System.nanoTime()
         val document = parseHierarchy(hierarchy)
         val nodes = document.getElementsByTagName("node")
-        check((0 until nodes.length).any { nodes.item(it).attributes?.getNamedItem("text")?.nodeValue == selector.node.text?.value })
+        check((0 until nodes.length).any { nodes.item(it).attributes?.getNamedItem("text")?.nodeValue == (selector.node as Node.Match).value })
         elapsedMs(started)
     }
     val inventory = inventory(hierarchy, autPackage)

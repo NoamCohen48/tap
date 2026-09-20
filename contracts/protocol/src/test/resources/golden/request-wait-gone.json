@@ -6,9 +6,8 @@
     "op": "wait_gone",
     "selector": {
       "node": {
-        "resource": {
-          "name": "spinner"
-        }
+        "kind": "resource",
+        "name": "spinner"
       }
     }
   }

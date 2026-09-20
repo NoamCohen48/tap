@@ -6,10 +6,9 @@
     "op": "tap",
     "selector": {
       "node": {
-        "resource": {
-          "name": "login",
-          "packageName": "com.example.app"
-        }
+        "kind": "resource",
+        "name": "login",
+        "packageName": "com.example.app"
       }
     }
   }

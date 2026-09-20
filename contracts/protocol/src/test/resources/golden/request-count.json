@@ -6,10 +6,10 @@
     "op": "count",
     "selector": {
       "node": {
-        "text": {
-          "value": "Row",
-          "mode": "STARTS_WITH"
-        }
+        "kind": "match",
+        "property": "TEXT",
+        "value": "Row",
+        "mode": "STARTS_WITH"
       }
     }
   }

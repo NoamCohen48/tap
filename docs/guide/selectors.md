@@ -62,6 +62,40 @@ Everything after the entry point narrows the same node:
 text("Remember me").checkable().checked(false)   // an unchecked checkbox labelled "Remember me"
 ```
 
+## Combining selectors
+
+Two selectors combine into one with **and** / **or** (Kotlin infix `and` / `or`, Python
+`&` / `|`), or with `allOf(...)` / `anyOf(...)` (`all_of` / `any_of`) for a list. The result is
+still one selector describing one node: `exists()`, `count()`, the exactly-one rule and every
+action apply to it as a whole.
+
+=== "Kotlin"
+
+    ```kotlin
+    // the permission button, whichever wording this Android version uses
+    val allow = text("Allow") or text("Allow only while using the app") or text("While using the app")
+    device.element(allow.inSystemPackage("com.google.android.permissioncontroller")).tap()
+
+    // both on the same node
+    device.element(text("Add") and clickable()).tap()          // same as text("Add").clickable()
+    ```
+
+=== "Python"
+
+    ```python
+    allow = text("Allow") | text("Allow only while using the app") | text("While using the app")
+    device.element(allow.in_system_package("com.google.android.permissioncontroller")).tap()
+
+    device.element(text("Add") & clickable()).tap()
+    ```
+
+Combinators nest freely (`(a or b) and clickable()`), including inside relations
+(`hasChild(a or b)`). Scope and `first()`/`at(n)` are taken from the left-hand operand.
+A selector with an `or` is evaluated by walking the window's node tree rather than by a
+native UiAutomator lookup; it returns exactly the same matches and never dumps the
+hierarchy, but on a very large screen it is a little slower — prefer a single distinguishing
+property when one exists.
+
 ## Relations
 
 Two flavours. **Constrain by relatives** keeps matching the outer node:
@@ -110,7 +144,7 @@ prefer a distinguishing relation (`hasDescendant(text(...))`) when there is one.
 Selectors are scoped to the **app under test**: they match only inside the focused window of
 that package. A system dialog, the launcher, or a notification shade cannot be hit by
 accident, and a selector that names another package's resource is rejected
-(`SCOPE_PACKAGE_UNEXPECTED`).
+(`SCOPE_DENIED`).
 
 The one sanctioned exception is the runtime-permission dialog. The driver keeps an allowlist
 of system packages (by default `com.google.android.permissioncontroller`); a selector opts in
@@ -139,9 +173,11 @@ Any other package is `SCOPE_DENIED`. (For tests that just need the permission, p
 
 ## Limits and what is not supported
 
-- Depth ≤ 32, ≤ 256 nodes, ≤ 1024 characters per string; every node must constrain
-  something. Violations are `INVALID_SELECTOR` with a stable detail, raised before a request is
-  sent.
+- Depth ≤ 32, ≤ 256 nodes, ≤ 1024 characters per string; an `and`/`or` needs at least two
+  operands (the builders never produce fewer). Violations are `INVALID_SELECTOR` with a stable
+  detail, raised before a request is sent.
+- **No NOT, sibling or "nearest".** A negative or positional selector tends to match something
+  unintended when the screen changes; describe the node you want instead.
 - **No XPath and no string query language.** Selectors are an AST validated identically by the
   client, the service and the driver, and compiled on the device to window-scoped
   UiAutomator lookups. This is what keeps lookups fast and error messages precise.
@@ -154,8 +190,8 @@ Any other package is `SCOPE_DENIED`. (For tests that just need the permission, p
 
 ## Debugging a selector
 
-- `selector.render()` (or `str(selector)`) prints the exact AST the device will see; it also
-  appears in every `CommandException`/`CommandError`.
+- `selector.render()` (or `str(selector)`) prints the exact expression tree the device will
+  see; it also appears in every `CommandException`/`CommandError`.
 - `device.element(sel).count()` tells you how many nodes match right now.
 - `device.dumpHierarchy()` returns the accessibility XML for the current screen (diagnostic
   only — never used by lookups). The failure artifacts contain the same dump.

@@ -92,15 +92,15 @@ tap/
 |   |   |   +-- Messages.kt          FrameType, Direction, StabilitySignal, handshake models, ElementSnapshot, DeviceInfo, SyncState, limits, key codes
 |   |   |   +-- Commands.kt          Request envelope; sealed Command (one class per op, `op` discriminator), Mutation/Targeted, Returning<R>, CommandHandler + dispatch, RequestDecoder
 |   |   |   +-- Results.kt           sealed CommandResult (`kind`), Response.Ok/Error (`type`), CommandFailure
-|   |   |   +-- Selector.kt          Selector/NodeSelector AST, MatchMode, MatchLimit, factories
-|   |   |   +-- SelectorValidation.kt shared structural validation -> NATIVE | TRAVERSAL plan kind
+|   |   |   +-- Selector.kt          Selector(node, scope, pick); sealed Node (match/flag/resource/related/all_of/any_of), Scope, Pick; factories, and/or
+|   |   |   +-- SelectorValidation.kt shared structural validation -> NATIVE | TRAVERSAL plan kind (regex, any_of, repeated single-valued slot)
 |   |   |   +-- ErrorCode.kt         closed error taxonomy + ErrorDetail sub-reasons
 |   |   |   +-- Blob.kt              BlobStart/BlobEnd/ArtifactInfo, chunk encoding, SHA-256
 |   |   |   +-- FrameCodec.kt        TAP1 header encode/decode, bounds checks
 |   |   |   +-- CanonicalJson.kt     canonical handshake JSON + the shared Json codec
 |   |   |   +-- Authentication.kt    Hello/Challenge/Negotiation, HMAC domains, transcript
 |   |   +-- src/test/kotlin/...      FrameCodecTest, ProtocolContractTest, ErrorCodeTest, SelectorTest, GoldenMessageTest
-|   |   +-- src/test/resources/golden/  59 golden request/response JSON fixtures (one per command, per result kind, per error code)
+|   |   +-- src/test/resources/golden/  60 golden request/response JSON fixtures (one per command, per result kind, per error code)
 |   +-- api/                     :contracts:api — host service API; protobuf/gRPC Java codegen (java-library)
 |       +-- proto/               package tap.v1, one file per concern (selector, command, connection, device, session, app); single source for the Kotlin stubs (Gradle) and the Python stubs (gen_stubs.py)
 |       +-- BREAKING_BASELINE     commit before which CI skips `buf breaking` (the deliberate 2.0 break)
@@ -169,7 +169,7 @@ tap/
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll/scrollUntil, first/at/descendant/child
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
-|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements and relations, over the proto Selector
+|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the proto Selector
 |   |   |       +-- TapExceptions.kt     TapException, ServiceException, CommandException (proto ErrorCode), WaitTimeoutException, AppLifecycleException
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package com.company.tap.junit5)
 |   |       +-- src/main/kotlin/com/company/tap/junit5/
@@ -269,7 +269,7 @@ Key types:
 | `CommandHandler` | one typed method per command; `Command.dispatch(handler)` is the exhaustive switch the driver implements |
 | `Response` | `Ok(result, durationMs)` or `Error(code, detail?, message?, durationMs)`, discriminated by `type` |
 | `CommandResult` | sealed, discriminated by `kind`: `Done`, `BoolResult`, `Moved`, `CountResult`, `TextResult`, `SnapshotResult`, `DeviceInfoResult`, `ArtifactResult`, `SyncResult` |
-| `Selector` / `NodeSelector` | the AST (below) |
+| `Selector` / `Node` / `Scope` / `Pick` | the AST (below) |
 | `ErrorCode` | closed taxonomy; each code has `mayHaveMutated` and `retryable` |
 | `BlobStart` / `BlobEnd` / `ArtifactInfo` | binary transfer envelope and checksum |
 | `Hello` / `Challenge` / `Negotiation` / `Authentication(Result)` | handshake |
@@ -277,18 +277,22 @@ Key types:
 ### Selector AST
 
 ```text
-Selector(node, scope = AUT | SYSTEM, scopePackage?, limit = EXACTLY_ONE | FIRST | AT, index?, acceptAccessibilityOrder)
-NodeSelector(text | contentDescription | hint | className : StringMatch(value, mode),
-             resource : ResourceId(name, packageName?),
-             checkable checked clickable enabled focusable focused longClickable scrollable selected : Boolean?,
-             parent | ancestor | child | descendant : NodeSelector?)
-MatchMode = EXACT | CONTAINS | STARTS_WITH | ENDS_WITH | REGEX
+Selector(node: Node, scope: Scope = Aut, pick: Pick = ExactlyOne)
+Scope = Aut | System(packageName)                         `kind`: aut | system
+Pick  = ExactlyOne | First | At(index >= 0)               `kind`: exactly_one | first | at
+Node  = Match(property: TEXT|CONTENT_DESCRIPTION|HINT|CLASS_NAME, value, mode = EXACT)   `kind`: match
+      | Flag(property: ENABLED|CHECKED|…|SELECTED, value = true)                          `kind`: flag
+      | Resource(name, packageName?)                                                      `kind`: resource
+      | Related(relation: PARENT|ANCESTOR|CHILD|DESCENDANT, node)                         `kind`: related
+      | AllOf(nodes >= 2) | AnyOf(nodes >= 2)                                             `kind`: all_of | any_of
 ```
 
 Factories: `Selector.text(v, mode)`, `.contentDescription(v)`, `.rawResource(name)`,
-`.androidResource(pkg, name)`, `.first()`, `.at(n)`, `.inSystemPackage(pkg)`.
-`SelectorValidation.validate` returns `NATIVE` (everything expressible in `BySelector`) or
-`TRAVERSAL` (any `REGEX`), or throws `InvalidSelectorException(detail)`.
+`.androidResource(pkg, name)`, `.inSystemPackage(pkg)`, `.first()`, `.at(i)`; `Node.text/…/child/descendant`,
+`Node.allOf`/`anyOf` and infix `and`/`or` (flattening, single operand returned as is).
+`SelectorValidation.validate` returns `NATIVE` (everything expressible in one `BySelector`) or
+`TRAVERSAL` (any `REGEX`, any `any_of`, or a conjunction repeating a single-valued `BySelector`
+slot), or throws `InvalidSelectorException(detail)`.
 
 ## 5. Driver
 
@@ -335,13 +339,13 @@ UiObjectAccess.findObjects:
   window = device.findWindow(By.Window.pkg(scopePackage).focused(true))
   Native    -> window.findObjects(by)            (UiAutomator 2.4 window-scoped search)
   Traversal -> walk window.rootObject once, evaluate predicate per node (reads AccessibilityNodeInfo once)
-UiObjectAccess.resolve(limit):
-  EXACTLY_ONE -> fetch up to 2 -> 0: NOT_FOUND, 2: AMBIGUOUS
-  FIRST       -> first in accessibility order
-  AT n        -> nth or NOT_FOUND
+UiObjectAccess.resolve(pick):
+  ExactlyOne -> fetch up to 2 -> 0: NOT_FOUND, 2: AMBIGUOUS
+  First      -> first in accessibility order
+  At(n)      -> nth or NOT_FOUND
 ```
 
-Scope rules: `AUT` selectors resolve in the expected AUT package; `SYSTEM` selectors must name
+Scope rules: `Aut` selectors resolve in the expected AUT package; `System` selectors must name
 an allowlisted package (`SCOPE_DENIED` otherwise); a resource with an explicit package must
 match the scope; target and container must share a scope.
 

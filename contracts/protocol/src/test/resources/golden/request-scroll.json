@@ -6,10 +6,9 @@
     "op": "scroll",
     "selector": {
       "node": {
-        "resource": {
-          "name": "list",
-          "packageName": "com.example.app"
-        }
+        "kind": "resource",
+        "name": "list",
+        "packageName": "com.example.app"
       }
     },
     "direction": "DOWN"

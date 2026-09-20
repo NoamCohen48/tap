@@ -11,25 +11,30 @@ class SelectorTest {
 
     @Test
     fun factoriesEncodeMinimalJson() {
-        assertEquals("""{"node":{"text":{"value":"OK"}}}""", json.encodeToString(Selector.text("OK")))
+        assertEquals("""{"node":{"kind":"match","property":"TEXT","value":"OK"}}""", json.encodeToString(Selector.text("OK")))
         assertEquals(
-            """{"node":{"resource":{"name":"view_button","packageName":"com.app"}}}""",
+            """{"node":{"kind":"resource","name":"view_button","packageName":"com.app"}}""",
             json.encodeToString(Selector.androidResource("com.app", "view_button")),
         )
         assertEquals(
-            """{"node":{"text":{"value":"Allow"}},"scope":"SYSTEM","scopePackage":"com.perm"}""",
+            """{"node":{"kind":"match","property":"TEXT","value":"Allow"},"scope":{"kind":"system","packageName":"com.perm"}}""",
             json.encodeToString(Selector.text("Allow").inSystemPackage("com.perm")),
         )
+        assertEquals(
+            """{"node":{"kind":"match","property":"TEXT","value":"Allow"},"pick":{"kind":"at","index":2}}""",
+            json.encodeToString(Selector.text("Allow").at(2)),
+        )
+        assertEquals("""{"node":{"kind":"flag","property":"CLICKABLE"},"pick":{"kind":"first"}}""", json.encodeToString(Selector(Node.Flag(NodeFlag.CLICKABLE)).first()))
     }
 
     @Test
     fun relationalSelectorRoundTrips() {
         val selector = Selector(
-            NodeSelector(
-                className = StringMatch("android.widget.Button", MatchMode.ENDS_WITH),
-                clickable = true,
-                ancestor = NodeSelector(resource = ResourceId("card", "com.app")),
-                child = NodeSelector(text = StringMatch("Play", MatchMode.STARTS_WITH)),
+            Node.allOf(
+                Node.className("android.widget.Button", MatchMode.ENDS_WITH),
+                Node.Flag(NodeFlag.CLICKABLE),
+                Node.ancestor(Node.Resource("card", "com.app")),
+                Node.child(Node.text("Play", MatchMode.STARTS_WITH)),
             ),
         )
         assertEquals(selector, json.decodeFromString<Selector>(json.encodeToString(selector)))
@@ -37,10 +42,39 @@ class SelectorTest {
     }
 
     @Test
-    fun regexAnywhereSelectsTraversalPlan() {
-        val nested = Selector(NodeSelector(descendant = NodeSelector(text = StringMatch("^Item \\d+$", MatchMode.REGEX))))
+    fun combinatorsNormalise() {
+        val a = Node.text("a")
+        val b = Node.text("b")
+        val c = Node.text("c")
+        assertEquals(a, Node.allOf(a))
+        assertEquals(Node.AllOf(listOf(a, b, c)), (a and b) and c)
+        assertEquals(Node.AnyOf(listOf(a, b, c)), a or (b or c))
+        assertEquals(Node.AllOf(listOf(Node.AnyOf(listOf(a, b)), c)), (a or b) and c)
+        assertFailsWith<IllegalArgumentException> { Node.allOf(emptyList()) }
+    }
+
+    @Test
+    fun choosesTraversalWhenBySelectorCannotExpressIt() {
+        val nested = Selector(Node.descendant(Node.text("^Item \\d+$", MatchMode.REGEX)))
         assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(nested))
         assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector.text("Item 1", MatchMode.CONTAINS)))
+
+        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(Node.text("Yes") or Node.text("OK"))))
+        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(Node.child(Node.text("Yes") or Node.text("OK")))))
+
+        // Two constraints on one text property, or two parents/ancestors, exceed BySelector's single slots.
+        val twoTexts = Node.text("Item", MatchMode.STARTS_WITH) and Node.text("9", MatchMode.ENDS_WITH)
+        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(twoTexts)))
+        val nestedTwoTexts = Node.Flag(NodeFlag.CLICKABLE) and Node.AllOf(listOf(Node.text("a"), Node.AllOf(listOf(Node.text("b"), Node.hint("h")))))
+        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(nestedTwoTexts)))
+        val twoAncestors = Node.ancestor(Node.Resource("list")) and Node.ancestor(Node.Resource("row"))
+        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(twoAncestors)))
+        // Children and descendants are lists in BySelector, so several stay native.
+        val twoChildren = Node.child(Node.text("a")) and Node.child(Node.text("b")) and Node.descendant(Node.text("c")) and Node.descendant(Node.text("d"))
+        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector(twoChildren)))
+        // The same text property at different levels is fine.
+        val textInChild = Node.text("a") and Node.child(Node.text("b"))
+        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector(textInChild)))
     }
 
     @Test
@@ -52,30 +86,31 @@ class SelectorTest {
 
     @Test
     fun enforcesStructuralLimits() {
-        var deep = NodeSelector(text = StringMatch("leaf"))
-        repeat(MAX_SELECTOR_DEPTH) { deep = NodeSelector(child = deep) }
+        var deep: Node = Node.text("leaf")
+        repeat(MAX_SELECTOR_DEPTH) { deep = Node.child(deep) }
         assertDetail(ErrorDetail.SELECTOR_TOO_DEEP, Selector(deep))
 
-        fun tree(depth: Int): NodeSelector =
-            if (depth == 0) NodeSelector(text = StringMatch("leaf"))
-            else NodeSelector(text = StringMatch("t"), child = tree(depth - 1), descendant = tree(depth - 1))
-        val wide = tree(8) // 511 nodes, depth 9
+        fun tree(depth: Int): Node =
+            if (depth == 0) Node.text("leaf")
+            else Node.AllOf(listOf(Node.child(tree(depth - 1)), Node.descendant(tree(depth - 1))))
+        val wide = tree(7) // 381 nodes, depth 15
         assertDetail(ErrorDetail.SELECTOR_TOO_LARGE, Selector(wide))
 
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(NodeSelector()))
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(NodeSelector(text = StringMatch("x"), child = NodeSelector())))
+        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(emptyList())))
+        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(listOf(Node.text("x")))))
+        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.child(Node.AnyOf(listOf(Node.text("x"))))))
         assertDetail(ErrorDetail.EMPTY_VALUE, Selector.rawResource(""))
+        assertDetail(ErrorDetail.EMPTY_VALUE, Selector(Node.Resource("x", "")))
         assertDetail(ErrorDetail.STRING_TOO_LONG, Selector.text("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)))
     }
 
     @Test
-    fun enforcesScopeAndLimitShape() {
-        assertDetail(ErrorDetail.SCOPE_PACKAGE_REQUIRED, Selector.text("x").copy(scope = TargetScope.SYSTEM))
-        assertDetail(ErrorDetail.SCOPE_PACKAGE_UNEXPECTED, Selector.text("x").copy(scopePackage = "com.other"))
-        assertDetail(ErrorDetail.INDEX_UNEXPECTED, Selector.text("x").copy(index = 1))
-        assertDetail(ErrorDetail.INDEX_REQUIRED, Selector.text("x").copy(limit = MatchLimit.AT, acceptAccessibilityOrder = true))
-        assertDetail(ErrorDetail.INDEX_REQUIRED, Selector.text("x").at(-1))
-        assertDetail(ErrorDetail.ORDER_NOT_ACCEPTED, Selector.text("x").copy(limit = MatchLimit.FIRST))
+    fun malformedScopeAndPickAreUnconstructible() {
+        assertFailsWith<IllegalArgumentException> { Scope.System("") }
+        assertFailsWith<IllegalArgumentException> { Selector.text("x").at(-1) }
+        assertFailsWith<IllegalArgumentException> {
+            json.decodeFromString<Selector>("""{"node":{"kind":"match","property":"TEXT","value":"x"},"pick":{"kind":"at","index":-1}}""")
+        }
         assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector.text("x").first()))
         assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector.text("x").at(2)))
     }

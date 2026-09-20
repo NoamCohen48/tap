@@ -3,10 +3,12 @@ package com.company.tap.host
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
-import com.company.tap.protocol.MatchLimit
 import com.company.tap.protocol.MatchMode
-import com.company.tap.protocol.NodeSelector
-import com.company.tap.protocol.TargetScope
+import com.company.tap.protocol.Node
+import com.company.tap.protocol.NodeFlag
+import com.company.tap.protocol.Pick
+import com.company.tap.protocol.Scope
+import com.company.tap.protocol.TextProperty
 
 /**
  * A driver command that did not succeed. Every failure carries the typed [code] plus enough
@@ -132,22 +134,37 @@ enum class TransmissionState {
 /** Compact, log-safe rendering used in exception messages and reports. */
 fun Selector.render(): String = buildString {
     append(node.render())
-    when (limit) {
-        MatchLimit.EXACTLY_ONE -> Unit
-        MatchLimit.FIRST -> append(".first()")
-        MatchLimit.AT -> append(".at(").append(index).append(')')
+    when (val pick = pick) {
+        Pick.ExactlyOne -> Unit
+        Pick.First -> append(".first()")
+        is Pick.At -> append(".at(").append(pick.index).append(')')
     }
-    if (scope == TargetScope.SYSTEM) append(" in system:").append(scopePackage)
+    when (val scope = scope) {
+        Scope.Aut -> Unit
+        is Scope.System -> append(" in system:").append(scope.packageName)
+    }
 }
 
-fun NodeSelector.render(): String = buildString {
-    val parts = mutableListOf<String>()
-    stringProperties.forEach { (name, match) -> parts += "$name${match.mode.render()}\"${match.value}\"" }
-    resource?.let { parts += if (it.packageName == null) "res=\"${it.name}\"" else "id=${it.packageName}:\"${it.name}\"" }
-    booleanProperties.forEach { (name, value) -> parts += "$name=$value" }
-    relations.forEach { (name, related) -> parts += "$name(${related.render()})" }
-    append(parts.joinToString(" "))
+/** `text="OK" clickable=true` for a conjunction, `(a | b)` for a disjunction, `child(...)` for a relation. */
+fun Node.render(): String = when (this) {
+    is Node.Match -> "${property.render()}${mode.render()}\"$value\""
+    is Node.Flag -> "${property.render()}=$value"
+    is Node.Resource -> if (packageName == null) "res=\"$name\"" else "id=$packageName:\"$name\""
+    is Node.Related -> "${relation.name.lowercase()}(${node.render()})"
+    is Node.AllOf -> nodes.joinToString(" ") { it.render() }
+    is Node.AnyOf -> nodes.joinToString(" | ", prefix = "(", postfix = ")") { it.render() }
 }
+
+private fun TextProperty.render(): String = when (this) {
+    TextProperty.TEXT -> "text"
+    TextProperty.CONTENT_DESCRIPTION -> "contentDescription"
+    TextProperty.HINT -> "hint"
+    TextProperty.CLASS_NAME -> "className"
+}
+
+/** `LONG_CLICKABLE` -> `longClickable`. */
+private fun NodeFlag.render(): String =
+    name.lowercase().replace(Regex("_([a-z])")) { it.groupValues[1].uppercase() }
 
 private fun MatchMode.render(): String = when (this) {
     MatchMode.EXACT -> "="

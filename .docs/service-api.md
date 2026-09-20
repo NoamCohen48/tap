@@ -65,7 +65,7 @@ concern, all in package `tap.v1` (`contracts/api/README.md` has the map):
 
 | File | Holds |
 |---|---|
-| `selector.proto` | `Selector`, `NodeSelector`, `StringMatch`, `ResourceId`, `MatchMode`, `MatchLimit`, `TargetScope` |
+| `selector.proto` | `Selector` (`scope` and `pick` oneofs), `Node` (`kind` oneof: `Match`, `Flag`, `ResourceId`, `Related`, `AllOf`, `AnyOf`), `AutScope`/`SystemScope`, `ExactlyOne`/`First`/`At`, `MatchMode`, `TextProperty`, `NodeFlag`, `Relation` |
 | `command.proto` | one message per command, `Command` (the `op` oneof), result payloads, `Error`, `CommandResult` (the `outcome` oneof), `ErrorCode`, `Direction`, `StabilitySignal` |
 | `connection.proto` | `ConnectionService` |
 | `device.proto` | `DeviceService`, `DeviceEntry` |
@@ -120,23 +120,27 @@ max_scrolls? }` …); optional fields with a protocol default (`distance_percent
 client reads the case it asked for (`result.bool` after `exists`, `result.moved` after
 `scroll`) and checks `error` first.
 
-`Selector`, `NodeSelector`, `StringMatch`, `ResourceId`, `ElementSnapshot`, `DeviceInfo`,
-`SyncState`, `ArtifactInfo` and the enums `ErrorCode`, `Direction`, `StabilitySignal`,
-`MatchMode`, `MatchLimit`, `TargetScope` mirror the protocol 2.0 models one-to-one. Enum values
-carry a prefix (`ERR_`, `DIR_`, `STABILITY_`, `MATCH_`, `LIMIT_`, `SCOPE_`) plus a
+`Selector`, `Node`, `ResourceId`, `ElementSnapshot`, `DeviceInfo`, `SyncState`, `ArtifactInfo`
+and the enums `ErrorCode`, `Direction`, `StabilitySignal`, `MatchMode`, `TextProperty`,
+`NodeFlag`, `Relation` mirror the protocol 2.0 models one-to-one. The selector's sum types are
+`oneof`s named after the protocol kinds: `Node.kind` (`match`, `flag`, `resource`, `related`,
+`all_of`, `any_of`), `Selector.scope` (`aut`, `system { package_name }`; unset = `aut`) and
+`Selector.pick` (`exactly_one`, `first`, `at { index }`; unset = `exactly_one`). Enum values
+carry a prefix (`ERR_`, `DIR_`, `STABILITY_`, `MATCH_`, `PROPERTY_`, `FLAG_`, `RELATION_`) plus a
 `*_UNSPECIFIED` zero value that the service rejects (`INVALID_ARGUMENT`) where the protocol has
 no default. Tests keep the mirror honest: `EnumMirrorTest` (every proto enum equals the
 protocol enum, prefixed; the `op` cases equal `Command.names`; the `outcome` cases equal the
-result kinds plus `error`), the exhaustive `when`s in `Conversions` (a case added on one side
-does not compile), and `GoldenRoundTripTest` (every golden request/response fixture survives a
-proto round trip unchanged). A protocol change therefore touches `protocol-contract.md`, the
-golden fixtures, `command.proto` and the committed Python stubs in the same commit.
+result kinds plus `error`; the `kind`/`scope`/`pick` cases equal the sealed types' serial
+names), the exhaustive `when`s in `Conversions` (a case added on one side does not compile),
+and `GoldenRoundTripTest` (every golden request/response fixture survives a proto round trip
+unchanged). A protocol change therefore touches `protocol-contract.md`, the golden fixtures,
+`command.proto`/`selector.proto` and the committed Python stubs in the same commit.
 `ResourceId.aut_package = true` is the one field with no protocol counterpart: the service
 replaces it with the session's AUT package (`Open.aut_package`) before the command reaches the
 driver, so a test can say "resource `login` of the app under test" without knowing the package.
 It is mutually exclusive with `package_name` and needs a session (`INVALID_ARGUMENT`
 otherwise); the resolved id is then subject to the normal scope rules, so an AUT resource under
-`SCOPE_SYSTEM` is still rejected. `AutResourceTest` covers it.
+a `system` scope is still rejected. `AutResourceTest` covers it.
 
 ### AppService — AUT lifecycle
 
@@ -279,3 +283,15 @@ against `contracts/api/BREAKING_BASELINE`: the step is skipped when the base com
 before that baseline, and runs normally against every commit after it. Moving the baseline is
 the one-line record of a deliberate break; the additive-only rule (add fields and values,
 never remove, renumber or retype) applies to everything after it.
+
+## 8. Selectors as `oneof`s, with `any_of` (2026-09-20)
+
+`selector.proto` followed the protocol's selector refactor (`protocol-contract.md`, Design
+Rationale): the flat `NodeSelector` of eighteen optionals became `Node`, a `kind` oneof over six
+per-kind messages, and the `TargetScope`/`MatchLimit` enums plus their companion optionals
+(`scope_package`, `index`, `accept_accessibility_order`) became the `scope` and `pick` oneofs.
+The combinators are `all_of`/`any_of` rather than `and`/`or` because `and` and `or` are Python
+keywords: protoc still generates them, but the `.pyi` stubs drop the typed attribute and the
+DSL would have to spell `getattr(node, "and")`. The client DSLs expose them as `and`/`or`
+(Kotlin infix) and `&`/`|` (Python). Same 0.x break as §7; `BREAKING_BASELINE` moved to the
+commit before this change.

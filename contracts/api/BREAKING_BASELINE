@@ -1,5 +1,1 @@
-# Last commit of the previous tap.v1 line. `buf breaking` in CI does not compare against this
-# commit or its ancestors: the API after it (protocol 2.0: one message per command, `oneof op`
-# / `oneof outcome`, split proto files) is a deliberate, pre-1.0 break. Every later change is
-# checked as usual. Update only with another decision record.
-4fe5bc39ac8b459e2f674d819f0299ea322d73e2
+b4fa1c30ba5bbcca3b6e732a8c7d6fc3c5e9816d
