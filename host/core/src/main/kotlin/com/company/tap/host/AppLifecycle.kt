@@ -42,8 +42,7 @@ class AppLifecycle(
     @Volatile
     private var syncIdentity: SyncState? = null
 
-    fun isInstalled(): Boolean =
-        adb.run(serial, "shell", "pm", "path", packageName).lineSequence().any { it.startsWith("package:") }
+    fun isInstalled(): Boolean = adb.isInstalled(serial, packageName)
 
     fun install(apk: Path, timeoutMs: Long) {
         adb.install(serial, apk, timeoutMs)
@@ -52,28 +51,28 @@ class AppLifecycle(
     }
 
     fun uninstall() {
-        val output = adb.run(serial, "uninstall", packageName)
+        val output = adb.uninstall(serial, packageName)
         if (isInstalled()) throw AppLifecycleException("$packageName still installed after uninstall on $serial: $output")
         syncIdentity = null
     }
 
     /** `am force-stop` plus proof that no process of the package remains. */
     fun forceStop(timeoutMs: Long) {
-        adb.run(serial, "shell", "am", "force-stop", packageName)
+        adb.forceStop(serial, packageName)
         awaitNoProcess(timeoutMs, "force-stop")
         syncIdentity = null
     }
 
     /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped. */
     fun clearData(timeoutMs: Long) {
-        val output = adb.run(serial, "shell", "pm", "clear", packageName)
+        val output = adb.clearData(serial, packageName)
         if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
         awaitNoProcess(timeoutMs, "pm clear")
         syncIdentity = null
     }
 
     fun grantPermission(permission: String) {
-        adb.run(serial, "shell", "pm", "grant", packageName, permission)
+        adb.grantPermission(serial, packageName, permission)
     }
 
     /**
@@ -82,7 +81,7 @@ class AppLifecycle(
      */
     fun launch(activity: String?, timeoutMs: Long) {
         val component = "$packageName/${activity ?: launcherActivity()}"
-        val output = adb.run(serial, "shell", "am", "start", "-W", "-n", component, timeoutMs = timeoutMs)
+        val output = adb.startActivity(serial, component, timeoutMs)
         if ("Error" in output || "Exception" in output) {
             throw AppLifecycleException("am start $component failed on $serial: $output")
         }
@@ -169,12 +168,8 @@ class AppLifecycle(
     }
 
     private fun launcherActivity(): String {
-        val output = adb.run(
-            serial, "shell", "cmd", "package", "resolve-activity", "--brief",
-            "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", packageName,
-        )
-        val component = output.lineSequence().map(String::trim).lastOrNull { it.startsWith("$packageName/") }
-            ?: throw AppLifecycleException("No launcher activity for $packageName on $serial: $output")
+        val component = adb.launcherActivity(serial, packageName)
+            ?: throw AppLifecycleException("No launcher activity for $packageName on $serial")
         return component.substringAfter('/')
     }
 
