@@ -123,6 +123,77 @@ launcher-activity resolution and the sync-provider idle contract are shared with
 
 Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
 
+## 3a. Implementation: `TapService` and the four servicers
+
+`host/service/src/main/kotlin/com/company/tap/service/`. All state lives in `TapService`
+(connections, sessions, the once-per-serial driver install memo); it has no gRPC types and is
+what the unit tests drive. Each proto service has one servicer in `servicer/` that only adds
+what is gRPC-specific: unwrap the request, call `TapService` or the session's `:host:core`
+objects, wrap the reply. Two helpers are shared (`servicer/common.kt`):
+
+- `Throwable.toStatus()` — the status mapping in §3: unknown connection/session →
+  `NOT_FOUND`; `IllegalArgumentException` → `INVALID_ARGUMENT`; `DeviceBusyException` →
+  `FAILED_PRECONDITION` (no wait asked) or `DEADLINE_EXCEEDED` (waited and gave up);
+  `HostWaitTimeoutException` → `DEADLINE_EXCEEDED`; `AppLifecycleException` /
+  `IllegalStateException` → `FAILED_PRECONDITION`; anything else → `INTERNAL` with the class name.
+- `reply(observer) { … }` — run the block, send its one message, or the mapped status.
+
+| Servicer | Does |
+|---|---|
+| `ConnectionServicer` | `Open` → `openConnection(name)`. `Attach` → the liveness stream (below). `Close` → `closeConnection(id, "client request")`. `Info` → versions, ADB path, state dir, bundled driver; also what `ServiceDiscovery` pings to see whether a service is alive. |
+| `DeviceServicer` | `ListDevices` → `TapService.devices()` mapped to `DeviceEntry`. A view: `FREE`, `LEASED` (+ `held_by_connection` when the holder is one of this service's sessions; probing the per-serial lock says "held" for another process), `QUARANTINED` + reason from the journal. |
+| `SessionServicer` | `Open` → validates `serial`/`aut_package`, resolves the connection, `openSession` (lock → journal recovery → driver install/start → forward → authenticate), then runs one `DEVICE_INFO` command so the response carries device info; if that first command fails the session is closed again, otherwise the client would hold a device it never received. `Close` → `closeSession`, `clean` or the quarantine detail. `Execute` → the hot path, see below. `Screenshot` → driver PNG inline or written to a host path. `DriverLog` → the session's `DriverLogBuffer`. |
+| `AppServicer` | One call per RPC on `session.device.app(package)` — the per-package `AppLifecycle` in `:host:core` (install, uninstall, isInstalled, forceStop, clearData, grantPermission, launch, coldLaunch → verified new process identity, process, isRunning, awaitIdle). No logic of its own beyond the timeout from the request. |
+
+### How `Attach` works
+
+`Attach` is a server-streaming RPC the client opens once, right after `Open`, and never
+finishes reading. The messages are irrelevant; what matters is that the *call* stays alive
+exactly as long as the client process does, and gRPC tells the server when it stops.
+
+1. The observer is cast to `ServerCallStreamObserver`, which is what exposes `isCancelled`
+   and `setOnCancelHandler`; the plain observer can only send.
+2. `service.connection(id)` resolves the connection; unknown *or already closed* is
+   `NOT_FOUND` on the stream and nothing is registered.
+3. A heartbeat event is scheduled every 15 s on the shared `tap-scheduler` thread. It is not
+   how the client's death is detected; it is outbound traffic so an idle-connection timeout in a
+   proxy or the OS never closes a stream that is legitimately silent for an hour. Send errors
+   are swallowed — a dead call is handled by the cancel path.
+4. **Cancel handler — the liveness signal.** gRPC invokes it when the call is torn down from
+   the client side: an explicit cancel (what `Connection.close()` does after its `Close` RPC),
+   a channel shutdown, or — the case this exists for — the TCP connection dropping because the
+   test JVM / pytest process was killed, crashed or OOM'd. The handler stops the heartbeat and
+   calls `closeConnection(id, "client detached")`, which closes every session the connection
+   owns: each `DeviceSession.close()` stops the driver, removes its forward, journals `CLOSED`
+   (or `QUARANTINED`) and releases the per-serial lock. A crashed test process frees its
+   devices as soon as the OS reports the socket closed, with no client cooperation.
+5. **`onClose` hook — the explicit path.** When the connection closes for any other reason
+   (client `Close`, or `TapService.close()` at shutdown) `closeConnection` runs the hooks; this
+   one stops the heartbeat and completes the stream with `onCompleted()`, so the client's
+   reader ends normally. Both paths are idempotent: `closeConnection` returns 0 for a
+   connection already marked closed, so "client closed, then cancelled the stream" tears down once.
+6. The first event, `attached to connection <id>`, is sent synchronously. Clients block on it
+   before returning from `connect()` / `attach()`, which guarantees the hooks are installed
+   before any session is opened — there is never a session whose connection is not watched.
+
+Clients call `Close` first and cancel the stream second, so the service log says `client
+request` for a normal teardown and `client detached` only for a real disappearance — a cheap
+way to tell a clean run from a crashed one. There is no reconnect: a connection whose stream
+dropped is gone and the client opens a new one. The service is not a client supervisor, just
+the thing that reliably releases devices when their owner is dead; hence the client contract in
+§4, one `Attach` per connection, opened before any session.
+
+### How `Execute` works
+
+Every element / wait command is one `Execute`. It runs the command on the `tap-rpc` executor,
+*off* the gRPC call thread, because gRPC serialises the events of one call: a handler that
+blocked in the method body awaiting the driver would never see the client's cancel. The cancel
+handler forwards a protocol `CANCEL` to the in-flight driver request (`PendingCommand.cancel`);
+the driver decides whether that is honoured — never after the mutation gate — and the awaited
+driver response stays the definitive outcome (`INDETERMINATE` on transport loss after
+acceptance, never a replay). Defaults for the command timeout and the AUT package come from
+the session.
+
 ## 4. Client expectations
 
 A conforming client:
