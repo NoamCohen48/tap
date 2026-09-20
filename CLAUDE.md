@@ -29,6 +29,8 @@ See `README.md` for build/run commands.
 - `.docs/multi-language-bindings.md` — analysis behind the service + Python binding, with
   the outcome section recording what was decided.
 - `.docs/upstream-reference-audit.md` — adopt/adapt/do-not-copy decisions per upstream tool.
+- `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
+  kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /
   Python / gRPC references; `scripts/build-docs.sh`). Update the guide with any user-visible
   client change; public client API needs KDoc/docstrings because the references are generated
