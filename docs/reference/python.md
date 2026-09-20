@@ -5,7 +5,7 @@ type hints of `clients/python/tap`.
 
 ```python
 from tap import Service, res_id, text, desc, CONTAINS, DOWN, STABILITY_TREE
-from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, ServiceError
+from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServiceError
 ```
 
 ## Device
@@ -35,8 +35,6 @@ from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, Ser
 ::: tap.service.Service
 
 ::: tap.service.Run
-
-::: tap.service.DeviceFacts
 
 ## Errors
 

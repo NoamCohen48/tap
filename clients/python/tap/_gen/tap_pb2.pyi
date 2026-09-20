@@ -493,31 +493,17 @@ class InfoResponse(_message.Message):
     bundled_driver: bool
     def __init__(self, service_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., bundled_driver: _Optional[bool] = ...) -> None: ...
 
-class DeviceFacts(_message.Message):
-    __slots__ = ("serial", "api_level", "manufacturer", "model", "emulator")
-    SERIAL_FIELD_NUMBER: _ClassVar[int]
-    API_LEVEL_FIELD_NUMBER: _ClassVar[int]
-    MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
-    MODEL_FIELD_NUMBER: _ClassVar[int]
-    EMULATOR_FIELD_NUMBER: _ClassVar[int]
-    serial: str
-    api_level: int
-    manufacturer: str
-    model: str
-    emulator: bool
-    def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ...) -> None: ...
-
 class PoolDevice(_message.Message):
-    __slots__ = ("facts", "state", "leased_by_run", "quarantine_reason")
-    FACTS_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("serial", "state", "leased_by_run", "quarantine_reason")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     LEASED_BY_RUN_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
-    facts: DeviceFacts
+    serial: str
     state: DeviceState
     leased_by_run: str
     quarantine_reason: str
-    def __init__(self, facts: _Optional[_Union[DeviceFacts, _Mapping]] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
 
 class InventoryRequest(_message.Message):
     __slots__ = ()

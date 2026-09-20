@@ -65,8 +65,9 @@ Decided by the client, in this order:
 From the SDK you do the same by hand: `run.availableSerials()` / `run.available_serials()` to
 look, then `run.openDevice(serial, aut, options = DeviceOptions(waitForDevice = 60.seconds))` /
 `run.open_device(serial, aut, wait_for_device=60)` to open; without a wait, a busy device fails
-at once with `DeviceBusyException` / `DeviceBusyError`. `DeviceFacts` in the inventory (`api_level`, `model`,
-`emulator`, …) is there so a client can choose; the service never filters on it.
+at once with `DeviceBusyException` / `DeviceBusyError`. The inventory carries only serials and
+states; anything richer (API level, model) comes from `device.info()` once a session is open,
+or from `adb -s <serial> shell getprop` if you need it before.
 
 ## Cross-device waits
 
@@ -88,7 +89,7 @@ call away in either client:
 
     ```python
     for d in Service().inventory():
-        print(d.facts.serial, pb.DeviceState.Name(d.state), d.leased_by_run, d.quarantine_reason)
+        print(d.serial, pb.DeviceState.Name(d.state), d.leased_by_run, d.quarantine_reason)
     ```
 
 Each device is `FREE`, `LEASED` (with the run and role holding it), `OFFLINE`, or

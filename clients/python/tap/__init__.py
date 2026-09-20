@@ -24,7 +24,7 @@ from .selectors import (
     CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res, res_id,
     scrollable, text, text_contains, text_matches, text_starts_with,
 )
-from .service import DeviceFacts, Run, Service, resolve_address
+from .service import Run, Service, resolve_address
 
 __all__ = [
     "pb", "App", "ProcessIdentity", "Device", "Timeouts", "KEYCODE_BACK", "KEYCODE_HOME",
@@ -32,7 +32,7 @@ __all__ = [
     "AppLifecycleError", "CommandError", "DeviceBusyError", "ErrorCode", "ServiceError", "TapError", "WaitTimeoutError",
     "Selector", "EXACT", "CONTAINS", "STARTS_WITH", "REGEX", "class_name", "clickable", "desc", "hint",
     "raw_res", "res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
-    "DeviceFacts", "Run", "Service", "resolve_address",
+    "Run", "Service", "resolve_address",
 ]
 
 try:

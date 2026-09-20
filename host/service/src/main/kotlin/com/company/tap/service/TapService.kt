@@ -28,9 +28,6 @@ class ServiceConfig(
 class UnknownRunException(id: String) : NoSuchElementException("Unknown run $id")
 class UnknownSessionException(id: String) : NoSuchElementException("Unknown session $id")
 
-/** Static facts gathered once per serial, for clients choosing devices from the inventory. */
-data class Facts(val serial: String, val apiLevel: Int, val manufacturer: String, val model: String, val emulator: Boolean)
-
 sealed class DeviceStatus {
     object Free : DeviceStatus()
     /** Locked by a live session: [runId] when it is one of ours, null for another process. */
@@ -38,7 +35,7 @@ sealed class DeviceStatus {
     data class Quarantined(val reason: String) : DeviceStatus()
 }
 
-data class PoolEntry(val facts: Facts, val status: DeviceStatus)
+data class PoolEntry(val serial: String, val status: DeviceStatus)
 
 class Run(val id: String, val name: String) {
     val sessions = ConcurrentHashMap<String, ManagedSession>()
@@ -77,7 +74,6 @@ class RingLog(private val capacity: Int = 2_000) {
 class TapService(val config: ServiceConfig) : AutoCloseable {
     private val runs = ConcurrentHashMap<String, Run>()
     private val sessions = ConcurrentHashMap<String, ManagedSession>()
-    private val facts = ConcurrentHashMap<String, Facts>()
     /** Serials whose bundled driver this service process already installed. */
     private val driverInstalled = ConcurrentHashMap.newKeySet<String>()
 
@@ -116,20 +112,8 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
             val status = quarantine(store)?.let { DeviceStatus.Quarantined(it) }
                 ?: sessions.values.firstOrNull { it.device.serial == serial }?.let { DeviceStatus.Leased(it.run.id) }
                 ?: if (store.isLeased()) DeviceStatus.Leased(null) else DeviceStatus.Free
-            PoolEntry(factsOf(serial), status)
+            PoolEntry(serial, status)
         }
-
-    private fun factsOf(serial: String): Facts = facts.getOrPut(serial) {
-        val adb = config.adb
-        fun prop(name: String) = runCatching { adb.run(serial, "shell", "getprop", name).trim() }.getOrDefault("")
-        Facts(
-            serial = serial,
-            apiLevel = prop("ro.build.version.sdk").toIntOrNull() ?: 0,
-            manufacturer = prop("ro.product.manufacturer"),
-            model = prop("ro.product.model"),
-            emulator = serial.startsWith("emulator-") || prop("ro.kernel.qemu") == "1" || prop("ro.boot.qemu") == "1",
-        )
-    }
 
     private fun quarantine(store: SessionJournalStore): String? = runCatching {
         store.read()

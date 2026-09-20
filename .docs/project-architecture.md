@@ -146,7 +146,7 @@ tap/
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
 |   |   +-- src/main/kotlin/com/company/tap/service/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
-|   |   |   +-- TapService.kt        runs, device inventory (lock probe + journal), managed sessions + AppLifecycle per package, execute with transport-loss-as-data
+|   |   |   +-- TapService.kt        runs, device inventory (serials; lock probe + journal), managed sessions + AppLifecycle per package, execute with transport-loss-as-data
 |   |   |   +-- Servicers.kt         gRPC servicers for Run/Pool/Session/App; status mapping; off-thread Execute so cancel reaches the driver
 |   |   |   +-- Conversions.kt       proto <-> protocol models (enums by name, selectors, commands, results)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
@@ -445,7 +445,7 @@ process observation (`coldLaunch` returns the new `ProcessObservation`; `forceSt
 
 `tap serve` exposes `:host:core` over loopback gRPC (`contracts/api/proto/tap.proto`,
 package `tap.v1`) so every client — Kotlin and Python alike — reuses the same ADB control
-plane, journals, leases, driver lifecycle and app operations. It reports the device inventory (`adb devices` + `getprop` facts, `LEASED` by probing
+plane, journals, leases, driver lifecycle and app operations. It reports the device inventory (`adb devices`, `LEASED` by probing
 the per-serial lock, quarantine read from the journal) but leases nothing itself: exclusive use
 is the lock a live `DeviceSession` holds, and `Open` can wait for it (`pool-and-leases.md`). It proxies `Execute` to the session's `DriverClient` (driver failures and transport
 loss are returned as `CommandResult` data, never gRPC errors; gRPC cancellation forwards a

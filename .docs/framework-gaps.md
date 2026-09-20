@@ -61,7 +61,7 @@ the CI pilot.
 | `WaitOptions.stableFor` | Host-polled waits (`enabled`, `textEquals`, `count`, …) have `timeout` and `pollInterval` only; no "condition held for N ms". | Small. |
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
-| Device constraints | The service leases nothing (decided 2026-09-20, `pool-and-leases.md`: exclusive use is the per-serial journal lock a session holds; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier service-side matcher and lease table are archived under `archive/pool-roles/` and `archive/pool-leases/`. | Client-side selection over `DeviceFacts` from `Inventory`; a `@TapDevice(minApi = …)` style annotation. |
+| Device constraints | The service leases nothing (decided 2026-09-20, `pool-and-leases.md`: exclusive use is the per-serial journal lock a session holds; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier service-side matcher and lease table are archived under `archive/pool-roles/` and `archive/pool-leases/`. | Client-side selection (`getprop` per serial, or `DeviceInfo` after open); a `@TapDevice(minApi = …)` style annotation. |
 | Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; `DeviceSession`, `AppLifecycle`, `TapService`, the Kotlin `Device`/`App`/`Element` and `TapExtension` are exercised only on real devices via the sample suites. Failure paths (install failure, forward conflict, pool timeout, artifact capture failure) have no JVM tests. | Highest-value testing gap; a fake `Adb` + the existing `FakeDriverServer` would cover most of it. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
@@ -124,6 +124,11 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 - Compose: supported only through `testTagsAsResourceId` → `rawRes(tag)` and standard
   semantics text/description. No semantics-tree access, no `useUnmergedTree`, no Compose
   lazy-list item scrolling by key (only by visible selector via `SCROLL_UNTIL`).
+- Observed once on emulator-5554 (2026-09-20): `MainScreenTest.scrollsComposeListUntilItemIsVisible`
+  failed on `item.exists()` immediately after `scrollUntil` returned, with the item visible in
+  the failure screenshot — a Compose semantics-update race between the scroll's match and the
+  next resolve. Passed on rerun. If it recurs, `SCROLL_UNTIL` should re-verify its match after
+  a short tree-stable wait before returning, not the test retry.
 - WebView: nothing. The plan's boundary (no WebDriver surface; accessibility-only within
   WebViews, explicit "not supported" for the rest) is not yet enforced or documented in the
   SDK.

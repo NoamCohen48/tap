@@ -11,7 +11,7 @@ this had).
 
 | Piece | Where | What it was |
 |---|---|---|
-| **Roles + constraints** | `TapService.acquire`, proto `DeviceConstraints`/`RoleRequest`/`Assignment` | A test asked for named roles (`sender`, `receiver`), each with optional constraints (serial, API range, emulator, model substring); the service matched free devices to roles, most-constrained first, all-or-none. `Facts` (API level, manufacturer, model, emulator flag), gathered once per serial with `getprop`, existed to be matched against. |
+| **Roles + constraints** | `TapService.acquire`, proto `DeviceConstraints`/`RoleRequest`/`Assignment`/`DeviceFacts` | A test asked for named roles (`sender`, `receiver`), each with optional constraints (serial, API range, emulator, model substring); the service matched free devices to roles, most-constrained first, all-or-none. `Facts` (API level, manufacturer, model, emulator flag), gathered once per serial with `getprop`, existed to be matched against. |
 | **Pool lease** | `TapService.leases: serial → Leased(run)`, proto `Acquire`/`Release` | An in-memory reservation: "run X owns this serial until it releases it or its liveness stream drops". `Open` refused a serial the run had not leased; `Release` refused a serial with an open session. |
 | **Journal lock** | `SessionJournalStore.acquireLease()` in `:host:core` | `FileChannel.tryLock()` on `~/.tap/sessions/<serial>.lock`, taken by `DeviceSession.open` and held until close. |
 
@@ -22,9 +22,12 @@ test is the runner's business, and the runners (JUnit extension, pytest plugin) 
 the role names; they now map roles to serials themselves: `tap.device.<role>` pins, then
 `tap.serials` in declaration order, otherwise the service inventory (free devices first).
 
-`DeviceFacts` stays in `Inventory` as **information**, not a filter: a client that wants an
-emulator or an API ≥ 33 device reads the inventory and chooses. No client does that yet
-(`framework-gaps.md`). The removed matcher is under `archive/pool-roles/`.
+`DeviceFacts` first stayed in `Inventory` as information, then went too (the commit after
+4213140): with no matcher there is nothing to feed, the inventory's job is "which serials
+exist and are they free or quarantined", and anything richer is in the driver's `DeviceInfo`
+once a session is open. It also removes a `getprop` round trip per new serial. A client that
+wants to choose by API level or emulator-ness reads `getprop` itself. The removed matcher and
+facts are under `archive/pool-roles/`.
 
 Consequence to know about: with nothing configured, two processes starting at once may pick
 the same free serial; the second waits for the first rather than being steered to another

@@ -357,24 +357,15 @@ enum DeviceState {
   DEVICE_OFFLINE = 4;
 }
 
-// What the pool knows about a device, gathered once per serial; informational, for
-// clients that choose devices from the inventory.
-message DeviceFacts {
-  string serial = 1;
-  int32 api_level = 2;
-  string manufacturer = 3;
-  string model = 4;
-  bool emulator = 5;
-}
-
-// A device in the inventory with its lease or quarantine.
+// A device in the inventory with its state. Anything richer than the serial (API level,
+// model, ...) comes from the driver's DeviceInfo once a session is open.
 message PoolDevice {
-  DeviceFacts facts = 1;
+  string serial = 6;
   DeviceState state = 2;
   optional string leased_by_run = 3; // set when the session holding the lock belongs to this service
   optional string quarantine_reason = 5;
-  reserved 4;
-  reserved "leased_role";
+  reserved 1, 4;
+  reserved "facts", "leased_role";
 }
 
 message InventoryRequest {}

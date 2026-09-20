@@ -134,21 +134,6 @@ def mapped_errors(serial: str | None = None) -> Iterator[None]:
         raise _map_rpc_error(error, serial) from None
 
 
-@dataclass(frozen=True)
-class DeviceFacts:
-    """What the pool knows about a device: serial, API level, manufacturer, model, emulator."""
-
-    serial: str
-    api_level: int
-    manufacturer: str
-    model: str
-    emulator: bool
-
-    @classmethod
-    def of(cls, facts: pb.DeviceFacts) -> "DeviceFacts":
-        return cls(facts.serial, facts.api_level, facts.manufacturer, facts.model, facts.emulator)
-
-
 class Service:
     """One gRPC channel to a host service. Cheap to create; share one per process."""
 
@@ -218,7 +203,7 @@ class Run:
         nothing to acquire beforehand."""
         devices = [d for d in self.service.inventory() if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)]
         devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
-        return [d.facts.serial for d in devices]
+        return [d.serial for d in devices]
 
     def open_device(self, serial: str, aut_package: str, **options) -> "Device":
         """Open a driver session on ``serial`` for ``aut_package``; ``options`` are ``Device.open`` keywords."""

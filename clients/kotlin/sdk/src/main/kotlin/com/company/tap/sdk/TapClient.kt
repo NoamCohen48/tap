@@ -128,7 +128,7 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
     fun availableSerials(): List<String> = client.inventory()
         .filter { it.state == DeviceState.DEVICE_FREE || it.state == DeviceState.DEVICE_LEASED }
         .sortedBy { it.state != DeviceState.DEVICE_FREE }
-        .map { it.facts.serial }
+        .map { it.serial }
 
     /**
      * Open a driver session on [serial] for [autPackage]. The session holds the device's

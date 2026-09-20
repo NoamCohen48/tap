@@ -14,7 +14,6 @@ import com.company.tap.api.v1.CloseRunResponse
 import com.company.tap.api.v1.CloseSessionRequest
 import com.company.tap.api.v1.CloseSessionResponse
 import com.company.tap.api.v1.CommandResult
-import com.company.tap.api.v1.DeviceFacts
 import com.company.tap.api.v1.DeviceState
 import com.company.tap.api.v1.DriverLogRequest
 import com.company.tap.api.v1.DriverLogResponse
@@ -155,7 +154,7 @@ class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServic
     }
 
     private fun poolDevice(entry: PoolEntry): PoolDevice = PoolDevice.newBuilder().apply {
-        facts = facts(entry.facts)
+        serial = entry.serial
         when (val status = entry.status) {
             DeviceStatus.Free -> state = DeviceState.DEVICE_FREE
             is DeviceStatus.Leased -> {
@@ -169,9 +168,6 @@ class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServic
         }
     }.build()
 
-    private fun facts(f: Facts): DeviceFacts = DeviceFacts.newBuilder()
-        .setSerial(f.serial).setApiLevel(f.apiLevel).setManufacturer(f.manufacturer).setModel(f.model).setEmulator(f.emulator)
-        .build()
 }
 
 class SessionServicer(

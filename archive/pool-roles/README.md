@@ -6,11 +6,11 @@ which *role* in a test is decided by the client (JUnit extension, pytest plugin)
 filters devices by API level, emulator or model yet.
 
 This folder keeps the removed code verbatim, uncompiled and unpackaged, in case role naming or
-constraint matching is wanted again — most likely on the client side, over `DeviceFacts` from
-`Inventory`, or in a separate scheduler.
+constraint matching is wanted again — most likely on the client side, or in a separate scheduler.
 
 | File | Was |
 |---|---|
+| `DeviceFacts.proto`, `Facts.kt` | The per-serial facts (`api_level`, `manufacturer`, `model`, `emulator`) gathered with `getprop` for the matcher; removed in the commit after 4213140 once nothing consumed them. |
 | `tap.roles.proto` | `DeviceConstraints`, `RoleRequest`, `Assignment`, the role-shaped `AcquireRequest`/`AcquireResponse`, `PoolDevice.leased_role`. The live proto `reserved`s these numbers and names. |
 | `TapService.roles.kt` | `TapService.acquire(run, roles, timeout)` with `assign` (most-constrained role first), `constraintWeight`, `satisfies`. |
 | `PoolServicer.roles.kt` | The gRPC adapter for the above. |
