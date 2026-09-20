@@ -131,7 +131,7 @@ carry a prefix (`ERR_`, `DIR_`, `STABILITY_`, `MATCH_`, `PROPERTY_`, `FLAG_`, `R
 no default. Tests keep the mirror honest: `EnumMirrorTest` (every proto enum equals the
 protocol enum, prefixed; the `op` cases equal `Command.names`; the `outcome` cases equal the
 result kinds plus `error`; the `kind`/`scope`/`pick` cases equal the sealed types' serial
-names), the exhaustive `when`s in `Conversions` (a case added on one side does not compile),
+names), the exhaustive `when`s in `Conversions.kt` (a case added on one side does not compile),
 and `GoldenRoundTripTest` (every golden request/response fixture survives a proto round trip
 unchanged). A protocol change therefore touches `protocol-contract.md`, the golden fixtures,
 `command.proto`/`selector.proto` and the committed Python stubs in the same commit.

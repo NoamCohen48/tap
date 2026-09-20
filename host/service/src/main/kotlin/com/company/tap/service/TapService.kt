@@ -185,26 +185,14 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     }
 
     /**
-     * Runs one protocol command. [onStarted] receives the pending command so the caller can wire
-     * gRPC cancellation to it. Transport loss is reported as an error [Response], not thrown.
+     * Awaits a submitted command. Transport loss is reported as an error [Response] (with the
+     * transmission state as its detail), not thrown, so the client sees `INDETERMINATE` /
+     * `TRANSPORT_LOST` through the normal result path.
      */
-    fun execute(
-        session: Session,
-        command: Conversions.TimedCommand,
-        onStarted: (DriverClient.PendingCommand) -> Unit = {},
-    ): Pair<Response, Long> {
-        val pending = session.device.client.submit(command.command, command.timeoutMs)
-        onStarted(pending)
-        return try {
-            pending.await() to pending.requestId
-        } catch (loss: CommandTransportException) {
-            Response.failure(
-                loss.code,
-                detail = loss.transmissionState.name,
-                message = loss.message,
-                durationMs = 0,
-            ) to pending.requestId
-        }
+    fun await(pending: DriverClient.PendingCommand): Response = try {
+        pending.await()
+    } catch (loss: CommandTransportException) {
+        Response.failure(loss.code, detail = loss.transmissionState.name, message = loss.message, durationMs = 0)
     }
 
     override fun close() {

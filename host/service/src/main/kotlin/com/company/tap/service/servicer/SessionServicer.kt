@@ -13,7 +13,8 @@ import com.company.tap.api.v1.ScreenshotResponse
 import com.company.tap.api.v1.SessionServiceGrpc
 import com.company.tap.host.DriverClient
 import com.company.tap.protocol.DeviceInfoQuery
-import com.company.tap.service.Conversions
+import com.company.tap.service.toCommand
+import com.company.tap.service.toProto
 import com.company.tap.service.TapService
 import com.google.protobuf.ByteString
 import io.grpc.stub.ServerCallStreamObserver
@@ -56,7 +57,7 @@ class SessionServicer(
             .setSessionId(session.id)
             .setSerial(session.device.serial)
             .setGeneration(session.device.generation)
-            .setDeviceInfo(Conversions.deviceInfo(info))
+            .setDeviceInfo(info.toProto())
             .build()
     }
 
@@ -83,12 +84,12 @@ class SessionServicer(
         commandExecutor.execute {
             reply(observer) {
                 val session = service.session(request.sessionId)
-                val command = Conversions.command(request.command, session.defaultTimeoutMs, session.device.config.autPackage)
-                val (response, requestId) = service.execute(session, command) { pending ->
-                    pendingRef.set(pending)
-                    if (cancelled.get()) pending.cancel()
-                }
-                Conversions.result(response, requestId, session.device.generation)
+                val command = request.command.toCommand(session.device.config.autPackage)
+                val timeoutMs = if (request.command.timeoutMs > 0) request.command.timeoutMs else session.defaultTimeoutMs
+                val pending = session.device.client.submit(command, timeoutMs)
+                pendingRef.set(pending)
+                if (cancelled.get()) pending.cancel()
+                service.await(pending).toProto(pending.requestId, session.device.generation)
             }
         }
     }
@@ -98,7 +99,7 @@ class SessionServicer(
         val timeout = if (request.timeoutMs > 0) request.timeoutMs else 30_000
         val shot = session.device.client.screenshot(timeout)
         ScreenshotResponse.newBuilder().apply {
-            artifact = Conversions.artifact(shot.info)
+            artifact = shot.info.toProto()
             if (request.hasWriteTo()) {
                 val target = Path.of(request.writeTo)
                 target.parent?.let(Files::createDirectories)
