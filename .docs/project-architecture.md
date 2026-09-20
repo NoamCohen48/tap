@@ -151,7 +151,7 @@ tap/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
 |   |   |   +-- TapService.kt        connections, device list (serials; lock probe + journal), sessions, execute with transport-loss-as-data
 |   |   |   +-- Servicers.kt         gRPC servicers for Connection/Device/Session/App; status mapping; off-thread Execute so cancel reaches the driver
-|   |   |   +-- Conversions.kt       proto <-> protocol models (enums by name, selectors, commands, results)
+|   |   |   +-- Conversions.kt       proto <-> protocol extension functions (toProto / toCommand / toSelector / toResponse)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
 |   |   +-- src/test/kotlin/...      EnumMirrorTest, GoldenRoundTripTest

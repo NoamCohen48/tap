@@ -63,9 +63,9 @@ class EnumMirrorTest {
 
     @Test
     fun `every protocol value converts both ways`() {
-        ErrorCode.entries.forEach { assertEquals(it, Conversions.errorCode(Conversions.errorCode(it))) }
-        Direction.entries.forEach { assertEquals(it, Conversions.direction(Conversions.direction(it))) }
-        StabilitySignal.entries.forEach { assertEquals(it, Conversions.stabilitySignal(Conversions.stabilitySignal(it))) }
+        ErrorCode.entries.forEach { assertEquals(it, it.toProto().toErrorCode()) }
+        Direction.entries.forEach { assertEquals(it, it.toProto().toDirection()) }
+        StabilitySignal.entries.forEach { assertEquals(it, it.toProto().toStabilitySignal()) }
     }
 
     /** A sealed interface's subclass serial names must be exactly the proto `oneof`'s case names. */

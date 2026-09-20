@@ -24,10 +24,10 @@ class GoldenRoundTripTest {
         assertTrue(files.isNotEmpty(), "no golden requests under $golden")
         files.forEach { file ->
             val original = CanonicalJson.codec.decodeFromString<Request>(Files.readString(file))
-            val proto = Conversions.command(original.command, original.timeoutMs)
-            val back = Conversions.command(proto, defaultTimeoutMs = -1)
-            assertEquals(original.command, back.command, "request fixture ${file.name} changed through the proto round trip")
-            assertEquals(original.timeoutMs, back.timeoutMs)
+            val proto = original.command.toProto(original.timeoutMs)
+            val back = proto.toCommand()
+            assertEquals(original.command, back, "request fixture ${file.name} changed through the proto round trip")
+            assertEquals(original.timeoutMs, proto.timeoutMs)
         }
     }
 
@@ -37,8 +37,8 @@ class GoldenRoundTripTest {
         assertTrue(files.isNotEmpty(), "no golden responses under $golden")
         files.forEach { file ->
             val original = CanonicalJson.codec.decodeFromString<Response>(Files.readString(file))
-            val proto = Conversions.result(original, requestId = 7, generation = 3)
-            assertEquals(original, Conversions.response(proto), "response fixture ${file.name} changed through the proto round trip")
+            val proto = original.toProto(requestId = 7, generation = 3)
+            assertEquals(original, proto.toResponse(), "response fixture ${file.name} changed through the proto round trip")
         }
     }
 }

@@ -8,6 +8,7 @@ import com.company.tap.host.DriverClient
 import com.company.tap.host.JournalState
 import com.company.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import com.company.tap.host.SessionJournalStore
+import com.company.tap.protocol.Command
 import com.company.tap.protocol.Response
 import java.nio.file.Path
 import java.util.UUID
@@ -190,10 +191,11 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
      */
     fun execute(
         session: Session,
-        command: Conversions.TimedCommand,
+        command: Command,
+        timeoutMs: Long,
         onStarted: (DriverClient.PendingCommand) -> Unit = {},
     ): Pair<Response, Long> {
-        val pending = session.device.client.submit(command.command, command.timeoutMs)
+        val pending = session.device.client.submit(command, timeoutMs)
         onStarted(pending)
         return try {
             pending.await() to pending.requestId
