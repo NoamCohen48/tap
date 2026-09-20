@@ -17,69 +17,64 @@ import java.nio.file.Path
 
 /** Delegates to [AppLifecycle] in host core so lifecycle verification rules exist once. */
 class AppServicer(private val service: TapService) : AppServiceGrpc.AppServiceImplBase() {
-    private fun app(request: AppRequest): Pair<AppLifecycle, Long> {
+    /** The [AppLifecycle] of the requested package on the requested session. */
+    private fun app(request: AppRequest): AppLifecycle {
         require(request.packageName.isNotBlank()) { "package_name is required" }
-        val session = service.session(request.sessionId)
-        return session.device.app(request.packageName) to (if (request.timeoutMs > 0) request.timeoutMs else 0L)
+        return service.session(request.sessionId).device.app(request.packageName)
     }
 
-    private fun timeout(ms: Long, default: Long) = if (ms > 0) ms else default
+    /** The client's timeout, or [default] when it sent none. */
+    private fun AppRequest.timeoutOr(default: Long): Long = if (timeoutMs > 0) timeoutMs else default
 
     override fun install(request: AppInstallRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        val (app, ms) = app(request.app)
-        app.install(Path.of(request.apkPath), timeout(ms, DEFAULT_LIFECYCLE_TIMEOUT_MS))
+        app(request.app).install(Path.of(request.apkPath), request.app.timeoutOr(DEFAULT_LIFECYCLE_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
     override fun uninstall(request: AppRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        app(request).first.uninstall()
+        app(request).uninstall()
         AppEmpty.getDefaultInstance()
     }
 
     override fun isInstalled(request: AppRequest, observer: StreamObserver<AppBool>) = reply(observer) {
-        AppBool.newBuilder().setValue(app(request).first.isInstalled()).build()
+        AppBool.newBuilder().setValue(app(request).isInstalled()).build()
     }
 
     override fun forceStop(request: AppRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        val (app, ms) = app(request)
-        app.forceStop(timeout(ms, DEFAULT_ACTION_TIMEOUT_MS))
+        app(request).forceStop(request.timeoutOr(DEFAULT_ACTION_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
     override fun clearData(request: AppRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        val (app, ms) = app(request)
-        app.clearData(timeout(ms, DEFAULT_ACTION_TIMEOUT_MS))
+        app(request).clearData(request.timeoutOr(DEFAULT_ACTION_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
     override fun grantPermission(request: AppGrantRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        app(request.app).first.grantPermission(request.permission)
+        app(request.app).grantPermission(request.permission)
         AppEmpty.getDefaultInstance()
     }
 
     override fun launch(request: AppLaunchRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        val (app, ms) = app(request.app)
-        app.launch(request.takeIf { it.hasActivity() }?.activity, timeout(ms, DEFAULT_LIFECYCLE_TIMEOUT_MS))
+        app(request.app).launch(request.takeIf { it.hasActivity() }?.activity, request.app.timeoutOr(DEFAULT_LIFECYCLE_TIMEOUT_MS))
         AppEmpty.getDefaultInstance()
     }
 
     override fun coldLaunch(request: AppLaunchRequest, observer: StreamObserver<ProcessIdentity>) = reply(observer) {
-        val (app, ms) = app(request.app)
-        app.coldLaunch(request.takeIf { it.hasActivity() }?.activity, timeout(ms, DEFAULT_LIFECYCLE_TIMEOUT_MS)).toProto()
+        app(request.app).coldLaunch(request.takeIf { it.hasActivity() }?.activity, request.app.timeoutOr(DEFAULT_LIFECYCLE_TIMEOUT_MS)).toProto()
     }
 
     override fun process(request: AppRequest, observer: StreamObserver<ProcessIdentity>) = reply(observer) {
-        val (app, ms) = app(request)
-        app.process(timeout(ms, DEFAULT_ACTION_TIMEOUT_MS)).toProto()
+        app(request).process(request.timeoutOr(DEFAULT_ACTION_TIMEOUT_MS)).toProto()
     }
 
     override fun isRunning(request: AppRequest, observer: StreamObserver<AppBool>) = reply(observer) {
-        AppBool.newBuilder().setValue(app(request).first.isRunning()).build()
+        AppBool.newBuilder().setValue(app(request).isRunning()).build()
     }
 
     override fun awaitIdle(request: AppAwaitIdleRequest, observer: StreamObserver<AppEmpty>) = reply(observer) {
-        val (app, ms) = app(request.app)
-        app.awaitIdle(timeout(ms, DEFAULT_WAIT_TIMEOUT_MS), if (request.stableForMs > 0) request.stableForMs else 200)
+        val stableFor = if (request.stableForMs > 0) request.stableForMs else 200
+        app(request.app).awaitIdle(request.app.timeoutOr(DEFAULT_WAIT_TIMEOUT_MS), stableFor)
         AppEmpty.getDefaultInstance()
     }
 
