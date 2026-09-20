@@ -34,10 +34,12 @@ import com.company.tap.protocol.selectors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
@@ -47,7 +49,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -57,6 +58,7 @@ import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import com.company.tap.protocol.Screenshot as ScreenshotCommand
 
 class DriverClient private constructor(
@@ -67,6 +69,9 @@ class DriverClient private constructor(
     private val overallDeadlineNanos: Long? = null,
     private val serial: String? = null,
     private val heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
+    /** Padding added to a command's own timeout to form its private response budget. Production
+     * default; tests inject a small value so budget expiry is deterministic without long sleeps. */
+    private val responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val socket = Socket()
@@ -83,6 +88,20 @@ class DriverClient private constructor(
 
     @Volatile private var lastWriteNanos = System.nanoTime()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Test seam: invoked inside the writer task before the physical socket write, so a test can
+     * park the writer deterministically. Null in production; never alters the socket path. */
+    internal var beforePhysicalWrite: (suspend () -> Unit)? = null
+
+    /** Test seam: invoked inside the writer task after the physical write attempt finishes
+     * (success or failure), so a test can observe that the writer is gone. Null in production. */
+    internal var afterPhysicalWrite: (() -> Unit)? = null
+
+    /** Test seam for the physical write itself; the default is the real socket write. */
+    internal var frameSink: FrameSink = FrameSink { frame -> FrameCodec.write(socket.getOutputStream(), frame) }
+
+    /** Whether the transport can no longer be trusted; test visibility without exposing the flag. */
+    internal val isPoisoned: Boolean get() = poisoned
     lateinit var driverInstanceId: String
         private set
     lateinit var negotiatedVersion: ProtocolVersion
@@ -101,8 +120,19 @@ class DriverClient private constructor(
             overallDeadlineNanos: Long? = null,
             serial: String? = null,
             heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
+            responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
         ): DriverClient {
-            val client = DriverClient(hostPort, sessionId, generation, secret, overallDeadlineNanos, serial, heartbeatIntervalMs)
+            val client =
+                DriverClient(
+                    hostPort,
+                    sessionId,
+                    generation,
+                    secret,
+                    overallDeadlineNanos,
+                    serial,
+                    heartbeatIntervalMs,
+                    responseBudgetPaddingMs,
+                )
             try {
                 withContext(Dispatchers.IO) {
                     client.socket.connect(InetSocketAddress("127.0.0.1", hostPort), client.remainingTimeoutMs(10_000))
@@ -135,21 +165,33 @@ class DriverClient private constructor(
 
         private val result = CompletableDeferred<Response>()
 
+        /** Terminal response once [complete] ran; null while in flight or failed. An explicit
+         * value instead of reading the deferred, so product code needs no experimental API. */
+        @Volatile private var terminal: Response? = null
+
         @Volatile var transmissionState: TransmissionState = TransmissionState.NOT_WRITTEN
             internal set
         internal var blob: BlobReceiver? = null
 
         @Volatile private var artifactBytes: ByteArray? = null
 
+        /** Set by the writer task when the physical socket write begins; classifies a write that
+         * is cancelled or fails mid-flight. */
+        @Volatile internal var writeStarted = false
+
+        /** Client-owned enforcement of this command's private response budget; cancelled when the
+         * terminal response arrives. Survives caller cancellation so an abandoned entry cannot
+         * leak forever. */
+        @Volatile internal var deadlineWatcher: Job? = null
+
         /**
          * Applies the blob verdict: a successful artifact response whose blob did not arrive
          * intact becomes `ARTIFACT_TRANSFER_FAILED`; a driver failure is never replaced.
          */
         internal fun complete(response: Response) {
-            transmissionState = TransmissionState.TERMINAL_RESPONSE
             val receiver = blob
             val artifact = (response.result as? ArtifactResult)?.artifact
-            val terminal =
+            val terminalResponse =
                 when {
                     response !is Response.Ok -> {
                         response
@@ -179,7 +221,10 @@ class DriverClient private constructor(
                         response.also { artifactBytes = receiver.bytes }
                     }
                 }
-            result.complete(terminal)
+            terminal = terminalResponse
+            transmissionState = TransmissionState.TERMINAL_RESPONSE
+            deadlineWatcher?.cancel()
+            result.complete(terminalResponse)
         }
 
         private fun artifactFailure(
@@ -197,14 +242,22 @@ class DriverClient private constructor(
         fun artifact(): ByteArray? = artifactBytes?.copyOf()
 
         internal fun fail(cause: Throwable) {
+            deadlineWatcher?.cancel()
             result.completeExceptionally(cause)
         }
 
         val isDone: Boolean get() = result.isCompleted
 
         /** Diagnostic view of an already-terminal response; null while in flight or failed. */
-        val responseOrNull: Response? get() =
-            if (result.isCompleted) runCatching { result.getCompleted() }.getOrNull() else null
+        val responseOrNull: Response? get() = terminal
+
+        /** Records `WRITTEN` only from `WRITING`: a reader response that already set
+         * `TERMINAL_RESPONSE` must never regress. */
+        internal fun markWritten() {
+            if (transmissionState == TransmissionState.WRITING) {
+                transmissionState = TransmissionState.WRITTEN
+            }
+        }
 
         /**
          * Sends `CANCEL` if the request is in flight. Returns false when there was nothing to
@@ -227,49 +280,63 @@ class DriverClient private constructor(
             }
 
         /**
-         * Returns the single terminal response, mapping a driver error to [Response.Error] and
-         * transport loss to [CommandTransportException] (never returned, always thrown).
+         * Returns the single terminal response; transport loss throws [CommandTransportException].
          *
-         * Cancelling the awaiting coroutine is not the command's outcome: the client forwards a
-         * cooperative `CANCEL` and keeps the pending entry registered until the terminal frame
-         * arrives, so a later frame is never an "unknown request id" and the mutation gate's
-         * verdict is still recorded. The socket is never closed mid-command; only transport
-         * failure poisons the client.
+         * The command owns a private response budget (its timeout plus padding). Expiry of that
+         * budget poisons the transport and maps mutations by [transmissionState], exactly like any
+         * other transport loss. Cancellation imposed by the caller — plain cancel or an enclosing
+         * `withTimeout`/gRPC/JUnit deadline — is *not* the command's outcome: the client forwards
+         * a cooperative `CANCEL` best-effort, keeps the pending entry registered for the reader so
+         * a later frame is never an "unknown request id" and the mutation gate's verdict is
+         * still recorded, and rethrows the original cancellation promptly. A terminal result that
+         * already won the race may be returned, but a future one is never waited for. The socket
+         * is never closed merely because the caller was cancelled; a client-owned watcher enforces
+         * the private budget afterwards so the abandoned entry cannot leak.
          */
         suspend fun await(): Response {
-            val budgetMs = remainingTimeoutMs((timeoutMs + 5_000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).toLong()
+            val budgetMs =
+                remainingTimeoutMs((timeoutMs + responseBudgetPaddingMs).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                    .toLong()
             val deadlineNanos = System.nanoTime() + budgetMs * 1_000_000L
+            ensureDeadlineWatcher(deadlineNanos, budgetMs)
             try {
-                return awaitTerminal(deadlineNanos)
-            } catch (timeout: TimeoutCancellationException) {
-                throw poisonAsLoss(timeout, budgetMs)
+                val remainingMs = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
+                // The private budget's expiry is a null, never an exception: any
+                // CancellationException escaping this block is the caller's, not the command's.
+                val response = withTimeoutOrNull(remainingMs) { result.await() }
+                if (response != null) return response
+                throw poisonAsLoss(budgetMs)
             } catch (cancelled: CancellationException) {
                 runCatching { cancel() }
-                return withContext(NonCancellable) {
-                    try {
-                        awaitTerminal(deadlineNanos)
-                    } catch (timeout: TimeoutCancellationException) {
-                        throw poisonAsLoss(timeout, budgetMs)
-                    }
-                }
-            }
-        }
-
-        private suspend fun awaitTerminal(deadlineNanos: Long): Response {
-            val remainingMs = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
-            return try {
-                withTimeout(remainingMs) { result.await() }
+                terminal?.let { return it }
+                throw cancelled
             } catch (failure: Throwable) {
-                if (failure is TimeoutCancellationException || failure is CancellationException) throw failure
                 throw transportFailure(failure)
             }
         }
 
-        private fun poisonAsLoss(
-            timeout: TimeoutCancellationException,
+        /** Starts the client-owned budget watcher once; it belongs to the client's scope so it
+         * outlives a cancelled caller. Already-terminal commands need no watcher. */
+        private fun ensureDeadlineWatcher(
+            deadlineNanos: Long,
             budgetMs: Long,
-        ): CommandTransportException {
-            val error = SocketTimeoutException("No terminal response within $budgetMs ms").apply { initCause(timeout) }
+        ) {
+            if (result.isCompleted) return
+            synchronized(this) {
+                if (result.isCompleted || deadlineWatcher != null) return
+                deadlineWatcher =
+                    scope.launch {
+                        val delayMs = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(0L)
+                        delay(delayMs)
+                        if (!result.isCompleted && pending.containsKey(requestId)) {
+                            poison(SocketTimeoutException("No terminal response within $budgetMs ms"))
+                        }
+                    }
+            }
+        }
+
+        private fun poisonAsLoss(budgetMs: Long): CommandTransportException {
+            val error = SocketTimeoutException("No terminal response within $budgetMs ms")
             poison(error)
             return transportFailure(error)
         }
@@ -489,11 +556,27 @@ class DriverClient private constructor(
         check(pending.putIfAbsent(requestId, command) == null) { "Request $requestId is already pending" }
         // Explicit validation IDs consume the driver watermark too; never allocate below them.
         nextRequestId = maxOf(nextRequestId, Math.addExact(requestId, 1L))
+        command.transmissionState = TransmissionState.WRITING
         try {
-            command.transmissionState = TransmissionState.WRITING
-            writeFrame(Frame(FrameType.REQUEST, requestId, payload), remainingTimeoutMs(10_000))
-            command.transmissionState = TransmissionState.WRITTEN
+            writeFrame(Frame(FrameType.REQUEST, requestId, payload), remainingTimeoutMs(10_000)) {
+                command.writeStarted = true
+            }
+            command.markWritten()
+        } catch (cancelled: CancellationException) {
+            if (!command.writeStarted) {
+                // The writer never touched the socket: the transport is intact, so the command
+                // leaves no trace and a mutation is still NOT_WRITTEN, never INDETERMINATE.
+                pending.remove(requestId, command)
+                command.transmissionState = TransmissionState.NOT_WRITTEN
+                throw cancelled
+            }
+            poison(cancelled)
+            throw command.transportFailure(cancelled)
         } catch (error: Throwable) {
+            if (!command.writeStarted) {
+                pending.remove(requestId, command)
+                command.transmissionState = TransmissionState.NOT_WRITTEN
+            }
             poison(error)
             throw command.transportFailure(error)
         }
@@ -639,23 +722,74 @@ class DriverClient private constructor(
 
     /**
      * Writes one frame with an explicit deadline. A socket write has no timeout of its own, so
-     * the write runs as a child while the waiter holds the deadline; on expiry the socket is
-     * closed to unblock the write, exactly as the old per-frame writer thread did.
+     * the write runs as a client-scoped child (independent of caller cancellation) while the
+     * waiter holds the deadline. The write's own deadline expiry is a [SocketTimeoutException],
+     * never an exception the caller could confuse with its own cancellation; any
+     * [CancellationException] escaping here is the caller's.
+     *
+     * On caller cancellation before the physical write began, the writer is stopped before it
+     * can touch the socket and the transport survives. Once the physical write began,
+     * cancellation closes the socket to unblock the writer, reaps it boundedly, and the caller
+     * ([transmit]) classifies the command as transport loss.
      */
     private suspend fun writeFrame(
         frame: Frame,
         timeoutMs: Int,
+        markStarted: () -> Unit = {},
     ) {
         lastWriteNanos = System.nanoTime()
-        withContext(Dispatchers.IO) {
-            val task = launch { FrameCodec.write(socket.getOutputStream(), frame) }
-            if (withTimeoutOrNull(timeoutMs.toLong()) { task.join() } == null) {
-                runCatching { socket.close() }
-                task.join()
+        val started = AtomicBoolean(false)
+        val writer =
+            scope.async(Dispatchers.IO) {
+                beforePhysicalWrite?.invoke()
+                markStarted()
+                started.set(true)
+                try {
+                    frameSink.write(frame)
+                } finally {
+                    afterPhysicalWrite?.invoke()
+                }
+            }
+        try {
+            val completed =
+                withTimeoutOrNull(timeoutMs.toLong()) {
+                    writer.await()
+                    true
+                }
+            if (completed != true) {
+                unblockAndReap(writer)
                 throw SocketTimeoutException("Socket write exceeded $timeoutMs ms")
             }
+            // A writer failure surfaces through await() above and reaches the caller unchanged.
+        } catch (cancelled: CancellationException) {
+            if (!started.get()) {
+                writer.cancel()
+                withContext(NonCancellable) {
+                    withTimeoutOrNull(WRITE_REAP_TIMEOUT_MS) { writer.join() }
+                }
+                if (!started.get()) throw cancelled
+                // Lost the race: the writer began after the check; treat as transport loss.
+            }
+            unblockAndReap(writer)
+            throw cancelled
         }
     }
+
+    /** Cancels the writer, closes the socket to unblock a writer stuck in blocking IO, then
+     * reaps it with a bound; never waits forever inside NonCancellable cleanup. */
+    private suspend fun unblockAndReap(writer: Deferred<Unit>) {
+        writer.cancel()
+        runCatching { socket.close() }
+        withContext(NonCancellable) {
+            withTimeoutOrNull(WRITE_REAP_TIMEOUT_MS) { writer.join() }
+        }
+        writer.cancel()
+    }
+}
+
+/** A physical frame write; suspends so tests can gate it. The default is the real socket write. */
+internal fun interface FrameSink {
+    suspend fun write(frame: Frame)
 }
 
 class Screenshot(
@@ -665,3 +799,9 @@ class Screenshot(
 
 /** Well under the driver's default 30 s heartbeat timeout. */
 const val DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000L
+
+/** Padding added to a command's own timeout to form its private response budget. */
+const val DEFAULT_RESPONSE_BUDGET_PADDING_MS = 5_000L
+
+/** Bound for reaping a writer child after its socket was closed; never unbounded. */
+const val WRITE_REAP_TIMEOUT_MS = 2_000L

@@ -20,13 +20,19 @@ import com.company.tap.protocol.WaitVisible
 import com.company.tap.protocol.detail
 import com.company.tap.protocol.errorCode
 import com.company.tap.protocol.result
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import java.security.SecureRandom
 import kotlin.test.AfterTest
@@ -98,27 +104,234 @@ class DriverClientTest {
         }
 
     @Test
-    fun awaitingCoroutineCancelSendsCancelButRecordsDriverTerminalResponse() =
+    fun awaitingCoroutineCancelPropagatesPromptlyWhileTerminalIsStillRecorded() =
         runBlocking {
             val tap = client.submit(Tap(selector))
             assertEquals(FrameType.REQUEST, driver.nextFrame().type)
 
-            var outcome: Response? = null
             // Undispatched: the child is guaranteed suspended inside await() before cancel() runs.
-            val awaiting = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { outcome = tap.await() }
+            val awaiting = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { tap.await() }
             awaiting.cancel()
+            // Prompt: the cancelled caller is not parked behind the driver's terminal response.
+            assertFailsWith<CancellationException> { awaiting.await() }
             val cancel = driver.nextFrame()
             assertEquals(FrameType.CANCEL, cancel.type)
             assertEquals(tap.requestId, cancel.requestId)
 
+            // The abandoned entry stays registered: the reader still consumes the terminal frame.
             driver.respond(tap.requestId, Response.ok(Done, durationMs = 12))
-            awaiting.join()
-            assertTrue(outcome?.ok == true)
+            withTimeout(2_000) { while (tap.responseOrNull == null) delay(10) }
+            assertTrue(tap.responseOrNull?.ok == true)
             assertEquals(TransmissionState.TERMINAL_RESPONSE, tap.transmissionState)
 
             val health = client.submit(Health)
             driver.respond(driver.nextFrame().requestId, Response.ok(Done, durationMs = 1))
             assertTrue(health.await().ok)
+        }
+
+    @Test
+    fun enclosingDeadlineCancelsPromptlyWithoutPoisoning() =
+        runBlocking {
+            val tap = client.submit(Tap(selector), timeoutMs = 30_000)
+            assertEquals(FrameType.REQUEST, driver.nextFrame().type)
+
+            // The private budget is ~35 s; an enclosing 200 ms deadline must win immediately.
+            val started = System.nanoTime()
+            assertFailsWith<TimeoutCancellationException> {
+                withTimeout(200) { tap.await() }
+            }
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+            assertTrue(elapsedMs < 10_000, "caller cancellation took ${elapsedMs}ms")
+            assertFalse(client.isPoisoned, "an enclosing deadline must not poison the transport")
+
+            // Cooperative CANCEL went out and the terminal response is still recorded.
+            val cancel = driver.nextFrame()
+            assertEquals(FrameType.CANCEL, cancel.type)
+            driver.respond(tap.requestId, Response.ok(Done, durationMs = 12))
+            withTimeout(2_000) { while (tap.responseOrNull == null) delay(10) }
+            assertEquals(TransmissionState.TERMINAL_RESPONSE, tap.transmissionState)
+
+            val health = client.submit(Health)
+            driver.respond(driver.nextFrame().requestId, Response.ok(Done, durationMs = 1))
+            assertTrue(health.await().ok)
+        }
+
+    @Test
+    fun abandonedCommandIsPoisonedWhenItsPrivateBudgetExpires() =
+        runBlocking {
+            val abandonedSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val abandonedDriver = FakeDriverServer("session-abandoned", 1, abandonedSecret)
+            val quick =
+                DriverClient.connect(
+                    abandonedDriver.port,
+                    "session-abandoned",
+                    1,
+                    abandonedSecret,
+                    heartbeatIntervalMs = 0,
+                    responseBudgetPaddingMs = 200,
+                )
+            try {
+                val tap = quick.submit(Tap(selector), timeoutMs = 0)
+                assertEquals(FrameType.REQUEST, abandonedDriver.nextFrame().type)
+
+                // Already-cancelled waiter: runs only to its first suspension, then propagates.
+                val awaiting = launch(start = CoroutineStart.UNDISPATCHED) { tap.await() }
+                awaiting.cancel()
+                awaiting.join()
+                assertTrue(awaiting.isCancelled)
+                assertEquals(FrameType.CANCEL, abandonedDriver.nextFrame().type)
+
+                // The driver never answers: the client-owned watcher enforces the 200 ms budget.
+                withTimeout(5_000) { while (!quick.isPoisoned) delay(10) }
+                assertEquals(TransmissionState.WRITTEN, tap.transmissionState)
+                val rejected = assertFailsWith<CommandTransportException> { quick.submit(Health) }
+                assertEquals(TransmissionState.NOT_WRITTEN, rejected.transmissionState)
+            } finally {
+                quick.close()
+                abandonedDriver.close()
+            }
+        }
+
+    @Test
+    fun genuinePrivateBudgetTimeoutStillPoisonsTheClient() =
+        runBlocking {
+            val timeoutSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val timeoutDriver = FakeDriverServer("session-timeout", 1, timeoutSecret)
+            val quick =
+                DriverClient.connect(
+                    timeoutDriver.port,
+                    "session-timeout",
+                    1,
+                    timeoutSecret,
+                    heartbeatIntervalMs = 0,
+                    responseBudgetPaddingMs = 200,
+                )
+            try {
+                // No response is ever sent; the 200 ms private budget must expire on its own.
+                val exists = quick.submit(Exists(selector), timeoutMs = 0)
+                assertEquals(FrameType.REQUEST, timeoutDriver.nextFrame().type)
+                val failure = assertFailsWith<CommandTransportException> { exists.await() }
+                assertEquals(ErrorCode.TRANSPORT_LOST, failure.code)
+                assertTrue(quick.isPoisoned)
+            } finally {
+                quick.close()
+                timeoutDriver.close()
+            }
+        }
+
+    @Test
+    fun writtenNeverRegressesTerminalResponse() =
+        runBlocking {
+            val command = client.submit(Exists(selector))
+            driver.nextFrame()
+            command.complete(Response.ok(BoolResult(true), durationMs = 1))
+            command.markWritten()
+            assertEquals(TransmissionState.TERMINAL_RESPONSE, command.transmissionState)
+            assertEquals(BoolResult(true), command.await().result)
+        }
+
+    @Test
+    fun cancelledWriteBeforePhysicalStartLeavesTransportIntact() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            client.beforePhysicalWrite = { gate.await() }
+            try {
+                // Undispatched: submit runs to the writer wait, still parked before the socket.
+                val submitted =
+                    async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+                        client.submit(Tap(selector))
+                    }
+                submitted.cancel()
+                assertFailsWith<CancellationException> { submitted.await() }
+                // No CANCEL: nothing was ever written, so there is nothing to cancel.
+                // The transport is intact: the next command flows normally once the gate opens.
+                gate.complete(Unit)
+                val health = client.submit(Health)
+                val frame = driver.nextFrame()
+                assertEquals(FrameType.REQUEST, frame.type)
+                driver.respond(frame.requestId, Response.ok(Done, durationMs = 1))
+                assertTrue(health.await().ok)
+            } finally {
+                client.beforePhysicalWrite = null
+            }
+        }
+
+    @Test
+    fun cancelledWriteAfterPhysicalStartIsTransportLoss() =
+        runBlocking {
+            val blockedSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val blockedDriver = FakeDriverServer("session-blocked", 1, blockedSecret)
+            val blocked =
+                DriverClient.connect(
+                    blockedDriver.port,
+                    "session-blocked",
+                    1,
+                    blockedSecret,
+                    heartbeatIntervalMs = 0,
+                )
+            try {
+                val enteredSink = CompletableDeferred<Unit>()
+                val releaseSink = CompletableDeferred<Unit>()
+                var writerFinished = false
+                blocked.frameSink =
+                    FrameSink {
+                        enteredSink.complete(Unit)
+                        releaseSink.await()
+                    }
+                blocked.afterPhysicalWrite = { writerFinished = true }
+                var outcome: Throwable? = null
+                val submitted =
+                    async(Dispatchers.IO) {
+                        // Record, do not rethrow: a rethrown failure would fail the test's parent.
+                        runCatching { blocked.submit(Tap(selector)) }.exceptionOrNull()?.let { outcome = it }
+                    }
+                // The writer is parked inside the physical write, past the started mark.
+                withTimeout(2_000) { enteredSink.await() }
+                submitted.cancel()
+                submitted.join()
+                val failure = outcome as? CommandTransportException
+                assertTrue(failure != null, "write cancelled after start threw $outcome")
+                assertEquals(ErrorCode.INDETERMINATE, failure.code)
+                assertTrue(blocked.isPoisoned)
+                releaseSink.complete(Unit)
+                // The writer is reaped boundedly: close() must not deadlock behind it.
+                withTimeout(5_000) { while (!writerFinished) delay(10) }
+                withTimeout(5_000) { blocked.close() }
+            } finally {
+                blockedDriver.close()
+            }
+        }
+
+    @Test
+    fun writeTimeoutHasBoundedCleanup() =
+        runBlocking {
+            val stuckSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val stuckDriver = FakeDriverServer("session-stuck", 1, stuckSecret)
+            val stuck =
+                DriverClient.connect(
+                    stuckDriver.port,
+                    "session-stuck",
+                    1,
+                    stuckSecret,
+                    // The overall deadline bounds the 10 s frame-write timeout down to ~300 ms.
+                    overallDeadlineNanos = System.nanoTime() + 300_000_000L,
+                    heartbeatIntervalMs = 0,
+                )
+            try {
+                var writerFinished = false
+                stuck.frameSink = FrameSink { awaitCancellation() }
+                stuck.afterPhysicalWrite = { writerFinished = true }
+                val failure =
+                    assertFailsWith<CommandTransportException> {
+                        stuck.submit(Exists(selector), timeoutMs = 0)
+                    }
+                assertEquals(ErrorCode.TRANSPORT_LOST, failure.code)
+                assertTrue(stuck.isPoisoned)
+                withTimeout(5_000) { while (!writerFinished) delay(10) }
+                withTimeout(5_000) { stuck.close() }
+            } finally {
+                stuckDriver.close()
+            }
         }
 
     @Test

@@ -1,13 +1,14 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.Health
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
@@ -24,6 +25,9 @@ data class DeviceSessionConfig(
     /** Extra instrumentation arguments (fault points, heartbeat overrides). */
     val driverArguments: Map<String, String> = emptyMap(),
     val adb: Adb = Adb(),
+    /** Starts the instrumentation child; tests substitute a [FakeProcess] for deterministic
+     * startup-cancellation tests without a device. */
+    val processStarter: ProcessStarter = DefaultProcessStarter,
     /** Receives the driver's instrumentation output line by line. */
     val driverLog: (String) -> Unit = {},
     /** How long to wait for another session's lock on this serial before giving up (0 = fail at once). */
@@ -65,32 +69,55 @@ class DeviceSession private constructor(
      * session's lifetime: it carries the sync identity handed out at bootstrap, which must
      * survive across calls for `awaitIdle` to stay guarded against a restarted process.
      */
-    fun app(packageName: String = config.autPackage): AppLifecycle =
-        apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
+    fun app(packageName: String = config.autPackage): AppLifecycle = apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
 
     @Volatile
     private var closed = false
 
-    suspend fun close() {
-        if (closed) return
+    /**
+     * Releases in reverse — client, exact forward, instrumentation — then finalizes the journal
+     * and releases the lease. The whole cleanup runs NonCancellable with an explicit
+     * [timeoutMs]: journal finalization and lease release always run, and on timeout or
+     * uncertainty the journal records quarantine. Throws the first cleanup failure (or a timeout
+     * describing the quarantine); the journal detail is what the service reports.
+     */
+    suspend fun close(timeoutMs: Long = DEVICE_SESSION_CLOSE_TIMEOUT_MS) {
         withContext(NonCancellable) {
+            if (closed) return@withContext
             closed = true
-            var cleanupSuccessful = true
-            runCatching { client.close() }.onFailure { cleanupSuccessful = false }
-            runCatching { adb.removeForward(serial, hostPort) }.onFailure { cleanupSuccessful = false }
-            runCatching { cleanupInstrumentation(adb, serial, running) }.onFailure { cleanupSuccessful = false }
+            var firstFailure: Throwable? = null
+            val finished =
+                withTimeoutOrNull(timeoutMs) {
+                    // cleanupStep, not runCatching: a bound firing must reach withTimeoutOrNull
+                    // as cancellation (finished == null below), never as a recorded failure.
+                    cleanupStep({ firstFailure = it }) { client.close() }
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
+                        adb.removeForward(serial, hostPort)
+                    }
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
+                        cleanupInstrumentation(adb, serial, running)
+                    }
+                    true
+                }
+            if (finished == null) {
+                firstFailure =
+                    firstFailure ?: IllegalStateException(
+                        "Session cleanup on $serial exceeded ${timeoutMs}ms; device quarantined",
+                    )
+            }
             try {
                 store.write(
                     journal.copy(
-                        state = if (cleanupSuccessful) JournalState.CLOSED else JournalState.QUARANTINED,
-                        quarantineReason = if (cleanupSuccessful) null else "SESSION_CLEANUP_UNCERTAIN",
+                        state = if (firstFailure == null) JournalState.CLOSED else JournalState.QUARANTINED,
+                        quarantineReason =
+                            firstFailure?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" },
                         updatedAtEpochMs = System.currentTimeMillis(),
-                    )
+                    ),
                 )
             } finally {
                 lease.close()
             }
-            check(cleanupSuccessful) { "Session cleanup on $serial was uncertain; device quarantined" }
+            firstFailure?.let { throw it }
         }
     }
 
@@ -113,67 +140,108 @@ class DeviceSession private constructor(
                 val sessionId = UUID.randomUUID().toString()
                 val secret = ByteArray(32).also(SecureRandom()::nextBytes)
                 val encodedSecret = Base64.getUrlEncoder().withoutPadding().encodeToString(secret)
-                var journal = SessionJournal(
-                    state = JournalState.CREATING,
-                    serial = serial,
-                    bootId = bootId,
-                    sessionId = sessionId,
-                    generation = generation,
-                    devicePort = DEVICE_PORT,
-                )
+                var journal =
+                    SessionJournal(
+                        state = JournalState.CREATING,
+                        serial = serial,
+                        bootId = bootId,
+                        sessionId = sessionId,
+                        generation = generation,
+                        devicePort = DEVICE_PORT,
+                    )
                 store.write(journal)
 
                 var running: RunningInstrumentation? = null
                 var hostPort: Int? = null
                 var client: DriverClient? = null
                 try {
-                    running = startDriverWithRetry(
-                        adb = adb,
-                        serial = serial,
-                        sessionId = sessionId,
-                        generation = generation,
-                        encodedSecret = encodedSecret,
-                        autPackage = config.autPackage,
-                        syncAuthority = config.syncAuthority,
-                        allowedSystemPackages = config.allowedSystemPackages,
-                        driverArguments = config.driverArguments,
-                        logSink = config.driverLog,
-                    ) { devicePort ->
-                        journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
-                        store.write(journal)
-                    }
+                    running =
+                        startDriverWithRetry(
+                            adb = adb,
+                            serial = serial,
+                            sessionId = sessionId,
+                            generation = generation,
+                            encodedSecret = encodedSecret,
+                            autPackage = config.autPackage,
+                            syncAuthority = config.syncAuthority,
+                            allowedSystemPackages = config.allowedSystemPackages,
+                            driverArguments = config.driverArguments,
+                            logSink = config.driverLog,
+                            processStarter = config.processStarter,
+                        ) { devicePort ->
+                            journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
+                            store.write(journal)
+                        }
                     hostPort = adb.forward(serial, running.devicePort)
                     val driverPid = adb.processIds(serial, DRIVER_PACKAGE).single()
-                    journal = journal.copy(
-                        state = JournalState.ACTIVE,
-                        hostPort = hostPort,
-                        driverPid = driverPid,
-                        driverStartToken = processStartToken(adb, serial, driverPid),
-                        driverInstanceId = running.driverInstanceId,
-                        updatedAtEpochMs = System.currentTimeMillis(),
-                    )
+                    journal =
+                        journal.copy(
+                            state = JournalState.ACTIVE,
+                            hostPort = hostPort,
+                            driverPid = driverPid,
+                            driverStartToken = processStartToken(adb, serial, driverPid),
+                            driverInstanceId = running.driverInstanceId,
+                            updatedAtEpochMs = System.currentTimeMillis(),
+                        )
                     store.write(journal)
 
-                    client = connectWithRetry(
-                        hostPort, sessionId, generation, secret,
-                        serial = serial, heartbeatIntervalMs = config.heartbeatIntervalMs,
-                    )
+                    client =
+                        connectWithRetry(
+                            hostPort,
+                            sessionId,
+                            generation,
+                            secret,
+                            serial = serial,
+                            heartbeatIntervalMs = config.heartbeatIntervalMs,
+                        )
                     client.execute(Health)
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
                     return DeviceSession(config, lease, store, journal, running, hostPort, client)
                 } catch (error: Throwable) {
-                    var cleanupSuccessful = true
-                    runCatching { client?.close() }
-                    hostPort?.let { port -> runCatching { adb.removeForward(serial, port) }.onFailure { cleanupSuccessful = false } }
-                    running?.let { runCatching { cleanupInstrumentation(adb, serial, it) }.onFailure { cleanupSuccessful = false } }
-                    store.write(
-                        journal.copy(
-                            state = if (cleanupSuccessful) JournalState.CLOSED else JournalState.QUARANTINED,
-                            quarantineReason = if (cleanupSuccessful) null else "SESSION_START_CLEANUP_UNCERTAIN",
-                            updatedAtEpochMs = System.currentTimeMillis(),
-                        )
-                    )
+                    // Failure cleanup runs bounded NonCancellable: journal finalization and lease
+                    // release below always run, even when the failure is a coroutine cancellation.
+                    // The primary failure is preserved; cleanup failures are suppressed into it.
+                    withContext(NonCancellable) {
+                        var cleanupFailure: Throwable? = null
+                        val finished =
+                            withTimeoutOrNull(DEVICE_OPEN_CLEANUP_TIMEOUT_MS) {
+                                // cleanupStep, not runCatching: a bound firing must reach
+                                // withTimeoutOrNull as cancellation, never as a recorded failure.
+                                cleanupStep({ cleanupFailure = it }) { client?.close() }
+                                hostPort?.let { port ->
+                                    cleanupStep({ failure -> cleanupFailure = cleanupFailure ?: failure }) {
+                                        adb.removeForward(serial, port)
+                                    }
+                                }
+                                running?.let {
+                                    cleanupStep({ failure -> cleanupFailure = cleanupFailure ?: failure }) {
+                                        cleanupInstrumentation(adb, serial, it)
+                                    }
+                                }
+                                true
+                            }
+                        if (finished == null) {
+                            cleanupFailure =
+                                cleanupFailure ?: IllegalStateException(
+                                    "Session open cleanup on $serial exceeded ${DEVICE_OPEN_CLEANUP_TIMEOUT_MS}ms",
+                                )
+                        }
+                        try {
+                            store.write(
+                                journal.copy(
+                                    state =
+                                        if (cleanupFailure == null) JournalState.CLOSED else JournalState.QUARANTINED,
+                                    quarantineReason =
+                                        cleanupFailure?.let { "SESSION_START_CLEANUP_UNCERTAIN: ${it.message}" },
+                                    updatedAtEpochMs = System.currentTimeMillis(),
+                                ),
+                            )
+                        } finally {
+                            lease.close()
+                        }
+                        cleanupFailure?.let { error.addSuppressed(it) }
+                    }
                     throw error
                 }
             } catch (error: Throwable) {
@@ -183,3 +251,9 @@ class DeviceSession private constructor(
         }
     }
 }
+
+/** Bound for `DeviceSession.close` cleanup; journal finalization and lease release always run. */
+const val DEVICE_SESSION_CLOSE_TIMEOUT_MS = 60_000L
+
+/** Bound for `DeviceSession.open` failure cleanup under an already-cancelled caller. */
+const val DEVICE_OPEN_CLEANUP_TIMEOUT_MS = 60_000L

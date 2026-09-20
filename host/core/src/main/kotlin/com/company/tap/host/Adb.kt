@@ -1,12 +1,13 @@
 package com.company.tap.host
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.absolutePathString
@@ -34,6 +35,13 @@ annotation class RawAdb
 open class Adb(
     val executable: String = "adb",
 ) {
+    /** Starts an OS process; tests substitute a [FakeProcess] so cancellation and reap are
+     * deterministic without real subprocesses. Production default is the real [ProcessBuilder]. */
+    internal var processStarter: ProcessStarter =
+        ProcessStarter { command ->
+            ProcessBuilder(command).redirectErrorStream(true).start()
+        }
+
     data class Result(
         val exitCode: Int,
         val output: String,
@@ -77,62 +85,85 @@ open class Adb(
         serial: String,
         vararg arguments: String,
         timeoutMs: Long = 30_000,
-    ): Result =
+    ): Result {
+        val (exitCode, output) =
+            runAdbProcess(
+                listOf(executable, "-s", serial) + arguments,
+                timeoutMs,
+            ) { "ADB command timed out for $serial: ${arguments.joinToString(" ")}" }
+        return Result(exitCode, output.trim())
+    }
+
+    /** Serials of devices currently in the `device` state (not offline/unauthorized). */
+    open suspend fun devices(timeoutMs: Long = 10_000): List<String> {
+        val (exitCode, text) =
+            runAdbProcess(listOf(executable, "devices"), timeoutMs) { "adb devices timed out" }
+        check(exitCode == 0) { "adb devices failed: $text" }
+        return text
+            .lineSequence()
+            .drop(1)
+            .map { it.trim().split(Regex("\\s+")) }
+            .filter { it.size >= 2 && it[1] == "device" }
+            .map { it[0] }
+            .toList()
+    }
+
+    /**
+     * Runs one process with a locally owned deadline and reaps it in all outcomes. The local
+     * timeout is a null, never an exception: an outer cancellation propagates as cancellation
+     * instead of being converted into the timeout's [IllegalStateException]. The child is
+     * destroyed, its streams closed to unblock the drain, and the drain joined boundedly, so no
+     * path waits unboundedly on a blocking drain.
+     */
+    private suspend fun runAdbProcess(
+        command: List<String>,
+        timeoutMs: Long,
+        timeoutMessage: () -> String,
+    ): Pair<Int, String> =
         coroutineScope {
             val process =
                 withContext(Dispatchers.IO) {
-                    ProcessBuilder(listOf(executable, "-s", serial) + arguments)
-                        .redirectErrorStream(true)
-                        .start()
+                    processStarter.start(command)
                 }
             val drain = async(Dispatchers.IO) { process.inputStream.bufferedReader().use { it.readText() } }
             try {
-                // `Process.waitFor` is not cancellable, so the deadline is a polling loop; the
-                // `finally` destroys the child when the wait times out or the caller is cancelled.
-                try {
-                    withTimeout(timeoutMs) { while (process.isAlive) delay(10) }
-                } catch (timeout: TimeoutCancellationException) {
-                    throw IllegalStateException(
-                        "ADB command timed out for $serial: ${arguments.joinToString(" ")}",
-                    ).also { it.initCause(timeout) }
-                }
+                // `Process.waitFor` is not cancellable, so the deadline is a polling loop.
+                val exited =
+                    withTimeoutOrNull(timeoutMs) {
+                        while (process.isAlive) delay(10)
+                        true
+                    }
+                check(exited == true) { timeoutMessage() }
                 withContext(Dispatchers.IO) { process.waitFor(5, TimeUnit.SECONDS) }
-                Result(process.exitValue(), withTimeout(5_000) { drain.await() }.trim())
+                val text =
+                    withTimeoutOrNull(5_000) { drain.await() }
+                        ?: throw IllegalStateException("ADB output drain timed out: ${command.joinToString(" ")}")
+                process.exitValue() to text
             } finally {
-                if (process.isAlive) process.destroyForcibly()
-                drain.cancel()
+                reap(process, drain)
             }
         }
 
-    /** Serials of devices currently in the `device` state (not offline/unauthorized). */
-    open suspend fun devices(timeoutMs: Long = 10_000): List<String> =
-        coroutineScope {
-            val process =
+    /** Destroys a child that may still be alive (local timeout or caller cancellation), closes
+     * its streams to unblock the drain, and reaps both with a bound. Never throws. */
+    private suspend fun reap(
+        process: Process,
+        drain: Deferred<String>,
+    ) {
+        runCatching { if (process.isAlive) process.destroy() }
+        runCatching { process.inputStream.close() }
+        runCatching { process.errorStream.close() }
+        drain.cancel()
+        withContext(NonCancellable) {
+            withTimeoutOrNull(ADB_REAP_TIMEOUT_MS) { drain.join() }
+            if (process.isAlive) {
+                runCatching { process.destroyForcibly() }
                 withContext(Dispatchers.IO) {
-                    ProcessBuilder(listOf(executable, "devices")).redirectErrorStream(true).start()
+                    runCatching { process.waitFor(ADB_REAP_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
                 }
-            val drain = async(Dispatchers.IO) { process.inputStream.bufferedReader().use { it.readText() } }
-            try {
-                try {
-                    withTimeout(timeoutMs) { while (process.isAlive) delay(10) }
-                } catch (timeout: TimeoutCancellationException) {
-                    throw IllegalStateException("adb devices timed out").also { it.initCause(timeout) }
-                }
-                withContext(Dispatchers.IO) { process.waitFor(5, TimeUnit.SECONDS) }
-                val text = withTimeout(5_000) { drain.await() }
-                check(process.exitValue() == 0) { "adb devices failed: $text" }
-                text
-                    .lineSequence()
-                    .drop(1)
-                    .map { it.trim().split(Regex("\\s+")) }
-                    .filter { it.size >= 2 && it[1] == "device" }
-                    .map { it[0] }
-                    .toList()
-            } finally {
-                if (process.isAlive) process.destroyForcibly()
-                drain.cancel()
             }
         }
+    }
 
     /**
      * Best-effort screen preparation: wakes the display and dismisses an insecure keyguard so
@@ -310,3 +341,17 @@ open class Adb(
         val devicePort: Int,
     )
 }
+
+/** Starts an OS process; a `fun interface` so tests can substitute a [FakeProcess]. */
+fun interface ProcessStarter {
+    fun start(command: List<String>): Process
+}
+
+/** The real process starter: the command with merged stderr, exactly as [ProcessBuilder] runs it. */
+val DefaultProcessStarter =
+    ProcessStarter { command ->
+        ProcessBuilder(command).redirectErrorStream(true).start()
+    }
+
+/** Bound for reaping an ADB child and its output drain; never unbounded. */
+const val ADB_REAP_TIMEOUT_MS = 2_000L

@@ -1,16 +1,18 @@
 package com.company.tap.host
 
-import java.util.UUID
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 const val DRIVER_PACKAGE = "com.company.tap.driver"
 const val DRIVER_TEST_RUNNER = "$DRIVER_PACKAGE.test/androidx.test.runner.AndroidJUnitRunner"
@@ -19,8 +21,31 @@ val DEVICE_PORT_RANGE = 27183..27187
 const val PERMISSION_CONTROLLER_PACKAGE = "com.google.android.permissioncontroller"
 const val LATE_MUTATION_QUARANTINE = "UNINTERRUPTIBLE_MUTATION_RESET_REQUIRED"
 
+/**
+ * Cleanup-step equivalent of `runCatching(block).onFailure(record)`, except coroutine
+ * cancellation always rethrows instead of being recorded. `runCatching` catches
+ * `CancellationException` — including a `withTimeoutOrNull` bound firing — which would convert
+ * "cleanup exceeded its bound" into a misleading recorded failure and defeat the bound.
+ * Non-cancellation failures are passed to [record] (usually `firstFailure = firstFailure ?: it`).
+ */
+internal suspend inline fun cleanupStep(
+    record: (Throwable) -> Unit,
+    block: () -> Unit,
+) {
+    try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Throwable) {
+        record(error)
+    }
+}
+
 /** One AUT process identity: PID plus its `/proc` start token. PID alone is never identity. */
-data class ProcessObservation(val pid: Int, val startToken: String)
+data class ProcessObservation(
+    val pid: Int,
+    val startToken: String,
+)
 
 /** The `am instrument` child that hosts a running driver, plus its captured output. */
 data class RunningInstrumentation(
@@ -32,14 +57,21 @@ data class RunningInstrumentation(
     internal val drainScope: CoroutineScope,
 )
 
-suspend fun isPortListening(adb: Adb, serial: String, port: Int): Boolean = adb.isPortListening(serial, port)
+suspend fun isPortListening(
+    adb: Adb,
+    serial: String,
+    port: Int,
+): Boolean = adb.isPortListening(serial, port)
 
 enum class ResetRecoveryAction {
     REBOOT,
     COMPLETE,
 }
 
-fun resetRecoveryAction(record: SessionJournal, currentBootId: String): ResetRecoveryAction {
+fun resetRecoveryAction(
+    record: SessionJournal,
+    currentBootId: String,
+): ResetRecoveryAction {
     require(record.state == JournalState.QUARANTINED && record.resetRequired) {
         "Journal does not require reset recovery"
     }
@@ -59,6 +91,10 @@ fun resetRecoveryAction(record: SessionJournal, currentBootId: String): ResetRec
  * port range when a port is occupied. [onStarting] runs before each attempt so the caller can
  * journal the port. Extra instrumentation arguments (fault points, heartbeat overrides) go in
  * [driverArguments]; the driver logs [logSink] line by line.
+ *
+ * Each attempt owns its process and drain until it hands them to the returned
+ * [RunningInstrumentation]: cancellation or failure before the handoff force-stops, kills,
+ * reaps and drains boundedly in NonCancellable cleanup, so no attempt can leak a child.
  */
 suspend fun startDriverWithRetry(
     adb: Adb,
@@ -72,6 +108,7 @@ suspend fun startDriverWithRetry(
     overallDeadlineNanos: Long? = null,
     driverArguments: Map<String, String> = emptyMap(),
     logSink: (String) -> Unit = ::println,
+    processStarter: ProcessStarter = DefaultProcessStarter,
     onStarting: (Int) -> Unit,
 ): RunningInstrumentation {
     var lastOutput = ""
@@ -80,54 +117,92 @@ suspend fun startDriverWithRetry(
             "Driver startup exceeded its containing deadline"
         }
         onStarting(devicePort)
-        val process = ProcessBuilder(
-            adb.executable, "-s", serial, "shell", "am", "instrument", "-w", "-r",
-            "-e", "class", "com.company.tap.driver.TapDriverServerTest",
-            "-e", "tapSession", sessionId,
-            "-e", "tapGeneration", generation.toString(),
-            "-e", "tapSecret", encodedSecret,
-            "-e", "tapPort", devicePort.toString(),
-            "-e", "tapAutPackage", autPackage,
-            "-e", "tapSystemPackages", allowedSystemPackages.joinToString(","),
-            "-e", "tapSyncAuthority", syncAuthority,
-            *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
-            DRIVER_TEST_RUNNER,
-        ).redirectErrorStream(true).start()
+        val process =
+            withContext(Dispatchers.IO) {
+                processStarter.start(
+                    listOf(
+                        adb.executable,
+                        "-s",
+                        serial,
+                        "shell",
+                        "am",
+                        "instrument",
+                        "-w",
+                        "-r",
+                        "-e",
+                        "class",
+                        "com.company.tap.driver.TapDriverServerTest",
+                        "-e",
+                        "tapSession",
+                        sessionId,
+                        "-e",
+                        "tapGeneration",
+                        generation.toString(),
+                        "-e",
+                        "tapSecret",
+                        encodedSecret,
+                        "-e",
+                        "tapPort",
+                        devicePort.toString(),
+                        "-e",
+                        "tapAutPackage",
+                        autPackage,
+                        "-e",
+                        "tapSystemPackages",
+                        allowedSystemPackages.joinToString(","),
+                        "-e",
+                        "tapSyncAuthority",
+                        syncAuthority,
+                        *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
+                        DRIVER_TEST_RUNNER,
+                    ),
+                )
+            }
         val output = StringBuilder()
         val drainScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val outputDrain = drainScope.launch {
-            withContext(Dispatchers.IO) {
-                process.inputStream.bufferedReader().forEachLine { line ->
-                    synchronized(output) { output.appendLine(line) }
-                    logSink(line)
+        val outputDrain =
+            drainScope.launch {
+                withContext(Dispatchers.IO) {
+                    process.inputStream.bufferedReader().forEachLine { line ->
+                        synchronized(output) { output.appendLine(line) }
+                        logSink(line)
+                    }
                 }
             }
-        }
-        val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
-        val deadline = minOf(
-            System.nanoTime() + 10_000_000_000L,
-            overallDeadlineNanos ?: Long.MAX_VALUE,
-        )
-        var instanceId: String? = null
-        while (System.nanoTime() < deadline && process.isAlive) {
-            instanceId = synchronized(output) {
-                output.lineSequence()
-                    .firstOrNull { markerPrefix in it }
-                    ?.substringAfter(markerPrefix)
-                    ?.trim()
+        var handedOff = false
+        var attemptCleanupError: Throwable? = null
+        try {
+            val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
+            val deadline =
+                minOf(
+                    System.nanoTime() + 10_000_000_000L,
+                    overallDeadlineNanos ?: Long.MAX_VALUE,
+                )
+            var instanceId: String? = null
+            while (System.nanoTime() < deadline && process.isAlive) {
+                instanceId =
+                    synchronized(output) {
+                        output
+                            .lineSequence()
+                            .firstOrNull { markerPrefix in it }
+                            ?.substringAfter(markerPrefix)
+                            ?.trim()
+                    }
+                if (!instanceId.isNullOrEmpty()) break
+                delay(25)
             }
-            if (!instanceId.isNullOrEmpty()) break
-            delay(25)
+            if (!instanceId.isNullOrEmpty()) {
+                handedOff = true
+                return RunningInstrumentation(process, output, outputDrain, devicePort, instanceId, drainScope)
+            }
+        } finally {
+            if (!handedOff) {
+                attemptCleanupError = cleanupAttempt(adb, serial, process, outputDrain, drainScope)
+            }
         }
-        if (!instanceId.isNullOrEmpty()) {
-            return RunningInstrumentation(process, output, outputDrain, devicePort, instanceId, drainScope)
-        }
-
-        cleanupInstrumentation(
-            adb,
-            serial,
-            RunningInstrumentation(process, output, outputDrain, devicePort, "", drainScope),
-        )
+        // A cancelled waiter propagated through the finally above; only a genuinely unready
+        // driver reaches the port-occupancy diagnosis.
+        attemptCleanupError?.let { throw it }
         lastOutput = synchronized(output) { output.toString() }
         check("already registered" !in lastOutput) {
             "Another UiAutomation instrumentation session is active on $serial"
@@ -142,19 +217,50 @@ suspend fun startDriverWithRetry(
     error("Driver failed to bind any reserved port: $lastOutput")
 }
 
+/**
+ * Best-effort cleanup of one instrumentation attempt that never reached handoff: force-stop
+ * and verify, kill and reap the child, close its stream, join the drain boundedly. Runs in
+ * NonCancellable cleanup (a cancelled waiter is already propagating) and never throws: the
+ * first failure is returned so the caller can abort the retry loop after diagnosing the output.
+ */
+private suspend fun cleanupAttempt(
+    adb: Adb,
+    serial: String,
+    process: Process,
+    outputDrain: Job,
+    drainScope: CoroutineScope,
+): Throwable? =
+    withContext(NonCancellable) {
+        var failure: Throwable? = null
+        cleanupStep({ failure = it }) { forceStopDriverAndVerify(adb, serial) }
+        if (process.isAlive) process.destroyForcibly()
+        withContext(Dispatchers.IO) {
+            cleanupStep({ failure = failure ?: it }) { process.waitFor(3, TimeUnit.SECONDS) }
+        }
+        withContext(Dispatchers.IO) {
+            cleanupStep({ failure = failure ?: it }) { process.inputStream.close() }
+        }
+        withTimeoutOrNull(1_000) { outputDrain.join() }
+        drainScope.cancel()
+        failure
+    }
+
 /** Force-stops the driver package, verifies it is gone, and reaps the instrumentation child. */
 suspend fun cleanupInstrumentation(
     adb: Adb,
     serial: String,
     running: RunningInstrumentation,
 ) {
-    val driverCleanup = runCatching { forceStopDriverAndVerify(adb, serial) }
+    var driverFailure: Throwable? = null
+    cleanupStep({ driverFailure = it }) { forceStopDriverAndVerify(adb, serial) }
     if (running.process.isAlive) running.process.destroyForcibly()
     val childExited = withContext(Dispatchers.IO) { running.process.waitFor(3, TimeUnit.SECONDS) }
-    runCatching { withContext(Dispatchers.IO) { running.process.inputStream.close() } }
+    withContext(Dispatchers.IO) {
+        cleanupStep({ driverFailure = driverFailure ?: it }) { running.process.inputStream.close() }
+    }
     withTimeoutOrNull(1_000) { running.outputDrain.join() }
     running.drainScope.cancel()
-    driverCleanup.getOrThrow()
+    driverFailure?.let { throw it }
     check(childExited) { "Instrumentation child survived cleanup" }
     check(running.outputDrain.isCompleted) { "Instrumentation output drain survived cleanup" }
 }
@@ -171,23 +277,24 @@ suspend fun recoverJournal(
     store: SessionJournalStore,
     allowResetRecovery: Boolean = false,
 ): SessionJournal? {
-    val record = try {
-        store.read()
-    } catch (error: Throwable) {
-        forceStopDriverAndVerify(adb, serial)
-        store.preserveCorrupt()
-        store.replaceCorruptWith(
-            SessionJournal(
-                state = JournalState.QUARANTINED,
-                serial = serial,
-                bootId = bootId,
-                sessionId = UUID.randomUUID().toString(),
-                generation = 0,
-                devicePort = DEVICE_PORT,
+    val record =
+        try {
+            store.read()
+        } catch (error: Throwable) {
+            forceStopDriverAndVerify(adb, serial)
+            store.preserveCorrupt()
+            store.replaceCorruptWith(
+                SessionJournal(
+                    state = JournalState.QUARANTINED,
+                    serial = serial,
+                    bootId = bootId,
+                    sessionId = UUID.randomUUID().toString(),
+                    generation = 0,
+                    devicePort = DEVICE_PORT,
+                ),
             )
-        )
-        throw IllegalStateException("Corrupt journal quarantined; no forwards were removed", error)
-    }
+            throw IllegalStateException("Corrupt journal quarantined; no forwards were removed", error)
+        }
     if (record == null) {
         forceStopDriverAndVerify(adb, serial)
         return null
@@ -198,7 +305,9 @@ suspend fun recoverJournal(
         if (
             allowResetRecovery && record.resetRequired &&
             record.quarantineReason == LATE_MUTATION_QUARANTINE
-        ) return record
+        ) {
+            return record
+        }
         error("Device is quarantined by its session journal")
     }
     if (record.devicePort !in DEVICE_PORT_RANGE) {
@@ -215,7 +324,8 @@ suspend fun recoverJournal(
         if (record.hostPort != null) {
             removeExactForward(adb, serial, record.hostPort, record.devicePort)
         } else {
-            adb.forwards(serial)
+            adb
+                .forwards(serial)
                 .filter { it.devicePort == record.devicePort }
                 .forEach { removeExactForward(adb, serial, it.hostPort, record.devicePort) }
         }
@@ -223,10 +333,11 @@ suspend fun recoverJournal(
             store.write(record.copy(state = JournalState.QUARANTINED))
             error("Boot identity changed during recovery; device quarantined")
         }
-        val closed = record.copy(
-            state = JournalState.CLOSED,
-            updatedAtEpochMs = System.currentTimeMillis(),
-        )
+        val closed =
+            record.copy(
+                state = JournalState.CLOSED,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
         store.write(closed)
         return closed
     }
@@ -245,11 +356,12 @@ suspend fun forceStopDriverAndVerify(
     val deadline = System.nanoTime() + 5_000_000_000L
     while (System.nanoTime() < deadline) {
         val packageGone = adb.processIds(serial, DRIVER_PACKAGE).isEmpty()
-        val oldIdentityGone = if (oldPid != null && oldStartToken != null) {
-            processIdentityIsGone(adb, serial, oldPid, oldStartToken)
-        } else {
-            true
-        }
+        val oldIdentityGone =
+            if (oldPid != null && oldStartToken != null) {
+                processIdentityIsGone(adb, serial, oldPid, oldStartToken)
+            } else {
+                true
+            }
         if (packageGone && oldIdentityGone) return
         delay(50)
     }
@@ -261,12 +373,17 @@ private suspend fun processIdentityIsGone(
     serial: String,
     pid: Int,
     startToken: String,
-): Boolean = when (val stat = adb.processStat(serial, pid)) {
-    Adb.ProcessStat.Gone -> true
-    is Adb.ProcessStat.Live -> stat.startToken != startToken // the PID was reused by a new process
-}
+): Boolean =
+    when (val stat = adb.processStat(serial, pid)) {
+        Adb.ProcessStat.Gone -> true
+        is Adb.ProcessStat.Live -> stat.startToken != startToken // the PID was reused by a new process
+    }
 
-suspend fun processStartToken(adb: Adb, serial: String, pid: Int): String =
+suspend fun processStartToken(
+    adb: Adb,
+    serial: String,
+    pid: Int,
+): String =
     when (val stat = adb.processStat(serial, pid)) {
         Adb.ProcessStat.Gone -> error("Process $pid is not observable")
         is Adb.ProcessStat.Live -> stat.startToken
@@ -289,7 +406,12 @@ suspend fun removeExactForward(
 }
 
 /** Waits (up to [timeoutMs]) for exactly one process of [packageName] and reads its identity. */
-suspend fun observeProcess(adb: Adb, serial: String, packageName: String, timeoutMs: Long = 30_000): ProcessObservation {
+suspend fun observeProcess(
+    adb: Adb,
+    serial: String,
+    packageName: String,
+    timeoutMs: Long = 30_000,
+): ProcessObservation {
     val deadline = System.nanoTime() + timeoutMs * 1_000_000L
     var lastFailure = "AUT process was absent"
     while (System.nanoTime() < deadline) {
@@ -319,10 +441,11 @@ suspend fun connectWithRetry(
     serial: String? = null,
     heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
 ): DriverClient {
-    val deadline = minOf(
-        System.nanoTime() + 20_000_000_000L,
-        overallDeadlineNanos ?: Long.MAX_VALUE,
-    )
+    val deadline =
+        minOf(
+            System.nanoTime() + 20_000_000_000L,
+            overallDeadlineNanos ?: Long.MAX_VALUE,
+        )
     var lastError: Throwable? = null
     while (System.nanoTime() < deadline) {
         try {
