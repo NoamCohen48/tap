@@ -193,26 +193,25 @@ objects, wrap the reply. Two helpers are shared (`servicer/common.kt`):
 finishes reading. The messages are irrelevant; what matters is that the *call* stays alive
 exactly as long as the client process does, and gRPC tells the server when it stops.
 
-1. The observer is cast to `ServerCallStreamObserver`, which is what exposes `isCancelled`
-   and `setOnCancelHandler`; the plain observer can only send.
-2. `service.connection(id)` resolves the connection; unknown *or already closed* is
+1. `attach` returns a `Flow<ConnectionEvent>` (grpc-kotlin `ConnectionServiceCoroutineImplBase`).
+   There is no cancel handler to install: collection *is* the call.
+2. `service.connection(id)` resolves the connection; unknown *or already closed* throws
    `NOT_FOUND` on the stream and nothing is registered.
-3. A heartbeat event is scheduled every 15 s on the shared `tap-scheduler` thread. It is not
+3. A heartbeat event is emitted every 15 s from a `delay` loop. It is not
    how the client's death is detected; it is outbound traffic so an idle-connection timeout in a
-   proxy or the OS never closes a stream that is legitimately silent for an hour. Send errors
-   are swallowed — a dead call is handled by the cancel path.
-4. **Cancel handler — the liveness signal.** gRPC invokes it when the call is torn down from
-   the client side: an explicit cancel (what `Connection.close()` does after its `Close` RPC),
-   a channel shutdown, or — the case this exists for — the TCP connection dropping because the
-   test JVM / pytest process was killed, crashed or OOM'd. The handler stops the heartbeat and
-   calls `closeConnection(id, "client detached")`, which closes every session the connection
+   proxy or the OS never closes a stream that is legitimately silent for an hour.
+4. **Cancellation — the liveness signal.** When the call is torn down from
+   the client side — an explicit cancel (what `Connection.close()` does after its `Close` RPC),
+   a channel shutdown, or the TCP connection dropping because the
+   test JVM / pytest process was killed, crashed or OOM'd — collection is cancelled and the
+   `finally` calls `closeConnection(id, "client detached")`, which closes every session the connection
    owns: each `DeviceSession.close()` stops the driver, removes its forward, journals `CLOSED`
    (or `QUARANTINED`) and releases the per-serial lock. A crashed test process frees its
    devices as soon as the OS reports the socket closed, with no client cooperation.
 5. **`onClose` hook — the explicit path.** When the connection closes for any other reason
    (client `Close`, or `TapService.close()` at shutdown) `closeConnection` runs the hooks; this
-   one stops the heartbeat and completes the stream with `onCompleted()`, so the client's
-   reader ends normally. Both paths are idempotent: `closeConnection` returns 0 for a
+   one cancels the `attach` collection, so the stream ends instead of heartbeating a dead
+   connection. Both paths are idempotent: `closeConnection` returns 0 for a
    connection already marked closed, so "client closed, then cancelled the stream" tears down once.
 6. The first event, `attached to connection <id>`, is sent synchronously. Clients block on it
    before returning from `connect()` / `attach()`, which guarantees the hooks are installed
@@ -227,14 +226,16 @@ the thing that reliably releases devices when their owner is dead; hence the cli
 
 ### How `Execute` works
 
-Every element / wait command is one `Execute`. It runs the command on the `tap-rpc` executor,
-*off* the gRPC call thread, because gRPC serialises the events of one call: a handler that
-blocked in the method body awaiting the driver would never see the client's cancel. The cancel
-handler forwards a protocol `CANCEL` to the in-flight driver request (`PendingCommand.cancel`);
-the driver decides whether that is honoured — never after the mutation gate — and the awaited
-driver response stays the definitive outcome (`INDETERMINATE` on transport loss after
-acceptance, never a replay). Defaults for the command timeout and the AUT package come from
-the session.
+Every element / wait command is one `Execute`, a `suspend` function on
+`SessionServiceCoroutineImplBase`. A gRPC cancel arrives as coroutine cancellation, which
+`PendingCommand.await()` turns into a cooperative protocol `CANCEL` while still recording the
+terminal response; the driver decides whether the cancel is honoured — never after the
+mutation gate — and the awaited driver response stays the definitive outcome (`INDETERMINATE`
+on transport loss after acceptance, never a replay). There is no executor hop and no cancel
+handler: the `AtomicReference`/`AtomicBoolean`/`setOnCancelHandler` dance is gone. Defaults
+for the command timeout and the AUT package come from the session. The exception → status
+mapping is unchanged (unknown session → `NOT_FOUND`, bad request → `INVALID_ARGUMENT`,
+waits → `DEADLINE_EXCEEDED`, lifecycle violations → `FAILED_PRECONDITION`).
 
 ## 4. Client expectations
 

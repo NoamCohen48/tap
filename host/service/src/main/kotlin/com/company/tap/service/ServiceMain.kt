@@ -19,9 +19,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import kotlinx.coroutines.runBlocking
 
 /**
  * `tap start  [--port N] [--state-dir DIR] [--adb PATH]` — start in the background
@@ -97,14 +97,10 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     if (bundled == null) log("no bundled driver in this build; sessions must pass driver_apk/driver_test_apk or skip_driver_install")
 
     val service = TapService(ServiceConfig(adb, stateDir, bundledDriver = bundled, log = log))
-    val scheduler = Executors.newSingleThreadScheduledExecutor { Thread(it, "tap-scheduler").apply { isDaemon = true } }
-    // Commands block for up to two minutes each; never let them share a fixed-size pool.
-    val executor = Executors.newCachedThreadPool { Thread(it, "tap-rpc").apply { isDaemon = true } }
     val server: Server = NettyServerBuilder.forAddress(InetSocketAddress("127.0.0.1", port))
-        .executor(executor)
-        .addService(ConnectionServicer(service, scheduler))
+        .addService(ConnectionServicer(service))
         .addService(DeviceServicer(service))
-        .addService(SessionServicer(service, executor))
+        .addService(SessionServicer(service))
         .addService(AppServicer(service))
         .maxInboundMessageSize(8 * 1024 * 1024)
         .build()
@@ -120,7 +116,7 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     Runtime.getRuntime().addShutdownHook(Thread {
         log("shutting down")
         server.shutdown()
-        runCatching { service.close() }
+        runBlocking { runCatching { service.close() } }
         server.awaitTermination(10, TimeUnit.SECONDS)
         runCatching { Files.deleteIfExists(descriptor) }
     })

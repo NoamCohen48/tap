@@ -10,108 +10,112 @@ import com.company.tap.api.v1.OpenSessionRequest
 import com.company.tap.api.v1.OpenSessionResponse
 import com.company.tap.api.v1.ScreenshotRequest
 import com.company.tap.api.v1.ScreenshotResponse
-import com.company.tap.api.v1.SessionServiceGrpc
-import com.company.tap.host.DriverClient
+import com.company.tap.api.v1.SessionServiceGrpcKt
 import com.company.tap.protocol.DeviceInfoQuery
+import com.company.tap.service.TapService
 import com.company.tap.service.toCommand
 import com.company.tap.service.toProto
-import com.company.tap.service.TapService
 import com.google.protobuf.ByteString
-import io.grpc.stub.ServerCallStreamObserver
-import io.grpc.stub.StreamObserver
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.Executor
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 class SessionServicer(
     private val service: TapService,
-    private val commandExecutor: Executor,
-) : SessionServiceGrpc.SessionServiceImplBase() {
-    override fun open(request: OpenSessionRequest, observer: StreamObserver<OpenSessionResponse>) = reply(observer) {
-        require(request.serial.isNotBlank()) { "serial is required" }
-        require(request.autPackage.isNotBlank()) { "aut_package is required" }
-        val connection = service.connection(request.connectionId)
-        val session = service.openSession(
-            connection, request.serial, request.autPackage,
-            TapService.OpenSessionOptions(
-                driverApk = request.takeIf { it.hasDriverApk() }?.driverApk?.let(Path::of),
-                driverTestApk = request.takeIf { it.hasDriverTestApk() }?.driverTestApk?.let(Path::of),
-                skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
-                syncAuthority = request.takeIf { it.hasSyncAuthority() }?.syncAuthority,
-                allowedSystemPackages = request.allowedSystemPackagesList.toSet(),
-                defaultTimeoutMs = if (request.hasDefaultTimeoutMs() && request.defaultTimeoutMs > 0) request.defaultTimeoutMs else 10_000,
-                leaseTimeoutMs = request.leaseTimeoutMs,
-            ),
-        )
-        // The session is registered by now; a failed first command must not leave it behind,
-        // or the client could never release the device it never received.
-        val info = try {
-            session.device.client.execute(DeviceInfoQuery, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS).deviceInfo
-        } catch (error: Exception) {
-            runCatching { service.closeSession(session.id) }
-            throw error
+) : SessionServiceGrpcKt.SessionServiceCoroutineImplBase() {
+    override suspend fun open(request: OpenSessionRequest): OpenSessionResponse =
+        reply {
+            require(request.serial.isNotBlank()) { "serial is required" }
+            require(request.autPackage.isNotBlank()) { "aut_package is required" }
+            val connection = service.connection(request.connectionId)
+            val session =
+                service.openSession(
+                    connection,
+                    request.serial,
+                    request.autPackage,
+                    TapService.OpenSessionOptions(
+                        driverApk = request.takeIf { it.hasDriverApk() }?.driverApk?.let(Path::of),
+                        driverTestApk = request.takeIf { it.hasDriverTestApk() }?.driverTestApk?.let(Path::of),
+                        skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
+                        syncAuthority = request.takeIf { it.hasSyncAuthority() }?.syncAuthority,
+                        allowedSystemPackages = request.allowedSystemPackagesList.toSet(),
+                        defaultTimeoutMs =
+                            if (request.hasDefaultTimeoutMs() &&
+                                request.defaultTimeoutMs > 0
+                            ) {
+                                request.defaultTimeoutMs
+                            } else {
+                                10_000
+                            },
+                        leaseTimeoutMs = request.leaseTimeoutMs,
+                    ),
+                )
+            // The session is registered by now; a failed first command must not leave it behind,
+            // or the client could never release the device it never received.
+            val info =
+                try {
+                    session.device.client
+                        .execute(DeviceInfoQuery, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS)
+                        .deviceInfo
+                } catch (error: Exception) {
+                    runCatching { service.closeSession(session.id) }
+                    throw error
+                }
+            OpenSessionResponse
+                .newBuilder()
+                .setSessionId(session.id)
+                .setSerial(session.device.serial)
+                .setGeneration(session.device.generation)
+                .setDeviceInfo(info.toProto())
+                .build()
         }
-        OpenSessionResponse.newBuilder()
-            .setSessionId(session.id)
-            .setSerial(session.device.serial)
-            .setGeneration(session.device.generation)
-            .setDeviceInfo(info.toProto())
-            .build()
-    }
 
-    override fun close(request: CloseSessionRequest, observer: StreamObserver<CloseSessionResponse>) = reply(observer) {
-        val detail = service.closeSession(request.sessionId)
-        CloseSessionResponse.newBuilder().setClean(detail == null).apply { detail?.let { setDetail(it) } }.build()
-    }
+    override suspend fun close(request: CloseSessionRequest): CloseSessionResponse =
+        reply {
+            val detail = service.closeSession(request.sessionId)
+            CloseSessionResponse
+                .newBuilder()
+                .setClean(detail == null)
+                .apply { detail?.let { setDetail(it) } }
+                .build()
+        }
 
     /**
-     * Runs the command off the gRPC call thread. Call listener events (including cancellation)
-     * are serialised per call, so a handler that blocks in the method body would never see the
-     * client's cancel; a worker thread awaits the driver and the cancel handler forwards a
-     * protocol `CANCEL` to the in-flight request. The driver decides whether that is honoured
-     * (never after the mutation gate), and the awaited response stays the definitive outcome.
+     * Awaits the driver; a gRPC cancel arrives as coroutine cancellation, which
+     * `PendingCommand.await()` turns into a cooperative protocol `CANCEL` while still
+     * recording the driver's definitive outcome. The driver decides whether the cancel is
+     * honoured (never after the mutation gate).
      */
-    override fun execute(request: ExecuteRequest, observer: StreamObserver<CommandResult>) {
-        val call = observer as ServerCallStreamObserver<CommandResult>
-        val pendingRef = AtomicReference<DriverClient.PendingCommand?>()
-        val cancelled = AtomicBoolean(false)
-        call.setOnCancelHandler {
-            cancelled.set(true)
-            pendingRef.get()?.cancel()
+    override suspend fun execute(request: ExecuteRequest): CommandResult =
+        reply {
+            val session = service.session(request.sessionId)
+            val command = request.command.toCommand(session.device.config.autPackage)
+            val timeoutMs = if (request.command.timeoutMs > 0) request.command.timeoutMs else session.defaultTimeoutMs
+            val pending = session.device.client.submit(command, timeoutMs)
+            service.await(pending).toProto(pending.requestId, session.device.generation)
         }
-        commandExecutor.execute {
-            reply(observer) {
-                val session = service.session(request.sessionId)
-                val command = request.command.toCommand(session.device.config.autPackage)
-                val timeoutMs = if (request.command.timeoutMs > 0) request.command.timeoutMs else session.defaultTimeoutMs
-                val pending = session.device.client.submit(command, timeoutMs)
-                pendingRef.set(pending)
-                if (cancelled.get()) pending.cancel()
-                service.await(pending).toProto(pending.requestId, session.device.generation)
-            }
+
+    override suspend fun screenshot(request: ScreenshotRequest): ScreenshotResponse =
+        reply {
+            val session = service.session(request.sessionId)
+            val timeout = if (request.timeoutMs > 0) request.timeoutMs else 30_000
+            val shot = session.device.client.screenshot(timeout)
+            ScreenshotResponse
+                .newBuilder()
+                .apply {
+                    artifact = shot.info.toProto()
+                    if (request.hasWriteTo()) {
+                        val target = Path.of(request.writeTo)
+                        target.parent?.let(Files::createDirectories)
+                        Files.write(target, shot.png)
+                        path = target.toAbsolutePath().toString()
+                    } else {
+                        png = ByteString.copyFrom(shot.png)
+                    }
+                }.build()
         }
-    }
 
-    override fun screenshot(request: ScreenshotRequest, observer: StreamObserver<ScreenshotResponse>) = reply(observer) {
-        val session = service.session(request.sessionId)
-        val timeout = if (request.timeoutMs > 0) request.timeoutMs else 30_000
-        val shot = session.device.client.screenshot(timeout)
-        ScreenshotResponse.newBuilder().apply {
-            artifact = shot.info.toProto()
-            if (request.hasWriteTo()) {
-                val target = Path.of(request.writeTo)
-                target.parent?.let(Files::createDirectories)
-                Files.write(target, shot.png)
-                path = target.toAbsolutePath().toString()
-            } else {
-                png = ByteString.copyFrom(shot.png)
-            }
-        }.build()
-    }
-
-    override fun driverLog(request: DriverLogRequest, observer: StreamObserver<DriverLogResponse>) = reply(observer) {
-        DriverLogResponse.newBuilder().addAllLines(service.session(request.sessionId).log.snapshot()).build()
-    }
+    override suspend fun driverLog(request: DriverLogRequest): DriverLogResponse =
+        reply {
+            DriverLogResponse.newBuilder().addAllLines(service.session(request.sessionId).log.snapshot()).build()
+        }
 }

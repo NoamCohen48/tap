@@ -150,7 +150,7 @@ tap/
 |   |   +-- src/main/kotlin/com/company/tap/service/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
 |   |   |   +-- TapService.kt        connections, device list (serials; lock probe + journal), sessions, execute with transport-loss-as-data
-|   |   |   +-- Servicers.kt         gRPC servicers for Connection/Device/Session/App; status mapping; off-thread Execute so cancel reaches the driver
+|   |   |   +-- Servicers.kt         gRPC coroutine servicers for Connection/Device/Session/App; status mapping; gRPC cancel arrives as coroutine cancellation
 |   |   |   +-- Conversions.kt       proto <-> protocol extension functions (toProto / toCommand / toSelector / toResponse)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent

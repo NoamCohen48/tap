@@ -12,7 +12,8 @@ import com.company.tap.protocol.Response
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 class ServiceConfig(
     val adb: Adb,
@@ -75,7 +76,7 @@ class DriverLogBuffer(private val capacity: Int = 2_000) {
  * list is only a view — [devices] probes that lock and the journal. The gRPC servicers are thin
  * adapters over this class so it can be exercised without a server.
  */
-class TapService(val config: ServiceConfig) : AutoCloseable {
+class TapService(val config: ServiceConfig) {
     private val connections = ConcurrentHashMap<String, Connection>()
     private val sessions = ConcurrentHashMap<String, Session>()
     /** Serials whose bundled driver this service process already installed. */
@@ -93,9 +94,9 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     fun connection(id: String): Connection = connections[id]?.takeUnless { it.closed } ?: throw UnknownConnectionException(id)
 
     /** Closes every session of the connection. Idempotent. Returns the number closed. */
-    fun closeConnection(id: String, reason: String): Int {
-        val connection = connections.remove(id) ?: return 0
-        if (connection.closed) return 0
+    suspend fun closeConnection(id: String, reason: String): Int = withContext(NonCancellable) {
+        val connection = connections.remove(id) ?: return@withContext 0
+        if (connection.closed) return@withContext 0
         connection.closed = true
         var closedSessions = 0
         connection.sessions.keys.toList().forEach { sessionId ->
@@ -104,13 +105,13 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         }
         connection.onClose.forEach { runCatching(it) }
         config.log("connection $id closed ($reason): sessions=$closedSessions")
-        return closedSessions
+        return@withContext closedSessions
     }
 
     // ---- devices -----------------------------------------------------------------------------
 
     /** Every device ADB lists with what the journal and the per-serial lock say about it. */
-    fun devices(): List<DeviceEntry> =
+    suspend fun devices(): List<DeviceEntry> =
         config.adb.devices().map { serial ->
             val store = SessionJournalStore(config.journalRoot, serial)
             val status = quarantine(store)?.let { DeviceStatus.Quarantined(it) }
@@ -138,7 +139,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         val leaseTimeoutMs: Long,
     )
 
-    fun openSession(connection: Connection, serial: String, autPackage: String, options: OpenSessionOptions): Session {
+    suspend fun openSession(connection: Connection, serial: String, autPackage: String, options: OpenSessionOptions): Session {
         val explicitApks = options.driverApk != null || options.driverTestApk != null
         val useBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null
         // The bundled driver goes on each device once per service lifetime. Whether this open is
@@ -176,12 +177,12 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     fun session(id: String): Session = sessions[id] ?: throw UnknownSessionException(id)
 
     /** Returns null when cleanup was clean, otherwise the quarantine detail. */
-    fun closeSession(id: String): String? {
+    suspend fun closeSession(id: String): String? = withContext(NonCancellable) {
         val session = sessions.remove(id) ?: throw UnknownSessionException(id)
         session.connection.sessions.remove(id)
         val detail = runCatching { session.device.close() }.exceptionOrNull()?.message
         config.log("session $id closed" + (detail?.let { " (quarantined: $it)" } ?: ""))
-        return detail
+        return@withContext detail
     }
 
     /**
@@ -189,13 +190,13 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
      * transmission state as its detail), not thrown, so the client sees `INDETERMINATE` /
      * `TRANSPORT_LOST` through the normal result path.
      */
-    fun await(pending: DriverClient.PendingCommand): Response = try {
+    suspend fun await(pending: DriverClient.PendingCommand): Response = try {
         pending.await()
     } catch (loss: CommandTransportException) {
         Response.failure(loss.code, detail = loss.transmissionState.name, message = loss.message, durationMs = 0)
     }
 
-    override fun close() {
+    suspend fun close() {
         connections.keys.toList().forEach { closeConnection(it, "service shutdown") }
     }
 }
