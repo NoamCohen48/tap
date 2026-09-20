@@ -136,15 +136,20 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
 
     fun openSession(run: Run, serial: String, autPackage: String, options: OpenSessionOptions): ManagedSession {
         val explicitApks = options.driverApk != null || options.driverTestApk != null
-        val installBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null && driverInstalled.add(serial)
+        val useBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null
+        // The bundled driver goes on each device once per service lifetime. Whether this open is
+        // the one that installs it is decided under the serial's lock (see installDriver), so two
+        // opens racing for one device cannot split "I install" from "I start first".
+        var installedBundled = false
         val log = RingLog()
         val device = try {
             DeviceSession.open(
                 DeviceSessionConfig(
                     serial = serial,
                     autPackage = autPackage,
-                    driverApk = options.driverApk ?: config.bundledDriver?.driverApk?.takeIf { installBundled },
-                    driverTestApk = options.driverTestApk ?: config.bundledDriver?.driverTestApk?.takeIf { installBundled },
+                    driverApk = options.driverApk ?: config.bundledDriver?.driverApk?.takeIf { useBundled },
+                    driverTestApk = options.driverTestApk ?: config.bundledDriver?.driverTestApk?.takeIf { useBundled },
+                    installDriver = { !useBundled || driverInstalled.add(serial).also { installedBundled = it } },
                     syncAuthority = options.syncAuthority ?: "$autPackage.tap-sync",
                     allowedSystemPackages = options.allowedSystemPackages.ifEmpty { setOf(PERMISSION_CONTROLLER_PACKAGE) },
                     journalRoot = config.journalRoot,
@@ -154,7 +159,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
                 ),
             )
         } catch (error: Throwable) {
-            if (installBundled) driverInstalled.remove(serial)
+            if (installedBundled) driverInstalled.remove(serial)
             throw error
         }
         val session = ManagedSession(UUID.randomUUID().toString(), run, device, options.defaultTimeoutMs, log)
