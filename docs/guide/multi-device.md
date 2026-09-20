@@ -1,7 +1,7 @@
 # Multi-device tests
 
-The service sees every device ADB can see (optionally restricted with `tap start --serials a,b`)
-and knows nothing but **serials**. A device is in use exactly while a session holds its
+The service sees every device ADB can see and knows nothing but **serials**; which of them a
+run uses is decided on the client side (`tap.serials` / `tap_serials`). A device is in use exactly while a session holds its
 per-serial lock (`~/.tap/sessions/<serial>.lock`), taken when the session opens and released
 when it closes or its process dies — so two processes, a Gradle test JVM and a pytest run say,
 never share a device, and a crashed process's devices come back on their own. Naming devices —

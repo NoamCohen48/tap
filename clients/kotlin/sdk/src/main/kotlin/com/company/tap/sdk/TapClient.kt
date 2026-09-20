@@ -218,7 +218,7 @@ object TapServiceProcess {
 
     /**
      * Starts a service in the background unless one is already running in [stateDir]. Extra
-     * `tap serve` options (`--adb`, `--serials`) go in [options].
+     * `tap serve` options (`--adb PATH`) go in [options].
      */
     fun start(
         binary: String? = null,

@@ -6,8 +6,8 @@ devices to use, and where artifacts go.
 ## The `tap` CLI
 
 ```
-tap start   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]
-tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]
+tap start   [--port N] [--state-dir DIR] [--adb PATH]
+tap serve   [--port N] [--state-dir DIR] [--adb PATH]
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
 tap version
@@ -20,7 +20,6 @@ tap version
 | both | bind loopback only, write `<state-dir>/service.json` (`port`, `pid`, `version`, `adb`), and keep running until `tap stop` |
 | `--state-dir` | where `service.json`, `sessions/` (leases and journals) and the extracted driver live; default `$TAP_STATE_DIR` or `~/.tap` |
 | `--adb` | the ADB executable; default `$TAP_ADB` or `adb` on `PATH` |
-| `--serials` | restrict the service to these devices; default every device ADB lists |
 | `status` | prints `service.json` (exit 1 when no service is running) |
 | `stop` | terminates the service recorded in `service.json` |
 
