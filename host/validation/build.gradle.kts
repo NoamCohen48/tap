@@ -5,6 +5,8 @@ plugins {
 
 kotlin {
     jvmToolchain(17)
+    // Validation and fault injection run arbitrary ADB on purpose; product code may not.
+    compilerOptions.optIn.add("com.company.tap.host.RawAdb")
 }
 
 application {

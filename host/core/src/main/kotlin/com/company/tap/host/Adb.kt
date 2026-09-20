@@ -5,16 +5,51 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.absolutePathString
 
-class Adb(val executable: String = "adb") {
+/**
+ * Marks the raw `adb -s <serial> ...` escape hatch. Product code goes through [Adb]'s typed
+ * operations so every command line, its timeout and its output parsing live in one place;
+ * only validation and fault-injection tooling (`:host:validation`) opt in to run arbitrary
+ * ADB commands.
+ */
+@RequiresOptIn(
+    level = RequiresOptIn.Level.ERROR,
+    message = "Raw ADB is for validation tooling; add a typed operation to Adb instead.",
+)
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.FUNCTION)
+annotation class RawAdb
+
+/**
+ * Every ADB interaction of the host, one typed method per command. All device commands are
+ * serial-specific (`-s`), bounded by a timeout, and return captured output; the parsing of
+ * that output lives here too, so a device-family quirk is fixed once. `open` so tests can
+ * substitute a fake.
+ */
+open class Adb(val executable: String = "adb") {
     data class Result(val exitCode: Int, val output: String)
 
-    fun run(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): String {
-        val result = runResult(serial, *arguments, timeoutMs = timeoutMs)
+    /** What `/proc/<pid>/stat` says about a process: alive with its start token, or gone. */
+    sealed class ProcessStat {
+        data class Live(val startToken: String) : ProcessStat()
+        object Gone : ProcessStat()
+    }
+
+    @RawAdb
+    fun run(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): String =
+        exec(serial, *arguments, timeoutMs = timeoutMs)
+
+    @RawAdb
+    fun runResult(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): Result =
+        execResult(serial, *arguments, timeoutMs = timeoutMs)
+
+    /** Runs the command and returns its output; a non-zero exit is an [IllegalStateException]. */
+    protected fun exec(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): String {
+        val result = execResult(serial, *arguments, timeoutMs = timeoutMs)
         check(result.exitCode == 0) { "ADB command failed: ${result.output}" }
         return result.output
     }
 
-    fun runResult(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): Result {
+    protected open fun execResult(serial: String, vararg arguments: String, timeoutMs: Long = 30_000): Result {
         val process = ProcessBuilder(listOf(executable, "-s", serial) + arguments)
             .redirectErrorStream(true)
             .start()
@@ -34,7 +69,7 @@ class Adb(val executable: String = "adb") {
     }
 
     /** Serials of devices currently in the `device` state (not offline/unauthorized). */
-    fun devices(timeoutMs: Long = 10_000): List<String> {
+    open fun devices(timeoutMs: Long = 10_000): List<String> {
         val process = ProcessBuilder(listOf(executable, "devices")).redirectErrorStream(true).start()
         val output = CompletableFuture.supplyAsync { process.inputStream.bufferedReader().use { it.readText() } }
         if (!process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
@@ -57,24 +92,96 @@ class Adb(val executable: String = "adb") {
      * the AUT can reach the foreground. A secure lock is not bypassed; the app-visible wait
      * then reports the lock screen package as the last observation.
      */
-    fun wakeAndDismissKeyguard(serial: String) {
-        runResult(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP", timeoutMs = 10_000)
-        runResult(serial, "shell", "wm", "dismiss-keyguard", timeoutMs = 10_000)
+    open fun wakeAndDismissKeyguard(serial: String) {
+        execResult(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP", timeoutMs = 10_000)
+        execResult(serial, "shell", "wm", "dismiss-keyguard", timeoutMs = 10_000)
     }
 
-    fun install(serial: String, apk: Path, timeoutMs: Long = 120_000) {
-        run(serial, "install", "-r", "-t", apk.absolutePathString(), timeoutMs = timeoutMs)
+    // ---- device identity and kernel state ----------------------------------------------------
+
+    /** The kernel's boot identity; changes exactly when the device reboots. */
+    open fun bootId(serial: String): String =
+        exec(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")
+
+    /** Whether a TCP socket is listening on [port] (IPv4 or IPv6), from `/proc/net/tcp*`. */
+    open fun isPortListening(serial: String, port: Int): Boolean {
+        val expectedPort = port.toString(16).uppercase().padStart(4, '0')
+        return exec(serial, "shell", "cat", "/proc/net/tcp", "/proc/net/tcp6")
+            .lineSequence()
+            .map { it.trim().split(Regex("\\s+")) }
+            .any { fields -> fields.size > 3 && fields[1].endsWith(":$expectedPort") && fields[3] == "0A" }
     }
 
-    fun forward(serial: String, devicePort: Int): Int =
-        run(serial, "forward", "tcp:0", "tcp:$devicePort").toInt()
-
-    fun removeForward(serial: String, hostPort: Int) {
-        run(serial, "forward", "--remove", "tcp:$hostPort")
+    /**
+     * Reads `/proc/[pid]/stat`. [ProcessStat.Gone] when the kernel says the process no longer
+     * exists; anything else unreadable or malformed is an [IllegalStateException], because a
+     * process whose identity cannot be read must never be mistaken for a dead one.
+     */
+    open fun processStat(serial: String, pid: Int, timeoutMs: Long = 30_000): ProcessStat {
+        val result = execResult(serial, "shell", "cat", "/proc/$pid/stat", timeoutMs = timeoutMs)
+        if (result.exitCode != 0) {
+            check("No such file" in result.output || "No such process" in result.output) {
+                "Unable to observe process $pid on $serial: ${result.output}"
+            }
+            return ProcessStat.Gone
+        }
+        // The command name is in parentheses and may itself contain spaces; fields follow it.
+        val closingName = result.output.lastIndexOf(')')
+        check(closingName >= 0) { "Malformed /proc stat for PID $pid" }
+        val fieldsFromState = result.output.substring(closingName + 1).trim().split(Regex("\\s+"))
+        check(fieldsFromState.size > 19) { "Incomplete /proc stat for PID $pid" }
+        return ProcessStat.Live(fieldsFromState[19]) // starttime: clock ticks since boot
     }
 
-    fun forwards(serial: String): List<Forwarding> =
-        run(serial, "forward", "--list")
+    // ---- packages and processes --------------------------------------------------------------
+
+    open fun install(serial: String, apk: Path, timeoutMs: Long = 120_000) {
+        exec(serial, "install", "-r", "-t", apk.absolutePathString(), timeoutMs = timeoutMs)
+    }
+
+    /** `adb uninstall`; returns the tool's output for the caller's diagnostics. */
+    open fun uninstall(serial: String, packageName: String): String =
+        exec(serial, "uninstall", packageName)
+
+    /** `pm path` lists at least one APK for the package. */
+    open fun isInstalled(serial: String, packageName: String): Boolean =
+        exec(serial, "shell", "pm", "path", packageName).lineSequence().any { it.startsWith("package:") }
+
+    /** `pm clear`; returns the output, which says `Success` when it worked. */
+    open fun clearData(serial: String, packageName: String): String =
+        exec(serial, "shell", "pm", "clear", packageName)
+
+    open fun grantPermission(serial: String, packageName: String, permission: String) {
+        exec(serial, "shell", "pm", "grant", packageName, permission)
+    }
+
+    /** `am force-stop`; proves nothing by itself — callers poll [processIds]. */
+    open fun forceStop(serial: String, packageName: String) {
+        exec(serial, "shell", "am", "force-stop", packageName)
+    }
+
+    /** `am start -W -n component`; returns the output, which names `Error`/`Exception` on failure. */
+    open fun startActivity(serial: String, component: String, timeoutMs: Long): String =
+        exec(serial, "shell", "am", "start", "-W", "-n", component, timeoutMs = timeoutMs)
+
+    /** The package's MAIN/LAUNCHER activity as `package/activity`, or null when it has none. */
+    open fun launcherActivity(serial: String, packageName: String): String? =
+        exec(
+            serial, "shell", "cmd", "package", "resolve-activity", "--brief",
+            "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", packageName,
+        ).lineSequence().map(String::trim).lastOrNull { it.startsWith("$packageName/") }
+
+    // ---- forwards ----------------------------------------------------------------------------
+
+    open fun forward(serial: String, devicePort: Int): Int =
+        exec(serial, "forward", "tcp:0", "tcp:$devicePort").toInt()
+
+    open fun removeForward(serial: String, hostPort: Int) {
+        exec(serial, "forward", "--remove", "tcp:$hostPort")
+    }
+
+    open fun forwards(serial: String): List<Forwarding> =
+        exec(serial, "forward", "--list")
             .lineSequence()
             .filter(String::isNotBlank)
             .mapNotNull { line ->
@@ -86,8 +193,8 @@ class Adb(val executable: String = "adb") {
             }
             .toList()
 
-    fun processIds(serial: String, packageName: String): List<Int> {
-        val result = runResult(serial, "shell", "pidof", packageName)
+    open fun processIds(serial: String, packageName: String): List<Int> {
+        val result = execResult(serial, "shell", "pidof", packageName)
         if (result.exitCode != 0) {
             check(result.exitCode == 1 && result.output.isBlank()) {
                 "Unable to observe process IDs for $serial: ${result.output}"

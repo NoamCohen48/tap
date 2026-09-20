@@ -97,7 +97,7 @@ class DeviceSession private constructor(
             val store = SessionJournalStore(config.journalRoot, serial)
             val lease = store.acquireLease(config.leaseTimeoutMs)
             try {
-                val bootId = adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")
+                val bootId = adb.bootId(serial)
                 val prior = recoverJournal(adb, serial, bootId, store)
                 adb.wakeAndDismissKeyguard(serial)
                 if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {

@@ -22,15 +22,7 @@ data class RunningInstrumentation(
     val driverInstanceId: String,
 )
 
-fun isPortListening(adb: Adb, serial: String, port: Int): Boolean {
-    val expectedPort = port.toString(16).uppercase().padStart(4, '0')
-    return adb.run(serial, "shell", "cat", "/proc/net/tcp", "/proc/net/tcp6")
-        .lineSequence()
-        .map { it.trim().split(Regex("\\s+")) }
-        .any { fields ->
-            fields.size > 3 && fields[1].endsWith(":$expectedPort") && fields[3] == "0A"
-        }
-}
+fun isPortListening(adb: Adb, serial: String, port: Int): Boolean = adb.isPortListening(serial, port)
 
 enum class ResetRecoveryAction {
     REBOOT,
@@ -216,7 +208,7 @@ fun recoverJournal(
                 .filter { it.devicePort == record.devicePort }
                 .forEach { removeExactForward(adb, serial, it.hostPort, record.devicePort) }
         }
-        if (adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id") != bootId) {
+        if (adb.bootId(serial) != bootId) {
             store.write(record.copy(state = JournalState.QUARANTINED))
             error("Boot identity changed during recovery; device quarantined")
         }
@@ -238,7 +230,7 @@ fun forceStopDriverAndVerify(
     oldPid: Int? = null,
     oldStartToken: String? = null,
 ) {
-    adb.run(serial, "shell", "am", "force-stop", DRIVER_PACKAGE)
+    adb.forceStop(serial, DRIVER_PACKAGE)
     val deadline = System.nanoTime() + 5_000_000_000L
     while (System.nanoTime() < deadline) {
         val packageGone = adb.processIds(serial, DRIVER_PACKAGE).isEmpty()
@@ -258,30 +250,16 @@ private fun processIdentityIsGone(
     serial: String,
     pid: Int,
     startToken: String,
-): Boolean {
-    val result = adb.runResult(serial, "shell", "cat", "/proc/$pid/stat")
-    if (result.exitCode != 0) {
-        check("No such file" in result.output || "No such process" in result.output) {
-            "Unable to verify old process identity: ${result.output}"
-        }
-        return true
-    }
-    val closingName = result.output.lastIndexOf(')')
-    check(closingName >= 0) { "Malformed /proc stat for PID $pid" }
-    val fieldsFromState = result.output.substring(closingName + 1).trim().split(Regex("\\s+"))
-    check(fieldsFromState.size > 19) { "Incomplete /proc stat for PID $pid" }
-    return fieldsFromState[19] != startToken
+): Boolean = when (val stat = adb.processStat(serial, pid)) {
+    Adb.ProcessStat.Gone -> true
+    is Adb.ProcessStat.Live -> stat.startToken != startToken // the PID was reused by a new process
 }
 
-fun processStartToken(adb: Adb, serial: String, pid: Int): String {
-    val result = adb.runResult(serial, "shell", "cat", "/proc/$pid/stat")
-    check(result.exitCode == 0) { "Process $pid is not observable" }
-    val closingName = result.output.lastIndexOf(')')
-    check(closingName >= 0) { "Malformed /proc stat for PID $pid" }
-    val fieldsFromState = result.output.substring(closingName + 1).trim().split(Regex("\\s+"))
-    check(fieldsFromState.size > 19) { "Incomplete /proc stat for PID $pid" }
-    return fieldsFromState[19]
-}
+fun processStartToken(adb: Adb, serial: String, pid: Int): String =
+    when (val stat = adb.processStat(serial, pid)) {
+        Adb.ProcessStat.Gone -> error("Process $pid is not observable")
+        is Adb.ProcessStat.Live -> stat.startToken
+    }
 
 fun removeExactForward(
     adb: Adb,
@@ -307,18 +285,10 @@ fun observeProcess(adb: Adb, serial: String, packageName: String, timeoutMs: Lon
         val pids = adb.processIds(serial, packageName)
         if (pids.size == 1) {
             val pid = pids.single()
-            val stat = adb.runResult(serial, "shell", "cat", "/proc/$pid/stat", timeoutMs = 5_000)
-            if (stat.exitCode == 0) {
-                val closingName = stat.output.lastIndexOf(')')
-                if (closingName >= 0) {
-                    val fieldsFromState = stat.output.substring(closingName + 1).trim().split(Regex("\\s+"))
-                    if (fieldsFromState.size > 19) return ProcessObservation(pid, fieldsFromState[19])
-                    lastFailure = "Incomplete /proc stat for PID $pid"
-                } else {
-                    lastFailure = "Malformed /proc stat for PID $pid"
-                }
-            } else {
-                lastFailure = "AUT PID $pid exited before its start token was observed"
+            when (val stat = runCatching { adb.processStat(serial, pid, timeoutMs = 5_000) }.getOrNull()) {
+                is Adb.ProcessStat.Live -> return ProcessObservation(pid, stat.startToken)
+                Adb.ProcessStat.Gone -> lastFailure = "AUT PID $pid exited before its start token was observed"
+                null -> lastFailure = "Unable to read /proc stat for PID $pid"
             }
         } else {
             lastFailure = "Expected one AUT process, got $pids"

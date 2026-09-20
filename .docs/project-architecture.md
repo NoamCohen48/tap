@@ -133,7 +133,7 @@ tap/
 +-- host/                        what runs on the host machine (no test DSL)
 |   +-- core/                    :host:core — Kotlin/JVM library: session infrastructure
 |   |   +-- src/main/kotlin/com/company/tap/host/
-|   |   |   +-- Adb.kt               ProcessBuilder wrapper (`Adb(executable)`); every call takes a serial; wakeAndDismissKeyguard
+|   |   |   +-- Adb.kt               every ADB command as a typed method (`open class Adb`, serial-specific, parsing inside); raw `run` is `@RawAdb` opt-in, allowed only in :host:validation
 |   |   |   +-- SessionJournal.kt    JournalState, SessionJournal, SessionJournalStore (lease + fsync'd atomic write)
 |   |   |   +-- DriverLifecycle.kt   start-with-retry, port range, forward, process observation, journal recovery, cleanup
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
