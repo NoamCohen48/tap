@@ -5,10 +5,14 @@ import com.google.re2j.PatternSyntaxException
 
 /** Which internal evaluator a selector compiles to (plan §10, "Query plans"). */
 enum class SelectorPlanKind {
-    /** Every predicate maps onto current `BySelector` APIs. */
+    /** Every predicate maps onto one window-scoped `BySelector`. */
     NATIVE,
 
-    /** Needs the driver's accessibility traversal evaluator (currently: any `REGEX` match). */
+    /**
+     * Needs the driver's accessibility traversal evaluator: any `REGEX` match, any `any_of`, or a
+     * conjunction repeating a predicate `BySelector` holds only once (a text property, a flag,
+     * the resource, a parent or an ancestor).
+     */
     TRAVERSAL,
 }
 
@@ -21,28 +25,6 @@ class InvalidSelectorException(val detail: String, message: String) : IllegalArg
  */
 object SelectorValidation {
     fun validate(selector: Selector): SelectorPlanKind {
-        when (selector.scope) {
-            TargetScope.AUT -> if (selector.scopePackage != null) {
-                fail(ErrorDetail.SCOPE_PACKAGE_UNEXPECTED, "scopePackage is only valid for SYSTEM scope")
-            }
-            TargetScope.SYSTEM -> if (selector.scopePackage.isNullOrBlank()) {
-                fail(ErrorDetail.SCOPE_PACKAGE_REQUIRED, "SYSTEM scope requires scopePackage")
-            }
-        }
-        when (selector.limit) {
-            MatchLimit.EXACTLY_ONE -> if (selector.index != null) {
-                fail(ErrorDetail.INDEX_UNEXPECTED, "index is only valid with limit AT")
-            }
-            MatchLimit.FIRST -> {
-                if (selector.index != null) fail(ErrorDetail.INDEX_UNEXPECTED, "index is only valid with limit AT")
-                requireOrderAccepted(selector)
-            }
-            MatchLimit.AT -> {
-                val index = selector.index
-                if (index == null || index < 0) fail(ErrorDetail.INDEX_REQUIRED, "limit AT requires index >= 0")
-                requireOrderAccepted(selector)
-            }
-        }
         val counter = Counter()
         val needsTraversal = visit(selector.node, depth = 1, counter)
         return if (needsTraversal) SelectorPlanKind.TRAVERSAL else SelectorPlanKind.NATIVE
@@ -55,46 +37,69 @@ object SelectorValidation {
         fail(ErrorDetail.INVALID_REGEX, "Invalid regex: ${error.message}")
     }
 
-    private fun requireOrderAccepted(selector: Selector) {
-        if (!selector.acceptAccessibilityOrder) {
-            fail(
-                ErrorDetail.ORDER_NOT_ACCEPTED,
-                "limit ${selector.limit} depends on accessibility traversal order; set acceptAccessibilityOrder",
-            )
-        }
-    }
-
     /** Returns true when any node in the subtree requires the traversal plan. */
-    private fun visit(node: NodeSelector, depth: Int, counter: Counter): Boolean {
+    private fun visit(node: Node, depth: Int, counter: Counter): Boolean {
         if (depth > MAX_SELECTOR_DEPTH) {
             fail(ErrorDetail.SELECTOR_TOO_DEEP, "Selector nesting exceeds $MAX_SELECTOR_DEPTH")
         }
         if (++counter.nodes > MAX_SELECTOR_NODES) {
             fail(ErrorDetail.SELECTOR_TOO_LARGE, "Selector exceeds $MAX_SELECTOR_NODES nodes")
         }
-        if (node.isEmpty) fail(ErrorDetail.EMPTY_NODE, "Selector node has no property")
         var traversal = false
-        node.stringProperties.forEach { (name, match) ->
-            checkLength(name, match.value)
-            if (match.mode == MatchMode.REGEX) {
-                compileRegex(match.value)
+        when (node) {
+            is Node.Match -> {
+                checkLength(node.property.name, node.value)
+                if (node.mode == MatchMode.REGEX) {
+                    compileRegex(node.value)
+                    traversal = true
+                }
+            }
+            is Node.Flag -> Unit
+            is Node.Resource -> {
+                checkLength("resource.name", node.name)
+                if (node.name.isEmpty()) fail(ErrorDetail.EMPTY_VALUE, "resource.name must not be empty")
+                node.packageName?.let { packageName ->
+                    checkLength("resource.packageName", packageName)
+                    if (packageName.isEmpty()) {
+                        fail(ErrorDetail.EMPTY_VALUE, "resource.packageName must not be empty")
+                    }
+                }
+            }
+            is Node.Related -> Unit
+            is Node.AllOf -> {
+                if (node.nodes.size < 2) fail(ErrorDetail.EMPTY_NODE, "all_of needs at least two nodes")
+                if (repeatsSingleValuedPredicate(node.conjunction)) traversal = true
+            }
+            is Node.AnyOf -> {
+                if (node.nodes.size < 2) fail(ErrorDetail.EMPTY_NODE, "any_of needs at least two nodes")
                 traversal = true
             }
         }
-        node.resource?.let { resource ->
-            checkLength("resource.name", resource.name)
-            if (resource.name.isEmpty()) fail(ErrorDetail.EMPTY_VALUE, "resource.name must not be empty")
-            resource.packageName?.let { packageName ->
-                checkLength("resource.packageName", packageName)
-                if (packageName.isEmpty()) {
-                    fail(ErrorDetail.EMPTY_VALUE, "resource.packageName must not be empty")
-                }
-            }
-        }
-        node.relations.forEach { (_, related) ->
-            if (visit(related, depth + 1, counter)) traversal = true
+        node.children.forEach { child ->
+            if (visit(child, depth + 1, counter)) traversal = true
         }
         return traversal
+    }
+
+    /**
+     * `BySelector` keeps one constraint per text property, flag and resource and one parent and
+     * ancestor selector; a conjunction naming any of them twice is only expressible by traversal.
+     */
+    private fun repeatsSingleValuedPredicate(conjunction: List<Node>): Boolean {
+        val seen = HashSet<Any>()
+        return conjunction.any { operand ->
+            val key: Any = when (operand) {
+                is Node.Match -> operand.property
+                is Node.Flag -> operand.property
+                is Node.Resource -> Node.Resource::class
+                is Node.Related -> when (operand.relation) {
+                    Relation.PARENT, Relation.ANCESTOR -> operand.relation
+                    Relation.CHILD, Relation.DESCENDANT -> return@any false
+                }
+                is Node.AllOf, is Node.AnyOf -> return@any false
+            }
+            !seen.add(key)
+        }
     }
 
     private fun checkLength(name: String, value: String) {

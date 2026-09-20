@@ -17,9 +17,21 @@ import com.company.tap.api.v1.ErrorCode as ProtoErrorCode
 import com.company.tap.api.v1.Exists as ProtoExists
 import com.company.tap.api.v1.Health as ProtoHealth
 import com.company.tap.api.v1.LongTap as ProtoLongTap
-import com.company.tap.api.v1.MatchLimit as ProtoMatchLimit
+import com.company.tap.api.v1.AllOf as ProtoAllOf
+import com.company.tap.api.v1.AnyOf as ProtoAnyOf
+import com.company.tap.api.v1.At as ProtoAt
+import com.company.tap.api.v1.AutScope as ProtoAutScope
+import com.company.tap.api.v1.ExactlyOne as ProtoExactlyOne
+import com.company.tap.api.v1.First as ProtoFirst
+import com.company.tap.api.v1.Flag as ProtoFlag
+import com.company.tap.api.v1.Match as ProtoMatch
 import com.company.tap.api.v1.MatchMode as ProtoMatchMode
-import com.company.tap.api.v1.NodeSelector as ProtoNodeSelector
+import com.company.tap.api.v1.Node as ProtoNode
+import com.company.tap.api.v1.NodeFlag as ProtoNodeFlag
+import com.company.tap.api.v1.Related as ProtoRelated
+import com.company.tap.api.v1.Relation as ProtoRelation
+import com.company.tap.api.v1.SystemScope as ProtoSystemScope
+import com.company.tap.api.v1.TextProperty as ProtoTextProperty
 import com.company.tap.api.v1.PressKey as ProtoPressKey
 import com.company.tap.api.v1.ResourceId as ProtoResourceId
 import com.company.tap.api.v1.Screenshot as ProtoScreenshot
@@ -29,13 +41,11 @@ import com.company.tap.api.v1.Selector as ProtoSelector
 import com.company.tap.api.v1.SetText as ProtoSetText
 import com.company.tap.api.v1.Snapshot as ProtoSnapshot
 import com.company.tap.api.v1.StabilitySignal as ProtoStabilitySignal
-import com.company.tap.api.v1.StringMatch as ProtoStringMatch
 import com.company.tap.api.v1.Swipe as ProtoSwipe
 import com.company.tap.api.v1.SyncBootstrap as ProtoSyncBootstrap
 import com.company.tap.api.v1.SyncPoll as ProtoSyncPoll
 import com.company.tap.api.v1.SyncState as ProtoSyncState
 import com.company.tap.api.v1.Tap as ProtoTap
-import com.company.tap.api.v1.TargetScope as ProtoTargetScope
 import com.company.tap.api.v1.TypeText as ProtoTypeText
 import com.company.tap.api.v1.WaitAppVisible as ProtoWaitAppVisible
 import com.company.tap.api.v1.WaitGone as ProtoWaitGone
@@ -63,12 +73,15 @@ import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Exists
 import com.company.tap.protocol.Health
 import com.company.tap.protocol.LongTap
-import com.company.tap.protocol.MatchLimit
 import com.company.tap.protocol.MatchMode
+import com.company.tap.protocol.Node
+import com.company.tap.protocol.NodeFlag
+import com.company.tap.protocol.Pick
+import com.company.tap.protocol.Relation
+import com.company.tap.protocol.Scope
+import com.company.tap.protocol.TextProperty
 import com.company.tap.protocol.Moved
-import com.company.tap.protocol.NodeSelector
 import com.company.tap.protocol.PressKey
-import com.company.tap.protocol.ResourceId
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Screenshot
 import com.company.tap.protocol.Scroll
@@ -78,14 +91,12 @@ import com.company.tap.protocol.SetText
 import com.company.tap.protocol.Snapshot
 import com.company.tap.protocol.SnapshotResult
 import com.company.tap.protocol.StabilitySignal
-import com.company.tap.protocol.StringMatch
 import com.company.tap.protocol.Swipe
 import com.company.tap.protocol.SyncBootstrap
 import com.company.tap.protocol.SyncPoll
 import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
 import com.company.tap.protocol.Tap
-import com.company.tap.protocol.TargetScope
 import com.company.tap.protocol.TextResult
 import com.company.tap.protocol.TypeText
 import com.company.tap.protocol.WaitAppVisible
@@ -104,8 +115,9 @@ object Conversions {
     private const val ERR = "ERR_"
     private const val DIR = "DIR_"
     private const val MATCH = "MATCH_"
-    private const val LIMIT = "LIMIT_"
-    private const val SCOPE = "SCOPE_"
+    private const val PROPERTY = "PROPERTY_"
+    private const val FLAG = "FLAG_"
+    private const val RELATION = "RELATION_"
     private const val STABILITY = "STABILITY_"
 
     // ---- enums -------------------------------------------------------------------------------
@@ -126,15 +138,14 @@ object Conversions {
 
     private fun matchMode(value: MatchMode): ProtoMatchMode = ProtoMatchMode.valueOf(MATCH + value.name)
 
-    private fun matchLimit(proto: ProtoMatchLimit): MatchLimit =
-        if (proto == ProtoMatchLimit.LIMIT_UNSPECIFIED) MatchLimit.EXACTLY_ONE else MatchLimit.valueOf(named(proto.name, LIMIT, "limit"))
+    private fun textProperty(proto: ProtoTextProperty): TextProperty = TextProperty.valueOf(named(proto.name, PROPERTY, "property"))
+    private fun textProperty(value: TextProperty): ProtoTextProperty = ProtoTextProperty.valueOf(PROPERTY + value.name)
 
-    private fun matchLimit(value: MatchLimit): ProtoMatchLimit = ProtoMatchLimit.valueOf(LIMIT + value.name)
+    private fun nodeFlag(proto: ProtoNodeFlag): NodeFlag = NodeFlag.valueOf(named(proto.name, FLAG, "property"))
+    private fun nodeFlag(value: NodeFlag): ProtoNodeFlag = ProtoNodeFlag.valueOf(FLAG + value.name)
 
-    private fun scope(proto: ProtoTargetScope): TargetScope =
-        if (proto == ProtoTargetScope.SCOPE_UNSPECIFIED) TargetScope.AUT else TargetScope.valueOf(named(proto.name, SCOPE, "scope"))
-
-    private fun scope(value: TargetScope): ProtoTargetScope = ProtoTargetScope.valueOf(SCOPE + value.name)
+    private fun relation(proto: ProtoRelation): Relation = Relation.valueOf(named(proto.name, RELATION, "relation"))
+    private fun relation(value: Relation): ProtoRelation = ProtoRelation.valueOf(RELATION + value.name)
 
     private fun named(protoName: String, prefix: String, field: String): String {
         require(protoName.startsWith(prefix) && !protoName.endsWith("UNSPECIFIED") && protoName != "UNRECOGNIZED") {
@@ -147,83 +158,66 @@ object Conversions {
 
     /**
      * [autPackage] fills in `ResourceId.aut_package` resources; null (no session, as in the golden
-     * round trip) rejects them.
+     * round trip) rejects them. An unset `scope`/`pick` is the protocol default.
      */
     fun selector(proto: ProtoSelector, autPackage: String? = null): Selector = Selector(
         node = node(proto.node, autPackage),
-        scope = scope(proto.scope),
-        scopePackage = if (proto.hasScopePackage()) proto.scopePackage else null,
-        limit = matchLimit(proto.limit),
-        index = if (proto.hasIndex()) proto.index else null,
-        acceptAccessibilityOrder = proto.acceptAccessibilityOrder,
+        scope = when (proto.scopeCase) {
+            ProtoSelector.ScopeCase.AUT, ProtoSelector.ScopeCase.SCOPE_NOT_SET -> Scope.Aut
+            ProtoSelector.ScopeCase.SYSTEM -> Scope.System(proto.system.packageName)
+        },
+        pick = when (proto.pickCase) {
+            ProtoSelector.PickCase.EXACTLY_ONE, ProtoSelector.PickCase.PICK_NOT_SET -> Pick.ExactlyOne
+            ProtoSelector.PickCase.FIRST -> Pick.First
+            ProtoSelector.PickCase.AT -> Pick.At(proto.at.index)
+        },
     )
 
     fun selector(value: Selector): ProtoSelector = ProtoSelector.newBuilder().apply {
         node = node(value.node)
-        scope = scope(value.scope)
-        value.scopePackage?.let { scopePackage = it }
-        limit = matchLimit(value.limit)
-        value.index?.let { index = it }
-        acceptAccessibilityOrder = value.acceptAccessibilityOrder
+        when (val scope = value.scope) {
+            Scope.Aut -> aut = ProtoAutScope.getDefaultInstance()
+            is Scope.System -> system = ProtoSystemScope.newBuilder().setPackageName(scope.packageName).build()
+        }
+        when (val pick = value.pick) {
+            Pick.ExactlyOne -> exactlyOne = ProtoExactlyOne.getDefaultInstance()
+            Pick.First -> first = ProtoFirst.getDefaultInstance()
+            is Pick.At -> at = ProtoAt.newBuilder().setIndex(pick.index).build()
+        }
     }.build()
 
-    private fun node(proto: ProtoNodeSelector, autPackage: String?): NodeSelector = NodeSelector(
-        text = proto.takeIf { it.hasText() }?.text?.let(::stringMatch),
-        contentDescription = proto.takeIf { it.hasContentDescription() }?.contentDescription?.let(::stringMatch),
-        hint = proto.takeIf { it.hasHint() }?.hint?.let(::stringMatch),
-        className = proto.takeIf { it.hasClassName() }?.className?.let(::stringMatch),
-        resource = proto.takeIf { it.hasResource() }?.resource?.let { resource(it, autPackage) },
-        enabled = proto.takeIf { it.hasEnabled() }?.enabled,
-        checked = proto.takeIf { it.hasChecked() }?.checked,
-        checkable = proto.takeIf { it.hasCheckable() }?.checkable,
-        clickable = proto.takeIf { it.hasClickable() }?.clickable,
-        focused = proto.takeIf { it.hasFocused() }?.focused,
-        focusable = proto.takeIf { it.hasFocusable() }?.focusable,
-        longClickable = proto.takeIf { it.hasLongClickable() }?.longClickable,
-        scrollable = proto.takeIf { it.hasScrollable() }?.scrollable,
-        selected = proto.takeIf { it.hasSelected() }?.selected,
-        parent = proto.takeIf { it.hasParent() }?.parent?.let { node(it, autPackage) },
-        ancestor = proto.takeIf { it.hasAncestor() }?.ancestor?.let { node(it, autPackage) },
-        child = proto.takeIf { it.hasChild() }?.child?.let { node(it, autPackage) },
-        descendant = proto.takeIf { it.hasDescendant() }?.descendant?.let { node(it, autPackage) },
-    )
+    private fun node(proto: ProtoNode, autPackage: String?): Node = when (proto.kindCase) {
+        ProtoNode.KindCase.MATCH -> proto.match.let { Node.Match(textProperty(it.property), it.value, matchMode(it.mode)) }
+        ProtoNode.KindCase.FLAG -> proto.flag.let { Node.Flag(nodeFlag(it.property), it.value) }
+        ProtoNode.KindCase.RESOURCE -> resource(proto.resource, autPackage)
+        ProtoNode.KindCase.RELATED -> proto.related.let { Node.Related(relation(it.relation), node(it.node, autPackage)) }
+        ProtoNode.KindCase.ALL_OF -> Node.AllOf(proto.allOf.nodesList.map { node(it, autPackage) })
+        ProtoNode.KindCase.ANY_OF -> Node.AnyOf(proto.anyOf.nodesList.map { node(it, autPackage) })
+        ProtoNode.KindCase.KIND_NOT_SET -> throw IllegalArgumentException("Node.kind must be set")
+    }
 
-    private fun node(value: NodeSelector): ProtoNodeSelector = ProtoNodeSelector.newBuilder().apply {
-        value.text?.let { text = stringMatch(it) }
-        value.contentDescription?.let { contentDescription = stringMatch(it) }
-        value.hint?.let { hint = stringMatch(it) }
-        value.className?.let { className = stringMatch(it) }
-        value.resource?.let { resource = resource(it) }
-        value.enabled?.let { enabled = it }
-        value.checked?.let { checked = it }
-        value.checkable?.let { checkable = it }
-        value.clickable?.let { clickable = it }
-        value.focused?.let { focused = it }
-        value.focusable?.let { focusable = it }
-        value.longClickable?.let { longClickable = it }
-        value.scrollable?.let { scrollable = it }
-        value.selected?.let { selected = it }
-        value.parent?.let { parent = node(it) }
-        value.ancestor?.let { ancestor = node(it) }
-        value.child?.let { child = node(it) }
-        value.descendant?.let { descendant = node(it) }
+    private fun node(value: Node): ProtoNode = ProtoNode.newBuilder().apply {
+        when (value) {
+            is Node.Match -> match = ProtoMatch.newBuilder()
+                .setProperty(textProperty(value.property)).setValue(value.value).setMode(matchMode(value.mode)).build()
+            is Node.Flag -> flag = ProtoFlag.newBuilder().setProperty(nodeFlag(value.property)).setValue(value.value).build()
+            is Node.Resource -> resource = ProtoResourceId.newBuilder().apply {
+                name = value.name
+                value.packageName?.let { packageName = it }
+            }.build()
+            is Node.Related -> related = ProtoRelated.newBuilder().setRelation(relation(value.relation)).setNode(node(value.node)).build()
+            is Node.AllOf -> allOf = ProtoAllOf.newBuilder().addAllNodes(value.nodes.map(::node)).build()
+            is Node.AnyOf -> anyOf = ProtoAnyOf.newBuilder().addAllNodes(value.nodes.map(::node)).build()
+        }
     }.build()
 
-    private fun stringMatch(proto: ProtoStringMatch) = StringMatch(proto.value, matchMode(proto.mode))
-    private fun stringMatch(value: StringMatch): ProtoStringMatch =
-        ProtoStringMatch.newBuilder().setValue(value.value).setMode(matchMode(value.mode)).build()
-
-    private fun resource(proto: ProtoResourceId, autPackage: String?): ResourceId {
+    private fun resource(proto: ProtoResourceId, autPackage: String?): Node.Resource {
         val explicit = if (proto.hasPackageName()) proto.packageName else null
-        if (!proto.autPackage) return ResourceId(proto.name, explicit)
+        if (!proto.autPackage) return Node.Resource(proto.name, explicit)
         require(explicit == null) { "ResourceId '${proto.name}': package_name and aut_package are mutually exclusive" }
         requireNotNull(autPackage) { "ResourceId '${proto.name}': aut_package needs a session" }
-        return ResourceId(proto.name, autPackage)
+        return Node.Resource(proto.name, autPackage)
     }
-    private fun resource(value: ResourceId): ProtoResourceId = ProtoResourceId.newBuilder().apply {
-        name = value.name
-        value.packageName?.let { packageName = it }
-    }.build()
 
     // ---- commands ----------------------------------------------------------------------------
 

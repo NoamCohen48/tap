@@ -6,26 +6,42 @@
     "op": "tap",
     "selector": {
       "node": {
-        "className": {
-          "value": "android.widget.Button"
-        },
-        "clickable": true,
-        "ancestor": {
-          "resource": {
-            "name": "row",
-            "packageName": "com.example.app"
+        "kind": "all_of",
+        "nodes": [
+          {
+            "kind": "match",
+            "property": "CLASS_NAME",
+            "value": "android.widget.Button"
+          },
+          {
+            "kind": "flag",
+            "property": "CLICKABLE"
+          },
+          {
+            "kind": "related",
+            "relation": "ANCESTOR",
+            "node": {
+              "kind": "resource",
+              "name": "row",
+              "packageName": "com.example.app"
+            }
+          },
+          {
+            "kind": "related",
+            "relation": "CHILD",
+            "node": {
+              "kind": "match",
+              "property": "TEXT",
+              "value": "Row \\d+",
+              "mode": "REGEX"
+            }
           }
-        },
-        "child": {
-          "text": {
-            "value": "Row \\d+",
-            "mode": "REGEX"
-          }
-        }
+        ]
       },
-      "limit": "AT",
-      "index": 1,
-      "acceptAccessibilityOrder": true
+      "pick": {
+        "kind": "at",
+        "index": 1
+      }
     }
   }
 }

@@ -56,9 +56,18 @@ def test_ambiguous_tap_fails_before_any_input(tap_device):
     assert tap_device.element(ambiguous).count() == 2
     assert tap_device.element(res("ambiguous_status")).text() == "Ambiguous taps: left=0 right=0"
 
+    # A disjunction is still one selector: both buttons match, so it is just as AMBIGUOUS.
+    either = res("ambiguous_button_left") | res("ambiguous_button_right")
+    assert tap_device.element(either).count() == 2
+    with pytest.raises(CommandError) as failure:
+        tap_device.element(either).tap()
+    assert failure.value.code == ErrorCode.AMBIGUOUS
+
     # Disambiguate by resource id (or by relation/index) instead of relaxing the invariant.
     tap_device.element(res("ambiguous_button_right").and_text("AMBIGUOUS TAP")).tap()
     tap_device.wait(text("Ambiguous taps: left=0 right=1")).visible()
+    tap_device.element((res("no_such_button") | res("ambiguous_button_left")) & text("AMBIGUOUS TAP")).tap()
+    tap_device.wait(text("Ambiguous taps: left=1 right=1")).visible()
 
 
 def test_waits_for_app_owned_synchronization(tap_device):

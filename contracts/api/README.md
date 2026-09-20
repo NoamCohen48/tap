@@ -9,7 +9,7 @@ shapes one-to-one and the service converts between them (`EnumMirrorTest`,
 
 | File | Contents |
 | --- | --- |
-| `selector.proto` | `MatchMode`, `MatchLimit`, `TargetScope`, `StringMatch`, `ResourceId`, `NodeSelector`, `Selector` |
+| `selector.proto` | `MatchMode`, `TextProperty`, `NodeFlag`, `Relation`, `Node` (`oneof kind`: `Match`, `Flag`, `ResourceId`, `Related`, `AllOf`, `AnyOf`), `Selector` (`oneof scope`, `oneof pick`) |
 | `command.proto` | `ErrorCode`, `Direction`, `StabilitySignal`, one message per command, `Command` (`oneof op`), result payloads, `Error`, `CommandResult` (`oneof outcome`) |
 | `connection.proto` | `ConnectionService` — Open / Attach / Close / Info |
 | `device.proto` | `DeviceService` — ListDevices |
@@ -22,4 +22,4 @@ are append-only (`buf breaking` in CI); a number can be reserved, never reused.
 
 `BREAKING_BASELINE` names the last commit before a deliberate incompatible change; CI skips
 `buf breaking` for base commits at or before it and enforces it against everything after
-(`.docs/service-api.md` §7).
+(`.docs/service-api.md` §7, §8).

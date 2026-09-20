@@ -129,11 +129,11 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
 
 - Dedicated driver APK and instrumentation APK, independent from the AUT.
 - Length-prefixed authenticated socket protocol over serial-specific ADB forwarding.
-- A versioned selector AST (text/description/hint/class with exact, contains, prefix,
-  suffix, and RE2 regex modes; resource IDs; boolean properties; parent/ancestor/child/
-  descendant relations; `first()`/`at(n)` limits) validated identically on host and driver,
-  compiled to window-scoped `BySelector`s or a single hierarchy traversal — never XPath or a
-  hierarchy dump on the hot path.
+- A versioned selector expression tree (text/description/hint/class with exact, contains,
+  prefix, suffix, and RE2 regex modes; resource IDs; boolean properties; parent/ancestor/child/
+  descendant relations; `and`/`or` combinators; `first()`/`at(n)`) validated identically on
+  host and driver, compiled to window-scoped `BySelector`s or a single hierarchy traversal —
+  never XPath or a hierarchy dump on the hot path.
 - AUT-confined selectors and explicitly allowlisted system-package selectors.
 - Health, device info, key presses, exists, count, element snapshots, tap, long tap, direct
   and key-event text input, clear text, directional swipe and scroll, bounded View/Compose

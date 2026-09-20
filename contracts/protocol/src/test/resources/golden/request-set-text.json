@@ -6,10 +6,9 @@
     "op": "set_text",
     "selector": {
       "node": {
-        "resource": {
-          "name": "email",
-          "packageName": "com.example.app"
-        }
+        "kind": "resource",
+        "name": "email",
+        "packageName": "com.example.app"
       }
     },
     "text": "user@example.com"

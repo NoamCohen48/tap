@@ -6,9 +6,9 @@
     "op": "long_tap",
     "selector": {
       "node": {
-        "contentDescription": {
-          "value": "More"
-        }
+        "kind": "match",
+        "property": "CONTENT_DESCRIPTION",
+        "value": "More"
       }
     }
   }

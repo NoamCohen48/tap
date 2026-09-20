@@ -75,11 +75,6 @@ const val KEYCODE_HOME = 3
 const val KEYCODE_BACK = 4
 const val KEYCODE_ENTER = 66
 
-enum class TargetScope {
-    AUT,
-    SYSTEM,
-}
-
 @Serializable
 data class ProtocolVersion(val major: Int, val minor: Int) : Comparable<ProtocolVersion> {
     init {

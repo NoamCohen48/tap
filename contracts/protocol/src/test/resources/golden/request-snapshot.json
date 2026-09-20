@@ -6,10 +6,9 @@
     "op": "snapshot",
     "selector": {
       "node": {
-        "resource": {
-          "name": "status",
-          "packageName": "com.example.app"
-        }
+        "kind": "resource",
+        "name": "status",
+        "packageName": "com.example.app"
       }
     }
   }

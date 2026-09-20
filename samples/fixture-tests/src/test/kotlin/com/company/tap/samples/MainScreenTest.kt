@@ -75,9 +75,16 @@ class MainScreenTest {
         assertEquals(2, device.element(ambiguous).count())
         assertEquals("Ambiguous taps: left=0 right=0", device.element(res("ambiguous_status")).text())
 
+        // A disjunction is still one selector: both buttons match, so it is just as AMBIGUOUS.
+        val either = res("ambiguous_button_left") or res("ambiguous_button_right")
+        assertEquals(2, device.element(either).count())
+        assertEquals(ErrorCode.ERR_AMBIGUOUS, assertFailsWith<CommandException> { device.element(either).tap() }.code)
+
         // Disambiguate by resource id (or by relation/index) instead of relaxing the invariant.
         device.element(res("ambiguous_button_right").andText("AMBIGUOUS TAP")).tap()
         device.await(text("Ambiguous taps: left=0 right=1")).visible()
+        device.element((res("no_such_button") or res("ambiguous_button_left")) and text("AMBIGUOUS TAP")).tap()
+        device.await(text("Ambiguous taps: left=1 right=1")).visible()
     }
 
     @Test

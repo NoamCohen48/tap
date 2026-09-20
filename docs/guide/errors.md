@@ -38,7 +38,7 @@ The codes, grouped by what they tell you:
 | `NOT_FOUND` | zero matches. `END_REACHED`, `MAX_SCROLLS` from `scrollUntil` |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()`/`at(n)` |
 | `NOT_INTERACTABLE` | the node exists but cannot take the action (not editable, not scrollable); `FOCUS_TIMEOUT` when a text field never took focus |
-| `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SCOPE_PACKAGE_UNEXPECTED`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `INDEX_REQUIRED`, … |
+| `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
 | `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `typeText` has no key mapping for a character |
 
 **The action, after input started** — device state may have changed:

@@ -6,10 +6,9 @@
     "op": "swipe",
     "selector": {
       "node": {
-        "resource": {
-          "name": "pager",
-          "packageName": "com.example.app"
-        }
+        "kind": "resource",
+        "name": "pager",
+        "packageName": "com.example.app"
       }
     },
     "direction": "LEFT",

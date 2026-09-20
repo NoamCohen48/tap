@@ -62,13 +62,19 @@ class GoldenMessageTest {
         ),
         "selector-relational" to Tap(
             Selector(
-                NodeSelector(
-                    className = StringMatch("android.widget.Button"),
-                    clickable = true,
-                    ancestor = NodeSelector(resource = ResourceId("row", AUT)),
-                    child = NodeSelector(text = StringMatch("Row \\d+", MatchMode.REGEX)),
+                Node.allOf(
+                    Node.className("android.widget.Button"),
+                    Node.Flag(NodeFlag.CLICKABLE),
+                    Node.ancestor(Node.Resource("row", AUT)),
+                    Node.child(Node.text("Row \\d+", MatchMode.REGEX)),
                 ),
             ).at(1),
+        ),
+        "selector-any-of" to Exists(
+            Selector(
+                (Node.text("Allow") or Node.text("Allow only while using the app") or Node.contentDescription("Allow"))
+                    and Node.Flag(NodeFlag.ENABLED),
+            ).inSystemPackage("com.google.android.permissioncontroller"),
         ),
     )
 

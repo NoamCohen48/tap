@@ -6,14 +6,16 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiObject2
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.InvalidSelectorException
+import com.company.tap.protocol.MAX_SELECTOR_DEPTH
 import com.company.tap.protocol.MatchMode
-import com.company.tap.protocol.NodeSelector
-import com.company.tap.protocol.ResourceId
+import com.company.tap.protocol.Node
+import com.company.tap.protocol.NodeFlag
+import com.company.tap.protocol.Relation
+import com.company.tap.protocol.Scope
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorPlanKind
 import com.company.tap.protocol.SelectorValidation
-import com.company.tap.protocol.StringMatch
-import com.company.tap.protocol.TargetScope
+import com.company.tap.protocol.TextProperty
 import com.google.re2j.Pattern
 
 /**
@@ -28,7 +30,8 @@ internal sealed interface CompiledSelector {
 
     /**
      * Evaluated by walking the focused window's node tree. Only used for predicates
-     * `BySelector` cannot express safely, currently RE2 regex matching.
+     * `BySelector` cannot express safely: RE2 regex matching, `any_of`, and conjunctions that
+     * repeat one of its single-valued constraints.
      */
     class Traversal(override val scopePackage: String, val predicate: NodePredicate) : CompiledSelector
 }
@@ -45,7 +48,7 @@ internal class SelectorCompiler(
     fun compile(selector: Selector): CompiledSelector {
         val plan = SelectorValidation.validate(selector)
         val scopePackage = scopePackage(selector)
-        if (selector.scope == TargetScope.AUT) requireAutResources(selector.node)
+        if (selector.scope == Scope.Aut) requireAutResources(selector.node)
         return when (plan) {
             SelectorPlanKind.NATIVE -> CompiledSelector.Native(
                 scopePackage,
@@ -55,57 +58,74 @@ internal class SelectorCompiler(
         }
     }
 
-    fun scopePackage(selector: Selector): String = when (selector.scope) {
-        TargetScope.AUT -> expectedAut
-        TargetScope.SYSTEM -> {
-            val scopePackage = requireNotNull(selector.scopePackage)
-            if (scopePackage !in allowedSystemPackages) {
+    fun scopePackage(selector: Selector): String = when (val scope = selector.scope) {
+        Scope.Aut -> expectedAut
+        is Scope.System -> {
+            if (scope.packageName !in allowedSystemPackages) {
                 throw InvalidSelectorException(
                     ErrorDetail.SCOPE_DENIED,
-                    "System package $scopePackage is not on the driver allowlist",
+                    "System package ${scope.packageName} is not on the driver allowlist",
                 )
             }
-            scopePackage
+            scope.packageName
         }
     }
 
     /** An AUT-scoped selector may only name resources of the AUT, at any nesting level. */
-    private fun requireAutResources(node: NodeSelector) {
-        val packageName = node.resource?.packageName
-        if (packageName != null && packageName != expectedAut) {
+    private fun requireAutResources(node: Node) {
+        if (node is Node.Resource && node.packageName != null && node.packageName != expectedAut) {
             throw InvalidSelectorException(
                 ErrorDetail.SCOPE_DENIED,
-                "AUT-scoped resource package $packageName does not match $expectedAut",
+                "AUT-scoped resource package ${node.packageName} does not match $expectedAut",
             )
         }
-        node.relations.forEach { (_, related) -> requireAutResources(related) }
+        node.children.forEach(::requireAutResources)
     }
 
-    private fun nativeSelector(node: NodeSelector): BySelector {
+    /** One `BySelector` for a conjunction; validation already ruled out anything it cannot hold. */
+    private fun nativeSelector(node: Node): BySelector {
         val builder = ByBuilder()
-        node.text?.let { builder.string(it, By::text, BySelector::text, By::textContains, BySelector::textContains, By::textStartsWith, BySelector::textStartsWith, By::textEndsWith, BySelector::textEndsWith) }
-        node.contentDescription?.let { builder.string(it, By::desc, BySelector::desc, By::descContains, BySelector::descContains, By::descStartsWith, BySelector::descStartsWith, By::descEndsWith, BySelector::descEndsWith) }
-        node.hint?.let { builder.string(it, By::hint, BySelector::hint, By::hintContains, BySelector::hintContains, By::hintStartsWith, BySelector::hintStartsWith, By::hintEndsWith, BySelector::hintEndsWith) }
-        node.className?.let { builder.className(it) }
-        node.resource?.let { resource ->
-            val packageName = resource.packageName
-            // Both overloads quote the value internally; raw names are never treated as patterns.
-            if (packageName == null) builder.add({ By.res(resource.name) }, { res(resource.name) })
-            else builder.add({ By.res(packageName, resource.name) }, { res(packageName, resource.name) })
+        node.conjunction.forEach { operand ->
+            when (operand) {
+                is Node.Match -> when (operand.property) {
+                    TextProperty.TEXT -> builder.string(operand, By::text, BySelector::text, By::textContains, BySelector::textContains, By::textStartsWith, BySelector::textStartsWith, By::textEndsWith, BySelector::textEndsWith)
+                    TextProperty.CONTENT_DESCRIPTION -> builder.string(operand, By::desc, BySelector::desc, By::descContains, BySelector::descContains, By::descStartsWith, BySelector::descStartsWith, By::descEndsWith, BySelector::descEndsWith)
+                    TextProperty.HINT -> builder.string(operand, By::hint, BySelector::hint, By::hintContains, BySelector::hintContains, By::hintStartsWith, BySelector::hintStartsWith, By::hintEndsWith, BySelector::hintEndsWith)
+                    TextProperty.CLASS_NAME -> builder.className(operand)
+                }
+                is Node.Flag -> {
+                    val v = operand.value
+                    when (operand.property) {
+                        NodeFlag.ENABLED -> builder.add({ By.enabled(v) }, { enabled(v) })
+                        NodeFlag.CHECKED -> builder.add({ By.checked(v) }, { checked(v) })
+                        NodeFlag.CHECKABLE -> builder.add({ By.checkable(v) }, { checkable(v) })
+                        NodeFlag.CLICKABLE -> builder.add({ By.clickable(v) }, { clickable(v) })
+                        NodeFlag.FOCUSED -> builder.add({ By.focused(v) }, { focused(v) })
+                        NodeFlag.FOCUSABLE -> builder.add({ By.focusable(v) }, { focusable(v) })
+                        NodeFlag.LONG_CLICKABLE -> builder.add({ By.longClickable(v) }, { longClickable(v) })
+                        NodeFlag.SCROLLABLE -> builder.add({ By.scrollable(v) }, { scrollable(v) })
+                        NodeFlag.SELECTED -> builder.add({ By.selected(v) }, { selected(v) })
+                    }
+                }
+                is Node.Resource -> {
+                    val packageName = operand.packageName
+                    // Both overloads quote the value internally; raw names are never treated as patterns.
+                    if (packageName == null) builder.add({ By.res(operand.name) }, { res(operand.name) })
+                    else builder.add({ By.res(packageName, operand.name) }, { res(packageName, operand.name) })
+                }
+                is Node.Related -> {
+                    val by = nativeSelector(operand.node)
+                    when (operand.relation) {
+                        Relation.PARENT -> builder.add({ By.hasParent(by) }, { hasParent(by) })
+                        Relation.ANCESTOR -> builder.add({ By.hasAncestor(by) }, { hasAncestor(by) })
+                        Relation.CHILD -> builder.add({ By.hasChild(by) }, { hasChild(by) })
+                        Relation.DESCENDANT -> builder.add({ By.hasDescendant(by) }, { hasDescendant(by) })
+                    }
+                }
+                is Node.AllOf -> error("conjunction is flattened")
+                is Node.AnyOf -> error("any_of is not a native match")
+            }
         }
-        node.enabled?.let { v -> builder.add({ By.enabled(v) }, { enabled(v) }) }
-        node.checked?.let { v -> builder.add({ By.checked(v) }, { checked(v) }) }
-        node.checkable?.let { v -> builder.add({ By.checkable(v) }, { checkable(v) }) }
-        node.clickable?.let { v -> builder.add({ By.clickable(v) }, { clickable(v) }) }
-        node.focused?.let { v -> builder.add({ By.focused(v) }, { focused(v) }) }
-        node.focusable?.let { v -> builder.add({ By.focusable(v) }, { focusable(v) }) }
-        node.longClickable?.let { v -> builder.add({ By.longClickable(v) }, { longClickable(v) }) }
-        node.scrollable?.let { v -> builder.add({ By.scrollable(v) }, { scrollable(v) }) }
-        node.selected?.let { v -> builder.add({ By.selected(v) }, { selected(v) }) }
-        node.parent?.let { related -> val by = nativeSelector(related); builder.add({ By.hasParent(by) }, { hasParent(by) }) }
-        node.ancestor?.let { related -> val by = nativeSelector(related); builder.add({ By.hasAncestor(by) }, { hasAncestor(by) }) }
-        node.child?.let { related -> val by = nativeSelector(related); builder.add({ By.hasChild(by) }, { hasChild(by) }) }
-        node.descendant?.let { related -> val by = nativeSelector(related); builder.add({ By.hasDescendant(by) }, { hasDescendant(by) }) }
         return builder.build()
     }
 
@@ -118,7 +138,7 @@ internal class SelectorCompiler(
         }
 
         fun string(
-            match: StringMatch,
+            match: Node.Match,
             exact: (String) -> BySelector, exactNext: BySelector.(String) -> BySelector,
             contains: (String) -> BySelector, containsNext: BySelector.(String) -> BySelector,
             startsWith: (String) -> BySelector, startsWithNext: BySelector.(String) -> BySelector,
@@ -135,7 +155,7 @@ internal class SelectorCompiler(
         }
 
         /** `By.clazz` has no contains/startsWith overloads; build a quoted `java.util.regex` pattern. */
-        fun className(match: StringMatch) {
+        fun className(match: Node.Match) {
             val quoted = java.util.regex.Pattern.quote(match.value)
             val pattern = when (match.mode) {
                 MatchMode.EXACT -> java.util.regex.Pattern.compile(quoted)
@@ -152,115 +172,145 @@ internal class SelectorCompiler(
 }
 
 /**
- * Traversal-plan predicate over one node. Reads each node's [AccessibilityNodeInfo] once per
- * evaluation; relations walk the live `UiObject2` tree and recycle every intermediate object.
+ * Traversal-plan predicate over one node. Reads each element's [AccessibilityNodeInfo] once per
+ * evaluation, however many property predicates the tree holds; relations walk the live
+ * `UiObject2` tree and recycle every intermediate object.
  */
-internal class NodePredicate(private val node: NodeSelector) {
-    private val text = node.text?.let(::StringPredicate)
-    private val contentDescription = node.contentDescription?.let(::StringPredicate)
-    private val hint = node.hint?.let(::StringPredicate)
-    private val className = node.className?.let(::StringPredicate)
-    private val parent = node.parent?.let(::NodePredicate)
-    private val ancestor = node.ancestor?.let(::NodePredicate)
-    private val child = node.child?.let(::NodePredicate)
-    private val descendant = node.descendant?.let(::NodePredicate)
+internal class NodePredicate(node: Node) {
+    private val root = Compiled.of(node)
 
-    fun matches(element: UiObject2): Boolean {
-        val info = element.accessibilityNodeInfo
-        if (!matchesProperties(info)) return false
-        if (parent != null && !element.parentMatches(parent)) return false
-        if (ancestor != null && !element.ancestorMatches(ancestor)) return false
-        if (child != null && !element.childMatches(child)) return false
-        if (descendant != null && !element.descendantMatches(descendant)) return false
-        return true
-    }
+    fun matches(element: UiObject2): Boolean = root.matches(element, element.accessibilityNodeInfo)
 
-    private fun matchesProperties(info: AccessibilityNodeInfo): Boolean {
-        if (text != null && !text.matches(info.text)) return false
-        if (contentDescription != null && !contentDescription.matches(info.contentDescription)) return false
-        if (hint != null && !hint.matches(info.hintText)) return false
-        if (className != null && !className.matches(info.className)) return false
-        node.resource?.let { if (!matchesResource(it, info.viewIdResourceName)) return false }
-        node.enabled?.let { if (info.isEnabled != it) return false }
-        node.checked?.let { if (info.isChecked != it) return false }
-        node.checkable?.let { if (info.isCheckable != it) return false }
-        node.clickable?.let { if (info.isClickable != it) return false }
-        node.focused?.let { if (info.isFocused != it) return false }
-        node.focusable?.let { if (info.isFocusable != it) return false }
-        node.longClickable?.let { if (info.isLongClickable != it) return false }
-        node.scrollable?.let { if (info.isScrollable != it) return false }
-        node.selected?.let { if (info.isSelected != it) return false }
-        return true
-    }
+    private sealed interface Compiled {
+        fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean
 
-    private fun matchesResource(resource: ResourceId, actual: String?): Boolean {
-        val expected = resource.packageName?.let { "$it:id/${resource.name}" } ?: resource.name
-        return actual == expected
-    }
+        class Text(private val property: TextProperty, match: Node.Match) : Compiled {
+            private val value = match.value
+            private val mode = match.mode
+            private val regex: Pattern? = if (mode == MatchMode.REGEX) SelectorValidation.compileRegex(value) else null
 
-    private fun UiObject2.parentMatches(predicate: NodePredicate): Boolean {
-        val parent = parent ?: return false
-        return try {
-            predicate.matches(parent)
-        } finally {
-            parent.recycle()
+            override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean {
+                val actual: CharSequence? = when (property) {
+                    TextProperty.TEXT -> info.text
+                    TextProperty.CONTENT_DESCRIPTION -> info.contentDescription
+                    TextProperty.HINT -> info.hintText
+                    TextProperty.CLASS_NAME -> info.className
+                }
+                val text = actual?.toString() ?: return false
+                return when (mode) {
+                    MatchMode.EXACT -> text == value
+                    MatchMode.CONTAINS -> text.contains(value)
+                    MatchMode.STARTS_WITH -> text.startsWith(value)
+                    MatchMode.ENDS_WITH -> text.endsWith(value)
+                    MatchMode.REGEX -> requireNotNull(regex).matcher(text).matches()
+                }
+            }
+        }
+
+        class Flag(private val flag: Node.Flag) : Compiled {
+            override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean {
+                val actual = when (flag.property) {
+                    NodeFlag.ENABLED -> info.isEnabled
+                    NodeFlag.CHECKED -> info.isChecked
+                    NodeFlag.CHECKABLE -> info.isCheckable
+                    NodeFlag.CLICKABLE -> info.isClickable
+                    NodeFlag.FOCUSED -> info.isFocused
+                    NodeFlag.FOCUSABLE -> info.isFocusable
+                    NodeFlag.LONG_CLICKABLE -> info.isLongClickable
+                    NodeFlag.SCROLLABLE -> info.isScrollable
+                    NodeFlag.SELECTED -> info.isSelected
+                }
+                return actual == flag.value
+            }
+        }
+
+        class Resource(resource: Node.Resource) : Compiled {
+            private val expected = resource.packageName?.let { "$it:id/${resource.name}" } ?: resource.name
+
+            override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean =
+                info.viewIdResourceName == expected
+        }
+
+        class Related(private val relation: Relation, private val predicate: NodePredicate) : Compiled {
+            override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean = when (relation) {
+                Relation.PARENT -> element.parentMatches(predicate)
+                Relation.ANCESTOR -> element.ancestorMatches(predicate)
+                Relation.CHILD -> element.childMatches(predicate)
+                Relation.DESCENDANT -> element.descendantMatches(predicate)
+            }
+        }
+
+        class AllOf(private val operands: List<Compiled>) : Compiled {
+            override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean =
+                operands.all { it.matches(element, info) }
+        }
+
+        class AnyOf(private val operands: List<Compiled>) : Compiled {
+            override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean =
+                operands.any { it.matches(element, info) }
+        }
+
+        companion object {
+            fun of(node: Node): Compiled = when (node) {
+                is Node.Match -> Text(node.property, node)
+                is Node.Flag -> Flag(node)
+                is Node.Resource -> Resource(node)
+                is Node.Related -> Related(node.relation, NodePredicate(node.node))
+                // Cheap property checks first so a relation walk only runs when they hold.
+                is Node.AllOf -> AllOf(node.nodes.sortedBy { it is Node.Related }.map(::of))
+                is Node.AnyOf -> AnyOf(node.nodes.sortedBy { it is Node.Related }.map(::of))
+            }
         }
     }
 
-    private fun UiObject2.ancestorMatches(predicate: NodePredicate): Boolean {
-        var current = parent
-        var depth = 0
-        while (current != null && depth++ < com.company.tap.protocol.MAX_SELECTOR_DEPTH) {
-            val matched = predicate.matches(current)
-            val next = if (matched) null else current.parent
-            current.recycle()
-            if (matched) return true
-            current = next
-        }
-        current?.recycle()
-        return false
-    }
-
-    private fun UiObject2.childMatches(predicate: NodePredicate): Boolean {
-        val children = children
-        var matched = false
-        children.forEach { child ->
-            try {
-                if (!matched && predicate.matches(child)) matched = true
+    private companion object {
+        fun UiObject2.parentMatches(predicate: NodePredicate): Boolean {
+            val parent = parent ?: return false
+            return try {
+                predicate.matches(parent)
             } finally {
-                child.recycle()
+                parent.recycle()
             }
         }
-        return matched
-    }
 
-    private fun UiObject2.descendantMatches(predicate: NodePredicate): Boolean {
-        val children = children
-        var matched = false
-        children.forEach { child ->
-            try {
-                if (!matched && (predicate.matches(child) || child.descendantMatches(predicate))) matched = true
-            } finally {
-                child.recycle()
+        fun UiObject2.ancestorMatches(predicate: NodePredicate): Boolean {
+            var current = parent
+            var depth = 0
+            while (current != null && depth++ < MAX_SELECTOR_DEPTH) {
+                val matched = predicate.matches(current)
+                val next = if (matched) null else current.parent
+                current.recycle()
+                if (matched) return true
+                current = next
             }
+            current?.recycle()
+            return false
         }
-        return matched
-    }
 
-    private class StringPredicate(match: StringMatch) {
-        private val value = match.value
-        private val mode = match.mode
-        private val regex: Pattern? = if (mode == MatchMode.REGEX) SelectorValidation.compileRegex(value) else null
-
-        fun matches(actual: CharSequence?): Boolean {
-            val text = actual?.toString() ?: return false
-            return when (mode) {
-                MatchMode.EXACT -> text == value
-                MatchMode.CONTAINS -> text.contains(value)
-                MatchMode.STARTS_WITH -> text.startsWith(value)
-                MatchMode.ENDS_WITH -> text.endsWith(value)
-                MatchMode.REGEX -> requireNotNull(regex).matcher(text).matches()
+        fun UiObject2.childMatches(predicate: NodePredicate): Boolean {
+            val children = children
+            var matched = false
+            children.forEach { child ->
+                try {
+                    if (!matched && predicate.matches(child)) matched = true
+                } finally {
+                    child.recycle()
+                }
             }
+            return matched
+        }
+
+        fun UiObject2.descendantMatches(predicate: NodePredicate): Boolean {
+            val children = children
+            var matched = false
+            children.forEach { child ->
+                try {
+                    if (!matched && (predicate.matches(child) || child.descendantMatches(predicate))) matched = true
+                } finally {
+                    child.recycle()
+                }
+            }
+            return matched
         }
     }
 }

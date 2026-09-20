@@ -6,9 +6,9 @@
     "op": "exists",
     "selector": {
       "node": {
-        "text": {
-          "value": "Sign in"
-        }
+        "kind": "match",
+        "property": "TEXT",
+        "value": "Sign in"
       }
     }
   }

@@ -69,19 +69,23 @@ Status: in progress.
   rendered selector, timeout. 7 protocol tests (round-trip of every code, unknown fallback,
   golden JSON, taxonomy list) and 3 client tests; full device flow re-passed on API 29/34.
 
-- Selector AST (`protocol/Selector.kt`): string properties with `EXACT`/`CONTAINS`/
-  `STARTS_WITH`/`ENDS_WITH`/`REGEX` modes, resource IDs, nine boolean properties,
-  parent/ancestor/child/descendant relations, `AUT`/`SYSTEM` scope, and `EXACTLY_ONE`/
-  `FIRST`/`AT` limits with explicit accessibility-order opt-in. One validator
-  (`SelectorValidation`) runs on the host before a request ID is allocated and on the driver
-  before any lookup: depth ≤ 32, ≤ 256 nodes, ≤ 1024 chars, non-empty nodes/values, RE2-only
-  regexes. The driver compiles non-regex selectors to a window-scoped `BySelector`
-  (`UiWindow.findObjects` on the scope package's focused window) and regex selectors to a
-  single-pass traversal predicate; no hierarchy dump on the hot path. 7 protocol tests plus
-  `PHASE_1_SELECTORS_OK` on API 29/34: `AMBIGUOUS` for every mutating operation against the
-  duplicate buttons/fields/scroll containers with fixture state unchanged, `.first()`/`.at(1)`
-  taps, `.at(2)` → `NOT_FOUND`, ancestor/child relations, regex traversal, host-side rejection
-  of an empty node, foreign resource package → `SCOPE_DENIED`.
+- Selector AST (`protocol/Selector.kt`), a sum-type expression tree since 2026-09-20: `Node`
+  is `match` (text/contentDescription/hint/className with `EXACT`/`CONTAINS`/`STARTS_WITH`/
+  `ENDS_WITH`/`REGEX`), `flag` (nine booleans), `resource`, `related` (parent/ancestor/child/
+  descendant), `all_of`, `any_of`; `Scope` is `aut` | `system(packageName)`; `Pick` is
+  `exactly_one` | `first` | `at(index)` (choosing `first`/`at` is the accessibility-order
+  opt-in). One validator (`SelectorValidation`) runs on the host before a request ID is
+  allocated and on the driver before any lookup: depth ≤ 32, ≤ 256 nodes, ≤ 1024 chars,
+  ≥ 2 combinator operands, non-empty resource values, RE2-only regexes. The driver compiles to
+  a window-scoped `BySelector` (`UiWindow.findObjects` on the scope package's focused window)
+  unless the tree holds a regex, an `any_of` or a repeated single-valued `BySelector` slot,
+  which take a single-pass traversal predicate; no hierarchy dump on the hot path. 8 protocol
+  tests plus `PHASE_1_SELECTORS_OK` on API 29/34: `AMBIGUOUS` for every mutating operation
+  against the duplicate buttons/fields/scroll containers with fixture state unchanged,
+  `.first()`/`.at(1)` taps, `.at(2)` → `NOT_FOUND`, ancestor/child relations, regex traversal,
+  `any_of` and repeated-text conjunctions agreeing with native counts and tapping through a
+  relation, host-side rejection of an empty conjunction, foreign resource package →
+  `SCOPE_DENIED`.
 - `LONG_TAP`, `CLEAR_TEXT`, `SWIPE`, and single-segment `SCROLL` (value = more content remains), and
   `SCROLL_UNTIL` takes a `direction`/`distancePercent`; all share one gesture shape
   (checkpoint → exactly-one resolve → interactable check → mutation gate → act). Fixture

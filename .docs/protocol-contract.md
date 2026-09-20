@@ -206,39 +206,50 @@ produces exactly one kind, fixed by its `Returning<R>` type.
 
 ### Selectors
 
-A selector is a small versioned AST, never a string expression or XPath:
+A selector is a small versioned expression tree, never a string expression or XPath. Every
+sum type is a discriminated object (`kind`), exactly like commands are discriminated on `op`:
 
 ```text
 Selector {
-  node: NodeSelector
-  scope: AUT | SYSTEM          scopePackage required iff SYSTEM (allowlisted packages only)
-  limit: EXACTLY_ONE | FIRST | AT
-  index: Int?                  required iff AT
-  acceptAccessibilityOrder     must be true for FIRST/AT (ORDER_NOT_ACCEPTED otherwise)
+  node:  Node
+  scope: {kind: "aut"} (default) | {kind: "system", packageName}     allowlisted packages only
+  pick:  {kind: "exactly_one"} (default) | {kind: "first"} | {kind: "at", index ≥ 0}
 }
-NodeSelector {
-  text, contentDescription, hint, className: StringMatch { value, mode }
-  resource: ResourceId { name, packageName? }   with packageName: `packageName:id/name`; without: the exact resource name (Compose testTag)
-  checkable, checked, clickable, enabled, focusable, focused,
-  longClickable, scrollable, selected: Boolean?
-  parent, ancestor, child, descendant: NodeSelector?
-}
+Node =
+  | {kind: "match",    property: TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME, value, mode = EXACT}
+  | {kind: "flag",     property: ENABLED | CHECKED | CHECKABLE | CLICKABLE | FOCUSED | FOCUSABLE
+                                 | LONG_CLICKABLE | SCROLLABLE | SELECTED, value = true}
+  | {kind: "resource", name, packageName?}   with packageName: `packageName:id/name`; without: the exact resource name (Compose testTag)
+  | {kind: "related",  relation: PARENT | ANCESTOR | CHILD | DESCENDANT, node: Node}
+  | {kind: "all_of",   nodes: [Node, Node, …]}   conjunction, ≥ 2 operands
+  | {kind: "any_of",   nodes: [Node, Node, …]}   disjunction, ≥ 2 operands
 mode: EXACT | CONTAINS | STARTS_WITH | ENDS_WITH | REGEX
 ```
 
-Both sides validate the same limits before allocating a request ID or touching the UI: depth
-≤ 32, ≤ 256 nodes, ≤ 1024 chars per string, no empty node or value, and `REGEX` must compile
-under RE2 (linear time; no backreferences or lookaround). Every node must constrain something.
-The rejection reason is returned as an `INVALID_SELECTOR` detail. A resource with an explicit
-`packageName` must match the scope package; a `SYSTEM` scope outside the driver's allowlist is
-`SCOPE_DENIED`; a target and container with different scope packages is `SCOPE_MISMATCH`.
+`Node.allOf` / `Node.anyOf` (and the infix `and` / `or`) normalise: nested combinators of the
+same kind are flattened and a single operand is returned as is, so a chain of refinements is
+one flat `all_of`. An unset `scope`/`pick` is the default; `at` with a negative index and
+`system` with a blank package are unconstructible (constructor `require`, so a wire payload
+carrying them fails to decode as `INVALID_REQUEST`).
 
-Non-regex selectors compile to one window-scoped `BySelector` (`ByBuilder` plus
-`UiWindow.findObjects` on the focused window of the scope package). Regex selectors take a
-traversal plan that walks the same window's object tree once, reading each node once; both
-plans return the same match set and neither dumps the hierarchy. `EXACTLY_ONE` fetches at most
-two matches to decide `AMBIGUOUS`; `FIRST` and `AT n` take accessibility order and return
-`NOT_FOUND` when the index is absent.
+Both sides validate the same limits before allocating a request ID or touching the UI: depth
+≤ 32, ≤ 256 nodes, ≤ 1024 chars per string, no empty resource name or package, a combinator
+needs at least two operands (`EMPTY_NODE`), and `REGEX` must compile under RE2 (linear time; no
+backreferences or lookaround). The rejection reason is returned as an `INVALID_SELECTOR`
+detail. A resource with an explicit `packageName` must match the scope package; a `system`
+scope outside the driver's allowlist is `SCOPE_DENIED`; a target and container with different
+scope packages is `SCOPE_MISMATCH`.
+
+`SelectorValidation.validate` also returns the query plan. A selector compiles to one
+window-scoped `BySelector` (`ByBuilder` plus `UiWindow.findObjects` on the focused window of
+the scope package) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
+`any_of`, or a conjunction that repeats one of `BySelector`'s single-valued slots (the same
+text property twice, the same flag twice, two resources, two parents or two ancestors —
+children and descendants are lists and stay native). Those take the traversal plan, which
+walks the same window's object tree once, reading each node's `AccessibilityNodeInfo` once
+however many predicates the tree holds; both plans return the same match set and neither
+dumps the hierarchy. `exactly_one` fetches at most two matches to decide `AMBIGUOUS`; `first`
+and `at n` take accessibility order and return `NOT_FOUND` when the index is absent.
 
 ## Execution Model
 
@@ -344,7 +355,7 @@ policy; Tap itself never retries.
 | Code | May have mutated | Retryable | Meaning / details |
 |---|:-:|:-:|---|
 | `INVALID_REQUEST` | no | no | Malformed or out-of-range request. `UNSUPPORTED_CHARACTERS`: text has no key-event mapping (rejected before input). |
-| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SCOPE_PACKAGE_REQUIRED`, `SCOPE_PACKAGE_UNEXPECTED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `INDEX_REQUIRED`, `INDEX_UNEXPECTED`, `ORDER_NOT_ACCEPTED`. |
+| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`. |
 | `UNSUPPORTED` | no | no | Unknown `op`. |
 | `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
 | `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
@@ -442,6 +453,21 @@ session layer's, not the command's. The wire discriminators (`op`, `kind`, `type
 `@SerialName`s of the classes and nothing else; `Command.names`, the driver's dispatch and the
 proto `oneof` case names are all derived from or checked against them. The service API mirrors
 the same structure as `oneof`s so a client in any language sees the same per-command shape.
+
+**Selectors are a sum-type expression tree, with `any_of`** (*deliberate departure from plan
+§10, approved 2026-09-20*). The same principle as commands: `Node`, `Scope` and `Pick` are
+discriminated objects, so a `system` scope always has its package, an `at` pick always has its
+index, and the old shape-validation details (`SCOPE_PACKAGE_REQUIRED`, `INDEX_REQUIRED`,
+`ORDER_NOT_ACCEPTED`, …) are unrepresentable rather than checked. The plan listed OR among
+the deliberately absent operators; it is now `any_of`, because real screens need it (the
+permission dialog's "Allow" / "Allow only while using the app" / "While using the app" variants
+across Android versions) and the alternatives — several selectors racing `exists`, or a regex
+over text only — are slower and less precise. The costs the plan worried about are contained:
+`any_of` is a node predicate, not a search across windows or scopes; it runs on the traversal
+plan (one window walk, no dump), and the native `BySelector` fast path is unchanged for every
+selector without it. `acceptAccessibilityOrder` is gone: choosing `first`/`at` *is* the opt-in,
+a second flag confirming the same choice added nothing. NOT, sibling, nearest and nth-match
+remain absent.
 
 **Challenge/response authentication** (*not optional*). The driver listens on a TCP port on
 the device and holds `UiAutomation`: it can inject input into any app and read any screen,

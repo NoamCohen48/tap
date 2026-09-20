@@ -1,8 +1,12 @@
 package com.company.tap.service
 
-import com.company.tap.api.v1.NodeSelector
+import com.company.tap.api.v1.AllOf
+import com.company.tap.api.v1.Node as ProtoNode
+import com.company.tap.api.v1.Related
+import com.company.tap.api.v1.Relation
 import com.company.tap.api.v1.ResourceId
 import com.company.tap.api.v1.Selector
+import com.company.tap.protocol.Node
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -10,27 +14,35 @@ import kotlin.test.assertNull
 
 /** `ResourceId.aut_package` is resolved by the service from the session's app under test. */
 class AutResourceTest {
-    private fun selector(resource: ResourceId.Builder.() -> Unit): Selector = Selector.newBuilder()
-        .setNode(NodeSelector.newBuilder().setResource(ResourceId.newBuilder().setName("buy").apply(resource)))
-        .build()
+    private fun resource(name: String, build: ResourceId.Builder.() -> Unit = {}): ProtoNode =
+        ProtoNode.newBuilder().setResource(ResourceId.newBuilder().setName(name).apply(build)).build()
+
+    private fun selector(resource: ResourceId.Builder.() -> Unit): Selector =
+        Selector.newBuilder().setNode(resource("buy", resource)).build()
 
     @Test
-    fun `aut_package resolves to the session package, also inside relations`() {
+    fun `aut_package resolves to the session package, also inside relations and combinators`() {
         val nested = Selector.newBuilder()
             .setNode(
-                NodeSelector.newBuilder()
-                    .setResource(ResourceId.newBuilder().setName("row").setAutPackage(true))
-                    .setDescendant(NodeSelector.newBuilder().setResource(ResourceId.newBuilder().setName("delete").setAutPackage(true))),
+                ProtoNode.newBuilder().setAllOf(
+                    AllOf.newBuilder()
+                        .addNodes(resource("row") { autPackage = true })
+                        .addNodes(
+                            ProtoNode.newBuilder().setRelated(
+                                Related.newBuilder().setRelation(Relation.RELATION_DESCENDANT).setNode(resource("delete") { autPackage = true }),
+                            ),
+                        ),
+                ),
             ).build()
-        val converted = Conversions.selector(nested, autPackage = "com.shop")
-        assertEquals("com.shop", converted.node.resource?.packageName)
-        assertEquals("com.shop", converted.node.descendant?.resource?.packageName)
+        val converted = Conversions.selector(nested, autPackage = "com.shop").node as Node.AllOf
+        assertEquals(Node.Resource("row", "com.shop"), converted.nodes[0])
+        assertEquals(Node.descendant(Node.Resource("delete", "com.shop")), converted.nodes[1])
     }
 
     @Test
     fun `explicit and raw resources are untouched`() {
-        assertEquals("other.pkg", Conversions.selector(selector { packageName = "other.pkg" }, "com.shop").node.resource?.packageName)
-        assertNull(Conversions.selector(selector { }, "com.shop").node.resource?.packageName)
+        assertEquals("other.pkg", (Conversions.selector(selector { packageName = "other.pkg" }, "com.shop").node as Node.Resource).packageName)
+        assertNull((Conversions.selector(selector { }, "com.shop").node as Node.Resource).packageName)
     }
 
     @Test
@@ -41,5 +53,13 @@ class AutResourceTest {
         assertFailsWith<IllegalArgumentException> {
             Conversions.selector(selector { autPackage = true }, autPackage = null)
         }
+    }
+
+    @Test
+    fun `an unset node kind, scope or pick is rejected or defaulted as the contract says`() {
+        assertFailsWith<IllegalArgumentException> { Conversions.selector(Selector.newBuilder().setNode(ProtoNode.getDefaultInstance()).build()) }
+        val defaults = Conversions.selector(selector { })
+        assertEquals(com.company.tap.protocol.Scope.Aut, defaults.scope)
+        assertEquals(com.company.tap.protocol.Pick.ExactlyOne, defaults.pick)
     }
 }

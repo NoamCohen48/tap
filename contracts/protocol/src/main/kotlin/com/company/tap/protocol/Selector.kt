@@ -1,11 +1,14 @@
 package com.company.tap.protocol
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 
-/** Maximum nesting of relation nodes ([NodeSelector.parent], [NodeSelector.child], ...). */
+/** Maximum nesting of [Node]s ([Node.Related], [Node.AllOf], [Node.AnyOf]). */
 const val MAX_SELECTOR_DEPTH = 32
 
-/** Maximum total [NodeSelector] nodes in one [Selector], relations included. */
+/** Maximum total [Node]s in one [Selector], relations and combinators included. */
 const val MAX_SELECTOR_NODES = 256
 
 /** Maximum length of any matched string or regex source. */
@@ -24,127 +27,204 @@ enum class MatchMode {
     REGEX,
 }
 
-@Serializable
-data class StringMatch(
-    val value: String,
-    val mode: MatchMode = MatchMode.EXACT,
-)
+/** The string-valued node properties a [Node.Match] can constrain. */
+enum class TextProperty {
+    TEXT,
+    CONTENT_DESCRIPTION,
+    HINT,
+    CLASS_NAME,
+}
 
-/**
- * Resource identity. With [packageName] this is an Android resource ID (`package:id/name`);
- * without it, it is a raw resource name such as a Compose `testTag` exposed through
- * `testTagsAsResourceId`. Both are literal values, never patterns.
- */
-@Serializable
-data class ResourceId(
-    val name: String,
-    val packageName: String? = null,
-)
+/** The boolean node properties a [Node.Flag] can constrain. */
+enum class NodeFlag {
+    ENABLED,
+    CHECKED,
+    CHECKABLE,
+    CLICKABLE,
+    FOCUSED,
+    FOCUSABLE,
+    LONG_CLICKABLE,
+    SCROLLABLE,
+    SELECTED,
+}
 
-/**
- * One node predicate of the selector AST. Every non-null property must hold; a node with no
- * property is invalid. Relations are themselves node predicates: [parent] must match the direct
- * parent, [ancestor] any ancestor, [child] at least one direct child, [descendant] at least one
- * descendant. Sibling, nearest, OR, NOT, and nth-match are deliberately absent (plan §10).
- *
- * Package is not a node property: [Selector.scope] already confines every match to one package.
- */
-@Serializable
-data class NodeSelector(
-    val text: StringMatch? = null,
-    val contentDescription: StringMatch? = null,
-    val hint: StringMatch? = null,
-    val className: StringMatch? = null,
-    val resource: ResourceId? = null,
-    val enabled: Boolean? = null,
-    val checked: Boolean? = null,
-    val checkable: Boolean? = null,
-    val clickable: Boolean? = null,
-    val focused: Boolean? = null,
-    val focusable: Boolean? = null,
-    val longClickable: Boolean? = null,
-    val scrollable: Boolean? = null,
-    val selected: Boolean? = null,
-    val parent: NodeSelector? = null,
-    val ancestor: NodeSelector? = null,
-    val child: NodeSelector? = null,
-    val descendant: NodeSelector? = null,
-) {
-    val stringProperties: List<Pair<String, StringMatch>>
-        get() = listOfNotNull(
-            text?.let { "text" to it },
-            contentDescription?.let { "contentDescription" to it },
-            hint?.let { "hint" to it },
-            className?.let { "className" to it },
-        )
+/** Which relative a [Node.Related] constrains. */
+enum class Relation {
+    /** The direct parent must match. */
+    PARENT,
 
-    val booleanProperties: List<Pair<String, Boolean>>
-        get() = listOfNotNull(
-            enabled?.let { "enabled" to it },
-            checked?.let { "checked" to it },
-            checkable?.let { "checkable" to it },
-            clickable?.let { "clickable" to it },
-            focused?.let { "focused" to it },
-            focusable?.let { "focusable" to it },
-            longClickable?.let { "longClickable" to it },
-            scrollable?.let { "scrollable" to it },
-            selected?.let { "selected" to it },
-        )
+    /** Some ancestor must match. */
+    ANCESTOR,
 
-    val relations: List<Pair<String, NodeSelector>>
-        get() = listOfNotNull(
-            parent?.let { "parent" to it },
-            ancestor?.let { "ancestor" to it },
-            child?.let { "child" to it },
-            descendant?.let { "descendant" to it },
-        )
+    /** At least one direct child must match. */
+    CHILD,
 
-    val isEmpty: Boolean
-        get() = stringProperties.isEmpty() && booleanProperties.isEmpty() &&
-            resource == null && relations.isEmpty()
+    /** At least one descendant must match. */
+    DESCENDANT,
 }
 
 /**
- * How an action chooses among matches. Queries (`EXISTS`, `WAIT_VISIBLE`) ignore the limit;
- * actions and scroll containers apply it. [FIRST] and [AT] rely on the driver's result order,
- * which in v1 is accessibility traversal order within the single focused window of the scope
- * package; callers must opt in with [Selector.acceptAccessibilityOrder].
+ * A node predicate: the selector AST is a small expression tree over one accessibility node.
+ * Every kind is a distinct class, discriminated by `kind` on the wire, so each carries exactly
+ * the fields it needs. Sibling, nearest, NOT and nth-match are deliberately absent (plan §10);
+ * disjunction ([AnyOf]) is a recorded departure from the plan (`protocol-contract.md`).
+ *
+ * Package is not a node property: [Selector.scope] already confines every match to one package.
  */
-enum class MatchLimit {
-    EXACTLY_ONE,
-    FIRST,
-    AT,
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface Node {
+    /** A string property compared against [value] under [mode]. */
+    @Serializable
+    @SerialName("match")
+    data class Match(val property: TextProperty, val value: String, val mode: MatchMode = MatchMode.EXACT) : Node
+
+    /** A boolean property that must equal [value]. */
+    @Serializable
+    @SerialName("flag")
+    data class Flag(val property: NodeFlag, val value: Boolean = true) : Node
+
+    /**
+     * Resource identity. With [packageName] this is an Android resource ID (`package:id/name`);
+     * without it, it is a raw resource name such as a Compose `testTag` exposed through
+     * `testTagsAsResourceId`. Both are literal values, never patterns.
+     */
+    @Serializable
+    @SerialName("resource")
+    data class Resource(val name: String, val packageName: String? = null) : Node
+
+    /** The [relation] of the node must satisfy [node]. */
+    @Serializable
+    @SerialName("related")
+    data class Related(val relation: Relation, val node: Node) : Node
+
+    /** Conjunction: every operand must hold. At least two operands. */
+    @Serializable
+    @SerialName("all_of")
+    data class AllOf(val nodes: List<Node>) : Node
+
+    /** Disjunction: at least one operand must hold. At least two operands. */
+    @Serializable
+    @SerialName("any_of")
+    data class AnyOf(val nodes: List<Node>) : Node
+
+    /** The operands of this node as one conjunction: nested [AllOf]s flattened, anything else itself. */
+    val conjunction: List<Node>
+        get() = if (this is AllOf) nodes.flatMap { it.conjunction } else listOf(this)
+
+    /** The direct sub-nodes of this node. */
+    val children: List<Node>
+        get() = when (this) {
+            is Match, is Flag, is Resource -> emptyList()
+            is Related -> listOf(node)
+            is AllOf -> nodes
+            is AnyOf -> nodes
+        }
+
+    companion object {
+        fun text(value: String, mode: MatchMode = MatchMode.EXACT): Node = Match(TextProperty.TEXT, value, mode)
+        fun contentDescription(value: String, mode: MatchMode = MatchMode.EXACT): Node =
+            Match(TextProperty.CONTENT_DESCRIPTION, value, mode)
+        fun hint(value: String, mode: MatchMode = MatchMode.EXACT): Node = Match(TextProperty.HINT, value, mode)
+        fun className(value: String, mode: MatchMode = MatchMode.EXACT): Node = Match(TextProperty.CLASS_NAME, value, mode)
+        fun parent(node: Node): Node = Related(Relation.PARENT, node)
+        fun ancestor(node: Node): Node = Related(Relation.ANCESTOR, node)
+        fun child(node: Node): Node = Related(Relation.CHILD, node)
+        fun descendant(node: Node): Node = Related(Relation.DESCENDANT, node)
+
+        /** A conjunction, normalised: nested [AllOf]s are flattened and a single operand is returned as is. */
+        fun allOf(nodes: List<Node>): Node = combine(nodes, ::AllOf) { it is AllOf }
+        fun allOf(vararg nodes: Node): Node = allOf(nodes.toList())
+
+        /** A disjunction, normalised: nested [AnyOf]s are flattened and a single operand is returned as is. */
+        fun anyOf(nodes: List<Node>): Node = combine(nodes, ::AnyOf) { it is AnyOf }
+        fun anyOf(vararg nodes: Node): Node = anyOf(nodes.toList())
+
+        private inline fun combine(nodes: List<Node>, build: (List<Node>) -> Node, same: (Node) -> Boolean): Node {
+            require(nodes.isNotEmpty()) { "A combinator needs at least one node" }
+            val flat = nodes.flatMap { if (same(it)) it.children else listOf(it) }
+            return flat.singleOrNull() ?: build(flat)
+        }
+    }
+}
+
+/** Both operands must hold; see [Node.allOf]. */
+infix fun Node.and(other: Node): Node = Node.allOf(this, other)
+
+/** Either operand must hold; see [Node.anyOf]. */
+infix fun Node.or(other: Node): Node = Node.anyOf(this, other)
+
+/** Which windows a selector may match. */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface Scope {
+    /** The focused window of the app under test (default). */
+    @Serializable
+    @SerialName("aut")
+    data object Aut : Scope
+
+    /** The focused window of an allowlisted system package (permission dialogs). */
+    @Serializable
+    @SerialName("system")
+    data class System(val packageName: String) : Scope {
+        init {
+            require(packageName.isNotBlank()) { "System scope needs a package name" }
+        }
+    }
+}
+
+/**
+ * How an action chooses among matches. Queries (`exists`, `wait_visible`, `count`) ignore it;
+ * actions and scroll containers apply it. [First] and [At] rely on the driver's result order,
+ * which is accessibility traversal order within the single focused window of the scope
+ * package; choosing them is the caller's explicit acceptance of that order.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface Pick {
+    /** Exactly one node must match (default); more is `AMBIGUOUS`, none is `NOT_FOUND`. */
+    @Serializable
+    @SerialName("exactly_one")
+    data object ExactlyOne : Pick
+
+    /** The first match in accessibility order. */
+    @Serializable
+    @SerialName("first")
+    data object First : Pick
+
+    /** The zero-based [index]-th match in accessibility order; `NOT_FOUND` when absent. */
+    @Serializable
+    @SerialName("at")
+    data class At(val index: Int) : Pick {
+        init {
+            require(index >= 0) { "Match index must be >= 0" }
+        }
+    }
 }
 
 @Serializable
 data class Selector(
-    val node: NodeSelector,
-    val scope: TargetScope = TargetScope.AUT,
-    /** Required for [TargetScope.SYSTEM]; must be on the driver's allowlist. */
-    val scopePackage: String? = null,
-    val limit: MatchLimit = MatchLimit.EXACTLY_ONE,
-    /** Zero-based match index; required exactly when [limit] is [MatchLimit.AT]. */
-    val index: Int? = null,
-    val acceptAccessibilityOrder: Boolean = false,
+    val node: Node,
+    val scope: Scope = Scope.Aut,
+    val pick: Pick = Pick.ExactlyOne,
 ) {
     companion object {
-        fun text(value: String, mode: MatchMode = MatchMode.EXACT): Selector =
-            Selector(NodeSelector(text = StringMatch(value, mode)))
+        fun text(value: String, mode: MatchMode = MatchMode.EXACT): Selector = Selector(Node.text(value, mode))
 
         fun contentDescription(value: String, mode: MatchMode = MatchMode.EXACT): Selector =
-            Selector(NodeSelector(contentDescription = StringMatch(value, mode)))
+            Selector(Node.contentDescription(value, mode))
 
-        fun rawResource(name: String): Selector =
-            Selector(NodeSelector(resource = ResourceId(name)))
+        fun rawResource(name: String): Selector = Selector(Node.Resource(name))
 
-        fun androidResource(packageName: String, name: String): Selector =
-            Selector(NodeSelector(resource = ResourceId(name, packageName)))
+        fun androidResource(packageName: String, name: String): Selector = Selector(Node.Resource(name, packageName))
     }
 
-    fun inSystemPackage(packageName: String): Selector =
-        copy(scope = TargetScope.SYSTEM, scopePackage = packageName)
+    fun inSystemPackage(packageName: String): Selector = copy(scope = Scope.System(packageName))
 
-    fun first(): Selector = copy(limit = MatchLimit.FIRST, index = null, acceptAccessibilityOrder = true)
+    fun first(): Selector = copy(pick = Pick.First)
 
-    fun at(index: Int): Selector = copy(limit = MatchLimit.AT, index = index, acceptAccessibilityOrder = true)
+    fun at(index: Int): Selector = copy(pick = Pick.At(index))
 }

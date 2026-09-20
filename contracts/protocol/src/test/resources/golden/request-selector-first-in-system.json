@@ -6,15 +6,18 @@
     "op": "tap",
     "selector": {
       "node": {
-        "text": {
-          "value": "Allow",
-          "mode": "CONTAINS"
-        }
+        "kind": "match",
+        "property": "TEXT",
+        "value": "Allow",
+        "mode": "CONTAINS"
       },
-      "scope": "SYSTEM",
-      "scopePackage": "com.google.android.permissioncontroller",
-      "limit": "FIRST",
-      "acceptAccessibilityOrder": true
+      "scope": {
+        "kind": "system",
+        "packageName": "com.google.android.permissioncontroller"
+      },
+      "pick": {
+        "kind": "first"
+      }
     }
   }
 }

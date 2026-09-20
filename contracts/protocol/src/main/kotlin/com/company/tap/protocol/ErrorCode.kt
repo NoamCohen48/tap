@@ -67,8 +67,6 @@ enum class ErrorCode(val mayHaveMutated: Boolean, val retryable: Boolean) {
 object ErrorDetail {
     // INVALID_SELECTOR
     const val SCOPE_DENIED = "SCOPE_DENIED"
-    const val SCOPE_PACKAGE_REQUIRED = "SCOPE_PACKAGE_REQUIRED"
-    const val SCOPE_PACKAGE_UNEXPECTED = "SCOPE_PACKAGE_UNEXPECTED"
     const val SCOPE_MISMATCH = "SCOPE_MISMATCH"
     const val SELECTOR_TOO_DEEP = "SELECTOR_TOO_DEEP"
     const val SELECTOR_TOO_LARGE = "SELECTOR_TOO_LARGE"
@@ -76,9 +74,6 @@ object ErrorDetail {
     const val EMPTY_NODE = "EMPTY_NODE"
     const val EMPTY_VALUE = "EMPTY_VALUE"
     const val INVALID_REGEX = "INVALID_REGEX"
-    const val INDEX_REQUIRED = "INDEX_REQUIRED"
-    const val INDEX_UNEXPECTED = "INDEX_UNEXPECTED"
-    const val ORDER_NOT_ACCEPTED = "ORDER_NOT_ACCEPTED"
 
     // INVALID_REQUEST
     const val UNSUPPORTED_CHARACTERS = "UNSUPPORTED_CHARACTERS"

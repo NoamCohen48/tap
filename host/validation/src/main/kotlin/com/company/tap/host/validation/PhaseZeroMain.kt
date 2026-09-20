@@ -14,7 +14,8 @@ import com.company.tap.protocol.Hello
 import com.company.tap.protocol.InvalidSelectorException
 import com.company.tap.protocol.KEYCODE_BACK
 import com.company.tap.protocol.MatchMode
-import com.company.tap.protocol.NodeSelector
+import com.company.tap.protocol.Node
+import com.company.tap.protocol.NodeFlag
 import com.company.tap.protocol.BoolResult
 import com.company.tap.protocol.Command
 import com.company.tap.protocol.Count
@@ -39,13 +40,13 @@ import com.company.tap.protocol.WaitAppVisible
 import com.company.tap.protocol.WaitGone
 import com.company.tap.protocol.WaitVisible
 import com.company.tap.protocol.ProtocolVersion
-import com.company.tap.protocol.ResourceId
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.detail
 import com.company.tap.protocol.errorCode
 import com.company.tap.protocol.result
 import com.company.tap.protocol.Selector
-import com.company.tap.protocol.StringMatch
+import com.company.tap.protocol.and
+import com.company.tap.protocol.or
 import com.company.tap.protocol.Returning
 import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
@@ -582,19 +583,12 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
     check(client.send(WaitVisible(Selector.text("Duplicate taps: 2"))).ok)
     val missingIndex = client.send(Tap(duplicateButton.at(2)))
     check(!missingIndex.ok && missingIndex.errorCode == ErrorCode.NOT_FOUND) { "at(2) should be NOT_FOUND: $missingIndex" }
-    val rightButton = Selector(
-        NodeSelector(
-            text = StringMatch("Duplicate action"),
-            ancestor = NodeSelector(resource = ResourceId("right_half", FIXTURE_PACKAGE)),
-        ),
-    )
+    val rightButton = Selector(Node.text("Duplicate action") and Node.ancestor(Node.Resource("right_half", FIXTURE_PACKAGE)))
     check(client.send(Tap(rightButton)).ok)
     check(client.send(WaitVisible(Selector.text("Duplicate taps: 3"))).ok)
     val leftHalfWithButton = Selector(
-        NodeSelector(
-            resource = ResourceId("left_half", FIXTURE_PACKAGE),
-            child = NodeSelector(className = StringMatch("Button", MatchMode.ENDS_WITH), clickable = true),
-        ),
+        Node.Resource("left_half", FIXTURE_PACKAGE) and
+            Node.child(Node.className("Button", MatchMode.ENDS_WITH) and Node.Flag(NodeFlag.CLICKABLE)),
     )
     check(client.execute(Exists(leftHalfWithButton)).value) { "child relation did not match" }
 
@@ -602,19 +596,29 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
     val regexButton = Selector.text("^Duplicate act.*", MatchMode.REGEX)
     expectAmbiguous(Tap(regexButton))
     val regexLeft = Selector(
-        NodeSelector(
-            text = StringMatch("^Duplicate act.*", MatchMode.REGEX),
-            ancestor = NodeSelector(resource = ResourceId("left_half", FIXTURE_PACKAGE)),
-        ),
+        Node.text("^Duplicate act.*", MatchMode.REGEX) and Node.ancestor(Node.Resource("left_half", FIXTURE_PACKAGE)),
     )
     check(client.send(Tap(regexLeft)).ok) { "Traversal-plan tap failed" }
     check(client.send(WaitVisible(Selector.text("^Duplicate taps: \\d+$", MatchMode.REGEX))).ok)
     check(client.execute(Exists(Selector.text("Duplicate taps: 4"))).value)
     check(!client.execute(Exists(Selector.text("^Duplicate taps: 9$", MatchMode.REGEX))).value)
 
+    // any_of and a repeated text constraint also take the traversal plan; both must agree with native counts.
+    val duplicates = client.execute(Count(Selector.text("Duplicate action"))).count
+    val eitherText = Selector(Node.text("Duplicate action") or Node.text("Ambiguity fixture ready"))
+    check(client.execute(Count(eitherText)).count == duplicates + 1) { "any_of count disagrees with the native plan" }
+    expectAmbiguous(Tap(Selector(Node.text("Duplicate action") or Node.text("never on screen"))))
+    val twoTexts = Selector(Node.text("Duplicate", MatchMode.STARTS_WITH) and Node.text("action", MatchMode.ENDS_WITH))
+    check(client.execute(Count(twoTexts)).count == duplicates) { "repeated-text conjunction disagrees with the native plan" }
+    val eitherOnRight = Selector(
+        (Node.text("never on screen") or Node.text("Duplicate action")) and Node.ancestor(Node.Resource("right_half", FIXTURE_PACKAGE)),
+    )
+    check(client.send(Tap(eitherOnRight)).ok) { "any_of inside a conjunction failed to tap" }
+    check(client.send(WaitVisible(Selector.text("Duplicate taps: 5"))).ok)
+
     // Structural rejections never consume a request on the host and are INVALID_SELECTOR on the driver.
-    runCatching { client.send(Exists(Selector(NodeSelector()))) }.exceptionOrNull().let { error ->
-        check(error is InvalidSelectorException) { "Host validation should reject an empty node: $error" }
+    runCatching { client.send(Exists(Selector(Node.AllOf(emptyList())))) }.exceptionOrNull().let { error ->
+        check(error is InvalidSelectorException) { "Host validation should reject an empty conjunction: $error" }
     }
     val foreignResource = client.send(Exists(Selector.androidResource("com.other.app", "duplicate_button")))
     check(
