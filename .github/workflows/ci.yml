@@ -120,7 +120,7 @@ jobs:
           python -c "import tap; print('tap-e2e', tap.__version__)"
           python -m build --outdir dist clients/python
       - name: Plugin loads (the sample suite itself needs a device and the fixture APK)
-        run: python -c "import tap.pytest_plugin, tap._gen.tap_pb2_grpc"
+        run: python -c "import tap.pytest_plugin, tap._gen.session_pb2_grpc"
       - uses: actions/upload-artifact@v4
         if: matrix.python == '3.13'
         with:
