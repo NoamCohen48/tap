@@ -9,8 +9,8 @@ import com.company.tap.api.v1.AppLaunchRequest
 import com.company.tap.api.v1.AppRequest
 import com.company.tap.api.v1.AppServiceGrpc
 import com.company.tap.api.v1.AttachRequest
-import com.company.tap.api.v1.CloseRunRequest
-import com.company.tap.api.v1.CloseRunResponse
+import com.company.tap.api.v1.CloseConnectionRequest
+import com.company.tap.api.v1.CloseConnectionResponse
 import com.company.tap.api.v1.CloseSessionRequest
 import com.company.tap.api.v1.CloseSessionResponse
 import com.company.tap.api.v1.CommandResult
@@ -20,17 +20,16 @@ import com.company.tap.api.v1.DriverLogResponse
 import com.company.tap.api.v1.ExecuteRequest
 import com.company.tap.api.v1.InfoRequest
 import com.company.tap.api.v1.InfoResponse
-import com.company.tap.api.v1.InventoryRequest
-import com.company.tap.api.v1.InventoryResponse
-import com.company.tap.api.v1.OpenRunRequest
-import com.company.tap.api.v1.OpenRunResponse
+import com.company.tap.api.v1.ListDevicesRequest
+import com.company.tap.api.v1.ListDevicesResponse
+import com.company.tap.api.v1.OpenConnectionRequest
+import com.company.tap.api.v1.OpenConnectionResponse
 import com.company.tap.api.v1.OpenSessionRequest
 import com.company.tap.api.v1.OpenSessionResponse
-import com.company.tap.api.v1.PoolDevice
-import com.company.tap.api.v1.PoolServiceGrpc
+import com.company.tap.api.v1.DeviceServiceGrpc
 import com.company.tap.api.v1.ProcessIdentity
-import com.company.tap.api.v1.RunEvent
-import com.company.tap.api.v1.RunServiceGrpc
+import com.company.tap.api.v1.ConnectionEvent
+import com.company.tap.api.v1.ConnectionServiceGrpc
 import com.company.tap.api.v1.ScreenshotRequest
 import com.company.tap.api.v1.ScreenshotResponse
 import com.company.tap.api.v1.SessionServiceGrpc
@@ -66,7 +65,7 @@ const val DEFAULT_LIFECYCLE_TIMEOUT_MS = 30_000L
 /** Maps service exceptions to gRPC status codes; everything else is INTERNAL with the message. */
 internal fun Throwable.toStatus(): StatusRuntimeException = when (this) {
     is StatusRuntimeException -> this
-    is UnknownRunException, is UnknownSessionException -> Status.NOT_FOUND.withDescription(message).asRuntimeException()
+    is UnknownConnectionException, is UnknownSessionException -> Status.NOT_FOUND.withDescription(message).asRuntimeException()
     is IllegalArgumentException -> Status.INVALID_ARGUMENT.withDescription(message).asRuntimeException()
     // A busy device is a precondition failure when no wait was asked for, a timeout when it was.
     is DeviceBusyException -> (if (waitedMs > 0) Status.DEADLINE_EXCEEDED else Status.FAILED_PRECONDITION).withDescription(message).asRuntimeException()
@@ -90,23 +89,23 @@ internal inline fun <T> reply(observer: StreamObserver<T>, block: () -> T) {
     }
 }
 
-class RunServicer(
+class ConnectionServicer(
     private val service: TapService,
     private val scheduler: ScheduledExecutorService,
-) : RunServiceGrpc.RunServiceImplBase() {
-    override fun open(request: OpenRunRequest, observer: StreamObserver<OpenRunResponse>) = reply(observer) {
-        OpenRunResponse.newBuilder().setRunId(service.openRun(request.name.ifBlank { "unnamed" }).id).build()
+) : ConnectionServiceGrpc.ConnectionServiceImplBase() {
+    override fun open(request: OpenConnectionRequest, observer: StreamObserver<OpenConnectionResponse>) = reply(observer) {
+        OpenConnectionResponse.newBuilder().setConnectionId(service.openConnection(request.name.ifBlank { "unnamed" }).id).build()
     }
 
     /**
-     * Liveness: the stream stays open for the run's lifetime. When the client goes away gRPC
-     * cancels the call and the run (sessions + leases) is closed. A heartbeat event every 15 s
+     * Liveness: the stream stays open for the connection's lifetime. When the client goes away
+     * gRPC cancels the call and the connection (and every session it owns) is closed. A heartbeat event every 15 s
      * keeps idle proxies from dropping the stream.
      */
-    override fun attach(request: AttachRequest, observer: StreamObserver<RunEvent>) {
-        val call = observer as ServerCallStreamObserver<RunEvent>
-        val run = try {
-            service.run(request.runId)
+    override fun attach(request: AttachRequest, observer: StreamObserver<ConnectionEvent>) {
+        val call = observer as ServerCallStreamObserver<ConnectionEvent>
+        val connection = try {
+            service.connection(request.connectionId)
         } catch (error: Throwable) {
             call.onError(error.toStatus())
             return
@@ -119,18 +118,18 @@ class RunServicer(
         }, 15, 15, TimeUnit.SECONDS)
         call.setOnCancelHandler {
             heartbeat.cancel(false)
-            service.closeRun(run.id, "client detached")
+            service.closeConnection(connection.id, "client detached")
         }
-        run.onClose += {
+        connection.onClose += {
             heartbeat.cancel(false)
             runCatching { if (!call.isCancelled) call.onCompleted() }
         }
-        call.onNext(event("attached to run ${run.id}"))
+        call.onNext(event("attached to connection ${connection.id}"))
     }
 
-    override fun close(request: CloseRunRequest, observer: StreamObserver<CloseRunResponse>) = reply(observer) {
-        val sessions = service.closeRun(request.runId, "client request")
-        CloseRunResponse.newBuilder().setSessionsClosed(sessions).build()
+    override fun close(request: CloseConnectionRequest, observer: StreamObserver<CloseConnectionResponse>) = reply(observer) {
+        val sessions = service.closeConnection(request.connectionId, "client request")
+        CloseConnectionResponse.newBuilder().setSessionsClosed(sessions).build()
     }
 
     override fun info(request: InfoRequest, observer: StreamObserver<InfoResponse>) = reply(observer) {
@@ -144,22 +143,22 @@ class RunServicer(
             .build()
     }
 
-    private fun event(message: String): RunEvent =
-        RunEvent.newBuilder().setAtEpochMs(System.currentTimeMillis()).setMessage(message).build()
+    private fun event(message: String): ConnectionEvent =
+        ConnectionEvent.newBuilder().setAtEpochMs(System.currentTimeMillis()).setMessage(message).build()
 }
 
-class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServiceImplBase() {
-    override fun inventory(request: InventoryRequest, observer: StreamObserver<InventoryResponse>) = reply(observer) {
-        InventoryResponse.newBuilder().addAllDevices(service.inventory().map(::poolDevice)).build()
+class DeviceServicer(private val service: TapService) : DeviceServiceGrpc.DeviceServiceImplBase() {
+    override fun listDevices(request: ListDevicesRequest, observer: StreamObserver<ListDevicesResponse>) = reply(observer) {
+        ListDevicesResponse.newBuilder().addAllDevices(service.devices().map(::deviceEntry)).build()
     }
 
-    private fun poolDevice(entry: PoolEntry): PoolDevice = PoolDevice.newBuilder().apply {
+    private fun deviceEntry(entry: DeviceEntry): com.company.tap.api.v1.DeviceEntry = com.company.tap.api.v1.DeviceEntry.newBuilder().apply {
         serial = entry.serial
         when (val status = entry.status) {
             DeviceStatus.Free -> state = DeviceState.DEVICE_FREE
-            is DeviceStatus.Leased -> {
+            is DeviceStatus.Held -> {
                 state = DeviceState.DEVICE_LEASED
-                status.runId?.let { leasedByRun = it }
+                status.connectionId?.let { heldByConnection = it }
             }
             is DeviceStatus.Quarantined -> {
                 state = DeviceState.DEVICE_QUARANTINED
@@ -177,9 +176,9 @@ class SessionServicer(
     override fun open(request: OpenSessionRequest, observer: StreamObserver<OpenSessionResponse>) = reply(observer) {
         require(request.serial.isNotBlank()) { "serial is required" }
         require(request.autPackage.isNotBlank()) { "aut_package is required" }
-        val run = service.run(request.runId)
+        val connection = service.connection(request.connectionId)
         val session = service.openSession(
-            run, request.serial, request.autPackage,
+            connection, request.serial, request.autPackage,
             TapService.OpenSessionOptions(
                 driverApk = request.takeIf { it.hasDriverApk() }?.driverApk?.let(Path::of),
                 driverTestApk = request.takeIf { it.hasDriverTestApk() }?.driverTestApk?.let(Path::of),

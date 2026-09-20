@@ -23,7 +23,7 @@ class App internal constructor(
     val device: Device,
     val packageName: String,
 ) {
-    private val apps get() = device.run.client.apps
+    private val apps get() = device.connection.client.apps
 
     private fun request(timeout: Duration?): AppRequest = AppRequest.newBuilder()
         .setSessionId(device.sessionId)

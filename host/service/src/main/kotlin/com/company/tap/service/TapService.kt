@@ -19,41 +19,51 @@ class ServiceConfig(
     val adb: Adb,
     val stateDir: Path,
     val journalRoot: Path = stateDir.resolve("sessions"),
-    /** Restrict the pool to these serials; null = every device ADB lists. */
+    /** Restrict the service to these serials; null = every device ADB lists. */
     val allowedSerials: Set<String>? = null,
     val bundledDriver: BundledDriver?,
     val log: (String) -> Unit = ::println,
 )
 
-class UnknownRunException(id: String) : NoSuchElementException("Unknown run $id")
+class UnknownConnectionException(id: String) : NoSuchElementException("Unknown connection $id")
 class UnknownSessionException(id: String) : NoSuchElementException("Unknown session $id")
 
 sealed class DeviceStatus {
     object Free : DeviceStatus()
-    /** Locked by a live session: [runId] when it is one of ours, null for another process. */
-    data class Leased(val runId: String?) : DeviceStatus()
+    /** Locked by a live session: [connectionId] when it is one of ours, null for another process. */
+    data class Held(val connectionId: String?) : DeviceStatus()
     data class Quarantined(val reason: String) : DeviceStatus()
 }
 
-data class PoolEntry(val serial: String, val status: DeviceStatus)
+/** One row of [TapService.devices]: a serial ADB lists and what the lock and journal say about it. */
+data class DeviceEntry(val serial: String, val status: DeviceStatus)
 
-class Run(val id: String, val name: String) {
-    val sessions = ConcurrentHashMap<String, ManagedSession>()
+/**
+ * One client process talking to the service. Every session it opens belongs to it; when the
+ * client detaches (its Attach stream drops) or calls Close, all of them are closed.
+ */
+class Connection(val id: String, val name: String) {
+    val sessions = ConcurrentHashMap<String, Session>()
     @Volatile
     var closed = false
-    /** Invoked once when the run closes, so an Attach stream can complete. */
+    /** Invoked once when the connection closes, so an Attach stream can complete. */
     val onClose = ConcurrentHashMap.newKeySet<() -> Unit>()
 }
 
-class ManagedSession(val id: String, val run: Run, val device: DeviceSession, val defaultTimeoutMs: Long, val log: RingLog) {
+/**
+ * One open driver session as the service sees it: the `:host:core` [DeviceSession] (lock,
+ * journal, driver, forward, authenticated client) plus what the service adds — the owning
+ * [connection], the default command timeout and the captured driver log.
+ */
+class Session(val id: String, val connection: Connection, val device: DeviceSession, val defaultTimeoutMs: Long, val log: DriverLogBuffer) {
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
     /** One [AppLifecycle] per package so the sync identity survives across calls. */
     fun app(packageName: String): AppLifecycle = apps.computeIfAbsent(packageName) { AppLifecycle(device, it) }
 }
 
-/** Bounded driver log kept per session for failure artifacts. */
-class RingLog(private val capacity: Int = 2_000) {
+/** The last [capacity] lines of a session's driver output, kept for failure artifacts. */
+class DriverLogBuffer(private val capacity: Int = 2_000) {
     private val lines = ArrayDeque<String>()
     @Synchronized
     fun append(line: String) {
@@ -65,54 +75,54 @@ class RingLog(private val capacity: Int = 2_000) {
 }
 
 /**
- * All service state: runs (client ownership) and live sessions. There is no lease table here:
- * exclusive use of a device is the per-serial file lock in `:host:core` (taken by
- * [DeviceSession.open], released when the session closes or its process dies), so the pool is
- * only a view — `inventory` probes that lock and the journal. The gRPC servicers are thin
+ * All service state: connections (client ownership) and live sessions. There is no lease table
+ * here: exclusive use of a device is the per-serial file lock in `:host:core` (taken by
+ * [DeviceSession.open], released when the session closes or its process dies), so the device
+ * list is only a view — [devices] probes that lock and the journal. The gRPC servicers are thin
  * adapters over this class so it can be exercised without a server.
  */
 class TapService(val config: ServiceConfig) : AutoCloseable {
-    private val runs = ConcurrentHashMap<String, Run>()
-    private val sessions = ConcurrentHashMap<String, ManagedSession>()
+    private val connections = ConcurrentHashMap<String, Connection>()
+    private val sessions = ConcurrentHashMap<String, Session>()
     /** Serials whose bundled driver this service process already installed. */
     private val driverInstalled = ConcurrentHashMap.newKeySet<String>()
 
-    // ---- runs --------------------------------------------------------------------------------
+    // ---- connections -------------------------------------------------------------------------
 
-    fun openRun(name: String): Run {
-        val run = Run(UUID.randomUUID().toString(), name)
-        runs[run.id] = run
-        config.log("run ${run.id} opened ($name)")
-        return run
+    fun openConnection(name: String): Connection {
+        val connection = Connection(UUID.randomUUID().toString(), name)
+        connections[connection.id] = connection
+        config.log("connection ${connection.id} opened ($name)")
+        return connection
     }
 
-    fun run(id: String): Run = runs[id]?.takeUnless { it.closed } ?: throw UnknownRunException(id)
+    fun connection(id: String): Connection = connections[id]?.takeUnless { it.closed } ?: throw UnknownConnectionException(id)
 
-    /** Closes every session of the run. Idempotent. Returns the number closed. */
-    fun closeRun(id: String, reason: String): Int {
-        val run = runs.remove(id) ?: return 0
-        if (run.closed) return 0
-        run.closed = true
+    /** Closes every session of the connection. Idempotent. Returns the number closed. */
+    fun closeConnection(id: String, reason: String): Int {
+        val connection = connections.remove(id) ?: return 0
+        if (connection.closed) return 0
+        connection.closed = true
         var closedSessions = 0
-        run.sessions.keys.toList().forEach { sessionId ->
+        connection.sessions.keys.toList().forEach { sessionId ->
             runCatching { closeSession(sessionId) }.onFailure { config.log("session $sessionId close failed: ${it.message}") }
             closedSessions++
         }
-        run.onClose.forEach { runCatching(it) }
-        config.log("run $id closed ($reason): sessions=$closedSessions")
+        connection.onClose.forEach { runCatching(it) }
+        config.log("connection $id closed ($reason): sessions=$closedSessions")
         return closedSessions
     }
 
-    // ---- pool --------------------------------------------------------------------------------
+    // ---- devices -----------------------------------------------------------------------------
 
-    /** Every online device with what the journal and the per-serial lock say about it. */
-    fun inventory(): List<PoolEntry> =
+    /** Every device ADB lists with what the journal and the per-serial lock say about it. */
+    fun devices(): List<DeviceEntry> =
         config.adb.devices().filter { config.allowedSerials?.contains(it) ?: true }.map { serial ->
             val store = SessionJournalStore(config.journalRoot, serial)
             val status = quarantine(store)?.let { DeviceStatus.Quarantined(it) }
-                ?: sessions.values.firstOrNull { it.device.serial == serial }?.let { DeviceStatus.Leased(it.run.id) }
-                ?: if (store.isLeased()) DeviceStatus.Leased(null) else DeviceStatus.Free
-            PoolEntry(serial, status)
+                ?: sessions.values.firstOrNull { it.device.serial == serial }?.let { DeviceStatus.Held(it.connection.id) }
+                ?: if (store.isLeased()) DeviceStatus.Held(null) else DeviceStatus.Free
+            DeviceEntry(serial, status)
         }
 
     private fun quarantine(store: SessionJournalStore): String? = runCatching {
@@ -134,14 +144,14 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
         val leaseTimeoutMs: Long,
     )
 
-    fun openSession(run: Run, serial: String, autPackage: String, options: OpenSessionOptions): ManagedSession {
+    fun openSession(connection: Connection, serial: String, autPackage: String, options: OpenSessionOptions): Session {
         val explicitApks = options.driverApk != null || options.driverTestApk != null
         val useBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null
         // The bundled driver goes on each device once per service lifetime. Whether this open is
         // the one that installs it is decided under the serial's lock (see installDriver), so two
         // opens racing for one device cannot split "I install" from "I start first".
         var installedBundled = false
-        val log = RingLog()
+        val log = DriverLogBuffer()
         val device = try {
             DeviceSession.open(
                 DeviceSessionConfig(
@@ -162,19 +172,19 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
             if (installedBundled) driverInstalled.remove(serial)
             throw error
         }
-        val session = ManagedSession(UUID.randomUUID().toString(), run, device, options.defaultTimeoutMs, log)
+        val session = Session(UUID.randomUUID().toString(), connection, device, options.defaultTimeoutMs, log)
         sessions[session.id] = session
-        run.sessions[session.id] = session
-        config.log("session ${session.id} open on $serial (generation ${device.generation}) for run ${run.id}")
+        connection.sessions[session.id] = session
+        config.log("session ${session.id} open on $serial (generation ${device.generation}) for connection ${connection.id}")
         return session
     }
 
-    fun session(id: String): ManagedSession = sessions[id] ?: throw UnknownSessionException(id)
+    fun session(id: String): Session = sessions[id] ?: throw UnknownSessionException(id)
 
     /** Returns null when cleanup was clean, otherwise the quarantine detail. */
     fun closeSession(id: String): String? {
         val session = sessions.remove(id) ?: throw UnknownSessionException(id)
-        session.run.sessions.remove(id)
+        session.connection.sessions.remove(id)
         val detail = runCatching { session.device.close() }.exceptionOrNull()?.message
         config.log("session $id closed" + (detail?.let { " (quarantined: $it)" } ?: ""))
         return detail
@@ -185,7 +195,7 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
      * gRPC cancellation to it. Transport loss is reported as an error [Response], not thrown.
      */
     fun execute(
-        session: ManagedSession,
+        session: Session,
         arguments: Conversions.CommandArguments,
         onStarted: (DriverClient.PendingCommand) -> Unit = {},
     ): Pair<Response, Long> {
@@ -210,6 +220,6 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
     }
 
     override fun close() {
-        runs.keys.toList().forEach { closeRun(it, "service shutdown") }
+        connections.keys.toList().forEach { closeConnection(it, "service shutdown") }
     }
 }

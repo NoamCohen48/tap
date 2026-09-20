@@ -435,25 +435,25 @@ class CommandResult(_message.Message):
     session_generation: int
     def __init__(self, ok: _Optional[bool] = ..., value: _Optional[bool] = ..., text: _Optional[str] = ..., error_code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., duration_ms: _Optional[int] = ..., sync_state: _Optional[_Union[SyncState, _Mapping]] = ..., artifact: _Optional[_Union[ArtifactInfo, _Mapping]] = ..., count: _Optional[int] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ...) -> None: ...
 
-class OpenRunRequest(_message.Message):
+class OpenConnectionRequest(_message.Message):
     __slots__ = ("name",)
     NAME_FIELD_NUMBER: _ClassVar[int]
     name: str
     def __init__(self, name: _Optional[str] = ...) -> None: ...
 
-class OpenRunResponse(_message.Message):
-    __slots__ = ("run_id",)
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
+class OpenConnectionResponse(_message.Message):
+    __slots__ = ("connection_id",)
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    connection_id: str
+    def __init__(self, connection_id: _Optional[str] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
-    __slots__ = ("run_id",)
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
+    __slots__ = ("connection_id",)
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    connection_id: str
+    def __init__(self, connection_id: _Optional[str] = ...) -> None: ...
 
-class RunEvent(_message.Message):
+class ConnectionEvent(_message.Message):
     __slots__ = ("at_epoch_ms", "message")
     AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
@@ -461,13 +461,13 @@ class RunEvent(_message.Message):
     message: str
     def __init__(self, at_epoch_ms: _Optional[int] = ..., message: _Optional[str] = ...) -> None: ...
 
-class CloseRunRequest(_message.Message):
-    __slots__ = ("run_id",)
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
+class CloseConnectionRequest(_message.Message):
+    __slots__ = ("connection_id",)
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    connection_id: str
+    def __init__(self, connection_id: _Optional[str] = ...) -> None: ...
 
-class CloseRunResponse(_message.Message):
+class CloseConnectionResponse(_message.Message):
     __slots__ = ("sessions_closed",)
     SESSIONS_CLOSED_FIELD_NUMBER: _ClassVar[int]
     sessions_closed: int
@@ -493,31 +493,31 @@ class InfoResponse(_message.Message):
     bundled_driver: bool
     def __init__(self, service_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., bundled_driver: _Optional[bool] = ...) -> None: ...
 
-class PoolDevice(_message.Message):
-    __slots__ = ("serial", "state", "leased_by_run", "quarantine_reason")
+class DeviceEntry(_message.Message):
+    __slots__ = ("serial", "state", "held_by_connection", "quarantine_reason")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
-    LEASED_BY_RUN_FIELD_NUMBER: _ClassVar[int]
+    HELD_BY_CONNECTION_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
     serial: str
     state: DeviceState
-    leased_by_run: str
+    held_by_connection: str
     quarantine_reason: str
-    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., held_by_connection: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
 
-class InventoryRequest(_message.Message):
+class ListDevicesRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class InventoryResponse(_message.Message):
+class ListDevicesResponse(_message.Message):
     __slots__ = ("devices",)
     DEVICES_FIELD_NUMBER: _ClassVar[int]
-    devices: _containers.RepeatedCompositeFieldContainer[PoolDevice]
-    def __init__(self, devices: _Optional[_Iterable[_Union[PoolDevice, _Mapping]]] = ...) -> None: ...
+    devices: _containers.RepeatedCompositeFieldContainer[DeviceEntry]
+    def __init__(self, devices: _Optional[_Iterable[_Union[DeviceEntry, _Mapping]]] = ...) -> None: ...
 
 class OpenSessionRequest(_message.Message):
-    __slots__ = ("run_id", "serial", "aut_package", "driver_apk", "driver_test_apk", "skip_driver_install", "sync_authority", "allowed_system_packages", "default_timeout_ms", "lease_timeout_ms")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("connection_id", "serial", "aut_package", "driver_apk", "driver_test_apk", "skip_driver_install", "sync_authority", "allowed_system_packages", "default_timeout_ms", "lease_timeout_ms")
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     DRIVER_APK_FIELD_NUMBER: _ClassVar[int]
@@ -527,7 +527,7 @@ class OpenSessionRequest(_message.Message):
     ALLOWED_SYSTEM_PACKAGES_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
+    connection_id: str
     serial: str
     aut_package: str
     driver_apk: str
@@ -537,7 +537,7 @@ class OpenSessionRequest(_message.Message):
     allowed_system_packages: _containers.RepeatedScalarFieldContainer[str]
     default_timeout_ms: int
     lease_timeout_ms: int
-    def __init__(self, run_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., driver_apk: _Optional[str] = ..., driver_test_apk: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., allowed_system_packages: _Optional[_Iterable[str]] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., driver_apk: _Optional[str] = ..., driver_test_apk: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., allowed_system_packages: _Optional[_Iterable[str]] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class OpenSessionResponse(_message.Message):
     __slots__ = ("session_id", "serial", "generation", "device_info")

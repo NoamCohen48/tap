@@ -15,8 +15,8 @@ sample suite.
 A product team can write and run real tests today:
 
 - `:host:service` (`tap serve`) — the one host process: ADB, journals, per-device locks, driver
-  lifecycle, `AppLifecycle`, device inventory; JVM dist or native image.
-- `:clients:kotlin:sdk` — `TapClient`/`Run`, `Device`, `App`, `Element`, `ElementWait`,
+  lifecycle, `AppLifecycle`, device list; JVM dist or native image.
+- `:clients:kotlin:sdk` — `TapClient`/`Connection`, `Device`, `App`, `Element`, `ElementWait`,
   selector DSL, typed exceptions; a gRPC client of the service.
 - `:clients:kotlin:junit5` — `@TapTest`, `Device`/`Devices` parameter injection, named roles,
   roles mapped to serials and opened in serial order, failure artifacts, `tap.*` system-property /

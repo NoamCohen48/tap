@@ -3,8 +3,8 @@
     from tap import Service, text, res
 
     service = Service()                                  # discovers or starts `tap serve`
-    with service.open_run("smoke") as run:
-        with run.open_device("emulator-5554", "com.example.app") as device:
+    with service.connect("smoke") as connection:
+        with connection.open_device("emulator-5554", "com.example.app") as device:
             device.app().cold_launch()
             device.element(res("login")).tap()
             device.wait(text("Welcome")).visible()
@@ -24,7 +24,7 @@ from .selectors import (
     CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res, res_id,
     scrollable, text, text_contains, text_matches, text_starts_with,
 )
-from .service import Run, Service, resolve_address
+from .service import Connection, Service, resolve_address
 
 __all__ = [
     "pb", "App", "ProcessIdentity", "Device", "Timeouts", "KEYCODE_BACK", "KEYCODE_HOME",
@@ -32,7 +32,7 @@ __all__ = [
     "AppLifecycleError", "CommandError", "DeviceBusyError", "ErrorCode", "ServiceError", "TapError", "WaitTimeoutError",
     "Selector", "EXACT", "CONTAINS", "STARTS_WITH", "REGEX", "class_name", "clickable", "desc", "hint",
     "raw_res", "res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
-    "Run", "Service", "resolve_address",
+    "Connection", "Service", "resolve_address",
 ]
 
 try:

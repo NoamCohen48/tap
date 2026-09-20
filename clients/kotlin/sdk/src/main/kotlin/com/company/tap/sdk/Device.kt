@@ -50,7 +50,7 @@ data class DeviceOptions(
  * the selector does not match exactly one node.
  */
 class Device internal constructor(
-    val run: Run,
+    val connection: Connection,
     val sessionId: String,
     val serial: String,
     val generation: Long,
@@ -58,7 +58,7 @@ class Device internal constructor(
     val autPackage: String,
     val timeouts: Timeouts,
 ) : AutoCloseable {
-    private val client get() = run.client
+    private val client get() = connection.client
     @Volatile private var closed = false
 
     // --- Raw protocol escape hatch ----------------------------------------------------------------
@@ -248,9 +248,9 @@ class Device internal constructor(
     override fun toString(): String = "Device($serial, generation=$generation)"
 
     companion object {
-        internal fun open(run: Run, serial: String, autPackage: String, timeouts: Timeouts, options: DeviceOptions): Device {
+        internal fun open(connection: Connection, serial: String, autPackage: String, timeouts: Timeouts, options: DeviceOptions): Device {
             val request = OpenSessionRequest.newBuilder()
-                .setRunId(run.id)
+                .setConnectionId(connection.id)
                 .setSerial(serial)
                 .setAutPackage(autPackage)
                 .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
@@ -263,8 +263,8 @@ class Device internal constructor(
                     options.syncAuthority?.let { setSyncAuthority(it) }
                 }
                 .build()
-            val response = mapped(serial) { run.client.sessions.withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS).open(request) }
-            return Device(run, response.sessionId, response.serial, response.generation, autPackage, timeouts)
+            val response = mapped(serial) { connection.client.sessions.withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS).open(request) }
+            return Device(connection, response.sessionId, response.serial, response.generation, autPackage, timeouts)
         }
     }
 }

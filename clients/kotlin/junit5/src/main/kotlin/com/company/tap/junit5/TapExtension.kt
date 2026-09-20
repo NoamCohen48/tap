@@ -27,7 +27,7 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
     override fun beforeEach(context: ExtensionContext) {
         val config = TapConfig.current
         val roles = declaredRoles(context)
-        val available = config.serials.ifEmpty { TapRun.run.availableSerials() }
+        val available = config.serials.ifEmpty { TapConnection.connection.availableSerials() }
         // Fewer devices than roles is an environment precondition, not a test failure.
         assumeTrue(roles.size <= available.size) {
             "${context.requiredTestMethod.name} needs ${roles.size} devices but " +
@@ -95,7 +95,7 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
     /**
      * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then
      * [available] in declaration order. [available] is `tap.serials` or, when none are
-     * configured, what the service inventory reports.
+     * configured, what the service's device list reports.
      */
     private fun assignSerials(roles: List<String>, available: List<String>, pinned: Map<String, String>): Map<String, String> {
         val free = available.filter { it !in pinned.values }.toMutableList()
@@ -112,7 +112,7 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
         val options = DeviceOptions(waitForDevice = config.acquireTimeout)
         try {
             assignment.entries.sortedBy { it.value }.forEach { (role, serial) ->
-                opened[role] = TapRun.run.openDevice(serial, config.autPackage, options = options)
+                opened[role] = TapConnection.connection.openDevice(serial, config.autPackage, options = options)
             }
         } catch (error: Throwable) {
             opened.values.forEach { device -> runCatching { device.close() }.exceptionOrNull()?.let(error::addSuppressed) }

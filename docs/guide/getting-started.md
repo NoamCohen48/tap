@@ -143,12 +143,12 @@ service, opens a session per device.
 
     ```kotlin
     TapClient().use { client ->
-        val run = client.openRun("smoke")
-        run.openDevice("emulator-5554", "com.shop").use { device ->
+        val connection = client.connect("smoke")
+        connection.openDevice("emulator-5554", "com.shop").use { device ->
             device.app().coldLaunch()
             println(device.element(text("Welcome")).exists())
         }
-        run.close()
+        connection.close()
     }
     ```
 
@@ -157,16 +157,16 @@ service, opens a session per device.
     ```python
     from tap import Service, text
 
-    with Service().open_run("smoke") as run:
-        with run.open_device("emulator-5554", "com.shop") as device:
+    with Service().connect("smoke") as connection:
+        with connection.open_device("emulator-5554", "com.shop") as device:
             device.app().cold_launch()
             print(device.element(text("Welcome")).exists())
     ```
 
-If the process dies, the service notices the run's stream closing and frees its devices.
+If the process dies, the service notices the connection's stream closing and frees its devices.
 
 ## Next
 
-- [How it works](how-it-works.md) explains what a session and a run are.
+- [How it works](how-it-works.md) explains what a session and a connection are.
 - [Selectors](selectors.md) and [Actions and waits](actions-and-waits.md) cover the API you
   will use in every test.
