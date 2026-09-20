@@ -86,11 +86,10 @@ class SessionServicer(
                 val session = service.session(request.sessionId)
                 val command = request.command.toCommand(session.device.config.autPackage)
                 val timeoutMs = if (request.command.timeoutMs > 0) request.command.timeoutMs else session.defaultTimeoutMs
-                val (response, requestId) = service.execute(session, command, timeoutMs) { pending ->
-                    pendingRef.set(pending)
-                    if (cancelled.get()) pending.cancel()
-                }
-                response.toProto(requestId, session.device.generation)
+                val pending = session.device.client.submit(command, timeoutMs)
+                pendingRef.set(pending)
+                if (cancelled.get()) pending.cancel()
+                service.await(pending).toProto(pending.requestId, session.device.generation)
             }
         }
     }
