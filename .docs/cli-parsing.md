@@ -6,6 +6,7 @@ which parses the `tap` command line by hand.
 ## What the CLI is today
 
 ```
+tap start   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]
 tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--serials a,b]
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
@@ -40,13 +41,14 @@ help, typed options and consistent error messages stop being nice-to-have.
 When that happens, adopt **Clikt with `clikt-core`**, in the same change that adds the first
 new command:
 
-- one `CliktCommand` per verb under `com.company.tap.service.cli`, `main` = `Tap().subcommands(Serve(), Status(), Stop(), ...).main(args)`;
+- one `CliktCommand` per verb under `com.company.tap.service.cli`, `main` = `Tap().subcommands(Start(), Serve(), Status(), Stop(), ...).main(args)`;
 - `--adb` / `--state-dir` declared with `envvar` (`TAP_ADB`, `TAP_STATE_DIR`) instead of
   `System.getenv` at the use site; `--port` as `int()`, `--serials` as `split(",")`;
 - keep the existing flag names and defaults so `README.md`, `docs/guide/configuration.md`,
-  the CI workflow and `ServiceDiscovery.start` (which spawns `tap serve --state-dir DIR`) are
-  unchanged;
-- run the native-image smoke (`tap serve` / `status` / `stop` on the native binary) to confirm
+  the CI workflow and `TapServiceProcess` / `start_service` (which run `tap start --state-dir DIR`)
+  are unchanged; `start` re-executes the binary as `serve --port N …`, so `serve` must keep
+  accepting exactly the options `start` forwards;
+- run the native-image smoke (`tap start` / `status` / `stop` on the native binary) to confirm
   the recorded reachability metadata needs no additions — `clikt-core` uses no reflection, so
   none are expected; if the Mordant-backed artifact is chosen instead, re-record with the
   tracing agent per `CLAUDE.md`.

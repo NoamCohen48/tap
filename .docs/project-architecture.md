@@ -161,7 +161,7 @@ tap/
 |   +-- kotlin/
 |   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package com.company.tap.sdk)
 |   |   |   +-- src/main/kotlin/com/company/tap/sdk/
-|   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), Connection (attach/availableSerials/openDevice), ServiceDiscovery (descriptor, autostart)
+|   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), Connection (attach/availableSerials/openDevice), ServiceDiscovery (descriptor lookup), TapServiceProcess (`tap start`/`tap stop`)
 |   |   |       +-- Device.kt            Device.open(run, serial, …), execute/element/await/app/info/pressKey/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll/scrollUntil, first/at/descendant/child
@@ -460,7 +460,7 @@ lifecycle code; the language-facing shape is the same in Kotlin and Python.
 ### Kotlin client (`:clients:kotlin:sdk`)
 
 ```kotlin
-val client = TapClient()                      // discovers or starts `tap serve`
+val client = TapClient()                      // a running service (`tap start`)
 val connection = client.connect("checkout")   // Attach stream = liveness
 val serial = connection.availableSerials().first()   // the service leases nothing; the session holds the device lock
 val device = connection.openDevice(serial, autPackage)
@@ -494,7 +494,9 @@ device.close(); connection.close(); client.close()
 - `Selectors.kt` builds the proto `Selector`; the service converts it to the protocol AST and
   `SelectorValidation` still runs before an ID is allocated.
 - `ServiceDiscovery` resolves `tap.service`/`TAP_SERVICE`, then `<state dir>/service.json`
-  (alive check), then starts `tap.bin`/`TAP_BIN`/`tap` on `PATH` with `--state-dir`.
+  (alive check); it never starts a service. `TapServiceProcess.start/stop` run `tap start` /
+  `tap stop` from `tap.bin`/`TAP_BIN`/`tap` on `PATH`; the JUnit extension does so around a run
+  when `tap.manageService` is set (`TapLauncherSessionListener` stops it).
 - The API is synchronous. Multi-device tests fan out with threads; the coroutine `tapTest`
   façade from plan §12 is not built yet (see `framework-gaps.md`).
 
@@ -521,7 +523,7 @@ in a per-method namespace; on a test failure captures `<artifactsDir>/<class>/<m
 live; then closes the sessions, which frees the devices. Cleanup failures are attached to the
 primary failure, or rethrown when the test itself passed. `TapConfig.current` reads
 `tap.serials` (optional), `tap.device.<role>` (pinning), `tap.autPackage`,
-`tap.artifactsDir`, `tap.acquireTimeoutSeconds`, `tap.service`, `tap.bin` (system property
+`tap.artifactsDir`, `tap.acquireTimeoutSeconds`, `tap.service`, `tap.manageService`, `tap.bin` (system property
 first, then `TAP_*` environment). Driver APKs come from the service's bundle.
 
 Class-level JUnit parallelism is safe: each device's lock serialises its sessions, and the
@@ -536,7 +538,7 @@ typed errors (`CommandError` with `ErrorCode`, `WaitTimeoutError`, `AppLifecycle
 `ServiceError`). The pytest plugin mirrors `TapExtension`: per-test sessions, all-or-none
 roles via `@pytest.mark.tap_devices`, skip when fewer serials are configured, failure
 artifacts (screenshot, hierarchy, device info, driver log). Service discovery: `TAP_SERVICE`,
-then `<state dir>/service.json`, then auto-start of `TAP_BIN`/`tap` on `PATH`.
+then `<state dir>/service.json`; never auto-start. `start_service`/`stop_service` run `tap start`/`tap stop` from `TAP_BIN`/`tap` on `PATH` (`tap_manage_service` in the plugin).
 
 ## 8. Synchronization SDK
 
@@ -573,8 +575,8 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Execution engine | `device/driver/command-engine/src/test` | 23 | ordering, overload, cancel states, mutation gate, deadlines, watchdog, heartbeat, blob streaming, shutdown |
 | Host client | `host/core/src/test` | 17 + 6 | real handshake against `FakeDriverServer`: demux, cancel, ping/heartbeat, transport-loss classification, blob corruption; journal atomicity |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
-| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 12 | Kotlin API + JUnit extension through an auto-started service, two-device concurrency |
-| Device, Python client | `TAP_BIN=… TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
+| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 12 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), two-device concurrency |
+| Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
 | Service | `:host:service:test` | 2 classes | proto enums mirror the protocol enums; golden fixtures round-trip through the proto conversions |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
 
@@ -611,7 +613,7 @@ the Python client and pytest plugin; the sample suite ported to pytest and passi
 devices through the native service; the repository split into `contracts/`, `device/`,
 `host/` and `clients/`, with the Kotlin SDK and JUnit extension rewritten as gRPC clients of
 the service (the in-JVM `DevicePool` and `Device.connect` are gone; `AppLifecycle` lives in
-`host/core`) and the Kotlin sample suite passing on both devices through an auto-started
+`host/core`) and the Kotlin sample suite passing on both devices through a runner-managed
 service.
 
 Not yet built — see [`framework-gaps.md`](framework-gaps.md) for the full, per-section list:

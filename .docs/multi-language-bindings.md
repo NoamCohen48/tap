@@ -192,8 +192,9 @@ Decisions taken against §6, and where the implementation departs from the sketc
 7. **Native image first, not jlink.** GraalVM 21 builds a single ~39 MB executable in under
    a minute with committed reachability metadata; the JVM `installDist` distribution remains
    the fallback. `adb` is still required (§4).
-8. **Service lifetime follows the ADB server model**: an auto-started `tap serve` stays up
-   for other clients; `tap stop` ends it.
+8. **Service lifetime follows the ADB server model**: a started service stays up for other
+   clients; `tap stop` ends it. Starting is explicit (`tap start`, or a test runner told to
+   manage it) — clients never spawn the service (`.docs/service-startup.md`).
 9. **Cancellation** is expressed as gRPC call cancellation, forwarded as a protocol `CANCEL`;
    there is no separate `session.cancel` RPC.
 10. **JSON Schema (§5) was not needed**: the proto is the schema.

@@ -3,7 +3,7 @@
 ```
  your test process(es)                 one per machine                       per device
 ┌────────────────────────┐   gRPC     ┌───────────────────────────┐  ADB    ┌──────────────────────┐
-│ Kotlin SDK + JUnit 5   │◄──────────►│ tap serve                 │◄───────►│ Tap driver           │
+│ Kotlin SDK + JUnit 5   │◄──────────►│ tap service               │◄───────►│ Tap driver           │
 │ Python + pytest        │ loopback   │  sessions + device list   │ forward │  (UiAutomator, own   │
 │ (thin gRPC clients)    │            │  sessions, journals       │  TAP1   │   package)           │
 └────────────────────────┘            │  ADB, driver lifecycle    │         │  ┌────────────────┐  │
@@ -20,11 +20,12 @@ ADB. It is a *separate* package, so it survives your app being force-stopped, cl
 reinstalled mid-test. It keeps no element handles between commands: every command carries a
 selector, the driver resolves it against the accessibility tree right then, acts, and answers.
 
-**The service** (`tap serve`) is the only process that talks to ADB. It installs the bundled
+**The service** (`tap start`) is the only process that talks to ADB. It installs the bundled
 driver, forwards ports, opens sessions, verifies the driver's identity on every handshake,
 journals what it does (so a crashed host can recover or quarantine a device instead of leaving
 it half-used) and lists the devices. One service per machine serves every test process,
-in every language, at once. It listens on loopback and is started on demand by the clients.
+in every language, at once. It listens on loopback and is started explicitly (`tap start`, or
+by a test runner told to manage it); clients only ever connect to a running one.
 
 **The clients** are gRPC clients of the service's `tap.v1` API. They hold no device logic:
 the Kotlin `Device`/`Element` and the Python `Device`/`Element` build the same protobuf

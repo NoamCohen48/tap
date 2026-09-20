@@ -1,5 +1,8 @@
 [
 {
+  "name":"android.app.Application"
+},
+{
   "name":"com.google.common.util.concurrent.AbstractFuture",
   "fields":[{"name":"listeners"}, {"name":"value"}, {"name":"waiters"}]
 },
@@ -20,18 +23,41 @@
   "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {
+  "name":"com.sun.jndi.dns.DnsContextFactory"
+},
+{
   "name":"io.grpc.census.InternalCensusStatsAccessor"
 },
 {
   "name":"io.grpc.census.InternalCensusTracingAccessor"
 },
 {
+  "name":"io.grpc.internal.DnsNameResolverProvider"
+},
+{
+  "name":"io.grpc.internal.JndiResourceResolverFactory",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"io.grpc.internal.PickFirstLoadBalancerProvider"
+},
+{
   "name":"io.grpc.internal.SerializingExecutor",
   "fields":[{"name":"runState"}]
 },
 {
+  "name":"io.grpc.netty.NettyChannelProvider"
+},
+{
+  "name":"io.grpc.netty.UdsNettyChannelProvider"
+},
+{
   "name":"io.grpc.netty.shaded.io.grpc.netty.AbstractNettyHandler",
   "methods":[{"name":"channelActive","parameterTypes":["io.grpc.netty.shaded.io.netty.channel.ChannelHandlerContext"] }, {"name":"exceptionCaught","parameterTypes":["io.grpc.netty.shaded.io.netty.channel.ChannelHandlerContext","java.lang.Throwable"] }]
+},
+{
+  "name":"io.grpc.netty.shaded.io.grpc.netty.NettyClientHandler",
+  "methods":[{"name":"channelInactive","parameterTypes":["io.grpc.netty.shaded.io.netty.channel.ChannelHandlerContext"] }, {"name":"close","parameterTypes":["io.grpc.netty.shaded.io.netty.channel.ChannelHandlerContext","io.grpc.netty.shaded.io.netty.channel.ChannelPromise"] }, {"name":"write","parameterTypes":["io.grpc.netty.shaded.io.netty.channel.ChannelHandlerContext","java.lang.Object","io.grpc.netty.shaded.io.netty.channel.ChannelPromise"] }]
 },
 {
   "name":"io.grpc.netty.shaded.io.grpc.netty.NettyServer$1"
@@ -129,7 +155,8 @@
   "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {
-  "name":"io.grpc.netty.shaded.io.netty.channel.epoll.EpollSocketChannel"
+  "name":"io.grpc.netty.shaded.io.netty.channel.epoll.EpollSocketChannel",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {
   "name":"io.grpc.netty.shaded.io.netty.channel.epoll.NativeDatagramPacketArray$NativeDatagramPacket"
@@ -212,7 +239,13 @@
   "fields":[{"name":"producerLimit"}]
 },
 {
+  "name":"io.grpc.okhttp.OkHttpChannelProvider"
+},
+{
   "name":"io.grpc.override.ContextStorageOverride"
+},
+{
+  "name":"io.grpc.util.SecretRoundRobinLoadBalancerProvider$Provider"
 },
 {
   "name":"io.perfmark.impl.SecretPerfMarkImpl$PerfMarkImpl"
@@ -295,6 +328,9 @@
 {
   "name":"java.util.concurrent.atomic.Striped64",
   "fields":[{"name":"base"}, {"name":"cellsBusy"}]
+},
+{
+  "name":"javax.naming.directory.InitialDirContext"
 },
 {
   "name":"javax.net.ssl.X509ExtendedTrustManager"

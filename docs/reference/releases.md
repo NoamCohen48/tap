@@ -5,7 +5,7 @@ push of the tag builds and publishes that family from the tagged commit.
 
 | Family | Tag | Artifacts | Where |
 |---|---|---|---|
-| **Service** (engine: `tap serve` + bundled driver + `tap-api`) | `service/vX.Y.Z` | `tap-X.Y.Z-linux-x86_64`, `tap-X.Y.Z-macos-aarch64`, `tap-X.Y.Z-jvm.zip`; Maven `com.company.tap:tap-api:X.Y.Z` | GitHub Release; GitHub Packages |
+| **Service** (engine: the `tap` executable + bundled driver + `tap-api`) | `service/vX.Y.Z` | `tap-X.Y.Z-linux-x86_64`, `tap-X.Y.Z-macos-aarch64`, `tap-X.Y.Z-jvm.zip`; Maven `com.company.tap:tap-api:X.Y.Z` | GitHub Release; GitHub Packages |
 | **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `com.company.tap:tap-client`, `com.company.tap:tap-junit5` | GitHub Packages |
 | **Python client** | `client-python/vX.Y.Z` | `tap_e2e-X.Y.Z-py3-none-any.whl`, sdist | GitHub Release (PyPI when enabled) |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `com.company.tap:tap-sync-sdk` (AAR) | GitHub Packages |

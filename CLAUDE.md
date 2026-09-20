@@ -29,6 +29,9 @@ See `README.md` for build/run commands.
 - `.docs/multi-language-bindings.md` — analysis behind the service + Python binding, with
   the outcome section recording what was decided.
 - `.docs/upstream-reference-audit.md` — adopt/adapt/do-not-copy decisions per upstream tool.
+- `.docs/service-startup.md` — decision record: the service is started explicitly (`tap start`),
+  never by a client; readiness is the `Info` RPC on a port `start` chose, and the alternatives
+  (notify socket, ready file, inherited pipe, fixed port) and why they lost.
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /
@@ -92,9 +95,10 @@ Rules when doing so:
   `host --no-reboot ...` skips only the reboot scenario and is safe for routine validation on
   the local matrix (emulator-5554 API 34, 85e49002 Samsung SM-J810G API 29).
 - Client/service changes are validated with
-  `./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (auto-starts the
-  JVM service dist, which keeps running; `host/service/build/install/tap/bin/tap stop`) and the
-  Python suite below. Unit tests: `:host:core:test :host:service:test :contracts:protocol:test
+  `./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (starts the JVM
+  service dist via `tap.manageService` and stops it afterwards unless one was already running)
+  and the Python suite below. Clients never start the service: `tap start` / `tap stop`
+  (`.docs/service-startup.md`). Unit tests: `:host:core:test :host:service:test :contracts:protocol:test
   :device:driver:command-engine:test`.
 - Product code must never depend on `:host:validation`; `PhaseZeroMain` is fault-injection
   validation, not framework code.
@@ -110,6 +114,6 @@ Rules when doing so:
   tracing agent (`JAVA_OPTS=-agentlib:native-image-agent=config-output-dir=...` on the JVM
   dist while running the smoke flow).
 - Python: system Python has no pip; use a venv (`python -m venv .venv && .venv/bin/pip install
-  -e clients/python[dev]`). `TAP_BIN=<native tap> TAP_SERIALS=emulator-5554,85e49002 pytest clients/python/tests`
-  validates the service + client on the local matrix. An auto-started service keeps running;
-  `tap stop` ends it.
+  -e clients/python[dev]`). `TAP_BIN=<native tap> TAP_MANAGE_SERVICE=1 TAP_SERIALS=emulator-5554,85e49002
+  pytest clients/python/tests` validates the service + client on the local matrix (starts and
+  stops the service; without `TAP_MANAGE_SERVICE` a running one is required).

@@ -181,9 +181,9 @@ jobs:
             adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
             adb -s emulator-5554 shell wm dismiss-keyguard
             adb -s emulator-5554 shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
+            # Each suite starts the service (tap.manageService / TAP_MANAGE_SERVICE) and stops it after its last test.
             ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554
-            TAP_BIN="$PWD/host/service/build/install/tap/bin/tap" TAP_SERIALS=emulator-5554 python -m pytest -q clients/python/tests
-            host/service/build/install/tap/bin/tap stop || true
+            TAP_BIN="$PWD/host/service/build/install/tap/bin/tap" TAP_MANAGE_SERVICE=1 TAP_SERIALS=emulator-5554 python -m pytest -q clients/python/tests
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

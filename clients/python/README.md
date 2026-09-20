@@ -15,12 +15,18 @@ Runtime requirements: a `tap` service binary (`./gradlew :host:service:nativeCom
 `host/service/build/native/nativeCompile/tap`, or the JVM distribution from
 `:host:service:installDist`) and `adb` on `PATH`.
 
-## Service discovery
+## Service discovery and lifecycle
 
 `Service()` uses, in order: `TAP_SERVICE=host:port`; a live `service.json` in the state dir
-(`TAP_STATE_DIR`, default `~/.tap`); otherwise it starts `tap serve` from `TAP_BIN` or `tap` on
-`PATH`. A started service stays running like the ADB server (`tap stop` shuts it down), so
-concurrent test processes on one machine respect each other's device locks.
+(`TAP_STATE_DIR`, default `~/.tap`), written by `tap start`. It never starts a service; without
+one it raises `TapError: no running tap service … run `tap start``. A started service stays
+running like the ADB server (`tap stop`), so concurrent test processes on one machine share it
+and respect each other's device locks.
+
+To start and stop it from Python, `tap.start_service()` runs `tap start` (from `TAP_BIN` or
+`tap` on `PATH`) and returns a `StartResult(address, started)` — `started` is `False` when one
+was already running — and `tap.stop_service()` runs `tap stop`. The pytest plugin does both
+when `tap_manage_service = true` / `TAP_MANAGE_SERVICE=1`, stopping only a service it started.
 
 ## Script usage
 

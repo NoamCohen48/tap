@@ -17,10 +17,11 @@ import org.junit.jupiter.api.extension.ExtendWith
  * | `tap.autPackage` | the application under test (required) |
  * | `tap.artifactsDir` | failure artifacts root (default `build/tap-artifacts`) |
  * | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds (default 300) |
- * | `tap.service` | `host:port` of a running `tap serve` (default: discover or auto-start) |
- * | `tap.bin` | the `tap` executable to auto-start (default `TAP_BIN` or `tap` on `PATH`) |
+ * | `tap.service` | `host:port` of a running service (default: the one `tap start` recorded in the state dir) |
+ * | `tap.manageService` | `true` = run `tap start` before the first test and `tap stop` after the last one if that start created the service (default `false`: a service must already be running) |
+ * | `tap.bin` | the `tap` executable `tap.manageService` uses (default `TAP_BIN` or `tap` on `PATH`) |
  *
- * Sessions come from the host service (`tap serve`), which owns ADB, the driver and the
+ * Sessions come from the host service (`tap start`), which owns ADB, the driver and the
  * machine-wide device pool; the driver APKs ship inside the service.
  */
 @Target(AnnotationTarget.CLASS)

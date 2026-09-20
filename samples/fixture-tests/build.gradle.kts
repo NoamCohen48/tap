@@ -17,8 +17,8 @@ dependencies {
  * Real-device sample suite. Run with:
  *   ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554[,SERIAL]
  * Without -Ptap.serials the task is skipped. The fixture app and the host service (which
- * bundles the driver) are built automatically; the tests talk to a running `tap serve` or
- * auto-start the JVM distribution built here.
+ * bundles the driver) are built automatically; the tests use a running service or start (and
+ * afterwards stop) the JVM distribution built here (`-Ptap.manageService=false` to require one).
  */
 val serials = providers.gradleProperty("tap.serials")
 val fixtureApk = rootProject.layout.projectDirectory.file("fixture-app/build/outputs/apk/debug/fixture-app-debug.apk")
@@ -32,6 +32,8 @@ tasks.test {
     systemProperty("tap.serials", serials.getOrElse(""))
     systemProperty("tap.autPackage", "com.company.tap.fixture")
     systemProperty("tap.bin", serviceBin.asFile.absolutePath)
+    // Starts the JVM dist built here unless a service is already running; stops it again if it started it.
+    systemProperty("tap.manageService", providers.gradleProperty("tap.manageService").getOrElse("true"))
     systemProperty("tap.fixtureApk", fixtureApk.asFile.absolutePath)
     systemProperty("tap.artifactsDir", layout.buildDirectory.dir("tap-artifacts").get().asFile.absolutePath)
     // Optional overrides: -Ptap.acquireTimeoutSeconds=…, -Ptap.service=host:port

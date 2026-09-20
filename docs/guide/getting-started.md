@@ -35,17 +35,18 @@ one:
     export PATH="$PWD/host/service/build/install/tap/bin:$PATH"
     ```
 
-You do not have to start it. Clients look for a running service (`~/.tap/service.json`) and
-start `tap serve` themselves if there is none; like the ADB server it then stays up until
-`tap stop`. It binds loopback only. The on-device driver is bundled inside the executable and
+Start it once; like the ADB server it stays up until `tap stop`, shared by every test process on
+the machine. It binds loopback only. The on-device driver is bundled inside the executable and
 installed on each device the first time a session opens.
 
-Check that it sees your devices:
-
 ```bash
-tap serve &        # optional; clients auto-start it
+tap start          # prints: started 127.0.0.1:PORT pid=PID (or "running …" if it already is)
 tap status
 ```
+
+Clients never start the service themselves; if none is running they fail with *run `tap start`*.
+Test runners can do the starting and stopping for you — `tap.manageService=true` (JUnit) or
+`tap_manage_service = true` (pytest) — see [Configuration](configuration.md#how-clients-find-the-service).
 
 ## 2. Kotlin + JUnit 5
 
