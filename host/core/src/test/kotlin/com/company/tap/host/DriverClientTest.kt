@@ -106,6 +106,44 @@ class DriverClientTest {
         }
 
     @Test
+    fun cancellationAlwaysWinsOverATerminalInstalledAtTheRacePoint() =
+        runBlocking {
+            val tap = client.submit(Tap(selector))
+            assertEquals(FrameType.REQUEST, driver.nextFrame().type)
+            // Installed synchronously inside await()'s cancellation path, after CANCEL is queued
+            // and before the original cancellation is rethrown: the exact race the shortcut lost.
+            client.afterAwaitCancel = {
+                tap.complete(Response.ok(Done, durationMs = 12))
+            }
+            try {
+                val original = CancellationException("original cancellation")
+                val awaiting = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { tap.await() }
+                awaiting.cancel(original)
+                val thrown = assertFailsWith<CancellationException> { awaiting.await() }
+                assertEquals("original cancellation", thrown.message)
+                assertTrue(tap.responseOrNull?.ok == true)
+                assertEquals(TransmissionState.TERMINAL_RESPONSE, tap.transmissionState)
+                assertFalse(tap.cancel(), "terminal command must not be cancellable")
+
+                // The CANCEL launch may or may not have written before the terminal install won
+                // the race; either way the transport stays ordered and reusable. A stale CANCEL
+                // is consumed here so the health REQUEST below is read deterministically.
+                val health = client.submit(Health)
+                var frame = driver.nextFrame()
+                if (frame.type == FrameType.CANCEL) {
+                    assertEquals(tap.requestId, frame.requestId)
+                    frame = driver.nextFrame()
+                }
+                assertEquals(FrameType.REQUEST, frame.type)
+                driver.respond(frame.requestId, Response.ok(Done, durationMs = 1))
+                assertTrue(health.await().ok)
+                assertFalse(client.isPoisoned)
+            } finally {
+                client.afterAwaitCancel = null
+            }
+        }
+
+    @Test
     fun awaitingCoroutineCancelPropagatesPromptlyWhileTerminalIsStillRecorded() =
         runBlocking {
             val tap = client.submit(Tap(selector))

@@ -101,7 +101,7 @@ class DeviceSessionTest {
         }
 
     private fun sessionConfig(
-        adb: FakeAdb,
+        adb: Adb,
         fake: FakeDriverServer,
         processes: MutableList<FakeProcess>,
     ): DeviceSessionConfig =
@@ -112,6 +112,53 @@ class DeviceSessionTest {
             adb = adb,
             processStarter = readyStarter(fake, processes),
         )
+
+    /**
+     * An [Adb] that answers every session-open call from canned state but runs `removeForward`
+     * through the real process path, so an unreapable child exercises close's quarantine without
+     * a device. The driver is absent during recovery, present once forwarded, and gone again
+     * after a force-stop, mirroring a real force-stop.
+     */
+    private class ReapUncertainAdb(
+        val hostPort: Int,
+        blockingChild: FakeProcess,
+    ) : Adb("fake-adb") {
+        var driverPresent = false
+
+        init {
+            processStarter = ProcessStarter { blockingChild }
+        }
+
+        override suspend fun bootId(serial: String) = "boot-1"
+
+        override suspend fun wakeAndDismissKeyguard(serial: String) = Unit
+
+        override suspend fun forceStop(
+            serial: String,
+            packageName: String,
+        ) {
+            driverPresent = false
+        }
+
+        override suspend fun processIds(
+            serial: String,
+            packageName: String,
+        ) = if (driverPresent && packageName == DRIVER_PACKAGE) listOf(4242) else emptyList()
+
+        override suspend fun processStat(
+            serial: String,
+            pid: Int,
+            timeoutMs: Long,
+        ) = ProcessStat.Live("99999")
+
+        override suspend fun forwards(serial: String) = emptyList<Forwarding>()
+
+        override suspend fun forward(
+            serial: String,
+            devicePort: Int,
+        ) = hostPort.also { driverPresent = true }
+        // removeForward intentionally runs the real path: it reaps the blocking child above.
+    }
 
     private fun journalStore() = SessionJournalStore(tempDir.resolve("sessions"), serial)
 
@@ -412,6 +459,45 @@ class DeviceSessionTest {
                 )
                 journalStore().acquireLease(0).close()
             } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `close maps an unreapable adb child to quarantine and still releases the lease`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-reap", 1, secret, acceptAnySession = true)
+            // removeForward's drain ignores cancellation and stream closure; close must still
+            // return boundedly, quarantine the journal, and free the per-serial lease.
+            val blockingChild = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
+            val adb = ReapUncertainAdb(fake.port, blockingChild)
+            try {
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                assertEquals(JournalState.READY, journalStore().read()?.state)
+
+                val started = System.nanoTime()
+                val failure = assertFailsWith<IllegalStateException> { session.close(timeoutMs = 2_000) }
+                val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+                assertTrue(elapsedMs < 15_000, "close took ${elapsedMs}ms")
+                assertTrue(
+                    "survived bounded reap" in failure.message.orEmpty(),
+                    failure.message.orEmpty(),
+                )
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                blockingChild.releaseStdout()
+                blockingChild.forceExit()
                 fake.close()
             }
         }

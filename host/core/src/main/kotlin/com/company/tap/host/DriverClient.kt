@@ -104,6 +104,11 @@ class DriverClient private constructor(
     /** Test seam: invoked after the reader installs a terminal transmission state. */
     internal var afterTerminalResponse: (() -> Unit)? = null
 
+    /** Test seam: invoked synchronously in [PendingCommand.await]'s cancellation path after the
+     * cooperative CANCEL is queued and before the original [CancellationException] is rethrown,
+     * so a test can install a terminal response at that exact race point. Null in production. */
+    internal var afterAwaitCancel: (() -> Unit)? = null
+
     /** Test seam for the physical write itself; the default is the real socket write. */
     internal var frameSink: FrameSink = FrameSink { frame -> FrameCodec.write(socket.getOutputStream(), frame) }
 
@@ -313,8 +318,9 @@ class DriverClient private constructor(
          * `withTimeout`/gRPC/JUnit deadline — is *not* the command's outcome: the client forwards
          * a cooperative `CANCEL` best-effort, keeps the pending entry registered for the reader so
          * a later frame is never an "unknown request id" and the mutation gate's verdict is
-         * still recorded, and rethrows the original cancellation promptly. A terminal result that
-         * already won the race may be returned, but a future one is never waited for. The socket
+         * still recorded, and always rethrows the original cancellation, even when a terminal
+         * response is installed concurrently afterwards. A terminal result that already completed
+         * the deferred is returned normally; the cancellation path never returns one. The socket
          * is never closed merely because the caller was cancelled; a client-owned watcher enforces
          * the private budget afterwards so the abandoned entry cannot leak.
          */
@@ -333,7 +339,7 @@ class DriverClient private constructor(
                 throw poisonAsLoss(budgetMs)
             } catch (cancelled: CancellationException) {
                 cancel()
-                terminal?.let { return it }
+                afterAwaitCancel?.invoke()
                 throw cancelled
             } catch (failure: Throwable) {
                 throw transportFailure(failure)

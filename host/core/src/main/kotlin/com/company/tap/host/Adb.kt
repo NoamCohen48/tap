@@ -1,16 +1,20 @@
 package com.company.tap.host
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.absolutePathString
 
@@ -113,23 +117,36 @@ open class Adb(
     /**
      * Runs one process with a locally owned deadline and reaps it in all outcomes. The local
      * timeout is a null, never an exception: an outer cancellation propagates as cancellation
-     * instead of being converted into the timeout's [IllegalStateException]. The child is
-     * destroyed, its streams closed to unblock the drain, and the drain joined boundedly, so no
-     * path waits unboundedly on a blocking drain.
+     * instead of being converted into the timeout's [IllegalStateException].
+     *
+     * The output drain lives in a locally owned scope on a dedicated daemon thread, never as a
+     * child of the caller's scope: a drain that ignores cancellation and stream closure (a
+     * blocking read) therefore cannot structurally block return after [ADB_REAP_TIMEOUT_MS].
+     * When process or drain death cannot be proven within the bound, this throws
+     * [IllegalStateException] (with any in-flight failure suppressed into it) so the caller
+     * quarantines instead of trusting unproven cleanup. The executor is shut down on every path
+     * and its thread is a daemon, so even an abandoned blocking drain cannot hold the JVM open.
      */
     private suspend fun runAdbProcess(
         command: List<String>,
         timeoutMs: Long,
         timeoutMessage: () -> String,
-    ): Pair<Int, String> =
-        coroutineScope {
-            lateinit var process: Process
-            // Install cleanup ownership before returning to the caller's cancellable context. A
-            // cancellation while start() is returning cannot discard an already-created child.
-            withContext(NonCancellable) {
-                process = withContext(Dispatchers.IO) { processStarter.start(command) }
+    ): Pair<Int, String> {
+        lateinit var process: Process
+        // Install cleanup ownership before returning to the caller's cancellable context. A
+        // cancellation while start() is returning cannot discard an already-created child.
+        withContext(NonCancellable) {
+            process = withContext(Dispatchers.IO) { processStarter.start(command) }
+        }
+        val drainExecutor =
+            Executors.newSingleThreadExecutor { task ->
+                Thread(task, "adb-output-drain").apply { isDaemon = true }
             }
-            val drain = async(Dispatchers.IO) { process.inputStream.bufferedReader().use { it.readText() } }
+        val drainScope = CoroutineScope(SupervisorJob() + drainExecutor.asCoroutineDispatcher())
+        val drain = drainScope.async { process.inputStream.bufferedReader().use { it.readText() } }
+        try {
+            var primary: Throwable? = null
+            var outcome: Pair<Int, String>? = null
             try {
                 currentCoroutineContext().ensureActive()
                 // `Process.waitFor` is not cancellable, so the deadline is a polling loop.
@@ -143,17 +160,36 @@ open class Adb(
                 val text =
                     withTimeoutOrNull(5_000) { drain.await() }
                         ?: throw IllegalStateException("ADB output drain timed out: ${command.joinToString(" ")}")
-                process.exitValue() to text
-            } finally {
-                reap(process, drain)
+                outcome = process.exitValue() to text
+            } catch (error: Throwable) {
+                primary = error
             }
+            try {
+                reap(command, process, drain, primary)
+            } catch (reapError: Throwable) {
+                primary?.let(reapError::addSuppressed)
+                throw reapError
+            }
+            if (primary != null) throw primary
+            check(outcome != null) { "ADB process produced neither output nor failure" }
+            return outcome
+        } finally {
+            drainScope.cancel()
+            drainExecutor.shutdown()
         }
+    }
 
     /** Destroys a child that may still be alive (local timeout or caller cancellation), closes
-     * its streams to unblock the drain, and reaps both with a bound. Never throws. */
+     * its streams to unblock the drain, and reaps both within [ADB_REAP_TIMEOUT_MS]. Never waits
+     * beyond the bound: when process or drain death cannot be proven, throws
+     * [IllegalStateException] so the caller quarantines instead of trusting unproven cleanup.
+     * The in-flight failure rides in the message (cancellation machinery may drop the suppressed
+     * chain on delivery) as well as suppressed. */
     private suspend fun reap(
+        command: List<String>,
         process: Process,
         drain: Deferred<String>,
+        primary: Throwable?,
     ) {
         runCatching { if (process.isAlive) process.destroy() }
         closeProcessStreams(process)
@@ -167,6 +203,13 @@ open class Adb(
                 }
             }
         }
+        if (drain.isCompleted && !process.isAlive) return
+        val inFlight = primary?.let { "; in-flight failure: $it" } ?: ""
+        throw IllegalStateException(
+            "ADB process or output drain survived bounded reap " +
+                "(${ADB_REAP_TIMEOUT_MS}ms): ${command.joinToString(" ")} " +
+                "(processAlive=${process.isAlive}, drainDone=${drain.isCompleted})$inFlight",
+        )
     }
 
     /**

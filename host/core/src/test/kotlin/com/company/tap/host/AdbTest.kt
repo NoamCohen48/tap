@@ -163,4 +163,44 @@ class AdbTest {
                 ProcessStarter { FakeProcess(stdout = "  hello\n", exitCode = 0) }
             assertEquals("hello", adb.run(serial, "shell", "echo", "hello"))
         }
+
+    @Test
+    fun `cancelled call with a blocking drain returns within the reap bound as uncertain`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val child = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
+            adb.processStarter = ProcessStarter { child }
+            try {
+                val started = System.nanoTime()
+                val failure =
+                    assertFailsWith<IllegalStateException> {
+                        withTimeout(200) { adb.devices(timeoutMs = 30_000) }
+                    }
+                val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+                assertTrue(
+                    elapsedMs < ADB_REAP_TIMEOUT_MS + 10_000,
+                    "cancelled call took ${elapsedMs}ms; a drain that ignores cancellation " +
+                        "must not block return past the reap bound",
+                )
+                assertTrue(
+                    "survived bounded reap" in failure.message.orEmpty(),
+                    failure.message.orEmpty(),
+                )
+                // The original cancellation rides in the message: cancellation machinery may drop
+                // the suppressed chain on delivery, but the report must still name it.
+                assertTrue(
+                    "Timed out waiting for 200 ms" in failure.message.orEmpty(),
+                    failure.message.orEmpty(),
+                )
+                assertTrue(child.destroyed.get() || child.destroyedForcibly.get())
+                assertTrue(child.stdinClosed.get())
+                assertTrue(child.stdoutClosed.get())
+                assertTrue(child.stderrClosed.get())
+            } finally {
+                child.releaseStdout()
+                child.forceExit()
+            }
+            // The owned drain executor is shut down: the released child still answers a later call.
+            assertEquals(emptyList(), adb.devices(timeoutMs = 30_000))
+        }
 }
