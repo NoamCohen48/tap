@@ -1,7 +1,6 @@
 package com.company.tap.service
 
 import com.company.tap.host.Adb
-import com.company.tap.host.AppLifecycle
 import com.company.tap.host.CommandTransportException
 import com.company.tap.host.DeviceSession
 import com.company.tap.host.DeviceSessionConfig
@@ -52,15 +51,11 @@ class Connection(val id: String, val name: String) {
 
 /**
  * One open driver session as the service sees it: the `:host:core` [DeviceSession] (lock,
- * journal, driver, forward, authenticated client) plus what the service adds — the owning
- * [connection], the default command timeout and the captured driver log.
+ * journal, driver, forward, authenticated client, per-package [DeviceSession.app]) plus what
+ * the service adds — the owning [connection], the default command timeout and the captured
+ * driver log.
  */
-class Session(val id: String, val connection: Connection, val device: DeviceSession, val defaultTimeoutMs: Long, val log: DriverLogBuffer) {
-    private val apps = ConcurrentHashMap<String, AppLifecycle>()
-
-    /** One [AppLifecycle] per package so the sync identity survives across calls. */
-    fun app(packageName: String): AppLifecycle = apps.computeIfAbsent(packageName) { AppLifecycle(device, it) }
-}
+class Session(val id: String, val connection: Connection, val device: DeviceSession, val defaultTimeoutMs: Long, val log: DriverLogBuffer)
 
 /** The last [capacity] lines of a session's driver output, kept for failure artifacts. */
 class DriverLogBuffer(private val capacity: Int = 2_000) {

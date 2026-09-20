@@ -136,7 +136,7 @@ tap/
 |   |   |   +-- Adb.kt               ProcessBuilder wrapper (`Adb(executable)`); every call takes a serial; wakeAndDismissKeyguard
 |   |   |   +-- SessionJournal.kt    JournalState, SessionJournal, SessionJournalStore (lease + fsync'd atomic write)
 |   |   |   +-- DriverLifecycle.kt   start-with-retry, port range, forward, process observation, journal recovery, cleanup
-|   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY
+|   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
 |   |   |   +-- DriverClient.kt      handshake, request IDs, reader thread, heartbeat thread, PendingCommand, screenshot()
 |   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits)
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
@@ -146,7 +146,7 @@ tap/
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
 |   |   +-- src/main/kotlin/com/company/tap/service/
 |   |   |   +-- ServiceMain.kt       CLI: serve | status | stop | version; service.json descriptor
-|   |   |   +-- TapService.kt        connections, device list (serials; lock probe + journal), sessions + AppLifecycle per package, execute with transport-loss-as-data
+|   |   |   +-- TapService.kt        connections, device list (serials; lock probe + journal), sessions, execute with transport-loss-as-data
 |   |   |   +-- Servicers.kt         gRPC servicers for Connection/Device/Session/App; status mapping; off-thread Execute so cancel reaches the driver
 |   |   |   +-- Conversions.kt       proto <-> protocol models (enums by name, selectors, commands, results)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id

@@ -5,6 +5,7 @@ import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
@@ -54,6 +55,16 @@ class DeviceSession private constructor(
     val generation: Long get() = journal.generation
     val sessionId: String get() = journal.sessionId
     val adb: Adb get() = config.adb
+
+    private val apps = ConcurrentHashMap<String, AppLifecycle>()
+
+    /**
+     * The [AppLifecycle] of [packageName] on this session, one instance per package for the
+     * session's lifetime: it carries the sync identity handed out at bootstrap, which must
+     * survive across calls for `awaitIdle` to stay guarded against a restarted process.
+     */
+    fun app(packageName: String = config.autPackage): AppLifecycle =
+        apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
 
     @Volatile
     private var closed = false

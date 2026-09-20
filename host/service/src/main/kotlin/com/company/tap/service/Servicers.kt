@@ -265,7 +265,7 @@ class AppServicer(private val service: TapService) : AppServiceGrpc.AppServiceIm
     private fun app(request: AppRequest): Pair<AppLifecycle, Long> {
         require(request.packageName.isNotBlank()) { "package_name is required" }
         val session = service.session(request.sessionId)
-        return session.app(request.packageName) to (if (request.timeoutMs > 0) request.timeoutMs else 0L)
+        return session.device.app(request.packageName) to (if (request.timeoutMs > 0) request.timeoutMs else 0L)
     }
 
     private fun timeout(ms: Long, default: Long) = if (ms > 0) ms else default
