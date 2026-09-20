@@ -67,3 +67,8 @@ class WaitTimeoutError(TapError):
 
 class AppLifecycleError(TapError):
     """Install/launch/stop did not reach the verified end state."""
+
+
+class DeviceBusyError(TapError):
+    """Another session — in this process or any other — holds the device, and ``wait_for_device``
+    was zero or ran out. The device is fine; try later or pick another serial."""

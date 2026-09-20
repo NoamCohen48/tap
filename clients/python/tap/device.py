@@ -54,12 +54,16 @@ class Device:
         skip_driver_install: bool = False,
         sync_authority: str | None = None,
         allowed_system_packages: list[str] | None = None,
+        wait_for_device: float = 0,
     ) -> "Device":
-        """Open a driver session on ``serial`` for ``aut_package`` (used by ``Run.open_device``)."""
+        """Open a driver session on ``serial`` for ``aut_package`` (used by ``Run.open_device``).
+        The session holds the device's per-serial lock until ``close``; if another session holds
+        it the open raises ``DeviceBusyError`` — at once, or after ``wait_for_device`` seconds."""
         timeouts = timeouts or Timeouts()
         request = pb.OpenSessionRequest(
             run_id=run.id, serial=serial, aut_package=aut_package,
             default_timeout_ms=int(timeouts.action * 1000),
+            lease_timeout_ms=int(wait_for_device * 1000),
             allowed_system_packages=allowed_system_packages or [],
         )
         if driver_apk:
@@ -71,7 +75,7 @@ class Device:
         if sync_authority:
             request.sync_authority = sync_authority
         with mapped_errors(serial):
-            response = run.service.sessions.Open(request, timeout=180)
+            response = run.service.sessions.Open(request, timeout=180 + wait_for_device)
         return cls(run, response, aut_package, timeouts)
 
     # --- raw protocol escape hatch --------------------------------------------------------------

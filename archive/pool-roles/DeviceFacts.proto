@@ -1,0 +1,13 @@
+// Archived from contracts/api/proto/tap.proto (commit 4213140): per-serial facts the pool gathered with getprop for the constraint matcher.
+
+// What the pool knows about a device, gathered once per serial; informational, for
+// clients that choose devices from the inventory.
+message DeviceFacts {
+  string serial = 1;
+  int32 api_level = 2;
+  string manufacturer = 3;
+  string model = 4;
+  bool emulator = 5;
+}
+
+// PoolDevice had: DeviceFacts facts = 1;

@@ -4,7 +4,7 @@
  your test process(es)                 one per machine                       per device
 ┌────────────────────────┐   gRPC     ┌───────────────────────────┐  ADB    ┌──────────────────────┐
 │ Kotlin SDK + JUnit 5   │◄──────────►│ tap serve                 │◄───────►│ Tap driver           │
-│ Python + pytest        │ loopback   │  device pool + leases     │ forward │  (UiAutomator, own   │
+│ Python + pytest        │ loopback   │  sessions + inventory     │ forward │  (UiAutomator, own   │
 │ (thin gRPC clients)    │            │  sessions, journals       │  TAP1   │   package)           │
 └────────────────────────┘            │  ADB, driver lifecycle    │         │  ┌────────────────┐  │
                                       │  bundled driver APKs      │         │  │ app under test │  │
@@ -23,7 +23,7 @@ selector, the driver resolves it against the accessibility tree right then, acts
 **The service** (`tap serve`) is the only process that talks to ADB. It installs the bundled
 driver, forwards ports, opens sessions, verifies the driver's identity on every handshake,
 journals what it does (so a crashed host can recover or quarantine a device instead of leaving
-it half-used) and runs the device pool. One service per machine serves every test process,
+it half-used) and reports the device inventory. One service per machine serves every test process,
 in every language, at once. It listens on loopback and is started on demand by the clients.
 
 **The clients** are gRPC clients of the service's `tap.v1` API. They hold no device logic:
@@ -34,10 +34,12 @@ the Kotlin `Device`/`Element` and the Python `Device`/`Element` build the same p
 
 - A **run** is a test process's connection to the service. It stays attached over a stream;
   if the process dies, the service closes the run's sessions and frees its devices.
-- A run **acquires** devices by **role** (`"device"`, or `"sender"`/`"receiver"`), each role
-  with optional constraints (serial, API range, emulator or not, model). Acquisition is
-  all-or-none and queued: you get every role or you wait, never half a set. Devices are
-  leased machine-wide, so two processes never share one.
+- A device is in use exactly while a **session** holds its per-serial lock, which the OS
+  releases if the process dies; there is no separate lease to acquire. Opening a busy device
+  fails at once, or waits if you ask it to. **Roles** (`"device"`, or `"sender"`/`"receiver"`)
+  exist only in the clients: the JUnit extension and the pytest plugin decide which serial
+  plays which role and open the sessions in sorted serial order, which is what makes
+  concurrent multi-device tests deadlock-free.
 - A **session** is one driver connection to one device for one app under test. The JUnit
   extension and the pytest plugin open a session per role before each test and close it after
   — a session never outlives a test. Sessions carry a *generation*: after any loss or restart

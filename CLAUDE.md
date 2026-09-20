@@ -11,8 +11,12 @@ See `README.md` for build/run commands.
 
 ## Documents
 
-- `.docs/android-e2e-framework-implementation-plan.md` — normative design. Wins over every
-  other doc on conflicts.
+- `.docs/android-e2e-framework-implementation-plan.md` — the original design. A reference,
+  not a source of truth: the code, the contracts and the decision records below win where
+  they differ, and any deliberate departure from the plan needs the user's approval and a
+  note in the relevant decision record. Never silently "correct" code back to the plan.
+- `.docs/pool-and-leases.md` — decision record: the service leases nothing; exclusive device
+  use is the per-serial journal lock, roles and device choice are client-side.
 - `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 1.0). Update it in
   the same change as any protocol edit.
 - `.docs/project-architecture.md` — current module/file layout.
@@ -46,6 +50,12 @@ rather than inventing behavior from scratch. Primary references:
 - **androidx.test.uiautomator**: the API we build on. Check the current AndroidX source
   (`UiDevice`, `ByMatcher`, `BySelector`, `UiObject2`) before assuming what a selector or
   gesture does, and prefer newer predicate/window-scoped APIs where they fit.
+- **openatx/uiautomator2**: the Python UiAutomator wrapper. Python API ergonomics (lazy
+  `d(text=...)` objects, `exists`/`wait`, `app_start`/`app_wait`, gesture and key helpers),
+  on-device agent lifecycle and Android/OEM quirks it has hit over the years.
+- **callstack/agent-device**: CLI + MCP server + Node API for AI coding agents. The shape of an
+  agent-facing surface (accessibility snapshots with refs and diffs, `--settle`, evidence
+  capture, replay scripts) — a possible future adapter over the Tap service, not a driver model.
 
 Rules when doing so:
 

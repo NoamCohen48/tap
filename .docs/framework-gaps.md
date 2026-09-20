@@ -14,12 +14,12 @@ sample suite.
 
 A product team can write and run real tests today:
 
-- `:host:service` (`tap serve`) — the one host process: ADB, journals, leases, driver
-  lifecycle, `AppLifecycle`, machine-wide constrained device pool; JVM dist or native image.
+- `:host:service` (`tap serve`) — the one host process: ADB, journals, per-device locks, driver
+  lifecycle, `AppLifecycle`, device inventory; JVM dist or native image.
 - `:clients:kotlin:sdk` — `TapClient`/`Run`, `Device`, `App`, `Element`, `ElementWait`,
   selector DSL, typed exceptions; a gRPC client of the service.
 - `:clients:kotlin:junit5` — `@TapTest`, `Device`/`Devices` parameter injection, named roles,
-  all-or-none acquisition from the service pool, failure artifacts, `tap.*` system-property /
+  roles mapped to serials and opened in serial order, failure artifacts, `tap.*` system-property /
   `TAP_*` env config.
 - `clients/python` — the same API and a pytest plugin.
 - `:samples:fixture-tests` — twelve tests (single-device journeys, ambiguity, text input,
@@ -61,7 +61,7 @@ the CI pilot.
 | `WaitOptions.stableFor` | Host-polled waits (`enabled`, `textEquals`, `count`, …) have `timeout` and `pollInterval` only; no "condition held for N ms". | Small. |
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
-| Device constraints | The service pool matches serial, API range, emulator/physical and model substring; no locale, orientation or capability constraints, and the JUnit extension exposes only serial pinning (`DeviceConstraints` is available from the SDK). | Extend `DeviceConstraints` + `Facts`; add a `@TapDevice(minApi = …)` style annotation. |
+| Device constraints | The service leases nothing (decided 2026-09-20, `pool-and-leases.md`: exclusive use is the per-serial journal lock a session holds; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier service-side matcher and lease table are archived under `archive/pool-roles/` and `archive/pool-leases/`. | Client-side selection (`getprop` per serial, or `DeviceInfo` after open); a `@TapDevice(minApi = …)` style annotation. |
 | Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; `DeviceSession`, `AppLifecycle`, `TapService`, the Kotlin `Device`/`App`/`Element` and `TapExtension` are exercised only on real devices via the sample suites. Failure paths (install failure, forward conflict, pool timeout, artifact capture failure) have no JVM tests. | Highest-value testing gap; a fake `Adb` + the existing `FakeDriverServer` would cover most of it. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
@@ -124,6 +124,11 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 - Compose: supported only through `testTagsAsResourceId` → `rawRes(tag)` and standard
   semantics text/description. No semantics-tree access, no `useUnmergedTree`, no Compose
   lazy-list item scrolling by key (only by visible selector via `SCROLL_UNTIL`).
+- Observed once on emulator-5554 (2026-09-20): `MainScreenTest.scrollsComposeListUntilItemIsVisible`
+  failed on `item.exists()` immediately after `scrollUntil` returned, with the item visible in
+  the failure screenshot — a Compose semantics-update race between the scroll's match and the
+  next resolve. Passed on rerun. If it recurs, `SCROLL_UNTIL` should re-verify its match after
+  a short tree-stable wait before returning, not the test retry.
 - WebView: nothing. The plan's boundary (no WebDriver surface; accessibility-only within
   WebViews, explicit "not supported" for the rest) is not yet enforced or documented in the
   SDK.
@@ -160,8 +165,8 @@ image on `main`) and tag-driven releases per artifact family (service binaries +
 Kotlin client, Python wheel, sync-sdk) with per-family versions. Not yet proven on a GitHub
 runner (no push since it was written).
 
-Not started: sharding across devices at the JUnit platform level (the pool handles
-concurrency inside one JVM only), a physical-device / API 29 CI lane, soak lane, benchmark
+Not started: sharding across devices at the JUnit platform level (device locks handle
+concurrency; nothing distributes classes across devices), a physical-device / API 29 CI lane, soak lane, benchmark
 gates (per-command latency, session start time), the confidence-based reliability gate,
 upgrade/rollback procedure, run-time client↔service version skew check.
 
@@ -169,8 +174,8 @@ upgrade/rollback procedure, run-time client↔service version skew check.
 
 Implemented (2026-09-19): the host session service (`:host:service`, `service-api.md`),
 its native image, and the Python client + pytest plugin (`clients/python/`), with the sample suite
-passing on API 29 and API 34 through the service. The pool has per-role constraints
-(serial, API range, emulator, model) and immediate release on client death. The Kotlin
+passing on API 29 and API 34 through the service. The service leases nothing (2026-09-20,
+`pool-and-leases.md`): a session holds its device's file lock, which the OS drops on client death. The Kotlin
 SDK/JUnit extension is a gRPC client of the same service (2026-09-19): one pool serves both
 languages and nothing under `host/` depends on `clients/`. Remaining:
 

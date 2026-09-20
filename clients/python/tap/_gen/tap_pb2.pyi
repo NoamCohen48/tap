@@ -468,12 +468,10 @@ class CloseRunRequest(_message.Message):
     def __init__(self, run_id: _Optional[str] = ...) -> None: ...
 
 class CloseRunResponse(_message.Message):
-    __slots__ = ("sessions_closed", "devices_released")
+    __slots__ = ("sessions_closed",)
     SESSIONS_CLOSED_FIELD_NUMBER: _ClassVar[int]
-    DEVICES_RELEASED_FIELD_NUMBER: _ClassVar[int]
     sessions_closed: int
-    devices_released: int
-    def __init__(self, sessions_closed: _Optional[int] = ..., devices_released: _Optional[int] = ...) -> None: ...
+    def __init__(self, sessions_closed: _Optional[int] = ...) -> None: ...
 
 class InfoRequest(_message.Message):
     __slots__ = ()
@@ -495,33 +493,17 @@ class InfoResponse(_message.Message):
     bundled_driver: bool
     def __init__(self, service_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., bundled_driver: _Optional[bool] = ...) -> None: ...
 
-class DeviceFacts(_message.Message):
-    __slots__ = ("serial", "api_level", "manufacturer", "model", "emulator")
-    SERIAL_FIELD_NUMBER: _ClassVar[int]
-    API_LEVEL_FIELD_NUMBER: _ClassVar[int]
-    MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
-    MODEL_FIELD_NUMBER: _ClassVar[int]
-    EMULATOR_FIELD_NUMBER: _ClassVar[int]
-    serial: str
-    api_level: int
-    manufacturer: str
-    model: str
-    emulator: bool
-    def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ...) -> None: ...
-
 class PoolDevice(_message.Message):
-    __slots__ = ("facts", "state", "leased_by_run", "leased_role", "quarantine_reason")
-    FACTS_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("serial", "state", "leased_by_run", "quarantine_reason")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     LEASED_BY_RUN_FIELD_NUMBER: _ClassVar[int]
-    LEASED_ROLE_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
-    facts: DeviceFacts
+    serial: str
     state: DeviceState
     leased_by_run: str
-    leased_role: str
     quarantine_reason: str
-    def __init__(self, facts: _Optional[_Union[DeviceFacts, _Mapping]] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., leased_role: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., leased_by_run: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
 
 class InventoryRequest(_message.Message):
     __slots__ = ()
@@ -533,68 +515,8 @@ class InventoryResponse(_message.Message):
     devices: _containers.RepeatedCompositeFieldContainer[PoolDevice]
     def __init__(self, devices: _Optional[_Iterable[_Union[PoolDevice, _Mapping]]] = ...) -> None: ...
 
-class DeviceConstraints(_message.Message):
-    __slots__ = ("serial", "min_api", "max_api", "emulator", "model_contains")
-    SERIAL_FIELD_NUMBER: _ClassVar[int]
-    MIN_API_FIELD_NUMBER: _ClassVar[int]
-    MAX_API_FIELD_NUMBER: _ClassVar[int]
-    EMULATOR_FIELD_NUMBER: _ClassVar[int]
-    MODEL_CONTAINS_FIELD_NUMBER: _ClassVar[int]
-    serial: str
-    min_api: int
-    max_api: int
-    emulator: bool
-    model_contains: str
-    def __init__(self, serial: _Optional[str] = ..., min_api: _Optional[int] = ..., max_api: _Optional[int] = ..., emulator: _Optional[bool] = ..., model_contains: _Optional[str] = ...) -> None: ...
-
-class RoleRequest(_message.Message):
-    __slots__ = ("role", "constraints")
-    ROLE_FIELD_NUMBER: _ClassVar[int]
-    CONSTRAINTS_FIELD_NUMBER: _ClassVar[int]
-    role: str
-    constraints: DeviceConstraints
-    def __init__(self, role: _Optional[str] = ..., constraints: _Optional[_Union[DeviceConstraints, _Mapping]] = ...) -> None: ...
-
-class AcquireRequest(_message.Message):
-    __slots__ = ("run_id", "roles", "timeout_ms")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    ROLES_FIELD_NUMBER: _ClassVar[int]
-    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    roles: _containers.RepeatedCompositeFieldContainer[RoleRequest]
-    timeout_ms: int
-    def __init__(self, run_id: _Optional[str] = ..., roles: _Optional[_Iterable[_Union[RoleRequest, _Mapping]]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
-
-class Assignment(_message.Message):
-    __slots__ = ("role", "device")
-    ROLE_FIELD_NUMBER: _ClassVar[int]
-    DEVICE_FIELD_NUMBER: _ClassVar[int]
-    role: str
-    device: DeviceFacts
-    def __init__(self, role: _Optional[str] = ..., device: _Optional[_Union[DeviceFacts, _Mapping]] = ...) -> None: ...
-
-class AcquireResponse(_message.Message):
-    __slots__ = ("assignments",)
-    ASSIGNMENTS_FIELD_NUMBER: _ClassVar[int]
-    assignments: _containers.RepeatedCompositeFieldContainer[Assignment]
-    def __init__(self, assignments: _Optional[_Iterable[_Union[Assignment, _Mapping]]] = ...) -> None: ...
-
-class ReleaseRequest(_message.Message):
-    __slots__ = ("run_id", "serials")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    SERIALS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    serials: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, run_id: _Optional[str] = ..., serials: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class ReleaseResponse(_message.Message):
-    __slots__ = ("released",)
-    RELEASED_FIELD_NUMBER: _ClassVar[int]
-    released: int
-    def __init__(self, released: _Optional[int] = ...) -> None: ...
-
 class OpenSessionRequest(_message.Message):
-    __slots__ = ("run_id", "serial", "aut_package", "driver_apk", "driver_test_apk", "skip_driver_install", "sync_authority", "allowed_system_packages", "default_timeout_ms")
+    __slots__ = ("run_id", "serial", "aut_package", "driver_apk", "driver_test_apk", "skip_driver_install", "sync_authority", "allowed_system_packages", "default_timeout_ms", "lease_timeout_ms")
     RUN_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
@@ -604,6 +526,7 @@ class OpenSessionRequest(_message.Message):
     SYNC_AUTHORITY_FIELD_NUMBER: _ClassVar[int]
     ALLOWED_SYSTEM_PACKAGES_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     run_id: str
     serial: str
     aut_package: str
@@ -613,7 +536,8 @@ class OpenSessionRequest(_message.Message):
     sync_authority: str
     allowed_system_packages: _containers.RepeatedScalarFieldContainer[str]
     default_timeout_ms: int
-    def __init__(self, run_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., driver_apk: _Optional[str] = ..., driver_test_apk: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., allowed_system_packages: _Optional[_Iterable[str]] = ..., default_timeout_ms: _Optional[int] = ...) -> None: ...
+    lease_timeout_ms: int
+    def __init__(self, run_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., driver_apk: _Optional[str] = ..., driver_test_apk: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., allowed_system_packages: _Optional[_Iterable[str]] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class OpenSessionResponse(_message.Message):
     __slots__ = ("session_id", "serial", "generation", "device_info")

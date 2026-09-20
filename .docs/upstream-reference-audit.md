@@ -1,6 +1,6 @@
-# Appium and Maestro Reference Audit
+# Upstream Reference Audit
 
-Date: 2026-09-17
+Date: 2026-09-17; uiautomator2 and agent-device added 2026-09-20.
 
 This audit records the upstream behavior Tap will adopt or adapt and the product surfaces it
 will deliberately not copy. It is an engineering decision record, not a statement that source
@@ -14,9 +14,15 @@ was imported. The implementation remains independently written.
   commit `7a54db007aa8a44f5df21cd0b52afc13c0d277ae`.
 - [Maestro](https://github.com/mobile-dev-inc/Maestro/tree/01a3e442afba15f80f825492dae2e48fcfd4239c),
   commit `01a3e442afba15f80f825492dae2e48fcfd4239c`.
+- [openatx/uiautomator2](https://github.com/openatx/uiautomator2/tree/657c5d791075945cc21e78e125b220461c8ae99c),
+  commit `657c5d791075945cc21e78e125b220461c8ae99c` (MIT). Python wrapper over an on-device
+  UiAutomator HTTP/JSON-RPC agent.
+- [callstack/agent-device](https://github.com/callstack/agent-device/tree/0ebd2540a33c674194d59357a48287629b8377a9),
+  commit `0ebd2540a33c674194d59357a48287629b8377a9` (MIT). CLI, MCP server and Node API that
+  lets coding agents drive and verify apps on iOS/Android/HarmonyOS/web/desktop.
 
-All three repositories identify their audited source as Apache-2.0. File history and headers
-must still be checked before any future source import.
+The first three repositories identify their audited source as Apache-2.0, the last two as MIT.
+File history and headers must still be checked before any future source import.
 
 ## Decision matrix
 
@@ -37,6 +43,11 @@ must still be checked before any future source import.
 | Process supervision | Maestro CLI runner code supervises instrumentation startup, liveness, and logs. Appium host code similarly owns server launch and cleanup. | **ADAPT** startup markers, liveness checks, bounded waits, and log capture. | Tap additionally verifies PID/start token, driver instance, boot ID, forward identity, and crash-resumable journals. |
 | Multi-device execution | Maestro's suite layer allocates devices and runs flows concurrently; Appium commonly uses one driver session per device. | **ADAPT** independent per-device workers and failure isolation. | Tap keeps interleaved Kotlin orchestration and must prove one disconnected device cannot stop another session. |
 | User-facing test model | Appium exposes WebDriver/HTTP and Maestro exposes YAML flows. | **DO NOT COPY** either surface. | Tap remains Kotlin/JUnit 5 first, with no WebDriver compatibility layer and no YAML interpreter. |
+| Python API ergonomics | uiautomator2's `d(text="Clock", className=...)` builds a lazy selector object with `.click()`, `.exists`, `.wait()`, `.wait_gone()`, child/sibling navigation, plus `app_start(stop=True)`, `app_wait`, `app_current`, key and gesture helpers (`swipe_ext`, `long_click`, `drag`), clipboard, toast and screen-state helpers. | **ADAPT** naming and coverage checklist for `clients/python` (which calls already exist, what a Python tester expects to find). | Tap's selector is a typed AST validated by the service, not kwargs; matching stays exactly-one for mutations. Compare the two surfaces when adding a Python call, not when designing the protocol. |
+| Implicit waits and watchers | uiautomator2 has a global `implicitly_wait`/`settings['wait_timeout']` applied to every lookup and **watchers** that auto-dismiss popups in a background thread. | **DO NOT COPY**. | Tap waits are explicit per call with one deadline; nothing runs unattended between commands, and nothing modifies the screen behind the test's back (a watcher is an unlogged mutation). |
+| On-device agent lifecycle | uiautomator2 installs an APK pair and a persistent agent, talks HTTP/JSON-RPC over a fixed forwarded port (9008), and re-initialises when the agent dies; XPath is served from a hierarchy dump on the host. | **ADAPT** the catalogue of failure modes (agent killed by the OEM, instrumentation dying with the AUT, uiautomator service already running, accessibility service conflicts) as test cases for the driver. **DO NOT COPY** the persistent agent, fixed port or XPath-over-dump model. | Tap's driver is per-session, port chosen per session and journaled, no dump on the hot path. |
+| Agent-facing surface | agent-device exposes `snapshot` (accessibility tree as `@eN [role] "name"` refs, `-i` interactive-only), `press/fill @ref --settle` returning a **diff** of the tree, `screenshot`, `verify`, logs/video/traces as evidence, `.ad` replay scripts, one execution path shared by CLI, MCP and the typed client. | **ADAPT** as the design reference for a future *agent adapter over the Tap service*: snapshot-as-diagnostic with stable serialisation, settle-then-diff as an explicit call, evidence bundle shape, CLI/MCP/typed-client parity. | This is a consumer of a driver, not a driver: Tap would expose it as another client of `tap.v1`, never inside `host/`. |
+| Ref-addressed elements | agent-device addresses nodes by refs that are valid only until the next snapshot/diff, and every settle re-dumps the tree. | **DO NOT COPY** into the test SDKs. | Refs are persistent node handles by another name and need a hierarchy dump per step — both invariants Tap keeps out of the hot path. An agent adapter may hold refs *on the adapter side*, translating each ref to a selector before calling the service. |
 
 ## Immediate implementation order
 

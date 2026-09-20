@@ -1,7 +1,5 @@
 package com.company.tap.service
 
-import com.company.tap.api.v1.AcquireRequest
-import com.company.tap.api.v1.AcquireResponse
 import com.company.tap.api.v1.AppAwaitIdleRequest
 import com.company.tap.api.v1.AppBool
 import com.company.tap.api.v1.AppEmpty
@@ -10,14 +8,12 @@ import com.company.tap.api.v1.AppInstallRequest
 import com.company.tap.api.v1.AppLaunchRequest
 import com.company.tap.api.v1.AppRequest
 import com.company.tap.api.v1.AppServiceGrpc
-import com.company.tap.api.v1.Assignment
 import com.company.tap.api.v1.AttachRequest
 import com.company.tap.api.v1.CloseRunRequest
 import com.company.tap.api.v1.CloseRunResponse
 import com.company.tap.api.v1.CloseSessionRequest
 import com.company.tap.api.v1.CloseSessionResponse
 import com.company.tap.api.v1.CommandResult
-import com.company.tap.api.v1.DeviceFacts
 import com.company.tap.api.v1.DeviceState
 import com.company.tap.api.v1.DriverLogRequest
 import com.company.tap.api.v1.DriverLogResponse
@@ -33,8 +29,6 @@ import com.company.tap.api.v1.OpenSessionResponse
 import com.company.tap.api.v1.PoolDevice
 import com.company.tap.api.v1.PoolServiceGrpc
 import com.company.tap.api.v1.ProcessIdentity
-import com.company.tap.api.v1.ReleaseRequest
-import com.company.tap.api.v1.ReleaseResponse
 import com.company.tap.api.v1.RunEvent
 import com.company.tap.api.v1.RunServiceGrpc
 import com.company.tap.api.v1.ScreenshotRequest
@@ -42,6 +36,7 @@ import com.company.tap.api.v1.ScreenshotResponse
 import com.company.tap.api.v1.SessionServiceGrpc
 import com.company.tap.host.AppLifecycle
 import com.company.tap.host.AppLifecycleException
+import com.company.tap.host.DeviceBusyException
 import com.company.tap.host.DriverClient
 import com.company.tap.host.HostWaitTimeoutException
 import com.company.tap.host.ProcessObservation
@@ -73,7 +68,9 @@ internal fun Throwable.toStatus(): StatusRuntimeException = when (this) {
     is StatusRuntimeException -> this
     is UnknownRunException, is UnknownSessionException -> Status.NOT_FOUND.withDescription(message).asRuntimeException()
     is IllegalArgumentException -> Status.INVALID_ARGUMENT.withDescription(message).asRuntimeException()
-    is AcquireTimeoutException, is HostWaitTimeoutException -> Status.DEADLINE_EXCEEDED.withDescription(message).asRuntimeException()
+    // A busy device is a precondition failure when no wait was asked for, a timeout when it was.
+    is DeviceBusyException -> (if (waitedMs > 0) Status.DEADLINE_EXCEEDED else Status.FAILED_PRECONDITION).withDescription(message).asRuntimeException()
+    is HostWaitTimeoutException -> Status.DEADLINE_EXCEEDED.withDescription(message).asRuntimeException()
     is AppLifecycleException, is IllegalStateException -> Status.FAILED_PRECONDITION.withDescription(message).asRuntimeException()
     else -> Status.INTERNAL.withDescription("${this::class.simpleName}: $message").withCause(this).asRuntimeException()
 }
@@ -132,8 +129,8 @@ class RunServicer(
     }
 
     override fun close(request: CloseRunRequest, observer: StreamObserver<CloseRunResponse>) = reply(observer) {
-        val (sessions, devices) = service.closeRun(request.runId, "client request")
-        CloseRunResponse.newBuilder().setSessionsClosed(sessions).setDevicesReleased(devices).build()
+        val sessions = service.closeRun(request.runId, "client request")
+        CloseRunResponse.newBuilder().setSessionsClosed(sessions).build()
     }
 
     override fun info(request: InfoRequest, observer: StreamObserver<InfoResponse>) = reply(observer) {
@@ -156,27 +153,13 @@ class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServic
         InventoryResponse.newBuilder().addAllDevices(service.inventory().map(::poolDevice)).build()
     }
 
-    override fun acquire(request: AcquireRequest, observer: StreamObserver<AcquireResponse>) = reply(observer) {
-        val run = service.run(request.runId)
-        val roles = request.rolesList.map { it.role to it.constraints }
-        val assignment = service.acquire(run, roles, if (request.timeoutMs > 0) request.timeoutMs else 300_000)
-        AcquireResponse.newBuilder().addAllAssignments(
-            assignment.map { (role, facts) -> Assignment.newBuilder().setRole(role).setDevice(facts(facts)).build() },
-        ).build()
-    }
-
-    override fun release(request: ReleaseRequest, observer: StreamObserver<ReleaseResponse>) = reply(observer) {
-        ReleaseResponse.newBuilder().setReleased(service.release(service.run(request.runId), request.serialsList)).build()
-    }
-
     private fun poolDevice(entry: PoolEntry): PoolDevice = PoolDevice.newBuilder().apply {
-        facts = facts(entry.facts)
+        serial = entry.serial
         when (val status = entry.status) {
             DeviceStatus.Free -> state = DeviceState.DEVICE_FREE
             is DeviceStatus.Leased -> {
                 state = DeviceState.DEVICE_LEASED
-                leasedByRun = status.runId
-                leasedRole = status.role
+                status.runId?.let { leasedByRun = it }
             }
             is DeviceStatus.Quarantined -> {
                 state = DeviceState.DEVICE_QUARANTINED
@@ -185,9 +168,6 @@ class PoolServicer(private val service: TapService) : PoolServiceGrpc.PoolServic
         }
     }.build()
 
-    private fun facts(f: Facts): DeviceFacts = DeviceFacts.newBuilder()
-        .setSerial(f.serial).setApiLevel(f.apiLevel).setManufacturer(f.manufacturer).setModel(f.model).setEmulator(f.emulator)
-        .build()
 }
 
 class SessionServicer(
@@ -207,6 +187,7 @@ class SessionServicer(
                 syncAuthority = request.takeIf { it.hasSyncAuthority() }?.syncAuthority,
                 allowedSystemPackages = request.allowedSystemPackagesList.toSet(),
                 defaultTimeoutMs = if (request.hasDefaultTimeoutMs() && request.defaultTimeoutMs > 0) request.defaultTimeoutMs else 10_000,
+                leaseTimeoutMs = request.leaseTimeoutMs,
             ),
         )
         // The session is registered by now; a failed first command must not leave it behind,

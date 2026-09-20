@@ -8,7 +8,7 @@
 # Tap
 
 Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host
-service per machine (`host/`, `tap serve`: ADB, driver lifecycle, sessions, device pool; gRPC
+service per machine (`host/`, `tap serve`: ADB, driver lifecycle, sessions, device inventory; gRPC
 over loopback, JVM or native image) and thin language clients (`clients/`: Kotlin SDK +
 JUnit 5, Python + pytest). `contracts/` holds what they agree on (the TAP1 device protocol
 and the `tap.v1` service API). Phases 0 and 1 (feasibility, contract, driver) are complete
@@ -62,19 +62,19 @@ class CheckoutTest {
   under `tap.artifactsDir/<class>/<method>/`.
 
 The extension is a gRPC client of `tap serve`, the per-machine host service that owns ADB,
-driver lifecycle (the driver APKs are bundled in it), journals, leases and the device pool
+driver lifecycle (the driver APKs are bundled in it), journals, device locks and the inventory
 (`.docs/service-api.md`). It discovers a running service or starts one. Configuration is
 read from system properties or environment variables:
 
 | Property | Env | Meaning |
 |---|---|---|
 | `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
-| `tap.serials` | `TAP_SERIALS` | comma-separated serials to pin roles to, in order (default: any free device in the pool) |
+| `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order (default: any device in the inventory) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
 | `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: `<state dir>/service.json`, else auto-start) |
 | `tap.bin` | `TAP_BIN` | the `tap` executable to auto-start (default: `tap` on `PATH`) |
 | `tap.artifactsDir` | `TAP_ARTIFACTSDIR` | failure artifacts (default `build/tap-artifacts`) |
-| `tap.acquireTimeoutSeconds` | `TAP_ACQUIRETIMEOUTSECONDS` | device pool wait (default 300) |
+| `tap.acquireTimeoutSeconds` | `TAP_ACQUIRETIMEOUTSECONDS` | wait for a device another session holds (default 300) |
 
 `samples/fixture-tests` is a complete example wired through Gradle; run it with
 
@@ -84,7 +84,7 @@ read from system properties or environment variables:
 
 It builds the fixture app and the service distribution, auto-starts the service (which
 installs the driver), runs twelve tests (including a two-device test that is skipped with one
-serial) and runs test classes concurrently across the pool. The service stays up afterwards
+serial) and runs test classes concurrently across the devices. The service stays up afterwards
 (`host/service/build/install/tap/bin/tap stop`).
 
 ## Python tests
@@ -98,7 +98,7 @@ fallback):
 pip install -e clients/python                # the tap-e2e package
 ```
 
-The Python API mirrors the Kotlin one; `tap_device` is a per-test session from the pool:
+The Python API mirrors the Kotlin one; `tap_device` is a per-test session:
 
 ```python
 import pytest
@@ -158,7 +158,7 @@ one, which then stays up like the ADB server (`tap stop`). Failure artifacts lan
 - Authenticated application-protocol version, operation-version, capability, build, and
   device-contract negotiation.
 - A per-machine host service (`tap serve`, gRPC, native image) with a reusable
-  `DeviceSession` state machine, `AppLifecycle`, and an all-or-none named-role device pool
+  `DeviceSession` state machine, `AppLifecycle`, and per-device locks shared across processes
   with constraints; a Kotlin SDK (`Device`/`App`/`Element`/waits/selectors) and JUnit 5
   extension with failure artifacts, and a Python client and pytest plugin, all gRPC clients of
   the service, proven by sample suites on API 29 and API 34.

@@ -322,7 +322,8 @@ message CloseRunRequest {
 
 message CloseRunResponse {
   int32 sessions_closed = 1;
-  int32 devices_released = 2;
+  reserved 2;
+  reserved "devices_released";
 }
 
 message InfoRequest {}
@@ -337,19 +338,17 @@ message InfoResponse {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Pool: one machine-wide pool of devices with all-or-none role acquisition.
+// Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
+// exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
+// `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
+// death of the session's process releases. Clients pick serials from the inventory.
 // ---------------------------------------------------------------------------------------------
 
-// One machine-wide pool of devices with all-or-none role acquisition.
 service PoolService {
-  rpc Inventory(InventoryRequest) returns (InventoryResponse); // Every device ADB lists, with pool state.
-  // Blocks until every role can be satisfied at once or the deadline passes
-  // (DEADLINE_EXCEEDED); partial assignments are never handed out.
-  rpc Acquire(AcquireRequest) returns (AcquireResponse);
-  rpc Release(ReleaseRequest) returns (ReleaseResponse); // Releases the run's devices (all, or the listed serials).
+  rpc Inventory(InventoryRequest) returns (InventoryResponse); // Every device ADB lists, with its state.
 }
 
-// Pool state of a device.
+// State of a device in the inventory.
 enum DeviceState {
   DEVICE_STATE_UNSPECIFIED = 0;
   DEVICE_FREE = 1;
@@ -358,22 +357,15 @@ enum DeviceState {
   DEVICE_OFFLINE = 4;
 }
 
-// What the pool knows about a device, gathered once per serial.
-message DeviceFacts {
-  string serial = 1;
-  int32 api_level = 2;
-  string manufacturer = 3;
-  string model = 4;
-  bool emulator = 5;
-}
-
-// A device in the inventory with its lease or quarantine.
+// A device in the inventory with its state. Anything richer than the serial (API level,
+// model, ...) comes from the driver's DeviceInfo once a session is open.
 message PoolDevice {
-  DeviceFacts facts = 1;
+  string serial = 6;
   DeviceState state = 2;
-  optional string leased_by_run = 3;
-  optional string leased_role = 4;
+  optional string leased_by_run = 3; // set when the session holding the lock belongs to this service
   optional string quarantine_reason = 5;
+  reserved 1, 4;
+  reserved "facts", "leased_role";
 }
 
 message InventoryRequest {}
@@ -382,45 +374,6 @@ message InventoryResponse {
   repeated PoolDevice devices = 1;
 }
 
-// Per-role constraints; an unset field means "any".
-message DeviceConstraints {
-  optional string serial = 1;
-  optional int32 min_api = 2;
-  optional int32 max_api = 3;
-  optional bool emulator = 4;
-  optional string model_contains = 5;
-}
-
-// One named role of an acquisition.
-message RoleRequest {
-  string role = 1;
-  DeviceConstraints constraints = 2;
-}
-
-message AcquireRequest {
-  string run_id = 1;
-  repeated RoleRequest roles = 2;
-  int64 timeout_ms = 3;
-}
-
-// The device leased to a role.
-message Assignment {
-  string role = 1;
-  DeviceFacts device = 2;
-}
-
-message AcquireResponse {
-  repeated Assignment assignments = 1;
-}
-
-message ReleaseRequest {
-  string run_id = 1;
-  repeated string serials = 2; // empty = everything the run holds
-}
-
-message ReleaseResponse {
-  int32 released = 1;
-}
 
 // ---------------------------------------------------------------------------------------------
 // Sessions: one driver session on one leased device.
@@ -450,6 +403,9 @@ message OpenSessionRequest {
   optional string sync_authority = 7;
   repeated string allowed_system_packages = 8;
   optional int64 default_timeout_ms = 9; // used when Command.timeout_ms is 0
+  // How long to wait for another session's lock on `serial` before failing DEADLINE_EXCEEDED.
+  // 0 (default) fails at once when the device is in use.
+  int64 lease_timeout_ms = 10;
 }
 
 // The opened session; `generation` increments whenever the driver is rebuilt.

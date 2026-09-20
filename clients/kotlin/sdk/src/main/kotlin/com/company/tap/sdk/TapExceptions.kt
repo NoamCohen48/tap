@@ -56,3 +56,9 @@ class WaitTimeoutException(
 
 /** An AUT lifecycle postcondition did not hold (process still alive, window never appeared...). */
 class AppLifecycleException(message: String, cause: Throwable? = null) : TapException(message, cause)
+
+/**
+ * Another session — in this process or any other — holds the device, and [DeviceOptions.waitForDevice]
+ * was zero or ran out. The device is fine; try later or pick another serial.
+ */
+class DeviceBusyException(message: String, cause: Throwable? = null) : TapException(message, cause)

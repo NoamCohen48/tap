@@ -3,18 +3,18 @@
 Configuration (ini option, or environment variable):
 
     tap_aut       / TAP_AUT        AUT package (required)
-    tap_serials   / TAP_SERIALS    comma-separated serials to use; roles are pinned to them in
-                                   order. Unset = any device in the pool.
+    tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
+                                   order. Unset = whatever the service inventory offers.
     tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
     tap_service   / TAP_SERVICE    host:port of a running service (default: discover/auto-start)
-    tap_acquire_timeout            seconds to wait for devices (default 120)
+    tap_acquire_timeout            seconds to wait for a device another session holds (default 120)
 
 Fixtures: ``tap_device`` (role "device") and ``tap_devices`` (dict role → Device).
 Markers: ``@pytest.mark.tap_devices("left", "right")`` declares roles. A test needing more roles
-than configured serials is skipped. Before each test the roles are acquired all-or-none and one
-driver session per role is opened in parallel; after it, failure artifacts (screenshot,
-hierarchy, device info, driver log) are captured while sessions are live, then sessions are
-closed and the devices released. Sessions never outlive a test.
+than available devices is skipped. Before each test one driver session per role is opened, in
+sorted serial order so concurrent multi-device tests cannot deadlock; after it, failure
+artifacts (screenshot, hierarchy, device info, driver log) are captured while sessions are
+live, then the sessions are closed, which frees the devices. Sessions never outlive a test.
 """
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ import os
 import pathlib
 import re
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import pytest
@@ -38,7 +37,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("tap_serials", "comma-separated device serials")
     parser.addini("tap_artifacts", "failure artifact directory", default="tap-artifacts")
     parser.addini("tap_service", "host:port of a running tap service")
-    parser.addini("tap_acquire_timeout", "seconds to wait for devices", default="120")
+    parser.addini("tap_acquire_timeout", "seconds to wait for a device another session holds", default="120")
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -109,41 +108,33 @@ def _declared_roles(item: pytest.Item) -> list[str]:
 
 
 def _open_all(run: Run, config: TapConfig, assignment: dict[str, str]) -> dict[str, Device]:
-    with ThreadPoolExecutor(max_workers=len(assignment)) as pool:
-        futures = {role: pool.submit(run.open_device, serial, config.aut) for role, serial in assignment.items()}
-        opened: dict[str, Device] = {}
-        failure: BaseException | None = None
-        for role, future in futures.items():
+    """Opens the sessions one at a time in sorted serial order. Every process takes device locks
+    in the same order, so two tests wanting the same two devices cannot deadlock; the second
+    waits (up to ``tap_acquire_timeout``) for the first to finish."""
+    opened: dict[str, Device] = {}
+    try:
+        for role, serial in sorted(assignment.items(), key=lambda item: item[1]):
+            opened[role] = run.open_device(serial, config.aut, wait_for_device=config.acquire_timeout)
+    except BaseException:
+        for device in opened.values():
             try:
-                opened[role] = future.result()
-            except BaseException as error:  # noqa: BLE001 - re-raised after cleanup
-                failure = failure or error
-        if failure is not None:
-            for device in opened.values():
-                try:
-                    device.close()
-                except Exception:  # noqa: BLE001
-                    pass
-            raise failure
-        return opened
+                device.close()
+            except Exception:  # noqa: BLE001
+                pass
+        raise
+    return {role: opened[role] for role in assignment}
 
 
 @pytest.fixture
 def tap_devices(request: pytest.FixtureRequest, tap_run: Run, tap_config: TapConfig) -> dict[str, Device]:
     roles = _declared_roles(request.node)
-    if tap_config.serials and len(roles) > len(tap_config.serials):
-        pytest.skip(f"{request.node.name} needs {len(roles)} devices but tap_serials lists {tap_config.serials}")
-    constraints = {
-        role: ({"serial": tap_config.serials[i]} if tap_config.serials else {})
-        for i, role in enumerate(roles)
-    }
-    facts = tap_run.acquire(constraints, tap_config.acquire_timeout)
-    assignment = {role: facts[role].serial for role in roles}
-    try:
-        devices = _open_all(tap_run, tap_config, assignment)
-    except BaseException:
-        tap_run.release(list(assignment.values()))
-        raise
+    # Roles → serials is decided here, in declaration order; the service only knows serials.
+    available = tap_config.serials or tap_run.available_serials()
+    if len(roles) > len(available):
+        where = f"tap_serials lists {tap_config.serials}" if tap_config.serials else f"the inventory has {available}"
+        pytest.skip(f"{request.node.name} needs {len(roles)} devices but {where}")
+    assignment = dict(zip(roles, available))
+    devices = _open_all(tap_run, tap_config, assignment)
     state = TestDevices(devices, list(assignment.values()))
     request.node._tap_state = state  # type: ignore[attr-defined]
     yield devices
@@ -160,7 +151,6 @@ def tap_devices(request: pytest.FixtureRequest, tap_run: Run, tap_config: TapCon
                     close_errors.append(RuntimeError(f"{device.serial} quarantined: {quarantine}"))
             except Exception as error:  # noqa: BLE001
                 close_errors.append(error)
-        tap_run.release(state.serials)
         # A cleanup failure after a passing test is a real failure: the device may be quarantined.
         if close_errors and not failed:
             raise close_errors[0]

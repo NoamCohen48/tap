@@ -1,6 +1,7 @@
 package com.company.tap.host
 
 import java.nio.channels.FileChannel
+import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -39,6 +40,12 @@ enum class JournalState {
     CLOSED,
 }
 
+/** The per-serial lock was still held by another session at the deadline. */
+class DeviceBusyException(val serial: String, val waitedMs: Long) :
+    IllegalStateException(if (waitedMs > 0) "Device $serial is in use by another session (waited ${waitedMs}ms)" else "Device $serial is in use by another session")
+
+private const val LEASE_POLL_MS = 200L
+
 class SessionJournalStore(root: Path, private val serial: String) {
     private val json = Json {
         ignoreUnknownKeys = false
@@ -54,25 +61,44 @@ class SessionJournalStore(root: Path, private val serial: String) {
         Files.createDirectories(directory)
     }
 
-    fun acquireLease(): AutoCloseable {
-        val channel = FileChannel.open(
-            lockPath,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.WRITE,
-        )
-        val lock = channel.tryLock()
-            ?: run {
-                channel.close()
-                error("Device already leased: $encodedSerial")
+    /**
+     * Takes the exclusive per-serial lock (`<serial>.lock`), waiting up to [timeoutMs] for another
+     * holder — in this or any other process — to let go. This lock is what makes the journal's
+     * read-modify-write (generation bump, forward cleanup, quarantine) safe; the OS releases it
+     * if the holder dies. Throws [DeviceBusyException] when it is still held at the deadline.
+     */
+    fun acquireLease(timeoutMs: Long = 0): AutoCloseable {
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0))
+        while (true) {
+            val channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+            val lock = try {
+                channel.tryLock()
+            } catch (held: OverlappingFileLockException) {
+                null // another thread of this JVM holds it
             }
-        var closed = false
-        return AutoCloseable {
-            if (!closed) {
-                closed = true
-                lock.release()
-                channel.close()
+            if (lock != null) {
+                var closed = false
+                return AutoCloseable {
+                    if (!closed) {
+                        closed = true
+                        lock.release()
+                        channel.close()
+                    }
+                }
             }
+            channel.close()
+            val remaining = deadline - System.nanoTime()
+            if (remaining <= 0) throw DeviceBusyException(serial, timeoutMs)
+            Thread.sleep(minOf(LEASE_POLL_MS, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1)))
         }
+    }
+
+    /** Whether some process currently holds this serial's lock (probe: take and release). */
+    fun isLeased(): Boolean = try {
+        acquireLease().close()
+        false
+    } catch (busy: DeviceBusyException) {
+        true
     }
 
     fun read(): SessionJournal? {

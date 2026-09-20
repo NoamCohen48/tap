@@ -98,7 +98,7 @@ class SmokeTest {
 ./gradlew test -Ptap.serials=emulator-5554
 ```
 
-`@TapTest` acquires a device from the pool before each test, injects it as the `Device`
+`@TapTest` opens a session on a device before each test, injects it as the `Device`
 parameter, closes the session afterwards, and on failure writes a screenshot, hierarchy dump,
 device info and driver log under `build/tap-artifacts/<class>/<method>/`.
 
@@ -137,15 +137,14 @@ gives several. Failure artifacts land in `tap-artifacts/<nodeid>/`.
 ## 4. Without a test framework
 
 Both clients can be used from a script. The shape is the same: a *run* attaches to the
-service, acquires devices by role, opens a session per device.
+service, opens a session per device.
 
 === "Kotlin"
 
     ```kotlin
     TapClient().use { client ->
         val run = client.openRun("smoke")
-        val facts = run.acquire(mapOf("device" to DeviceConstraints.serial("emulator-5554")))
-        run.openDevice(facts.getValue("device").serial, "com.shop").use { device ->
+        run.openDevice("emulator-5554", "com.shop").use { device ->
             device.app().coldLaunch()
             println(device.element(text("Welcome")).exists())
         }
@@ -159,8 +158,7 @@ service, acquires devices by role, opens a session per device.
     from tap import Service, text
 
     with Service().open_run("smoke") as run:
-        facts = run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)["device"]
-        with run.open_device(facts.serial, "com.shop") as device:
+        with run.open_device("emulator-5554", "com.shop") as device:
             device.app().cold_launch()
             print(device.element(text("Welcome")).exists())
     ```
@@ -169,6 +167,6 @@ If the process dies, the service notices the run's stream closing and frees its 
 
 ## Next
 
-- [How it works](how-it-works.md) explains what a session, a run and the pool are.
+- [How it works](how-it-works.md) explains what a session and a run are.
 - [Selectors](selectors.md) and [Actions and waits](actions-and-waits.md) cover the API you
   will use in every test.

@@ -8,6 +8,7 @@ into another:
 | `CommandException` | `CommandError` | the driver executed (or refused) a UI command and answered with an error code |
 | `WaitTimeoutException` | `WaitTimeoutError` | an `await(...)` / `awaitUntil` condition did not hold in time |
 | `AppLifecycleException` | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
+| `DeviceBusyException` | `DeviceBusyError` | another session holds the device and the open did not (or could not) wait long enough |
 | `ServiceException` | `ServiceError` | the service rejected a call (unknown session, bad argument, device offline, run closed) |
 
 All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of

@@ -23,6 +23,15 @@ data class DeviceSessionConfig(
     val adb: Adb = Adb(),
     /** Receives the driver's instrumentation output line by line. */
     val driverLog: (String) -> Unit = {},
+    /** How long to wait for another session's lock on this serial before giving up (0 = fail at once). */
+    val leaseTimeoutMs: Long = 0,
+    /**
+     * Decides, once the per-serial lock is held, whether [driverApk]/[driverTestApk] are installed
+     * for this open. Callers that install "once per device" must decide here, not before the lock:
+     * two opens racing for the same serial could otherwise leave the lock winner instrumenting a
+     * driver the loser was still going to install.
+     */
+    val installDriver: () -> Boolean = { true },
 )
 
 /**
@@ -75,13 +84,15 @@ class DeviceSession private constructor(
             val adb = config.adb
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)
-            val lease = store.acquireLease()
+            val lease = store.acquireLease(config.leaseTimeoutMs)
             try {
                 val bootId = adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")
                 val prior = recoverJournal(adb, serial, bootId, store)
                 adb.wakeAndDismissKeyguard(serial)
-                config.driverApk?.let { adb.install(serial, it) }
-                config.driverTestApk?.let { adb.install(serial, it) }
+                if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
+                    config.driverApk?.let { adb.install(serial, it) }
+                    config.driverTestApk?.let { adb.install(serial, it) }
+                }
 
                 val generation = Math.addExact(prior?.generation ?: 0L, 1L)
                 val sessionId = UUID.randomUUID().toString()

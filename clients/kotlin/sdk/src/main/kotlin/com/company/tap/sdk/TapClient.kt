@@ -1,18 +1,15 @@
 package com.company.tap.sdk
 
-import com.company.tap.api.v1.AcquireRequest
 import com.company.tap.api.v1.AppServiceGrpc
 import com.company.tap.api.v1.AttachRequest
 import com.company.tap.api.v1.CloseRunRequest
-import com.company.tap.api.v1.DeviceFacts
+import com.company.tap.api.v1.DeviceState
 import com.company.tap.api.v1.InfoRequest
 import com.company.tap.api.v1.InfoResponse
 import com.company.tap.api.v1.InventoryRequest
 import com.company.tap.api.v1.OpenRunRequest
 import com.company.tap.api.v1.PoolDevice
 import com.company.tap.api.v1.PoolServiceGrpc
-import com.company.tap.api.v1.ReleaseRequest
-import com.company.tap.api.v1.RoleRequest
 import com.company.tap.api.v1.RunEvent
 import com.company.tap.api.v1.RunServiceGrpc
 import com.company.tap.api.v1.SessionServiceGrpc
@@ -29,38 +26,14 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import com.company.tap.api.v1.DeviceConstraints as DeviceConstraintsProto
-
-/** Per-role pool constraints for [Run.acquire]. Null means unconstrained. */
-data class DeviceConstraints(
-    val serial: String? = null,
-    val minApi: Int? = null,
-    val maxApi: Int? = null,
-    val emulator: Boolean? = null,
-    val modelContains: String? = null,
-) {
-    internal fun toProto(): DeviceConstraintsProto {
-        // Not `apply`: inside the builder scope the unqualified field names resolve to the
-        // builder's getters, which would set every optional field to its default.
-        val b = DeviceConstraintsProto.newBuilder()
-        serial?.let(b::setSerial)
-        minApi?.let(b::setMinApi)
-        maxApi?.let(b::setMaxApi)
-        emulator?.let(b::setEmulator)
-        modelContains?.let(b::setModelContains)
-        return b.build()
-    }
-
-    companion object {
-        val ANY = DeviceConstraints()
-        fun serial(serial: String) = DeviceConstraints(serial = serial)
-    }
-}
 
 /**
  * Converts gRPC failures into the client's exceptions. Driver outcomes never arrive this way
  * (they are `CommandResult` data); this covers service refusals and host-side failures.
  */
+/** The service's wording for a held per-serial lock (`DeviceBusyException` in `:host:core`). */
+internal const val DEVICE_BUSY_MARKER = "is in use by another session"
+
 internal inline fun <T> mapped(serial: String? = null, block: () -> T): T = try {
     block()
 } catch (error: StatusRuntimeException) {
@@ -68,6 +41,7 @@ internal inline fun <T> mapped(serial: String? = null, block: () -> T): T = try 
     throw when {
         error.status.code == Status.Code.DEADLINE_EXCEEDED && details.startsWith("Timed out") ->
             WaitTimeoutException(details, serial ?: "?", 0, cause = error)
+        details.contains(DEVICE_BUSY_MARKER) -> DeviceBusyException(details, error)
         error.status.code == Status.Code.FAILED_PRECONDITION -> AppLifecycleException(details, error)
         else -> ServiceException(error.status.code.name, details, error)
     }
@@ -98,7 +72,7 @@ class TapClient(address: String? = null, autostart: Boolean = true) : AutoClosea
     fun inventory(): List<PoolDevice> =
         mapped { pool.withDeadlineAfter(30, TimeUnit.SECONDS).inventory(InventoryRequest.getDefaultInstance()).devicesList }
 
-    /** Opens and attaches a run: if this process dies, the service releases everything it held. */
+    /** Opens and attaches a run: if this process dies, the service closes every session it opened. */
     fun openRun(name: String): Run {
         val id = mapped { runs.withDeadlineAfter(10, TimeUnit.SECONDS).open(OpenRunRequest.newBuilder().setName(name).build()).runId }
         return Run(this, id).also { it.attach() }
@@ -110,7 +84,7 @@ class TapClient(address: String? = null, autostart: Boolean = true) : AutoClosea
     }
 }
 
-/** Ownership scope for leases and sessions; see [TapClient.openRun]. */
+/** Ownership scope for sessions; see [TapClient.openRun]. */
 class Run internal constructor(val client: TapClient, val id: String) : AutoCloseable {
     private val events = CopyOnWriteArrayList<String>()
     @Volatile private var stream: ClientCallStreamObserver<AttachRequest>? = null
@@ -146,25 +120,21 @@ class Run internal constructor(val client: TapClient, val id: String) : AutoClos
         failure?.let { cause -> mapped<Unit> { throw cause } }
     }
 
-    /** All-or-none lease of one device per role, queued until [timeout]. */
-    fun acquire(roles: Map<String, DeviceConstraints>, timeout: Duration = 300.seconds): Map<String, DeviceFacts> {
-        val request = AcquireRequest.newBuilder().setRunId(id).setTimeoutMs(timeout.inWholeMilliseconds)
-        roles.forEach { (role, constraints) ->
-            request.addRoles(RoleRequest.newBuilder().setRole(role).setConstraints(constraints.toProto()))
-        }
-        return mapped {
-            client.pool.withDeadlineAfter(timeout.inWholeSeconds + 30, TimeUnit.SECONDS).acquire(request.build())
-                .assignmentsList.associate { it.role to it.device }
-        }
-    }
+    /**
+     * Serials a test can use, from the service inventory: online and not quarantined, free ones
+     * first, then ones another session holds (opening then waits, see [DeviceOptions.waitForDevice]).
+     * Exclusive use is enforced by the session itself, so there is nothing to acquire beforehand.
+     */
+    fun availableSerials(): List<String> = client.inventory()
+        .filter { it.state == DeviceState.DEVICE_FREE || it.state == DeviceState.DEVICE_LEASED }
+        .sortedBy { it.state != DeviceState.DEVICE_FREE }
+        .map { it.serial }
 
-    /** Releases [serials] (empty = everything this run holds). Sessions on them are closed first. */
-    fun release(serials: Collection<String> = emptyList()): Int = mapped {
-        client.pool.withDeadlineAfter(60, TimeUnit.SECONDS)
-            .release(ReleaseRequest.newBuilder().setRunId(id).addAllSerials(serials).build()).released
-    }
-
-    /** Open a driver session on [serial] for [autPackage]. */
+    /**
+     * Open a driver session on [serial] for [autPackage]. The session holds the device's
+     * per-serial lock until [Device.close]; if another session holds it, the open fails with
+     * [DeviceBusyException] — at once, or after [DeviceOptions.waitForDevice].
+     */
     fun openDevice(
         serial: String,
         autPackage: String,

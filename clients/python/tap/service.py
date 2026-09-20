@@ -22,7 +22,7 @@ import grpc
 
 from ._gen import tap_pb2 as pb
 from ._gen import tap_pb2_grpc as rpc
-from .errors import AppLifecycleError, ServiceError, TapError, WaitTimeoutError
+from .errors import AppLifecycleError, DeviceBusyError, ServiceError, TapError, WaitTimeoutError
 
 
 def state_dir() -> pathlib.Path:
@@ -110,11 +110,17 @@ def resolve_address(autostart: bool = True, binary: str | None = None, adb: str 
     return start_service(binary, directory, adb)
 
 
+# The service's wording for a held per-serial lock (``DeviceBusyException`` in ``:host:core``).
+_DEVICE_BUSY_MARKER = "is in use by another session"
+
+
 def _map_rpc_error(error: grpc.RpcError, serial: str | None = None) -> TapError:
     code = error.code()
     details = error.details() or ""
     if code == grpc.StatusCode.DEADLINE_EXCEEDED and details.startswith("Timed out"):
         return WaitTimeoutError(details, serial or "?", 0)
+    if _DEVICE_BUSY_MARKER in details:
+        return DeviceBusyError(details)
     if code == grpc.StatusCode.FAILED_PRECONDITION:
         return AppLifecycleError(details)
     return ServiceError(code.name, details)
@@ -126,21 +132,6 @@ def mapped_errors(serial: str | None = None) -> Iterator[None]:
         yield
     except grpc.RpcError as error:
         raise _map_rpc_error(error, serial) from None
-
-
-@dataclass(frozen=True)
-class DeviceFacts:
-    """What the pool knows about a device: serial, API level, manufacturer, model, emulator."""
-
-    serial: str
-    api_level: int
-    manufacturer: str
-    model: str
-    emulator: bool
-
-    @classmethod
-    def of(cls, facts: pb.DeviceFacts) -> "DeviceFacts":
-        return cls(facts.serial, facts.api_level, facts.manufacturer, facts.model, facts.emulator)
 
 
 class Service:
@@ -178,8 +169,8 @@ class Service:
 
 
 class Run:
-    """Ownership scope for leases and sessions. ``attach`` starts the liveness stream: if this
-    process dies, the service closes every session and releases every device of the run."""
+    """Ownership scope for sessions. ``attach`` starts the liveness stream: if this process dies,
+    the service closes every session of the run, which frees its devices."""
 
     def __init__(self, service: Service, run_id: str):
         self.service = service
@@ -205,20 +196,14 @@ class Run:
 
         threading.Thread(target=pump, name=f"tap-run-{self.id[:8]}", daemon=True).start()
 
-    def acquire(self, roles: dict[str, dict], timeout: float) -> dict[str, DeviceFacts]:
-        """All-or-none lease of one device per role. Constraint keys: serial, min_api, max_api,
-        emulator, model_contains."""
-        request = pb.AcquireRequest(run_id=self.id, timeout_ms=int(timeout * 1000))
-        for role, constraints in roles.items():
-            request.roles.append(pb.RoleRequest(role=role, constraints=pb.DeviceConstraints(**constraints)))
-        with mapped_errors():
-            response = self.service.pool.Acquire(request, timeout=timeout + 30)
-        return {a.role: DeviceFacts.of(a.device) for a in response.assignments}
-
-    def release(self, serials: list[str] | None = None) -> int:
-        """Release the given serials (default: every device of this run); returns how many were released."""
-        with mapped_errors():
-            return self.service.pool.Release(pb.ReleaseRequest(run_id=self.id, serials=serials or []), timeout=30).released
+    def available_serials(self) -> list[str]:
+        """Serials a test can use, from the service inventory: online and not quarantined, free
+        ones first, then ones another session holds (``open_device`` then waits for them when
+        ``wait_for_device`` is set). Exclusive use is enforced by the session itself, so there is
+        nothing to acquire beforehand."""
+        devices = [d for d in self.service.inventory() if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)]
+        devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
+        return [d.serial for d in devices]
 
     def open_device(self, serial: str, aut_package: str, **options) -> "Device":
         """Open a driver session on ``serial`` for ``aut_package``; ``options`` are ``Device.open`` keywords."""

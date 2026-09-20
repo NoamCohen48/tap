@@ -4,7 +4,6 @@
 
     service = Service()                                  # discovers or starts `tap serve`
     with service.open_run("smoke") as run:
-        run.acquire({"device": {"serial": "emulator-5554"}}, timeout=60)
         with run.open_device("emulator-5554", "com.example.app") as device:
             device.app().cold_launch()
             device.element(res("login")).tap()
@@ -20,20 +19,20 @@ from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 STABILITY_TREE = pb.STABILITY_TREE
 STABILITY_PIXELS = pb.STABILITY_PIXELS
 STABILITY_ALL = pb.STABILITY_ALL
-from .errors import AppLifecycleError, CommandError, ErrorCode, ServiceError, TapError, WaitTimeoutError
+from .errors import AppLifecycleError, CommandError, DeviceBusyError, ErrorCode, ServiceError, TapError, WaitTimeoutError
 from .selectors import (
     CONTAINS, EXACT, REGEX, STARTS_WITH, Selector, class_name, clickable, desc, hint, raw_res, res, res_id,
     scrollable, text, text_contains, text_matches, text_starts_with,
 )
-from .service import DeviceFacts, Run, Service, resolve_address
+from .service import Run, Service, resolve_address
 
 __all__ = [
     "pb", "App", "ProcessIdentity", "Device", "Timeouts", "KEYCODE_BACK", "KEYCODE_HOME",
     "Element", "ElementWait", "DOWN", "UP", "LEFT", "RIGHT",
-    "AppLifecycleError", "CommandError", "ErrorCode", "ServiceError", "TapError", "WaitTimeoutError",
+    "AppLifecycleError", "CommandError", "DeviceBusyError", "ErrorCode", "ServiceError", "TapError", "WaitTimeoutError",
     "Selector", "EXACT", "CONTAINS", "STARTS_WITH", "REGEX", "class_name", "clickable", "desc", "hint",
     "raw_res", "res", "res_id", "scrollable", "text", "text_contains", "text_matches", "text_starts_with",
-    "DeviceFacts", "Run", "Service", "resolve_address",
+    "Run", "Service", "resolve_address",
 ]
 
 try:
