@@ -204,21 +204,66 @@ recommendation is kept here only as the record of the trade-off.
   `samples/fixture-tests`, and `release-engineering.md` (major version line bump for the
   Kotlin artifacts). Python client and its docs unchanged.
 
+## Amendments (2026-09-20, before step 1)
+
+Reading the code against the target design above surfaced six things it did not account for,
+and four decisions the user took in response. They override the target design where they
+differ; the step list below already reflects them.
+
+1. **`contracts/api` is a `java-library` with no Kotlin plugin** (`contracts/api/build.gradle.kts`).
+   The generated `*CoroutineImplBase` / `*CoroutineStub` are Kotlin sources, so step 1 must
+   apply `org.jetbrains.kotlin.jvm` there and add `api("io.grpc:grpc-kotlin-stub")` +
+   `api("org.jetbrains.kotlinx:kotlinx-coroutines-core")`. The published `tap-api` artifact
+   therefore gains a Kotlin/coroutines dependency for every consumer. Step 1 is *not* purely
+   additive, and `release-engineering.md` must record the new dependency of the artifact.
+2. **Constructors cannot suspend.** `DriverClient.init` connects and runs the whole handshake
+   inline. It becomes a private constructor plus a `suspend` factory; `connectWithRetry` is
+   the natural home. `DeviceSession.open` becomes a `suspend` factory the same way.
+3. **`close()` cannot suspend while it is `AutoCloseable`.** Decision: **drop `AutoCloseable`**
+   on `DriverClient`, `DeviceSession` and the client's `Device`; `close()` becomes `suspend`
+   with a `withContext(NonCancellable)` body. Callers use `try`/`finally` inside a coroutine.
+   The non-coroutine callers that must be adapted are `TapExtension.afterEach`, the service's
+   shutdown hook and `PhaseZeroMain`; they get their own `runBlocking(NonCancellable)`
+   boundary at the edge, never inside the framework types.
+4. **`writeFrame` spawns a thread per frame** (`FutureTask` + `socket.close()` on timeout),
+   because a socket write has no timeout. "Blocking write inside `withContext(Dispatchers.IO)`"
+   silently drops that write deadline; the converted `writeFrame` must keep an explicit
+   deadline whose expiry closes the socket. Related: `ping()` nests `synchronized(pingLock)`
+   around `synchronized(transportLock)`, and `synchronized` cannot span a suspension point —
+   the two lock scopes are redesigned as `Mutex`es, not translated line by line.
+5. **`ConnectionService.Attach` is a streaming RPC.** It becomes `Flow<ConnectionEvent>` on
+   both sides. The client's `Connection.attach` (`ClientResponseObserver` + `CountDownLatch`)
+   needs a long-lived scope to collect in, which `TapClient` does not own today — the
+   "client process dies -> service closes its sessions" invariant hangs off that stream, so
+   the scope's lifetime is part of the step-3/4 design, not an afterthought.
+6. **`Adb.execResult` is `protected open` and overridden by test fakes** (`AdbTest.kt`).
+   Decision: make it `suspend open` and update the fakes (their test bodies move to
+   `runTest`); no process-runner seam is introduced.
+
+Staging decision: steps 2 and 3 are **one lane** (`:host:core` then `:host:service`), because
+making `DriverClient` suspend breaks the servicers that call it. No temporary `runBlocking`
+bridge is written at that boundary — code whose only purpose is to be deleted by the next
+commit. The lane may contain two commits, but the tree compiles at the end of the lane.
+
 ## Order of work and verification (commit boundaries)
 
 Each step is its own commit with explicit paths, verified before the next starts. The
 device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 
-1. **`contracts/api`: grpc-kotlin generation.** Additive: Java stubs remain. Verify
-   `:host:service:test`, `:samples:fixture-tests:compileTestKotlin`, CI `API contract` job.
-2. **`:host:core` → coroutines.** `DriverClient`, `Adb`, `DriverLifecycle`, `AppLifecycle`,
+1. **`contracts/api`: grpc-kotlin generation.** Java stubs remain, but the module gains the
+   Kotlin plugin and a coroutines dependency (amendment 1). Verify `:host:service:test`,
+   `:samples:fixture-tests:compileTestKotlin`, CI `API contract` job.
+2. **`:host:core` → coroutines, then `:host:service` → coroutine servicers, in one lane**
+   (staging decision above; steps 2 and 3 below are the two commits of that lane).
+   `:host:core`: `DriverClient`, `Adb`, `DriverLifecycle`, `AppLifecycle`,
    `DeviceSession`, `SessionJournal`. Update `DriverClientTest` (fake driver) to
    `runTest`/`runBlocking`; keep the fault-injection scenarios in `:host:validation`
    (`PhaseZeroMain`, already coroutine-based) compiling — they become the primary device
    check: `host --no-reboot emulator-5554 85e49002 <apks>` must still print every
    `PHASE_0_OK` / `PHASE_1_*_OK` line. Update `project-architecture.md` invariants text
    here.
-3. **`:host:service` → coroutine servicers.** `:host:service:test`, fixture-tests via the JVM
+3. **`:host:service` → coroutine servicers** (second commit of the step-2 lane).
+   `:host:service:test`, fixture-tests via the JVM
    dist, then `nativeCompile` + re-record native-image config + `TAP_BIN=<native>
    TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` (Python client is the
    unchanged consumer, so it proves wire compatibility).
