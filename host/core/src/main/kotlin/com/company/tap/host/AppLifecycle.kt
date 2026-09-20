@@ -1,8 +1,13 @@
 package com.company.tap.host
 
-import com.company.tap.protocol.Operation
-import com.company.tap.protocol.Response
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.DeviceInfoQuery
+import com.company.tap.protocol.Returning
+import com.company.tap.protocol.SyncResult
+import com.company.tap.protocol.SyncBootstrap
+import com.company.tap.protocol.SyncPoll
 import com.company.tap.protocol.SyncState
+import com.company.tap.protocol.WaitAppVisible
 import java.nio.file.Path
 
 /** An AUT lifecycle postcondition did not hold (process still alive, window never appeared...). */
@@ -102,10 +107,10 @@ class AppLifecycle(
 
     /** Waits on the device until the package owns the focused window. */
     fun awaitAppVisible(timeoutMs: Long) {
-        val response = client.execute(Operation.WAIT_APP_VISIBLE, packageName = packageName, timeoutMs = timeoutMs)
+        val response = client.send(WaitAppVisible(packageName), timeoutMs = timeoutMs)
         if (!response.ok) {
             val current = runCatching {
-                client.executeOrThrow(Operation.DEVICE_INFO, timeoutMs = 5_000).deviceInfo?.currentPackage
+                client.execute(DeviceInfoQuery, timeoutMs = 5_000).deviceInfo.currentPackage
             }.getOrNull()
             throw HostWaitTimeoutException(
                 "package $packageName to be in the foreground", serial, response.durationMs, 0, "currentPackage=$current",
@@ -133,7 +138,9 @@ class AppLifecycle(
                 )
             }
             polls++
-            val state = requireNotNull(callSync(Operation.SYNC_STATE, identity, minOf(5_000, remaining)).syncState)
+            val state = callSync(minOf(5_000, remaining)) { before ->
+                SyncPoll(before.pid, before.startToken, identity.processStartUuid, identity.sessionIdentity)
+            }
             val now = System.nanoTime()
             if (state.busyCount == 0) {
                 if (zeroGeneration == state.generation && now - zeroObservedAt >= stableForMs * 1_000_000) return
@@ -149,22 +156,16 @@ class AppLifecycle(
     }
 
     private fun bootstrapSync(timeoutMs: Long): SyncState =
-        requireNotNull(callSync(Operation.SYNC_BOOTSTRAP, null, timeoutMs.coerceIn(1, 5_000)).syncState)
+        callSync(timeoutMs.coerceIn(1, 5_000)) { before -> SyncBootstrap(before.pid, before.startToken) }
 
     /** The driver checks identity against the process the host observed around the call. */
-    private fun callSync(operation: Operation, expected: SyncState?, timeoutMs: Long): Response {
+    private inline fun <C> callSync(timeoutMs: Long, command: (ProcessObservation) -> C): SyncState
+        where C : Command, C : Returning<SyncResult> {
         val before = process(5_000)
-        val response = client.executeOrThrow(
-            operation,
-            timeoutMs = timeoutMs,
-            observedPid = before.pid,
-            observedStartToken = before.startToken,
-            expectedProcessStartUuid = expected?.processStartUuid,
-            expectedSessionIdentity = expected?.sessionIdentity,
-        )
+        val state = client.execute(command(before), timeoutMs = timeoutMs).state
         val after = process(5_000)
         if (after != before) throw AppLifecycleException("$packageName restarted during a synchronization call: $before -> $after")
-        return response
+        return state
     }
 
     private fun launcherActivity(): String {

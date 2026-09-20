@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "CANCELLED",
+  "type": "error",
+  "code": "CANCELLED",
   "detail": "CANCELLED_IN_QUEUE",
   "message": "example",
   "durationMs": 5

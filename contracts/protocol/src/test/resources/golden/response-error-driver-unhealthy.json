@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "DRIVER_UNHEALTHY",
+  "type": "error",
+  "code": "DRIVER_UNHEALTHY",
   "detail": "HEARTBEAT_EXPIRED",
   "message": "example",
   "durationMs": 5

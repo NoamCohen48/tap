@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "AUT_ANR",
+  "type": "error",
+  "code": "AUT_ANR",
   "message": "example",
   "durationMs": 5
 }

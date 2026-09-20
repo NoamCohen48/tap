@@ -1,7 +1,7 @@
 import com.google.protobuf.gradle.id
 
 /*
- * Host service API (tap.v1). `proto/tap.proto` is the single source of truth:
+ * Host service API (tap.v1). The files under `proto/` are the single source of truth:
  * this module generates the Java/gRPC classes for the host service and the Kotlin client;
  * clients/python/scripts/gen_stubs.py generates (and CI verifies) the committed Python stubs.
  */

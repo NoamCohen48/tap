@@ -3,13 +3,17 @@ package com.company.tap.sdk
 import com.company.tap.api.v1.CloseSessionRequest
 import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.CommandResult
+import com.company.tap.api.v1.DeviceInfoQuery
+import com.company.tap.api.v1.DumpHierarchy
+import com.company.tap.api.v1.PressKey
+import com.company.tap.api.v1.WaitAppVisible
+import com.company.tap.api.v1.WaitScreenStable
 import com.company.tap.api.v1.DeviceInfo
 import com.company.tap.api.v1.Direction
 import com.company.tap.api.v1.StabilitySignal
 import com.company.tap.api.v1.DriverLogRequest
 import com.company.tap.api.v1.ExecuteRequest
 import com.company.tap.api.v1.OpenSessionRequest
-import com.company.tap.api.v1.Operation
 import com.company.tap.api.v1.ScreenshotRequest
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
@@ -63,18 +67,14 @@ class Device internal constructor(
 
     // --- Raw protocol escape hatch ----------------------------------------------------------------
 
-    /** Runs one protocol operation and returns the result as data (`ok` may be false). */
-    fun execute(
-        operation: Operation,
-        selector: Selector? = null,
-        timeout: Duration? = null,
-        configure: Command.Builder.() -> Unit = {},
-    ): CommandResult {
+    /**
+     * Runs one protocol command and returns the result as data (the outcome may be `error`).
+     * [build] sets exactly one `op` case on the builder; [timeout] defaults to [Timeouts.action].
+     */
+    fun execute(timeout: Duration? = null, build: Command.Builder.() -> Unit): CommandResult {
         val command = Command.newBuilder()
-            .setOperation(operation)
             .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
-            .apply { selector?.let { setSelector(it.proto) } }
-            .apply(configure)
+            .apply(build)
             .build()
         return mapped(serial) {
             client.sessions.withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
@@ -83,14 +83,10 @@ class Device internal constructor(
     }
 
     /** [execute] that throws [CommandException] instead of returning a failed result. */
-    fun executeOrThrow(
-        operation: Operation,
-        selector: Selector? = null,
-        timeout: Duration? = null,
-        configure: Command.Builder.() -> Unit = {},
-    ): CommandResult {
-        val result = execute(operation, selector, timeout, configure)
-        if (!result.ok) throw CommandException(result, operation.name.removePrefix("OP_"), serial, selector?.render())
+    fun executeOrThrow(timeout: Duration? = null, selector: Selector? = null, build: Command.Builder.() -> Unit): CommandResult {
+        val command = Command.newBuilder().apply(build).build()
+        val result = execute(timeout) { mergeFrom(command) }
+        if (result.hasError()) throw CommandException(result, command.opCase.name.lowercase(), serial, selector?.render())
         return result
     }
 
@@ -106,7 +102,7 @@ class Device internal constructor(
     fun app(packageName: String = autPackage): App = App(this, packageName)
 
     /** Serial, API level, model and display size. */
-    fun info(): DeviceInfo = executeOrThrow(Operation.OP_DEVICE_INFO).deviceInfo
+    fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo
 
     /** Send `KEYCODE_BACK`. */
     fun pressBack() = pressKey(KEYCODE_BACK)
@@ -115,7 +111,7 @@ class Device internal constructor(
 
     /** Injects one Android key code (a mutation: never replayed on transport loss). */
     fun pressKey(keyCode: Int) {
-        executeOrThrow(Operation.OP_PRESS_KEY) { setKeyCode(keyCode) }
+        executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
     }
 
     /** PNG bytes, verified against the driver's checksum. */
@@ -127,7 +123,7 @@ class Device internal constructor(
 
     /** Diagnostic accessibility XML. Never used by selectors; keep it out of assertions. */
     fun dumpHierarchy(timeout: Duration = timeouts.lifecycle): String =
-        executeOrThrow(Operation.OP_DUMP_HIERARCHY, timeout = timeout).text
+        executeOrThrow(timeout) { dumpHierarchy = DumpHierarchy.getDefaultInstance() }.text
 
     /** The driver instrumentation's recent output lines. */
     fun driverLog(): List<String> = mapped(serial) {
@@ -137,8 +133,8 @@ class Device internal constructor(
 
     /** Waits on the device until [packageName] owns the focused window. */
     fun awaitAppVisible(packageName: String = autPackage, timeout: Duration = timeouts.wait) {
-        val result = execute(Operation.OP_WAIT_APP_VISIBLE, timeout = timeout) { setPackageName(packageName) }
-        if (!result.ok) {
+        val result = execute(timeout) { waitAppVisible = WaitAppVisible.newBuilder().setPackageName(packageName).build() }
+        if (result.hasError()) {
             throw WaitTimeoutException(
                 "package $packageName to be in the foreground", serial, result.durationMs, 0,
                 "currentPackage=${runCatching { info().currentPackage }.getOrNull()}",
@@ -161,12 +157,14 @@ class Device internal constructor(
         packageName: String = autPackage,
         signal: StabilitySignal = StabilitySignal.STABILITY_ALL,
     ) {
-        val result = execute(Operation.OP_WAIT_SCREEN_STABLE, timeout = timeout) {
-            setPackageName(packageName)
-            setStableForMs(stableFor.inWholeMilliseconds)
-            setStableSignal(signal)
+        val result = execute(timeout) {
+            waitScreenStable = WaitScreenStable.newBuilder()
+                .setPackageName(packageName)
+                .setStableForMs(stableFor.inWholeMilliseconds)
+                .setSignal(signal)
+                .build()
         }
-        if (!result.ok) {
+        if (result.hasError()) {
             val what = when (signal) {
                 StabilitySignal.STABILITY_TREE -> "hierarchy"
                 StabilitySignal.STABILITY_PIXELS -> "pixels"
@@ -174,7 +172,7 @@ class Device internal constructor(
             }
             throw WaitTimeoutException(
                 "the $packageName $what to stay unchanged for $stableFor", serial, result.durationMs, 0,
-                result.detail.ifEmpty { null },
+                if (result.error.hasDetail()) result.error.detail else null,
             )
         }
     }

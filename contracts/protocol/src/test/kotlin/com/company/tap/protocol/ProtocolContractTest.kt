@@ -58,7 +58,7 @@ class ProtocolContractTest {
 
     @Test
     fun rejectsNoCommonVersionAndInvalidCapabilitySelection() {
-        val hello = hello(listOf(ProtocolVersion(2, 0)))
+        val hello = hello(listOf(ProtocolVersion(9, 0)))
         val challenge = challenge(SUPPORTED_PROTOCOL_VERSIONS, SUPPORTED_CAPABILITIES)
 
         assertNull(ProtocolNegotiation.negotiate(hello, challenge))
@@ -117,9 +117,7 @@ class ProtocolContractTest {
         hostNonce = nonce,
         sessionGeneration = 3,
         sessionId = "session",
-        supportedOperations = Operation.entries
-            .map { OperationSupport(it.name, OPERATION_VERSION) }
-            .sortedBy(OperationSupport::name),
+        supportedOperations = Command.names,
         supportedVersions = versions,
         uiAutomatorBuildId = "uiautomator",
     )

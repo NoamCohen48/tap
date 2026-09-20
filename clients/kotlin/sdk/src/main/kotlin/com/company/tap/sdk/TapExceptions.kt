@@ -11,7 +11,7 @@ class ServiceException(val status: String, val details: String, cause: Throwable
     TapException("$status: $details", cause)
 
 /**
- * A driver command returned `ok=false`. [code] is the protocol error code; [detail] refines it
+ * A driver command's outcome was `error`. [code] is the protocol error code; [detail] refines it
  * (e.g. `NOT_FOUND`/`END_REACHED`); `TRANSPORT_LOST`/`INDETERMINATE` carry the transmission
  * state in [detail]. Never retry a mutation on `INDETERMINATE`.
  */
@@ -22,17 +22,17 @@ class CommandException(
     val selector: String?,
 ) : TapException(
     buildString {
-        append(result.errorCode.name.removePrefix("ERR_"))
-        if (result.hasDetail()) append('/').append(result.detail)
+        append(result.error.code.name.removePrefix("ERR_"))
+        if (result.error.hasDetail()) append('/').append(result.error.detail)
         append(" during ").append(operation)
         if (selector != null) append(' ').append(selector)
         append(" on ").append(serial)
         append(" (request ${result.requestId}, generation ${result.sessionGeneration}, ${result.durationMs} ms)")
-        if (result.hasMessage()) append(": ").append(result.message)
+        if (result.error.hasMessage()) append(": ").append(result.error.message)
     },
 ) {
-    val code: ErrorCode get() = result.errorCode
-    val detail: String? get() = if (result.hasDetail()) result.detail else null
+    val code: ErrorCode get() = result.error.code
+    val detail: String? get() = if (result.error.hasDetail()) result.error.detail else null
     val requestId: Long get() = result.requestId
     val generation: Long get() = result.sessionGeneration
 }

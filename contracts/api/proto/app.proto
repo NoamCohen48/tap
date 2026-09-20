@@ -1,0 +1,63 @@
+// tap.v1 — app lifecycle on a session's device: each call is executed over ADB and verified
+// against a postcondition (the host's AppLifecycle is the one source of truth for the rules).
+// Failures are gRPC FAILED_PRECONDITION with a message.
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "com.company.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "AppProto";
+
+service AppService {
+  rpc Install(AppInstallRequest) returns (AppEmpty); // `adb install -r -t`, verified.
+  rpc Uninstall(AppRequest) returns (AppEmpty); // `pm uninstall`, verified.
+  rpc IsInstalled(AppRequest) returns (AppBool);
+  rpc ForceStop(AppRequest) returns (AppEmpty); // `am force-stop` plus proof that no process remains.
+  rpc ClearData(AppRequest) returns (AppEmpty); // `pm clear`; data, cache and runtime permissions gone, app left stopped.
+  rpc GrantPermission(AppGrantRequest) returns (AppEmpty); // `pm grant` a runtime permission.
+  rpc Launch(AppLaunchRequest) returns (AppEmpty); // Start the activity (or the launcher) and wait for the package to own the focused window.
+  rpc ColdLaunch(AppLaunchRequest) returns (ProcessIdentity); // Verified force-stop, launch, then a new process identity in the foreground.
+  rpc Process(AppRequest) returns (ProcessIdentity); // The single current process identity.
+  rpc IsRunning(AppRequest) returns (AppBool); // Whether any process of the package is alive.
+  rpc AwaitIdle(AppAwaitIdleRequest) returns (AppEmpty); // Wait until the app's sync-sdk busy count is zero and stable for `stable_for_ms`.
+}
+
+message AppRequest {
+  string session_id = 1;
+  string package_name = 2;
+  int64 timeout_ms = 3; // 0 = session default
+}
+
+message AppInstallRequest {
+  AppRequest app = 1;
+  string apk_path = 2; // host path
+}
+
+message AppGrantRequest {
+  AppRequest app = 1;
+  string permission = 2;
+}
+
+message AppLaunchRequest {
+  AppRequest app = 1;
+  optional string activity = 2; // omitted = launcher activity
+}
+
+message AppAwaitIdleRequest {
+  AppRequest app = 1;
+  int64 stable_for_ms = 2; // 0 = 200
+}
+
+// PID plus a start token that changes on every process start.
+message ProcessIdentity {
+  int32 pid = 1;
+  string start_token = 2;
+}
+
+message AppBool {
+  bool value = 1;
+}
+
+message AppEmpty {}

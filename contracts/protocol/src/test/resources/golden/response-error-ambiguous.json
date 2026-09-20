@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "AMBIGUOUS",
+  "type": "error",
+  "code": "AMBIGUOUS",
   "message": "example",
   "durationMs": 5
 }

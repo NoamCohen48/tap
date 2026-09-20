@@ -1,8 +1,10 @@
 package com.company.tap.sdk
 
+import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.ElementSnapshot
 import com.company.tap.api.v1.ErrorCode
-import com.company.tap.api.v1.Operation
+import com.company.tap.api.v1.WaitGone
+import com.company.tap.api.v1.WaitVisible
 import kotlin.time.Duration
 
 /**
@@ -16,13 +18,13 @@ class ElementWait internal constructor(
 ) {
     /** Waits until at least one match exists; returns the lazy element. */
     fun visible(): Element {
-        deviceWait(Operation.OP_WAIT_VISIBLE, "${selector.render()} to be visible")
+        deviceWait("wait_visible", "${selector.render()} to be visible") { waitVisible = WaitVisible.newBuilder().setSelector(selector.proto).build() }
         return Element(device, selector)
     }
 
     /** Waits until no match exists. */
     fun gone() {
-        deviceWait(Operation.OP_WAIT_GONE, "${selector.render()} to be gone")
+        deviceWait("wait_gone", "${selector.render()} to be gone") { waitGone = WaitGone.newBuilder().setSelector(selector.proto).build() }
     }
 
     /** Wait until the one matching node is enabled. */
@@ -50,13 +52,13 @@ class ElementWait internal constructor(
         return Element(device, selector)
     }
 
-    private fun deviceWait(operation: Operation, description: String) {
-        val result = device.execute(operation, selector, timeout)
-        if (result.ok) return
-        if (result.errorCode == ErrorCode.ERR_WAIT_TIMEOUT) {
+    private fun deviceWait(operation: String, description: String, build: Command.Builder.() -> Unit) {
+        val result = device.execute(timeout, build)
+        if (!result.hasError()) return
+        if (result.error.code == ErrorCode.ERR_WAIT_TIMEOUT) {
             throw WaitTimeoutException(description, device.serial, result.durationMs)
         }
-        throw CommandException(result, operation.name.removePrefix("OP_"), device.serial, selector.render())
+        throw CommandException(result, operation, device.serial, selector.render())
     }
 
     private fun property(description: String, predicate: (ElementSnapshot) -> Boolean): Element {

@@ -60,8 +60,8 @@ object ProtocolNegotiation {
             challenge.sessionGeneration >= 0 &&
             challenge.sessionId.isNotBlank() &&
             challenge.supportedOperations.isNotEmpty() &&
-            challenge.supportedOperations == challenge.supportedOperations.distinct().sortedBy { it.name } &&
-            challenge.supportedOperations.all { it.name.isNotBlank() && it.version > 0 } &&
+            challenge.supportedOperations == challenge.supportedOperations.distinct().sorted() &&
+            challenge.supportedOperations.all(String::isNotBlank) &&
             challenge.supportedVersions.isNotEmpty() &&
             challenge.supportedVersions == challenge.supportedVersions.distinct().sorted() &&
             challenge.uiAutomatorBuildId.isNotBlank()

@@ -15,12 +15,39 @@ import com.company.tap.protocol.InvalidSelectorException
 import com.company.tap.protocol.KEYCODE_BACK
 import com.company.tap.protocol.MatchMode
 import com.company.tap.protocol.NodeSelector
-import com.company.tap.protocol.Operation
+import com.company.tap.protocol.BoolResult
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.Count
+import com.company.tap.protocol.ClearText
+import com.company.tap.protocol.DeviceInfoQuery
+import com.company.tap.protocol.Done
+import com.company.tap.protocol.DumpHierarchy
+import com.company.tap.protocol.Exists
+import com.company.tap.protocol.Health
+import com.company.tap.protocol.LongTap
+import com.company.tap.protocol.PressKey
+import com.company.tap.protocol.Scroll
+import com.company.tap.protocol.ScrollUntil
+import com.company.tap.protocol.SetText
+import com.company.tap.protocol.Snapshot
+import com.company.tap.protocol.Swipe
+import com.company.tap.protocol.SyncBootstrap
+import com.company.tap.protocol.SyncPoll
+import com.company.tap.protocol.Tap
+import com.company.tap.protocol.TypeText
+import com.company.tap.protocol.WaitAppVisible
+import com.company.tap.protocol.WaitGone
+import com.company.tap.protocol.WaitVisible
 import com.company.tap.protocol.ProtocolVersion
 import com.company.tap.protocol.ResourceId
 import com.company.tap.protocol.Response
+import com.company.tap.protocol.detail
+import com.company.tap.protocol.errorCode
+import com.company.tap.protocol.result
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.StringMatch
+import com.company.tap.protocol.Returning
+import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
 import java.nio.file.Path
 import java.net.InetSocketAddress
@@ -284,7 +311,7 @@ private suspend fun runDevice(
             check(it.driverInstanceId == running.driverInstanceId) {
                 "Authenticated driver instance did not match readiness signal"
             }
-            val health = it.execute(Operation.HEALTH)
+            val health = it.send(Health)
             check(health.ok) { "Driver health failed: $health" }
             journal = journal.copy(
                 state = JournalState.READY,
@@ -302,59 +329,50 @@ private suspend fun runDevice(
             )
 
             val composeButton = Selector.rawResource("composeButton")
-            check(it.execute(Operation.WAIT_VISIBLE, composeButton, 10_000).ok)
+            check(it.send(WaitVisible(composeButton), timeoutMs = 10_000).ok)
             val processBeforeBootstrap = observeProcess(adb, serial, FIXTURE_PACKAGE)
-            val syncBootstrap = callSync(adb, serial, it, Operation.SYNC_BOOTSTRAP)
-            check(syncBootstrap.ok) { "Sync bootstrap failed: $syncBootstrap" }
-            val firstSyncIdentity = requireNotNull(syncBootstrap.syncState)
-            check(it.execute(Operation.TAP, composeButton).ok)
+            val firstSyncIdentity = callSync(adb, serial, it) { pid, token -> SyncBootstrap(pid, token) }.getOrThrow().state
+            check(it.send(Tap(composeButton)).ok)
             check(
-                it.execute(
-                    Operation.WAIT_VISIBLE,
-                    Selector.text("Compose tapped"),
-                    5_000,
-                ).ok
+                it.send(WaitVisible(Selector.text("Compose tapped")), timeoutMs = 5_000).ok
             )
 
             val viewButton = Selector.androidResource(FIXTURE_PACKAGE, "view_button")
-            check(it.execute(Operation.TAP, viewButton).ok)
-            check(it.execute(Operation.WAIT_VISIBLE, Selector.text("View tapped")).ok)
+            check(it.send(Tap(viewButton)).ok)
+            check(it.send(WaitVisible(Selector.text("View tapped"))).ok)
             val syncButton = Selector.androidResource(FIXTURE_PACKAGE, "sync_button")
-            check(it.execute(Operation.TAP, syncButton).ok)
-            val busyState = callSync(adb, serial, it, Operation.SYNC_STATE, firstSyncIdentity)
-            check(busyState.ok && busyState.value == false) { "Busy state was not observed: $busyState" }
+            check(it.send(Tap(syncButton)).ok)
+            val busyState = callSync(adb, serial, it) { pid, token -> SyncPoll(pid, token, firstSyncIdentity.processStartUuid, firstSyncIdentity.sessionIdentity) }.getOrThrow()
+            check(!busyState.idle) { "Busy state was not observed: $busyState" }
             awaitSyncIdle(adb, serial, it, firstSyncIdentity, timeoutMs = 10_000)
             check(
-                it.execute(
-                    Operation.WAIT_VISIBLE,
-                    Selector.text("Synchronized work complete"),
-                    5_000,
-                ).ok
+                it.send(WaitVisible(Selector.text("Synchronized work complete")), timeoutMs = 5_000).ok
             )
 
             adb.run(serial, "shell", "am", "force-stop", FIXTURE_PACKAGE)
-            check(it.execute(Operation.HEALTH).ok) { "Driver died with the AUT" }
+            check(it.send(Health).ok) { "Driver died with the AUT" }
             check(adb.run(serial, "shell", "pm", "clear", FIXTURE_PACKAGE) == "Success") {
                 "AUT data clearing did not report success"
             }
             adb.run(serial, "shell", "am", "force-stop", FIXTURE_PACKAGE)
             awaitProcessAbsent(adb, serial, FIXTURE_PACKAGE)
-            check(it.execute(Operation.HEALTH).ok) { "Driver died after AUT data clearing" }
+            check(it.send(Health).ok) { "Driver died after AUT data clearing" }
             adb.run(
                 serial,
                 "shell", "am", "start", "-n", "$FIXTURE_PACKAGE/.MainActivity",
                 timeoutMs = 10_000,
             )
-            check(it.execute(Operation.WAIT_VISIBLE, composeButton, 10_000).ok)
+            val relaunched = it.send(WaitVisible(composeButton), timeoutMs = 10_000)
+            check(relaunched.ok) { "Fixture did not come back after clear-data: $relaunched" }
             val restartedProcess = observeProcess(adb, serial, FIXTURE_PACKAGE)
             check(restartedProcess != processBeforeBootstrap) { "AUT process identity did not change" }
-            val staleSync = callSync(adb, serial, it, Operation.SYNC_STATE, firstSyncIdentity)
-            check(!staleSync.ok && staleSync.errorCode == ErrorCode.AUT_MISMATCH && staleSync.detail == ErrorDetail.PROCESS_RESTARTED) {
+            val staleSync = callSync(adb, serial, it) { pid, token -> SyncPoll(pid, token, firstSyncIdentity.processStartUuid, firstSyncIdentity.sessionIdentity) }
+                .exceptionOrNull()
+            check(staleSync is RemoteCommandException && staleSync.code == ErrorCode.AUT_MISMATCH && staleSync.detail == ErrorDetail.PROCESS_RESTARTED) {
                 "Synchronization restart was not detected: $staleSync"
             }
-            val restartedBootstrap = callSync(adb, serial, it, Operation.SYNC_BOOTSTRAP)
-            check(restartedBootstrap.ok) { "Synchronization re-bootstrap failed: $restartedBootstrap" }
-            check(restartedBootstrap.syncState?.processStartUuid != firstSyncIdentity.processStartUuid)
+            val restartedBootstrap = callSync(adb, serial, it) { pid, token -> SyncBootstrap(pid, token) }.getOrThrow()
+            check(restartedBootstrap.state.processStartUuid != firstSyncIdentity.processStartUuid)
             benchmark(serial, it, composeButton)
             val screenshot = it.screenshot()
             val pngSignature = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte())
@@ -366,44 +384,33 @@ private suspend fun runDevice(
             )
 
             val input = Selector.androidResource(FIXTURE_PACKAGE, "view_input")
-            check(it.execute(Operation.SET_TEXT, input, inputText = "phase zero").ok)
-            check(it.execute(Operation.WAIT_VISIBLE, Selector.text("phase zero")).ok)
+            check(it.send(SetText(input, "phase zero")).ok)
+            check(it.send(WaitVisible(Selector.text("phase zero"))).ok)
             val keyboardInput = Selector.androidResource(FIXTURE_PACKAGE, "keyboard_input")
-            val typedInput = it.execute(
-                Operation.TYPE_TEXT,
-                keyboardInput,
-                timeoutMs = 30_000,
-                inputText = "keys 42",
-            )
+            val typedInput = it.send(TypeText(keyboardInput, "keys 42"), timeoutMs = 30_000)
             check(typedInput.ok) { "Keyboard input failed: $typedInput" }
-            check(it.execute(Operation.WAIT_VISIBLE, Selector.text("keys 42")).ok)
-            check(it.execute(Operation.WAIT_VISIBLE, Selector.text("Keyboard event received")).ok)
-            val unsupportedInput = it.execute(Operation.TYPE_TEXT, keyboardInput, inputText = "emoji \uD83D\uDE00")
+            check(it.send(WaitVisible(Selector.text("keys 42"))).ok)
+            check(it.send(WaitVisible(Selector.text("Keyboard event received"))).ok)
+            val unsupportedInput = it.send(TypeText(keyboardInput, "emoji \uD83D\uDE00"))
             check(!unsupportedInput.ok && unsupportedInput.errorCode == ErrorCode.INVALID_REQUEST && unsupportedInput.detail == ErrorDetail.UNSUPPORTED_CHARACTERS)
-            check(it.execute(Operation.EXISTS, Selector.text("keys 42")).value == true)
+            check(it.execute(Exists(Selector.text("keys 42"))).value)
             // A hinted field reports its hint as `text` once empty; clearing must still verify.
-            val clearedHinted = it.execute(Operation.CLEAR_TEXT, keyboardInput)
+            val clearedHinted = it.send(ClearText(keyboardInput))
             check(clearedHinted.ok) { "CLEAR_TEXT on a hinted field failed: $clearedHinted" }
-            val clearedSnapshot = it.execute(Operation.SNAPSHOT, keyboardInput).snapshot
-            check(clearedSnapshot?.text.isNullOrEmpty() && clearedSnapshot?.hint == "Keyboard input") {
+            val clearedSnapshot = it.execute(Snapshot(keyboardInput)).snapshot
+            check(clearedSnapshot.text.isNullOrEmpty() && clearedSnapshot.hint == "Keyboard input") {
                 "Cleared hinted field should snapshot as empty text with hint: $clearedSnapshot"
             }
             adb.run(serial, "shell", "input", "keyevent", "KEYCODE_BACK")
 
-            val composeScroll = it.execute(
-                operation = Operation.SCROLL_UNTIL,
-                selector = Selector.rawResource("item-100"),
+            val composeScroll = it.send(
+                ScrollUntil(Selector.rawResource("item-100"), container = Selector.rawResource("composeList"), maxScrolls = 30),
                 timeoutMs = 45_000,
-                containerSelector = Selector.rawResource("composeList"),
-                maxScrolls = 30,
             )
             check(composeScroll.ok) { "Compose scroll failed: $composeScroll" }
-            val composeEnd = it.execute(
-                operation = Operation.SCROLL_UNTIL,
-                selector = Selector.rawResource("missing-compose-item"),
+            val composeEnd = it.send(
+                ScrollUntil(Selector.rawResource("missing-compose-item"), container = Selector.rawResource("composeList"), maxScrolls = 5),
                 timeoutMs = 30_000,
-                containerSelector = Selector.rawResource("composeList"),
-                maxScrolls = 5,
             )
             check(!composeEnd.ok && composeEnd.errorCode == ErrorCode.NOT_FOUND && composeEnd.detail == ErrorDetail.END_REACHED) {
                 "Compose end detection failed: $composeEnd"
@@ -415,34 +422,28 @@ private suspend fun runDevice(
                 timeoutMs = 60_000,
             )
             val viewList = Selector.androidResource(FIXTURE_PACKAGE, "view_list")
-            check(it.execute(Operation.WAIT_VISIBLE, Selector.text("View item 1"), 10_000).ok)
-            val viewScroll = it.execute(
-                operation = Operation.SCROLL_UNTIL,
-                selector = Selector.text("View item 100"),
+            check(it.send(WaitVisible(Selector.text("View item 1")), timeoutMs = 10_000).ok)
+            val viewScroll = it.send(
+                ScrollUntil(Selector.text("View item 100"), container = viewList, maxScrolls = 50),
                 timeoutMs = 45_000,
-                containerSelector = viewList,
-                maxScrolls = 50,
             )
             check(viewScroll.ok) { "View scroll failed: $viewScroll" }
-            val viewEnd = it.execute(
-                operation = Operation.SCROLL_UNTIL,
-                selector = Selector.text("Missing View item"),
+            val viewEnd = it.send(
+                ScrollUntil(Selector.text("Missing View item"), container = viewList, maxScrolls = 10),
                 timeoutMs = 45_000,
-                containerSelector = viewList,
-                maxScrolls = 10,
             )
             check(!viewEnd.ok && viewEnd.errorCode == ErrorCode.NOT_FOUND && viewEnd.detail == ErrorDetail.END_REACHED) {
                 "View end detection failed: $viewEnd"
             }
-            val scrollAtEnd = it.execute(Operation.SCROLL, viewList, direction = Direction.DOWN)
-            check(scrollAtEnd.ok && scrollAtEnd.value == false) { "Scroll at end should report no movement: $scrollAtEnd" }
-            val scrollBack = it.execute(Operation.SCROLL, viewList, direction = Direction.UP)
-            check(scrollBack.ok && scrollBack.value == true) { "Scroll up should move: $scrollBack" }
-            val swipe = it.execute(Operation.SWIPE, viewList, direction = Direction.DOWN)
-            check(swipe.ok && swipe.value == true) { "Swipe failed: $swipe" }
-            val scrollNoDirection = it.execute(Operation.SCROLL, viewList)
-            check(!scrollNoDirection.ok && scrollNoDirection.errorCode == ErrorCode.INVALID_REQUEST) {
-                "SCROLL without direction must be rejected: $scrollNoDirection"
+            val scrollAtEnd = it.execute(Scroll(viewList, Direction.DOWN))
+            check(!scrollAtEnd.moved) { "Scroll at end should report no movement: $scrollAtEnd" }
+            val scrollBack = it.execute(Scroll(viewList, Direction.UP))
+            check(scrollBack.moved) { "Scroll up should move: $scrollBack" }
+            val swipe = it.execute(Swipe(viewList, Direction.DOWN))
+            check(swipe.moved) { "Swipe failed: $swipe" }
+            // A scroll without a direction or with an out-of-range distance is unrepresentable on the host.
+            check(runCatching { Scroll(viewList, Direction.DOWN, distancePercent = 0) }.exceptionOrNull() is IllegalArgumentException) {
+                "SCROLL with an out-of-range distance must be rejected"
             }
 
             runSelectorAndGestureChecks(adb, serial, it)
@@ -454,36 +455,26 @@ private suspend fun runDevice(
                 timeoutMs = 60_000,
             )
             val requestPermission = Selector.androidResource(FIXTURE_PACKAGE, "request_camera_permission")
-            check(it.execute(Operation.WAIT_VISIBLE, requestPermission, 10_000).ok) {
+            check(it.send(WaitVisible(requestPermission), timeoutMs = 10_000).ok) {
                 "Permission activity did not appear"
             }
-            val requestTap = it.execute(Operation.TAP, requestPermission)
+            val requestTap = it.send(Tap(requestPermission))
             check(requestTap.ok) { "Permission request tap failed: $requestTap" }
             val permissionChoiceText = if (apiLevel >= 30) "While using the app" else "Allow"
-            val autPermissionChoice = it.execute(
-                Operation.EXISTS,
-                Selector.text(permissionChoiceText),
-            )
-            check(autPermissionChoice.ok && autPermissionChoice.value == false) {
+            val autPermissionChoice = it.send(Exists(Selector.text(permissionChoiceText)))
+            check(autPermissionChoice.result == BoolResult(false)) {
                 "AUT scope check failed: $autPermissionChoice"
             }
-            val deniedScope = it.execute(
-                Operation.EXISTS,
-                Selector.text(permissionChoiceText).inSystemPackage("com.android.settings"),
-            )
+            val deniedScope = it.send(Exists(Selector.text(permissionChoiceText).inSystemPackage("com.android.settings")))
             check(!deniedScope.ok && deniedScope.errorCode == ErrorCode.INVALID_SELECTOR && deniedScope.detail == ErrorDetail.SCOPE_DENIED)
             val allowPermission = Selector.androidResource(
                 PERMISSION_RESOURCE_PACKAGE,
                 if (apiLevel >= 30) "permission_allow_foreground_only_button" else "permission_allow_button",
             ).inSystemPackage(PERMISSION_CONTROLLER_PACKAGE)
-            check(it.execute(Operation.WAIT_VISIBLE, allowPermission, 10_000).ok)
-            check(it.execute(Operation.TAP, allowPermission).ok)
+            check(it.send(WaitVisible(allowPermission), timeoutMs = 10_000).ok)
+            check(it.send(Tap(allowPermission)).ok)
             check(
-                it.execute(
-                    Operation.WAIT_VISIBLE,
-                    Selector.text("Camera granted"),
-                    10_000,
-                ).ok
+                it.send(WaitVisible(Selector.text("Camera granted")), timeoutMs = 10_000).ok
             )
             disconnectProbe?.verify(serial, it)
         }
@@ -560,43 +551,36 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
         "shell", "am", "start", "-W", "-n", "$FIXTURE_PACKAGE/.AmbiguityActivity",
         timeoutMs = 60_000,
     )
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("Ambiguity fixture ready"), 10_000).ok)
+    check(client.send(WaitVisible(Selector.text("Ambiguity fixture ready")), timeoutMs = 10_000).ok)
 
     val duplicateButton = Selector.text("Duplicate action")
     val duplicateInput = Selector.androidResource(FIXTURE_PACKAGE, "duplicate_input")
     val duplicateScroll = Selector.androidResource(FIXTURE_PACKAGE, "duplicate_scroll")
-    fun expectAmbiguous(operation: Operation, response: Response) {
-        check(!response.ok && response.errorCode == ErrorCode.AMBIGUOUS) { "$operation should be AMBIGUOUS: $response" }
+    fun expectAmbiguous(command: Command, timeoutMs: Long = 5_000) {
+        val response = client.send(command, timeoutMs)
+        check(response.errorCode == ErrorCode.AMBIGUOUS) { "${command.op} should be AMBIGUOUS: $response" }
     }
-    expectAmbiguous(Operation.TAP, client.execute(Operation.TAP, duplicateButton))
-    expectAmbiguous(Operation.LONG_TAP, client.execute(Operation.LONG_TAP, duplicateButton))
-    expectAmbiguous(Operation.SET_TEXT, client.execute(Operation.SET_TEXT, duplicateInput, inputText = "leak"))
-    expectAmbiguous(Operation.TYPE_TEXT, client.execute(Operation.TYPE_TEXT, duplicateInput, inputText = "leak"))
-    expectAmbiguous(Operation.CLEAR_TEXT, client.execute(Operation.CLEAR_TEXT, duplicateInput))
-    expectAmbiguous(Operation.SWIPE, client.execute(Operation.SWIPE, duplicateScroll, direction = Direction.UP))
-    expectAmbiguous(Operation.SCROLL, client.execute(Operation.SCROLL, duplicateScroll, direction = Direction.DOWN))
-    expectAmbiguous(
-        Operation.SCROLL_UNTIL,
-        client.execute(
-            Operation.SCROLL_UNTIL,
-            Selector.text("never"),
-            timeoutMs = 10_000,
-            containerSelector = duplicateScroll,
-        ),
-    )
-    check(client.execute(Operation.EXISTS, Selector.text("Duplicate taps: 0")).value == true) {
+    expectAmbiguous(Tap(duplicateButton))
+    expectAmbiguous(LongTap(duplicateButton))
+    expectAmbiguous(SetText(duplicateInput, "leak"))
+    expectAmbiguous(TypeText(duplicateInput, "leak"))
+    expectAmbiguous(ClearText(duplicateInput))
+    expectAmbiguous(Swipe(duplicateScroll, Direction.UP))
+    expectAmbiguous(Scroll(duplicateScroll, Direction.DOWN))
+    expectAmbiguous(ScrollUntil(Selector.text("never"), container = duplicateScroll), timeoutMs = 10_000)
+    check(client.execute(Exists(Selector.text("Duplicate taps: 0"))).value) {
         "An AMBIGUOUS tap changed the fixture"
     }
-    check(client.execute(Operation.EXISTS, Selector.text("leak")).value == false) {
+    check(!client.execute(Exists(Selector.text("leak"))).value) {
         "An AMBIGUOUS text operation changed the fixture"
     }
 
     // Explicit limits and relations resolve one of the duplicates.
-    check(client.execute(Operation.TAP, duplicateButton.first()).ok)
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("Duplicate taps: 1")).ok)
-    check(client.execute(Operation.TAP, duplicateButton.at(1)).ok)
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("Duplicate taps: 2")).ok)
-    val missingIndex = client.execute(Operation.TAP, duplicateButton.at(2))
+    check(client.send(Tap(duplicateButton.first())).ok)
+    check(client.send(WaitVisible(Selector.text("Duplicate taps: 1"))).ok)
+    check(client.send(Tap(duplicateButton.at(1))).ok)
+    check(client.send(WaitVisible(Selector.text("Duplicate taps: 2"))).ok)
+    val missingIndex = client.send(Tap(duplicateButton.at(2)))
     check(!missingIndex.ok && missingIndex.errorCode == ErrorCode.NOT_FOUND) { "at(2) should be NOT_FOUND: $missingIndex" }
     val rightButton = Selector(
         NodeSelector(
@@ -604,38 +588,35 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
             ancestor = NodeSelector(resource = ResourceId("right_half", FIXTURE_PACKAGE)),
         ),
     )
-    check(client.execute(Operation.TAP, rightButton).ok)
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("Duplicate taps: 3")).ok)
+    check(client.send(Tap(rightButton)).ok)
+    check(client.send(WaitVisible(Selector.text("Duplicate taps: 3"))).ok)
     val leftHalfWithButton = Selector(
         NodeSelector(
             resource = ResourceId("left_half", FIXTURE_PACKAGE),
             child = NodeSelector(className = StringMatch("Button", MatchMode.ENDS_WITH), clickable = true),
         ),
     )
-    check(client.execute(Operation.EXISTS, leftHalfWithButton).value == true) { "child relation did not match" }
+    check(client.execute(Exists(leftHalfWithButton)).value) { "child relation did not match" }
 
     // Regex forces the traversal plan; it must agree with the native plan on cardinality.
     val regexButton = Selector.text("^Duplicate act.*", MatchMode.REGEX)
-    expectAmbiguous(Operation.TAP, client.execute(Operation.TAP, regexButton))
+    expectAmbiguous(Tap(regexButton))
     val regexLeft = Selector(
         NodeSelector(
             text = StringMatch("^Duplicate act.*", MatchMode.REGEX),
             ancestor = NodeSelector(resource = ResourceId("left_half", FIXTURE_PACKAGE)),
         ),
     )
-    check(client.execute(Operation.TAP, regexLeft).ok) { "Traversal-plan tap failed" }
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("^Duplicate taps: \\d+$", MatchMode.REGEX)).ok)
-    check(client.execute(Operation.EXISTS, Selector.text("Duplicate taps: 4")).value == true)
-    check(client.execute(Operation.EXISTS, Selector.text("^Duplicate taps: 9$", MatchMode.REGEX)).value == false)
+    check(client.send(Tap(regexLeft)).ok) { "Traversal-plan tap failed" }
+    check(client.send(WaitVisible(Selector.text("^Duplicate taps: \\d+$", MatchMode.REGEX))).ok)
+    check(client.execute(Exists(Selector.text("Duplicate taps: 4"))).value)
+    check(!client.execute(Exists(Selector.text("^Duplicate taps: 9$", MatchMode.REGEX))).value)
 
     // Structural rejections never consume a request on the host and are INVALID_SELECTOR on the driver.
-    runCatching { client.execute(Operation.EXISTS, Selector(NodeSelector())) }.exceptionOrNull().let { error ->
+    runCatching { client.send(Exists(Selector(NodeSelector()))) }.exceptionOrNull().let { error ->
         check(error is InvalidSelectorException) { "Host validation should reject an empty node: $error" }
     }
-    val foreignResource = client.execute(
-        Operation.EXISTS,
-        Selector.androidResource("com.other.app", "duplicate_button"),
-    )
+    val foreignResource = client.send(Exists(Selector.androidResource("com.other.app", "duplicate_button")))
     check(
         !foreignResource.ok && foreignResource.errorCode == ErrorCode.INVALID_SELECTOR &&
             foreignResource.detail == ErrorDetail.SCOPE_DENIED,
@@ -643,16 +624,16 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
 
     // Gestures.
     val gestureTarget = Selector.androidResource(FIXTURE_PACKAGE, "gesture_target")
-    check(client.execute(Operation.LONG_TAP, gestureTarget).ok)
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("Gesture: long press")).ok)
-    check(client.execute(Operation.TAP, gestureTarget).ok)
-    check(client.execute(Operation.WAIT_VISIBLE, Selector.text("Gesture: tap")).ok)
+    check(client.send(LongTap(gestureTarget)).ok)
+    check(client.send(WaitVisible(Selector.text("Gesture: long press"))).ok)
+    check(client.send(Tap(gestureTarget)).ok)
+    check(client.send(WaitVisible(Selector.text("Gesture: tap"))).ok)
     val prefilled = Selector.androidResource(FIXTURE_PACKAGE, "prefilled_input")
-    check(client.execute(Operation.EXISTS, Selector.text("prefilled")).value == true)
-    val cleared = client.execute(Operation.CLEAR_TEXT, prefilled)
+    check(client.execute(Exists(Selector.text("prefilled"))).value)
+    val cleared = client.send(ClearText(prefilled))
     check(cleared.ok) { "CLEAR_TEXT failed: $cleared" }
-    check(client.execute(Operation.EXISTS, Selector.text("prefilled")).value == false) { "CLEAR_TEXT left text" }
-    val notEditable = client.execute(Operation.CLEAR_TEXT, gestureTarget)
+    check(!client.execute(Exists(Selector.text("prefilled"))).value) { "CLEAR_TEXT left text" }
+    val notEditable = client.send(ClearText(gestureTarget))
     check(!notEditable.ok && notEditable.errorCode == ErrorCode.NOT_INTERACTABLE) {
         "CLEAR_TEXT on a button should be NOT_INTERACTABLE: $notEditable"
     }
@@ -665,31 +646,30 @@ private fun runSelectorAndGestureChecks(adb: Adb, serial: String, client: Driver
  * `WAIT_APP_VISIBLE`, `PRESS_KEY` (back leaves the activity), and `WAIT_GONE`.
  */
 private fun runObservationAndKeyChecks(serial: String, client: DriverClient, gestureTarget: Selector) {
-    val duplicates = client.execute(Operation.COUNT, Selector.text("Duplicate action"))
-    check(duplicates.ok && duplicates.count == 2) { "COUNT should report 2 duplicates: $duplicates" }
-    check(client.execute(Operation.COUNT, Selector.text("never on screen")).count == 0)
+    val duplicates = client.execute(Count(Selector.text("Duplicate action"))).count
+    check(duplicates == 2) { "COUNT should report 2 duplicates: $duplicates" }
+    check(client.execute(Count(Selector.text("never on screen"))).count == 0)
 
-    val snapshot = client.execute(Operation.SNAPSHOT, gestureTarget)
-    val state = requireNotNull(snapshot.snapshot) { "SNAPSHOT failed: $snapshot" }
+    val state = client.execute(Snapshot(gestureTarget)).snapshot
     check(state.clickable && state.longClickable && state.enabled && state.bounds.width > 0) {
         "Unexpected gesture target snapshot: $state"
     }
     check(state.resourceName == "$FIXTURE_PACKAGE:id/gesture_target") { "Unexpected resource: $state" }
-    val ambiguousSnapshot = client.execute(Operation.SNAPSHOT, Selector.text("Duplicate action"))
+    val ambiguousSnapshot = client.send(Snapshot(Selector.text("Duplicate action")))
     check(ambiguousSnapshot.errorCode == ErrorCode.AMBIGUOUS) { "SNAPSHOT should be AMBIGUOUS: $ambiguousSnapshot" }
 
-    val info = requireNotNull(client.execute(Operation.DEVICE_INFO).deviceInfo)
+    val info = client.execute(DeviceInfoQuery).deviceInfo
     check(info.apiLevel >= 26 && info.displayWidth > 0 && info.currentPackage == FIXTURE_PACKAGE) {
         "Unexpected device info: $info"
     }
-    check(client.execute(Operation.WAIT_APP_VISIBLE, packageName = FIXTURE_PACKAGE, timeoutMs = 5_000).ok)
-    val invalidKey = client.execute(Operation.PRESS_KEY, keyCode = -1)
-    check(invalidKey.errorCode == ErrorCode.INVALID_REQUEST) { "Negative key code should be invalid: $invalidKey" }
+    check(client.send(WaitAppVisible(FIXTURE_PACKAGE), timeoutMs = 5_000).ok)
+    // A negative key code is rejected on the host before any frame is written (PressKey's constructor).
+    check(runCatching { PressKey(-1) }.exceptionOrNull() is IllegalArgumentException) { "Negative key code should be invalid" }
 
     // Back finishes AmbiguityActivity; the fixture's main screen is underneath.
-    val back = client.execute(Operation.PRESS_KEY, keyCode = KEYCODE_BACK)
+    val back = client.send(PressKey(KEYCODE_BACK))
     check(back.ok) { "PRESS_KEY back failed: $back" }
-    val gone = client.execute(Operation.WAIT_GONE, Selector.text("Ambiguity fixture ready"), timeoutMs = 10_000)
+    val gone = client.send(WaitGone(Selector.text("Ambiguity fixture ready")), timeoutMs = 10_000)
     check(gone.ok) { "Ambiguity screen did not go away after back: $gone" }
     println("PHASE_1_OBSERVATION_OK serial=$serial api=${info.apiLevel} model=${info.model}")
 }
@@ -745,7 +725,7 @@ private class MultiDeviceDisconnectProbe(
         }
         try {
             repeat(3) {
-                val health = client.execute(Operation.HEALTH)
+                val health = client.send(Health)
                 check(health.ok) {
                     "Device $serial stopped after $disconnectedSerial disconnected: $health"
                 }
@@ -793,16 +773,16 @@ private fun runSessionFencingScenario(
         check(!stale.ok && stale.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
             "Consumed request ID was not rejected: $stale"
         }
-        val unsupported = session.client.executeValidationRequest(
+        val unsupported = session.client.executeRawValidationRequest(
             requestId = 3,
-            operationVersion = 2,
+            payload = """{"sessionId":"${session.journal.sessionId}","generation":$generation,"timeoutMs":5000,"command":{"op":"teleport"}}""",
         )
         check(!unsupported.ok && unsupported.errorCode == ErrorCode.UNSUPPORTED) {
-            "Unsupported operation version was not rejected: $unsupported"
+            "Unknown operation was not rejected: $unsupported"
         }
         val unsupportedReplay = session.client.executeValidationRequest(requestId = 3)
         check(!unsupportedReplay.ok && unsupportedReplay.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
-            "Unsupported operation request ID was reusable: $unsupportedReplay"
+            "Unknown operation request ID was reusable: $unsupportedReplay"
         }
         runCancellationChecks(serial, session.client)
         cleanupStarted = true
@@ -824,7 +804,7 @@ private fun runCancellationChecks(serial: String, client: DriverClient) {
     val idlePingMs = client.ping()
 
     // Cancel a running wait: it must stop within the poll interval, not at its 30 s timeout.
-    val running = client.submit(Operation.WAIT_VISIBLE, absent, timeoutMs = 30_000)
+    val running = client.submit(WaitVisible(absent), timeoutMs = 30_000)
     Thread.sleep(500)
     val busyPingMs = client.ping()
     check(running.cancel()) {
@@ -840,9 +820,9 @@ private fun runCancellationChecks(serial: String, client: DriverClient) {
 
     // Cancel queued work: the second wait must terminate before the first one does, and a
     // short-deadline command queued behind a long one must expire without running.
-    val first = client.submit(Operation.WAIT_VISIBLE, absent, timeoutMs = 30_000)
-    val second = client.submit(Operation.WAIT_VISIBLE, absent, timeoutMs = 30_000)
-    val expiring = client.submit(Operation.HEALTH, timeoutMs = 200)
+    val first = client.submit(WaitVisible(absent), timeoutMs = 30_000)
+    val second = client.submit(WaitVisible(absent), timeoutMs = 30_000)
+    val expiring = client.submit(Health, timeoutMs = 200)
     check(second.cancel())
     val secondResult = second.await()
     check(!secondResult.ok && secondResult.errorCode == ErrorCode.CANCELLED) { "Queued wait was not cancelled: $secondResult" }
@@ -857,7 +837,7 @@ private fun runCancellationChecks(serial: String, client: DriverClient) {
     }
 
     // The session is still usable after cancellations.
-    val health = client.execute(Operation.HEALTH)
+    val health = client.send(Health)
     check(health.ok) { "Session unusable after cancellation: $health" }
     println(
         "PHASE_1_CANCELLATION_OK serial=$serial idlePingMs=$idlePingMs busyPingMs=$busyPingMs " +
@@ -1008,18 +988,10 @@ private fun runTransportFaultScenarios(
         var primaryError: Throwable? = null
         try {
             check(
-                session.client.execute(
-                    Operation.WAIT_VISIBLE,
-                    Selector.text("Fault taps: 0"),
-                    commandTimeoutMs(10_000),
-                ).ok
+                session.client.send(WaitVisible(Selector.text("Fault taps: 0")), timeoutMs = commandTimeoutMs(10_000)).ok
             ) { "Fault counter changed before $point" }
             val failure = runCatching {
-                session.client.execute(
-                    Operation.TAP,
-                    faultButton,
-                    timeoutMs = commandTimeoutMs(10_000),
-                )
+                session.client.send(Tap(faultButton), timeoutMs = commandTimeoutMs(10_000))
             }.exceptionOrNull()
             check(failure is CommandTransportException) { "$point did not lose transport: $failure" }
             check(failure.code == ErrorCode.INDETERMINATE) {
@@ -1029,7 +1001,7 @@ private fun runTransportFaultScenarios(
                 "$point failed in unexpected host transmission state ${failure.transmissionState}"
             }
             val poisonedFailure = runCatching {
-                session.client.execute(Operation.HEALTH)
+                session.client.send(Health)
             }.exceptionOrNull()
             check(
                 poisonedFailure is CommandTransportException &&
@@ -1093,18 +1065,11 @@ private fun runTransportFaultScenarios(
     try {
         check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT process changed before verification" }
         check(
-            verification.client.execute(
-                Operation.WAIT_VISIBLE,
-                Selector.text("Fault taps: 1"),
-                commandTimeoutMs(10_000),
-            ).ok
+            verification.client.send(WaitVisible(Selector.text("Fault taps: 1")), timeoutMs = commandTimeoutMs(10_000)).ok
         ) { "Post-mutation transport loss did not produce exactly one tap" }
         Thread.sleep(500)
-        val stableCount = verification.client.execute(
-            Operation.EXISTS,
-            Selector.text("Fault taps: 1"),
-        )
-        check(stableCount.ok && stableCount.value == true) { "Uncertain tap was replayed or completed late" }
+        val stableCount = verification.client.execute(Exists(Selector.text("Fault taps: 1")))
+        check(stableCount.value) { "Uncertain tap was replayed or completed late" }
         check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT process changed during verification" }
         verificationCleanupStarted = true
         closed = cleanupFaultSession(adb, serial, bootId, verification, store)
@@ -1161,11 +1126,7 @@ private fun runHeartbeatExpiryScenario(
     var cleanupStarted = false
     try {
         val silentSince = System.nanoTime()
-        val wait = session.client.submit(
-            Operation.WAIT_VISIBLE,
-            Selector.text("tap-heartbeat-probe-never-visible"),
-            timeoutMs = 30_000,
-        )
+        val wait = session.client.submit(WaitVisible(Selector.text("tap-heartbeat-probe-never-visible")), timeoutMs = 30_000)
         val outcome = runCatching { wait.await() }
         val elapsedMs = (System.nanoTime() - silentSince) / 1_000_000L
         val response = outcome.getOrNull()
@@ -1218,13 +1179,9 @@ private fun runCancelAfterMutationScenario(
     var cleanupStarted = false
     try {
         check(
-            session.client.execute(
-                Operation.WAIT_VISIBLE,
-                Selector.text("Fault taps: 1"),
-                commandTimeoutMs(10_000),
-            ).ok
+            session.client.send(WaitVisible(Selector.text("Fault taps: 1")), timeoutMs = commandTimeoutMs(10_000)).ok
         ) { "Fault counter was not 1 before the cancel-after-mutation tap" }
-        val tap = session.client.submit(Operation.TAP, faultButton, timeoutMs = commandTimeoutMs(15_000))
+        val tap = session.client.submit(Tap(faultButton), timeoutMs = commandTimeoutMs(15_000))
         val marker = "TAP_FAULT point=${TransportFaultPoint.CANCEL_AFTER_MUTATION.name} phase=MUTATED"
         check(waitForInstrumentationMarker(session.running, marker, 10_000)) {
             "Driver did not report the post-click hold"
@@ -1233,20 +1190,16 @@ private fun runCancelAfterMutationScenario(
         val cancelSentAt = System.nanoTime()
         val result = tap.await()
         val awaitedMs = (System.nanoTime() - cancelSentAt) / 1_000_000L
-        check(result.ok && result.value == true) {
+        check(result.result == Done) {
             "Cancel after mutation did not return the definitive tap result: $result"
         }
         check(
-            session.client.execute(
-                Operation.WAIT_VISIBLE,
-                Selector.text("Fault taps: 2"),
-                commandTimeoutMs(10_000),
-            ).ok
+            session.client.send(WaitVisible(Selector.text("Fault taps: 2")), timeoutMs = commandTimeoutMs(10_000)).ok
         ) { "Cancelled-after-mutation tap did not take effect exactly once" }
         Thread.sleep(500)
-        val stable = session.client.execute(Operation.EXISTS, Selector.text("Fault taps: 2"))
-        check(stable.ok && stable.value == true) { "Fault counter moved after the cancelled tap" }
-        check(session.client.execute(Operation.HEALTH).ok) { "Session unusable after cancel-after-mutation" }
+        val stable = session.client.execute(Exists(Selector.text("Fault taps: 2")))
+        check(stable.value) { "Fault counter moved after the cancelled tap" }
+        check(session.client.send(Health).ok) { "Session unusable after cancel-after-mutation" }
         check(observeProcess(adb, serial, FIXTURE_PACKAGE) == fixtureProcess) { "AUT process changed during cancel scenario" }
         println("PHASE_1_CANCEL_AFTER_MUTATION_OK serial=$serial awaitedAfterCancelMs=$awaitedMs")
         cleanupStarted = true
@@ -1292,14 +1245,10 @@ private fun runLateMutationQuarantineScenario(
     var hypotheticalMutationAtNanos = Long.MAX_VALUE
     try {
         check(
-            session.client.execute(
-                Operation.WAIT_VISIBLE,
-                Selector.text("Fault taps: 0"),
-                10_000,
-            ).ok
+            session.client.send(WaitVisible(Selector.text("Fault taps: 0")), timeoutMs = 10_000).ok
         )
         val failure = runCatching {
-            session.client.execute(Operation.TAP, faultButton, timeoutMs = 5_000)
+            session.client.send(Tap(faultButton), timeoutMs = 5_000)
         }.exceptionOrNull()
         hypotheticalMutationAtNanos = System.nanoTime() + 15_000_000_000L
         val delegationMarker = "point=${TransportFaultPoint.LATE_UNINTERRUPTIBLE.name} phase=WORK_DELEGATED"
@@ -1425,11 +1374,7 @@ private fun runLateMutationQuarantineScenario(
     var verificationCleanupStarted = false
     try {
         check(
-            verification.client.execute(
-                Operation.WAIT_VISIBLE,
-                Selector.text("Fault taps: 0"),
-                10_000,
-            ).ok
+            verification.client.send(WaitVisible(Selector.text("Fault taps: 0")), timeoutMs = 10_000).ok
         ) { "Late mutation survived the mandatory reset" }
         verificationCleanupStarted = true
         val closed = cleanupFaultSession(adb, serial, reset.bootId, verification, store)
@@ -1727,7 +1672,7 @@ private fun startFaultSession(
         client = connectWithRetry(hostPort, sessionId, generation, secret, deadlineNanos, serial, hostHeartbeatIntervalMs)
         check(System.nanoTime() < deadlineNanos) { "Connection exceeded transport deadline" }
         check(client.driverInstanceId == running.driverInstanceId)
-        check(client.execute(Operation.HEALTH).ok)
+        check(client.send(Health).ok)
         check(System.nanoTime() < deadlineNanos) { "Health check exceeded transport deadline" }
         journal = journal.copy(
             state = JournalState.READY,
@@ -1894,28 +1839,19 @@ private fun waitForDriverPid(adb: Adb, serial: String): Int {
     error("Driver PID did not appear")
 }
 
-private fun callSync(
+/** Runs one synchronization command built from the observed AUT process and proves the call left that process alone. */
+private inline fun <C> callSync(
     adb: Adb,
     serial: String,
     client: DriverClient,
-    operation: Operation,
-    expectedIdentity: SyncState? = null,
     timeoutMs: Long = 5_000,
-): Response {
+    command: (observedPid: Int, observedStartToken: String) -> C,
+): Result<SyncResult> where C : Command, C : Returning<SyncResult> {
     val before = observeProcess(adb, serial, FIXTURE_PACKAGE)
-    val outcome = runCatching {
-        client.execute(
-            operation = operation,
-            timeoutMs = timeoutMs,
-            observedPid = before.pid,
-            observedStartToken = before.startToken,
-            expectedProcessStartUuid = expectedIdentity?.processStartUuid,
-            expectedSessionIdentity = expectedIdentity?.sessionIdentity,
-        )
-    }
+    val outcome = runCatching { client.execute(command(before.pid, before.startToken), timeoutMs) }
     val after = observeProcess(adb, serial, FIXTURE_PACKAGE)
     check(after == before) { "Synchronization call changed the AUT process: $before -> $after" }
-    return outcome.getOrThrow()
+    return outcome
 }
 
 private fun awaitSyncIdle(
@@ -1931,16 +1867,9 @@ private fun awaitSyncIdle(
     while (true) {
         val remainingMs = (deadline - System.nanoTime()) / 1_000_000
         check(remainingMs > 0) { "Synchronization idle wait timed out" }
-        val response = callSync(
-            adb,
-            serial,
-            client,
-            Operation.SYNC_STATE,
-            expectedIdentity,
-            timeoutMs = minOf(5_000, remainingMs),
-        )
-        check(response.ok) { "Synchronization state failed: $response" }
-        val state = requireNotNull(response.syncState)
+        val state = callSync(adb, serial, client, timeoutMs = minOf(5_000, remainingMs)) { pid, token ->
+            SyncPoll(pid, token, expectedIdentity.processStartUuid, expectedIdentity.sessionIdentity)
+        }.getOrThrow().state
         val now = System.nanoTime()
         check(now < deadline) { "Synchronization idle wait timed out" }
         if (state.busyCount == 0) {
@@ -2006,11 +1935,11 @@ private fun assertUnsupportedProtocolRejected(
 
 private fun benchmark(serial: String, client: DriverClient, selector: Selector) {
     val directStarted = System.nanoTime()
-    repeat(100) { check(client.execute(Operation.EXISTS, selector).value == true) }
+    repeat(100) { check(client.execute(Exists(selector)).value) }
     val directMs = (System.nanoTime() - directStarted) / 1_000_000.0 / 100
 
     val dumpStarted = System.nanoTime()
-    repeat(5) { check(!client.execute(Operation.DUMP_HIERARCHY).text.isNullOrEmpty()) }
+    repeat(5) { check(client.execute(DumpHierarchy).text.isNotEmpty()) }
     val dumpMs = (System.nanoTime() - dumpStarted) / 1_000_000.0 / 5
 
     println("PHASE_0_BENCHMARK serial=$serial directAvgMs=$directMs dumpAvgMs=$dumpMs")

@@ -22,7 +22,7 @@ Test process (any language)
 +-- clients/kotlin   :clients:kotlin:sdk (Device / App / Element / waits / selectors), :clients:kotlin:junit5 (@TapTest)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
         |
-        | gRPC over loopback  (contracts/api/proto/tap.proto, package tap.v1)
+        | gRPC over loopback  (contracts/api/proto/*.proto, package tap.v1)
         v
 Host service `tap serve` (one per machine, JVM dist or GraalVM native image)
 +-- :host:service    connections (liveness via Attach), device list, sessions, Execute proxy, App lifecycle RPCs
@@ -89,7 +89,9 @@ tap/
 +-- contracts/                   what the three components agree on
 |   +-- protocol/                :contracts:protocol — TAP1 device wire contract, pure Kotlin/JVM, shared by host and driver
 |   |   +-- src/main/kotlin/com/company/tap/protocol/
-|   |   |   +-- Messages.kt          FrameType, Operation, Direction, Request, Response, ElementSnapshot, DeviceInfo, SyncState, limits, key codes
+|   |   |   +-- Messages.kt          FrameType, Direction, StabilitySignal, handshake models, ElementSnapshot, DeviceInfo, SyncState, limits, key codes
+|   |   |   +-- Commands.kt          Request envelope; sealed Command (one class per op, `op` discriminator), Mutation/Targeted, Returning<R>, CommandHandler + dispatch, RequestDecoder
+|   |   |   +-- Results.kt           sealed CommandResult (`kind`), Response.Ok/Error (`type`), CommandFailure
 |   |   |   +-- Selector.kt          Selector/NodeSelector AST, MatchMode, MatchLimit, factories
 |   |   |   +-- SelectorValidation.kt shared structural validation -> NATIVE | TRAVERSAL plan kind
 |   |   |   +-- ErrorCode.kt         closed error taxonomy + ErrorDetail sub-reasons
@@ -98,9 +100,10 @@ tap/
 |   |   |   +-- CanonicalJson.kt     canonical handshake JSON + the shared Json codec
 |   |   |   +-- Authentication.kt    Hello/Challenge/Negotiation, HMAC domains, transcript
 |   |   +-- src/test/kotlin/...      FrameCodecTest, ProtocolContractTest, ErrorCodeTest, SelectorTest, GoldenMessageTest
-|   |   +-- src/test/resources/golden/  57 golden request/response JSON fixtures
+|   |   +-- src/test/resources/golden/  59 golden request/response JSON fixtures (one per command, per result kind, per error code)
 |   +-- api/                     :contracts:api — host service API; protobuf/gRPC Java codegen (java-library)
-|       +-- proto/tap.proto      package tap.v1; single source for the Kotlin stubs (Gradle) and the Python stubs (gen_stubs.py)
+|       +-- proto/               package tap.v1, one file per concern (selector, command, connection, device, session, app); single source for the Kotlin stubs (Gradle) and the Python stubs (gen_stubs.py)
+|       +-- BREAKING_BASELINE     commit before which CI skips `buf breaking` (the deliberate 2.0 break)
 |
 +-- device/                      what runs on the Android device
 |   +-- driver/                  :device:driver — Android; the on-device driver
@@ -176,8 +179,8 @@ tap/
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the service)
 |       +-- pyproject.toml, README.md
-|       +-- scripts/gen_stubs.py     regenerates tap/_gen from contracts/api/proto/tap.proto; --check for CI
-|       +-- tap/_gen/                committed generated stubs (tap_pb2, tap_pb2_grpc, .pyi)
+|       +-- scripts/gen_stubs.py     regenerates tap/_gen from contracts/api/proto/*.proto; --check for CI
+|       +-- tap/_gen/                committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); the package re-exports them all
 |       +-- tap/{service,device,element,app,selectors,errors}.py   Service/Connection, Device, Element/ElementWait, App, selector DSL, typed errors
 |       +-- tap/pytest_plugin.py     tap_device / tap_devices fixtures, @pytest.mark.tap_devices, failure artifacts
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
@@ -261,9 +264,11 @@ Key types:
 | Type | Purpose |
 |---|---|
 | `FrameType` | HELLO, CHALLENGE, AUTH, AUTH_RESULT, REQUEST, RESPONSE, CLOSE, CANCEL, PING, PONG, BLOB_START, BLOB_CHUNK, BLOB_END |
-| `Operation` | HEALTH, EXISTS, TAP, LONG_TAP, WAIT_VISIBLE, DUMP_HIERARCHY, SET_TEXT, TYPE_TEXT, CLEAR_TEXT, SWIPE, SCROLL, SCROLL_UNTIL, SCREENSHOT, SYNC_BOOTSTRAP, SYNC_STATE |
-| `Request` | session identity, operation + version, timeout, selector/container, input text, direction, distance percent, max scrolls, observed AUT identity |
-| `Response` | `ok`, `value`, `text`, `errorCode` + `detail` + `message`, `durationMs`, `syncState`, `artifact` |
+| `Request` | envelope: `sessionId`, `generation`, `timeoutMs`, `command` |
+| `Command` | sealed, one class per operation with its own fields and range checks (`Health`, `Exists(selector)`, `SetText(selector, text)`, `ScrollUntil(selector, container, …)`, `SyncPoll(…)` …), discriminated by `op`; `Mutation` / `Targeted` markers; `Returning<R>` fixes the result type |
+| `CommandHandler` | one typed method per command; `Command.dispatch(handler)` is the exhaustive switch the driver implements |
+| `Response` | `Ok(result, durationMs)` or `Error(code, detail?, message?, durationMs)`, discriminated by `type` |
+| `CommandResult` | sealed, discriminated by `kind`: `Done`, `BoolResult`, `Moved`, `CountResult`, `TextResult`, `SnapshotResult`, `DeviceInfoResult`, `ArtifactResult`, `SyncResult` |
 | `Selector` / `NodeSelector` | the AST (below) |
 | `ErrorCode` | closed taxonomy; each code has `mayHaveMutated` and `retryable` |
 | `BlobStart` / `BlobEnd` / `ArtifactInfo` | binary transfer envelope and checksum |
@@ -438,12 +443,12 @@ client: ADB-side `pm`/`am`/`cmd package resolve-activity` for install, uninstall
 force-stop, clear-data and permission grants, `WAIT_APP_VISIBLE` on the driver after launch,
 process observation (`coldLaunch` returns the new `ProcessObservation`; `forceStop`/
 `clearData` verify the process is gone), and `awaitIdle` over the sync provider
-(`SYNC_BOOTSTRAP` once, then `SYNC_STATE` until stable; any process identity change is an
+(`SyncBootstrap` once, then `SyncPoll` until stable; any process identity change is an
 `AppLifecycleException`). The service keeps one per (session, package).
 
 ### Host session service (`:host:service`)
 
-`tap serve` exposes `:host:core` over loopback gRPC (`contracts/api/proto/tap.proto`,
+`tap serve` exposes `:host:core` over loopback gRPC (`contracts/api/proto/*.proto`,
 package `tap.v1`) so every client — Kotlin and Python alike — reuses the same ADB control
 plane, journals, leases, driver lifecycle and app operations. It lists the devices (`adb devices`, `LEASED` by probing
 the per-serial lock, quarantine read from the journal) but leases nothing itself: exclusive use

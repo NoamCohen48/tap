@@ -1,6 +1,6 @@
 package com.company.tap.host
 
-import com.company.tap.protocol.Operation
+import com.company.tap.protocol.Health
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
@@ -154,8 +154,7 @@ class DeviceSession private constructor(
                         hostPort, sessionId, generation, secret,
                         serial = serial, heartbeatIntervalMs = config.heartbeatIntervalMs,
                     )
-                    val health = client.execute(Operation.HEALTH)
-                    check(health.ok) { "Driver health check failed on $serial: $health" }
+                    client.execute(Health)
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
                     return DeviceSession(config, lease, store, journal, running, hostPort, client)

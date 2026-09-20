@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "UNAUTHENTICATED",
+  "type": "error",
+  "code": "UNAUTHENTICATED",
   "message": "example",
   "durationMs": 5
 }

@@ -36,8 +36,14 @@ jobs:
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "no base commit; skipping"; exit 0
           fi
-          if ! git cat-file -e "$BASE:contracts/api/proto/tap.proto" 2>/dev/null; then
-            echo "base $BASE has no tap.proto; skipping"; exit 0
+          if ! git cat-file -e "$BASE:contracts/api/buf.yaml" 2>/dev/null; then
+            echo "base $BASE has no tap.v1 API; skipping"; exit 0
+          fi
+          # contracts/api/BREAKING_BASELINE names the last commit of a previous, deliberately
+          # incompatible API line (0.x only). A base on or before it is not comparable.
+          BASELINE=$(grep -v '^#' contracts/api/BREAKING_BASELINE 2>/dev/null | head -1 || true)
+          if [ -n "$BASELINE" ] && git merge-base --is-ancestor "$BASE" "$BASELINE"; then
+            echo "base $BASE predates the API baseline $BASELINE; skipping"; exit 0
           fi
           buf breaking contracts/api --against ".git#ref=$BASE,subdir=contracts/api/proto"
       - uses: actions/setup-python@v5

@@ -1,0 +1,56 @@
+// tap.v1 — connections: a client process's connection to the service, and its unit of
+// ownership. Sessions belong to a connection; when its Attach stream breaks (the client
+// exited) the service closes those sessions, which frees their devices.
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "com.company.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "ConnectionProto";
+
+service ConnectionService {
+  rpc Open(OpenConnectionRequest) returns (OpenConnectionResponse); // Creates a connection; call Attach next.
+  // Long-lived stream the client keeps open for the life of the connection. Server-side
+  // cancellation of this stream is the liveness signal; the messages are informational.
+  rpc Attach(AttachRequest) returns (stream ConnectionEvent);
+  rpc Close(CloseConnectionRequest) returns (CloseConnectionResponse); // Closes every session of the connection.
+  rpc Info(InfoRequest) returns (InfoResponse); // Service version, protocol version and configuration.
+}
+
+message OpenConnectionRequest {
+  string name = 1; // free text for diagnostics (e.g. "pytest 12345 on host")
+}
+
+message OpenConnectionResponse {
+  string connection_id = 1;
+}
+
+message AttachRequest {
+  string connection_id = 1;
+}
+
+message ConnectionEvent {
+  int64 at_epoch_ms = 1;
+  string message = 2;
+}
+
+message CloseConnectionRequest {
+  string connection_id = 1;
+}
+
+message CloseConnectionResponse {
+  int32 sessions_closed = 1;
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  string service_version = 1;
+  string host_build_id = 2;
+  string protocol_version = 3;
+  string adb_executable = 4;
+  string state_dir = 5;
+  bool bundled_driver = 6;
+}

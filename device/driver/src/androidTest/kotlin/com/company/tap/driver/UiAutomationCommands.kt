@@ -16,8 +16,26 @@ import androidx.test.uiautomator.UiObject2
 import com.company.tap.driver.engine.BlobTransfer
 import com.company.tap.driver.engine.CommandContext
 import com.company.tap.protocol.Bounds
-import com.company.tap.protocol.DEFAULT_STABLE_FOR_MS
+import com.company.tap.protocol.ArtifactResult
+import com.company.tap.protocol.ClearText
+import com.company.tap.protocol.CommandFailure
+import com.company.tap.protocol.DeviceInfoResult
+import com.company.tap.protocol.Done
+import com.company.tap.protocol.LongTap
+import com.company.tap.protocol.Moved
+import com.company.tap.protocol.PressKey
+import com.company.tap.protocol.Scroll
+import com.company.tap.protocol.ScrollUntil
+import com.company.tap.protocol.SetText
+import com.company.tap.protocol.Snapshot
 import com.company.tap.protocol.StabilitySignal
+import com.company.tap.protocol.SnapshotResult
+import com.company.tap.protocol.Swipe
+import com.company.tap.protocol.Tap
+import com.company.tap.protocol.TextResult
+import com.company.tap.protocol.TypeText
+import com.company.tap.protocol.WaitAppVisible
+import com.company.tap.protocol.WaitScreenStable
 import com.company.tap.protocol.DeviceInfo
 import com.company.tap.protocol.Direction
 import com.company.tap.protocol.ElementSnapshot
@@ -27,8 +45,6 @@ import com.company.tap.protocol.KEYCODE_BACK
 import com.company.tap.protocol.KEYCODE_HOME
 import com.company.tap.protocol.MAX_ARTIFACT_BYTES
 import com.company.tap.protocol.MAX_CONTROL_PAYLOAD
-import com.company.tap.protocol.Request
-import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -42,85 +58,78 @@ internal class UiAutomationCommands(
     private val objects: UiObjectAccess,
     private val faults: FaultController,
 ) {
-    fun tap(context: CommandContext, socket: Socket, request: Request): Response =
-        gesture(context, request) { element ->
-            faults.injectLateUninterruptible(socket, request, context.requestId)
+    fun tap(context: CommandContext, socket: Socket, command: Tap, generation: Long): Done =
+        gesture(context, command.selector) { element ->
+            faults.injectLateUninterruptible(socket, command, context.requestId, generation)
             element.click()
-            faults.holdAfterMutation(request, context.requestId)
-            if (faults.inject(FaultPoint.AFTER_MUTATION, request, context.requestId)) {
+            faults.holdAfterMutation(command, context.requestId, generation)
+            if (faults.inject(FaultPoint.AFTER_MUTATION, command, context.requestId, generation)) {
                 throw InjectedTransportLoss()
             }
-            true
+            Done
         }
 
-    fun longTap(context: CommandContext, request: Request): Response =
-        gesture(context, request) { element ->
+    fun longTap(context: CommandContext, command: LongTap): Done =
+        gesture(context, command.selector) { element ->
             element.longClick()
-            true
+            Done
         }
 
-    /** Finger gesture across the element; the value is always true once injected. */
-    fun swipe(context: CommandContext, request: Request): Response =
-        gesture(context, request) { element ->
-            element.swipe(direction(request), percent(request))
-            true
+    /** Finger gesture across the element; always reports moved once injected. */
+    fun swipe(context: CommandContext, command: Swipe): Moved =
+        gesture(context, command.selector) { element ->
+            element.swipe(direction(command.direction), percent(command.distancePercent))
+            Moved(true)
         }
 
-    /** One scroll segment of a container. The value reports whether the content moved. */
-    fun scroll(context: CommandContext, request: Request): Response =
-        gesture(context, request, interactable = UiObject2::isScrollable) { element ->
-            element.scroll(direction(request), percent(request))
+    /** One scroll segment of a container; reports whether the content moved. */
+    fun scroll(context: CommandContext, command: Scroll): Moved =
+        gesture(context, command.selector, interactable = UiObject2::isScrollable) { element ->
+            Moved(element.scroll(direction(command.direction), percent(command.distancePercent)))
         }
 
     /**
      * Shared shape of every single-target gesture: checkpoint, resolve exactly one target,
      * pass the mutation gate, act, recycle. Everything after the gate is definitive.
      */
-    private inline fun gesture(
+    private inline fun <R> gesture(
         context: CommandContext,
-        request: Request,
+        selector: Selector,
         interactable: (UiObject2) -> Boolean = { true },
-        action: (UiObject2) -> Boolean,
-    ): Response {
+        action: (UiObject2) -> R,
+    ): R {
         context.checkpoint()
-        val element = resolveOrFail(context, requireNotNull(request.selector)) { return it }
-        val value = try {
-            if (!interactable(element)) {
-                return Response.failure(ErrorCode.NOT_INTERACTABLE, durationMs = context.elapsed())
-            }
+        val element = resolve(selector)
+        try {
+            if (!interactable(element)) throw CommandFailure(ErrorCode.NOT_INTERACTABLE)
             // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
             // cancellation is ignored from here on and the gesture result is definitive.
             context.markMutationStarted()
-            action(element)
+            return action(element)
         } finally {
             element.recycle()
         }
-        return Response(true, value = value, durationMs = context.elapsed())
     }
 
-    /** Polls presence on the device until it equals [expected] (`WAIT_VISIBLE` / `WAIT_GONE`). */
-    fun waitVisible(context: CommandContext, request: Request, expected: Boolean): Response {
-        val selector = requireNotNull(request.selector)
-        return pollUntil(context) { objects.hasObject(selector) == expected }
-    }
+    /** Polls presence on the device until it equals [expected] ([WaitVisible] / [WaitGone]). */
+    fun waitVisible(context: CommandContext, selector: Selector, expected: Boolean): Done =
+        pollUntil(context) { objects.hasObject(selector) == expected }
 
     /** Waits until the named package owns a focused window. */
-    fun waitAppVisible(context: CommandContext, request: Request): Response {
-        val packageName = requireNotNull(request.packageName)
-        return pollUntil(context) { device.findWindow(By.Window.pkg(packageName).focused(true)) != null }
-    }
+    fun waitAppVisible(context: CommandContext, command: WaitAppVisible): Done =
+        pollUntil(context) { device.findWindow(By.Window.pkg(command.packageName).focused(true)) != null }
 
     /**
-     * `WAIT_SCREEN_STABLE`: succeeds once the package's focused window has been quiet for
+     * [WaitScreenStable]: succeeds once the package's focused window has been quiet for
      * `stableForMs` — no `WINDOW_CONTENT_CHANGED` events from it, an unchanged accessibility
      * tree fingerprint and (down-sampled) pixels. This is an explicit wait a test asks for;
      * no other command settles implicitly. Reads raw accessibility windows so a running
      * animation cannot stall the sampler in UiAutomator's idle wait.
      */
-    fun waitScreenStable(context: CommandContext, request: Request): Response {
-        val packageName = requireNotNull(request.packageName)
-        val stableFor = request.stableForMs ?: DEFAULT_STABLE_FOR_MS
-        val signal = request.stableSignal ?: StabilitySignal.ALL
+    fun waitScreenStable(context: CommandContext, command: WaitScreenStable): Done {
+        val packageName = command.packageName
+        val stableFor = command.stableForMs
+        val signal = command.signal
         var reference: ScreenSample? = null
         var stableSince = 0L
         var windowSeen = false
@@ -135,7 +144,7 @@ internal class UiAutomationCommands(
                     reference = sample
                     stableSince = now
                 }
-                now - stableSince >= stableFor -> return Response(true, value = true, durationMs = context.elapsed())
+                now - stableSince >= stableFor -> return Done
             }
             val remaining = context.remainingMs()
             if (remaining <= 0) break
@@ -148,11 +157,9 @@ internal class UiAutomationCommands(
             val waited = context.nowMs() - before
             if (waited < slice) context.sleep(slice - waited)
         }
-        return Response.failure(
+        throw CommandFailure(
             ErrorCode.WAIT_TIMEOUT,
             detail = if (windowSeen) ErrorDetail.SCREEN_CHANGING else ErrorDetail.APP_NOT_VISIBLE,
-            value = false,
-            durationMs = context.elapsed(),
         )
     }
 
@@ -253,21 +260,19 @@ internal class UiAutomationCommands(
         }
     }
 
-    private inline fun pollUntil(context: CommandContext, condition: () -> Boolean): Response {
+    private inline fun pollUntil(context: CommandContext, condition: () -> Boolean): Done {
         var satisfied: Boolean
         do {
             context.checkCancelled()
             satisfied = condition()
             if (!satisfied && context.remainingMs() > 0) context.sleep(50)
         } while (!satisfied && !context.isExpired())
-        return if (satisfied) Response(true, value = true, durationMs = context.elapsed())
-        else Response.failure(ErrorCode.WAIT_TIMEOUT, value = false, durationMs = context.elapsed())
+        if (!satisfied) throw CommandFailure(ErrorCode.WAIT_TIMEOUT)
+        return Done
     }
 
-    fun deviceInfo(context: CommandContext): Response = Response(
-        true,
-        durationMs = context.elapsed(),
-        deviceInfo = DeviceInfo(
+    fun deviceInfo(): DeviceInfoResult = DeviceInfoResult(
+        DeviceInfo(
             apiLevel = Build.VERSION.SDK_INT,
             manufacturer = Build.MANUFACTURER,
             model = Build.MODEL,
@@ -280,8 +285,8 @@ internal class UiAutomationCommands(
     )
 
     /** Key injection is a mutation: it passes the gate and is never replayed. */
-    fun pressKey(context: CommandContext, request: Request): Response {
-        val keyCode = requireNotNull(request.keyCode)
+    fun pressKey(context: CommandContext, command: PressKey): Done {
+        val keyCode = command.keyCode
         context.checkpoint()
         context.markMutationStarted()
         val injected = when (keyCode) {
@@ -289,13 +294,13 @@ internal class UiAutomationCommands(
             KEYCODE_HOME -> device.pressHome()
             else -> device.pressKeyCode(keyCode)
         }
-        return if (injected) Response(true, value = true, durationMs = context.elapsed())
-        else Response.failure(ErrorCode.ACTION_REJECTED, message = "Key $keyCode was not injected", durationMs = context.elapsed())
+        if (!injected) throw CommandFailure(ErrorCode.ACTION_REJECTED, message = "Key $keyCode was not injected")
+        return Done
     }
 
     /** Reads one element's state at this instant; the object is recycled before returning. */
-    fun snapshot(context: CommandContext, request: Request): Response {
-        val element = resolveOrFail(context, requireNotNull(request.selector)) { return it }
+    fun snapshot(command: Snapshot): SnapshotResult {
+        val element = resolve(command.selector)
         val snapshot = try {
             val bounds = element.visibleBounds
             ElementSnapshot(
@@ -320,37 +325,29 @@ internal class UiAutomationCommands(
         } finally {
             element.recycle()
         }
-        return Response(true, snapshot = snapshot, durationMs = context.elapsed())
+        return SnapshotResult(snapshot)
     }
 
-    fun dumpHierarchy(started: Long): Response {
+    fun dumpHierarchy(): TextResult {
         val hierarchy = try {
             LimitedOutputStream(MAX_HIERARCHY_BYTES).use { output ->
                 device.dumpWindowHierarchy(output)
                 output.content()
             }
         } catch (_: OutputLimitExceeded) {
-            return Response.failure(
-                ErrorCode.PAYLOAD_TOO_LARGE,
-                message = "Hierarchy exceeded $MAX_HIERARCHY_BYTES bytes",
-                durationMs = elapsed(started),
-            )
+            throw CommandFailure(ErrorCode.PAYLOAD_TOO_LARGE, message = "Hierarchy exceeded $MAX_HIERARCHY_BYTES bytes")
         }
-        return Response(true, text = hierarchy, durationMs = elapsed(started))
+        return TextResult(hierarchy)
     }
 
     /**
      * PNG screenshot streamed as a blob ahead of the response. Pure query: an aborted transfer
      * reports `CANCELLED`/`DEADLINE_EXCEEDED`, never a partial artifact.
      */
-    fun screenshot(context: CommandContext): Response {
+    fun screenshot(context: CommandContext): ArtifactResult {
         context.checkpoint()
         val bitmap = instrumentation.uiAutomation.takeScreenshot()
-            ?: return Response.failure(
-                ErrorCode.ARTIFACT_TRANSFER_FAILED,
-                detail = ErrorDetail.CAPTURE_FAILED,
-                durationMs = context.elapsed(),
-            )
+            ?: throw CommandFailure(ErrorCode.ARTIFACT_TRANSFER_FAILED, detail = ErrorDetail.CAPTURE_FAILED)
         val width = bitmap.width
         val height = bitmap.height
         val png = try {
@@ -359,53 +356,38 @@ internal class UiAutomationCommands(
             bitmap.recycle()
         }
         if (png.size > MAX_ARTIFACT_BYTES) {
-            return Response.failure(
-                ErrorCode.ARTIFACT_TRANSFER_FAILED,
-                detail = ErrorDetail.ARTIFACT_TOO_LARGE,
-                durationMs = context.elapsed(),
-            )
+            throw CommandFailure(ErrorCode.ARTIFACT_TRANSFER_FAILED, detail = ErrorDetail.ARTIFACT_TOO_LARGE)
         }
         context.checkpoint()
         val (blob, outcome) = context.transferBlob("image/png", png)
         return when (outcome) {
-            BlobTransfer.Outcome.COMPLETED -> Response(
-                true,
-                durationMs = context.elapsed(),
-                artifact = blob.artifactInfo(width, height),
-            )
-            BlobTransfer.Outcome.CANCELLED -> Response.failure(ErrorCode.CANCELLED, durationMs = context.elapsed())
-            BlobTransfer.Outcome.DEADLINE_EXCEEDED ->
-                Response.failure(ErrorCode.DEADLINE_EXCEEDED, durationMs = context.elapsed())
-            BlobTransfer.Outcome.WRITE_FAILED -> Response.failure(
-                ErrorCode.ARTIFACT_TRANSFER_FAILED,
-                detail = ErrorDetail.BLOB_INCOMPLETE,
-                durationMs = context.elapsed(),
-            )
+            BlobTransfer.Outcome.COMPLETED -> ArtifactResult(blob.artifactInfo(width, height))
+            BlobTransfer.Outcome.CANCELLED -> throw CommandFailure(ErrorCode.CANCELLED)
+            BlobTransfer.Outcome.DEADLINE_EXCEEDED -> throw CommandFailure(ErrorCode.DEADLINE_EXCEEDED)
+            BlobTransfer.Outcome.WRITE_FAILED ->
+                throw CommandFailure(ErrorCode.ARTIFACT_TRANSFER_FAILED, detail = ErrorDetail.BLOB_INCOMPLETE)
         }
     }
 
-    fun setText(context: CommandContext, request: Request): Response =
-        editText(context, request, expected = requireNotNull(request.inputText)) { element, expected ->
+    fun setText(context: CommandContext, command: SetText): Done =
+        editText(context, command.selector, expected = command.text) { element, expected ->
             element.text = expected
         }
 
-    fun clearText(context: CommandContext, request: Request): Response =
-        editText(context, request, expected = "") { element, _ -> element.clear() }
+    fun clearText(context: CommandContext, command: ClearText): Done =
+        editText(context, command.selector, expected = "") { element, _ -> element.clear() }
 
     /** Accessibility `ACTION_SET_TEXT` shape: resolve, require editable, gate, set, verify. */
     private inline fun editText(
         context: CommandContext,
-        request: Request,
+        selector: Selector,
         expected: String,
         mutate: (UiObject2, String) -> Unit,
-    ): Response {
-        val selector = requireNotNull(request.selector)
+    ): Done {
         context.checkpoint()
-        val element = resolveOrFail(context, selector) { return it }
+        val element = resolve(selector)
         try {
-            if (!element.accessibilityNodeInfo.isEditable) {
-                return Response.failure(ErrorCode.NOT_INTERACTABLE, durationMs = context.elapsed())
-            }
+            if (!element.accessibilityNodeInfo.isEditable) throw CommandFailure(ErrorCode.NOT_INTERACTABLE)
             context.markMutationStarted()
             mutate(element, expected)
         } finally {
@@ -417,30 +399,25 @@ internal class UiAutomationCommands(
             changed = currentText(selector) == expected
             if (!changed) Thread.sleep(25)
         } while (!changed && SystemClock.elapsedRealtime() < verificationDeadline)
-        return if (changed) Response(true, value = true, durationMs = context.elapsed())
-        else Response.failure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = context.elapsed())
+        if (!changed) throw CommandFailure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH)
+        return Done
     }
 
-    fun typeText(context: CommandContext, request: Request): Response {
-        val selector = requireNotNull(request.selector)
+    fun typeText(context: CommandContext, command: TypeText): Done {
+        val selector = command.selector
         context.checkpoint()
-        val element = resolveOrFail(context, selector) { return it }
+        val element = resolve(selector)
         val deadline = context.deadlineMs
         try {
-            if (!element.accessibilityNodeInfo.isEditable) {
-                return Response.failure(ErrorCode.NOT_INTERACTABLE, durationMs = context.elapsed())
-            }
-            if (context.isExpired()) {
-                return Response.failure(ErrorCode.DEADLINE_EXCEEDED, durationMs = context.elapsed())
-            }
+            if (!element.accessibilityNodeInfo.isEditable) throw CommandFailure(ErrorCode.NOT_INTERACTABLE)
+            if (context.isExpired()) throw CommandFailure(ErrorCode.DEADLINE_EXCEEDED)
 
-            val text = requireNotNull(request.inputText)
+            val text = command.text
             val events = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(text.toCharArray())
-                ?: return Response.failure(
+                ?: throw CommandFailure(
                     ErrorCode.INVALID_REQUEST,
                     detail = ErrorDetail.UNSUPPORTED_CHARACTERS,
                     message = "Text cannot be represented as Android key events",
-                    durationMs = context.elapsed(),
                 )
 
             val initialText = element.displayedText().orEmpty()
@@ -449,33 +426,21 @@ internal class UiAutomationCommands(
             element.click()
             while (!isFocused(selector)) {
                 val remaining = deadline - SystemClock.elapsedRealtime()
-                if (remaining <= 0) {
-                    return Response.failure(
-                        ErrorCode.ACTION_REJECTED,
-                        detail = ErrorDetail.FOCUS_TIMEOUT,
-                        durationMs = context.elapsed(),
-                    )
-                }
+                if (remaining <= 0) throw CommandFailure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.FOCUS_TIMEOUT)
                 Thread.sleep(minOf(25, remaining))
             }
 
-            if (context.isExpired()) return deadlineAfterFocus(context)
+            if (context.isExpired()) throw deadlineAfterFocus()
             device.waitForIdle(minOf(3_000L, context.remainingMs()))
             val revalidation = objects.resolve(selector)
-            val revalidated = revalidation.element ?: return staleTarget(revalidation, context)
+            val revalidated = revalidation.element ?: throw staleTarget(revalidation)
             val stillFocused = try {
                 revalidated.isFocused
             } finally {
                 revalidated.recycle()
             }
-            if (!stillFocused) {
-                return Response.failure(
-                    ErrorCode.STALE_DURING_COMMAND,
-                    detail = ErrorDetail.FOCUS_LOST,
-                    durationMs = context.elapsed(),
-                )
-            }
-            if (context.isExpired()) return deadlineAfterFocus(context)
+            if (!stillFocused) throw CommandFailure(ErrorCode.STALE_DURING_COMMAND, detail = ErrorDetail.FOCUS_LOST)
+            if (context.isExpired()) throw deadlineAfterFocus()
 
             val pressedKeys = mutableSetOf<Int>()
             var rejected = false
@@ -510,60 +475,40 @@ internal class UiAutomationCommands(
                     if (!released) cleanupFailed = true
                 }
             }
-            if (cleanupFailed) {
-                return Response.failure(
-                    ErrorCode.INDETERMINATE,
-                    detail = ErrorDetail.KEY_RELEASE_FAILED,
-                    durationMs = context.elapsed(),
-                )
-            }
-            if (deadlineExpired) {
-                return Response.failure(
-                    ErrorCode.ACTION_REJECTED,
-                    detail = ErrorDetail.PARTIAL_INPUT,
-                    durationMs = context.elapsed(),
-                )
-            }
-            if (rejected) {
-                return Response.failure(ErrorCode.ACTION_REJECTED, durationMs = context.elapsed())
-            }
+            if (cleanupFailed) throw CommandFailure(ErrorCode.INDETERMINATE, detail = ErrorDetail.KEY_RELEASE_FAILED)
+            if (deadlineExpired) throw CommandFailure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.PARTIAL_INPUT)
+            if (rejected) throw CommandFailure(ErrorCode.ACTION_REJECTED)
 
             do {
-                if (currentText(selector) == initialText + text) {
-                    return Response(true, value = true, durationMs = context.elapsed())
-                }
+                if (currentText(selector) == initialText + text) return Done
                 val remaining = deadline - SystemClock.elapsedRealtime()
                 if (remaining > 0) Thread.sleep(minOf(25, remaining))
             } while (SystemClock.elapsedRealtime() < deadline)
-            return Response.failure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = context.elapsed())
+            throw CommandFailure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH)
         } finally {
             element.recycle()
         }
     }
 
-    fun scrollUntil(context: CommandContext, request: Request): Response {
-        require(request.timeoutMs >= 0) { "timeoutMs must not be negative" }
-        val target = requireNotNull(request.selector)
-        val containerSelector = requireNotNull(request.containerSelector)
-        val direction = direction(request)
-        val percent = percent(request)
+    fun scrollUntil(context: CommandContext, command: ScrollUntil): Done {
+        val target = command.selector
+        val containerSelector = command.container
+        val direction = direction(command.direction)
+        val percent = percent(command.distancePercent)
         var noProgressAttempts = 0
 
-        repeat(request.maxScrolls) {
+        repeat(command.maxScrolls) {
             context.checkCancelled()
-            if (context.isExpired()) return waitTimeout(context)
+            if (context.isExpired()) throw waitTimeout()
             val resolved = objects.resolve(containerSelector)
-            val scrollable = resolved.element ?: return Response.failure(
+            val scrollable = resolved.element ?: throw CommandFailure(
                 requireNotNull(resolved.errorCode),
                 message = "Scroll container was not uniquely resolved",
-                durationMs = context.elapsed(),
             )
             val before = try {
-                if (objects.containerHasObject(scrollable, target)) {
-                    return Response(true, value = true, durationMs = context.elapsed())
-                }
+                if (objects.containerHasObject(scrollable, target)) return Done
                 val fingerprint = visibleFingerprint(scrollable)
-                if (context.isExpired()) return waitTimeout(context)
+                if (context.isExpired()) throw waitTimeout()
                 // The first gesture makes the command definitive; later cancels are ignored.
                 context.markMutationStarted()
                 scrollable.scroll(direction, percent)
@@ -572,61 +517,38 @@ internal class UiAutomationCommands(
                 scrollable.recycle()
             }
             val remaining = context.remainingMs()
-            if (remaining <= 0) return waitTimeout(context)
+            if (remaining <= 0) throw waitTimeout()
             Thread.sleep(minOf(100, remaining))
             val afterResolution = objects.resolve(containerSelector)
-            val after = afterResolution.element ?: return staleTarget(
-                afterResolution,
-                context,
-                "Scroll container was not uniquely resolved after scrolling",
-            )
+            val after = afterResolution.element
+                ?: throw staleTarget(afterResolution, "Scroll container was not uniquely resolved after scrolling")
             val (found, afterFingerprint) = try {
                 objects.containerHasObject(after, target) to visibleFingerprint(after)
             } finally {
                 after.recycle()
             }
-            if (found) return Response(true, value = true, durationMs = context.elapsed())
+            if (found) return Done
             noProgressAttempts = if (afterFingerprint == before) noProgressAttempts + 1 else 0
-            if (noProgressAttempts >= 2) {
-                return Response.failure(
-                    ErrorCode.NOT_FOUND,
-                    detail = ErrorDetail.END_REACHED,
-                    value = false,
-                    durationMs = context.elapsed(),
-                )
-            }
+            if (noProgressAttempts >= 2) throw CommandFailure(ErrorCode.NOT_FOUND, detail = ErrorDetail.END_REACHED)
         }
 
-        if (context.isExpired()) return waitTimeout(context)
+        if (context.isExpired()) throw waitTimeout()
         val finalResolution = objects.resolve(containerSelector)
-        val finalContainer = finalResolution.element ?: return staleTarget(
-            finalResolution,
-            context,
-            "Scroll container was not uniquely resolved after the final attempt",
-        )
+        val finalContainer = finalResolution.element
+            ?: throw staleTarget(finalResolution, "Scroll container was not uniquely resolved after the final attempt")
         val found = try {
             objects.containerHasObject(finalContainer, target)
         } finally {
             finalContainer.recycle()
         }
-        return if (found) Response(true, value = true, durationMs = context.elapsed())
-        else Response.failure(
-            ErrorCode.NOT_FOUND,
-            detail = ErrorDetail.MAX_SCROLLS,
-            value = false,
-            durationMs = context.elapsed(),
-        )
+        if (!found) throw CommandFailure(ErrorCode.NOT_FOUND, detail = ErrorDetail.MAX_SCROLLS)
+        return Done
     }
 
     /** Pre-mutation resolution; `NOT_FOUND`/`AMBIGUOUS` here still promise no input. */
-    private inline fun resolveOrFail(
-        context: CommandContext,
-        selector: Selector,
-        fail: (Response) -> Nothing,
-    ): UiObject2 {
+    private fun resolve(selector: Selector): UiObject2 {
         val resolved = objects.resolve(selector)
-        return resolved.element
-            ?: fail(Response.failure(requireNotNull(resolved.errorCode), durationMs = context.elapsed()))
+        return resolved.element ?: throw CommandFailure(requireNotNull(resolved.errorCode))
     }
 
     private fun currentText(selector: Selector): String? {
@@ -647,43 +569,34 @@ internal class UiAutomationCommands(
         }
     }
 
-    private fun direction(request: Request): androidx.test.uiautomator.Direction =
-        when (request.direction ?: Direction.DOWN) {
-            Direction.UP -> androidx.test.uiautomator.Direction.UP
-            Direction.DOWN -> androidx.test.uiautomator.Direction.DOWN
-            Direction.LEFT -> androidx.test.uiautomator.Direction.LEFT
-            Direction.RIGHT -> androidx.test.uiautomator.Direction.RIGHT
-        }
+    private fun direction(direction: Direction): androidx.test.uiautomator.Direction = when (direction) {
+        Direction.UP -> androidx.test.uiautomator.Direction.UP
+        Direction.DOWN -> androidx.test.uiautomator.Direction.DOWN
+        Direction.LEFT -> androidx.test.uiautomator.Direction.LEFT
+        Direction.RIGHT -> androidx.test.uiautomator.Direction.RIGHT
+    }
 
-    private fun percent(request: Request): Float = request.distancePercent / 100f
+    private fun percent(distancePercent: Int): Float = distancePercent / 100f
 
-    private fun waitTimeout(context: CommandContext): Response =
-        Response.failure(ErrorCode.WAIT_TIMEOUT, value = false, durationMs = context.elapsed())
+    private fun waitTimeout(): CommandFailure = CommandFailure(ErrorCode.WAIT_TIMEOUT)
 
-    private fun deadlineAfterFocus(context: CommandContext): Response = Response.failure(
-        ErrorCode.ACTION_REJECTED,
-        detail = ErrorDetail.DEADLINE_AFTER_FOCUS,
-        durationMs = context.elapsed(),
-    )
+    private fun deadlineAfterFocus(): CommandFailure =
+        CommandFailure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.DEADLINE_AFTER_FOCUS)
 
     /**
      * A target that resolved before the mutation but not after it. `NOT_FOUND`/`AMBIGUOUS`
      * promise no mutation, so post-mutation cardinality failures report
      * `STALE_DURING_COMMAND` with the cardinality as detail.
      */
-    private fun staleTarget(
-        resolution: UiObjectAccess.Resolution,
-        context: CommandContext,
-        message: String? = null,
-    ): Response = Response.failure(
-        ErrorCode.STALE_DURING_COMMAND,
-        detail = when (requireNotNull(resolution.errorCode)) {
-            ErrorCode.AMBIGUOUS -> ErrorDetail.TARGET_AMBIGUOUS
-            else -> ErrorDetail.TARGET_GONE
-        },
-        message = message,
-        durationMs = context.elapsed(),
-    )
+    private fun staleTarget(resolution: UiObjectAccess.Resolution, message: String? = null): CommandFailure =
+        CommandFailure(
+            ErrorCode.STALE_DURING_COMMAND,
+            detail = when (requireNotNull(resolution.errorCode)) {
+                ErrorCode.AMBIGUOUS -> ErrorDetail.TARGET_AMBIGUOUS
+                else -> ErrorDetail.TARGET_GONE
+            },
+            message = message,
+        )
 
     private fun visibleFingerprint(root: UiObject2): String = buildString {
         fun appendNode(node: UiObject2, depth: Int) {

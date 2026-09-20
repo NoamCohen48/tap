@@ -12,7 +12,7 @@ import com.company.tap.api.v1.ScreenshotRequest
 import com.company.tap.api.v1.ScreenshotResponse
 import com.company.tap.api.v1.SessionServiceGrpc
 import com.company.tap.host.DriverClient
-import com.company.tap.protocol.Operation
+import com.company.tap.protocol.DeviceInfoQuery
 import com.company.tap.service.Conversions
 import com.company.tap.service.TapService
 import com.google.protobuf.ByteString
@@ -47,7 +47,7 @@ class SessionServicer(
         // The session is registered by now; a failed first command must not leave it behind,
         // or the client could never release the device it never received.
         val info = try {
-            requireNotNull(session.device.client.executeOrThrow(Operation.DEVICE_INFO, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS).deviceInfo)
+            session.device.client.execute(DeviceInfoQuery, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS).deviceInfo
         } catch (error: Exception) {
             runCatching { service.closeSession(session.id) }
             throw error
@@ -83,8 +83,8 @@ class SessionServicer(
         commandExecutor.execute {
             reply(observer) {
                 val session = service.session(request.sessionId)
-                val arguments = Conversions.command(request.command, session.defaultTimeoutMs, session.device.config.autPackage)
-                val (response, requestId) = service.execute(session, arguments) { pending ->
+                val command = Conversions.command(request.command, session.defaultTimeoutMs, session.device.config.autPackage)
+                val (response, requestId) = service.execute(session, command) { pending ->
                     pendingRef.set(pending)
                     if (cancelled.get()) pending.cancel()
                 }

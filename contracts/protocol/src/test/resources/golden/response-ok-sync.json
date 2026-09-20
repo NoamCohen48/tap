@@ -1,0 +1,16 @@
+{
+  "type": "ok",
+  "result": {
+    "kind": "sync",
+    "state": {
+      "initialized": true,
+      "processId": 4242,
+      "processStartUuid": "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01",
+      "sessionIdentity": "3e0f7d3d-6c1e-4b1f-9a1c-2d3e4f5a6b7c",
+      "generation": 6,
+      "busyCount": 0,
+      "lastTransitionElapsedMs": 987654
+    }
+  },
+  "durationMs": 8
+}

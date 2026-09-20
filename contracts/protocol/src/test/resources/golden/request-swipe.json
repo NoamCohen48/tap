@@ -1,16 +1,18 @@
 {
   "sessionId": "0d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
-  "sessionGeneration": 3,
-  "operation": "SWIPE",
+  "generation": 3,
   "timeoutMs": 10000,
-  "selector": {
-    "node": {
-      "resource": {
-        "name": "pager",
-        "packageName": "com.example.app"
+  "command": {
+    "op": "swipe",
+    "selector": {
+      "node": {
+        "resource": {
+          "name": "pager",
+          "packageName": "com.example.app"
+        }
       }
-    }
-  },
-  "direction": "LEFT",
-  "distancePercent": 60
+    },
+    "direction": "LEFT",
+    "distancePercent": 60
+  }
 }

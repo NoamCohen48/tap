@@ -16,7 +16,7 @@ class ErrorCodeTest {
         ErrorCode.entries.filter { it != ErrorCode.UNKNOWN }.forEach { code ->
             val response = Response.failure(code, durationMs = 1, detail = "D", message = "m")
             val encoded = json.encodeToString(response)
-            assertTrue("\"errorCode\":\"${code.name}\"" in encoded, encoded)
+            assertTrue("\"code\":\"${code.name}\"" in encoded, encoded)
             assertEquals(response, json.decodeFromString<Response>(encoded))
         }
     }
@@ -24,7 +24,7 @@ class ErrorCodeTest {
     @Test
     fun unknownCodeDecodesToUnknownInsteadOfFailing() {
         val decoded = json.decodeFromString<Response>(
-            """{"ok":false,"errorCode":"FROM_THE_FUTURE","durationMs":3}""",
+            """{"type":"error","code":"FROM_THE_FUTURE","durationMs":3}""",
         )
         assertEquals(ErrorCode.UNKNOWN, decoded.errorCode)
         assertTrue(decoded.errorCode!!.mayHaveMutated)
@@ -39,11 +39,13 @@ class ErrorCodeTest {
     }
 
     @Test
-    fun okAndErrorCodeAreMutuallyExclusive() {
-        assertFailsWith<IllegalArgumentException> { Response(ok = false, durationMs = 0) }
-        assertFailsWith<IllegalArgumentException> {
-            Response(ok = true, errorCode = ErrorCode.NOT_FOUND, durationMs = 0)
-        }
+    fun okAndErrorAreDistinctVariants() {
+        val ok = Response.ok(Done, durationMs = 0)
+        val error = Response.failure(ErrorCode.NOT_FOUND, durationMs = 0)
+        assertTrue(ok.ok && ok.errorCode == null && ok.result == Done)
+        assertFalse(error.ok)
+        assertEquals(ErrorCode.NOT_FOUND, error.errorCode)
+        assertEquals(null, error.result)
     }
 
     @Test
@@ -51,7 +53,7 @@ class ErrorCodeTest {
         val encoded = json.encodeToString(
             Response.failure(ErrorCode.NOT_FOUND, durationMs = 42, detail = ErrorDetail.END_REACHED),
         )
-        assertEquals("""{"ok":false,"errorCode":"NOT_FOUND","detail":"END_REACHED","durationMs":42}""", encoded)
+        assertEquals("""{"type":"error","code":"NOT_FOUND","detail":"END_REACHED","durationMs":42}""", encoded)
     }
 
     @Test

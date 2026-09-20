@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ._gen import tap_pb2 as pb
+from . import _gen as pb
 from .service import mapped_errors
 
 if TYPE_CHECKING:

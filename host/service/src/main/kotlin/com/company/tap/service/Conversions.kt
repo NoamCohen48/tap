@@ -2,49 +2,105 @@ package com.company.tap.service
 
 import com.company.tap.api.v1.ArtifactInfo as ProtoArtifactInfo
 import com.company.tap.api.v1.Bounds as ProtoBounds
-import com.company.tap.api.v1.Command
-import com.company.tap.api.v1.CommandResult
+import com.company.tap.api.v1.ClearText as ProtoClearText
+import com.company.tap.api.v1.Command as ProtoCommand
+import com.company.tap.api.v1.CommandResult as ProtoCommandResult
+import com.company.tap.api.v1.Count as ProtoCount
 import com.company.tap.api.v1.DeviceInfo as ProtoDeviceInfo
+import com.company.tap.api.v1.DeviceInfoQuery as ProtoDeviceInfoQuery
 import com.company.tap.api.v1.Direction as ProtoDirection
-import com.company.tap.api.v1.StabilitySignal as ProtoStabilitySignal
+import com.company.tap.api.v1.Done as ProtoDone
+import com.company.tap.api.v1.DumpHierarchy as ProtoDumpHierarchy
 import com.company.tap.api.v1.ElementSnapshot as ProtoElementSnapshot
+import com.company.tap.api.v1.Error as ProtoError
 import com.company.tap.api.v1.ErrorCode as ProtoErrorCode
+import com.company.tap.api.v1.Exists as ProtoExists
+import com.company.tap.api.v1.Health as ProtoHealth
+import com.company.tap.api.v1.LongTap as ProtoLongTap
 import com.company.tap.api.v1.MatchLimit as ProtoMatchLimit
 import com.company.tap.api.v1.MatchMode as ProtoMatchMode
 import com.company.tap.api.v1.NodeSelector as ProtoNodeSelector
-import com.company.tap.api.v1.Operation as ProtoOperation
+import com.company.tap.api.v1.PressKey as ProtoPressKey
 import com.company.tap.api.v1.ResourceId as ProtoResourceId
+import com.company.tap.api.v1.Screenshot as ProtoScreenshot
+import com.company.tap.api.v1.Scroll as ProtoScroll
+import com.company.tap.api.v1.ScrollUntil as ProtoScrollUntil
 import com.company.tap.api.v1.Selector as ProtoSelector
+import com.company.tap.api.v1.SetText as ProtoSetText
+import com.company.tap.api.v1.Snapshot as ProtoSnapshot
+import com.company.tap.api.v1.StabilitySignal as ProtoStabilitySignal
 import com.company.tap.api.v1.StringMatch as ProtoStringMatch
+import com.company.tap.api.v1.Swipe as ProtoSwipe
+import com.company.tap.api.v1.SyncBootstrap as ProtoSyncBootstrap
+import com.company.tap.api.v1.SyncPoll as ProtoSyncPoll
 import com.company.tap.api.v1.SyncState as ProtoSyncState
+import com.company.tap.api.v1.Tap as ProtoTap
 import com.company.tap.api.v1.TargetScope as ProtoTargetScope
+import com.company.tap.api.v1.TypeText as ProtoTypeText
+import com.company.tap.api.v1.WaitAppVisible as ProtoWaitAppVisible
+import com.company.tap.api.v1.WaitGone as ProtoWaitGone
+import com.company.tap.api.v1.WaitScreenStable as ProtoWaitScreenStable
+import com.company.tap.api.v1.WaitVisible as ProtoWaitVisible
 import com.company.tap.protocol.ArtifactInfo
+import com.company.tap.protocol.ArtifactResult
+import com.company.tap.protocol.BoolResult
 import com.company.tap.protocol.Bounds
+import com.company.tap.protocol.ClearText
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.CommandResult
+import com.company.tap.protocol.Count
+import com.company.tap.protocol.CountResult
 import com.company.tap.protocol.DEFAULT_GESTURE_PERCENT
+import com.company.tap.protocol.DEFAULT_STABLE_FOR_MS
 import com.company.tap.protocol.DeviceInfo
+import com.company.tap.protocol.DeviceInfoQuery
+import com.company.tap.protocol.DeviceInfoResult
 import com.company.tap.protocol.Direction
-import com.company.tap.protocol.StabilitySignal
+import com.company.tap.protocol.Done
+import com.company.tap.protocol.DumpHierarchy
 import com.company.tap.protocol.ElementSnapshot
 import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.Exists
+import com.company.tap.protocol.Health
+import com.company.tap.protocol.LongTap
 import com.company.tap.protocol.MatchLimit
 import com.company.tap.protocol.MatchMode
+import com.company.tap.protocol.Moved
 import com.company.tap.protocol.NodeSelector
-import com.company.tap.protocol.Operation
-import com.company.tap.protocol.Request
+import com.company.tap.protocol.PressKey
 import com.company.tap.protocol.ResourceId
 import com.company.tap.protocol.Response
+import com.company.tap.protocol.Screenshot
+import com.company.tap.protocol.Scroll
+import com.company.tap.protocol.ScrollUntil
 import com.company.tap.protocol.Selector
+import com.company.tap.protocol.SetText
+import com.company.tap.protocol.Snapshot
+import com.company.tap.protocol.SnapshotResult
+import com.company.tap.protocol.StabilitySignal
 import com.company.tap.protocol.StringMatch
+import com.company.tap.protocol.Swipe
+import com.company.tap.protocol.SyncBootstrap
+import com.company.tap.protocol.SyncPoll
+import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
+import com.company.tap.protocol.Tap
 import com.company.tap.protocol.TargetScope
+import com.company.tap.protocol.TextResult
+import com.company.tap.protocol.TypeText
+import com.company.tap.protocol.WaitAppVisible
+import com.company.tap.protocol.WaitGone
+import com.company.tap.protocol.WaitScreenStable
+import com.company.tap.protocol.WaitVisible
 
 /**
  * Proto ↔ protocol conversion. Every enum maps by name (proto prefix stripped), so a value
- * added to one side without the other fails `EnumMirrorTest` rather than mapping silently.
+ * added to one side without the other fails `EnumMirrorTest` rather than mapping silently;
+ * every `Command.op` / `CommandResult.outcome` case maps to exactly one protocol class in an
+ * exhaustive `when`, so a case added to one side without the other does not compile.
  * `GoldenRoundTripTest` proves every golden request/response survives a round trip unchanged.
  */
 object Conversions {
-    private const val OP = "OP_"
     private const val ERR = "ERR_"
     private const val DIR = "DIR_"
     private const val MATCH = "MATCH_"
@@ -54,9 +110,6 @@ object Conversions {
 
     // ---- enums -------------------------------------------------------------------------------
 
-    fun operation(proto: ProtoOperation): Operation = Operation.valueOf(named(proto.name, OP, "operation"))
-    fun operation(value: Operation): ProtoOperation = ProtoOperation.valueOf(OP + value.name)
-
     fun errorCode(proto: ProtoErrorCode): ErrorCode = ErrorCode.valueOf(named(proto.name, ERR, "errorCode"))
     fun errorCode(value: ErrorCode): ProtoErrorCode = ProtoErrorCode.valueOf(ERR + value.name)
 
@@ -64,7 +117,8 @@ object Conversions {
     fun direction(value: Direction): ProtoDirection = ProtoDirection.valueOf(DIR + value.name)
 
     fun stabilitySignal(proto: ProtoStabilitySignal): StabilitySignal =
-        StabilitySignal.valueOf(named(proto.name, STABILITY, "stableSignal"))
+        if (proto == ProtoStabilitySignal.STABILITY_UNSPECIFIED) StabilitySignal.ALL
+        else StabilitySignal.valueOf(named(proto.name, STABILITY, "signal"))
     fun stabilitySignal(value: StabilitySignal): ProtoStabilitySignal = ProtoStabilitySignal.valueOf(STABILITY + value.name)
 
     private fun matchMode(proto: ProtoMatchMode): MatchMode =
@@ -173,120 +227,159 @@ object Conversions {
 
     // ---- commands ----------------------------------------------------------------------------
 
-    /** Everything of a protocol [Request] that a client controls; the session supplies the rest. */
-    data class CommandArguments(
-        val operation: Operation,
-        val timeoutMs: Long,
-        val selector: Selector?,
-        val containerSelector: Selector?,
-        val inputText: String?,
-        val direction: Direction?,
-        val distancePercent: Int,
-        val maxScrolls: Int,
-        val keyCode: Int?,
-        val packageName: String?,
-        val stableForMs: Long?,
-        val stableSignal: StabilitySignal?,
-        val observedPid: Int?,
-        val observedStartToken: String?,
-        val expectedProcessStartUuid: String?,
-        val expectedSessionIdentity: String?,
-    )
+    /** A client's command plus the timeout it asked for (0 = the session default). */
+    data class TimedCommand(val command: Command, val timeoutMs: Long)
 
-    fun command(proto: Command, defaultTimeoutMs: Long, autPackage: String? = null): CommandArguments = CommandArguments(
-        operation = operation(proto.operation),
-        timeoutMs = if (proto.timeoutMs > 0) proto.timeoutMs else defaultTimeoutMs,
-        selector = proto.takeIf { it.hasSelector() }?.selector?.let { selector(it, autPackage) },
-        containerSelector = proto.takeIf { it.hasContainerSelector() }?.containerSelector?.let { selector(it, autPackage) },
-        inputText = proto.takeIf { it.hasInputText() }?.inputText,
-        direction = proto.takeIf { it.hasDirection() }?.direction?.let(::direction),
-        distancePercent = if (proto.hasDistancePercent()) proto.distancePercent else DEFAULT_GESTURE_PERCENT,
-        maxScrolls = if (proto.hasMaxScrolls()) proto.maxScrolls else 20,
-        keyCode = proto.takeIf { it.hasKeyCode() }?.keyCode,
-        packageName = proto.takeIf { it.hasPackageName() }?.packageName,
-        stableForMs = proto.takeIf { it.hasStableForMs() }?.stableForMs,
-        stableSignal = proto.takeIf { it.hasStableSignal() && it.stableSignal != ProtoStabilitySignal.STABILITY_UNSPECIFIED }
-            ?.stableSignal?.let(::stabilitySignal),
-        observedPid = proto.takeIf { it.hasObservedPid() }?.observedPid,
-        observedStartToken = proto.takeIf { it.hasObservedStartToken() }?.observedStartToken,
-        expectedProcessStartUuid = proto.takeIf { it.hasExpectedProcessStartUuid() }?.expectedProcessStartUuid,
-        expectedSessionIdentity = proto.takeIf { it.hasExpectedSessionIdentity() }?.expectedSessionIdentity,
-    )
+    /**
+     * Proto → protocol. [autPackage] fills in `aut_package` resources; null (no session, as in
+     * the golden round trip) rejects them. Range violations surface as [IllegalArgumentException]
+     * from the command's own constructor, which the servicer maps to `INVALID_ARGUMENT`.
+     */
+    fun command(proto: ProtoCommand, defaultTimeoutMs: Long, autPackage: String? = null): TimedCommand {
+        fun sel(value: ProtoSelector) = selector(value, autPackage)
+        val command: Command = when (proto.opCase) {
+            ProtoCommand.OpCase.HEALTH -> Health
+            ProtoCommand.OpCase.DEVICE_INFO -> DeviceInfoQuery
+            ProtoCommand.OpCase.PRESS_KEY -> PressKey(proto.pressKey.keyCode)
+            ProtoCommand.OpCase.SCREENSHOT -> Screenshot
+            ProtoCommand.OpCase.DUMP_HIERARCHY -> DumpHierarchy
+            ProtoCommand.OpCase.EXISTS -> Exists(sel(proto.exists.selector))
+            ProtoCommand.OpCase.COUNT -> Count(sel(proto.count.selector))
+            ProtoCommand.OpCase.SNAPSHOT -> Snapshot(sel(proto.snapshot.selector))
+            ProtoCommand.OpCase.WAIT_VISIBLE -> WaitVisible(sel(proto.waitVisible.selector))
+            ProtoCommand.OpCase.WAIT_GONE -> WaitGone(sel(proto.waitGone.selector))
+            ProtoCommand.OpCase.WAIT_APP_VISIBLE -> WaitAppVisible(proto.waitAppVisible.packageName)
+            ProtoCommand.OpCase.WAIT_SCREEN_STABLE -> proto.waitScreenStable.let {
+                WaitScreenStable(
+                    packageName = it.packageName,
+                    stableForMs = if (it.hasStableForMs()) it.stableForMs else DEFAULT_STABLE_FOR_MS,
+                    signal = stabilitySignal(it.signal),
+                )
+            }
+            ProtoCommand.OpCase.TAP -> Tap(sel(proto.tap.selector))
+            ProtoCommand.OpCase.LONG_TAP -> LongTap(sel(proto.longTap.selector))
+            ProtoCommand.OpCase.SET_TEXT -> SetText(sel(proto.setText.selector), proto.setText.text)
+            ProtoCommand.OpCase.TYPE_TEXT -> TypeText(sel(proto.typeText.selector), proto.typeText.text)
+            ProtoCommand.OpCase.CLEAR_TEXT -> ClearText(sel(proto.clearText.selector))
+            ProtoCommand.OpCase.SWIPE -> proto.swipe.let {
+                Swipe(sel(it.selector), direction(it.direction), if (it.hasDistancePercent()) it.distancePercent else DEFAULT_GESTURE_PERCENT)
+            }
+            ProtoCommand.OpCase.SCROLL -> proto.scroll.let {
+                Scroll(sel(it.selector), direction(it.direction), if (it.hasDistancePercent()) it.distancePercent else DEFAULT_GESTURE_PERCENT)
+            }
+            ProtoCommand.OpCase.SCROLL_UNTIL -> proto.scrollUntil.let {
+                ScrollUntil(
+                    selector = sel(it.selector),
+                    container = sel(it.container),
+                    direction = if (it.direction == ProtoDirection.DIR_UNSPECIFIED) Direction.DOWN else direction(it.direction),
+                    distancePercent = if (it.hasDistancePercent()) it.distancePercent else DEFAULT_GESTURE_PERCENT,
+                    maxScrolls = if (it.hasMaxScrolls()) it.maxScrolls else 20,
+                )
+            }
+            ProtoCommand.OpCase.SYNC_BOOTSTRAP -> SyncBootstrap(proto.syncBootstrap.observedPid, proto.syncBootstrap.observedStartToken)
+            ProtoCommand.OpCase.SYNC_POLL -> proto.syncPoll.let {
+                SyncPoll(it.observedPid, it.observedStartToken, it.expectedProcessStartUuid, it.expectedSessionIdentity)
+            }
+            ProtoCommand.OpCase.OP_NOT_SET, null -> throw IllegalArgumentException("Command.op must be set")
+        }
+        return TimedCommand(command, if (proto.timeoutMs > 0) proto.timeoutMs else defaultTimeoutMs)
+    }
 
-    /** The proto shape of a protocol request (used by the golden round-trip test and clients). */
-    fun command(request: Request): Command = Command.newBuilder().apply {
-        operation = operation(request.operation)
-        timeoutMs = request.timeoutMs
-        request.selector?.let { selector = selector(it) }
-        request.containerSelector?.let { containerSelector = selector(it) }
-        request.inputText?.let { inputText = it }
-        request.direction?.let { direction = direction(it) }
-        distancePercent = request.distancePercent
-        maxScrolls = request.maxScrolls
-        request.keyCode?.let { keyCode = it }
-        request.packageName?.let { packageName = it }
-        request.stableForMs?.let { stableForMs = it }
-        request.stableSignal?.let { stableSignal = stabilitySignal(it) }
-        request.observedPid?.let { observedPid = it }
-        request.observedStartToken?.let { observedStartToken = it }
-        request.expectedProcessStartUuid?.let { expectedProcessStartUuid = it }
-        request.expectedSessionIdentity?.let { expectedSessionIdentity = it }
+    /** Protocol → proto (the golden round-trip test and clients). */
+    fun command(value: Command, timeoutMs: Long): ProtoCommand = ProtoCommand.newBuilder().apply {
+        this.timeoutMs = timeoutMs
+        when (value) {
+            is Health -> health = ProtoHealth.getDefaultInstance()
+            is DeviceInfoQuery -> deviceInfo = ProtoDeviceInfoQuery.getDefaultInstance()
+            is PressKey -> pressKey = ProtoPressKey.newBuilder().setKeyCode(value.keyCode).build()
+            is Screenshot -> screenshot = ProtoScreenshot.getDefaultInstance()
+            is DumpHierarchy -> dumpHierarchy = ProtoDumpHierarchy.getDefaultInstance()
+            is Exists -> exists = ProtoExists.newBuilder().setSelector(selector(value.selector)).build()
+            is Count -> count = ProtoCount.newBuilder().setSelector(selector(value.selector)).build()
+            is Snapshot -> snapshot = ProtoSnapshot.newBuilder().setSelector(selector(value.selector)).build()
+            is WaitVisible -> waitVisible = ProtoWaitVisible.newBuilder().setSelector(selector(value.selector)).build()
+            is WaitGone -> waitGone = ProtoWaitGone.newBuilder().setSelector(selector(value.selector)).build()
+            is WaitAppVisible -> waitAppVisible = ProtoWaitAppVisible.newBuilder().setPackageName(value.packageName).build()
+            is WaitScreenStable -> waitScreenStable = ProtoWaitScreenStable.newBuilder()
+                .setPackageName(value.packageName)
+                .setStableForMs(value.stableForMs)
+                .setSignal(stabilitySignal(value.signal))
+                .build()
+            is Tap -> tap = ProtoTap.newBuilder().setSelector(selector(value.selector)).build()
+            is LongTap -> longTap = ProtoLongTap.newBuilder().setSelector(selector(value.selector)).build()
+            is SetText -> setText = ProtoSetText.newBuilder().setSelector(selector(value.selector)).setText(value.text).build()
+            is TypeText -> typeText = ProtoTypeText.newBuilder().setSelector(selector(value.selector)).setText(value.text).build()
+            is ClearText -> clearText = ProtoClearText.newBuilder().setSelector(selector(value.selector)).build()
+            is Swipe -> swipe = ProtoSwipe.newBuilder()
+                .setSelector(selector(value.selector)).setDirection(direction(value.direction)).setDistancePercent(value.distancePercent).build()
+            is Scroll -> scroll = ProtoScroll.newBuilder()
+                .setSelector(selector(value.selector)).setDirection(direction(value.direction)).setDistancePercent(value.distancePercent).build()
+            is ScrollUntil -> scrollUntil = ProtoScrollUntil.newBuilder()
+                .setSelector(selector(value.selector))
+                .setContainer(selector(value.container))
+                .setDirection(direction(value.direction))
+                .setDistancePercent(value.distancePercent)
+                .setMaxScrolls(value.maxScrolls)
+                .build()
+            is SyncBootstrap -> syncBootstrap = ProtoSyncBootstrap.newBuilder()
+                .setObservedPid(value.observedPid).setObservedStartToken(value.observedStartToken).build()
+            is SyncPoll -> syncPoll = ProtoSyncPoll.newBuilder()
+                .setObservedPid(value.observedPid)
+                .setObservedStartToken(value.observedStartToken)
+                .setExpectedProcessStartUuid(value.expectedProcessStartUuid)
+                .setExpectedSessionIdentity(value.expectedSessionIdentity)
+                .build()
+        }
     }.build()
-
-    fun request(arguments: CommandArguments, sessionId: String, generation: Long): Request = Request(
-        sessionId = sessionId,
-        sessionGeneration = generation,
-        operation = arguments.operation,
-        timeoutMs = arguments.timeoutMs,
-        selector = arguments.selector,
-        containerSelector = arguments.containerSelector,
-        inputText = arguments.inputText,
-        direction = arguments.direction,
-        distancePercent = arguments.distancePercent,
-        maxScrolls = arguments.maxScrolls,
-        keyCode = arguments.keyCode,
-        packageName = arguments.packageName,
-        stableForMs = arguments.stableForMs,
-        stableSignal = arguments.stableSignal,
-        observedPid = arguments.observedPid,
-        observedStartToken = arguments.observedStartToken,
-        expectedProcessStartUuid = arguments.expectedProcessStartUuid,
-        expectedSessionIdentity = arguments.expectedSessionIdentity,
-    )
 
     // ---- responses ---------------------------------------------------------------------------
 
-    fun result(response: Response, requestId: Long, generation: Long): CommandResult = CommandResult.newBuilder().apply {
-        ok = response.ok
-        response.value?.let { value = it }
-        response.text?.let { text = it }
-        response.errorCode?.let { errorCode = errorCode(it) }
-        response.detail?.let { detail = it }
-        response.message?.let { message = it }
+    fun result(response: Response, requestId: Long, generation: Long): ProtoCommandResult = ProtoCommandResult.newBuilder().apply {
         durationMs = response.durationMs
-        response.syncState?.let { syncState = syncState(it) }
-        response.artifact?.let { artifact = artifact(it) }
-        response.count?.let { count = it }
-        response.snapshot?.let { snapshot = snapshot(it) }
-        response.deviceInfo?.let { deviceInfo = deviceInfo(it) }
         this.requestId = requestId
         sessionGeneration = generation
+        when (response) {
+            is Response.Error -> error = ProtoError.newBuilder().apply {
+                code = errorCode(response.code)
+                response.detail?.let { detail = it }
+                response.message?.let { message = it }
+            }.build()
+            is Response.Ok -> when (val result = response.result) {
+                is Done -> done = ProtoDone.getDefaultInstance()
+                is BoolResult -> bool = result.value
+                is Moved -> moved = result.moved
+                is CountResult -> count = result.count
+                is TextResult -> text = result.text
+                is SnapshotResult -> snapshot = snapshot(result.snapshot)
+                is DeviceInfoResult -> deviceInfo = deviceInfo(result.deviceInfo)
+                is ArtifactResult -> artifact = artifact(result.artifact)
+                is SyncResult -> sync = syncState(result.state)
+            }
+        }
     }.build()
 
-    fun response(proto: CommandResult): Response = Response(
-        ok = proto.ok,
-        value = proto.takeIf { it.hasValue() }?.value,
-        text = proto.takeIf { it.hasText() }?.text,
-        errorCode = proto.takeIf { it.hasErrorCode() }?.errorCode?.let(::errorCode),
-        detail = proto.takeIf { it.hasDetail() }?.detail,
-        message = proto.takeIf { it.hasMessage() }?.message,
-        durationMs = proto.durationMs,
-        syncState = proto.takeIf { it.hasSyncState() }?.syncState?.let(::syncState),
-        artifact = proto.takeIf { it.hasArtifact() }?.artifact?.let(::artifact),
-        count = proto.takeIf { it.hasCount() }?.count,
-        snapshot = proto.takeIf { it.hasSnapshot() }?.snapshot?.let(::snapshot),
-        deviceInfo = proto.takeIf { it.hasDeviceInfo() }?.deviceInfo?.let(::deviceInfo),
-    )
+    fun response(proto: ProtoCommandResult): Response {
+        val result: CommandResult = when (proto.outcomeCase) {
+            ProtoCommandResult.OutcomeCase.DONE -> Done
+            ProtoCommandResult.OutcomeCase.BOOL -> BoolResult(proto.bool)
+            ProtoCommandResult.OutcomeCase.MOVED -> Moved(proto.moved)
+            ProtoCommandResult.OutcomeCase.COUNT -> CountResult(proto.count)
+            ProtoCommandResult.OutcomeCase.TEXT -> TextResult(proto.text)
+            ProtoCommandResult.OutcomeCase.SNAPSHOT -> SnapshotResult(snapshot(proto.snapshot))
+            ProtoCommandResult.OutcomeCase.DEVICE_INFO -> DeviceInfoResult(deviceInfo(proto.deviceInfo))
+            ProtoCommandResult.OutcomeCase.ARTIFACT -> ArtifactResult(artifact(proto.artifact))
+            ProtoCommandResult.OutcomeCase.SYNC -> SyncResult(syncState(proto.sync))
+            ProtoCommandResult.OutcomeCase.ERROR -> return Response.failure(
+                errorCode(proto.error.code),
+                detail = if (proto.error.hasDetail()) proto.error.detail else null,
+                message = if (proto.error.hasMessage()) proto.error.message else null,
+                durationMs = proto.durationMs,
+            )
+            ProtoCommandResult.OutcomeCase.OUTCOME_NOT_SET, null ->
+                throw IllegalArgumentException("CommandResult.outcome must be set")
+        }
+        return Response.ok(result, proto.durationMs)
+    }
 
     fun deviceInfo(value: DeviceInfo): ProtoDeviceInfo = ProtoDeviceInfo.newBuilder().apply {
         apiLevel = value.apiLevel

@@ -1,7 +1,6 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.ErrorCode
-import com.company.tap.protocol.Operation
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.MatchLimit
@@ -12,7 +11,7 @@ import com.company.tap.protocol.TargetScope
 /**
  * A driver command that did not succeed. Every failure carries the typed [code] plus enough
  * routing context to reproduce or classify it without the original call site: the device,
- * generation, request ID, operation, rendered selector, and timeout.
+ * generation, request ID, operation (`op` name), rendered selector, and timeout.
  *
  * [retryable] is a hint for a caller-owned policy; nothing in Tap retries automatically.
  * [mayHaveMutated] is the safety property: when true, the device state may have changed and
@@ -20,7 +19,7 @@ import com.company.tap.protocol.TargetScope
  */
 sealed class CommandException(
     val code: ErrorCode,
-    val operation: Operation,
+    val operation: String,
     val requestId: Long,
     val sessionGeneration: Long,
     val serial: String?,
@@ -39,7 +38,7 @@ class RemoteCommandException(
     val detail: String?,
     val remoteMessage: String?,
     val durationMs: Long,
-    operation: Operation,
+    operation: String,
     requestId: Long,
     sessionGeneration: Long,
     serial: String? = null,
@@ -68,15 +67,15 @@ class RemoteCommandException(
 ) {
     companion object {
         fun from(
-            response: Response,
-            operation: Operation,
+            response: Response.Error,
+            operation: String,
             requestId: Long,
             sessionGeneration: Long,
             serial: String? = null,
-            selector: Selector? = null,
+            selector: String? = null,
             timeoutMs: Long? = null,
         ): RemoteCommandException = RemoteCommandException(
-            code = requireNotNull(response.errorCode) { "Response is not a failure" },
+            code = response.code,
             detail = response.detail,
             remoteMessage = response.message,
             durationMs = response.durationMs,
@@ -84,7 +83,7 @@ class RemoteCommandException(
             requestId = requestId,
             sessionGeneration = sessionGeneration,
             serial = serial,
-            selector = selector?.render(),
+            selector = selector,
             timeoutMs = timeoutMs,
         )
     }
@@ -97,7 +96,7 @@ class RemoteCommandException(
  */
 class CommandTransportException(
     code: ErrorCode,
-    operation: Operation,
+    operation: String,
     requestId: Long,
     sessionGeneration: Long,
     val transmissionState: TransmissionState,

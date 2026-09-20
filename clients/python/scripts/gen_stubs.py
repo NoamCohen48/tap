@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates tap/_gen from contracts/api/proto/tap.proto, or verifies it is current (--check).
+"""Regenerates tap/_gen from contracts/api/proto/*.proto, or verifies it is current (--check).
 
 The generated modules are committed so `pip install tap-e2e` needs no protoc; CI runs
 `gen_stubs.py --check` to fail when the proto and the stubs drift apart.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import filecmp
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -16,7 +17,13 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 API = ROOT / "contracts" / "api" / "proto"
 OUT = ROOT / "clients" / "python" / "tap" / "_gen"
-FILES = ("tap_pb2.py", "tap_pb2_grpc.py", "tap_pb2.pyi")
+PROTOS = sorted(API.glob("*.proto"))
+# Every proto yields <name>_pb2.py/.pyi and <name>_pb2_grpc.py (empty of stubs when it has no service).
+FILES = tuple(
+    f"{proto.stem}_pb2{suffix}" for proto in PROTOS for suffix in (".py", ".pyi", "_grpc.py")
+) + ("__init__.py",)
+# protoc emits absolute imports between generated modules; the stubs live inside one package.
+SIBLING_IMPORT = re.compile(r"^(?:import (\w+_pb2) as (\w+)|from (\w+_pb2) import)", re.M)
 # protoc output depends on the generator release; CI installs exactly this one for --check.
 GENERATOR_VERSION = "1.84.0"
 
@@ -27,14 +34,25 @@ def generate(into: pathlib.Path) -> None:
         [
             sys.executable, "-m", "grpc_tools.protoc", f"-I{API}",
             f"--python_out={into}", f"--grpc_python_out={into}", f"--pyi_out={into}",
-            str(API / "tap.proto"),
+            *map(str, PROTOS),
         ],
         check=True,
     )
-    # protoc emits an absolute import; the stubs live inside the package.
-    grpc_file = into / "tap_pb2_grpc.py"
-    grpc_file.write_text(grpc_file.read_text().replace("import tap_pb2 as tap__pb2", "from . import tap_pb2 as tap__pb2"))
-    (into / "__init__.py").write_text("# Generated from contracts/api/proto/tap.proto by scripts/gen_stubs.py; do not edit.\n")
+    for generated in into.glob("*_pb2*.py*"):
+        generated.write_text(SIBLING_IMPORT.sub(_relative_import, generated.read_text()))
+    modules = ", ".join(f"{proto.stem}_pb2" for proto in PROTOS)
+    exports = "".join(f"from .{proto.stem}_pb2 import *  # noqa: F401,F403\n" for proto in PROTOS)
+    (into / "__init__.py").write_text(
+        "# Generated from contracts/api/proto/*.proto by scripts/gen_stubs.py; do not edit.\n"
+        f"# The package namespace is the union of {modules}: `from tap._gen import Selector`.\n" + exports
+    )
+
+
+def _relative_import(match: re.Match[str]) -> str:
+    module, alias, from_module = match.groups()
+    if from_module:
+        return f"from .{from_module} import"
+    return f"from . import {module} as {alias}"
 
 
 def check_generator() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from ._gen import tap_pb2 as pb
+from . import _gen as pb
 from .errors import CommandError, ErrorCode, WaitTimeoutError
 from .selectors import Selector
 
@@ -30,22 +30,26 @@ class Element:
         self.device = device
         self.selector = selector
 
-    def _run(self, operation: int, timeout: float | None, **fields) -> pb.CommandResult:
-        return self.device.execute_or_raise(operation, self.selector, timeout, **fields)
+    def _run(self, timeout: float | None, **op) -> pb.CommandResult:
+        return self.device.execute_or_raise(timeout, self.selector, **op)
+
+    @property
+    def _target(self) -> pb.Selector:
+        return self.selector.proto
 
     # --- queries ----------------------------------------------------------------------------------
 
     def exists(self, timeout: float | None = None) -> bool:
         """True when at least one node matches right now (any number of matches is fine)."""
-        return self._run(pb.OP_EXISTS, timeout).value
+        return self._run(timeout, exists=pb.Exists(selector=self._target)).bool
 
     def count(self, timeout: float | None = None) -> int:
         """Matches in the focused window right now, ignoring the selector's match limit."""
-        return self._run(pb.OP_COUNT, timeout).count
+        return self._run(timeout, count=pb.Count(selector=self._target)).count
 
     def snapshot(self, timeout: float | None = None) -> pb.ElementSnapshot:
         """State of the one matching node at this instant (AMBIGUOUS/NOT_FOUND otherwise)."""
-        return self._run(pb.OP_SNAPSHOT, timeout).snapshot
+        return self._run(timeout, snapshot=pb.Snapshot(selector=self._target)).snapshot
 
     def text(self, timeout: float | None = None) -> str | None:
         """Text of the one matching node, or None when it has none (an empty field's hint is not text)."""
@@ -64,33 +68,33 @@ class Element:
 
     def tap(self, timeout: float | None = None) -> None:
         """Click at the centre of the one matching node's visible bounds."""
-        self._run(pb.OP_TAP, timeout)
+        self._run(timeout, tap=pb.Tap(selector=self._target))
 
     def long_tap(self, timeout: float | None = None) -> None:
         """Long click on the one matching node."""
-        self._run(pb.OP_LONG_TAP, timeout)
+        self._run(timeout, long_tap=pb.LongTap(selector=self._target))
 
     def set_text(self, value: str, timeout: float | None = None) -> None:
         """Accessibility text replacement, verified on the device."""
-        self._run(pb.OP_SET_TEXT, timeout, input_text=value)
+        self._run(timeout, set_text=pb.SetText(selector=self._target, text=value))
 
     def type_text(self, value: str, timeout: float | None = None) -> None:
         """Focus plus real key events; unsupported characters are rejected before any input."""
-        self._run(pb.OP_TYPE_TEXT, timeout, input_text=value)
+        self._run(timeout, type_text=pb.TypeText(selector=self._target, text=value))
 
     def clear_text(self, timeout: float | None = None) -> None:
         """Focus the one matching editable node and clear its text."""
-        self._run(pb.OP_CLEAR_TEXT, timeout)
+        self._run(timeout, clear_text=pb.ClearText(selector=self._target))
 
     def swipe(self, direction: int, distance_percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> None:
         """One swipe gesture across the node in the direction the finger moves (``UP``/``DOWN``/``LEFT``/``RIGHT``)."""
-        self._run(pb.OP_SWIPE, timeout, direction=direction, distance_percent=distance_percent)
+        self._run(timeout, swipe=pb.Swipe(selector=self._target, direction=direction, distance_percent=distance_percent))
 
     def scroll(self, direction: int, distance_percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> bool:
         """One scroll segment towards ``direction``'s content edge (UiAutomator semantics: DOWN
         reveals content below). True while more content remains, False at the end or when no
         scroll was observed."""
-        return self._run(pb.OP_SCROLL, timeout, direction=direction, distance_percent=distance_percent).value
+        return self._run(timeout, scroll=pb.Scroll(selector=self._target, direction=direction, distance_percent=distance_percent)).moved
 
     def scroll_until(
         self,
@@ -103,8 +107,15 @@ class Element:
         """Scrolls this container until ``target`` is visible inside it, or raises CommandError
         NOT_FOUND (END_REACHED/MAX_SCROLLS) or WAIT_TIMEOUT. Returns the target as a lazy element."""
         self.device.execute_or_raise(
-            pb.OP_SCROLL_UNTIL, target, self.device.timeouts.wait if timeout is None else timeout,
-            container_selector=self.selector, direction=direction, max_scrolls=max_scrolls, distance_percent=distance_percent,
+            self.device.timeouts.wait if timeout is None else timeout,
+            target,
+            scroll_until=pb.ScrollUntil(
+                selector=target.proto,
+                container=self._target,
+                direction=direction,
+                max_scrolls=max_scrolls,
+                distance_percent=distance_percent,
+            ),
         )
         return Element(self.device, target)
 
@@ -145,12 +156,12 @@ class ElementWait:
 
     def visible(self) -> Element:
         """Wait until at least one node matches; polled on the device in one RPC."""
-        self._device_wait(pb.OP_WAIT_VISIBLE, f"{self.selector.render()} to be visible")
+        self._device_wait(f"{self.selector.render()} to be visible", wait_visible=pb.WaitVisible(selector=self.selector.proto))
         return Element(self.device, self.selector)
 
     def gone(self) -> None:
         """Wait until no node matches; polled on the device in one RPC."""
-        self._device_wait(pb.OP_WAIT_GONE, f"{self.selector.render()} to be gone")
+        self._device_wait(f"{self.selector.render()} to be gone", wait_gone=pb.WaitGone(selector=self.selector.proto))
 
     def enabled(self) -> Element:
         """Wait until the one matching node is enabled."""
@@ -192,13 +203,14 @@ class ElementWait:
         self.device.await_until(f"{self.selector.render()} count == {expected}", check, self.timeout, observe=lambda: f"count={last['count']}")
         return element
 
-    def _device_wait(self, operation: int, description: str) -> None:
-        result = self.device.execute(operation, self.selector, self.timeout)
-        if result.ok:
+    def _device_wait(self, description: str, **op) -> None:
+        result = self.device.execute(self.timeout, **op)
+        if not result.HasField("error"):
             return
-        if result.error_code == pb.ERR_WAIT_TIMEOUT:
+        if result.error.code == pb.ERR_WAIT_TIMEOUT:
             raise WaitTimeoutError(description, self.device.serial, result.duration_ms)
-        raise CommandError(result, pb.Operation.Name(operation)[len("OP_"):], self.device.serial, self.selector.render())
+        (name,) = op
+        raise CommandError(result, name, self.device.serial, self.selector.render())
 
     def _property(self, description: str, predicate: Callable[[pb.ElementSnapshot], bool]) -> Element:
         element = Element(self.device, self.selector)

@@ -15,9 +15,7 @@ import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Hello
-import com.company.tap.protocol.OPERATION_VERSION
-import com.company.tap.protocol.Operation
-import com.company.tap.protocol.OperationSupport
+import com.company.tap.protocol.Command
 import com.company.tap.protocol.ProtocolAuthentication
 import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.SUPPORTED_CAPABILITIES
@@ -133,9 +131,7 @@ internal class TapDriverServer(
             hostNonce = hello.hostNonce,
             sessionGeneration = config.generation,
             sessionId = config.sessionId,
-            supportedOperations = Operation.entries
-                .map { OperationSupport(it.name, OPERATION_VERSION) }
-                .sortedBy(OperationSupport::name),
+            supportedOperations = Command.names,
             supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
             uiAutomatorBuildId = UIAUTOMATOR_BUILD_ID,
         )

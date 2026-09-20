@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from ._gen import tap_pb2 as pb
+from . import _gen as pb
 from .app import App
 from .element import Element, ElementWait
 from .errors import CommandError, WaitTimeoutError
@@ -80,30 +80,24 @@ class Device:
 
     # --- raw protocol escape hatch --------------------------------------------------------------
 
-    def execute(self, operation: int, selector: Selector | None = None, timeout: float | None = None, **fields) -> pb.CommandResult:
-        """Runs one protocol operation and returns the result as data (ok may be False).
-        ``fields`` are Command fields (input_text, direction, key_code, container_selector...)."""
-        command = pb.Command(operation=operation, timeout_ms=int((timeout or self.timeouts.action) * 1000))
-        if selector is not None:
-            command.selector.CopyFrom(selector.proto)
-        for name, value in fields.items():
-            if value is None:
-                continue
-            if isinstance(value, Selector):
-                getattr(command, name).CopyFrom(value.proto)
-            else:
-                setattr(command, name, value)
+    def execute(self, timeout: float | None = None, **op) -> pb.CommandResult:
+        """Runs one protocol command and returns the result as data (the outcome may be ``error``).
+        ``op`` is exactly one ``Command`` case: ``execute(tap=pb.Tap(selector=...))``."""
+        (name, message), = op.items()
+        command = pb.Command(timeout_ms=int((timeout or self.timeouts.action) * 1000))
+        getattr(command, name).CopyFrom(message)
         with mapped_errors(self.serial):
             return self.service.sessions.Execute(
                 pb.ExecuteRequest(session_id=self.session_id, command=command),
                 timeout=command.timeout_ms / 1000 + 60,
             )
 
-    def execute_or_raise(self, operation: int, selector: Selector | None = None, timeout: float | None = None, **fields) -> pb.CommandResult:
-        """Send one raw command; raises ``CommandError`` on ``ok == False``."""
-        result = self.execute(operation, selector, timeout, **fields)
-        if not result.ok:
-            raise CommandError(result, pb.Operation.Name(operation)[len("OP_"):], self.serial, selector.render() if selector else None)
+    def execute_or_raise(self, timeout: float | None = None, selector: Selector | None = None, **op) -> pb.CommandResult:
+        """``execute`` that raises ``CommandError`` (naming ``selector``) instead of returning an error outcome."""
+        result = self.execute(timeout, **op)
+        if result.HasField("error"):
+            (name,) = op
+            raise CommandError(result, name, self.serial, selector.render() if selector else None)
         return result
 
     # --- elements and waits ---------------------------------------------------------------------
@@ -122,7 +116,7 @@ class Device:
 
     def info(self) -> pb.DeviceInfo:
         """Serial, API level, model and display size."""
-        return self.execute_or_raise(pb.OP_DEVICE_INFO).device_info
+        return self.execute_or_raise(device_info=pb.DeviceInfoQuery()).device_info
 
     def press_back(self) -> None:
         """Send ``KEYCODE_BACK``."""
@@ -134,7 +128,7 @@ class Device:
 
     def press_key(self, key_code: int) -> None:
         """Injects one Android key code (a mutation: never replayed on transport loss)."""
-        self.execute_or_raise(pb.OP_PRESS_KEY, key_code=key_code)
+        self.execute_or_raise(press_key=pb.PressKey(key_code=key_code))
 
     def screenshot(self, timeout: float | None = None, write_to: str | None = None) -> bytes:
         """PNG bytes, verified against the driver's checksum. With ``write_to`` the service
@@ -147,7 +141,7 @@ class Device:
 
     def dump_hierarchy(self, timeout: float | None = None) -> str:
         """Diagnostic accessibility XML. Never used by selectors; keep it out of assertions."""
-        return self.execute_or_raise(pb.OP_DUMP_HIERARCHY, timeout=timeout or self.timeouts.lifecycle).text
+        return self.execute_or_raise(timeout or self.timeouts.lifecycle, dump_hierarchy=pb.DumpHierarchy()).text
 
     def driver_log(self) -> list[str]:
         """The driver's log lines for this session."""
@@ -158,8 +152,8 @@ class Device:
         """Waits on the device until ``package_name`` owns the focused window."""
         package_name = package_name or self.aut_package
         timeout = self.timeouts.wait if timeout is None else timeout
-        result = self.execute(pb.OP_WAIT_APP_VISIBLE, timeout=timeout, package_name=package_name)
-        if not result.ok:
+        result = self.execute(timeout, wait_app_visible=pb.WaitAppVisible(package_name=package_name))
+        if result.HasField("error"):
             try:
                 last = f"currentPackage={self.info().current_package}"
             except Exception:  # noqa: BLE001 - diagnostics only
@@ -182,16 +176,15 @@ class Device:
         package_name = package_name or self.aut_package
         timeout = self.timeouts.wait if timeout is None else timeout
         result = self.execute(
-            pb.OP_WAIT_SCREEN_STABLE,
-            timeout=timeout,
-            package_name=package_name,
-            stable_for_ms=int(stable_for * 1000),
-            stable_signal=signal,
+            timeout,
+            wait_screen_stable=pb.WaitScreenStable(
+                package_name=package_name, stable_for_ms=int(stable_for * 1000), signal=signal
+            ),
         )
-        if not result.ok:
+        if result.HasField("error"):
             what = {pb.STABILITY_TREE: "hierarchy", pb.STABILITY_PIXELS: "pixels"}.get(signal, "screen")
             raise WaitTimeoutError(
-                f"the {package_name} {what} to stay unchanged for {stable_for:g}s", self.serial, result.duration_ms, 0, result.detail or None
+                f"the {package_name} {what} to stay unchanged for {stable_for:g}s", self.serial, result.duration_ms, 0, result.error.detail or None
             )
 
     def await_app_settled(self, stable_for: float = 0.5, timeout: float | None = None, package_name: str | None = None) -> None:

@@ -1,5 +1,8 @@
 {
-  "ok": true,
-  "durationMs": 20,
-  "count": 3
+  "type": "ok",
+  "result": {
+    "kind": "count",
+    "count": 3
+  },
+  "durationMs": 20
 }

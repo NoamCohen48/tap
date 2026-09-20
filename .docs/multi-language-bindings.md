@@ -182,7 +182,7 @@ Decisions taken against §6, and where the implementation departs from the sketc
    `:clients:kotlin:junit5` are gRPC clients under `clients/`, `App` lifecycle lives in
    `host/core` (`AppLifecycle`), the in-JVM `DevicePool` is gone, and the layout is
    `contracts/ device/ host/ clients/` so the host never depends on a client.
-5. **gRPC + protobuf instead of JSON-RPC over a Unix socket.** One `contracts/api/proto/tap.proto` is the
+5. **gRPC + protobuf instead of JSON-RPC over a Unix socket.** The files under `contracts/api/proto/` are the
    source of truth for every binding; Kotlin stubs are generated at build time, Python stubs
    are committed with a `--check` script. Loopback TCP with a `service.json` descriptor
    replaced the socket/token file (same on every OS).

@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "UNSUPPORTED",
+  "type": "error",
+  "code": "UNSUPPORTED",
   "message": "example",
   "durationMs": 5
 }

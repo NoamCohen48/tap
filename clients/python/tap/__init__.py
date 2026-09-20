@@ -11,7 +11,7 @@
 """
 from importlib.metadata import PackageNotFoundError, version as _dist_version
 
-from ._gen import tap_pb2 as pb
+from . import _gen as pb
 from .app import App, ProcessIdentity
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait

@@ -1,0 +1,90 @@
+// tap.v1 — element selectors.
+//
+// Part of the Tap host service API (see README.proto for the file map). Mirrors
+// protocol/Selector.kt one-to-one; the service converts between the two and `EnumMirrorTest`
+// fails the build if an enum drifts.
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "com.company.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "SelectorProto";
+
+// How a StringMatch compares; REGEX is RE2 syntax, full match.
+enum MatchMode {
+  MATCH_UNSPECIFIED = 0; // = MATCH_EXACT
+  MATCH_EXACT = 1;
+  MATCH_CONTAINS = 2;
+  MATCH_STARTS_WITH = 3;
+  MATCH_ENDS_WITH = 4;
+  MATCH_REGEX = 5;
+}
+
+// How many matches a selector accepts for a mutation: exactly one (default), the first, or
+// the one at `index` in accessibility order.
+enum MatchLimit {
+  LIMIT_UNSPECIFIED = 0; // = LIMIT_EXACTLY_ONE
+  LIMIT_EXACTLY_ONE = 1;
+  LIMIT_FIRST = 2;
+  LIMIT_AT = 3;
+}
+
+// Which windows a selector may match: the app under test (default) or an allowlisted system
+// package named in `scope_package` (permission dialogs).
+enum TargetScope {
+  SCOPE_UNSPECIFIED = 0; // = SCOPE_AUT
+  SCOPE_AUT = 1;
+  SCOPE_SYSTEM = 2;
+}
+
+// A string constraint on one node property.
+message StringMatch {
+  string value = 1;
+  MatchMode mode = 2;
+}
+
+// A resource id. With `package_name`: the View id `package_name:id/name`. With `aut_package`:
+// the same, with the session's app under test filled in by the service (so the selector stays
+// session-free); mutually exclusive with `package_name`. With neither: the exact, unqualified
+// resource name, which is how a Compose testTag appears under testTagsAsResourceId.
+message ResourceId {
+  string name = 1;
+  optional string package_name = 2;
+  bool aut_package = 3;
+}
+
+// Constraints on one accessibility node. Every set field must hold; relations nest further
+// nodes. Limits: depth ≤ 32, ≤ 256 nodes, strings ≤ 1024 chars, no empty node.
+message NodeSelector {
+  optional StringMatch text = 1;
+  optional StringMatch content_description = 2;
+  optional StringMatch hint = 3;
+  optional StringMatch class_name = 4;
+  optional ResourceId resource = 5;
+  optional bool enabled = 6;
+  optional bool checked = 7;
+  optional bool checkable = 8;
+  optional bool clickable = 9;
+  optional bool focused = 10;
+  optional bool focusable = 11;
+  optional bool long_clickable = 12;
+  optional bool scrollable = 13;
+  optional bool selected = 14;
+  optional NodeSelector parent = 15;
+  optional NodeSelector ancestor = 16;
+  optional NodeSelector child = 17;
+  optional NodeSelector descendant = 18;
+}
+
+// A complete selector: the node, its scope and its match limit. Built by the client DSLs and
+// validated identically by the service and the driver.
+message Selector {
+  NodeSelector node = 1;
+  TargetScope scope = 2;
+  optional string scope_package = 3;
+  MatchLimit limit = 4;
+  optional int32 index = 5;
+  bool accept_accessibility_order = 6;
+}

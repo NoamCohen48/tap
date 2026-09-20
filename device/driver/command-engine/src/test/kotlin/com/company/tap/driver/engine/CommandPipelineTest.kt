@@ -1,10 +1,17 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.ArtifactResult
 import com.company.tap.protocol.BlobFrames
+import com.company.tap.protocol.BoolResult
+import com.company.tap.protocol.Done
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
 import com.company.tap.protocol.Response
+import com.company.tap.protocol.detail
+import com.company.tap.protocol.errorCode
+import com.company.tap.protocol.message
+import com.company.tap.protocol.result
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -57,12 +64,12 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { ctx ->
             gate.await(1, TimeUnit.SECONDS)
             synchronized(order) { order += ctx.requestId }
-            Response(true, durationMs = 0)
+            Response.ok(Done, durationMs = 0)
         }
         awaitRunning(1)
         pipeline.submit(2, 5_000) { ctx ->
             synchronized(order) { order += ctx.requestId }
-            Response(true, value = true, durationMs = 0)
+            Response.ok(BoolResult(true), durationMs = 0)
         }
         assertEquals(listOf(2L), pipeline.snapshot().queued)
         gate.countDown()
@@ -76,7 +83,7 @@ class CommandPipelineTest {
     @Test
     fun overloadIsAStructuredErrorWithoutRunning() {
         val release = CountDownLatch(1)
-        pipeline.submit(1, 5_000) { release.await(); Response(true, durationMs = 0) }
+        pipeline.submit(1, 5_000) { release.await(); Response.ok(Done, durationMs = 0) }
         awaitRunning(1)
         assertEquals(CommandPipeline.Admission.QUEUED, pipeline.submit(2, 5_000) { ok() })
         assertEquals(CommandPipeline.Admission.QUEUED, pipeline.submit(3, 5_000) { ok() })
@@ -163,7 +170,7 @@ class CommandPipelineTest {
             mutating.countDown()
             finish.await()
             ctx.checkpoint()
-            Response(true, value = true, durationMs = 0)
+            Response.ok(BoolResult(true), durationMs = 0)
         }
         assertTrue(mutating.await(1, TimeUnit.SECONDS))
 
@@ -172,7 +179,7 @@ class CommandPipelineTest {
 
         val response = nextResponse()
         assertTrue(response.response.ok)
-        assertEquals(true, response.response.value)
+        assertEquals(BoolResult(true), response.response.result)
         assertTrue(written.isEmpty())
     }
 
@@ -279,7 +286,7 @@ class CommandPipelineTest {
             ctx.markMutationStarted()
             mutating.countDown()
             release.await()
-            Response(true, value = true, durationMs = 0)
+            Response.ok(BoolResult(true), durationMs = 0)
         }
         assertTrue(mutating.await(1, TimeUnit.SECONDS))
 
@@ -408,7 +415,7 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { ctx ->
             val (blob, outcome) = ctx.transferBlob("image/png", bytes)
             assertEquals(BlobTransfer.Outcome.COMPLETED, outcome)
-            Response(true, durationMs = 0, artifact = blob.artifactInfo(1, 2))
+            Response.ok(ArtifactResult(blob.artifactInfo(1, 2)), durationMs = 0)
         }
         val start = next<Outbound.BlobStartFrame>()
         assertEquals(bytes.size.toLong(), start.start.totalLength)
@@ -426,7 +433,7 @@ class CommandPipelineTest {
         assertTrue(bytes.contentEquals(reassembled.toByteArray()))
         val response = nextResponse()
         assertEquals(1L, response.requestId)
-        assertEquals(start.start.blobId, response.response.artifact?.blobId)
+        assertEquals(start.start.blobId, (response.response.result as ArtifactResult).artifact.blobId)
         assertTrue(written.isEmpty())
     }
 
@@ -496,7 +503,7 @@ class CommandPipelineTest {
         return message as? T ?: fail("Unexpected outbound $message")
     }
 
-    private fun ok() = Response(true, durationMs = 0)
+    private fun ok() = Response.ok(Done, durationMs = 0)
 
     private fun nextResponse(): Outbound.TerminalResponse {
         val message = written.poll(2, TimeUnit.SECONDS) ?: fail("No response written")
