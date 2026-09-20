@@ -34,8 +34,8 @@ publishing {
 
 val grpcVersion = "1.75.0"
 val protobufVersion = "4.32.1"
-// grpc-kotlin lags grpc-java; 1.5.0 is the newest release whose POM pins
-// kotlinx-coroutines 1.10.2 (the version :host:validation already uses).
+// grpc-kotlin lags grpc-java: 1.5.0 is built against grpc-stub 1.62.2 and used here with
+// grpc-java 1.75.0, which resolves because its metadata requires that version softly.
 val grpcKotlinVersion = "1.5.0"
 val coroutinesVersion = "1.10.2"
 

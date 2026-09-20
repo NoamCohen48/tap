@@ -33,10 +33,11 @@ per device) and they share one version with it:
 - `contracts/protocol` is therefore not published to Maven either; it is compiled into the
   service and the driver. Only `contracts/api` (`tap.v1`, the surface clients speak) is
   published, at the engine version, because clients depend on it. It also generates the
-  grpc-kotlin coroutine stubs, so it carries `grpc-kotlin-stub` and `kotlinx-coroutines-core`
-  as `api` dependencies: grpc-kotlin 1.5.0 with grpc-java 1.75.0 (pinned in
-  `contracts/api/build.gradle.kts`; grpc-kotlin releases lag grpc-java, so the pair is
-  chosen deliberately, not bumped with the rest).
+  grpc-kotlin coroutine stubs, so it carries `grpc-kotlin-stub`, `kotlinx-coroutines-core`
+  and `kotlin-stdlib` at compile scope in the published POM: grpc-kotlin 1.5.0 with grpc-java
+  1.75.0 (pinned in `contracts/api/build.gradle.kts`; grpc-kotlin releases lag grpc-java, so
+  the pair is chosen deliberately, not bumped with the rest). Coroutines are in the artifact's
+  ABI — `Attach` returns a `Flow` — so they cannot be an implementation dependency.
 
 The one on-device piece that *is* published separately is `sync-sdk`: it goes into the app
 under test's build, is chosen by the app team, changes rarely, and its contract with the
