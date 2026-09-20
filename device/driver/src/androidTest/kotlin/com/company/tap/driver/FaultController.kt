@@ -3,8 +3,8 @@ package com.company.tap.driver
 import android.app.Instrumentation
 import android.net.Uri
 import android.os.Bundle
-import com.company.tap.protocol.Operation
-import com.company.tap.protocol.Request
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.Tap
 import java.net.Socket
 
 internal enum class FaultPoint {
@@ -23,15 +23,10 @@ internal class FaultController(
 ) {
     private var triggered = false
 
-    fun inject(point: FaultPoint, request: Request, requestId: Long): Boolean {
-        if (
-            triggered || faultPoint != point || request.operation != Operation.TAP ||
-            !request.targetsFaultButton()
-        ) {
-            return false
-        }
+    fun inject(point: FaultPoint, command: Command, requestId: Long, generation: Long): Boolean {
+        if (triggered || faultPoint != point || !command.targetsFaultButton()) return false
         triggered = true
-        emit("TAP_FAULT point=${point.name} request=$requestId generation=${request.sessionGeneration}")
+        emit("TAP_FAULT point=${point.name} request=$requestId generation=$generation")
         return true
     }
 
@@ -40,28 +35,18 @@ internal class FaultController(
      * `CANCEL` while the mutation is already definitive. The command must still return its
      * real result; the pipeline ignores the cancel.
      */
-    fun holdAfterMutation(request: Request, requestId: Long) {
-        if (
-            triggered || faultPoint != FaultPoint.CANCEL_AFTER_MUTATION ||
-            !request.targetsFaultButton()
-        ) {
-            return
-        }
+    fun holdAfterMutation(command: Command, requestId: Long, generation: Long) {
+        if (triggered || faultPoint != FaultPoint.CANCEL_AFTER_MUTATION || !command.targetsFaultButton()) return
         triggered = true
         emit(
             "TAP_FAULT point=${FaultPoint.CANCEL_AFTER_MUTATION.name} phase=MUTATED " +
-                "request=$requestId generation=${request.sessionGeneration} holdMs=$CANCEL_HOLD_MS"
+                "request=$requestId generation=$generation holdMs=$CANCEL_HOLD_MS"
         )
         android.os.SystemClock.sleep(CANCEL_HOLD_MS)
     }
 
-    fun injectLateUninterruptible(socket: Socket, request: Request, requestId: Long) {
-        if (
-            triggered || faultPoint != FaultPoint.LATE_UNINTERRUPTIBLE ||
-            !request.targetsFaultButton()
-        ) {
-            return
-        }
+    fun injectLateUninterruptible(socket: Socket, command: Command, requestId: Long, generation: Long) {
+        if (triggered || faultPoint != FaultPoint.LATE_UNINTERRUPTIBLE || !command.targetsFaultButton()) return
         triggered = true
         val delayMs = 15_000L
         val result = requireNotNull(
@@ -76,13 +61,13 @@ internal class FaultController(
         emit(
             "TAP_FAULT point=${FaultPoint.LATE_UNINTERRUPTIBLE.name} " +
                 "phase=WORK_DELEGATED request=$requestId " +
-                "generation=${request.sessionGeneration} delayMs=$delayMs"
+                "generation=$generation delayMs=$delayMs"
         )
         socket.setSoLinger(true, 0)
         socket.close()
         emit(
             "TAP_FAULT point=${FaultPoint.LATE_UNINTERRUPTIBLE.name} " +
-                "phase=BLOCK_ENTER request=$requestId generation=${request.sessionGeneration}"
+                "phase=BLOCK_ENTER request=$requestId generation=$generation"
         )
         android.os.SystemClock.sleep(30_000)
         throw InjectedTransportLoss()
@@ -98,4 +83,5 @@ internal class InjectedTransportLoss : RuntimeException()
 
 private const val CANCEL_HOLD_MS = 3_000L
 
-private fun Request.targetsFaultButton(): Boolean = selector?.node?.resource?.name == "fault_button"
+/** Only a `tap` on the fixture's fault button arms a fault. */
+private fun Command.targetsFaultButton(): Boolean = this is Tap && selector.node.resource?.name == "fault_button"

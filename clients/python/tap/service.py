@@ -20,8 +20,8 @@ from typing import Callable, Iterator
 
 import grpc
 
-from ._gen import tap_pb2 as pb
-from ._gen import tap_pb2_grpc as rpc
+from . import _gen as pb
+from ._gen import app_pb2_grpc, connection_pb2_grpc, device_pb2_grpc, session_pb2_grpc
 from .errors import AppLifecycleError, DeviceBusyError, ServiceError, TapError, WaitTimeoutError
 
 
@@ -41,7 +41,7 @@ def _read_descriptor(directory: pathlib.Path) -> dict | None:
 def _alive(address: str, timeout: float = 2.0) -> bool:
     channel = grpc.insecure_channel(address)
     try:
-        rpc.ConnectionServiceStub(channel).Info(pb.InfoRequest(), timeout=timeout)
+        connection_pb2_grpc.ConnectionServiceStub(channel).Info(pb.InfoRequest(), timeout=timeout)
         return True
     except grpc.RpcError:
         return False
@@ -155,10 +155,10 @@ class Service:
             self.address,
             options=[("grpc.max_receive_message_length", 64 * 1024 * 1024)],
         )
-        self.connections = rpc.ConnectionServiceStub(self.channel)
-        self.devices_stub = rpc.DeviceServiceStub(self.channel)
-        self.sessions = rpc.SessionServiceStub(self.channel)
-        self.apps = rpc.AppServiceStub(self.channel)
+        self.connections = connection_pb2_grpc.ConnectionServiceStub(self.channel)
+        self.devices_stub = device_pb2_grpc.DeviceServiceStub(self.channel)
+        self.sessions = session_pb2_grpc.SessionServiceStub(self.channel)
+        self.apps = app_pb2_grpc.AppServiceStub(self.channel)
 
     def info(self) -> pb.InfoResponse:
         """Service version, protocol version, ADB executable, state dir, bundled driver."""

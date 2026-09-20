@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "PAYLOAD_TOO_LARGE",
+  "type": "error",
+  "code": "PAYLOAD_TOO_LARGE",
   "detail": "ARTIFACT_TOO_LARGE",
   "message": "example",
   "durationMs": 5

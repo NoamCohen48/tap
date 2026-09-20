@@ -15,9 +15,8 @@ import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Hello
-import com.company.tap.protocol.OPERATION_VERSION
-import com.company.tap.protocol.Operation
-import com.company.tap.protocol.OperationSupport
+import com.company.tap.protocol.ArtifactResult
+import com.company.tap.protocol.Command
 import com.company.tap.protocol.ProtocolAuthentication
 import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.Response
@@ -83,7 +82,7 @@ class FakeDriverServer(
             write(Frame(FrameType.BLOB_END, requestId, json.encodeToString(BlobEnd(blobId.toString(), bytes.size.toLong(), sha256)).encodeToByteArray()))
         }
         val info = ArtifactInfo(blobId.toString(), "image/png", bytes.size.toLong(), sha256, 4, 4)
-        respond(requestId, Response(true, durationMs = 5, artifact = info))
+        respond(requestId, Response.ok(ArtifactResult(info), durationMs = 5))
         return info
     }
 
@@ -139,9 +138,7 @@ class FakeDriverServer(
             hostNonce = hello.hostNonce,
             sessionGeneration = generation,
             sessionId = sessionId,
-            supportedOperations = Operation.entries
-                .map { OperationSupport(it.name, OPERATION_VERSION) }
-                .sortedBy(OperationSupport::name),
+            supportedOperations = Command.names,
             supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
             uiAutomatorBuildId = UIAUTOMATOR_BUILD_ID,
         )

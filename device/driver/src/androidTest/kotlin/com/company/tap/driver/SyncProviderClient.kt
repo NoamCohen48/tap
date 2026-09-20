@@ -3,10 +3,13 @@ package com.company.tap.driver
 import android.app.Instrumentation
 import android.content.pm.PackageManager
 import android.net.Uri
-import com.company.tap.protocol.Request
+import com.company.tap.driver.engine.CommandContext
+import com.company.tap.protocol.CommandFailure
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
-import com.company.tap.protocol.Response
+import com.company.tap.protocol.SyncBootstrap
+import com.company.tap.protocol.SyncPoll
+import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
@@ -19,105 +22,57 @@ internal class SyncProviderClient(
 ) {
     private var poisoned = false
 
-    fun bootstrap(request: Request, started: Long): Response = call(request, started) { state ->
-        Response(true, value = state.busyCount == 0, durationMs = elapsed(started), syncState = state)
-    }
+    fun bootstrap(context: CommandContext, command: SyncBootstrap): SyncResult =
+        SyncResult(read(context, command.observedPid))
 
-    fun state(request: Request, started: Long): Response = call(request, started) { state ->
+    fun poll(context: CommandContext, command: SyncPoll): SyncResult {
+        val state = read(context, command.observedPid)
         if (
-            state.processStartUuid != request.expectedProcessStartUuid ||
-            state.sessionIdentity != request.expectedSessionIdentity
+            state.processStartUuid != command.expectedProcessStartUuid ||
+            state.sessionIdentity != command.expectedSessionIdentity
         ) {
-            Response.failure(
-                ErrorCode.AUT_MISMATCH,
-                detail = ErrorDetail.PROCESS_RESTARTED,
-                durationMs = elapsed(started),
-            )
-        } else {
-            Response(true, value = state.busyCount == 0, durationMs = elapsed(started), syncState = state)
+            throw CommandFailure(ErrorCode.AUT_MISMATCH, detail = ErrorDetail.PROCESS_RESTARTED)
         }
+        return SyncResult(state)
     }
 
-    private inline fun call(
-        request: Request,
-        started: Long,
-        block: (SyncState) -> Response,
-    ): Response {
-        if (poisoned) {
-            return Response.failure(
-                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                detail = ErrorDetail.PROVIDER_POISONED,
-                durationMs = elapsed(started),
-            )
-        }
+    /** Reads a validated state from the AUT's provider; every failure is a [CommandFailure]. */
+    private fun read(context: CommandContext, observedPid: Int): SyncState {
+        if (poisoned) throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_POISONED)
         if (
             instrumentation.targetContext.packageManager.checkSignatures(
                 expectedAut,
                 instrumentation.targetContext.packageName,
             ) != PackageManager.SIGNATURE_MATCH
         ) {
-            return Response.failure(
-                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                detail = ErrorDetail.CERTIFICATE_MISMATCH,
-                durationMs = elapsed(started),
-            )
+            throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.CERTIFICATE_MISMATCH)
         }
         val provider = instrumentation.targetContext.packageManager.resolveContentProvider(syncAuthority, 0)
-        if (provider?.packageName != expectedAut) {
-            return Response.failure(
-                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                durationMs = elapsed(started),
-            )
-        }
+        if (provider?.packageName != expectedAut) throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE)
 
-        return try {
-            val remaining = request.timeoutMs - elapsed(started)
-            if (remaining <= 0) {
-                return Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = elapsed(started))
-            }
-            val state = readState(remaining)
-            if (state.processId != request.observedPid) {
-                return Response.failure(
-                    ErrorCode.AUT_MISMATCH,
-                    detail = ErrorDetail.PROCESS_MISMATCH,
-                    durationMs = elapsed(started),
-                )
-            }
-            when {
-                !state.initialized || state.processStartUuid.isBlank() || state.sessionIdentity.isBlank() ->
-                    Response.failure(
-                        ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                        detail = ErrorDetail.UNINITIALIZED,
-                        durationMs = elapsed(started),
-                    )
-                state.generation < 0 || state.busyCount < 0 || state.lastTransitionElapsedMs < 0 ->
-                    Response.failure(
-                        ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                        detail = ErrorDetail.MALFORMED_STATE,
-                        durationMs = elapsed(started),
-                    )
-                state.error != null -> Response.failure(
-                    ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                    detail = ErrorDetail.PROVIDER_ERROR,
-                    message = state.error,
-                    durationMs = elapsed(started),
-                )
-                elapsed(started) >= request.timeoutMs ->
-                    Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = elapsed(started))
-                else -> block(state)
-            }
+        val remaining = context.remainingMs()
+        if (remaining <= 0) throw CommandFailure(ErrorCode.WAIT_TIMEOUT)
+        val state = try {
+            readState(remaining)
         } catch (error: TimeoutException) {
             poisoned = true
-            Response.failure(
-                ErrorCode.SYNC_PROVIDER_UNAVAILABLE,
-                detail = ErrorDetail.PROVIDER_TIMEOUT,
-                durationMs = elapsed(started),
-            )
+            throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_TIMEOUT)
         } catch (error: Throwable) {
-            Response.failure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, message = error.message,
-                durationMs = elapsed(started),
-            )
+            throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, message = error.message)
         }
+        if (state.processId != observedPid) {
+            throw CommandFailure(ErrorCode.AUT_MISMATCH, detail = ErrorDetail.PROCESS_MISMATCH)
+        }
+        when {
+            !state.initialized || state.processStartUuid.isBlank() || state.sessionIdentity.isBlank() ->
+                throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.UNINITIALIZED)
+            state.generation < 0 || state.busyCount < 0 || state.lastTransitionElapsedMs < 0 ->
+                throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.MALFORMED_STATE)
+            state.error != null ->
+                throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_ERROR, message = state.error)
+            context.isExpired() -> throw CommandFailure(ErrorCode.WAIT_TIMEOUT)
+        }
+        return state
     }
 
     @Suppress("DEPRECATION")

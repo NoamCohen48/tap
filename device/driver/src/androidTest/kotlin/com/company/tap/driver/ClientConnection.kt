@@ -8,9 +8,9 @@ import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.MAX_CONTROL_PAYLOAD
-import com.company.tap.protocol.Request
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
+import com.company.tap.protocol.RequestDecoder
 import com.company.tap.protocol.Response
 import java.io.EOFException
 import java.net.Socket
@@ -87,7 +87,6 @@ internal class ClientConnection(
     }
 
     private fun handleRequest(frame: Frame): Boolean {
-        val request = json.decodeFromString<Request>(frame.payload.decodeToString())
         if (frame.requestId <= highestRequestId) {
             writeResponse(
                 frame.requestId,
@@ -95,12 +94,21 @@ internal class ClientConnection(
             )
             return !transportEnded.get()
         }
-        if (faults.inject(FaultPoint.BEFORE_ACCEPTANCE, request, frame.requestId)) {
+        val request = when (val decoded = RequestDecoder.decode(frame.payload.decodeToString())) {
+            is RequestDecoder.Outcome.Decoded -> decoded.request
+            is RequestDecoder.Outcome.Rejected -> {
+                // A malformed request still consumes its ID: the watermark only ever moves forward.
+                highestRequestId = frame.requestId
+                writeResponse(frame.requestId, Response.failure(decoded.code, message = decoded.message, durationMs = 0))
+                return !transportEnded.get()
+            }
+        }
+        if (faults.inject(FaultPoint.BEFORE_ACCEPTANCE, request.command, frame.requestId, generation)) {
             dropConnection()
             return false
         }
         highestRequestId = frame.requestId
-        if (faults.inject(FaultPoint.AFTER_ACCEPTANCE, request, frame.requestId)) {
+        if (faults.inject(FaultPoint.AFTER_ACCEPTANCE, request.command, frame.requestId, generation)) {
             dropConnection()
             return false
         }

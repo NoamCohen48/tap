@@ -1,0 +1,41 @@
+// tap.v1 — devices: the devices on this machine and their state. There is no lease RPC: a
+// device is in use exactly while a session holds its per-serial lock
+// (`~/.tap/sessions/<serial>.lock`), which `SessionService.Open` takes (optionally waiting,
+// `lease_timeout_ms`) and `Close` or the death of the session's process releases. Clients
+// pick serials from this list.
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "com.company.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "DeviceProto";
+
+service DeviceService {
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse); // Every device ADB lists, with its state.
+}
+
+// State of a listed device.
+enum DeviceState {
+  DEVICE_STATE_UNSPECIFIED = 0;
+  DEVICE_FREE = 1;
+  DEVICE_LEASED = 2;
+  DEVICE_QUARANTINED = 3;
+  DEVICE_OFFLINE = 4;
+}
+
+// One listed device. Anything richer than the serial (API level, model, ...) comes from the
+// driver's DeviceInfo once a session is open.
+message DeviceEntry {
+  string serial = 1;
+  DeviceState state = 2;
+  optional string held_by_connection = 3; // set when the session holding the lock belongs to this service
+  optional string quarantine_reason = 4;
+}
+
+message ListDevicesRequest {}
+
+message ListDevicesResponse {
+  repeated DeviceEntry devices = 1;
+}

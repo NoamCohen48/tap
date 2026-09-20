@@ -2,8 +2,15 @@ package com.company.tap.host.validation
 
 import com.company.tap.host.*
 
-import com.company.tap.protocol.Operation
+import com.company.tap.protocol.DumpHierarchy
+import com.company.tap.protocol.Exists
+import com.company.tap.protocol.Health
+import com.company.tap.protocol.ScrollUntil
 import com.company.tap.protocol.Selector
+import com.company.tap.protocol.SetText
+import com.company.tap.protocol.Tap
+import com.company.tap.protocol.WaitVisible
+import com.company.tap.protocol.errorCode
 import java.io.StringReader
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -85,7 +92,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
             store.write(journal)
 
             DriverClient(hostPort, sessionId, generation, secret, serial = serial).use { client ->
-                check(client.execute(Operation.HEALTH).ok)
+                client.execute(Health)
                 journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                 store.write(journal)
                 adb.run(serial, "shell", "am", "force-stop", autPackage)
@@ -110,13 +117,13 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                         if (expectedError == null) {
                             check(tap.ok) { "Could not navigate to ${screen.name}: $tap" }
                         } else {
-                            check(!tap.ok && tap.errorCode?.name == expectedError) {
+                            check(tap.errorCode?.name == expectedError) {
                                 "Expected $expectedError while entering ${screen.name}, got $tap"
                             }
                         }
                     }
                     val selector = Selector.text(screen.readyText)
-                    val ready = client.execute(Operation.WAIT_VISIBLE, selector, timeoutMs = 15_000)
+                    val ready = client.send(WaitVisible(selector), timeoutMs = 15_000)
                     check(ready.ok) { "Screen ${screen.name} did not become ready: $ready" }
                     printProbeResult(serial, autPackage, screen.name, selector, client)
                 }
@@ -152,27 +159,16 @@ private fun executeProbeAction(
 ) = when {
     action.startsWith("SET_TEXT@") -> {
         val resource = action.substringAfter('@')
-        client.execute(
-            Operation.SET_TEXT,
-            Selector.androidResource(autPackage, resource),
-            timeoutMs = 10_000,
-            inputText = "must-not-write",
-        )
+        client.send(SetText(Selector.androidResource(autPackage, resource), "must-not-write"), timeoutMs = 10_000)
     }
     action.startsWith("SCROLL_UNTIL@") -> {
         val resource = action.substringAfter('@')
-        client.execute(
-            Operation.SCROLL_UNTIL,
-            selector = Selector.text("Missing target"),
-            containerSelector = Selector.androidResource(autPackage, resource),
+        client.send(
+            ScrollUntil(Selector.text("Missing target"), container = Selector.androidResource(autPackage, resource)),
             timeoutMs = 10_000,
         )
     }
-    else -> client.execute(
-        Operation.TAP,
-        Selector.text(action),
-        timeoutMs = 10_000,
-    )
+    else -> client.send(Tap(Selector.text(action)), timeoutMs = 10_000)
 }
 
 private fun parseScreen(value: String): ProbeScreen {
@@ -191,17 +187,17 @@ private fun printProbeResult(
     client: DriverClient,
 ) {
     val coldStarted = System.nanoTime()
-    check(client.execute(Operation.EXISTS, selector).value == true)
+    check(client.execute(Exists(selector)).value)
     val coldMs = elapsedMs(coldStarted)
 
     val direct = List(100) {
         val started = System.nanoTime()
-        check(client.execute(Operation.EXISTS, selector).value == true)
+        check(client.execute(Exists(selector)).value)
         elapsedMs(started)
     }
     val dumps = List(10) {
         val started = System.nanoTime()
-        val hierarchy = requireNotNull(client.execute(Operation.DUMP_HIERARCHY, timeoutMs = 15_000).text)
+        val hierarchy = client.execute(DumpHierarchy, timeoutMs = 15_000).text
         elapsedMs(started) to hierarchy
     }
     val hierarchy = dumps.last().second

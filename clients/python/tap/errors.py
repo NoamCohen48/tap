@@ -1,10 +1,10 @@
-"""Exception hierarchy. Driver failures arrive as data (CommandResult.ok == false) and become
+"""Exception hierarchy. Driver failures arrive as data (CommandResult.error) and become
 CommandError; service-level failures arrive as gRPC status codes and are mapped in service.py."""
 from __future__ import annotations
 
 import enum
 
-from ._gen import tap_pb2 as pb
+from . import _gen as pb
 
 # The error code enum is the proto's, minus the ERR_ prefix, so names match the wire protocol
 # and the Kotlin SDK (e.g. ErrorCode.AMBIGUOUS).
@@ -28,13 +28,13 @@ class ServiceError(TapError):
 
 
 class CommandError(TapError):
-    """A driver command returned ok=false. ``code`` is an ErrorCode; ``detail`` refines it
+    """A driver command's outcome was ``error``. ``code`` is an ErrorCode; ``detail`` refines it
     (e.g. NOT_FOUND/END_REACHED); TRANSPORT_LOST/INDETERMINATE carry the transmission state."""
 
     def __init__(self, result: pb.CommandResult, operation: str, serial: str, selector: str | None):
-        self.code = ErrorCode(result.error_code)
-        self.detail = result.detail if result.HasField("detail") else None
-        self.driver_message = result.message if result.HasField("message") else None
+        self.code = ErrorCode(result.error.code)
+        self.detail = result.error.detail if result.error.HasField("detail") else None
+        self.driver_message = result.error.message if result.error.HasField("message") else None
         self.operation = operation
         self.serial = serial
         self.selector = selector

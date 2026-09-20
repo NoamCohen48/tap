@@ -10,7 +10,7 @@ import kotlinx.serialization.encoding.Encoder
 
 /**
  * Closed remote error taxonomy. A response carries exactly one code; finer, stable sub-reasons
- * travel in [Response.detail] (see [ErrorDetail]) so the enum stays small and every client can
+ * travel in [Response.Error.detail] (see [ErrorDetail]) so the enum stays small and every client can
  * branch on it without knowing driver internals.
  *
  * [mayHaveMutated] is the safety property: a code with `false` guarantees the device state was
@@ -63,7 +63,7 @@ enum class ErrorCode(val mayHaveMutated: Boolean, val retryable: Boolean) {
     }
 }
 
-/** Stable machine-readable sub-reasons carried in [Response.detail]. */
+/** Stable machine-readable sub-reasons carried in [Response.Error.detail]. */
 object ErrorDetail {
     // INVALID_SELECTOR
     const val SCOPE_DENIED = "SCOPE_DENIED"

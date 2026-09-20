@@ -82,5 +82,5 @@ TAP_BIN=$PWD/host/service/build/native/nativeCompile/tap TAP_SERIALS=emulator-55
 
 ## Generated stubs
 
-`tap/_gen` is generated from `contracts/api/proto/tap.proto` and committed. After editing the proto run
+`tap/_gen` is generated from `contracts/api/proto/*.proto` and committed. After editing the proto run
 `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools`); CI runs `gen_stubs.py --check`.

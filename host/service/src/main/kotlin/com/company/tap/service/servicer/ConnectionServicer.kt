@@ -10,6 +10,7 @@ import com.company.tap.api.v1.InfoResponse
 import com.company.tap.api.v1.OpenConnectionRequest
 import com.company.tap.api.v1.OpenConnectionResponse
 import com.company.tap.protocol.HOST_BUILD_ID
+import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import com.company.tap.service.TapService
 import io.grpc.stub.ServerCallStreamObserver
 import io.grpc.stub.StreamObserver
@@ -63,7 +64,7 @@ class ConnectionServicer(
         InfoResponse.newBuilder()
             .setServiceVersion(SERVICE_VERSION)
             .setHostBuildId(HOST_BUILD_ID)
-            .setProtocolVersion("1.0")
+            .setProtocolVersion(SUPPORTED_PROTOCOL_VERSIONS.max().let { "${it.major}.${it.minor}" })
             .setAdbExecutable(service.config.adb.executable)
             .setStateDir(service.config.stateDir.toString())
             .setBundledDriver(service.config.bundledDriver != null)

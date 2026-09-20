@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "DEADLINE_EXCEEDED",
+  "type": "error",
+  "code": "DEADLINE_EXCEEDED",
   "detail": "EXPIRED_IN_QUEUE",
   "message": "example",
   "durationMs": 5

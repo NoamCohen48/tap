@@ -1,5 +1,8 @@
 {
-  "ok": true,
-  "text": "<hierarchy/>",
+  "type": "ok",
+  "result": {
+    "kind": "text",
+    "text": "<hierarchy/>"
+  },
   "durationMs": 120
 }

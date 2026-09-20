@@ -24,10 +24,10 @@ class GoldenRoundTripTest {
         assertTrue(files.isNotEmpty(), "no golden requests under $golden")
         files.forEach { file ->
             val original = CanonicalJson.codec.decodeFromString<Request>(Files.readString(file))
-            val proto = Conversions.command(original)
-            val arguments = Conversions.command(proto, defaultTimeoutMs = -1)
-            val back = Conversions.request(arguments, original.sessionId, original.sessionGeneration)
-            assertEquals(original, back, "request fixture ${file.name} changed through the proto round trip")
+            val proto = Conversions.command(original.command, original.timeoutMs)
+            val back = Conversions.command(proto, defaultTimeoutMs = -1)
+            assertEquals(original.command, back.command, "request fixture ${file.name} changed through the proto round trip")
+            assertEquals(original.timeoutMs, back.timeoutMs)
         }
     }
 

@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "INDETERMINATE",
+  "type": "error",
+  "code": "INDETERMINATE",
   "message": "example",
   "durationMs": 5
 }

@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "INTERNAL",
+  "type": "error",
+  "code": "INTERNAL",
   "message": "example",
   "durationMs": 5
 }

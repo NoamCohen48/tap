@@ -1,0 +1,8 @@
+{
+  "type": "ok",
+  "result": {
+    "kind": "bool",
+    "value": true
+  },
+  "durationMs": 12
+}

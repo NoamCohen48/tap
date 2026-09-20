@@ -1,8 +1,19 @@
 package com.company.tap.sdk
 
+import com.company.tap.api.v1.ClearText
+import com.company.tap.api.v1.Command
+import com.company.tap.api.v1.Count
 import com.company.tap.api.v1.Direction
 import com.company.tap.api.v1.ElementSnapshot
-import com.company.tap.api.v1.Operation
+import com.company.tap.api.v1.Exists
+import com.company.tap.api.v1.LongTap
+import com.company.tap.api.v1.Scroll
+import com.company.tap.api.v1.ScrollUntil
+import com.company.tap.api.v1.SetText
+import com.company.tap.api.v1.Snapshot
+import com.company.tap.api.v1.Swipe
+import com.company.tap.api.v1.Tap
+import com.company.tap.api.v1.TypeText
 import kotlin.time.Duration
 
 /**
@@ -13,19 +24,21 @@ class Element internal constructor(
     val device: Device,
     val selector: Selector,
 ) {
-    private fun run(operation: Operation, timeout: Duration?, configure: com.company.tap.api.v1.Command.Builder.() -> Unit = {}) =
-        device.executeOrThrow(operation, selector, timeout ?: device.timeouts.action, configure)
+    private val target get() = selector.proto
+
+    private fun run(timeout: Duration?, build: Command.Builder.() -> Unit) =
+        device.executeOrThrow(timeout ?: device.timeouts.action, selector, build)
 
     // --- Queries ------------------------------------------------------------------------------
 
     /** True when at least one node matches right now (any number of matches is fine). */
-    fun exists(timeout: Duration? = null): Boolean = run(Operation.OP_EXISTS, timeout).value
+    fun exists(timeout: Duration? = null): Boolean = run(timeout) { exists = Exists.newBuilder().setSelector(target).build() }.bool
 
     /** Matches in the focused window right now, ignoring the selector's match limit. */
-    fun count(timeout: Duration? = null): Int = run(Operation.OP_COUNT, timeout).count
+    fun count(timeout: Duration? = null): Int = run(timeout) { count = Count.newBuilder().setSelector(target).build() }.count
 
     /** State of the one matching node at this instant (`AMBIGUOUS`/`NOT_FOUND` otherwise). */
-    fun snapshot(timeout: Duration? = null): ElementSnapshot = run(Operation.OP_SNAPSHOT, timeout).snapshot
+    fun snapshot(timeout: Duration? = null): ElementSnapshot = run(timeout) { snapshot = Snapshot.newBuilder().setSelector(target).build() }.snapshot
 
     /** Text of the one matching node, or null when it has none (an empty field's hint is not text). */
     fun text(timeout: Duration? = null): String? = snapshot(timeout).let { if (it.hasText()) it.text else null }
@@ -38,32 +51,32 @@ class Element internal constructor(
 
     /** Click at the centre of the one matching node's visible bounds. */
     fun tap(timeout: Duration? = null) {
-        run(Operation.OP_TAP, timeout)
+        run(timeout) { tap = Tap.newBuilder().setSelector(target).build() }
     }
 
     /** Long click on the one matching node. */
     fun longTap(timeout: Duration? = null) {
-        run(Operation.OP_LONG_TAP, timeout)
+        run(timeout) { longTap = LongTap.newBuilder().setSelector(target).build() }
     }
 
     /** Accessibility text replacement, verified on the device. */
     fun setText(value: String, timeout: Duration? = null) {
-        run(Operation.OP_SET_TEXT, timeout) { inputText = value }
+        run(timeout) { setText = SetText.newBuilder().setSelector(target).setText(value).build() }
     }
 
     /** Focus plus real key events; unsupported characters are rejected before any input. */
     fun typeText(value: String, timeout: Duration? = null) {
-        run(Operation.OP_TYPE_TEXT, timeout) { inputText = value }
+        run(timeout) { typeText = TypeText.newBuilder().setSelector(target).setText(value).build() }
     }
 
     /** Focus the one matching editable node and clear its text. */
     fun clearText(timeout: Duration? = null) {
-        run(Operation.OP_CLEAR_TEXT, timeout)
+        run(timeout) { clearText = ClearText.newBuilder().setSelector(target).build() }
     }
 
     /** Finger gesture across the element in [direction]. */
     fun swipe(direction: Direction, distancePercent: Int = DEFAULT_GESTURE_PERCENT, timeout: Duration? = null) {
-        run(Operation.OP_SWIPE, timeout) { setDirection(direction); setDistancePercent(distancePercent) }
+        run(timeout) { swipe = Swipe.newBuilder().setSelector(target).setDirection(direction).setDistancePercent(distancePercent).build() }
     }
 
     /**
@@ -72,7 +85,7 @@ class Element internal constructor(
      * remains in that direction, `false` once the end was reached or no scroll was observed.
      */
     fun scroll(direction: Direction, distancePercent: Int = DEFAULT_GESTURE_PERCENT, timeout: Duration? = null): Boolean =
-        run(Operation.OP_SCROLL, timeout) { setDirection(direction); setDistancePercent(distancePercent) }.value
+        run(timeout) { scroll = Scroll.newBuilder().setSelector(target).setDirection(direction).setDistancePercent(distancePercent).build() }.moved
 
     /**
      * Scrolls this container until [target] is visible inside it, or fails with `NOT_FOUND`
@@ -85,11 +98,14 @@ class Element internal constructor(
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         timeout: Duration? = null,
     ): Element {
-        device.executeOrThrow(Operation.OP_SCROLL_UNTIL, target, timeout ?: device.timeouts.wait) {
-            containerSelector = this@Element.selector.proto
-            setDirection(direction)
-            setMaxScrolls(maxScrolls)
-            setDistancePercent(distancePercent)
+        device.executeOrThrow(timeout ?: device.timeouts.wait, target) {
+            scrollUntil = ScrollUntil.newBuilder()
+                .setSelector(target.proto)
+                .setContainer(this@Element.target)
+                .setDirection(direction)
+                .setMaxScrolls(maxScrolls)
+                .setDistancePercent(distancePercent)
+                .build()
         }
         return Element(device, target)
     }

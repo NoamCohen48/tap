@@ -190,16 +190,10 @@ class TapService(val config: ServiceConfig) : AutoCloseable {
      */
     fun execute(
         session: Session,
-        arguments: Conversions.CommandArguments,
+        command: Conversions.TimedCommand,
         onStarted: (DriverClient.PendingCommand) -> Unit = {},
     ): Pair<Response, Long> {
-        val client = session.device.client
-        val pending = client.submit(
-            arguments.operation, arguments.selector, arguments.timeoutMs, arguments.containerSelector,
-            arguments.inputText, arguments.maxScrolls, arguments.direction, arguments.distancePercent,
-            arguments.keyCode, arguments.packageName, arguments.stableForMs, arguments.stableSignal, arguments.observedPid, arguments.observedStartToken,
-            arguments.expectedProcessStartUuid, arguments.expectedSessionIdentity,
-        )
+        val pending = session.device.client.submit(command.command, command.timeoutMs)
         onStarted(pending)
         return try {
             pending.await() to pending.requestId

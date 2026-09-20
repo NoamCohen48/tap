@@ -12,8 +12,8 @@ Status: in progress.
 - Highest-common-version selection and authenticated capability subset.
 - Driver metadata for Android API, component builds, driver instance, operations, operation
   versions, and capabilities.
-- Request operation version with `UNSUPPORTED` rejection before execution.
-- Rejected operation versions consume their request ID and cannot be replayed.
+- One class per command, discriminated by `op`; an unknown `op` is `UNSUPPORTED` before execution.
+- Rejected payloads (unknown `op`, malformed command) consume their request ID and cannot be replayed.
 - No-common-version rejection before normal authentication.
 - Golden canonical payload, malformed JSON, negotiation, downgrade, capability, and
   transcript-binding unit tests.
@@ -161,7 +161,7 @@ Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2
   watchdog-aware driver. Needs an explicit go-ahead because it reboots both devices.
 - [x] Plan §11 operations: `device.pressKey/pressBack/pressHome`, `device.info`,
   `element.count`, `element.snapshot` (covers `getProperty`), `wait.appVisible`, `wait.gone`;
-  `sync.awaitIdle` is host-side (`App.awaitIdle` over `SYNC_BOOTSTRAP`/`SYNC_STATE`).
+  `sync.awaitIdle` is host-side (`App.awaitIdle` over `SyncBootstrap`/`SyncPoll`).
 - [x] `wait.screenStable` as the explicit `WAIT_SCREEN_STABLE` operation (`Device.awaitScreenStable`
   / `await_screen_stable`, with `awaitAppSettled` and `awaitAnimationEnd` selecting one
   signal): tree fingerprint and/or downscaled pixel grid, accessibility-event

@@ -15,19 +15,23 @@ import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Hello
 import com.company.tap.protocol.HOST_BUILD_ID
 import com.company.tap.protocol.MAX_REQUEST_TIMEOUT_MS
-import com.company.tap.protocol.Operation
-import com.company.tap.protocol.OPERATION_VERSION
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.CommandResult
+import com.company.tap.protocol.Health
+import com.company.tap.protocol.Mutation
 import com.company.tap.protocol.ProtocolAuthentication
 import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.ProtocolVersion
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
-import com.company.tap.protocol.DEFAULT_GESTURE_PERCENT
-import com.company.tap.protocol.Direction
-import com.company.tap.protocol.StabilitySignal
-import com.company.tap.protocol.Selector
+import com.company.tap.protocol.Returning
+import com.company.tap.protocol.Screenshot as ScreenshotCommand
+import com.company.tap.protocol.Targeted
+import com.company.tap.protocol.ArtifactResult
 import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
+import com.company.tap.protocol.result
+import com.company.tap.protocol.selectors
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
@@ -103,10 +107,11 @@ class DriverClient(
      */
     inner class PendingCommand internal constructor(
         val requestId: Long,
-        val operation: Operation,
+        val command: Command,
         private val timeoutMs: Long,
-        private val selector: Selector? = null,
     ) {
+        private val selector: String? get() = (command as? Targeted)?.selector?.render()
+
         private val result = CompletableFuture<Response>()
         @Volatile var transmissionState: TransmissionState = TransmissionState.NOT_WRITTEN
             internal set
@@ -120,9 +125,9 @@ class DriverClient(
         internal fun complete(response: Response) {
             transmissionState = TransmissionState.TERMINAL_RESPONSE
             val receiver = blob
-            val artifact = response.artifact
+            val artifact = (response.result as? ArtifactResult)?.artifact
             val terminal = when {
-                !response.ok -> response
+                response !is Response.Ok -> response
                 artifact == null -> if (receiver == null) response else artifactFailure(response, ErrorDetail.BLOB_UNEXPECTED)
                 receiver == null -> artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
                 receiver.failureDetail != null -> artifactFailure(response, requireNotNull(receiver.failureDetail))
@@ -137,7 +142,7 @@ class DriverClient(
         private fun artifactFailure(response: Response, detail: String): Response = Response.failure(
             ErrorCode.ARTIFACT_TRANSFER_FAILED,
             detail = detail,
-            message = "Artifact ${response.artifact?.blobId} was not received intact",
+            message = "Artifact ${(response.result as? ArtifactResult)?.artifact?.blobId} was not received intact",
             durationMs = response.durationMs,
         )
 
@@ -181,157 +186,59 @@ class DriverClient(
         }
 
         /** Like [await] but converts a driver error response into [RemoteCommandException]. */
-        fun awaitOrThrow(): Response {
-            val response = await()
-            if (response.ok) return response
-            throw RemoteCommandException.from(response, operation, requestId, generation, serial, selector, timeoutMs)
+        fun awaitOrThrow(): Response.Ok = when (val response = await()) {
+            is Response.Ok -> response
+            is Response.Error ->
+                throw RemoteCommandException.from(response, command.op, requestId, generation, serial, selector, timeoutMs)
         }
 
         internal fun transportFailure(cause: Throwable): CommandTransportException {
-            val code = if (operation.isMutating() && transmissionState != TransmissionState.NOT_WRITTEN) {
+            val code = if (command is Mutation && transmissionState != TransmissionState.NOT_WRITTEN) {
                 ErrorCode.INDETERMINATE
             } else {
                 ErrorCode.TRANSPORT_LOST
             }
             return CommandTransportException(
-                code, operation, requestId, generation, transmissionState, cause,
-                serial, selector?.render(), timeoutMs,
+                code, command.op, requestId, generation, transmissionState, cause,
+                serial, selector, timeoutMs,
             )
         }
     }
 
-    fun execute(
-        operation: Operation,
-        selector: Selector? = null,
-        timeoutMs: Long = 5_000,
-        containerSelector: Selector? = null,
-        inputText: String? = null,
-        maxScrolls: Int = 20,
-        direction: Direction? = null,
-        distancePercent: Int = DEFAULT_GESTURE_PERCENT,
-        keyCode: Int? = null,
-        packageName: String? = null,
-        stableForMs: Long? = null,
-        stableSignal: StabilitySignal? = null,
-        observedPid: Int? = null,
-        observedStartToken: String? = null,
-        expectedProcessStartUuid: String? = null,
-        expectedSessionIdentity: String? = null,
-    ): Response = submit(
-        operation,
-        selector,
-        timeoutMs,
-        containerSelector,
-        inputText,
-        maxScrolls,
-        direction,
-        distancePercent,
-        keyCode,
-        packageName,
-        stableForMs,
-        stableSignal,
-        observedPid,
-        observedStartToken,
-        expectedProcessStartUuid,
-        expectedSessionIdentity,
-    ).await()
+    /**
+     * Runs [command] and returns its typed result; a driver error response becomes
+     * [RemoteCommandException] and a lost response [CommandTransportException]. The cast is
+     * safe by construction: the driver's `CommandHandler` returns the type [Returning] names.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun <R : CommandResult, C> execute(command: C, timeoutMs: Long = 5_000): R where C : Command, C : Returning<R> =
+        submit(command, timeoutMs).awaitOrThrow().result as R
 
-    /** [execute] that throws [RemoteCommandException] instead of returning an error response. */
-    fun executeOrThrow(
-        operation: Operation,
-        selector: Selector? = null,
-        timeoutMs: Long = 5_000,
-        containerSelector: Selector? = null,
-        inputText: String? = null,
-        maxScrolls: Int = 20,
-        direction: Direction? = null,
-        distancePercent: Int = DEFAULT_GESTURE_PERCENT,
-        keyCode: Int? = null,
-        packageName: String? = null,
-        stableForMs: Long? = null,
-        stableSignal: StabilitySignal? = null,
-        observedPid: Int? = null,
-        observedStartToken: String? = null,
-        expectedProcessStartUuid: String? = null,
-        expectedSessionIdentity: String? = null,
-    ): Response = submit(
-        operation,
-        selector,
-        timeoutMs,
-        containerSelector,
-        inputText,
-        maxScrolls,
-        direction,
-        distancePercent,
-        keyCode,
-        packageName,
-        stableForMs,
-        stableSignal,
-        observedPid,
-        observedStartToken,
-        expectedProcessStartUuid,
-        expectedSessionIdentity,
-    ).awaitOrThrow()
+    /** Runs [command] and returns the raw [Response], error or not. */
+    fun send(command: Command, timeoutMs: Long = 5_000): Response = submit(command, timeoutMs).await()
 
     /**
      * Allocates the next request ID and writes the complete frame under the transport lock, so
      * concurrent callers can never put a lower ID on the socket after a higher one.
      */
-    fun submit(
-        operation: Operation,
-        selector: Selector? = null,
-        timeoutMs: Long = 5_000,
-        containerSelector: Selector? = null,
-        inputText: String? = null,
-        maxScrolls: Int = 20,
-        direction: Direction? = null,
-        distancePercent: Int = DEFAULT_GESTURE_PERCENT,
-        keyCode: Int? = null,
-        packageName: String? = null,
-        stableForMs: Long? = null,
-        stableSignal: StabilitySignal? = null,
-        observedPid: Int? = null,
-        observedStartToken: String? = null,
-        expectedProcessStartUuid: String? = null,
-        expectedSessionIdentity: String? = null,
-    ): PendingCommand {
+    fun submit(command: Command, timeoutMs: Long = 5_000): PendingCommand {
         require(timeoutMs in 0..MAX_REQUEST_TIMEOUT_MS) {
             "timeoutMs must be between 0 and $MAX_REQUEST_TIMEOUT_MS"
         }
         // Structural selector problems fail here, before a request ID is consumed.
-        selector?.let(SelectorValidation::validate)
-        containerSelector?.let(SelectorValidation::validate)
-        val request = Request(
-            sessionId = sessionId,
-            sessionGeneration = generation,
-            operation = operation,
-            timeoutMs = timeoutMs,
-            selector = selector,
-            containerSelector = containerSelector,
-            inputText = inputText,
-            maxScrolls = maxScrolls,
-            direction = direction,
-            distancePercent = distancePercent,
-            keyCode = keyCode,
-            packageName = packageName,
-            stableForMs = stableForMs,
-            stableSignal = stableSignal,
-            observedPid = observedPid,
-            observedStartToken = observedStartToken,
-            expectedProcessStartUuid = expectedProcessStartUuid,
-            expectedSessionIdentity = expectedSessionIdentity,
-        )
+        command.selectors.forEach(SelectorValidation::validate)
+        val request = Request(sessionId = sessionId, generation = generation, timeoutMs = timeoutMs, command = command)
         return synchronized(transportLock) {
             if (poisoned || closed) {
                 throw CommandTransportException(
                     ErrorCode.TRANSPORT_LOST,
-                    operation,
+                    command.op,
                     -1,
                     generation,
                     TransmissionState.NOT_WRITTEN,
                     IllegalStateException("Driver connection is closed or poisoned"),
                     serial,
-                    selector?.render(),
+                    (command as? Targeted)?.selector?.render(),
                     timeoutMs,
                 )
             }
@@ -341,9 +248,9 @@ class DriverClient(
 
     /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
     fun screenshot(timeoutMs: Long = 30_000): Screenshot {
-        val command = submit(Operation.SCREENSHOT, timeoutMs = timeoutMs)
+        val command = submit(ScreenshotCommand, timeoutMs = timeoutMs)
         val response = command.awaitOrThrow()
-        return Screenshot(requireNotNull(command.artifact()), requireNotNull(response.artifact))
+        return Screenshot(requireNotNull(command.artifact()), (response.result as ArtifactResult).artifact)
     }
 
     /** Round-trips a connection-level `PING` on the writer/reader lanes. Returns the latency in ms. */
@@ -391,29 +298,33 @@ class DriverClient(
         }
     }
 
-    /** Validation flow only: sends `HEALTH` with an explicit request ID / identity to probe fencing. */
+    /** Validation flow only: sends `health` with an explicit request ID / identity to probe fencing. */
     fun executeValidationRequest(
         requestId: Long,
         requestSessionId: String = sessionId,
         requestGeneration: Long = generation,
-        operationVersion: Int = OPERATION_VERSION,
     ): Response {
-        val request = Request(
-            sessionId = requestSessionId,
-            sessionGeneration = requestGeneration,
-            operation = Operation.HEALTH,
-            operationVersion = operationVersion,
-            timeoutMs = 5_000,
-        )
-        val command = synchronized(transportLock) {
+        val request = Request(sessionId = requestSessionId, generation = requestGeneration, timeoutMs = 5_000, command = Health)
+        return awaitValidation(synchronized(transportLock) {
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
             transmit(requestId, request)
-        }
-        return try {
-            command.await()
-        } catch (error: CommandTransportException) {
-            throw error.cause ?: error
-        }
+        })
+    }
+
+    /**
+     * Validation flow only: sends an arbitrary JSON payload as a `REQUEST` frame, for probing how
+     * the driver answers what this build cannot express (an unknown `op`, a malformed command).
+     */
+    fun executeRawValidationRequest(requestId: Long, payload: String): Response =
+        awaitValidation(synchronized(transportLock) {
+            check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
+            transmit(requestId, Health, 5_000, payload.encodeToByteArray())
+        })
+
+    private fun awaitValidation(command: PendingCommand): Response = try {
+        command.await()
+    } catch (error: CommandTransportException) {
+        throw error.cause ?: error
     }
 
     /** Validation flow only: poisons this client as if the transport had failed. */
@@ -439,12 +350,15 @@ class DriverClient(
     }
 
     // Caller holds transportLock.
-    private fun transmit(requestId: Long, request: Request): PendingCommand {
-        val command = PendingCommand(requestId, request.operation, request.timeoutMs, request.selector)
+    private fun transmit(requestId: Long, request: Request): PendingCommand =
+        transmit(requestId, request.command, request.timeoutMs, json.encodeToString(request).encodeToByteArray())
+
+    // Caller holds transportLock.
+    private fun transmit(requestId: Long, command: Command, timeoutMs: Long, payload: ByteArray): PendingCommand {
+        val command = PendingCommand(requestId, command, timeoutMs)
         check(pending.putIfAbsent(requestId, command) == null) { "Request $requestId is already pending" }
         // Explicit validation IDs consume the driver watermark too; never allocate below them.
         nextRequestId = maxOf(nextRequestId, Math.addExact(requestId, 1L))
-        val payload = json.encodeToString(request).encodeToByteArray()
         try {
             command.transmissionState = TransmissionState.WRITING
             writeFrame(Frame(FrameType.REQUEST, requestId, payload), remainingTimeoutMs(10_000))
@@ -505,14 +419,6 @@ class DriverClient(
         val commands = pending.values.toList()
         pending.clear()
         commands.forEach { it.fail(cause) }
-    }
-
-    private fun Operation.isMutating(): Boolean = when (this) {
-        Operation.TAP, Operation.LONG_TAP, Operation.SET_TEXT, Operation.TYPE_TEXT, Operation.CLEAR_TEXT,
-        Operation.SWIPE, Operation.SCROLL, Operation.SCROLL_UNTIL, Operation.PRESS_KEY -> true
-        Operation.HEALTH, Operation.DEVICE_INFO, Operation.EXISTS, Operation.COUNT, Operation.SNAPSHOT,
-        Operation.WAIT_VISIBLE, Operation.WAIT_GONE, Operation.WAIT_APP_VISIBLE, Operation.WAIT_SCREEN_STABLE,
-        Operation.DUMP_HIERARCHY, Operation.SCREENSHOT, Operation.SYNC_BOOTSTRAP, Operation.SYNC_STATE -> false
     }
 
     private fun authenticate() {

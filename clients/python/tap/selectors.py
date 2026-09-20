@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from google.protobuf import text_format
 
-from ._gen import tap_pb2 as pb
+from . import _gen as pb
 
 EXACT = pb.MATCH_EXACT
 CONTAINS = pb.MATCH_CONTAINS

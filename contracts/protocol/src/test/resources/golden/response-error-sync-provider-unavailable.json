@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "SYNC_PROVIDER_UNAVAILABLE",
+  "type": "error",
+  "code": "SYNC_PROVIDER_UNAVAILABLE",
   "detail": "PROVIDER_TIMEOUT",
   "message": "example",
   "durationMs": 5

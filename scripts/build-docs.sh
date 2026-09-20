@@ -8,7 +8,7 @@
 # Generated inputs (all ignored by git, regenerated on every run):
 #   docs/reference/kotlin/         Dokka HTML aggregate of :clients:kotlin:sdk + :junit5 (site)
 #   build/docs-md/reference/kotlin/ Dokka GFM of the same modules (-Ptap.dokkaFormat=gfm)
-#   docs/reference/grpc.md         protoc-gen-doc Markdown for contracts/api/proto/tap.proto (both)
+#   docs/reference/grpc.md         protoc-gen-doc Markdown for contracts/api/proto/*.proto (both)
 #   (Python, site)                 mkdocstrings renders clients/python/tap at mkdocs time
 #   build/docs-md/reference/python/ lazydocs Markdown of the same modules
 #
@@ -54,13 +54,13 @@ YAML
 {
   echo "# gRPC service API (tap.v1)"
   echo
-  echo "Generated from \`contracts/api/proto/tap.proto\` by protoc-gen-doc. The narrative"
+  echo "Generated from \`contracts/api/proto/*.proto\` by protoc-gen-doc. The narrative"
   echo "contract — run liveness, the pool, sessions, status mapping — is in the repository's"
   echo "\`.docs/service-api.md\`."
   echo
   # protoc-gen-doc emits its own H1 and a long TOC; keep the body from the file heading on
   # (mkdocs renders its own TOC from the headings).
-  sed -n '/^<a name="tap-proto"><\/a>/,$p' "$tmp/out/grpc.md" | grep -v '^<p align="right">'
+  sed -n '/^<a name="[a-z]*-proto"><\/a>/,$p' "$tmp/out/grpc.md" | grep -v '^<p align="right">'
 } > docs/reference/grpc.md
 
 echo "== Site (mkdocs)"

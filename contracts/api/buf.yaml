@@ -8,8 +8,8 @@ lint:
   use:
     - STANDARD
   except:
-    # tap.proto keeps short enum prefixes (OP_, ERR_, DIR_, …) mirrored by EnumMirrorTest, one
-    # file at proto/tap.proto, and shared request/response messages (AppRequest, AppEmpty).
+    # The files keep short enum prefixes (ERR_, DIR_, …) mirrored by EnumMirrorTest, live flat
+    # under proto/ (see README.md), and share request/response messages (AppRequest, AppEmpty).
     - ENUM_VALUE_PREFIX
     - PACKAGE_DIRECTORY_MATCH
     - RPC_REQUEST_RESPONSE_UNIQUE

@@ -1,6 +1,8 @@
 {
   "sessionId": "0d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
-  "sessionGeneration": 3,
-  "operation": "DEVICE_INFO",
-  "timeoutMs": 5000
+  "generation": 3,
+  "timeoutMs": 10000,
+  "command": {
+    "op": "device_info"
+  }
 }

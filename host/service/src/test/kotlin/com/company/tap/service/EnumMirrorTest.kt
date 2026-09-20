@@ -5,23 +5,24 @@ import com.company.tap.api.v1.StabilitySignal as ProtoStabilitySignal
 import com.company.tap.api.v1.ErrorCode as ProtoErrorCode
 import com.company.tap.api.v1.MatchLimit as ProtoMatchLimit
 import com.company.tap.api.v1.MatchMode as ProtoMatchMode
-import com.company.tap.api.v1.Operation as ProtoOperation
+import com.company.tap.api.v1.Command as ProtoCommand
+import com.company.tap.api.v1.CommandResult as ProtoCommandResult
 import com.company.tap.api.v1.TargetScope as ProtoTargetScope
 import com.company.tap.protocol.Direction
 import com.company.tap.protocol.StabilitySignal
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.MatchLimit
 import com.company.tap.protocol.MatchMode
-import com.company.tap.protocol.Operation
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.CommandResult
 import com.company.tap.protocol.TargetScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** `contracts/api/proto/tap.proto` enums must be exactly the protocol enums, prefixed, plus `*_UNSPECIFIED`. */
+/** `contracts/api/proto` enums must be exactly the protocol enums, prefixed, plus `*_UNSPECIFIED`; oneof cases must be the protocol names. */
 class EnumMirrorTest {
     @Test
     fun `proto enums mirror protocol enums`() {
-        assertMirror("OP_", ProtoOperation.entries.map { it.name }, Operation.entries.map { it.name })
         assertMirror("ERR_", ProtoErrorCode.entries.map { it.name }, ErrorCode.entries.map { it.name })
         assertMirror("DIR_", ProtoDirection.entries.map { it.name }, Direction.entries.map { it.name })
         assertMirror("MATCH_", ProtoMatchMode.entries.map { it.name }, MatchMode.entries.map { it.name })
@@ -31,8 +32,21 @@ class EnumMirrorTest {
     }
 
     @Test
+    fun `Command op cases are the protocol op names`() {
+        val cases = ProtoCommand.getDescriptor().oneofs.single { it.name == "op" }.fields.map { it.name }
+        assertEquals(Command.names, cases.sorted(), "Command.op cases drifted from the protocol's op names")
+    }
+
+    @Test
+    fun `CommandResult outcome cases are the protocol result kinds plus error`() {
+        val kinds = CommandResult.serializer().descriptor.getElementDescriptor(1)
+        val expected = (0 until kinds.elementsCount).map(kinds::getElementName) + "error"
+        val cases = ProtoCommandResult.getDescriptor().oneofs.single { it.name == "outcome" }.fields.map { it.name }
+        assertEquals(expected.sorted(), cases.sorted(), "CommandResult.outcome cases drifted from the protocol's result kinds")
+    }
+
+    @Test
     fun `every protocol value converts both ways`() {
-        Operation.entries.forEach { assertEquals(it, Conversions.operation(Conversions.operation(it))) }
         ErrorCode.entries.forEach { assertEquals(it, Conversions.errorCode(Conversions.errorCode(it))) }
         Direction.entries.forEach { assertEquals(it, Conversions.direction(Conversions.direction(it))) }
         StabilitySignal.entries.forEach { assertEquals(it, Conversions.stabilitySignal(Conversions.stabilitySignal(it))) }

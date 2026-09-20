@@ -1,6 +1,6 @@
 {
-  "ok": false,
-  "errorCode": "AUT_NOT_INSTALLED",
+  "type": "error",
+  "code": "AUT_NOT_INSTALLED",
   "message": "example",
   "durationMs": 5
 }
