@@ -254,10 +254,12 @@ class RunService:
 
 class PoolServiceStub:
     """---------------------------------------------------------------------------------------------
-    Pool: one machine-wide pool of devices leased by serial.
+    Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
+    exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
+    `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
+    death of the session's process releases. Clients pick serials from the inventory.
     ---------------------------------------------------------------------------------------------
 
-    One machine-wide pool of devices, leased by serial, all-or-none per call.
     """
 
     def __init__(self, channel):
@@ -271,43 +273,20 @@ class PoolServiceStub:
                 request_serializer=tap__pb2.InventoryRequest.SerializeToString,
                 response_deserializer=tap__pb2.InventoryResponse.FromString,
                 _registered_method=True)
-        self.Acquire = channel.unary_unary(
-                '/tap.v1.PoolService/Acquire',
-                request_serializer=tap__pb2.AcquireRequest.SerializeToString,
-                response_deserializer=tap__pb2.AcquireResponse.FromString,
-                _registered_method=True)
-        self.Release = channel.unary_unary(
-                '/tap.v1.PoolService/Release',
-                request_serializer=tap__pb2.ReleaseRequest.SerializeToString,
-                response_deserializer=tap__pb2.ReleaseResponse.FromString,
-                _registered_method=True)
 
 
 class PoolServiceServicer:
     """---------------------------------------------------------------------------------------------
-    Pool: one machine-wide pool of devices leased by serial.
+    Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
+    exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
+    `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
+    death of the session's process releases. Clients pick serials from the inventory.
     ---------------------------------------------------------------------------------------------
 
-    One machine-wide pool of devices, leased by serial, all-or-none per call.
     """
 
     def Inventory(self, request, context):
-        """Every device ADB lists, with pool state.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def Acquire(self, request, context):
-        """Blocks until every requested serial is free at once or the deadline passes
-        (DEADLINE_EXCEEDED); partial leases are never handed out.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def Release(self, request, context):
-        """Releases the run's devices (all, or the listed serials).
+        """Every device ADB lists, with its state.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -321,16 +300,6 @@ def add_PoolServiceServicer_to_server(servicer, server):
                     request_deserializer=tap__pb2.InventoryRequest.FromString,
                     response_serializer=tap__pb2.InventoryResponse.SerializeToString,
             ),
-            'Acquire': grpc.unary_unary_rpc_method_handler(
-                    servicer.Acquire,
-                    request_deserializer=tap__pb2.AcquireRequest.FromString,
-                    response_serializer=tap__pb2.AcquireResponse.SerializeToString,
-            ),
-            'Release': grpc.unary_unary_rpc_method_handler(
-                    servicer.Release,
-                    request_deserializer=tap__pb2.ReleaseRequest.FromString,
-                    response_serializer=tap__pb2.ReleaseResponse.SerializeToString,
-            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'tap.v1.PoolService', rpc_method_handlers)
@@ -341,10 +310,12 @@ def add_PoolServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class PoolService:
     """---------------------------------------------------------------------------------------------
-    Pool: one machine-wide pool of devices leased by serial.
+    Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
+    exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
+    `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
+    death of the session's process releases. Clients pick serials from the inventory.
     ---------------------------------------------------------------------------------------------
 
-    One machine-wide pool of devices, leased by serial, all-or-none per call.
     """
 
     @staticmethod
@@ -364,60 +335,6 @@ class PoolService:
             '/tap.v1.PoolService/Inventory',
             tap__pb2.InventoryRequest.SerializeToString,
             tap__pb2.InventoryResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def Acquire(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/tap.v1.PoolService/Acquire',
-            tap__pb2.AcquireRequest.SerializeToString,
-            tap__pb2.AcquireResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def Release(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/tap.v1.PoolService/Release',
-            tap__pb2.ReleaseRequest.SerializeToString,
-            tap__pb2.ReleaseResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -1,10 +1,9 @@
 package com.company.tap.junit5
 
 import com.company.tap.sdk.Device
+import com.company.tap.sdk.DeviceOptions
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.extension.AfterEachCallback
 import org.junit.jupiter.api.extension.BeforeEachCallback
@@ -15,33 +14,27 @@ import org.junit.jupiter.api.extension.ParameterResolver
 import org.junit.jupiter.api.extension.TestExecutionExceptionHandler
 
 /**
- * Per-test device sessions for JUnit 5. Before each test it acquires every declared role
- * from the host service's machine-wide pool (all or nothing), opens one driver session per
- * role in parallel, and injects [Device]/[Devices] parameters. After the test it captures failure
- * artifacts (screenshot, hierarchy, driver log) while sessions are live, then closes them and
- * releases the pool. Sessions never outlive a test, so a poisoned or quarantined session is
- * contained to the test that hit it.
+ * Per-test device sessions for JUnit 5. Before each test it maps every declared role to a
+ * serial, opens one driver session per role — in sorted serial order, waiting up to
+ * `tap.acquireTimeoutSeconds` for a device another session holds, so two multi-device tests
+ * can never deadlock — and injects [Device]/[Devices] parameters. After the test it captures
+ * failure artifacts (screenshot, hierarchy, driver log) while sessions are live, then closes
+ * them, which frees the devices. Sessions never outlive a test, so a poisoned or quarantined
+ * session is contained to the test that hit it.
  */
 class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, TestExecutionExceptionHandler {
 
     override fun beforeEach(context: ExtensionContext) {
         val config = TapConfig.current
         val roles = declaredRoles(context)
-        val available = config.serials.ifEmpty { TapRun.run.freeSerials() }
+        val available = config.serials.ifEmpty { TapRun.run.availableSerials() }
         // Fewer devices than roles is an environment precondition, not a test failure.
         assumeTrue(roles.size <= available.size) {
             "${context.requiredTestMethod.name} needs ${roles.size} devices but " +
                 (if (config.serials.isEmpty()) "the pool has $available" else "tap.serials lists ${config.serials}")
         }
         val assignment = assignSerials(roles, available, config.pinnedRoles)
-        TapRun.run.acquire(assignment.values, config.acquireTimeout)
-        val devices = try {
-            openAll(assignment, config)
-        } catch (error: Throwable) {
-            runCatching { TapRun.run.release(assignment.values) }.exceptionOrNull()?.let(error::addSuppressed)
-            throw error
-        }
-        context.store.put(KEY, TestDevices(devices, assignment))
+        context.store.put(KEY, TestDevices(openAll(assignment, config), assignment))
     }
 
     override fun handleTestExecutionException(context: ExtensionContext, throwable: Throwable) {
@@ -56,7 +49,6 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
             if (failure != null) captureArtifacts(context, state)
         } finally {
             val closeErrors = state.devices.values.mapNotNull { device -> runCatching { device.close() }.exceptionOrNull() }
-            TapRun.run.release(state.assignment.values)
             closeErrors.firstOrNull()?.let { first ->
                 closeErrors.drop(1).forEach(first::addSuppressed)
                 // A cleanup failure after a passing test is a real failure: the device may be quarantined.
@@ -103,36 +95,30 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
     /**
      * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then
      * [available] in declaration order. [available] is `tap.serials` or, when none are
-     * configured, what the service pool reports. The pool itself only leases serials.
+     * configured, what the service inventory reports.
      */
     private fun assignSerials(roles: List<String>, available: List<String>, pinned: Map<String, String>): Map<String, String> {
         val free = available.filter { it !in pinned.values }.toMutableList()
         return roles.associateWith { role -> pinned[role] ?: free.removeFirst() }
     }
 
+    /**
+     * Opens the sessions one at a time in sorted serial order. Every process takes device locks
+     * in the same order, so two tests wanting the same two devices cannot deadlock; the second
+     * simply waits (bounded by `tap.acquireTimeoutSeconds`) for the first to finish.
+     */
     private fun openAll(assignment: Map<String, String>, config: TapConfig): Map<String, Device> {
-        val executor = Executors.newFixedThreadPool(assignment.size)
+        val opened = linkedMapOf<String, Device>()
+        val options = DeviceOptions(waitForDevice = config.acquireTimeout)
         try {
-            val futures: Map<String, Future<Device>> = assignment.mapValues { (_, serial) ->
-                executor.submit<Device> { TapRun.run.openDevice(serial, config.autPackage) }
+            assignment.entries.sortedBy { it.value }.forEach { (role, serial) ->
+                opened[role] = TapRun.run.openDevice(serial, config.autPackage, options = options)
             }
-            val opened = linkedMapOf<String, Device>()
-            var failure: Throwable? = null
-            futures.forEach { (role, future) ->
-                try {
-                    opened[role] = future.get()
-                } catch (error: Throwable) {
-                    failure = (failure ?: error).also { if (it !== error) it.addSuppressed(error) }
-                }
-            }
-            failure?.let { error ->
-                opened.values.forEach { device -> runCatching { device.close() }.exceptionOrNull()?.let(error::addSuppressed) }
-                throw (error as? java.util.concurrent.ExecutionException)?.cause ?: error
-            }
-            return opened
-        } finally {
-            executor.shutdown()
+        } catch (error: Throwable) {
+            opened.values.forEach { device -> runCatching { device.close() }.exceptionOrNull()?.let(error::addSuppressed) }
+            throw error
         }
+        return assignment.keys.associateWith { opened.getValue(it) }
     }
 
     private fun captureArtifacts(context: ExtensionContext, state: TestDevices) {

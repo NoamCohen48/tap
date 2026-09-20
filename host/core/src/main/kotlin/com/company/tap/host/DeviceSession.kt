@@ -23,6 +23,8 @@ data class DeviceSessionConfig(
     val adb: Adb = Adb(),
     /** Receives the driver's instrumentation output line by line. */
     val driverLog: (String) -> Unit = {},
+    /** How long to wait for another session's lock on this serial before giving up (0 = fail at once). */
+    val leaseTimeoutMs: Long = 0,
 )
 
 /**
@@ -75,7 +77,7 @@ class DeviceSession private constructor(
             val adb = config.adb
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)
-            val lease = store.acquireLease()
+            val lease = store.acquireLease(config.leaseTimeoutMs)
             try {
                 val bootId = adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")
                 val prior = recoverJournal(adb, serial, bootId, store)

@@ -38,6 +38,8 @@ data class DeviceOptions(
     val skipDriverInstall: Boolean = false,
     val syncAuthority: String? = null,
     val allowedSystemPackages: List<String> = emptyList(),
+    /** How long to wait for a device another session holds before failing; zero fails at once. */
+    val waitForDevice: Duration = Duration.ZERO,
 )
 
 /**
@@ -252,6 +254,7 @@ class Device internal constructor(
                 .setSerial(serial)
                 .setAutPackage(autPackage)
                 .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
+                .setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                 .addAllAllowedSystemPackages(options.allowedSystemPackages)
                 .apply {
                     options.driverApk?.let { setDriverApk(it) }
@@ -260,7 +263,7 @@ class Device internal constructor(
                     options.syncAuthority?.let { setSyncAuthority(it) }
                 }
                 .build()
-            val response = mapped(serial) { run.client.sessions.withDeadlineAfter(180, TimeUnit.SECONDS).open(request) }
+            val response = mapped(serial) { run.client.sessions.withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS).open(request) }
             return Device(run, response.sessionId, response.serial, response.generation, autPackage, timeouts)
         }
     }

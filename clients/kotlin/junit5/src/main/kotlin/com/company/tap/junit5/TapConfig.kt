@@ -6,7 +6,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /** Resolved once per JVM from system properties, falling back to `TAP_*` environment variables. */
 data class TapConfig(
-    /** Serials roles are pinned to, in order; empty = any device in the service pool. */
+    /** Serials roles map to, in order; empty = whatever the service inventory offers. */
     val serials: List<String>,
     val autPackage: String,
     val artifactsDir: Path,

@@ -322,7 +322,8 @@ message CloseRunRequest {
 
 message CloseRunResponse {
   int32 sessions_closed = 1;
-  int32 devices_released = 2;
+  reserved 2;
+  reserved "devices_released";
 }
 
 message InfoRequest {}
@@ -337,19 +338,17 @@ message InfoResponse {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Pool: one machine-wide pool of devices leased by serial.
+// Pool: a view of the devices on this machine. There is no lease RPC: a device is in use
+// exactly while a session holds its per-serial lock (`~/.tap/sessions/<serial>.lock`), which
+// `SessionService.Open` takes (optionally waiting, `lease_timeout_ms`) and `Close` or the
+// death of the session's process releases. Clients pick serials from the inventory.
 // ---------------------------------------------------------------------------------------------
 
-// One machine-wide pool of devices, leased by serial, all-or-none per call.
 service PoolService {
-  rpc Inventory(InventoryRequest) returns (InventoryResponse); // Every device ADB lists, with pool state.
-  // Blocks until every requested serial is free at once or the deadline passes
-  // (DEADLINE_EXCEEDED); partial leases are never handed out.
-  rpc Acquire(AcquireRequest) returns (AcquireResponse);
-  rpc Release(ReleaseRequest) returns (ReleaseResponse); // Releases the run's devices (all, or the listed serials).
+  rpc Inventory(InventoryRequest) returns (InventoryResponse); // Every device ADB lists, with its state.
 }
 
-// Pool state of a device.
+// State of a device in the inventory.
 enum DeviceState {
   DEVICE_STATE_UNSPECIFIED = 0;
   DEVICE_FREE = 1;
@@ -372,7 +371,7 @@ message DeviceFacts {
 message PoolDevice {
   DeviceFacts facts = 1;
   DeviceState state = 2;
-  optional string leased_by_run = 3;
+  optional string leased_by_run = 3; // set when the session holding the lock belongs to this service
   optional string quarantine_reason = 5;
   reserved 4;
   reserved "leased_role";
@@ -384,31 +383,6 @@ message InventoryResponse {
   repeated PoolDevice devices = 1;
 }
 
-message AcquireRequest {
-  string run_id = 1;
-  // The serials to lease, all at once: the call blocks until every one of them is free or the
-  // deadline passes (DEADLINE_EXCEEDED). Which device plays which part in a test is the
-  // client's business; the service only knows serials.
-  repeated string serials = 4;
-  int64 timeout_ms = 3;
-  reserved 2;
-  reserved "roles";
-}
-
-message AcquireResponse {
-  repeated DeviceFacts devices = 2; // in request order
-  reserved 1;
-  reserved "assignments";
-}
-
-message ReleaseRequest {
-  string run_id = 1;
-  repeated string serials = 2; // empty = everything the run holds
-}
-
-message ReleaseResponse {
-  int32 released = 1;
-}
 
 // ---------------------------------------------------------------------------------------------
 // Sessions: one driver session on one leased device.
@@ -438,6 +412,9 @@ message OpenSessionRequest {
   optional string sync_authority = 7;
   repeated string allowed_system_packages = 8;
   optional int64 default_timeout_ms = 9; // used when Command.timeout_ms is 0
+  // How long to wait for another session's lock on `serial` before failing DEADLINE_EXCEEDED.
+  // 0 (default) fails at once when the device is in use.
+  int64 lease_timeout_ms = 10;
 }
 
 // The opened session; `generation` increments whenever the driver is rebuilt.

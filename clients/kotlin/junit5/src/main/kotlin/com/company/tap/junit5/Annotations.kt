@@ -16,7 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith
  * | `tap.device.<role>` | pin a role to one serial (optional) |
  * | `tap.autPackage` | the application under test (required) |
  * | `tap.artifactsDir` | failure artifacts root (default `build/tap-artifacts`) |
- * | `tap.acquireTimeoutSeconds` | all-or-none role acquisition timeout (default 300) |
+ * | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds (default 300) |
  * | `tap.service` | `host:port` of a running `tap serve` (default: discover or auto-start) |
  * | `tap.bin` | the `tap` executable to auto-start (default `TAP_BIN` or `tap` on `PATH`) |
  *
@@ -40,7 +40,7 @@ annotation class TapDevices(vararg val roles: String)
 
 const val DEFAULT_ROLE = "device"
 
-/** The devices acquired for one test, by role. */
+/** The devices opened for one test, by role. */
 class Devices internal constructor(private val byRole: Map<String, Device>) : Iterable<Device> {
     operator fun get(role: String): Device =
         byRole[role] ?: throw IllegalArgumentException("No device for role '$role'; declared roles: ${byRole.keys}")

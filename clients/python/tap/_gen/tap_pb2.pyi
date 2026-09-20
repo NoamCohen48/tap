@@ -468,12 +468,10 @@ class CloseRunRequest(_message.Message):
     def __init__(self, run_id: _Optional[str] = ...) -> None: ...
 
 class CloseRunResponse(_message.Message):
-    __slots__ = ("sessions_closed", "devices_released")
+    __slots__ = ("sessions_closed",)
     SESSIONS_CLOSED_FIELD_NUMBER: _ClassVar[int]
-    DEVICES_RELEASED_FIELD_NUMBER: _ClassVar[int]
     sessions_closed: int
-    devices_released: int
-    def __init__(self, sessions_closed: _Optional[int] = ..., devices_released: _Optional[int] = ...) -> None: ...
+    def __init__(self, sessions_closed: _Optional[int] = ...) -> None: ...
 
 class InfoRequest(_message.Message):
     __slots__ = ()
@@ -531,38 +529,8 @@ class InventoryResponse(_message.Message):
     devices: _containers.RepeatedCompositeFieldContainer[PoolDevice]
     def __init__(self, devices: _Optional[_Iterable[_Union[PoolDevice, _Mapping]]] = ...) -> None: ...
 
-class AcquireRequest(_message.Message):
-    __slots__ = ("run_id", "serials", "timeout_ms")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    SERIALS_FIELD_NUMBER: _ClassVar[int]
-    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    serials: _containers.RepeatedScalarFieldContainer[str]
-    timeout_ms: int
-    def __init__(self, run_id: _Optional[str] = ..., serials: _Optional[_Iterable[str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
-
-class AcquireResponse(_message.Message):
-    __slots__ = ("devices",)
-    DEVICES_FIELD_NUMBER: _ClassVar[int]
-    devices: _containers.RepeatedCompositeFieldContainer[DeviceFacts]
-    def __init__(self, devices: _Optional[_Iterable[_Union[DeviceFacts, _Mapping]]] = ...) -> None: ...
-
-class ReleaseRequest(_message.Message):
-    __slots__ = ("run_id", "serials")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    SERIALS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    serials: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, run_id: _Optional[str] = ..., serials: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class ReleaseResponse(_message.Message):
-    __slots__ = ("released",)
-    RELEASED_FIELD_NUMBER: _ClassVar[int]
-    released: int
-    def __init__(self, released: _Optional[int] = ...) -> None: ...
-
 class OpenSessionRequest(_message.Message):
-    __slots__ = ("run_id", "serial", "aut_package", "driver_apk", "driver_test_apk", "skip_driver_install", "sync_authority", "allowed_system_packages", "default_timeout_ms")
+    __slots__ = ("run_id", "serial", "aut_package", "driver_apk", "driver_test_apk", "skip_driver_install", "sync_authority", "allowed_system_packages", "default_timeout_ms", "lease_timeout_ms")
     RUN_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
@@ -572,6 +540,7 @@ class OpenSessionRequest(_message.Message):
     SYNC_AUTHORITY_FIELD_NUMBER: _ClassVar[int]
     ALLOWED_SYSTEM_PACKAGES_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     run_id: str
     serial: str
     aut_package: str
@@ -581,7 +550,8 @@ class OpenSessionRequest(_message.Message):
     sync_authority: str
     allowed_system_packages: _containers.RepeatedScalarFieldContainer[str]
     default_timeout_ms: int
-    def __init__(self, run_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., driver_apk: _Optional[str] = ..., driver_test_apk: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., allowed_system_packages: _Optional[_Iterable[str]] = ..., default_timeout_ms: _Optional[int] = ...) -> None: ...
+    lease_timeout_ms: int
+    def __init__(self, run_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., driver_apk: _Optional[str] = ..., driver_test_apk: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., allowed_system_packages: _Optional[_Iterable[str]] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class OpenSessionResponse(_message.Message):
     __slots__ = ("session_id", "serial", "generation", "device_info")

@@ -22,7 +22,7 @@ import grpc
 
 from ._gen import tap_pb2 as pb
 from ._gen import tap_pb2_grpc as rpc
-from .errors import AppLifecycleError, ServiceError, TapError, WaitTimeoutError
+from .errors import AppLifecycleError, DeviceBusyError, ServiceError, TapError, WaitTimeoutError
 
 
 def state_dir() -> pathlib.Path:
@@ -110,11 +110,17 @@ def resolve_address(autostart: bool = True, binary: str | None = None, adb: str 
     return start_service(binary, directory, adb)
 
 
+# The service's wording for a held per-serial lock (``DeviceBusyException`` in ``:host:core``).
+_DEVICE_BUSY_MARKER = "is in use by another session"
+
+
 def _map_rpc_error(error: grpc.RpcError, serial: str | None = None) -> TapError:
     code = error.code()
     details = error.details() or ""
     if code == grpc.StatusCode.DEADLINE_EXCEEDED and details.startswith("Timed out"):
         return WaitTimeoutError(details, serial or "?", 0)
+    if _DEVICE_BUSY_MARKER in details:
+        return DeviceBusyError(details)
     if code == grpc.StatusCode.FAILED_PRECONDITION:
         return AppLifecycleError(details)
     return ServiceError(code.name, details)
@@ -178,8 +184,8 @@ class Service:
 
 
 class Run:
-    """Ownership scope for leases and sessions. ``attach`` starts the liveness stream: if this
-    process dies, the service closes every session and releases every device of the run."""
+    """Ownership scope for sessions. ``attach`` starts the liveness stream: if this process dies,
+    the service closes every session of the run, which frees its devices."""
 
     def __init__(self, service: Service, run_id: str):
         self.service = service
@@ -205,27 +211,14 @@ class Run:
 
         threading.Thread(target=pump, name=f"tap-run-{self.id[:8]}", daemon=True).start()
 
-    def acquire(self, serials: list[str], timeout: float) -> list[DeviceFacts]:
-        """Lease every one of ``serials`` for this run, all or none, waiting up to ``timeout``
-        seconds for them to be free at the same time. Returns their facts in request order.
-        The pool only knows serials; naming devices (roles) is up to the caller — see
-        :meth:`free_serials` to pick some."""
-        request = pb.AcquireRequest(run_id=self.id, serials=list(serials), timeout_ms=int(timeout * 1000))
-        with mapped_errors():
-            response = self.service.pool.Acquire(request, timeout=timeout + 30)
-        return [DeviceFacts.of(d) for d in response.devices]
-
-    def free_serials(self) -> list[str]:
-        """Serials worth acquiring when none are configured: online, not quarantined, free ones
-        first, then ones leased to another run (``acquire`` then waits for them)."""
+    def available_serials(self) -> list[str]:
+        """Serials a test can use, from the service inventory: online and not quarantined, free
+        ones first, then ones another session holds (``open_device`` then waits for them when
+        ``wait_for_device`` is set). Exclusive use is enforced by the session itself, so there is
+        nothing to acquire beforehand."""
         devices = [d for d in self.service.inventory() if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)]
         devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
         return [d.facts.serial for d in devices]
-
-    def release(self, serials: list[str] | None = None) -> int:
-        """Release the given serials (default: every device of this run); returns how many were released."""
-        with mapped_errors():
-            return self.service.pool.Release(pb.ReleaseRequest(run_id=self.id, serials=serials or []), timeout=30).released
 
     def open_device(self, serial: str, aut_package: str, **options) -> "Device":
         """Open a driver session on ``serial`` for ``aut_package``; ``options`` are ``Device.open`` keywords."""

@@ -61,7 +61,7 @@ fixtures, helpers and assertions come from JUnit / pytest.
 | `mobile: acceptAlert` | tap the dialog through `inSystemPackage(...)` or `app.grantPermission(...)` | |
 | `StaleElementReferenceException` | — | there are no references to go stale |
 | implicit wait | — | none; write the wait |
-| Grid / parallel sessions | `@TapDevices("a", "b")`, machine-wide pool | all-or-none leases across processes |
+| Grid / parallel sessions | `@TapDevices("a", "b")`, per-device locks shared by every process | sessions opened in serial order, so no deadlocks |
 
 Appium's strength is breadth (iOS, web, many drivers). Tap trades that for one platform done
 deterministically: no handles, no XPath, no implicit waits, a closed error taxonomy with stable

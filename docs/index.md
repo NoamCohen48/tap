@@ -40,12 +40,12 @@ def test_buys_an_item(tap_device):
   mutation to guess its way out.
 - **Failure artifacts for free.** Screenshot, accessibility hierarchy, device info and the
   driver log per failed test, captured while the session is still live.
-- **Multi-device out of the box.** A machine-wide pool of serials with leases; tests declare named roles
+- **Multi-device out of the box.** Per-device locks shared by every process on the machine; tests declare named roles
   (`@TapDevices("sender", "receiver")`) and get them all-or-none, across processes and
   languages.
 - **Survives the app.** The driver lives outside the app under test: force-stop, clear data
   and reinstall in the middle of a test and keep going.
-- **One engine, thin clients.** ADB, sessions, journals, leases and the driver live in the
+- **One engine, thin clients.** ADB, sessions, journals, device locks and the driver live in the
   service; Kotlin and Python are ~1 000-line gRPC clients of the same API, so behaviour is
   identical in both.
 
@@ -54,11 +54,11 @@ def test_buys_an_item(tap_device):
 | | |
 |---|---|
 | [Getting started](guide/getting-started.md) | install the service, run the first test in Kotlin or Python |
-| [How it works](guide/how-it-works.md) | service, driver, sessions, pool — the model behind the API |
+| [How it works](guide/how-it-works.md) | service, driver, sessions, inventory — the model behind the API |
 | [Selectors](guide/selectors.md) | the selector DSL, scoping rules, what is deliberately not supported |
 | [Actions and waits](guide/actions-and-waits.md) | taps, text, gestures, scrolling, every kind of wait |
 | [App lifecycle and sync](guide/app-lifecycle.md) | launch/cold launch, clear data, permissions, app-owned idle |
-| [Multi-device tests](guide/multi-device.md) | roles, serials, the pool |
+| [Multi-device tests](guide/multi-device.md) | roles, serials, the inventory |
 | [Configuration](guide/configuration.md) | properties, environment, the `tap` CLI |
 | [Errors and artifacts](guide/errors.md) | the error codes, what they mean, what to look at |
 | [Coming from Maestro or Appium](guide/coming-from.md) | mapping table |

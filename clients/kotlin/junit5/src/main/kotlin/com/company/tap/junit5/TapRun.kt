@@ -5,7 +5,7 @@ import com.company.tap.sdk.TapClient
 
 /**
  * One service connection and one run per test JVM. The run is closed on JVM exit; if the JVM
- * dies without that, the service notices the dropped liveness stream and releases everything.
+ * dies without that, the service notices the dropped liveness stream and closes its sessions.
  */
 internal object TapRun {
     val client: TapClient by lazy { TapClient() }

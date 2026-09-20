@@ -20,7 +20,7 @@ Runtime requirements: a `tap` service binary (`./gradlew :host:service:nativeCom
 `Service()` uses, in order: `TAP_SERVICE=host:port`; a live `service.json` in the state dir
 (`TAP_STATE_DIR`, default `~/.tap`); otherwise it starts `tap serve` from `TAP_BIN` or `tap` on
 `PATH`. A started service stays running like the ADB server (`tap stop` shuts it down), so
-concurrent test processes on one machine share the same device pool and leases.
+concurrent test processes on one machine respect each other's device locks.
 
 ## Script usage
 
@@ -29,7 +29,6 @@ from tap import Service, text, res
 
 service = Service()
 with service.open_run("smoke") as run:                  # attaches: if this process dies, the
-    run.acquire(["emulator-5554"], timeout=60)             # all-or-none lease of these serials
     with run.open_device("emulator-5554", "com.company.tap.fixture") as device:
         device.app().cold_launch(".MainActivity")
         device.element(res("view_button")).tap()
@@ -59,14 +58,14 @@ from tap import text
 def test_login(tap_device):                      # one device, role "device"
     tap_device.element(text("Login")).tap()
 
-@pytest.mark.tap_devices("caller", "callee")     # several roles, acquired all-or-none
+@pytest.mark.tap_devices("caller", "callee")     # several roles, opened in serial order
 def test_call(tap_devices):
     tap_devices["caller"].element(text("Call")).tap()
 ```
 
-Each test gets fresh sessions (acquired from the pool before, released after); on failure the
+Each test gets fresh sessions (opened before, closed after); on failure the
 plugin writes a screenshot, accessibility hierarchy, device info and the driver log per device
-under `tap-artifacts/<nodeid>/`. Tests that need more roles than `tap_serials` lists are skipped.
+under `tap-artifacts/<nodeid>/`. Tests that need more roles than there are devices are skipped.
 
 The sample suite in `tests/` drives the fixture app on the local matrix:
 
