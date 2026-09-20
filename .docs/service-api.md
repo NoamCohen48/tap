@@ -3,8 +3,12 @@
 Date: 2026-09-19 (names revised 2026-09-20, see §6; commands became a `oneof` and the proto
 was split into files 2026-09-20, see §7)
 
-Status: implemented (`:host:service`, `contracts/api/proto/*.proto`), device-proven on API 29 and API 34
-with the Python client. This is the contract between language bindings and the host; the
+Status: implemented (`:host:service`, `contracts/api/proto/*.proto`). The pre-migration
+thread + `CompletableFuture` implementation was device-proven on API 29 and API 34 with the
+Python client. The current grpc-kotlin coroutine implementation has landed and is covered by
+JVM unit tests plus protocol-test and compilation/install tasks only; device-matrix and
+native-image verification of the coroutine implementation remain pending (see
+`coroutines.md`). This is the contract between language bindings and the host; the
 device wire protocol is documented in `protocol-contract.md`.
 
 ## 1. Purpose
@@ -54,8 +58,9 @@ JUnit (Kotlin)   --gRPC (loopback)-->  (same service, same devices)
   and `:host:service:nativeCompile` (GraalVM native image,
   `host/service/build/native/nativeCompile/tap`, ~39 MB, links only libc/libz). Reachability
   metadata lives under `host/service/src/main/resources/META-INF/native-image/` and was
-  recorded with the tracing agent over the smoke flow; re-record it when a dependency that
-  uses reflection is added.
+  recorded with the tracing agent over the smoke flow for the pre-migration implementation;
+  re-recording for the coroutine implementation is pending with the native-image verification.
+  Re-record it when a dependency that uses reflection is added.
 
 ## 3. API (`contracts/api/proto/`, package `tap.v1`)
 

@@ -159,7 +159,7 @@ tap/
 |   |   |   +-- Conversions.kt       proto <-> protocol extension functions (toProto / toCommand / toSelector / toResponse)
 |   |   |   +-- BundledDriver.kt     extracts the embedded driver APKs per build id
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
-|   |   +-- src/test/kotlin/...      EnumMirrorTest, GoldenRoundTripTest
+|   |   +-- src/test/kotlin/...      EnumMirrorTest, GoldenRoundTripTest, AutResourceTest, TapServiceLifecycleTest
 |   +-- validation/              :host:validation — application `host` (exe): the destructive/fault validation flow
 |       +-- src/main/kotlin/com/company/tap/host/validation/
 |           +-- PhaseZeroMain.kt     multi-device validation flow + fault scenarios, PHASE_* markers
@@ -607,7 +607,7 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
 | Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 12 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), two-device concurrency |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
-| Service | `:host:service:test` | 4 classes | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
+| Service | `:host:service:test` | 4 classes (`EnumMirrorTest`, `GoldenRoundTripTest`, `AutResourceTest`, `TapServiceLifecycleTest`) | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
 
 Build and JVM tests:

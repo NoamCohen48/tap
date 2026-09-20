@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
@@ -291,6 +292,22 @@ class TapService(
             val deadlineNanos = totalTimeoutMs?.let(::deadlineAfterMs)
             var closedSessions = 0
             snapshot.sessions.forEachIndexed { index, session ->
+                // Strict shared bound: once the connection's share of the shutdown deadline is
+                // exhausted, detach is already done (the snapshot removed every session from both
+                // maps up front), so launch every remaining cleanup without awaiting any of them
+                // and return immediately. Serially awaiting even 1 ms per remaining session would
+                // overrun the deadline by N ms for N uncooperative sessions.
+                if (deadlineNanos != null && remainingMs(deadlineNanos) <= 0L) {
+                    val rest = snapshot.sessions.subList(index, snapshot.sessions.size)
+                    rest.forEach { remaining ->
+                        launchDetachedCleanup(remaining.device, perSessionMs, "session ${remaining.id}")
+                    }
+                    config.log(
+                        "connection $id shutdown budget exhausted; " +
+                            "${rest.size} session(s) detached with cleanup launched",
+                    )
+                    return@withContext closedSessions + rest.size
+                }
                 val sessionsLeft = snapshot.sessions.size - index
                 val timeoutMs =
                     deadlineNanos?.let { deadline ->
@@ -336,6 +353,25 @@ class TapService(
             return timeoutDetail
         }
         return outcome.exceptionOrNull()?.message
+    }
+
+    /**
+     * Fire-and-forget device cleanup on the service-owned scope, used only once the shared
+     * shutdown deadline is exhausted and state is already detached. The cleanup keeps its own
+     * core deadline ([timeoutMs] → `DeviceSession.close(timeoutMs)`), so late cleanup can still
+     * journal quarantine and release the lease; exactly-once holds because the session was removed
+     * from both maps before this launch. Never suspends the shutdown caller.
+     */
+    private fun launchDetachedCleanup(
+        device: ServiceDevice,
+        timeoutMs: Long,
+        label: String,
+    ) {
+        cleanupScope.launch {
+            val outcome = runCatching { device.close(timeoutMs.coerceAtLeast(1L)) }
+            val detail = outcome.exceptionOrNull()?.message
+            config.log("$label detached cleanup finished" + (detail?.let { " (quarantined: $it)" } ?: ""))
+        }
     }
 
     private fun deadlineAfterMs(timeoutMs: Long): Long {
@@ -500,7 +536,16 @@ class TapService(
      * Bounded shutdown: every connection is attempted within [timeoutMs]. Remaining time is
      * propagated to each connection and session close as effective-timeout children inside
      * NonCancellable boundaries; a stuck session is quarantined and the next one is still
-     * attempted. Never throws; logs budget overruns instead of blocking forever.
+     * attempted. Once the shared deadline is exhausted, all remaining connections and sessions
+     * are atomically detached, every remaining device cleanup is launched on the owned cleanup
+     * scope without serially awaiting any of them, and this function returns immediately — so
+     * `close(timeoutMs)` plus the server's `awaitTermination` on the remaining hook budget (see
+     * `ServiceMain`) cannot exceed the advertised hook budget beyond scheduling overhead. Detached
+     * cleanups keep their own core deadline (`DeviceSession.close(timeoutMs)`) so late cleanup can
+     * still journal quarantine and release the lease. Never throws. Connections or sessions that
+     * attempt to open during shutdown fail (`ServiceClosingException` / `UnknownConnectionException`)
+     * and never escape teardown: `closing` is set before the first close, and registration loses to
+     * the detached state so orphans are closed before exposure.
      */
     suspend fun close(timeoutMs: Long = shutdownTotalMs) {
         withContext(NonCancellable) {
@@ -514,8 +559,37 @@ class TapService(
                 val remainingConnections = ids.size - index
                 val remainingMs = remainingMs(deadlineNanos)
                 if (remainingMs <= 0L) {
-                    config.log("service shutdown budget ${timeoutMs}ms exceeded; connection $id may remain")
-                    return@forEachIndexed
+                    // Strict bound: detach everything still registered in one transaction, launch
+                    // every remaining cleanup without awaiting, and return immediately. The old code
+                    // logged "may remain" here and left later connections registered.
+                    val detached =
+                        synchronized(lifecycleLock) {
+                            ids.subList(index, ids.size).mapNotNull { remainingId ->
+                                val connection = connections.remove(remainingId) ?: return@mapNotNull null
+                                if (connection.closed) return@mapNotNull null
+                                connection.closed = true
+                                val owned = connection.sessions.values.toList()
+                                owned.forEach {
+                                    sessions.remove(it.id)
+                                    connection.sessions.remove(it.id)
+                                }
+                                val hooks = connection.onClose.toList()
+                                connection.onClose.clear()
+                                connection.attachOwner = null
+                                Snapshot(connection, owned, hooks)
+                            }
+                        }
+                    detached.forEach { snapshot -> snapshot.hooks.forEach { runCatching(it) } }
+                    val detachedSessions = detached.flatMap { it.sessions }
+                    detachedSessions.forEach { session ->
+                        launchDetachedCleanup(session.device, shutdownSessionMs, "session ${session.id}")
+                    }
+                    config.log(
+                        "service shutdown budget ${timeoutMs}ms exhausted; " +
+                            "${detached.size} connection(s), ${detachedSessions.size} session(s) " +
+                            "detached with cleanup launched",
+                    )
+                    return@withContext
                 }
                 // Reserve a share for every later connection. closeConnection applies the same
                 // rule to its sessions, so one stuck cleanup never consumes all remaining time.

@@ -119,9 +119,13 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     Runtime.getRuntime().addShutdownHook(Thread {
         log("shutting down")
         server.shutdown()
-        // One deadline covers both device cleanup and gRPC termination. Device cleanup is
-        // independently bounded inside TapService, so runBlocking cannot hold this hook past the
-        // budget even though core cleanup is deliberately NonCancellable.
+        // One deadline covers both device cleanup and gRPC termination, so the two cannot add up
+        // past the advertised hook budget: TapService.close receives only the remaining budget and
+        // itself returns within it (on exhaustion it detaches all remaining state and launches
+        // every remaining cleanup fire-and-forget on its own scope, without serially awaiting),
+        // then awaitTermination receives only what is still remaining. Core cleanup is deliberately
+        // NonCancellable, but the service-side bound holds regardless, and detached cleanups keep
+        // their own core deadline so they can still journal quarantine and release the lease.
         val shutdownDeadlineNanos = System.nanoTime() + SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS * 1_000_000L
         runBlocking {
             runCatching { service.close(remainingShutdownMs(shutdownDeadlineNanos)) }

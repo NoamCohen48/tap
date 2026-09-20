@@ -24,6 +24,9 @@ Landed checkpoints, still under final review:
 - `1ce2b7b` — service lifecycle checkpoint: one connection/session state boundary,
   exactly-one Attach, close-vs-open handling, bounded shutdown propagation, and service
   lifecycle tests. This checkpoint is being audited before the lane is considered complete.
+- `03b00b7` — docs checkpoint: shutdown-bound enforcement plus the coroutine documentation
+  sweep (`service-api.md` status, `project-architecture.md` threading/test notes, this file's
+  status). The docs sweep is landed; the lane itself remains under final review.
 
 Verification recorded for this lane is intentionally **non-device only**: host core/service JVM
 unit tests plus protocol tests and compilation/install tasks for validation, fixture tests and
@@ -291,7 +294,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 4. **Pending: Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** Fixture tests rewritten; docs guide,
    README, KDoc; `framework-gaps.md` rows "Synchronous API instead of `tapTest`" and
    "No `DeviceBarrier`" moved out only with the test that proves cancellation of a sibling.
-5. **In progress: docs sweep**: `service-api.md` (status mapping unchanged but the servicer description),
+5. **Landed (`03b00b7`): docs sweep**: `service-api.md` (status mapping unchanged but the servicer description),
    `project-architecture.md` module table and threading notes, `release-engineering.md`
    version lines, `phase-1-progress.md` if any checklist row is touched, this file's status.
 
