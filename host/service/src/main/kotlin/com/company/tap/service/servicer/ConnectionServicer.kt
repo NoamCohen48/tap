@@ -23,6 +23,7 @@ import kotlinx.coroutines.isActive
 
 class ConnectionServicer(
     private val service: TapService,
+    private val heartbeatIntervalMs: Long = ATTACH_HEARTBEAT_MS,
 ) : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
     override suspend fun open(request: OpenConnectionRequest): OpenConnectionResponse =
         reply {
@@ -30,31 +31,35 @@ class ConnectionServicer(
         }
 
     /**
-     * Liveness: the stream stays open for the connection's lifetime. When the client goes away
-     * gRPC cancels collection and the `finally` closes the connection (and every session it
-     * owns). When the connection closes another way the `onClose` hook cancels this
-     * collection, so the stream ends instead of heartbeating a dead connection. A heartbeat
-     * event every 15 s keeps idle proxies from dropping the stream.
+     * Liveness: the stream stays open for the connection's lifetime. Exactly one Attach stream
+     * owns a connection: [TapService.attachAcquire] atomically claims the owner and registers
+     * the cancel hook, so a duplicate fails FAILED_PRECONDITION without touching the valid
+     * stream, and a close concurrent with registration either rejects the newcomer (NOT_FOUND)
+     * or cancels it promptly with no callback leak. When the client goes away gRPC cancels
+     * collection and the `finally` closes the connection (and every session it owns). When the
+     * connection closes another way the hook cancels this collection, so the stream ends
+     * instead of heartbeating a dead connection. A heartbeat event every 15 s keeps idle
+     * proxies from dropping the stream; it never detects death, cancellation does.
      */
     override fun attach(request: AttachRequest): Flow<ConnectionEvent> =
         flow {
+            val token = Any()
+            val self = currentCoroutineContext()[Job]
+            val closer: () -> Unit = { self?.cancel(CancellationException("connection closed")) }
             val connection =
                 try {
-                    service.connection(request.connectionId)
+                    service.attachAcquire(request.connectionId, token, closer)
                 } catch (error: Throwable) {
                     throw error.toStatus()
                 }
-            val self = currentCoroutineContext()[Job]
-            val closer: () -> Unit = { self?.cancel(CancellationException("connection closed")) }
-            connection.onClose += closer
             try {
                 emit(event("attached to connection ${connection.id}"))
                 while (currentCoroutineContext().isActive) {
-                    delay(15_000)
+                    delay(heartbeatIntervalMs)
                     emit(event("heartbeat"))
                 }
             } finally {
-                connection.onClose -= closer
+                service.attachRelease(connection, token, closer)
                 service.closeConnection(connection.id, "client detached")
             }
         }
@@ -77,6 +82,11 @@ class ConnectionServicer(
                 .setBundledDriver(service.config.bundledDriver != null)
                 .build()
         }
+
+    companion object {
+        /** Outbound heartbeat cadence; not a death detector, only idle-proxy traffic. */
+        const val ATTACH_HEARTBEAT_MS = 15_000L
+    }
 
     private fun event(message: String): ConnectionEvent =
         ConnectionEvent

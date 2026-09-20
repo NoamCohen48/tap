@@ -22,6 +22,10 @@ import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** Explicit total budget for the shutdown hook before `server.awaitTermination`. */
+const val SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS = SERVICE_SHUTDOWN_TOTAL_MS
 
 /**
  * `tap start  [--port N] [--state-dir DIR] [--adb PATH]` — start in the background
@@ -116,7 +120,18 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     Runtime.getRuntime().addShutdownHook(Thread {
         log("shutting down")
         server.shutdown()
-        runBlocking { runCatching { service.close() } }
+        // Bounded shutdown: service.close() itself propagates a remaining deadline to every
+        // session close, and this hook adds an outer bound so a stuck cleanup can never hold
+        // the hook forever before server.awaitTermination. Never runBlocking(NonCancellable).
+        runBlocking {
+            val finished =
+                withTimeoutOrNull(SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS) {
+                    runCatching { service.close(SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS) }
+                        .onFailure { log("shutdown cleanup failed: ${it.message}") }
+                    true
+                }
+            if (finished == null) log("shutdown budget ${SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS}ms exceeded; some devices may be quarantined")
+        }
         server.awaitTermination(10, TimeUnit.SECONDS)
         runCatching { Files.deleteIfExists(descriptor) }
     })

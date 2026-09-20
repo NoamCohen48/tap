@@ -88,7 +88,7 @@ class SessionServicer(
     override suspend fun execute(request: ExecuteRequest): CommandResult =
         reply {
             val session = service.session(request.sessionId)
-            val command = request.command.toCommand(session.device.config.autPackage)
+            val command = request.command.toCommand(session.device.autPackage)
             val timeoutMs = if (request.command.timeoutMs > 0) request.command.timeoutMs else session.defaultTimeoutMs
             val pending = session.device.client.submit(command, timeoutMs)
             service.await(pending).toProto(pending.requestId, session.device.generation)

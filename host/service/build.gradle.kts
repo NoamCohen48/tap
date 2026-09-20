@@ -19,6 +19,8 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     testImplementation("io.grpc:grpc-inprocess:$grpcVersion")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation(testFixtures(project(":host:core")))
 }
 
 application {
