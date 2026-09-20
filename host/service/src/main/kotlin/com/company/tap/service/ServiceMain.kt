@@ -1,6 +1,11 @@
 package com.company.tap.service
 
 import com.company.tap.host.Adb
+import com.company.tap.service.servicer.AppServicer
+import com.company.tap.service.servicer.ConnectionServicer
+import com.company.tap.service.servicer.DeviceServicer
+import com.company.tap.service.servicer.SERVICE_VERSION
+import com.company.tap.service.servicer.SessionServicer
 import io.grpc.Server
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import java.net.InetSocketAddress
@@ -32,7 +37,7 @@ fun main(args: Array<String>) {
         "serve" -> serve(options, stateDir)
         "status" -> status(stateDir)
         "stop" -> stop(stateDir)
-        "version" -> println("tap service $SERVICE_VERSION")
+        "version" -> println("tap service ${SERVICE_VERSION}")
         else -> usage()
     }
 }
@@ -93,7 +98,7 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
     val descriptor = stateDir.resolve("service.json")
     writeAtomically(
         descriptor,
-        """{"port":${server.port},"pid":${ProcessHandle.current().pid()},"version":"$SERVICE_VERSION","adb":"${adb.executable}"}""",
+        """{"port":${server.port},"pid":${ProcessHandle.current().pid()},"version":"${SERVICE_VERSION}","adb":"${adb.executable}"}""",
     )
     log("listening on 127.0.0.1:${server.port} (state $stateDir, adb ${adb.executable}, bundled driver ${bundled != null})")
     println("TAP_SERVICE_READY port=${server.port}")

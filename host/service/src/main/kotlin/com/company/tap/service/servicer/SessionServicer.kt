@@ -1,4 +1,4 @@
-package com.company.tap.service.Servicer
+package com.company.tap.service.servicer
 
 import com.company.tap.api.v1.CloseSessionRequest
 import com.company.tap.api.v1.CloseSessionResponse

@@ -1,4 +1,4 @@
-package com.company.tap.service.Servicer
+package com.company.tap.service.servicer
 
 import com.company.tap.host.AppLifecycleException
 import com.company.tap.host.DeviceBusyException
