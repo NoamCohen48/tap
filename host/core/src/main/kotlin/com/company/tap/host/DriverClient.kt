@@ -10,6 +10,7 @@ import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Challenge
 import com.company.tap.protocol.Command
 import com.company.tap.protocol.CommandResult
+import com.company.tap.protocol.CommandValidation
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Frame
@@ -27,10 +28,8 @@ import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Returning
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
-import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.Targeted
 import com.company.tap.protocol.result
-import com.company.tap.protocol.selectors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -446,7 +445,7 @@ class DriverClient private constructor(
             "timeoutMs must be between 0 and $MAX_REQUEST_TIMEOUT_MS"
         }
         // Structural selector problems fail here, before a request ID is consumed.
-        command.selectors.forEach(SelectorValidation::validate)
+        CommandValidation.validate(command)
         val request = Request(sessionId = sessionId, generation = generation, timeoutMs = timeoutMs, command = command)
         return transportMutex.withLock {
             // Session-owned sticky poison is consulted here, under the transport mutex and before

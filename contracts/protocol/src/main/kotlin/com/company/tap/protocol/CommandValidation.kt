@@ -19,12 +19,25 @@ enum class SelectorPlanKind {
 class InvalidSelectorException(val detail: String, message: String) : IllegalArgumentException(message)
 
 /**
- * Structural validation shared by host and driver. The host validates before transmitting so a
- * malformed selector never consumes a request ID; the driver validates again because it trusts
- * nothing on the wire. Never weakens a selector: anything not representable is rejected.
+ * Structural command validation shared by host and driver. The host validates before transmitting
+ * so a malformed selector never consumes a request ID; the driver validates again because it
+ * trusts nothing on the wire. Never weakens a selector: anything not representable is rejected.
  */
-object SelectorValidation {
-    fun validate(selector: Selector): SelectorPlanKind {
+object CommandValidation {
+    /** Validates every selector carried by [command]. */
+    fun validate(command: Command) {
+        when (command) {
+            is ScrollUntil -> {
+                validateSelector(command.selector)
+                validateSelector(command.container)
+            }
+            is Targeted -> validateSelector(command.selector)
+            else -> Unit
+        }
+    }
+
+    /** Validates [selector] and returns the device evaluator needed to preserve its semantics. */
+    fun validateSelector(selector: Selector): SelectorPlanKind {
         val counter = Counter()
         val needsTraversal = visit(selector.node, depth = 1, counter)
         return if (needsTraversal) SelectorPlanKind.TRAVERSAL else SelectorPlanKind.NATIVE

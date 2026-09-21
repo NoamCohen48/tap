@@ -4,6 +4,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiObject2
+import com.company.tap.protocol.CommandValidation
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.InvalidSelectorException
 import com.company.tap.protocol.MAX_SELECTOR_DEPTH
@@ -14,7 +15,6 @@ import com.company.tap.protocol.Relation
 import com.company.tap.protocol.Scope
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorPlanKind
-import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.TextProperty
 import com.google.re2j.Pattern
 
@@ -46,7 +46,7 @@ internal class SelectorCompiler(
     private val allowedSystemPackages: Set<String>,
 ) {
     fun compile(selector: Selector): CompiledSelector {
-        val plan = SelectorValidation.validate(selector)
+        val plan = CommandValidation.validateSelector(selector)
         val scopePackage = scopePackage(selector)
         if (selector.scope == Scope.Aut) requireAutResources(selector.node)
         return when (plan) {
@@ -187,7 +187,7 @@ internal class NodePredicate(node: Node) {
         class Text(private val property: TextProperty, match: Node.Match) : Compiled {
             private val value = match.value
             private val mode = match.mode
-            private val regex: Pattern? = if (mode == MatchMode.REGEX) SelectorValidation.compileRegex(value) else null
+            private val regex: Pattern? = if (mode == MatchMode.REGEX) CommandValidation.compileRegex(value) else null
 
             override fun matches(element: UiObject2, info: AccessibilityNodeInfo): Boolean {
                 val actual: CharSequence? = when (property) {
