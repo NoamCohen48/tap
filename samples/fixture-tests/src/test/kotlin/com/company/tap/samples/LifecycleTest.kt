@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 @TapTest
 class LifecycleTest {
     @Test
-    fun coldLaunchProducesANewProcessAndSurvivesClearData(device: Device) =
+    fun coldLaunchProducesANewProcessAndSurvivesClearData(device: Device): Unit {
         tapTest {
             val app = Fixture.launch(device)
             val first = app.process()
@@ -37,4 +37,5 @@ class LifecycleTest {
             val info = device.info()
             assertEquals(Fixture.PACKAGE, info.currentPackage)
         }
+    }
 }

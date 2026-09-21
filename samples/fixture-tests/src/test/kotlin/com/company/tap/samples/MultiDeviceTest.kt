@@ -27,7 +27,7 @@ import kotlin.time.Duration.Companion.seconds
 class MultiDeviceTest {
     @Test
     @TapDevices("left", "right")
-    fun drivesTwoDevicesConcurrently(devices: Devices) =
+    fun drivesTwoDevicesConcurrently(devices: Devices): Unit {
         tapTest {
             coroutineScope {
                 listOf("left", "right")
@@ -43,6 +43,7 @@ class MultiDeviceTest {
                     .also { assertEquals(2, it.size) }
             }
         }
+    }
 
     /**
      * Structured sibling cancellation on real devices: the left device parks in a long
@@ -61,7 +62,7 @@ class MultiDeviceTest {
      */
     @Test
     @TapDevices("left", "right")
-    fun siblingFailureCancelsWaitWithoutReplay(devices: Devices) =
+    fun siblingFailureCancelsWaitWithoutReplay(devices: Devices): Unit {
         tapTest {
             val left = devices["left"]
             val right = devices["right"]
@@ -101,4 +102,5 @@ class MultiDeviceTest {
             right.element(res("view_button")).tap()
             right.await(text("View tapped")).visible()
         }
+    }
 }

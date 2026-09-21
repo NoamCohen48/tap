@@ -15,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 @TapTest
 class MotionTest {
     @Test
-    fun waitsForAnimationToEnd(device: Device) =
+    fun waitsForAnimationToEnd(device: Device): Unit {
         tapTest {
             Fixture.launch(device, ".MotionActivity")
             val status = device.element(res("motion_status"))
@@ -29,9 +29,10 @@ class MotionTest {
             assertEquals("Animation done", status.text())
             assertTrue(waitedMs >= 2_000, "returned after ${waitedMs}ms, before the motion ended")
         }
+    }
 
     @Test
-    fun settlesAfterTheHierarchyStopsMoving(device: Device) =
+    fun settlesAfterTheHierarchyStopsMoving(device: Device): Unit {
         tapTest {
             Fixture.launch(device, ".MotionActivity")
             val status = device.element(res("motion_status"))
@@ -45,9 +46,10 @@ class MotionTest {
             assertEquals("Animation done", status.text())
             assertTrue(waitedMs >= 2_000, "returned after ${waitedMs}ms, before the motion ended")
         }
+    }
 
     @Test
-    fun screenThatKeepsChangingTimesOut(device: Device) =
+    fun screenThatKeepsChangingTimesOut(device: Device): Unit {
         tapTest {
             Fixture.launch(device, ".MotionActivity")
             val ticker = device.element(res("ticker_button"))
@@ -65,4 +67,5 @@ class MotionTest {
             device.awaitScreenStable(timeout = 5.seconds)
             assertEquals("Ticker stopped", device.element(res("ticker_status")).text())
         }
+    }
 }

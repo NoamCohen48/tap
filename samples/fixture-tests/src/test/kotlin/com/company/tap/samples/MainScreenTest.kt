@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.seconds
 @TapTest
 class MainScreenTest {
     @Test
-    fun tapsViewAndComposeButtons(device: Device) =
+    fun tapsViewAndComposeButtons(device: Device): Unit {
         tapTest {
             Fixture.launch(device)
 
@@ -30,9 +30,10 @@ class MainScreenTest {
             device.element(rawRes("composeButton")).tap()
             device.await(rawRes("composeStatus")).textEquals("Compose tapped")
         }
+    }
 
     @Test
-    fun typesAndClearsText(device: Device) =
+    fun typesAndClearsText(device: Device): Unit {
         tapTest {
             Fixture.launch(device)
             val input = device.element(res("view_input"))
@@ -48,9 +49,10 @@ class MainScreenTest {
             keyboard.clearText()
             assertEquals("", keyboard.text().orEmpty())
         }
+    }
 
     @Test
-    fun scrollsComposeListUntilItemIsVisible(device: Device) =
+    fun scrollsComposeListUntilItemIsVisible(device: Device): Unit {
         tapTest {
             Fixture.launch(device)
 
@@ -64,9 +66,10 @@ class MainScreenTest {
             val first = list.scrollUntil(rawRes("item-1"), direction = Direction.DIR_UP, maxScrolls = 30, timeout = 30.seconds)
             assertEquals("Item 1", first.text())
         }
+    }
 
     @Test
-    fun ambiguousTapFailsBeforeAnyInput(device: Device) =
+    fun ambiguousTapFailsBeforeAnyInput(device: Device): Unit {
         tapTest {
             Fixture.launch(device)
 
@@ -91,9 +94,10 @@ class MainScreenTest {
             device.element((res("no_such_button") or res("ambiguous_button_left")) and text("AMBIGUOUS TAP")).tap()
             device.await(text("Ambiguous taps: left=1 right=1")).visible()
         }
+    }
 
     @Test
-    fun waitsForAppOwnedSynchronization(device: Device) =
+    fun waitsForAppOwnedSynchronization(device: Device): Unit {
         tapTest {
             val app = Fixture.launch(device)
 
@@ -102,9 +106,10 @@ class MainScreenTest {
             app.awaitIdle(timeout = 15.seconds)
             assertEquals("Synchronized work complete", device.element(res("view_status")).text())
         }
+    }
 
     @Test
-    fun waitTimeoutIsDiagnosable(device: Device) =
+    fun waitTimeoutIsDiagnosable(device: Device): Unit {
         tapTest {
             Fixture.launch(device)
 
@@ -114,9 +119,10 @@ class MainScreenTest {
                 }
             assertTrue(timeout.message!!.contains(device.serial))
         }
+    }
 
     @Test
-    fun backAndHomeKeys(device: Device) =
+    fun backAndHomeKeys(device: Device): Unit {
         tapTest {
             Fixture.launch(device, ".ViewListActivity")
             device.await(text("View item 1")).visible()
@@ -124,4 +130,5 @@ class MainScreenTest {
             device.pressBack()
             device.await(text("View item 1")).gone()
         }
+    }
 }
