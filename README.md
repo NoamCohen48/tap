@@ -38,16 +38,21 @@ class CheckoutTest {
     @TapDevices("sender", "receiver")
     fun messagePropagates(devices: Devices) = tapTest {
         coroutineScope {
-            async {
-                devices["sender"].element(rawRes("sendButton")).tap()
-            }
-            async {
-                devices["receiver"].await(text("hello"), timeout = 20.seconds).visible()
-            }
-        }.awaitAll()
+            awaitAll(
+                async {
+                    devices["sender"].element(rawRes("sendButton")).tap()
+                },
+                async {
+                    devices["receiver"].await(text("hello"), timeout = 20.seconds).visible()
+                },
+            )
+        }
     }
 }
 ```
+
+(`awaitAll` is `kotlinx.coroutines.awaitAll`; `coroutineScope` + `async` is the same shape
+`samples/fixture-tests` compiles and runs — see `MultiDeviceTest`.)
 
 Every test body runs inside `tapTest { ... }`: the real-time `runBlocking`-style bridge onto
 the extension-owned per-test coroutine scope (root job + deadline). Suspending calls outside
@@ -100,7 +105,10 @@ itself. Configuration is read from system properties or environment variables:
 It builds the fixture app and the service distribution, starts the service (`tap.manageService`,
 which installs the driver), runs thirteen tests (including two two-device tests that are skipped with
 one serial) concurrently across the devices, and stops the service again unless one was already
-running (`-Ptap.manageService=false` to require a running one).
+running (`-Ptap.manageService=false` to require a running one). The thirteen-test suite is the
+new 0.2.0 coroutine client (`tapTest`); its device-matrix run is still pending — the matrix
+pass on record is the host no-reboot validation plus the pre-client sample/Python suites
+(see `.docs/coroutines.md`).
 
 ## Python tests
 
@@ -178,10 +186,11 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
 with constraints; a coroutine Kotlin SDK (`Device`/`App`/`Element`/waits/selectors, all `suspend`
 behind `tapTest`/`tapScope`) and JUnit 5 extension (`tapTest` bridge, per-test root job,
 `DeviceBarrier`, failure artifacts), and a Python client and pytest plugin, all gRPC clients of
-the service. The coroutine host/service/client implementation passed the no-reboot validation
-(run `host --no-reboot` and the sample suites on API 29 and API 34, plus the native-image
-Python smoke flow, on 2026-09-21; the Kotlin `tapTest` device matrix is the remaining
-verification, see `.docs/coroutines.md`).
+the service. Host-side validation passed the no-reboot run (`host --no-reboot` on API 29 and
+API 34, plus the native-image Python smoke flow, on 2026-09-21, including every
+`PHASE_1_*_OK` marker); the new 0.2.0 Kotlin client (`tapTest`, thirteen fixture tests)
+compiles and passes its JVM suites, but its device-matrix run is still pending
+(see `.docs/coroutines.md`).
 
 The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/protocol-contract.md).
 

@@ -218,15 +218,31 @@ class TapExtension :
     /**
      * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then
      * [available] in declaration order. [available] is `tap.serials` or, when none are
-     * configured, what the service's device list reports.
+     * configured, what the service's device list reports. Duplicate serials (two roles
+     * pinned to the same device) fail here, before any session opens: two sessions on one
+     * device would serialize on its lock instead of testing concurrently.
      */
     internal fun assignSerials(
         roles: List<String>,
         available: List<String>,
         pinned: Map<String, String>,
     ): Map<String, String> {
-        val free = available.filter { it !in pinned.values }.toMutableList()
-        return roles.associateWith { role -> pinned[role] ?: free.removeFirst() }
+        val relevantPins = pinned.filterKeys { it in roles }
+        val duplicatedPins =
+            relevantPins.values
+                .groupingBy { it }
+                .eachCount()
+                .filter { it.value > 1 }
+        require(duplicatedPins.isEmpty()) {
+            "duplicate tap.device pins for serials ${duplicatedPins.keys}: ${relevantPins.filterValues { it in duplicatedPins }}; " +
+                "each role needs its own device"
+        }
+        val free = available.filter { it !in relevantPins.values }.toMutableList()
+        val assignment = roles.associateWith { role -> relevantPins[role] ?: free.removeFirst() }
+        require(assignment.values.toSet().size == assignment.size) {
+            "duplicate serial assignment $assignment; each role needs its own device"
+        }
+        return assignment
     }
 
     /**
@@ -234,6 +250,7 @@ class TapExtension :
      * in the same order, so two tests wanting the same two devices cannot deadlock; the second
      * simply waits (bounded by `tap.acquireTimeoutSeconds`) for the first to finish. Caller
      * runs inside the setup scope (a child of the root job), so setup cancellation propagates.
+     * A duplicated serial in [assignment] fails before any session opens (see [assignSerials]).
      * On failure every opened device is closed (bounded, non-cancellable) with the errors
      * suppressed into the opener before rethrow.
      */
@@ -242,6 +259,9 @@ class TapExtension :
         assignment: Map<String, String>,
         config: TapConfig,
     ): Map<String, Device> {
+        require(assignment.values.toSet().size == assignment.size) {
+            "duplicate serial assignment $assignment; each role needs its own device"
+        }
         val opened = linkedMapOf<String, Device>()
         val options = DeviceOptions(waitForDevice = config.acquireTimeout)
         try {

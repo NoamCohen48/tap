@@ -54,27 +54,39 @@ internal object TapTestBinding {
  *
  * JUnit `@Timeout`/thread interruption cancels the blocked `runBlocking`, which cancels the
  * root job and every in-flight RPC; `AfterEach` then performs bounded non-cancellable
- * teardown. Sibling failure inside `coroutineScope`/`async` in [block] cancels the other
+ * teardown. The interrupt is consumed here (never re-asserted): `AfterEach` runs its own
+ * `runBlocking` boundaries on this same JUnit callback thread, and a set interrupt flag
+ * would abort teardown before every device is closed. The original `InterruptedException`
+ * stays the primary failure as the cause, with cleanup failures suppressed into it.
+ * Sibling failure inside `coroutineScope`/`async` in [block] cancels the other
  * device's work by structured-concurrency rules.
  */
 fun <T> tapTest(block: suspend CoroutineScope.() -> T): T {
+    // Nesting first: the flag propagates through the coroutine context, so a child coroutine
+    // on another thread (which has no ThreadLocal binding) still reports "nested", not
+    // "no binding". Outside any tapTest body the flag is never set, so this costs nothing.
+    if (TapTestBinding.inTapTest.get() == true) {
+        throw TapUsageException("nested tapTest: tapTest { ... } cannot be called inside another tapTest/tapScope body")
+    }
     val state =
         TapTestBinding.current.get()
             ?: throw TapUsageException(
                 "tapTest { ... } requires an active @TapTest binding: annotate the class with @TapTest, " +
                     "declare a Device/Devices parameter or @TapDevices, and call tapTest inside the test method",
             )
-    if (TapTestBinding.inTapTest.get() == true) {
-        throw TapUsageException("nested tapTest: tapTest { ... } cannot be called inside another tapTest/tapScope body")
-    }
     // Propagate the nesting flag to child coroutines so `async { tapTest { } }` also fails.
     val context = state.rootJob + TapContext("junit:${state.method}") + TapTestBinding.inTapTest.asContextElement(true)
     try {
         return runBlocking(context) { block() }
     } catch (interrupted: InterruptedException) {
         state.rootJob.cancel(CancellationException("JUnit timeout/interruption", interrupted))
-        Thread.currentThread().interrupt()
-        throw interrupted
+        // Consume, never reinterrupt: AfterEach runs runBlocking teardown on this same
+        // callback thread and must still close every device. (InterruptedException already
+        // clears the flag; the extra Thread.interrupted() is a defensive clear in case the
+        // platform delivered the interrupt without throwing.) The original interruption
+        // stays primary as the cause; AfterEach suppresses cleanup failures into it.
+        Thread.interrupted()
+        throw CancellationException("JUnit timeout/interruption", interrupted)
     } catch (failure: Throwable) {
         // Prompt root cancellation on failure so a failing sibling does not leave the other's
         // RPC parked until AfterEach; AfterEach cancels again unconditionally.

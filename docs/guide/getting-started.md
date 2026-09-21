@@ -82,6 +82,7 @@ import com.company.tap.junit5.TapTest
 import com.company.tap.junit5.tapTest
 import com.company.tap.sdk.*
 import org.junit.jupiter.api.Test
+import java.nio.file.Path
 
 @TapTest
 class SmokeTest {

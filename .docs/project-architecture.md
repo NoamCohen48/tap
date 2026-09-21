@@ -179,8 +179,10 @@ tap/
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package com.company.tap.junit5)
 |   |       +-- src/main/kotlin/com/company/tap/junit5/
 |   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
+|   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
+|   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
 |   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles
-|   |           +-- TapConnection.kt     one TapClient + Connection per JVM (lazy, closed by a shutdown hook)
+|   |           +-- TapConnection.kt     one TapClient + Connection per JVM generation (linearized, sequential reopen), closed by launcher listener/shutdown hook
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the service)
 |       +-- pyproject.toml, README.md
@@ -614,9 +616,9 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Execution engine | `device/driver/command-engine/src/test` | 23 | ordering, overload, cancel states, mutation gate, deadlines, watchdog, heartbeat, blob streaming, shutdown |
 | Host client | `host/core/src/test` | 17 + 6 | real handshake against `FakeDriverServer`: demux, cancel, ping/heartbeat, transport-loss classification, blob corruption; journal atomicity |
 | Kotlin client | `:clients:kotlin:sdk:test` | 8 (`TapClientTest`) | in-process grpc-kotlin fakes: attach ownership/lifetime, Close-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report |
-| JUnit extension | `:clients:kotlin:junit5:test` | 15 (`TapTestBridgeTest`, `DeviceBarrierTest`) | binding/nesting, root cancellation (failure + thread interruption), fake-RPC sibling cancellation, sorted opens, teardown preservation; barrier release/reuse/one-shot/cancellation |
+| JUnit extension | `:clients:kotlin:junit5:test` | 23 (`TapTestBridgeTest` 13, `DeviceBarrierTest` 7, `TapConnectionTest` 3) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; connection generations, reopen, shutdown-vs-connection race |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
-| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay |
+| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay (device-matrix run pending for the 0.2.0 client; compiles green) |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
 | Service | `:host:service:test` | 4 classes (`EnumMirrorTest`, `GoldenRoundTripTest`, `AutResourceTest`, `TapServiceLifecycleTest`) | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
@@ -659,10 +661,12 @@ service.
 
 Not yet built — see [`framework-gaps.md`](framework-gaps.md) for the full, per-section list:
 `session.shutdown`, `inspector.snapshot`, crash/ANR codes, provider
-visibility for non-fixture AUTs, the coroutine `tapTest` façade and `DeviceBarrier`, device
-fake-ADB JVM coverage for the host core and in-process service tests for the clients,
+visibility for non-fixture AUTs, device fake-ADB JVM coverage for the host core and
+in-process service tests for the clients,
 logcat/dumpsys/JSONL/HTML artifacts and reports, per-test deadlines and the remaining JUnit
-contracts, CI lanes.
+contracts, CI lanes. (The coroutine `tapTest` façade and `DeviceBarrier` are built with
+deterministic JVM tests, including in-process accepted-`Execute` cancellation; only their
+device-matrix run is pending.)
 
 `PhaseZeroMain.kt` (≈2 300 lines) remains validation code, not framework code; it should
 keep exercising faults the clients cannot inject, and nothing outside `:host:validation` may

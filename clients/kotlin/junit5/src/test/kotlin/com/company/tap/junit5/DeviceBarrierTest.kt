@@ -68,6 +68,24 @@ class DeviceBarrierTest {
         }
 
     @Test
+    fun `one-shot waiting resets after release`() =
+        runBlocking {
+            val barrier = DeviceBarrier(2, oneShot = true)
+            val a = async { barrier.await() }
+            val b = async { barrier.await() }
+            withTimeout(2_000) {
+                a.await()
+                b.await()
+            }
+            // Released: nobody is waiting anymore, even though the gate stays tripped.
+            assertEquals(0, barrier.waiting())
+            // Late arrivals pass through without registering.
+            withTimeout(2_000) { barrier.await() }
+            withTimeout(2_000) { barrier.await() }
+            assertEquals(0, barrier.waiting())
+        }
+
+    @Test
     fun `cancelled waiter leaves the barrier intact`() =
         runBlocking {
             val barrier = DeviceBarrier(2)

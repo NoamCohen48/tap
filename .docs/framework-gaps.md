@@ -27,8 +27,9 @@ A product team can write and run real tests today:
 - `clients/python` — the same API and a pytest plugin.
 - `:samples:fixture-tests` — thirteen tests (single-device journeys, ambiguity, text input,
   Compose list scrolling, app-owned idle sync, explicit screen-stability waits, lifecycle, two
-  two-device tests including sibling-cancellation without replay) passing on API 29 and API 34
-  concurrently.
+  two-device tests including sibling-cancellation without replay). JVM compilation and the
+  JUnit suites are green; the 0.2.0-client device-matrix run is still pending (the last matrix
+  pass was the 12-test pre-client suite on API 29 and API 34 concurrently).
 
 Everything below is what separates that from the production-grade framework the plan
 describes.
@@ -64,10 +65,14 @@ Delivered 2026-09-21 (client 0.2.0, breaking): the Kotlin SDK is `suspend` throu
 structured (`tapTest` + `coroutineScope`/`async`, `DeviceBarrier` for simultaneous phases).
 Proving tests: `TapClientTest` (in-process attach lifetime/close ordering, Execute
 cancellation, sibling-cancellation shape, scope enforcement), `DeviceBarrierTest`
-(release/reuse/one-shot/cancellation), `TapTestBridgeTest` (binding/nesting, root
-cancellation, fake-RPC sibling cancellation, sorted opens, teardown preservation), and the
+(release/reuse/one-shot with waiting reset/cancellation), `TapTestBridgeTest`
+(binding/nesting incl. child coroutines, root cancellation, accepted-`Execute` sibling
+cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation
+incl. interrupted-`tapTest` → `AfterEach` closing every device), `TapConnectionTest`
+(generations, reopen, shutdown-vs-connection race), and the
 device fixture `MultiDeviceTest.siblingFailureCancelsWaitWithoutReplay` (failing sibling
-cancels the other's in-flight wait without replaying the pre-scope mutation).
+cancels the other's in-flight wait without replaying the pre-scope mutation; the accepted-
+`Execute` half is proven in-process, the prompt-cancel/no-replay half on hardware).
 
 | Gap | Impact | Notes |
 |---|---|---|
@@ -75,7 +80,7 @@ cancels the other's in-flight wait without replaying the pre-scope mutation).
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
 | Device constraints | The service leases nothing (decided 2026-09-20, `pool-and-leases.md`: exclusive use is the per-serial journal lock a session holds; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier service-side matcher and lease table are archived under `archive/pool-roles/` and `archive/pool-leases/`. | Client-side selection (`getprop` per serial, or `DeviceInfo` after open); a `@TapDevice(minApi = …)` style annotation. |
-| Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; the Kotlin client and `TapExtension`/`tapTest`/`DeviceBarrier` have deterministic in-process gRPC/unit tests (`TapClientTest`, `TapTestBridgeTest`, `DeviceBarrierTest`); `DeviceSession`, `AppLifecycle`, `TapService` failure paths (install failure, forward conflict, pool timeout, artifact capture failure) still have no JVM tests. | Highest-value testing gap. `Adb` is now `open` with one typed method per command and its parsing unit-tested against a fake (`AdbTest`, 2026-09-20); a fake `Adb` + the existing `FakeDriverServer` would cover the rest. |
+| Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; the Kotlin client and `TapExtension`/`tapTest`/`DeviceBarrier`/`TapConnectionState` have deterministic in-process gRPC/unit tests (`TapClientTest`, `TapTestBridgeTest`, `DeviceBarrierTest`, `TapConnectionTest`); `DeviceSession`, `AppLifecycle`, `TapService` failure paths (install failure, forward conflict, pool timeout, artifact capture failure) still have no JVM tests. | Highest-value testing gap. `Adb` is now `open` with one typed method per command and its parsing unit-tested against a fake (`AdbTest`, 2026-09-20); a fake `Adb` + the existing `FakeDriverServer` would cover the rest. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
 ## JUnit 5 integration (plan §18) — Phase 3
@@ -85,9 +90,12 @@ Implemented: `BeforeEachCallback` (per-test root job + sorted-serial opens), `Af
 `ParameterResolver`, `TestExecutionExceptionHandler`, `InvocationInterceptor` (binds the
 `tapTest` context; records user lifecycle failures), all-or-none acquisition with timeout,
 per-method store, failure artifacts, cleanup failures preserved as secondary and rethrown only
-for passing tests, missing-devices → assumption (skipped, not failed). `tapTest` is mandatory
-for suspending calls; `Device` access outside it fails with `TapUsageException`, so plain
-metadata-only tests stay possible. JUnit timeout/interruption cancels the root job; sibling
+for passing tests, missing-devices → assumption (skipped, not failed). Duplicate serials
+across pins/assignment are rejected before any session opens. `tapTest` is mandatory
+for suspending calls (nesting rejected, including from child coroutines); `Device` access
+outside it fails with `TapUsageException`, so plain
+metadata-only tests stay possible. JUnit timeout/interruption cancels the root job and is
+consumed so `AfterEach` teardown still closes every device; sibling
 failure in `coroutineScope`/`async` cancels the other's in-flight RPC (`DeviceBarrier` for
 simultaneous phases).
 

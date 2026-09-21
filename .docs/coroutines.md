@@ -5,7 +5,7 @@ refactor lands and mark each step with the commit that delivered it.
 
 ## Status
 
-**Step 4 implemented in the worktree; device-matrix verification pending the parent run.**
+**Step 4 merged as `184dac8`; new-client device-matrix verification still pending.**
 On 2026-09-20 the user decided that all three layers — `:host:core`, `:host:service` and the
 Kotlin client (`:clients:kotlin:sdk` + `:clients:kotlin:junit5`) — move to `kotlinx.coroutines`
 (`suspend` functions, structured concurrency), replacing the thread + `CompletableFuture` +
@@ -40,7 +40,8 @@ and `PHASE_0_OK`; all 12 Kotlin fixture tests passed on the two-device matrix; `
 succeeded; and all 12 Python tests passed against both the native image and a tracing-agent JVM
 service. The tracing-agent run added coroutine reflection metadata to the committed native-image
 configuration. The destructive reboot-only late-mutation scenario was intentionally skipped by
-`--no-reboot`; the Kotlin client and `tapTest` conversion remain pending.
+`--no-reboot`; the Kotlin client and `tapTest` conversion have since landed as `184dac8`
+(client 0.2.0), whose device-matrix run is the remaining verification.
 
 This reverses a recorded invariant from the pre-migration architecture ("`host:core`, the
 Kotlin clients and the service have no Android API or coroutine dependency; only the validation
@@ -284,7 +285,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 1. **Landed before this lane: `contracts/api` grpc-kotlin generation** (`78cfed3`, pin note
    `875c512`). Java stubs remain; the module also generates coroutine stubs and exports the
    grpc-kotlin/coroutines dependencies.
-2. **Landed, under final review: `:host:core` → coroutines, then `:host:service` → coroutine servicers**
+2. **Landed and reviewed: `:host:core` → coroutines, then `:host:service` → coroutine servicers**
    (`38358c0`, `b88d2e8`, follow-ups `8c1332f`, `1ce2b7b`) **in one lane**
    (staging decision above; steps 2 and 3 below are the two commits of that lane).
    `:host:core`: `DriverClient`, `Adb`, `DriverLifecycle`, `AppLifecycle`,
@@ -299,8 +300,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    dist, then `nativeCompile` + re-record native-image config + `TAP_BIN=<native>
    TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` (Python client is the
    unchanged consumer, so it proves wire compatibility).
-4. **Implemented in the worktree (commit placeholder — parent records the final hash on
-   `main`): Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** `TapClient`/`Connection`/`Device`/
+4. **Merged as `184dac8`: Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** `TapClient`/`Connection`/`Device`/
    `App`/`Element`/`ElementWait` are `suspend` over grpc-kotlin `CoroutineStub`s (selectors stay
    non-suspend); `Connection.attach` owns its scope with Close-first ordering; `tapTest` is the
    mandatory bridge with per-test root job, binding/nesting enforcement and timeout/sibling
@@ -308,7 +308,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    rewritten (`coroutineScope`/`async`, sibling-cancellation device assertion); guides, README
    and KDoc updated; `framework-gaps.md` rows removed with the proving tests; client line
    bumped to 0.2.0 (breaking, source-only — the wire is unchanged). Verified so far (worker):
-   `:clients:kotlin:sdk:test` (8), `:clients:kotlin:junit5:test` (15),
+   `:clients:kotlin:sdk:test` (8), `:clients:kotlin:junit5:test` (16),
    `:samples:fixture-tests:compileTestKotlin`, `:host:service:test`, `publishToMavenLocal`.
    Non-device until the parent runs the matrix: `host --no-reboot` validation,
    `:samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (13 tests including
@@ -324,8 +324,9 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
   existing `CANCEL` frame and never onto closing the socket mid-command; a cancelled
   `await()` must still let the reader record the terminal response. JVM regressions now cover
   this in `DriverClientTest` and through an in-process grpc-kotlin `Execute` call in
-  `TapServiceLifecycleTest` (`CANCEL` written, terminal consumed, no poison). The device
-  validation scenario next to `PHASE_1_CANCEL_AFTER_MUTATION_OK` remains pending.
+  `TapServiceLifecycleTest` (`CANCEL` written, terminal consumed, no poison). The host device
+  validation for it passed on 2026-09-21 (`PHASE_1_CANCEL_AFTER_MUTATION_OK` on API 29 and
+  API 34); the remaining device proof is the new-client `tapTest` matrix (step 4).
 - **Blocking reads are not cancellable.** Socket reads and `Process.waitFor` only unblock by
   closing/destroying. Scope cancellation must close the resource, which is the existing
   `close()` behaviour — keep `close()` idempotent and callable from a `finally`.
@@ -335,7 +336,8 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 - **`runBlocking` in JUnit.** `tapTest` blocks the JUnit thread by design (plan §12: real time,
   not virtual). JUnit's `@Timeout` interrupts the thread; `runBlocking` translates the
   interrupt into cancellation of the root job, which is exactly the plan's behaviour — covered
-  by a deterministic unit test (`TapTestBridgeTest`: thread interruption cancels the root job)
+  by deterministic unit tests (`TapTestBridgeTest`: thread interruption cancels the root job;
+  the interrupt is consumed so `AfterEach` teardown still closes every device)
   with the device-matrix confirmation left to the parent run (`siblingFailureCancelsWaitWithoutReplay`
   asserts prompt cancellation on hardware).
 - **Native image.** Re-record config after adding grpc-kotlin; check `nativeCompile` output

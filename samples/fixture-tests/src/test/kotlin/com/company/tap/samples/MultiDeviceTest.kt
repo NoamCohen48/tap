@@ -7,6 +7,7 @@ import com.company.tap.junit5.TapTest
 import com.company.tap.junit5.tapTest
 import com.company.tap.sdk.res
 import com.company.tap.sdk.text
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -49,7 +50,14 @@ class MultiDeviceTest {
      * promptly (far short of its 20 s deadline), and the mutation the left device performed
      * before the scope (one `fault_button` tap, counter `1`) must not have been replayed by
      * the cancellation. The [DeviceBarrier] is the genuine simultaneous phase: neither side
-     * proceeds until both sessions are ready.
+     * proceeds until both sessions are ready; the waiter additionally starts UNDISPATCHED so
+     * it reaches the barrier (and then the remote wait) before the sibling can fail.
+     *
+     * What this proves on hardware is prompt cancellation plus no replay. That the failing
+     * sibling cancels an already *accepted* remote `Execute` (rather than one still being
+     * dispatched) is proven deterministically by the in-process
+     * `TapTestBridgeTest` case, where the fake servicer signals `Execute` entry before the
+     * sibling fails; here the 300 ms head start after the shared rendezvous is timing-shaped.
      */
     @Test
     @TapDevices("left", "right")
@@ -68,7 +76,7 @@ class MultiDeviceTest {
             try {
                 coroutineScope {
                     val waiting =
-                        async {
+                        async(start = CoroutineStart.UNDISPATCHED) {
                             barrier.await()
                             left.await(text("Never rendered ${System.nanoTime()}"), timeout = 20.seconds).visible()
                         }

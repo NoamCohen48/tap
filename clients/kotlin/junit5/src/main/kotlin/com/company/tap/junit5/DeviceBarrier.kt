@@ -17,7 +17,8 @@ import kotlinx.coroutines.sync.withLock
  *   (for example "both devices ready, then both tap").
  * - **One-shot (`oneShot = true`):** the first [parties] arrivals trip once; every later
  *   [await] returns immediately. Use for a single rendezvous ("both sessions open before any
- *   device acts"). It never resets.
+ *   device acts"). It never resets. After the release [waiting] reports zero: the trip
+ *   clears the arrival count (the tripped gate is kept, so late arrivals still pass through).
  *
  * Backend propagation still uses the observing device's UI condition, not a barrier: use a
  * barrier only when the test genuinely needs simultaneity (both sides ready before either
@@ -65,8 +66,8 @@ class DeviceBarrier(
             isLast = arrived == parties
             if (isLast) {
                 gate.trip()
+                arrived = 0
                 if (!oneShot) {
-                    arrived = 0
                     tripped = CompletableGate()
                 }
             }

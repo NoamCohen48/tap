@@ -13,15 +13,21 @@ pytest plugin map roles to serials and then open one session per role.
 === "Kotlin"
 
     ```kotlin
+    import kotlinx.coroutines.async
+    import kotlinx.coroutines.awaitAll
+    import kotlinx.coroutines.coroutineScope
+
     @TapTest
     class ChatTest {
         @Test
         @TapDevices("sender", "receiver")
         fun deliversAMessage(devices: Devices) = tapTest {
             coroutineScope {
-                async { devices["sender"].app().coldLaunch() }
-                async { devices["receiver"].app().coldLaunch() }
-            }.awaitAll()
+                awaitAll(
+                    async { devices["sender"].app().coldLaunch() },
+                    async { devices["receiver"].app().coldLaunch() },
+                )
+            }
             val sender = devices["sender"]
             val receiver = devices["receiver"]
             sender.element(res("compose")).setText("hi")
@@ -30,6 +36,10 @@ pytest plugin map roles to serials and then open one session per role.
         }
     }
     ```
+
+    (`awaitAll` takes the deferreds — `coroutineScope { async { } async { } }.awaitAll()`
+    does not compile, because the scope returns `Unit`. The same shape runs sample-backed
+    in `samples/fixture-tests` `MultiDeviceTest`.)
 
     `@TapDevices` goes on the method or the class. With a single default role the parameter is
     just `device: Device`; `@TapDevice("receiver") device: Device` injects one named role.
