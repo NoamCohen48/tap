@@ -262,7 +262,13 @@ class TapService(
         perSessionMs: Long = DEVICE_SESSION_CLOSE_TIMEOUT_MS,
     ): Int = closeConnectionWithin(id, reason, perSessionMs, totalTimeoutMs = null)
 
-    private suspend fun closeConnectionWithin(
+    /**
+     * Internal seam for the connection-level exhaustion branch: production calls this via
+     * [closeConnection] (no total deadline) and [close] (connection share of the shutdown
+     * budget). Tests drive it directly with `totalTimeoutMs = 0` for an already-exhausted
+     * connection-local deadline without relying on wall-clock expiry.
+     */
+    internal suspend fun closeConnectionWithin(
         id: String,
         reason: String,
         perSessionMs: Long,

@@ -344,18 +344,74 @@ class TapServiceLifecycleTest {
         }
 
     @Test
+    fun `connection budget exhaustion detaches with full session deadline`() =
+        runBlocking {
+            val sessionDeadlineMs = 5_000L
+            // Distinct from shutdownSessionMs so a perSessionMs leak fails the timeout assertion.
+            val perSessionMs = 37L
+            val sessionCount = 6
+            val logs = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val opener = FakeOpener()
+            val devices = (0 until sessionCount).map { FakeDevice(serial = "conn-exhaust-$it", closeGate = CompletableDeferred()) }
+            opener.queue.addAll(devices)
+            val service =
+                TapService(
+                    testConfig(log = { logs.add(it) }),
+                    opener,
+                    shutdownTotalMs = 60_000,
+                    shutdownSessionMs = sessionDeadlineMs,
+                )
+            val connection = service.openConnection("conn-exhaust")
+            repeat(sessionCount) { service.openSession(connection, "conn-exhaust-$it", "com.test", testOptions()) }
+            assertEquals(sessionCount, service.sessionIds().size)
+
+            // Deterministic seam: already-exhausted connection-local deadline, no wall-clock race.
+            val closed =
+                withTimeout(4_000) {
+                    service.closeConnectionWithin(connection.id, "exhausted test", perSessionMs, totalTimeoutMs = 0)
+                }
+            assertEquals(sessionCount, closed)
+            // Connection-specific branch, not the service-level one.
+            assertTrue(
+                logs.any {
+                    it.contains("connection ${connection.id} shutdown budget exhausted") &&
+                        it.contains("$sessionCount session(s) detached with cleanup launched")
+                },
+                "connection exhaustion branch not proven: $logs",
+            )
+            assertTrue(service.sessionIds().isEmpty())
+            assertFalse(service.connectionExists(connection.id))
+            // Every detached cleanup launched exactly once: barrier-based, no sleeps.
+            devices.forEach { withTimeout(2_000) { it.closeEntered.receive() } }
+            assertEquals(sessionCount, devices.sumOf { it.closeCalls.get() })
+            devices.forEach {
+                assertEquals(
+                    listOf(sessionDeadlineMs),
+                    it.closeTimeouts.toList(),
+                    "detached cleanup must carry full shutdownSessionMs, not perSessionMs",
+                )
+            }
+            // Idempotent: no duplicate cleanups.
+            assertEquals(0, service.closeConnection(connection.id, "again"))
+            devices.forEach { assertEquals(1, it.closeCalls.get()) }
+
+            devices.forEach { it.closeGate!!.complete(Unit) }
+            withTimeout(5_000) { devices.forEach { it.closeCompleted.await() } }
+            devices.forEach { assertEquals(1, it.closeCalls.get()) }
+        }
+
+    @Test
     fun `exhausted shutdown detaches everything launches every cleanup and admits nothing new`() =
         runBlocking {
             val innerBudgetMs = 25L
             val sessionDeadlineMs = 5_000L
-            val innerLogs = java.util.concurrent.CopyOnWriteArrayList<String>()
             val opener = FakeOpener()
             val sessionCount = 120
             val devices = (0 until sessionCount).map { FakeDevice(serial = "exhaust-$it", closeGate = CompletableDeferred()) }
             opener.queue.addAll(devices)
             val service =
                 TapService(
-                    testConfig(log = { innerLogs.add(it) }),
+                    testConfig(),
                     opener,
                     shutdownTotalMs = innerBudgetMs,
                     shutdownSessionMs = sessionDeadlineMs,
@@ -364,22 +420,17 @@ class TapServiceLifecycleTest {
             repeat(sessionCount) { service.openSession(connection, "exhaust-$it", "com.test", testOptions()) }
             assertEquals(sessionCount, service.sessionIds().size)
 
+            // Elapsed-bound integration coverage only: which exhaustion branch fires here is a
+            // wall-clock race, so the exact branch is proven by the deterministic
+            // `connection budget exhaustion` test above, not by timing or log matching here.
             val startedNanos = System.nanoTime()
             withTimeout(innerBudgetMs + 4_000) { service.close() }
             val elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000L
-            assertTrue(elapsedMs < innerBudgetMs + 60L, "shutdown took ${elapsedMs}ms for a ${innerBudgetMs}ms budget")
-            assertTrue(
-                innerLogs.any {
-                    it.contains("shutdown budget exhausted") && it.contains("detached with cleanup launched")
-                },
-                "exact detach branch not proven: $innerLogs",
-            )
+            assertTrue(elapsedMs < innerBudgetMs + 2_000L, "shutdown took ${elapsedMs}ms for a ${innerBudgetMs}ms budget")
             assertTrue(service.sessionIds().isEmpty())
             assertFalse(service.connectionExists(connection.id))
             devices.forEach { withTimeout(2_000) { it.closeEntered.receive() } }
             assertEquals(sessionCount, devices.sumOf { it.closeCalls.get() })
-            val fullDeadline = devices.count { it.closeTimeouts.singleOrNull() == sessionDeadlineMs }
-            assertTrue(fullDeadline >= 50, "detached cleanup must carry the full session deadline, got $fullDeadline/$sessionCount")
             assertFailsWith<ServiceClosingException> { service.openConnection("during-shutdown") }
 
             val outerLogs = java.util.concurrent.CopyOnWriteArrayList<String>()
