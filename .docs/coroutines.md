@@ -27,10 +27,13 @@ Landed checkpoints, still under final review:
 - `03b00b7` — docs checkpoint for the coroutine documentation sweep (`service-api.md` status,
   `project-architecture.md` threading/test notes, this file's status). The docs sweep is landed;
   the lane itself remains under final review.
-- `7e5efbf` — host-core follow-up: bounded ADB drain lifetime and preserved await cancellation.
-- `ffc48d5` — host-core concurrency follow-up: single-flight ADB admission with typed residual gating, session-gated command admission for captured clients, whole-open reap-uncertainty quarantine (with the unknown-boot sentinel), and the close operation lease draining admitted operations through their poison point. Recorded verification is non-device only (host core/service JVM unit tests plus validation/service distribution compilation); device-matrix and native-image verification remain pending.
-- `3bfb049` — service follow-up: strict shutdown bound (detach-and-launch on exhaustion) and
-  corrected coroutine verification docs.
+- `635946b`, `7e5efbf`, `62eda7c`, `ffc48d5`, `8d3208f` — host-core review
+  follow-ups: cancellation ownership, bounded drain lifetime, typed reap uncertainty, linearized
+  single-flight ADB admission, captured-client command gating, whole-open quarantine, close
+  operation leases, cancellation-safe bookkeeping, and removal of raw session ADB escape paths.
+- `3bfb049`, `04660f3`, `0422109` — service review follow-ups: strict shutdown bounds,
+  detach-and-launch cleanup, full detached cleanup deadlines, bounded `tap stop`, explicit gRPC
+  termination, corrected verification docs, and deterministic connection-exhaustion coverage.
 
 Verification recorded for this lane is intentionally **non-device only**: host core/service JVM
 unit tests plus protocol tests and compilation/install tasks for validation, fixture tests and
