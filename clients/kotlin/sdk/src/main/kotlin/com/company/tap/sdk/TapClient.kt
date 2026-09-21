@@ -295,21 +295,36 @@ class Connection internal constructor(
     ): Device {
         ensureUsable("Device.open")
         val device = Device.open(this, serial, autPackage, timeouts, options)
-        openDevices.add(device)
-        // A concurrent invalidation between the gate above and registration must still surface.
-        unusableCause.get()?.let { device.markConnectionInvalid(it) }
+        val terminal: Throwable? =
+            stateMutex.withLock {
+                openDevices.add(device)
+                unusableCause.get()
+            }
+        // A concurrent invalidation between the pre-RPC gate and registration must still
+        // surface on the just-registered handle; the registry keeps the handle until close.
+        terminal?.let { device.markConnectionInvalid(it) }
+        // A concurrent close between the RPC and registration must not admit a live handle
+        // past close ownership: drop it from the registry and fail locally. The server-side
+        // session is already covered by the connection Close (or best-effort closed here).
+        if (closeStarted.get()) {
+            stateMutex.withLock { openDevices.remove(device) }
+            runCatching { device.markConnectionInvalid(TapUsageException("Connection($id) is closed")) }
+            throw TapUsageException("Connection($id) is closed; Device.open rejected")
+        }
         return device
     }
 
     /**
      * Closes explicitly (recorded as a client request), then drops the liveness stream.
-     * Single-flight and idempotent: concurrent and repeated callers share the same `Close` RPC
-     * (60 s gRPC deadline, mapped) and the same result — every caller returns, or rethrows the
-     * same primary failure. The RPC runs first under a bounded non-cancellable context so an
-     * explicit close is recorded even when the caller is cancelled; teardown then cancels and
-     * joins the attach collection under a second bound (stubborn collectors time out, the scope
-     * is still cancelled), preserving the primary failure and suppressing cleanup failures.
-     * If the attach already dropped, the service has closed the sessions and `Close` may report
+     * Single-flight and idempotent: concurrent and repeated callers share one `Close` RPC
+     * (60 s gRPC deadline, mapped, under a longer outer bound that maps distinctly) and one
+     * shared completion that resolves only after the RPC plus the bounded attach
+     * collector/scope teardown. The close transition is atomic under [stateMutex]: the shared
+     * completion is published and closing is marked in one critical section, so no admission
+     * passes after close ownership exists. Every caller awaits the same full outcome and
+     * rethrows the same primary failure; a cleanup error becomes primary only when there is
+     * no Close error, otherwise it is suppressed — never swallowed silently. If the attach
+     * already dropped, the service has closed the sessions and `Close` may report
      * unknown-connection (mapped); the scope is still cleaned up exactly once.
      */
     suspend fun close() {
@@ -324,6 +339,7 @@ class Connection internal constructor(
                 } else {
                     deferred = CompletableDeferred()
                     closeDeferred = deferred
+                    closeStarted.set(true)
                     isOwner = true
                 }
             }
@@ -332,43 +348,65 @@ class Connection internal constructor(
             withContext(NonCancellable) { deferred.await() }
             return
         }
-        closeStarted.set(true)
-        try {
-            withContext(NonCancellable) {
-                withTimeout(60_000) {
-                    mapped {
-                        client.connections
-                            .withDeadlineAfter(60, TimeUnit.SECONDS)
-                            .close(CloseConnectionRequest.newBuilder().setConnectionId(id).build())
-                    }
-                }
-            }
-            deferred.complete(Unit)
-        } catch (primary: Throwable) {
-            deferred.completeExceptionally(primary)
-            throw primary
-        } finally {
+        withContext(NonCancellable) {
+            var closeError: Throwable? = null
             try {
-                withContext(NonCancellable) {
-                    withTimeoutOrNull(5_000) {
-                        val job = stateMutex.withLock { attachJob }
-                        try {
-                            job?.cancelAndJoin()
-                        } catch (_: Throwable) {
+                try {
+                    withTimeout(closeOuterBoundMs) {
+                        mapped {
+                            client.connections
+                                .withDeadlineAfter(60, TimeUnit.SECONDS)
+                                .close(CloseConnectionRequest.newBuilder().setConnectionId(id).build())
                         }
-                        try {
-                            attachScope.cancel()
-                        } catch (_: Throwable) {
+                    }
+                } catch (bound: TimeoutCancellationException) {
+                    closeError =
+                        ServiceException(
+                            "DEADLINE_EXCEEDED",
+                            "connection $id close timed out after ${closeOuterBoundMs}ms " +
+                                "(outer bound past the 60s Close deadline)",
+                            bound,
+                        )
+                } catch (primary: Throwable) {
+                    closeError = primary
+                }
+            } finally {
+                var cleanupError: Throwable? = null
+                try {
+                    val completed =
+                        withTimeoutOrNull(teardownBoundMs) {
+                            val job = stateMutex.withLock { attachJob }
+                            try {
+                                job?.cancelAndJoin()
+                            } catch (thrown: Throwable) {
+                                if (cleanupError == null) cleanupError = thrown
+                            }
+                            try {
+                                attachScope.cancel()
+                            } catch (thrown: Throwable) {
+                                if (cleanupError == null) cleanupError = thrown
+                            }
                         }
-                    } ?: run {
-                        // Bound hit with a stubborn collector: the scope cancel above may not have
-                        // run, so cancel it outside the timed block (never fails the close).
+                    if (completed == null) {
+                        // Bound hit with a stubborn collector: cancel the scope outside the timed
+                        // block so the liveness stream still drops (never fails the close by itself).
                         runCatching { attachScope.cancel() }
                     }
+                } catch (thrown: Throwable) {
+                    if (cleanupError == null) cleanupError = thrown
                 }
-            } catch (_: Throwable) {
-                // Teardown never masks the primary Close outcome; the deferred already carries it.
+                val primary = closeError
+                when {
+                    primary != null && cleanupError != null -> {
+                        runCatching { primary.addSuppressed(cleanupError) }
+                        deferred.completeExceptionally(primary)
+                    }
+                    primary != null -> deferred.completeExceptionally(primary)
+                    cleanupError != null -> deferred.completeExceptionally(cleanupError)
+                    else -> deferred.complete(Unit)
+                }
             }
+            deferred.await()
         }
     }
 
@@ -398,6 +436,22 @@ class Connection internal constructor(
 
     internal fun register(device: Device) {
         openDevices.add(device)
+    }
+
+    /** Removes a closed handle so the registry retains only live handles. Test-observable. */
+    internal fun unregister(device: Device) {
+        openDevices.remove(device)
+    }
+
+    /** Live (opened, not yet closed) handles. Internal observer for tests. */
+    internal val liveDeviceCount: Int get() = openDevices.size
+
+    companion object {
+        /** Outer bound past the 60 s Close gRPC deadline. Test seam (must stay longer). */
+        internal var closeOuterBoundMs: Long = 65_000L
+
+        /** Bound for the attach collector/scope teardown. Test seam. */
+        internal var teardownBoundMs: Long = 5_000L
     }
 
     private suspend fun boundedCancelJoin(job: Job) {
@@ -484,18 +538,20 @@ object ServiceDiscovery {
 
     private suspend fun alive(address: String): Boolean {
         val channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build()
-        return try {
-            withTimeout(2_000) {
-                ConnectionServiceGrpcKt
-                    .ConnectionServiceCoroutineStub(channel)
-                    .withDeadlineAfter(2, TimeUnit.SECONDS)
-                    .info(InfoRequest.getDefaultInstance())
-            }
-            true
-        } catch (_: CancellationException) {
-            false
+        try {
+            // Own-timeout ownership: a null return is our 2 s probe timing out (dead service
+            // -> false); an outer CancellationException propagates with its identity intact.
+            val answered =
+                withTimeoutOrNull(2_000) {
+                    ConnectionServiceGrpcKt
+                        .ConnectionServiceCoroutineStub(channel)
+                        .withDeadlineAfter(2, TimeUnit.SECONDS)
+                        .info(InfoRequest.getDefaultInstance())
+                    true
+                } ?: return false
+            return answered
         } catch (_: Exception) {
-            false
+            return false
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
                 channel.shutdownNow()
@@ -576,8 +632,22 @@ object TapServiceProcess {
                     it.start()
                 }
             try {
-                withTimeout(timeout) {
-                    while (process.isAlive) delay(20)
+                // Own-timeout ownership: withTimeoutOrNull returns null only for our own
+                // [timeout]; an outer withTimeout/cancellation throws CancellationException
+                // and propagates with its identity (never reported as our timeout).
+                val exited =
+                    withTimeoutOrNull(timeout) {
+                        while (process.isAlive) delay(20)
+                        true
+                    }
+                if (exited == null) {
+                    withContext(NonCancellable) {
+                        runCatching { process.destroyForcibly() }
+                        withTimeoutOrNull(5_000) {
+                            while (process.isAlive) delay(20)
+                        }
+                    }
+                    throw TapException("`tap ${args.first()}` did not finish within $timeout")
                 }
                 val output =
                     withTimeoutOrNull(5_000) { outputDeferred.await() }
@@ -587,15 +657,9 @@ object TapServiceProcess {
                     throw TapException("`tap ${args.first()}` failed (exit ${process.exitValue()}): ${output.trim()}")
                 }
                 output
-            } catch (timeoutFailure: TimeoutCancellationException) {
-                withContext(NonCancellable) {
-                    runCatching { process.destroyForcibly() }
-                    withTimeoutOrNull(5_000) {
-                        while (process.isAlive) delay(20)
-                    }
-                }
-                throw TapException("`tap ${args.first()}` did not finish within $timeout")
             } catch (cancelled: CancellationException) {
+                // Outer cancellation (caller cancel or outer withTimeout): always destroy and
+                // reap, then rethrow the original to preserve cancellation identity.
                 withContext(NonCancellable) {
                     runCatching { process.destroyForcibly() }
                     withTimeoutOrNull(5_000) {

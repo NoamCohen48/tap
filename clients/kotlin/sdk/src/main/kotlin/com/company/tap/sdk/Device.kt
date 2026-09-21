@@ -17,14 +17,18 @@ import com.company.tap.api.v1.WaitAppVisible
 import com.company.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -389,14 +393,19 @@ class Device internal constructor(
      * Closes the session. Returns the quarantine detail when the device could not be left
      * clean (the pool keeps it out of circulation), else null. Single-flight: concurrent and
      * duplicate callers share one `Session Close` RPC (120 s gRPC deadline, mapped) and one
-     * result, including the quarantine detail. Admitted operations finish before the RPC;
-     * operations starting after close began are rejected locally. Runs under a bounded
-     * non-cancellable context so teardown completes even when the caller is cancelled; the
-     * primary failure (if any) is the shared result — this method only reports the session
-     * outcome.
+     * result, including the quarantine detail. Admitted operations finish before the RPC under
+     * an explicit total drain bound ([drainBoundMs]); operations starting after close began are
+     * rejected locally. A close invoked from the same admitted operation (for example an
+     * [awaitUntil] condition calling close) fails immediately with [TapUsageException] instead
+     * of waiting for itself. Runs under a bounded non-cancellable context so teardown completes
+     * even when the caller is cancelled; the primary failure (if any) is the shared result.
+     * The handle unregisters from the connection exactly once, on completion or failure.
      */
     suspend fun closeAndReport(): String? {
         ensureTapBound("Device.close")
+        if (currentCoroutineContext()[DeviceAdmission]?.device === this) {
+            throw TapUsageException("Device($serial).close invoked from its own admitted operation; refusing to self-wait")
+        }
         val deferred: CompletableDeferred<String?>
         val isOwner: Boolean
         withContext(NonCancellable) {
@@ -419,14 +428,31 @@ class Device internal constructor(
         }
         return withContext(NonCancellable) {
             try {
-                stateMutex.withLock { drain }?.await()
+                val toDrain = stateMutex.withLock { drain }
+                if (toDrain != null) {
+                    val drained = withTimeoutOrNull(drainBoundMs) { toDrain.await() }
+                    if (drained == null) {
+                        throw ServiceException(
+                            "DEADLINE_EXCEEDED",
+                            "device $serial close drain timed out after ${drainBoundMs}ms with admitted operations still in flight",
+                        )
+                    }
+                }
                 val response =
-                    withTimeout(120_000) {
-                        mapped(serial) {
-                            client.sessions
-                                .withDeadlineAfter(120, TimeUnit.SECONDS)
-                                .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
+                    try {
+                        withTimeout(closeOuterBoundMs) {
+                            mapped(serial) {
+                                client.sessions
+                                    .withDeadlineAfter(120, TimeUnit.SECONDS)
+                                    .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
+                            }
                         }
+                    } catch (bound: TimeoutCancellationException) {
+                        throw ServiceException(
+                            "DEADLINE_EXCEEDED",
+                            "device $serial close timed out after ${closeOuterBoundMs}ms (outer bound past the 120s Session Close deadline)",
+                            bound,
+                        )
                     }
                 val detail = if (response.clean) null else response.detail
                 deferred.complete(detail)
@@ -434,6 +460,8 @@ class Device internal constructor(
             } catch (primary: Throwable) {
                 deferred.completeExceptionally(primary)
                 throw primary
+            } finally {
+                runCatching { connection.unregister(this@Device) }
             }
         }
     }
@@ -447,17 +475,20 @@ class Device internal constructor(
 
     /**
      * Admits one operation: rejects locally when close started ([TapUsageException]) or the
-     * connection liveness stream ended ([ServiceException] `UNAVAILABLE`, including a device
-     * copy of the cause so handles reflect invalidation), then counts the operation until
-     * [block] finishes. Counting (never holding the lock across the RPC) keeps compound
-     * helpers reentrant: [awaitUntil] conditions, `Element`/`ElementWait` terminal calls and
-     * [App] calls that fan back into device helpers admit again without deadlock. Release is
+     * connection liveness stream ended ([ServiceException] `UNAVAILABLE`), then counts the
+     * operation until [block] finishes. Admission carries a coroutine-context token
+     * ([DeviceAdmission]): a nested call for the same device runs inline without double
+     * counting, so compound helpers ([awaitUntil] conditions, `Element`/`ElementWait` terminal
+     * calls, [App] calls) never deadlock and close-drain accounting stays exact. Release is
      * cancellation-safe and wakes a closing waiter when the last admitted operation leaves.
      */
     internal suspend fun <T> admitted(
         operation: String,
         block: suspend () -> T,
     ): T {
+        if (currentCoroutineContext()[DeviceAdmission]?.device === this) {
+            return block()
+        }
         stateMutex.withLock {
             if (closeStarted.get()) {
                 throw TapUsageException("Device($serial) is closed; $operation rejected")
@@ -484,7 +515,7 @@ class Device internal constructor(
             activeOps++
         }
         try {
-            return block()
+            return withContext(DeviceAdmission(this)) { block() }
         } finally {
             withContext(NonCancellable) {
                 stateMutex.withLock {
@@ -528,6 +559,12 @@ class Device internal constructor(
     }
 
     companion object {
+        /** Total bound for the admitted-operation drain before the Session Close RPC. Test seam. */
+        internal var drainBoundMs: Long = 130_000L
+
+        /** Outer bound past the 120 s Session Close gRPC deadline. Test seam. */
+        internal var closeOuterBoundMs: Long = 130_000L
+
         internal suspend fun open(
             connection: Connection,
             serial: String,
@@ -569,4 +606,17 @@ object Directions {
     val DOWN: Direction = Direction.DIR_DOWN
     val LEFT: Direction = Direction.DIR_LEFT
     val RIGHT: Direction = Direction.DIR_RIGHT
+}
+
+/**
+ * Coroutine-context token marking the body of one admitted [Device] operation. Nested helpers
+ * for the same device observe it and run inline (no double count, no deadlock); [Device]
+ * close observes it and fails immediately instead of waiting for itself.
+ */
+internal class DeviceAdmission(
+    val device: Device,
+) : CoroutineContext.Element {
+    companion object Key : CoroutineContext.Key<DeviceAdmission>
+
+    override val key: CoroutineContext.Key<*> get() = Key
 }
