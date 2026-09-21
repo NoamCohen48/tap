@@ -38,7 +38,8 @@ pytest plugin map roles to serials and then open one session per role.
     ```
 
     (`awaitAll` takes the deferreds — `coroutineScope { async { } async { } }.awaitAll()`
-    does not compile, because the scope returns `Unit`. The same shape runs sample-backed
+    does not compile, because the block value is only the last `Deferred`, not a collection.
+    The same shape runs sample-backed
     in `samples/fixture-tests` `MultiDeviceTest`.)
 
     `@TapDevices` goes on the method or the class. With a single default role the parameter is

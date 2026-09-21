@@ -13,6 +13,7 @@ import com.company.tap.sdk.TapClient
 import io.grpc.ManagedChannel
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
@@ -22,12 +23,16 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -168,6 +173,126 @@ class TapConnectionTest {
             assertEquals(1, createdConnections.get())
             connections.shutdown()
             assertEquals(1, fakeConnections.closes.get())
+        }
+
+    @Test
+    fun `managed generation cannot start or connect until the prior stop completes`() =
+        runBlocking {
+            val events = CopyOnWriteArrayList<String>()
+            val stopEntered = CompletableDeferred<Unit>()
+            val allowStop = CompletableDeferred<Unit>()
+            val connects = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        val n = starts.incrementAndGet()
+                        events.add("start$n")
+                        true
+                    },
+                    stopService = {
+                        val n = stops.incrementAndGet()
+                        if (n == 1) {
+                            events.add("stop1-enter")
+                            stopEntered.complete(Unit)
+                            allowStop.await()
+                            events.add("stop1-done")
+                        } else {
+                            events.add("stop$n")
+                        }
+                    },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        val n = connects.incrementAndGet()
+                        events.add("connect$n-enter")
+                        client.connect("test").also { events.add("connect$n-done") }
+                    },
+                    onFirstClient = { },
+                )
+            // Generation 1: client + connection, one owned start.
+            connections.client()
+            connections.connection()
+            assertEquals(1, starts.get())
+            // Tear generation 1 down in the background; its owned stop parks on the
+            // test gate so generation 2 must queue behind the teardown gate.
+            val shutdown =
+                async {
+                    connections.shutdown()
+                }
+            withTimeout(10_000) { stopEntered.await() }
+            val next =
+                async {
+                    connections.connection()
+                }
+            // Cooperative handoff only (no sleeps): a gated generation 2 parks on the
+            // teardown instead of starting its service or its attach.
+            repeat(8) { yield() }
+            assertEquals(1, starts.get(), "generation 2 must not start until generation 1 stops: $events")
+            assertEquals(1, connects.get(), "generation 2 must not connect until generation 1 stops: $events")
+            assertFalse(next.isCompleted, "generation 2 stays parked while generation 1 stops")
+            allowStop.complete(Unit)
+            val second =
+                withTimeout(10_000) {
+                    shutdown.await()
+                    next.await()
+                }
+            assertTrue(second.recentEvents.isNotEmpty(), "gated generation attaches cleanly")
+            val stopDone = events.indexOf("stop1-done")
+            val start2 = events.indexOf("start2")
+            val connect2 = events.indexOf("connect2-enter")
+            assertTrue(stopDone >= 0 && start2 >= 0 && connect2 >= 0, "all generation-2 steps ran: $events")
+            assertTrue(stopDone < start2, "generation 2 starts only after the prior stop: $events")
+            assertTrue(stopDone < connect2, "generation 2 connects only after the prior stop: $events")
+            // Sequential launcher session: the gated generation is a full generation,
+            // stopped exactly once when it shuts down.
+            connections.shutdown()
+            assertEquals(2, starts.get(), "exactly two owned starts: $events")
+            assertEquals(2, stops.get(), "exactly two owned stops: $events")
+            assertEquals(2, fakeConnections.closes.get(), "each generation closed exactly once")
+        }
+
+    @Test
+    fun `throwing create after an owned start stops exactly once`() =
+        runBlocking {
+            val failCreate = AtomicBoolean(true)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        if (failCreate.get()) throw IllegalStateException("boom")
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                )
+            val failure = assertFailsWith<IllegalStateException> { connections.client() }
+            assertEquals("boom", failure.message)
+            assertEquals(1, starts.get(), "the failed generation started its service")
+            assertEquals(1, stops.get(), "the owned start is rolled back exactly once")
+            // The state stays usable: the next generation starts and stops cleanly.
+            failCreate.set(false)
+            connections.client()
+            assertEquals(2, starts.get())
+            assertEquals(1, stops.get())
+            connections.shutdown()
+            assertEquals(2, starts.get())
+            assertEquals(2, stops.get())
         }
 
     // --- Fakes ----------------------------------------------------------------------------------

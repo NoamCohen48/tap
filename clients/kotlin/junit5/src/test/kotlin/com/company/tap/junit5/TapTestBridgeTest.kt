@@ -210,7 +210,7 @@ class TapTestBridgeTest {
         }
 
     @Test
-    fun `device access outside tapTest fails clearly`() =
+    fun `device access outside tapTest fails clearly`(): Unit {
         runBlocking {
             val connection = client().connect("test")
             try {
@@ -245,6 +245,7 @@ class TapTestBridgeTest {
                 connection.close()
             }
         }
+    }
 
     @Test
     fun `metadata-only test stays possible`() {
