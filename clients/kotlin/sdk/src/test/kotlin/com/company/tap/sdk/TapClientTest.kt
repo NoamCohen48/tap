@@ -35,6 +35,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -529,13 +530,14 @@ class TapClientTest {
                 val device = tapScope { connection.openDevice("emulator-5554", "com.test") }
                 // No TapContext here: direct call must fail, not hang.
                 assertFailsWith<TapUsageException> { device.info() }
-                // GlobalScope does not inherit the scope either.
-                assertFailsWith<TapUsageException> {
-                    withTimeout(2_000) {
-                        kotlinx.coroutines.GlobalScope
-                            .async { device.info() }
-                            .await()
+                // An independently owned scope does not inherit the Tap scope either.
+                val detached = CoroutineScope(Dispatchers.Default)
+                try {
+                    assertFailsWith<TapUsageException> {
+                        withTimeout(2_000) { detached.async { device.info() }.await() }
                     }
+                } finally {
+                    detached.cancel()
                 }
                 tapScope { device.close() }
             } finally {
