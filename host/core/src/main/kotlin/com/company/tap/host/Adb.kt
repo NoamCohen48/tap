@@ -13,6 +13,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.nio.file.Path
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -45,6 +47,21 @@ class AdbReapUncertainException(
 ) : IllegalStateException(message, cause)
 
 /**
+ * A command that never started because another serial owns this shared runner's residual
+ * capacity. Temporary and non-poisoning: the caller did not mutate (no process was started),
+ * so it must neither quarantine nor poison its session — it retries later or on another runner.
+ * Carries the attempted serial plus the blocking residual's serial/command for diagnostics.
+ * Distinct from [AdbReapUncertainException], which means THIS command started and left an
+ * uncertain residual and must poison/quarantine.
+ */
+class AdbRunnerGatedException(
+    message: String,
+    val attemptSerial: String?,
+    val blockingSerial: String?,
+    val blockingCommand: List<String>,
+) : IllegalStateException(message)
+
+/**
  * Every ADB interaction of the host, one typed method per command. All device commands are
  * serial-specific (`-s`), bounded by a timeout, and return captured output; the parsing of
  * that output lives here too, so a device-family quirk is fixed once. `open` so tests can
@@ -60,9 +77,10 @@ open class Adb(
             ProcessBuilder(command).redirectErrorStream(true).start()
         }
 
-    private val reapGateLock = Any()
+    private val admissionMutex = Mutex()
 
     private data class ReapResidual(
+        val token: Long,
         val serial: String?,
         val command: List<String>,
         val process: Process,
@@ -71,41 +89,85 @@ open class Adb(
         val scope: CoroutineScope,
     )
 
-    // Unreaped drains gated here. Entries are only added by calls that passed the gate, so the
-    // size is bounded by the concurrent starters at poison time; gated calls throw before start
-    // and never grow it. Guarded by [reapGateLock].
-    private val reapResiduals = ArrayList<ReapResidual>()
+    // Admission state, guarded by [admissionMutex]. `inFlight` holds one token per admitted
+    // operation from before process start through proven reap; a reap-uncertain operation keeps
+    // its token by moving it to `residuals` until its drain completes and its process is dead.
+    // Every token is a monotonic id released exactly once by its owner, so a stale completion can
+    // never free a newer holder (no ABA): prune/remove match by token, never by emptiness or index.
+    private var nextAdmissionId = 0L
+    private val inFlight = HashMap<Long, String?>()
+    private val reapResiduals = LinkedHashMap<Long, ReapResidual>()
 
     /** Test visibility: whether this runner currently gates new starts on an unreaped drain. */
-    internal fun isReapGatedForTest(): Boolean = synchronized(reapGateLock) { reapResiduals.isNotEmpty() }
+    internal suspend fun isReapGatedForTest(): Boolean =
+        admissionMutex.withLock {
+            pruneCompletedResiduals()
+            reapResiduals.isNotEmpty() || inFlight.isNotEmpty()
+        }
+
+    /** Test visibility: admitted-but-unproven operations plus unresolved residuals. */
+    internal suspend fun admissionCountForTest(): Int =
+        admissionMutex.withLock {
+            pruneCompletedResiduals()
+            inFlight.size + reapResiduals.size
+        }
 
     private fun serialOf(command: List<String>): String? = if (command.size >= 3 && command[1] == "-s") command[2] else null
 
-    /** Rejects a new start while an unproven drain is alive; clears the gate once it completes. */
-    private fun checkReapGate(attemptSerial: String?) {
-        synchronized(reapGateLock) {
-            if (reapResiduals.isEmpty()) return
-            val it = reapResiduals.iterator()
-            while (it.hasNext()) {
-                val residual = it.next()
-                if (residual.drain.isCompleted && !residual.process.isAlive) {
-                    runCatching { residual.scope.cancel() }
-                    residual.executor.shutdownNow()
-                    it.remove()
-                }
+    /** Removes only the residuals whose own drain completed and whose own process is dead. */
+    private fun pruneCompletedResiduals() {
+        val it = reapResiduals.iterator()
+        while (it.hasNext()) {
+            val residual = it.next().value
+            if (residual.drain.isCompleted && !residual.process.isAlive) {
+                runCatching { residual.scope.cancel() }
+                residual.executor.shutdownNow()
+                it.remove()
             }
-            if (reapResiduals.isEmpty()) return
-            val first = reapResiduals.first()
-            throw AdbReapUncertainException(
-                "ADB runner gated by unreaped drain (${first.command.joinToString(" ")}" +
-                    " on ${first.serial ?: "no serial"}); refusing start for ${attemptSerial ?: "no serial"}",
-                first.command,
-                attemptSerial,
-            )
         }
     }
 
-    private fun noteReapResidual(
+    /**
+     * Linearized admission: the gate check and the token reservation are one mutex step, so
+     * concurrent callers can never both observe an empty gate and both start. A residual-held
+     * permit rejects immediately with [AdbRunnerGatedException] (temporary, non-poisoning: the
+     * residual may live long, so waiting would hang). An in-flight-held permit waits cancellably
+     * and re-checks, so a queued caller cancelled before admission never starts a process; once
+     * the holder's reap leaves a residual, waiters observe it and reject rather than pile on.
+     */
+    private suspend fun admit(attemptSerial: String?): Long {
+        while (true) {
+            admissionMutex.withLock {
+                pruneCompletedResiduals()
+                if (reapResiduals.isNotEmpty()) {
+                    val blocking = reapResiduals.values.first()
+                    throw AdbRunnerGatedException(
+                        "ADB runner gated by unreaped drain (${blocking.command.joinToString(" ")}" +
+                            " on ${blocking.serial ?: "no serial"}); refusing start for ${attemptSerial ?: "no serial"}",
+                        attemptSerial,
+                        blocking.serial,
+                        blocking.command,
+                    )
+                }
+                if (inFlight.size < ADB_RUNNER_PERMITS) {
+                    val token = nextAdmissionId++
+                    inFlight[token] = attemptSerial
+                    return token
+                }
+            }
+            // Permit held by a live in-flight operation, not a residual: wait cancellably for the
+            // holder to release or convert, then re-check. Cancellation propagates before start.
+            currentCoroutineContext().ensureActive()
+            delay(10)
+        }
+    }
+
+    private suspend fun releaseAdmission(token: Long) {
+        admissionMutex.withLock { inFlight.remove(token) }
+    }
+
+    private suspend fun transferToResidual(
+        token: Long,
         serial: String?,
         command: List<String>,
         process: Process,
@@ -113,8 +175,9 @@ open class Adb(
         executor: java.util.concurrent.ExecutorService,
         scope: CoroutineScope,
     ) {
-        synchronized(reapGateLock) {
-            reapResiduals += ReapResidual(serial, command, process, drain, executor, scope)
+        admissionMutex.withLock {
+            inFlight.remove(token)
+            reapResiduals[token] = ReapResidual(token, serial, command, process, drain, executor, scope)
         }
     }
 
@@ -189,12 +252,17 @@ open class Adb(
      * timeout is a null, never an exception: an outer cancellation propagates as cancellation
      * instead of being converted into the timeout's [IllegalStateException].
      *
+     * Admission holds one of [ADB_RUNNER_PERMITS] tokens from before process start through proven
+     * reap. The empty-gate check and the reservation are one mutex step, so concurrent starters
+     * can never both observe an empty gate; a caller rejected here never started a process and
+     * gets the temporary [AdbRunnerGatedException], never the uncertain [AdbReapUncertainException].
      * The output drain lives in a locally owned scope on a dedicated daemon thread, never as a
      * child of the caller's scope: a drain that ignores cancellation and stream closure (a
      * blocking read) therefore cannot structurally block return after [ADB_REAP_TIMEOUT_MS].
      * When process or drain death cannot be proven within the bound, this throws
      * [AdbReapUncertainException] (with any in-flight failure suppressed into it) so the caller
-     * quarantines instead of trusting unproven cleanup. An unproven drain gates this runner until it completes, so sequential calls cannot pile up
+     * quarantines instead of trusting unproven cleanup. The uncertain operation keeps its token as
+     * a residual until its own drain completes and its own process is dead, so sequential calls cannot pile up
      * abandoned drains; the executor is shut down on every path and its thread is a daemon, so
      * even the one gated drain cannot hold the JVM open.
      */
@@ -203,12 +271,19 @@ open class Adb(
         timeoutMs: Long,
         timeoutMessage: () -> String,
     ): Pair<Int, String> {
-        checkReapGate(serialOf(command))
+        val attemptSerial = serialOf(command)
+        val token = admit(attemptSerial)
+        var transferred = false
         lateinit var process: Process
         // Install cleanup ownership before returning to the caller's cancellable context. A
         // cancellation while start() is returning cannot discard an already-created child.
-        withContext(NonCancellable) {
-            process = withContext(Dispatchers.IO) { processStarter.start(command) }
+        try {
+            withContext(NonCancellable) {
+                process = withContext(Dispatchers.IO) { processStarter.start(command) }
+            }
+        } catch (error: Throwable) {
+            releaseAdmission(token)
+            throw error
         }
         val drainExecutor =
             Executors.newSingleThreadExecutor { task ->
@@ -240,7 +315,8 @@ open class Adb(
                 reap(command, process, drain, primary)
             } catch (reapError: AdbReapUncertainException) {
                 primary?.let(reapError::addSuppressed)
-                noteReapResidual(serialOf(command), command, process, drain, drainExecutor, drainScope)
+                transferToResidual(token, serialOf(command), command, process, drain, drainExecutor, drainScope)
+                transferred = true
                 throw reapError
             } catch (reapError: Throwable) {
                 primary?.let(reapError::addSuppressed)
@@ -252,6 +328,7 @@ open class Adb(
         } finally {
             drainScope.cancel()
             drainExecutor.shutdownNow()
+            if (!transferred) releaseAdmission(token)
         }
     }
 
@@ -509,3 +586,14 @@ val DefaultProcessStarter =
 
 /** Bound for reaping an ADB child and its output drain; never unbounded. */
 const val ADB_REAP_TIMEOUT_MS = 2_000L
+
+/**
+ * Fixed capacity of one shared [Adb] runner: a single admitted operation plus at most one
+ * unresolved residual. The smallest cap consistent with the existing sequential use (one ADB
+ * at a time per session; the local matrix drives two serials through one shared runner):
+ * correctness first — concurrent starters can never pile up abandoned drains/processes beyond
+ * one — at the cost of serializing shared-runner ADB. A caller refused here never started, so it
+ * retries later; only a started command that left uncertainty quarantines. Revisit with per-serial
+ * runners if the matrix outgrows single-flight throughput.
+ */
+const val ADB_RUNNER_PERMITS = 1

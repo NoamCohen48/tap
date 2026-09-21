@@ -6,8 +6,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
@@ -90,16 +93,56 @@ class DeviceSession private constructor(
         reapUncertain.get()?.let {
             throw IllegalStateException("Session on $serial is quarantined: ${it.message}", it)
         }
+        if (closeStarted.get()) {
+            throw IllegalStateException("Session on $serial is closing; new operations are rejected")
+        }
     }
 
-    /** Runs an ADB block, poisoning this session sticky on reap uncertainty. */
+    /**
+     * Session operation lease: [guardAdb] admits under [operationMutex], close marks closing and
+     * awaits admitted operations through their poison-recording point before choosing the terminal
+     * journal state. Admission after close starts is rejected atomically; the drain is bounded by
+     * the close timeout and quarantines on expiry.
+     */
+    private val operationMutex = Mutex()
+    private var operationsClosing = false
+    private var inFlightOperations = 0
+
+    /** Runs an ADB block, poisoning this session sticky only when THIS started command left
+     * reap uncertainty. A temporary [AdbRunnerGatedException] (never started: another serial owns
+     * residual capacity) never poisons. Admission atomically rejects after close starts. */
     suspend fun <T> guardAdb(block: suspend () -> T): T {
-        checkUsable()
+        operationMutex.withLock {
+            checkUsable()
+            if (operationsClosing) throw IllegalStateException("Session on $serial is closing; new operations are rejected")
+            inFlightOperations++
+        }
         try {
-            return block()
-        } catch (error: AdbReapUncertainException) {
-            noteReapUncertain(error)
-            throw error
+            try {
+                return block()
+            } catch (error: AdbReapUncertainException) {
+                noteReapUncertain(error)
+                throw error
+            }
+        } finally {
+            operationMutex.withLock { inFlightOperations-- }
+        }
+    }
+
+    /** Waits for admitted operations through their poison-recording point, bounded by [timeoutMs].
+     * Returns null when drained, otherwise the timeout failure that must quarantine. */
+    private suspend fun awaitAdmittedOperations(timeoutMs: Long): Throwable? {
+        val deadlineNanos = System.nanoTime() + timeoutMs * 1_000_000L
+        operationMutex.withLock { operationsClosing = true }
+        while (true) {
+            val remaining = operationMutex.withLock { inFlightOperations }
+            if (remaining <= 0) return null
+            if (System.nanoTime() >= deadlineNanos) {
+                return IllegalStateException(
+                    "Session cleanup on $serial exceeded ${timeoutMs}ms waiting for $remaining in-flight operation(s); device quarantined",
+                )
+            }
+            delay(10)
         }
     }
 
@@ -130,6 +173,12 @@ class DeviceSession private constructor(
             var firstFailure: Throwable? = null
             val finished =
                 withTimeoutOrNull(timeoutMs) {
+                    // Admitted operations drain first, through their poison-recording point, so the
+                    // CLOSED vs QUARANTINED choice below observes every in-flight uncertainty and no
+                    // lease handoff or final CLOSED can race a late poison. The drain shares this
+                    // bound and quarantines on expiry.
+                    val drainFailure = awaitAdmittedOperations(timeoutMs)
+                    if (drainFailure != null) firstFailure = firstFailure ?: drainFailure
                     // cleanupStep, not runCatching: a bound firing must reach withTimeoutOrNull
                     // as cancellation (finished == null below), never as a recorded failure.
                     cleanupStep({ firstFailure = it }) { client.close() }
@@ -191,9 +240,13 @@ class DeviceSession private constructor(
             val store = SessionJournalStore(config.journalRoot, serial)
             val lease = store.acquireLease(config.leaseTimeoutMs)
             var leaseOwnedBySession = false
+            var observedBootId: String? = null
+            var observedPrior: SessionJournal? = null
             try {
                 val bootId = adb.bootId(serial)
+                observedBootId = bootId
                 val prior = recoverJournal(adb, serial, bootId, store)
+                observedPrior = prior
                 adb.wakeAndDismissKeyguard(serial)
                 if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
                     config.driverApk?.let { adb.install(serial, it) }
@@ -264,6 +317,11 @@ class DeviceSession private constructor(
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
                     session = DeviceSession(config, lease, store, journal, running, hostPort, client)
+                    // Bind the session-owned usability gate once: every later command admission on
+                    // this client — including through previously captured references — consults the
+                    // same sticky poison/closing state under the transport mutex, before any ID or
+                    // frame. Standalone clients keep the no-op default.
+                    session.client.bindSessionGate(session::checkUsable)
                     leaseOwnedBySession = true
                     // Cancellation may arrive after READY but before the caller accepts the
                     // returned value. Keep the deterministic seam non-cancellable, then use a
@@ -338,6 +396,18 @@ class DeviceSession private constructor(
                     throw error
                 }
             } catch (error: Throwable) {
+                // Whole-open quarantine: any reap uncertainty from the lease-owned prefix (bootId,
+                // prior-journal recovery force-stop, wake/dismiss, installs — all before CREATING)
+                // persists a truthful QUARANTINED record before lease release, so the next open's
+                // recovery never mistakes it for CLOSED. When the boot identity itself is unproven,
+                // the prior journal is preserved where available; otherwise a sentinel unknown-boot
+                // record carries QUARANTINED (never CLOSED).
+                val startupUncertain = findReapUncertain(error)
+                if (!leaseOwnedBySession && startupUncertain != null) {
+                    runCatching {
+                        quarantineEarlyOpen(store, serial, observedBootId, observedPrior, startupUncertain)
+                    }.exceptionOrNull()?.let { error.addSuppressed(it) }
+                }
                 // A constructed session owns the lease; either close() finalized it or the
                 // cancellable return handoff scheduled the session-owned cleanup job.
                 if (!leaseOwnedBySession) lease.close()
@@ -345,6 +415,39 @@ class DeviceSession private constructor(
             }
         }
     }
+}
+
+/** Sentinel boot identity for an open that never proved the kernel's boot id. QUARANTINED-only;
+ * recovery rejects QUARANTINED before any boot comparison, so it is never mistaken for CLOSED. */
+const val UNKNOWN_BOOT_ID = "UNKNOWN-BOOT-UNPROVEN"
+
+/** Persists a truthful QUARANTINED record for a lease-owned open that failed before CREATING. */
+internal fun quarantineEarlyOpen(
+    store: SessionJournalStore,
+    serial: String,
+    bootId: String?,
+    prior: SessionJournal?,
+    uncertain: AdbReapUncertainException,
+) {
+    val reason = "SESSION_START_CLEANUP_UNCERTAIN: ${uncertain.message}"
+    val now = System.currentTimeMillis()
+    val known: SessionJournal? = prior ?: runCatching { store.read() }.getOrNull()
+    if (known != null) {
+        store.write(known.copy(state = JournalState.QUARANTINED, quarantineReason = reason, updatedAtEpochMs = now))
+        return
+    }
+    store.write(
+        SessionJournal(
+            state = JournalState.QUARANTINED,
+            serial = serial,
+            bootId = bootId ?: UNKNOWN_BOOT_ID,
+            sessionId = UUID.randomUUID().toString(),
+            generation = 0,
+            devicePort = DEVICE_PORT,
+            quarantineReason = reason,
+            updatedAtEpochMs = now,
+        ),
+    )
 }
 
 /** Bound for `DeviceSession.close` cleanup; journal finalization and lease release always run. */

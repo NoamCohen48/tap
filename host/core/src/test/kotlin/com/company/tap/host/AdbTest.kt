@@ -168,7 +168,18 @@ class AdbTest {
     fun `cancelled call with a blocking drain returns within the aggregate reap bound as uncertain`() =
         runBlocking {
             val adb = Adb("fake-adb")
-            val child = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
+            // Aggregate-bound coverage: a drain that ignores close plus a child that survives
+            // destroy plus a timed wait that never succeeds exercises the drain join AND the
+            // process wait/destroy under the single ADB_REAP_TIMEOUT_MS deadline. Separate per-step
+            // budgets would exceed it; the assertion below fails that old behavior.
+            val child =
+                FakeProcess(
+                    stdout = "",
+                    exitDelayMs = FakeProcess.NEVER,
+                    survivesDestroy = true,
+                    blockingStdout = true,
+                    timedWaitAlwaysFalse = true,
+                )
             adb.processStarter = ProcessStarter { child }
             try {
                 val started = System.nanoTime()
@@ -203,6 +214,18 @@ class AdbTest {
                 child.forceExit()
             }
             // The owned drain executor is shut down: the released child still answers a later call.
+            // Poll for recovery: the released drain completes asynchronously, so the first admit
+            // after release may still prune-and-reject before the completion lands.
+            adb.processStarter = ProcessStarter { FakeProcess(stdout = "List of devices attached\n", exitCode = 0) }
+            val recovered =
+                withTimeout(10_000) {
+                    while (true) {
+                        val attempt = runCatching { adb.devices(timeoutMs = 5_000) }
+                        if (attempt.isSuccess) break
+                        check(attempt.exceptionOrNull() is AdbRunnerGatedException)
+                        delay(10)
+                    }
+                }
             assertEquals(emptyList(), adb.devices(timeoutMs = 30_000))
         }
 
@@ -231,9 +254,11 @@ class AdbTest {
             assertEquals(1, starts.get())
             assertTrue(adb.isReapGatedForTest(), "unreaped drain must gate the runner")
             // Repeated calls are rejected before start: no additional processes or drains.
+            // Temporary gate, never uncertainty: the gated command never started, so it must not
+            // poison — it carries the attempted serial and the blocking residual for diagnostics.
             repeat(3) {
                 val gated =
-                    assertFailsWith<AdbReapUncertainException> {
+                    assertFailsWith<AdbRunnerGatedException> {
                         adb.devices(timeoutMs = 5_000)
                     }
                 assertTrue("gated" in gated.message.orEmpty(), gated.message.orEmpty())
@@ -251,6 +276,160 @@ class AdbTest {
             assertFalse(adb.isReapGatedForTest(), "gate must clear once the residual completes")
             withTimeout(5_000) {
                 while (drainThreads() > 0) delay(10)
+            }
+        }
+
+    @Test
+    fun `concurrent starters never exceed the fixed residual cap and permits recover without ABA`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val starts = java.util.concurrent.atomic.AtomicInteger(0)
+            val enteredStart = java.util.concurrent.CountDownLatch(1)
+            val releaseStart = java.util.concurrent.CountDownLatch(1)
+            val residuals = java.util.concurrent.CopyOnWriteArrayList<FakeProcess>()
+            adb.processStarter =
+                ProcessStarter {
+                    val n = starts.incrementAndGet()
+                    if (n == 1) {
+                        enteredStart.countDown()
+                        check(releaseStart.await(5, TimeUnit.SECONDS))
+                    }
+                    // Every admitted starter leaves an unreapable residual: a blocked drain plus a
+                    // child that survives destroy, so admission — not cleanup — bounds the count.
+                    FakeProcess(
+                        stdout = "",
+                        exitDelayMs = FakeProcess.NEVER,
+                        survivesDestroy = true,
+                        blockingStdout = true,
+                        timedWaitAlwaysFalse = true,
+                    ).also(residuals::add)
+                }
+            try {
+                val callerCount = 4
+                val outcomes = java.util.concurrent.CopyOnWriteArrayList<Result<List<String>>>()
+                val jobs =
+                    (1..callerCount).map {
+                        async(Dispatchers.IO) {
+                            // Short local deadline: the admitted holder times out fast and leaves its
+                            // residual; waiters observe the residual and reject instead of timing out.
+                            outcomes.add(runCatching { withTimeout(15_000) { adb.devices(timeoutMs = 300) } })
+                        }
+                    }
+                assertTrue(enteredStart.await(5, TimeUnit.SECONDS), "first starter never ran")
+                releaseStart.countDown()
+                withTimeout(20_000) { jobs.forEach { it.join() } }
+                assertEquals(callerCount, outcomes.size)
+                // Fixed cap: process starts and residual workers never exceed ADB_RUNNER_PERMITS.
+                assertTrue(starts.get() <= ADB_RUNNER_PERMITS, "started ${starts.get()} with cap $ADB_RUNNER_PERMITS")
+                assertTrue(adb.admissionCountForTest() <= ADB_RUNNER_PERMITS)
+                val uncertain = outcomes.count { it.exceptionOrNull() is AdbReapUncertainException }
+                val gated = outcomes.count { it.exceptionOrNull() is AdbRunnerGatedException }
+                assertEquals(callerCount, uncertain + gated, "every caller is uncertain-started or temporarily gated: $outcomes")
+                assertTrue(uncertain >= 1, "at least one starter must hold the residual")
+                // Gated diagnostics: attempted serial preserved (devices has none) and the blocker named.
+                outcomes.mapNotNull { it.exceptionOrNull() as? AdbRunnerGatedException }.forEach { gate ->
+                    assertTrue(gate.blockingCommand.isNotEmpty())
+                }
+                // Release every residual: each token frees only its own permit (no ABA) and the
+                // runner recovers for a proven call.
+                residuals.forEach {
+                    it.releaseStdout()
+                    it.forceExit()
+                }
+                adb.processStarter = ProcessStarter { FakeProcess(stdout = "List of devices attached\n", exitCode = 0) }
+                withTimeout(10_000) {
+                    while (true) {
+                        val attempt = runCatching { adb.devices(timeoutMs = 5_000) }
+                        if (attempt.isSuccess) break
+                        check(attempt.exceptionOrNull() is AdbRunnerGatedException)
+                        delay(10)
+                    }
+                }
+                assertFalse(adb.isReapGatedForTest())
+            } finally {
+                releaseStart.countDown()
+                residuals.forEach {
+                    runCatching { it.releaseStdout() }
+                    runCatching { it.forceExit() }
+                }
+            }
+        }
+
+    @Test
+    fun `queued admission is cancellable before process start`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val starts = java.util.concurrent.atomic.AtomicInteger(0)
+            val enteredStart = java.util.concurrent.CountDownLatch(1)
+            val releaseStart = java.util.concurrent.CountDownLatch(1)
+            adb.processStarter =
+                ProcessStarter {
+                    starts.incrementAndGet()
+                    enteredStart.countDown()
+                    check(releaseStart.await(5, TimeUnit.SECONDS))
+                    FakeProcess(stdout = "List of devices attached\n", exitCode = 0)
+                }
+            val first = async(Dispatchers.IO) { adb.devices(timeoutMs = 30_000) }
+            assertTrue(enteredStart.await(5, TimeUnit.SECONDS))
+            // A second caller queued on admission/Mutex never starts when cancelled first.
+            val second = async(Dispatchers.IO) { adb.devices(timeoutMs = 30_000) }
+            withTimeout(2_000) {
+                while (starts.get() < 1) delay(10)
+            }
+            second.cancel(CancellationException("queued admission cancelled"))
+            assertFailsWith<CancellationException> { second.await() }
+            releaseStart.countDown()
+            assertEquals(emptyList(), withTimeout(5_000) { first.await() })
+            assertEquals(1, starts.get(), "cancelled queued caller must never start a process")
+        }
+
+    @Test
+    @OptIn(RawAdb::class)
+    fun `shared runner gates another serial without a process start until the residual resolves`() =
+        runBlocking {
+            val serialA = "serial-A"
+            val serialB = "serial-B"
+            val adb = Adb("fake-adb")
+            val starts = java.util.concurrent.atomic.AtomicInteger(0)
+            val residual = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
+            adb.processStarter =
+                ProcessStarter {
+                    starts.incrementAndGet()
+                    residual
+                }
+            try {
+                // Poison A: this started command leaves an unresolved residual and gates the runner.
+                assertFailsWith<AdbReapUncertainException> {
+                    withTimeout(5_000) { adb.run(serialA, "shell", "pidof", "com.example", timeoutMs = 30_000) }
+                }
+                assertEquals(1, starts.get())
+                assertTrue(adb.isReapGatedForTest())
+                // B never starts while the gate is full: typed temporary rejection carrying both
+                // serials, never uncertainty, never a new process.
+                val gated =
+                    assertFailsWith<AdbRunnerGatedException> {
+                        adb.run(serialB, "shell", "pidof", "com.example", timeoutMs = 5_000)
+                    }
+                assertEquals(serialB, gated.attemptSerial)
+                assertEquals(serialA, gated.blockingSerial)
+                assertTrue(gated.blockingCommand.joinToString(" ").contains("pidof"))
+                assertEquals(1, starts.get(), "gated serial must not start a process")
+                // Release A: the residual's own token frees its own permit (no ABA) and B recovers.
+                residual.releaseStdout()
+                residual.forceExit()
+                adb.processStarter = ProcessStarter { FakeProcess(stdout = "4242\n", exitCode = 0) }
+                withTimeout(10_000) {
+                    while (true) {
+                        val attempt = runCatching { adb.run(serialB, "shell", "pidof", "com.example", timeoutMs = 5_000) }
+                        if (attempt.isSuccess) break
+                        check(attempt.exceptionOrNull() is AdbRunnerGatedException)
+                        delay(10)
+                    }
+                }
+                assertFalse(adb.isReapGatedForTest())
+            } finally {
+                runCatching { residual.releaseStdout() }
+                runCatching { residual.forceExit() }
             }
         }
 }

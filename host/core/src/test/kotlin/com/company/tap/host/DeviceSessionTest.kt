@@ -4,11 +4,12 @@ import com.company.tap.protocol.Done
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Response
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.io.TempDir
@@ -616,6 +617,280 @@ class DeviceSessionTest {
                 journalStore().acquireLease(0).close()
                 session.close(timeoutMs = 5_000)
                 assertEquals(JournalState.QUARANTINED, journalStore().read()?.state)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `captured client after poison emits no frame and consumes no request id`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-captured", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                val captured = session.client
+                val idBefore = captured.nextRequestIdForTest()
+                // Poison through the session's sticky state, as a reap-uncertain APP call would.
+                session.noteReapUncertain(
+                    AdbReapUncertainException(
+                        "ADB process or output drain survived bounded reap",
+                        listOf("adb", "-s", serial, "shell", "pidof", "com.example"),
+                        serial,
+                    ),
+                )
+                assertFailsWith<IllegalStateException> { captured.submit(com.company.tap.protocol.Health) }
+                assertEquals(idBefore, captured.nextRequestIdForTest(), "poisoned admission must not consume an ID")
+                // No frame was emitted: the next frame poll times out instead of delivering a REQUEST.
+                val noFrame =
+                    try {
+                        withTimeout(300) { fake.nextFrame() }
+                        false
+                    } catch (_: Exception) {
+                        true
+                    }
+                assertTrue(noFrame, "poisoned submit emitted a frame")
+                assertFailsWith<IllegalStateException> { session.app() }
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `open failing at bootId quarantines and frees the lease`() =
+        runBlocking {
+            val adb = FakeAdb(mapOf("shell am force-stop $DRIVER_PACKAGE" to ok("")))
+            adb.responder = { serial, command ->
+                if (command == "shell cat /proc/sys/kernel/random/boot_id") {
+                    throw AdbReapUncertainException(
+                        "ADB process or output drain survived bounded reap: $command",
+                        listOf("adb", "-s", serial) + command.split(" "),
+                        serial,
+                    )
+                }
+                null
+            }
+            val fake = FakeDriverServer("unused", 1, ByteArray(32), acceptAnySession = true)
+            try {
+                assertFailsWith<AdbReapUncertainException> {
+                    DeviceSession.open(sessionConfig(adb, fake, mutableListOf()))
+                }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `open failing in closed-journal recovery quarantines and frees the lease`() =
+        runBlocking {
+            val adb = FakeAdb(mapOf("shell cat /proc/sys/kernel/random/boot_id" to ok("boot-1")))
+            adb.responder = { serial, command ->
+                if (command == "shell am force-stop $DRIVER_PACKAGE") {
+                    throw AdbReapUncertainException(
+                        "ADB process or output drain survived bounded reap: $command",
+                        listOf("adb", "-s", serial) + command.split(" "),
+                        serial,
+                    )
+                }
+                null
+            }
+            val fake = FakeDriverServer("unused", 1, ByteArray(32), acceptAnySession = true)
+            try {
+                assertFailsWith<AdbReapUncertainException> {
+                    DeviceSession.open(sessionConfig(adb, fake, mutableListOf()))
+                }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `open failing at wake-dismiss quarantines and frees the lease`() =
+        runBlocking {
+            val adb =
+                FakeAdb(
+                    mapOf(
+                        "shell cat /proc/sys/kernel/random/boot_id" to ok("boot-1"),
+                        "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                        "shell pidof $DRIVER_PACKAGE" to Adb.Result(1, ""),
+                        "shell input keyevent KEYCODE_WAKEUP" to ok(""),
+                    ),
+                )
+            adb.responder = { serial, command ->
+                if (command == "shell wm dismiss-keyguard") {
+                    throw AdbReapUncertainException(
+                        "ADB process or output drain survived bounded reap: $command",
+                        listOf("adb", "-s", serial) + command.split(" "),
+                        serial,
+                    )
+                }
+                null
+            }
+            val fake = FakeDriverServer("unused", 1, ByteArray(32), acceptAnySession = true)
+            try {
+                assertFailsWith<AdbReapUncertainException> {
+                    DeviceSession.open(sessionConfig(adb, fake, mutableListOf()))
+                }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `open failing at install quarantines and frees the lease`() =
+        runBlocking {
+            val adb =
+                FakeAdb(
+                    mapOf(
+                        "shell cat /proc/sys/kernel/random/boot_id" to ok("boot-1"),
+                        "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                        "shell pidof $DRIVER_PACKAGE" to Adb.Result(1, ""),
+                        "shell input keyevent KEYCODE_WAKEUP" to ok(""),
+                        "shell wm dismiss-keyguard" to ok(""),
+                    ),
+                )
+            adb.responder = { serial, command ->
+                if (command.startsWith("install ")) {
+                    throw AdbReapUncertainException(
+                        "ADB process or output drain survived bounded reap: $command",
+                        listOf("adb", "-s", serial) + command.split(" "),
+                        serial,
+                    )
+                }
+                null
+            }
+            val fake = FakeDriverServer("unused", 1, ByteArray(32), acceptAnySession = true)
+            try {
+                val processes = mutableListOf<FakeProcess>()
+                val apk = tempDir.resolve("driver.apk").also { java.nio.file.Files.write(it, byteArrayOf(1)) }
+                val base = sessionConfig(adb, fake, processes)
+                val config = base.copy(driverApk = apk)
+                assertFailsWith<AdbReapUncertainException> { DeviceSession.open(config) }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `close awaits an in-flight adb through its poison point and quarantines`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-close-race", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                // Barrier: the APP call is admitted inside guardAdb before close begins; its reap
+                // failure is released only after close started waiting for it.
+                val admitted = CompletableDeferred<Unit>()
+                val releaseFailure = CompletableDeferred<Unit>()
+                val priorResponder = adb.responder
+                adb.responder = { serial, command ->
+                    if (command == "shell pidof com.example") {
+                        admitted.complete(Unit)
+                        runBlocking { releaseFailure.await() }
+                        throw AdbReapUncertainException(
+                            "ADB process or output drain survived bounded reap: $command",
+                            listOf("adb", "-s", serial) + command.split(" "),
+                            serial,
+                        )
+                    }
+                    priorResponder?.invoke(serial, command)
+                }
+                val app = session.app()
+                val inFlight = async(Dispatchers.IO) { runCatching { app.isRunning() } }
+                withTimeout(5_000) { admitted.await() }
+                val closing = async(Dispatchers.IO) { runCatching { session.close(timeoutMs = 10_000) } }
+                withTimeout(5_000) {
+                    while (closing.isCompleted) delay(10)
+                    // Close is still waiting for the admitted operation; nothing terminal yet.
+                }
+                releaseFailure.complete(Unit)
+                withTimeout(10_000) { inFlight.await() }
+                withTimeout(10_000) { closing.await() }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state, "late poison must win over CLOSED")
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `gated guardAdb never poisons and the session still closes clean`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-gate-clean", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                // A never-started gate rejection (another serial owns residual capacity) must not
+                // poison: the guarded block throws before any process start, with attempted and
+                // blocking diagnostics preserved.
+                val callsBefore = adb.calls.size
+                val gated =
+                    assertFailsWith<AdbRunnerGatedException> {
+                        session.guardAdb {
+                            throw AdbRunnerGatedException(
+                                "ADB runner gated by unreaped drain (adb -s other-serial shell pidof x on other-serial); refusing start for $serial",
+                                serial,
+                                "other-serial",
+                                listOf("adb", "-s", "other-serial", "shell", "pidof", "x"),
+                            )
+                        }
+                    }
+                assertEquals(serial, gated.attemptSerial)
+                assertEquals("other-serial", gated.blockingSerial)
+                assertEquals(callsBefore, adb.calls.size, "gated call must start no process")
+                // The session is still fully usable and closes CLOSED: temporary, never sticky.
+                session.checkUsable()
+                session.app()
+                session.close(timeoutMs = 5_000)
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                journalStore().acquireLease(0).close()
             } finally {
                 fake.close()
             }

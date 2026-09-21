@@ -83,6 +83,18 @@ class DriverClient private constructor(
     private val pongs = Channel<Long>(Channel.UNLIMITED)
     private var nextRequestId = 1L
 
+    /** Session-owned usability gate, bound once by [DeviceSession]. Null keeps this client usable
+     * standalone (tests, validation probes): the default is a no-op admission. Once bound, every
+     * command admission consults the same sticky session state, so previously captured references
+     * cannot bypass a later poison. Internal bind-once state, never a public mutable hook. */
+    private var sessionGate: (() -> Unit)? = null
+
+    /** Binds the owning session's usability check exactly once; later binds fail. */
+    internal fun bindSessionGate(gate: () -> Unit) {
+        check(sessionGate == null) { "DriverClient session gate is already bound" }
+        sessionGate = gate
+    }
+
     @Volatile private var poisoned = false
 
     @Volatile private var closed = false
@@ -437,6 +449,10 @@ class DriverClient private constructor(
         command.selectors.forEach(SelectorValidation::validate)
         val request = Request(sessionId = sessionId, generation = generation, timeoutMs = timeoutMs, command = command)
         return transportMutex.withLock {
+            // Session-owned sticky poison is consulted here, under the transport mutex and before
+            // request-ID allocation or any frame write, so a poisoned session's captured client
+            // emits no frame and consumes no ID. Standalone clients keep the no-op default.
+            sessionGate?.invoke()
             if (poisoned || closed) {
                 throw CommandTransportException(
                     ErrorCode.TRANSPORT_LOST,
@@ -457,6 +473,9 @@ class DriverClient private constructor(
     /** Test seam for deterministic cancellation while another operation owns the transport. */
     internal suspend fun withTransportLock(block: suspend () -> Unit) = transportMutex.withLock { block() }
 
+    /** Test visibility: the next request ID that [submit] would allocate. */
+    internal suspend fun nextRequestIdForTest(): Long = transportMutex.withLock { nextRequestId }
+
     /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
     suspend fun screenshot(timeoutMs: Long = 30_000): Screenshot {
         val command = submit(ScreenshotCommand, timeoutMs = timeoutMs)
@@ -470,6 +489,7 @@ class DriverClient private constructor(
             val started = System.nanoTime()
             while (pongs.tryReceive().isSuccess) Unit
             transportMutex.withLock {
+                sessionGate?.invoke()
                 check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
                 try {
                     writeFrame(Frame(FrameType.PING, 0, byteArrayOf()), remainingTimeoutMs(timeoutMs.toInt()))
@@ -519,6 +539,7 @@ class DriverClient private constructor(
         val request = Request(sessionId = requestSessionId, generation = requestGeneration, timeoutMs = 5_000, command = Health)
         return awaitValidation(
             transportMutex.withLock {
+                sessionGate?.invoke()
                 check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
                 transmit(requestId, request)
             },
@@ -535,6 +556,7 @@ class DriverClient private constructor(
     ): Response =
         awaitValidation(
             transportMutex.withLock {
+                sessionGate?.invoke()
                 check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
                 transmit(requestId, Health, 5_000, payload.encodeToByteArray())
             },

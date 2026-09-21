@@ -6,10 +6,18 @@ import com.company.tap.api.v1.ExecuteRequest
 import com.company.tap.api.v1.Health
 import com.company.tap.api.v1.SessionServiceGrpcKt
 import com.company.tap.host.Adb
+import com.company.tap.host.AdbReapUncertainException
 import com.company.tap.host.AppLifecycle
+import com.company.tap.host.DEVICE_PORT
+import com.company.tap.host.DRIVER_PACKAGE
+import com.company.tap.host.DeviceSession
 import com.company.tap.host.DeviceSessionConfig
 import com.company.tap.host.DriverClient
+import com.company.tap.host.FakeAdb
 import com.company.tap.host.FakeDriverServer
+import com.company.tap.host.FakeProcess
+import com.company.tap.host.ProcessStarter
+import com.company.tap.host.ok
 import com.company.tap.protocol.Done
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Response
@@ -25,11 +33,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
+import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -90,6 +101,25 @@ private class FakeDevice(
             closeCompleted.complete(Unit)
         }
     }
+}
+
+/** Production-shaped [ServiceDevice]: a live `:host:core` session, so the client's session-owned
+ * admission gate is bound exactly as production binds it. Tests poison through [poison]. */
+private class RealSessionDevice(
+    val delegate: DeviceSession,
+) : ServiceDevice {
+    override val serial: String get() = delegate.serial
+    override val generation: Long get() = delegate.generation
+    override val autPackage: String get() = delegate.config.autPackage
+    override val client: DriverClient get() = delegate.client
+
+    override fun app(packageName: String): AppLifecycle = delegate.app(packageName)
+
+    override fun checkUsable() = delegate.checkUsable()
+
+    fun poison(error: AdbReapUncertainException) = delegate.noteReapUncertain(error)
+
+    override suspend fun close(timeoutMs: Long) = delegate.close(timeoutMs)
 }
 
 private class FakeOpener : DeviceOpener {
@@ -583,5 +613,108 @@ class TapServiceLifecycleTest {
             service.closeSession(session.id)
             assertEquals(1, device.closeCalls.get())
             assertTrue(service.sessionIds().isEmpty())
+        }
+
+    @TempDir
+    lateinit var tempDir: Path
+
+    @Test
+    fun `service lookup then poison before submit rejects through the session gate`() =
+        runBlocking {
+            val serial = "lookup-poison-serial"
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("lookup-poison", 1, secret, acceptAnySession = true)
+            try {
+                lateinit var adb: FakeAdb
+                adb =
+                    FakeAdb(
+                        mapOf(
+                            "shell cat /proc/sys/kernel/random/boot_id" to ok("boot-1"),
+                            "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                            "shell input keyevent KEYCODE_WAKEUP" to ok(""),
+                            "shell wm dismiss-keyguard" to ok(""),
+                            "forward tcp:0 tcp:$DEVICE_PORT" to ok(fake.port.toString()),
+                            "shell cat /proc/4242/stat" to
+                                ok("4242 (app_process) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 99999 20 21"),
+                            "forward --remove tcp:${fake.port}" to ok(""),
+                        ),
+                    )
+                adb.responder = { _, command ->
+                    when (command) {
+                        "shell pidof $DRIVER_PACKAGE" -> {
+                            val forwarded = adb.calls.any { it.contains("forward tcp:0") }
+                            val forceStops = adb.calls.count { it.contains("am force-stop") }
+                            if (forwarded && forceStops < 2) ok("4242") else Adb.Result(1, "")
+                        }
+                        else -> null
+                    }
+                }
+                val processes = mutableListOf<FakeProcess>()
+                val sessionConfig =
+                    DeviceSessionConfig(
+                        serial = serial,
+                        autPackage = "com.test",
+                        journalRoot = tempDir.resolve("sessions"),
+                        adb = adb,
+                        processStarter =
+                            ProcessStarter { command ->
+                                val args = command.drop(3)
+                                fun option(name: String): String {
+                                    val index = args.indexOf(name)
+                                    return args[index + 1]
+                                }
+                                fake.secret = java.util.Base64.getUrlDecoder().decode(option("tapSecret"))
+                                FakeProcess(
+                                    stdout =
+                                        "INSTRUMENTATION_RESULT: ok\n" +
+                                            "TAP_READY session=${option("tapSession")} " +
+                                            "generation=${option("tapGeneration")} " +
+                                            "port=${option("tapPort")} instance=test-instance\n",
+                                    exitDelayMs = FakeProcess.NEVER,
+                                ).also(processes::add)
+                            },
+                    )
+                val opener =
+                    object : DeviceOpener {
+                        override suspend fun open(config: DeviceSessionConfig): ServiceDevice =
+                            RealSessionDevice(DeviceSession.open(sessionConfig))
+                    }
+                val service = TapService(testConfig(), opener)
+                val connection = service.openConnection("lookup-poison-conn")
+                val opening = async(Dispatchers.IO) { service.openSession(connection, serial, "com.test", testOptions()) }
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                // Barrier, not a delay race: the lookup completes first, then the poison lands
+                // before submission — the submit must still reject through the bound gate.
+                val captured = service.session(session.id).device.client
+                (session.device as RealSessionDevice).poison(
+                    AdbReapUncertainException(
+                        "ADB process or output drain survived bounded reap",
+                        listOf("adb", "-s", serial, "shell", "pidof", "com.test"),
+                        serial,
+                    ),
+                )
+                assertFailsWith<IllegalStateException> {
+                    captured.submit(com.company.tap.protocol.Health)
+                }
+                // Nothing reached the driver: the next frame poll times out.
+                val noFrame =
+                    try {
+                        withTimeout(300) { fake.nextFrame() }
+                        false
+                    } catch (_: Exception) {
+                        true
+                    }
+                assertTrue(noFrame, "poisoned submit emitted a frame")
+                assertFailsWith<IllegalStateException> { service.session(session.id) }
+                // Poison alone never throws from close: cleanup runs clean, the journal records
+                // the quarantine, and the lease releases.
+                assertEquals(null, service.closeSession(session.id))
+                val record = com.company.tap.host.SessionJournalStore(tempDir.resolve("sessions"), serial).read()
+                assertEquals(com.company.tap.host.JournalState.QUARANTINED, record?.state)
+                assertTrue(service.sessionIds().isEmpty())
+            } finally {
+                fake.close()
+            }
         }
 }
