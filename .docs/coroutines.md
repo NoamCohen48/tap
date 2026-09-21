@@ -34,9 +34,10 @@ Landed and reviewed checkpoints:
   detach-and-launch cleanup, full detached cleanup deadlines, bounded `tap stop`, explicit gRPC
   termination, corrected verification docs, and deterministic connection-exhaustion coverage.
 - `184dac8`, `109656e`, `aaca240`, `4d8c416`, `a9316c9`, `6207d04`, `eb1f3b7`,
-  `70ff8fd`, `de0a2a8`, `80473e9`, `e950da6` — Kotlin SDK/JUnit coroutine conversion and
-  lifecycle review follow-ups, ending with fail-closed device-drain teardown, cancellation-safe
-  generation ownership, and transactional shutdown-hook installation.
+  `70ff8fd`, `de0a2a8`, `80473e9`, `e950da6`, `e9fff23` — Kotlin SDK/JUnit coroutine
+  conversion and lifecycle review follow-ups, ending with fail-closed device-drain teardown,
+  cancellation-safe generation ownership, transactional shutdown-hook installation, and
+  deterministic per-call service-discovery cancellation coverage.
 - `8d40be3` — explicit block-bodied `Unit` fixture methods plus a device-free discovery guard;
   this made all 13 device tests visible to JUnit instead of silently omitting four methods whose
   expression bodies inferred a non-`Unit` return type.
