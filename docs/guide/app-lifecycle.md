@@ -21,14 +21,16 @@ state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 
 ```kotlin
 @Test
-fun survivesAKill(device: Device) = tapTest {
-    val app = device.app()
-    val first = app.coldLaunch()
-    device.element(text("Add to cart")).tap()
-    app.forceStop()
-    val second = app.coldLaunch()
-    assertNotEquals(first.pid, second.pid)
-    device.await(text("1 item")).visible()
+fun survivesAKill(device: Device) {
+    tapTest {
+        val app = device.app()
+        val first = app.coldLaunch()
+        device.element(text("Add to cart")).tap()
+        app.forceStop()
+        val second = app.coldLaunch()
+        assertNotEquals(first.pid, second.pid)
+        device.await(text("1 item")).visible()
+    }
 }
 ```
 

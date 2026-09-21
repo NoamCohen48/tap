@@ -544,8 +544,9 @@ construction (`text(...)`, `res(...)`) is the only non-suspend part.
 ```kotlin
 @TapTest
 class CheckoutTest {
-    @Test fun buys(device: Device) = tapTest { ... }         // implicit role "device"
-    @Test @TapDevices("sender", "receiver") fun sync(devices: Devices) = tapTest { ... }
+    @Test fun buys(device: Device) { tapTest { ... } }       // implicit role "device"
+    @Test @TapDevices("sender", "receiver")
+    fun sync(devices: Devices) { tapTest { ... } }
 }
 ```
 
@@ -621,7 +622,7 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Kotlin client | `:clients:kotlin:sdk:test` | 31 (`TapClientTest`) | in-process grpc-kotlin fakes: attach ownership/lifetime, Close-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report, fail-closed drain-timeout teardown |
 | JUnit extension | `:clients:kotlin:junit5:test` | 34 (`TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 13) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen, cancellation-safe ownership with NonCancellable state/rollback/gate transitions and original cancellation rethrown, explicit teardown-park hook with no timing, handshake cancellation for create/connect/shutdown with no leaks, create/connect suppression contents/order with exact-once resources, cancelled-shutdown NonCancellable re-await of captured flights before reclaim/gate completion, transactional hook install before publish with close+stop rollback and safe retry), shutdown-vs-connection race, concurrent shares |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
-| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay (host no-reboot, native image and Python smoke have passed; the 13-test 0.2.0-client device matrix is the remaining run) |
+| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 device + 1 discovery guard | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay; passed on API 29 + API 34 on 2026-09-21 |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
 | Service | `:host:service:test` | 4 classes (`EnumMirrorTest`, `GoldenRoundTripTest`, `AutResourceTest`, `TapServiceLifecycleTest`) | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
@@ -669,7 +670,7 @@ in-process service tests for the clients,
 logcat/dumpsys/JSONL/HTML artifacts and reports, per-test deadlines and the remaining JUnit
 contracts, CI lanes. (The coroutine `tapTest` façade and `DeviceBarrier` are built with
 deterministic JVM tests, including in-process accepted-`Execute` cancellation; host no-reboot,
-native image and Python smoke have passed, so only the 13-test 0.2.0-client device matrix is pending.)
+native image, Python smoke and the 13-device-test 0.2.0-client matrix have passed.)
 
 `PhaseZeroMain.kt` (≈2 300 lines) remains validation code, not framework code; it should
 keep exercising faults the clients cannot inject, and nothing outside `:host:validation` may

@@ -25,11 +25,11 @@ A product team can write and run real tests today:
   `DeviceBarrier` (reusable/one-shot) for simultaneous phases, failure artifacts, `tap.*`
   system-property / `TAP_*` env config.
 - `clients/python` — the same API and a pytest plugin.
-- `:samples:fixture-tests` — thirteen tests (single-device journeys, ambiguity, text input,
-  Compose list scrolling, app-owned idle sync, explicit screen-stability waits, lifecycle, two
-  two-device tests including sibling-cancellation without replay). JVM compilation and the
-  JUnit suites are green; the 0.2.0-client device-matrix run is still pending (the last matrix
-  pass was the 12-test pre-client suite on API 29 and API 34 concurrently).
+- `:samples:fixture-tests` — thirteen device tests (single-device journeys, ambiguity, text
+  input, Compose list scrolling, app-owned idle sync, explicit screen-stability waits,
+  lifecycle, and two two-device tests including sibling-cancellation without replay), plus a
+  device-free JUnit discovery guard. The 0.2.0-client suite passed on API 29 and API 34
+  concurrently on 2026-09-21.
 
 Everything below is what separates that from the production-grade framework the plan
 describes.

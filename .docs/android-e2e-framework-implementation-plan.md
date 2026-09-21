@@ -720,18 +720,20 @@ class PlaybackTest {
     lateinit var device: Device
 
     @Test
-    fun startsPlayback() = tapTest {
-        val app = device.app("com.company.streaming")
+    fun startsPlayback() {
+        tapTest {
+            val app = device.app("com.company.streaming")
 
-        app.clearData()
-        app.launch()
-        device.await(rawRes("homeScreen")).visible()
+            app.clearData()
+            app.launch()
+            device.await(rawRes("homeScreen")).visible()
 
-        device.element(
-            rawRes("heroCard").hasDescendant(text("Featured"))
-        ).descendant(text("Play")).tap()
+            device.element(
+                rawRes("heroCard").hasDescendant(text("Featured"))
+            ).descendant(text("Play")).tap()
 
-        device.await(text("Now Playing")).visible()
+            device.await(text("Now Playing")).visible()
+        }
     }
 }
 ```
@@ -751,14 +753,16 @@ Multi-device tests bind named roles rather than relying on discovery order:
 ```kotlin
 @TapDevices("sender", "receiver")
 @Test
-fun messagePropagates(devices: Devices) = tapTest {
-    val sender = devices["sender"]
-    val receiver = devices["receiver"]
+fun messagePropagates(devices: Devices) {
+    tapTest {
+        val sender = devices["sender"]
+        val receiver = devices["receiver"]
 
-    sender.element(rawRes("messageField")).setText("hello")
-    sender.element(rawRes("sendButton")).tap()
+        sender.element(rawRes("messageField")).setText("hello")
+        sender.element(rawRes("sendButton")).tap()
 
-    receiver.await(text("hello"), timeout = 20.seconds).visible()
+        receiver.await(text("hello"), timeout = 20.seconds).visible()
+    }
 }
 ```
 

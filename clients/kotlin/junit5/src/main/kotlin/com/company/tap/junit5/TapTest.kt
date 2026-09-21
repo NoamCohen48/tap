@@ -40,8 +40,10 @@ internal object TapTestBinding {
 
 /**
  * The mandatory entry point for suspending framework calls in JUnit tests:
- * `@Test fun x(device: Device) = tapTest { ... }`. JUnit test methods are not `suspend`, so
- * this is the real-time `runBlocking`-style bridge onto the extension-owned per-test context
+ * `@Test fun x(device: Device) { tapTest { ... } }`. Use a block-bodied JUnit method: because
+ * [tapTest] is generic, an expression body can infer a non-`Unit` JVM return type that JUnit
+ * does not discover. JUnit test methods are not `suspend`, so this is the real-time
+ * `runBlocking`-style bridge onto the extension-owned per-test context
  * (root job + [TapContext]); it never uses virtual time because ADB, devices and command
  * deadlines are external real-time systems.
  *

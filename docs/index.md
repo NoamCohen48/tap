@@ -15,10 +15,12 @@ import org.junit.jupiter.api.Test
 @TapTest
 class CheckoutTest {
     @Test
-    fun buysAnItem(device: Device) = tapTest {
-        device.app().coldLaunch()
-        device.element(res("buy_button")).tap()
-        device.await(text("Order placed")).visible()
+    fun buysAnItem(device: Device) {
+        tapTest {
+            device.app().coldLaunch()
+            device.element(res("buy_button")).tap()
+            device.await(text("Order placed")).visible()
+        }
     }
 }
 ```

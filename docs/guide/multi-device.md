@@ -21,18 +21,20 @@ pytest plugin map roles to serials and then open one session per role.
     class ChatTest {
         @Test
         @TapDevices("sender", "receiver")
-        fun deliversAMessage(devices: Devices) = tapTest {
-            coroutineScope {
-                awaitAll(
-                    async { devices["sender"].app().coldLaunch() },
-                    async { devices["receiver"].app().coldLaunch() },
-                )
+        fun deliversAMessage(devices: Devices) {
+            tapTest {
+                coroutineScope {
+                    awaitAll(
+                        async { devices["sender"].app().coldLaunch() },
+                        async { devices["receiver"].app().coldLaunch() },
+                    )
+                }
+                val sender = devices["sender"]
+                val receiver = devices["receiver"]
+                sender.element(res("compose")).setText("hi")
+                sender.element(text("Send")).tap()
+                receiver.await(text("hi"), timeout = 20.seconds).visible()
             }
-            val sender = devices["sender"]
-            val receiver = devices["receiver"]
-            sender.element(res("compose")).setText("hi")
-            sender.element(text("Send")).tap()
-            receiver.await(text("hi"), timeout = 20.seconds).visible()
         }
     }
     ```

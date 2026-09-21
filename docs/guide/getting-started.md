@@ -87,18 +87,22 @@ import java.nio.file.Path
 @TapTest
 class SmokeTest {
     @Test
-    fun opensTheHomeScreen(device: Device) = tapTest {
-        val app = device.app()                       // the configured AUT package
-        app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
-        app.coldLaunch()                             // resolves the launcher activity, waits for its window
-        device.await(text("Welcome")).visible()
-        device.element(res("search")).setText("socks")
+    fun opensTheHomeScreen(device: Device) {
+        tapTest {
+            val app = device.app()                       // the configured AUT package
+            app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
+            app.coldLaunch()                             // resolves the launcher activity, waits for its window
+            device.await(text("Welcome")).visible()
+            device.element(res("search")).setText("socks")
+        }
     }
 }
 ```
 
-Every test body runs inside `tapTest { ... }`: the real-time bridge onto the extension-owned
-per-test coroutine scope. All `Device`/`App`/`Element` calls are `suspend`; building selectors
+Use a block-bodied test method as shown: `tapTest` is generic, so an expression body can infer
+a non-`Unit` JVM return type that JUnit does not discover. Every test body runs inside
+`tapTest { ... }`, the real-time bridge onto the extension-owned per-test coroutine scope.
+All `Device`/`App`/`Element` calls are `suspend`; building selectors
 (`text(...)`, `res(...)`) is not. Calls outside `tapTest` — or from `GlobalScope` — fail with
 `TapUsageException`, so timeouts and failing siblings cancel in-flight RPCs.
 

@@ -26,26 +26,30 @@ Add `:clients:kotlin:junit5` to a JUnit 5 test source set and annotate the class
 @TapTest
 class CheckoutTest {
     @Test
-    fun buysAnItem(device: Device) = tapTest {
-        val app = device.app()                    // the configured AUT package
-        app.clearData()
-        app.launch()                              // resolves the launcher activity, waits for the window
-        device.element(res("buy_button")).tap()  // <aut>:id/buy_button
-        device.await(text("Order placed")).visible()
+    fun buysAnItem(device: Device) {
+        tapTest {
+            val app = device.app()                    // the configured AUT package
+            app.clearData()
+            app.launch()                              // resolves the launcher activity, waits for the window
+            device.element(res("buy_button")).tap()  // <aut>:id/buy_button
+            device.await(text("Order placed")).visible()
+        }
     }
 
     @Test
     @TapDevices("sender", "receiver")
-    fun messagePropagates(devices: Devices) = tapTest {
-        coroutineScope {
-            awaitAll(
-                async {
-                    devices["sender"].element(rawRes("sendButton")).tap()
-                },
-                async {
-                    devices["receiver"].await(text("hello"), timeout = 20.seconds).visible()
-                },
-            )
+    fun messagePropagates(devices: Devices) {
+        tapTest {
+            coroutineScope {
+                awaitAll(
+                    async {
+                        devices["sender"].element(rawRes("sendButton")).tap()
+                    },
+                    async {
+                        devices["receiver"].await(text("hello"), timeout = 20.seconds).visible()
+                    },
+                )
+            }
         }
     }
 }
@@ -54,7 +58,9 @@ class CheckoutTest {
 (`awaitAll` is `kotlinx.coroutines.awaitAll`; `coroutineScope` + `async` is the same shape
 `samples/fixture-tests` compiles and runs — see `MultiDeviceTest`.)
 
-Every test body runs inside `tapTest { ... }`: the real-time `runBlocking`-style bridge onto
+Use a block-bodied JUnit method as shown above: because `tapTest` is generic, an expression body
+can infer a non-`Unit` JVM return type and JUnit will not discover that test. Every test body runs
+inside `tapTest { ... }`: the real-time `runBlocking`-style bridge onto
 the extension-owned per-test coroutine scope (root job + deadline). Suspending calls outside
 it — or from a coroutine that does not inherit it (`GlobalScope`) — fail with
 `TapUsageException`, so a JUnit timeout and a failing sibling both cancel the other device's
@@ -105,9 +111,9 @@ itself. Configuration is read from system properties or environment variables:
 It builds the fixture app and the service distribution, starts the service (`tap.manageService`,
 which installs the driver), runs thirteen tests (including two two-device tests that are skipped with
 one serial) concurrently across the devices, and stops the service again unless one was already
-running (`-Ptap.manageService=false` to require a running one). The thirteen-test suite is the
-new 0.2.0 coroutine client (`tapTest`); its device-matrix run is still pending — the matrix
-pass on record is the host no-reboot validation plus the pre-client sample/Python suites
+running (`-Ptap.manageService=false` to require a running one). The thirteen-device-test suite
+uses the 0.2.0 coroutine client (`tapTest`) and passed on the API 29/API 34 matrix on 2026-09-21;
+a device-free discovery guard makes the Gradle report contain fourteen tests total
 (see `.docs/coroutines.md`).
 
 ## Python tests
@@ -188,8 +194,8 @@ behind `tapTest`/`tapScope`) and JUnit 5 extension (`tapTest` bridge, per-test r
 `DeviceBarrier`, failure artifacts), and a Python client and pytest plugin, all gRPC clients of
 the service. Host-side validation passed the no-reboot run (`host --no-reboot` on API 29 and
 API 34, plus the native-image Python smoke flow, on 2026-09-21, including every
-`PHASE_1_*_OK` marker); the new 0.2.0 Kotlin client (`tapTest`, thirteen fixture tests)
-compiles and passes its JVM suites, but its device-matrix run is still pending
+`PHASE_1_*_OK` marker); the new 0.2.0 Kotlin client (`tapTest`, thirteen device fixture tests)
+also passed its API 29/API 34 matrix, including both multi-device tests
 (see `.docs/coroutines.md`).
 
 The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/protocol-contract.md).
