@@ -182,7 +182,7 @@ tap/
 |   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
 |   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
 |   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles
-|   |           +-- TapConnection.kt     one TapClient + Connection per JVM generation (managed sequential generations: teardown gate, single-flight shares, creation rollback), closed by launcher listener/shutdown hook
+|   |           +-- TapConnection.kt     one TapClient + Connection per JVM generation (managed sequential generations: teardown gate, single-flight shares, creation rollback with suppressed cleanup, NonCancellable ownership with original cancellation rethrown), closed by launcher listener/shutdown hook
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the service)
 |       +-- pyproject.toml, README.md
@@ -555,8 +555,11 @@ bounded non-cancellable teardown, `ParameterResolver`, `TestExecutionExceptionHa
 `@TapDevice` parameters, and bare `Device` parameters; maps roles to serials itself (pinned
 by `tap.device.<role>`, then the `tap.serials` order, otherwise the service's device list, free
 devices first); skips the test (assumption) when fewer devices exist than roles; opens the sessions one at
-a time in sorted serial order through the JVM-wide `TapConnection` (one `TapClient` + `Connection`, closed
-by a shutdown hook), each waiting up to `tap.acquireTimeoutSeconds` for a device another
+a time in sorted serial order through the JVM-wide `TapConnection` (one `TapClient` + `Connection`
+per sequential generation — teardown-gated start/connect with single-flight shares, creation
+rollback with suppressed cleanup, and cancellation-safe ownership under `NonCancellable`
+with the original cancellation rethrown — closed by the launcher listener/shutdown hook), each
+waiting up to `tap.acquireTimeoutSeconds` for a device another
 session holds; stores them
 in a per-method namespace; test bodies run only inside `tapTest { ... }` (real-time bridge;
 binding/nesting enforced, timeout/sibling cancellation via the root job); on a test failure captures `<artifactsDir>/<class>/<method>/
@@ -615,8 +618,8 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Protocol | `contracts/protocol/src/test` | 5 classes | framing bounds, canonical JSON, negotiation/transcript, error taxonomy, selector validation, golden fixtures (every operation and error code) |
 | Execution engine | `device/driver/command-engine/src/test` | 23 | ordering, overload, cancel states, mutation gate, deadlines, watchdog, heartbeat, blob streaming, shutdown |
 | Host client | `host/core/src/test` | 17 + 6 | real handshake against `FakeDriverServer`: demux, cancel, ping/heartbeat, transport-loss classification, blob corruption; journal atomicity |
-| Kotlin client | `:clients:kotlin:sdk:test` | 8 (`TapClientTest`) | in-process grpc-kotlin fakes: attach ownership/lifetime, Close-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report |
-| JUnit extension | `:clients:kotlin:junit5:test` | 26 (`TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 5) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen), shutdown-vs-connection race, concurrent shares |
+| Kotlin client | `:clients:kotlin:sdk:test` | 27 (`TapClientTest`) | in-process grpc-kotlin fakes: attach ownership/lifetime, Close-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report |
+| JUnit extension | `:clients:kotlin:junit5:test` | 32 (`TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 11) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen, cancellation-safe ownership with NonCancellable state/rollback/gate transitions and original cancellation rethrown, explicit teardown-park hook with no timing, handshake cancellation for create/connect/shutdown with no leaks, create/connect suppression contents/order with exact-once resources), shutdown-vs-connection race, concurrent shares |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
 | Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay (host no-reboot, native image and Python smoke have passed; the 13-test 0.2.0-client device matrix is the remaining run) |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |

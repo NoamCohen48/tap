@@ -13,9 +13,11 @@ import com.company.tap.sdk.TapClient
 import io.grpc.ManagedChannel
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +25,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.yield
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -181,6 +182,7 @@ class TapConnectionTest {
             val events = CopyOnWriteArrayList<String>()
             val stopEntered = CompletableDeferred<Unit>()
             val allowStop = CompletableDeferred<Unit>()
+            val parkedOnTeardown = CompletableDeferred<Unit>()
             val connects = AtomicInteger(0)
             val connections =
                 TapConnectionState(
@@ -213,6 +215,9 @@ class TapConnectionTest {
                         client.connect("test").also { events.add("connect$n-done") }
                     },
                     onFirstClient = { },
+                    onTeardownPark = {
+                        if (!parkedOnTeardown.isCompleted) parkedOnTeardown.complete(Unit)
+                    },
                 )
             // Generation 1: client + connection, one owned start.
             connections.client()
@@ -229,9 +234,9 @@ class TapConnectionTest {
                 async {
                     connections.connection()
                 }
-            // Cooperative handoff only (no sleeps): a gated generation 2 parks on the
-            // teardown instead of starting its service or its attach.
-            repeat(8) { yield() }
+            // Explicit barrier, no timing: the hook proves generation 2 observed the
+            // teardown gate and is parked before the prior stop is released.
+            withTimeout(10_000) { parkedOnTeardown.await() }
             assertEquals(1, starts.get(), "generation 2 must not start until generation 1 stops: $events")
             assertEquals(1, connects.get(), "generation 2 must not connect until generation 1 stops: $events")
             assertFalse(next.isCompleted, "generation 2 stays parked while generation 1 stops")
@@ -293,6 +298,389 @@ class TapConnectionTest {
             connections.shutdown()
             assertEquals(2, starts.get())
             assertEquals(2, stops.get())
+        }
+
+    @Test
+    fun `cancelled create rolls back owned start and next client succeeds`() =
+        runBlocking {
+            val enteredCreate = CompletableDeferred<Unit>()
+            val clientCloses = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        if (createdClients.get() == 0) {
+                            createdClients.incrementAndGet()
+                            enteredCreate.complete(Unit)
+                            awaitCancellation()
+                            error("unreachable")
+                        } else {
+                            createdClients.incrementAndGet()
+                            val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                            channels.add(ch)
+                            TapClient("inprocess:$serverName", ch)
+                        }
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        client.close()
+                    },
+                )
+            val first = async { connections.client() }
+            withTimeout(10_000) { enteredCreate.await() }
+            first.cancel()
+            assertFailsWith<CancellationException> { first.await() }
+            assertEquals(1, starts.get(), "cancelled create had started its service")
+            assertEquals(1, stops.get(), "owned start rolled back exactly once under NonCancellable")
+            assertEquals(0, clientCloses.get(), "no client existed to close")
+            // Flight cleared and gate completed: the next client opens a fresh generation.
+            withTimeout(10_000) {
+                connections.client()
+            }
+            assertEquals(2, starts.get())
+            assertEquals(1, stops.get())
+            assertEquals(2, createdClients.get())
+            connections.shutdown()
+            assertEquals(2, stops.get(), "second generation stopped exactly once")
+            assertEquals(1, clientCloses.get(), "second generation client closed exactly once")
+        }
+
+    @Test
+    fun `create failure with stop failure suppresses stop into primary exactly once`() =
+        runBlocking {
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = {
+                        stops.incrementAndGet()
+                        throw IllegalStateException("stop-boom")
+                    },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        throw IllegalArgumentException("create-boom")
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                )
+            val failure = assertFailsWith<IllegalArgumentException> { connections.client() }
+            assertEquals("create-boom", failure.message)
+            assertEquals(1, failure.suppressed.size, "stop failure suppressed into create failure")
+            assertTrue(failure.suppressed[0] is IllegalStateException)
+            assertEquals("stop-boom", failure.suppressed[0].message)
+            assertEquals(1, starts.get())
+            assertEquals(1, stops.get(), "owned stop attempted exactly once")
+            // State stays usable: the next generation starts and stops cleanly.
+            val healthy =
+                TapConnectionState(
+                    manageService = { false },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                )
+            healthy.client()
+            healthy.shutdown()
+        }
+
+    @Test
+    fun `cancelled connect rolls back owned client and stop and next connection succeeds`() =
+        runBlocking {
+            val enteredConnect = CompletableDeferred<Unit>()
+            val clientCloses = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        if (createdConnections.get() == 0) {
+                            createdConnections.incrementAndGet()
+                            enteredConnect.complete(Unit)
+                            awaitCancellation()
+                            error("unreachable")
+                        } else {
+                            createdConnections.incrementAndGet()
+                            client.connect("test")
+                        }
+                    },
+                    onFirstClient = { },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        client.close()
+                    },
+                )
+            val first = async { connections.connection() }
+            withTimeout(10_000) { enteredConnect.await() }
+            first.cancel()
+            assertFailsWith<CancellationException> { first.await() }
+            assertEquals(1, starts.get(), "cancelled connect had started its service")
+            assertEquals(1, stops.get(), "owned stop rolled back exactly once under NonCancellable")
+            assertEquals(1, clientCloses.get(), "owned client closed exactly once under NonCancellable")
+            // The rolled-back generation completed its gate: the next connection opens fresh.
+            withTimeout(10_000) {
+                connections.connection()
+            }
+            assertEquals(2, starts.get())
+            assertEquals(1, stops.get())
+            assertEquals(2, createdClients.get(), "fresh generation recreates its client")
+            assertEquals(2, createdConnections.get())
+            connections.shutdown()
+            assertEquals(2, stops.get())
+            assertEquals(2, clientCloses.get())
+            // The cancelled attach never published a connection, so only the fresh generation
+            // has a Close RPC; both generations closed their clients exactly once above.
+            assertEquals(1, fakeConnections.closes.get(), "only the published connection has a Close RPC")
+        }
+
+    @Test
+    fun `connect failure with close and stop failures suppresses both in order exactly once`() =
+        runBlocking {
+            val clientCloses = AtomicInteger(0)
+            val closeOrder = CopyOnWriteArrayList<String>()
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = {
+                        stops.incrementAndGet()
+                        closeOrder.add("stop")
+                        throw IllegalStateException("stop-boom")
+                    },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = {
+                        createdConnections.incrementAndGet()
+                        throw IllegalArgumentException("connect-boom")
+                    },
+                    onFirstClient = { },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        closeOrder.add("close")
+                        // Close the real channel so nothing leaks, then fail to prove suppression.
+                        client.close()
+                        throw IllegalStateException("close-boom")
+                    },
+                )
+            val failure = assertFailsWith<IllegalArgumentException> { connections.connection() }
+            assertEquals("connect-boom", failure.message)
+            assertEquals(2, failure.suppressed.size, "close and stop failures suppressed into connect failure")
+            assertTrue(failure.suppressed[0] is IllegalStateException)
+            assertEquals("close-boom", failure.suppressed[0].message)
+            assertTrue(failure.suppressed[1] is IllegalStateException)
+            assertEquals("stop-boom", failure.suppressed[1].message)
+            assertEquals(listOf("close", "stop"), closeOrder.toList(), "close runs before stop, both attempted")
+            assertEquals(1, starts.get())
+            assertEquals(1, stops.get(), "owned stop attempted exactly once")
+            assertEquals(1, clientCloses.get(), "owned client close attempted exactly once")
+            // The failed generation completed its gate: the next connection reopens cleanly.
+            val healthy =
+                TapConnectionState(
+                    manageService = { false },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                )
+            healthy.connection()
+            healthy.shutdown()
+        }
+
+    @Test
+    fun `cancelled shutdown while owning teardown still completes gate and next shutdown succeeds`() =
+        runBlocking {
+            val stopEntered = CompletableDeferred<Unit>()
+            val allowStop = CompletableDeferred<Unit>()
+            val parkedOnTeardown = CompletableDeferred<Unit>()
+            val clientCloses = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = {
+                        val n = stops.incrementAndGet()
+                        if (n == 1) {
+                            stopEntered.complete(Unit)
+                            allowStop.await()
+                        }
+                    },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        client.close()
+                    },
+                    onTeardownPark = {
+                        if (!parkedOnTeardown.isCompleted) parkedOnTeardown.complete(Unit)
+                    },
+                )
+            // Generation 1 fully published with one owned start.
+            connections.client()
+            connections.connection()
+            assertEquals(1, starts.get())
+            val shutdown = async { connections.shutdown() }
+            withTimeout(10_000) { stopEntered.await() }
+            // A second-generation accessor parks on the teardown gate (hook proves it).
+            val waiter = async { connections.connection() }
+            withTimeout(10_000) { parkedOnTeardown.await() }
+            assertEquals(1, starts.get(), "parked waiter must not start before the owned stop")
+            // Cancel the shutdown while it owns the teardown gate; NonCancellable teardown
+            // must still run to completion before the original cancellation propagates.
+            shutdown.cancel()
+            assertFalse(shutdown.isCompleted, "owning shutdown stays in NonCancellable teardown after cancel")
+            allowStop.complete(Unit)
+            assertFailsWith<CancellationException> {
+                withTimeout(10_000) { shutdown.await() }
+            }
+            assertEquals(1, stops.get(), "owned stop completed exactly once despite cancellation")
+            assertEquals(1, clientCloses.get(), "owned client closed exactly once despite cancellation")
+            assertEquals(1, fakeConnections.closes.get(), "owned connection closed exactly once")
+            // Gate completed: the parked waiter proceeds to a fresh generation.
+            withTimeout(10_000) { waiter.await() }
+            assertEquals(2, starts.get(), "waiter opens generation 2 only after the prior stop")
+            connections.shutdown()
+            assertEquals(2, stops.get(), "second generation stopped exactly once")
+            assertEquals(2, clientCloses.get())
+            assertEquals(2, fakeConnections.closes.get())
+        }
+
+    @Test
+    fun `cancelled shutdown while awaiting creator still completes gate and shares next generation`() =
+        runBlocking {
+            val enteredCreate = CompletableDeferred<Unit>()
+            val allowCreate = CompletableDeferred<Unit>()
+            val parkedOnTeardown = CompletableDeferred<Unit>()
+            val clientCloses = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        if (createdClients.get() == 0) {
+                            createdClients.incrementAndGet()
+                            enteredCreate.complete(Unit)
+                            allowCreate.await()
+                            val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                            channels.add(ch)
+                            TapClient("inprocess:$serverName", ch)
+                        } else {
+                            createdClients.incrementAndGet()
+                            val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                            channels.add(ch)
+                            TapClient("inprocess:$serverName", ch)
+                        }
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        client.close()
+                    },
+                    onTeardownPark = {
+                        if (!parkedOnTeardown.isCompleted) parkedOnTeardown.complete(Unit)
+                    },
+                )
+            // Creator 1 owns the client flight and parks inside create after its owned start.
+            val creator1 = async { connections.client() }
+            withTimeout(10_000) { enteredCreate.await() }
+            // Shutdown installs its teardown gate and awaits creator 1; creator 2 proves the
+            // gate exists by parking on it (no timing assumptions).
+            val shutdown = async { connections.shutdown() }
+            val creator2 = async { connections.client() }
+            withTimeout(10_000) { parkedOnTeardown.await() }
+            // Cancel the shutdown while it awaits the creator flight: teardown must still
+            // complete under NonCancellable before the original cancellation propagates.
+            shutdown.cancel()
+            allowCreate.complete(Unit)
+            assertFailsWith<CancellationException> {
+                withTimeout(10_000) { shutdown.await() }
+            }
+            // Both creators share the single fresh generation (single-flight holds across the
+            // discard-and-retry); nothing leaks and the gate never stalls.
+            val firstClient = withTimeout(10_000) { creator1.await() }
+            val secondClient = withTimeout(10_000) { creator2.await() }
+            assertSame(firstClient, secondClient, "discard-and-retry shares one next generation")
+            assertEquals(2, starts.get(), "first start rolled back, second start published")
+            assertEquals(1, stops.get(), "stale start stopped exactly once")
+            assertEquals(1, clientCloses.get(), "stale client closed exactly once")
+            connections.shutdown()
+            assertEquals(2, stops.get())
+            assertEquals(2, clientCloses.get())
         }
 
     // --- Fakes ----------------------------------------------------------------------------------

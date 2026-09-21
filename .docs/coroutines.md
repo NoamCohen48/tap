@@ -308,14 +308,27 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    rewritten (`coroutineScope`/`async`, sibling-cancellation device assertion); guides, README
    and KDoc updated; `framework-gaps.md` rows removed with the proving tests; client line
    bumped to 0.2.0 (breaking, source-only — the wire is unchanged). Verified (worker, actual
-   Gradle XML): `:clients:kotlin:sdk:test` (8 `TapClientTest`), `:clients:kotlin:junit5:test`
-   (26: `TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 5),
+   Gradle XML): `:clients:kotlin:sdk:test` (27 `TapClientTest`), `:clients:kotlin:junit5:test`
+   (32: `TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 11),
    `:samples:fixture-tests:compileTestKotlin`, `:host:service:test`, `publishToMavenLocal`,
    plus Dokka for the SDK and JUnit modules. JUnit repair history: `aaca240` (interruption
    teardown, duplicate roles, Execute-backed sibling proof, connection generations, docs),
-   `4d8c416` (owned detached coroutine scope), `a9316c9` (Kotlin formatting), and the
-   managed-generation follow-up in this lane (teardown-gated generations with creation
-   rollback; commit hash added by the parent). Host `--no-reboot` validation, native image,
+   `4d8c416` (owned detached coroutine scope), `a9316c9` (Kotlin formatting), `eb1f3b7`
+   (teardown-gated generations with creation rollback), and the cancellation-ownership
+   follow-up in this lane (final hash recorded by the parent): every state clear, resource
+   rollback, gate/deferred completion and mutex transition after `clientFlight`,
+   `connectionFlight` or teardown ownership runs under `NonCancellable` with the original
+   cancellation rethrown; no never-completed deferreds/gates; `create`/`connect` failure or
+   cancellation with owned service/client closes the client and stops the owned service
+   independently with every cleanup failure suppressed into the primary; the managed-generation
+   test proves generation 2 is parked on the teardown gate via an explicit `onTeardownPark`
+   hook (no timing assumptions). `TapConnectionTest` now covers handshake cancellation for
+   `createClient`, `connectClient`, and shutdown while awaiting/owning flights (subsequent
+   client/connection/shutdown completes, no leaks), plus `create` failure + `stop` failure
+   and `connect` failure + `close` + `stop` suppression contents/order with exact-once
+   resources, preserving the ABA fix, sequential reopen, interruption teardown and service
+   accounting. Worker ran `:clients:kotlin:junit5:test` 3x green (32 names), SDK compile,
+   fixture compile, and Dokka. Host `--no-reboot` validation, native image,
    and Python smoke have passed; the remaining run is the new-client matrix:
    `:samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (13 tests including
    `siblingFailureCancelsWaitWithoutReplay`).
