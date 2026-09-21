@@ -21,16 +21,25 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -47,6 +56,7 @@ import kotlin.time.Duration.Companion.seconds
  * (or test-root) cancellation promptly cancels the gRPC call client-side. Closing is
  * `suspend` and drops `AutoCloseable`: callers use `try`/`finally` inside a coroutine.
  */
+
 /**
  * Advanced seam (tests, custom transports): a client over an existing channel.
  * Production callers use [TapClient] + [create].
@@ -58,8 +68,13 @@ class TapClient public constructor(
     /** Creates a client for [address] with its own channel. Performs no I/O. */
     constructor(address: String) : this(
         address,
-        ManagedChannelBuilder.forTarget(address).usePlaintext().maxInboundMessageSize(64 * 1024 * 1024).build(),
+        ManagedChannelBuilder
+            .forTarget(address)
+            .usePlaintext()
+            .maxInboundMessageSize(64 * 1024 * 1024)
+            .build(),
     )
+
     internal val connections = ConnectionServiceGrpcKt.ConnectionServiceCoroutineStub(channel)
     internal val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
     internal val sessions = SessionServiceGrpcKt.SessionServiceCoroutineStub(channel)
@@ -83,7 +98,9 @@ class TapClient public constructor(
     /**
      * Opens a [Connection] and attaches its liveness stream: if this process dies, the service
      * closes every session the connection opened. The attach stream is established before this
-     * returns, so every later `openDevice` belongs to a live connection.
+     * returns (the first `Attach` event is awaited), so every later `openDevice` belongs to a
+     * live connection. An empty stream or any failure before the first event fails the connect
+     * and closes the newly opened id under a bounded non-cancellable context.
      */
     suspend fun connect(name: String): Connection {
         val id =
@@ -93,18 +110,27 @@ class TapClient public constructor(
                     .open(OpenConnectionRequest.newBuilder().setName(name).build())
                     .connectionId
             }
-        return Connection(this, id).also { it.attach() }
+        val connection = Connection(this, id)
+        try {
+            connection.attach()
+        } catch (error: Throwable) {
+            throw error
+        }
+        return connection
     }
 
     /**
-     * Shuts the channel down. Runs under [kotlinx.coroutines.NonCancellable] with a bounded
-     * wait so teardown completes; close every [Connection] first.
+     * Shuts the channel down. Runs under [NonCancellable] with bounded waits so teardown
+     * completes even when the caller is cancelled: `shutdown`, a bounded await, then
+     * `shutdownNow` plus a second bounded await for forced termination.
+     * Close every [Connection] first.
      */
     suspend fun close() {
-        withContext(kotlinx.coroutines.NonCancellable) {
-            withContext(Dispatchers.IO) {
-                channel.shutdown()
-                if (!channel.awaitTermination(5, TimeUnit.SECONDS)) channel.shutdownNow()
+        withContext(NonCancellable + Dispatchers.IO) {
+            channel.shutdown()
+            if (!channel.awaitTermination(5, TimeUnit.SECONDS)) {
+                channel.shutdownNow()
+                channel.awaitTermination(5, TimeUnit.SECONDS)
             }
         }
     }
@@ -128,9 +154,20 @@ class TapClient public constructor(
  * Liveness is an explicitly owned [attachScope]: a `SupervisorJob + Dispatchers.IO` scope that
  * lives exactly as long as this connection. [attach] collects the server-streaming `Attach`
  * `Flow` in that scope and waits for the first event before returning, so the stream is
- * established before any `OpenSession`. When the scope is cancelled (or the process dies) the
- * service notices the dropped stream and closes every session of this connection. Never
- * `GlobalScope`: [close] sends `Close` first, then cancels and joins the collection.
+ * established before any `OpenSession`. When the scope is cancelled by [close] (or the process
+ * dies) the service notices the dropped stream and closes every session of this connection.
+ * Never `GlobalScope`: [close] sends `Close` first, then cancels and joins the collection.
+ *
+ * Lifecycle is linearized: exactly one `Attach` is ever started ([attach] fails on a second
+ * call); an empty stream or any failure before the first event fails the connect and closes
+ * the newly opened id under a bounded non-cancellable context. Any normal completion or
+ * failure of the stream *after* the first event is unexpected: the connection is atomically
+ * marked unusable (the terminal cause is retained, never swallowed), further [openDevice]
+ * calls and every admitted [Device] operation are rejected locally, and registered session
+ * handles are marked invalid. [close] is single-flight: concurrent and repeated callers share
+ * one `Close` RPC (60 s gRPC deadline, mapped) and one bounded non-cancellable teardown that
+ * cancels and joins the collector even for a stubborn (cancellation-ignoring) collector,
+ * preserving the primary `Close` failure and suppressing cleanup failures.
  */
 class Connection internal constructor(
     val client: TapClient,
@@ -138,44 +175,96 @@ class Connection internal constructor(
 ) {
     private val events = CopyOnWriteArrayList<String>()
     private val attachScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val stateMutex = Mutex()
     private var attachJob: Job? = null
+    private val attachStarted = AtomicBoolean(false)
+    private val established = AtomicBoolean(false)
+    private val unusable = AtomicBoolean(false)
+    private val unusableCause = AtomicReference<Throwable?>(null)
+    private val closeStarted = AtomicBoolean(false)
+    private var closeDeferred: CompletableDeferred<Unit>? = null
+    private val openDevices = CopyOnWriteArrayList<Device>()
 
     /** Messages the service sent on the liveness stream so far (diagnostics). */
     val recentEvents: List<String> get() = events.toList()
 
+    /** True once the stream terminated unexpectedly after establishment (or was never usable). */
+    val isInvalid: Boolean get() = unusable.get()
+
     internal suspend fun attach() {
-        val request = AttachRequest.newBuilder().setConnectionId(id).build()
-        val flow = client.connections.attach(request)
-        val established = CompletableDeferred<Unit>()
-        attachJob =
+        if (!attachStarted.compareAndSet(false, true)) {
+            throw TapUsageException("Connection($id).attach must run exactly once")
+        }
+        val flow: Flow<ConnectionEvent>
+        try {
+            flow = client.connections.attach(AttachRequest.newBuilder().setConnectionId(id).build())
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            closeIdBestEffort(error)
+            val toThrow: Throwable =
+                try {
+                    mapped<Unit> { throw error }
+                    error
+                } catch (mappedError: Throwable) {
+                    mappedError
+                }
+            throw toThrow
+        }
+        val firstEvent = CompletableDeferred<Unit>()
+        val job =
             attachScope.launch {
+                var sawFirst = false
                 try {
                     flow.collect { event: ConnectionEvent ->
                         events.add(event.message)
                         if (events.size > 200) events.removeAt(0)
-                        if (!established.isCompleted) established.complete(Unit)
+                        sawFirst = true
+                        if (!firstEvent.isCompleted) firstEvent.complete(Unit)
                     }
-                    if (!established.isCompleted) established.complete(Unit)
+                    if (!sawFirst) {
+                        val empty = TapException("connection $id attach completed without emitting (empty stream)")
+                        if (!firstEvent.isCompleted) {
+                            firstEvent.completeExceptionally(empty)
+                        } else {
+                            markUnusable(empty)
+                        }
+                    } else {
+                        markUnusable(TapException("connection $id attach stream ended unexpectedly after establishment"))
+                    }
                 } catch (cancelled: CancellationException) {
-                    if (!established.isCompleted) established.completeExceptionally(cancelled)
+                    if (!firstEvent.isCompleted) {
+                        firstEvent.completeExceptionally(cancelled)
+                    } else if (!closeStarted.get()) {
+                        markUnusable(cancelled)
+                    }
                     throw cancelled
                 } catch (error: Throwable) {
-                    if (!established.isCompleted) established.completeExceptionally(error)
+                    if (!firstEvent.isCompleted) {
+                        firstEvent.completeExceptionally(error)
+                    } else {
+                        markUnusable(error)
+                    }
                 }
             }
+        stateMutex.withLock { attachJob = job }
         try {
-            withTimeout(30_000) { established.await() }
-        } catch (cancelled: CancellationException) {
-            attachJob?.cancelAndJoin()
-            throw cancelled
-        } catch (error: Throwable) {
-            attachJob?.cancelAndJoin()
-            val toThrow: Throwable = try {
-                mapped<Unit> { throw error }
-                error
-            } catch (mappedError: Throwable) {
-                mappedError
+            withTimeout(30_000) { firstEvent.await() }
+            established.set(true)
+        } catch (setupFailure: Throwable) {
+            boundedCancelJoin(job)
+            if (setupFailure is CancellationException) {
+                // Caller cancelled (or timed out) before establishment: still release the id.
+                closeIdBestEffort(setupFailure)
+                throw setupFailure
             }
+            closeIdBestEffort(setupFailure)
+            val toThrow: Throwable =
+                try {
+                    mapped<Unit> { throw setupFailure }
+                    setupFailure
+                } catch (mappedError: Throwable) {
+                    mappedError
+                }
             throw toThrow
         }
     }
@@ -195,36 +284,152 @@ class Connection internal constructor(
     /**
      * Open a driver session on [serial] for [autPackage]. The session holds the device's
      * per-serial lock until [Device.close]; if another session holds it, the open fails with
-     * [DeviceBusyException] — at once, or after [DeviceOptions.waitForDevice].
+     * [DeviceBusyException] — at once, or after [DeviceOptions.waitForDevice]. Rejected locally
+     * without an RPC once the connection is closed or its liveness stream ended unexpectedly.
      */
     suspend fun openDevice(
         serial: String,
         autPackage: String,
         timeouts: Timeouts = Timeouts(),
         options: DeviceOptions = DeviceOptions(),
-    ): Device = Device.open(this, serial, autPackage, timeouts, options)
+    ): Device {
+        ensureUsable("Device.open")
+        val device = Device.open(this, serial, autPackage, timeouts, options)
+        openDevices.add(device)
+        // A concurrent invalidation between the gate above and registration must still surface.
+        unusableCause.get()?.let { device.markConnectionInvalid(it) }
+        return device
+    }
 
     /**
      * Closes explicitly (recorded as a client request), then drops the liveness stream.
-     * Sends `Close` under a bounded non-cancellable context first so an explicit close is
-     * recorded even when the caller is cancelled; then cancels and joins the attach
-     * collection. If the attach already dropped, the service has closed the sessions and
-     * `Close` may report unknown-connection (mapped, still cleans up the scope).
+     * Single-flight and idempotent: concurrent and repeated callers share the same `Close` RPC
+     * (60 s gRPC deadline, mapped) and the same result — every caller returns, or rethrows the
+     * same primary failure. The RPC runs first under a bounded non-cancellable context so an
+     * explicit close is recorded even when the caller is cancelled; teardown then cancels and
+     * joins the attach collection under a second bound (stubborn collectors time out, the scope
+     * is still cancelled), preserving the primary failure and suppressing cleanup failures.
+     * If the attach already dropped, the service has closed the sessions and `Close` may report
+     * unknown-connection (mapped); the scope is still cleaned up exactly once.
      */
     suspend fun close() {
+        val deferred: CompletableDeferred<Unit>
+        val isOwner: Boolean
+        withContext(NonCancellable) {
+            stateMutex.withLock {
+                val existing = closeDeferred
+                if (existing != null) {
+                    deferred = existing
+                    isOwner = false
+                } else {
+                    deferred = CompletableDeferred()
+                    closeDeferred = deferred
+                    isOwner = true
+                }
+            }
+        }
+        if (!isOwner) {
+            withContext(NonCancellable) { deferred.await() }
+            return
+        }
+        closeStarted.set(true)
         try {
-            withContext(kotlinx.coroutines.NonCancellable) {
+            withContext(NonCancellable) {
                 withTimeout(60_000) {
                     mapped {
-                        client.connections.close(
-                            CloseConnectionRequest.newBuilder().setConnectionId(id).build(),
-                        )
+                        client.connections
+                            .withDeadlineAfter(60, TimeUnit.SECONDS)
+                            .close(CloseConnectionRequest.newBuilder().setConnectionId(id).build())
                     }
                 }
             }
+            deferred.complete(Unit)
+        } catch (primary: Throwable) {
+            deferred.completeExceptionally(primary)
+            throw primary
         } finally {
-            attachJob?.cancelAndJoin()
-            attachScope.cancel()
+            try {
+                withContext(NonCancellable) {
+                    withTimeoutOrNull(5_000) {
+                        val job = stateMutex.withLock { attachJob }
+                        try {
+                            job?.cancelAndJoin()
+                        } catch (_: Throwable) {
+                        }
+                        try {
+                            attachScope.cancel()
+                        } catch (_: Throwable) {
+                        }
+                    } ?: run {
+                        // Bound hit with a stubborn collector: the scope cancel above may not have
+                        // run, so cancel it outside the timed block (never fails the close).
+                        runCatching { attachScope.cancel() }
+                    }
+                }
+            } catch (_: Throwable) {
+                // Teardown never masks the primary Close outcome; the deferred already carries it.
+            }
+        }
+    }
+
+    /** Throws when this connection can no longer admit work. */
+    internal fun ensureUsable(operation: String) {
+        if (closeStarted.get()) {
+            throw TapUsageException("Connection($id) is closed; $operation rejected")
+        }
+        unusableCause.get()?.let { cause ->
+            throw ServiceException(
+                "UNAVAILABLE",
+                "connection $id liveness stream ended; $operation rejected (${cause.message})",
+                cause,
+            )
+        }
+        if (unusable.get()) {
+            throw ServiceException("UNAVAILABLE", "connection $id liveness stream ended; $operation rejected")
+        }
+    }
+
+    private fun markUnusable(cause: Throwable) {
+        if (unusable.compareAndSet(false, true)) {
+            unusableCause.compareAndSet(null, cause)
+            openDevices.forEach { it.markConnectionInvalid(cause) }
+        }
+    }
+
+    internal fun register(device: Device) {
+        openDevices.add(device)
+    }
+
+    private suspend fun boundedCancelJoin(job: Job) {
+        withContext(NonCancellable) {
+            withTimeoutOrNull(5_000) {
+                runCatching { job.cancelAndJoin() }
+            }
+            if (job.isActive) runCatching { attachScope.cancel() }
+        }
+    }
+
+    private suspend fun closeIdBestEffort(setupFailure: Throwable) {
+        withContext(NonCancellable) {
+            val closeError =
+                withTimeoutOrNull(10_000) {
+                    runCatching {
+                        mapped {
+                            client.connections
+                                .withDeadlineAfter(60, TimeUnit.SECONDS)
+                                .close(CloseConnectionRequest.newBuilder().setConnectionId(id).build())
+                        }
+                    }.exceptionOrNull()
+                }
+            if (closeError != null) runCatching { setupFailure.addSuppressed(closeError) }
+        }
+        withContext(NonCancellable) {
+            withTimeoutOrNull(5_000) {
+                runCatching {
+                    stateMutex.withLock { attachJob }?.cancelAndJoin()
+                }
+                runCatching { attachScope.cancel() }
+            } ?: runCatching { attachScope.cancel() }
         }
     }
 }
@@ -292,8 +497,9 @@ object ServiceDiscovery {
         } catch (_: Exception) {
             false
         } finally {
-            withContext(Dispatchers.IO) {
+            withContext(NonCancellable + Dispatchers.IO) {
                 channel.shutdownNow()
+                channel.awaitTermination(2, TimeUnit.SECONDS)
             }
         }
     }
@@ -305,6 +511,9 @@ object ServiceDiscovery {
  * service; it picks the port, detaches the process and waits for `Info` to answer.
  */
 object TapServiceProcess {
+    /** Test seam (same-module fakes): replaces process creation. Null means `ProcessBuilder`. */
+    internal var processStarter: ((List<String>) -> Process)? = null
+
     /** [address] of the service and whether this call [started] it (false = it was already running). */
     data class StartResult(
         val address: String,
@@ -315,7 +524,7 @@ object TapServiceProcess {
      * Starts a service in the background unless one is already running in [stateDir]. Extra
      * `tap serve` options (`--adb PATH`) go in [options]. Runs the executable on
      * `Dispatchers.IO` with a bounded wait; the calling coroutine stays cancellable while
-     * waiting.
+     * waiting (polling with `delay`, so cancellation destroys the process promptly).
      */
     suspend fun start(
         binary: String? = null,
@@ -348,14 +557,17 @@ object TapServiceProcess {
             val executable =
                 binary ?: ServiceDiscovery.findBinary()
                     ?: throw TapException("no `tap` executable found (set tap.bin / TAP_BIN or add it to PATH)")
-            val process = ProcessBuilder(listOf(executable) + args).redirectErrorStream(true).start()
+            val command = listOf(executable) + args
+            val starter = processStarter
+            val process =
+                starter?.invoke(command)
+                    ?: ProcessBuilder(command).redirectErrorStream(true).start()
             process.outputStream.close()
-            val reader = process.inputStream.bufferedReader()
             val outputDeferred = CompletableDeferred<String>()
             val drain =
                 Thread {
                     try {
-                        outputDeferred.complete(reader.readText())
+                        outputDeferred.complete(process.inputStream.bufferedReader().readText())
                     } catch (error: Throwable) {
                         outputDeferred.completeExceptionally(error)
                     }
@@ -364,21 +576,32 @@ object TapServiceProcess {
                     it.start()
                 }
             try {
-                val finished = process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
-                if (!finished) {
-                    process.destroyForcibly()
-                    throw TapException("`tap ${args.first()}` did not finish within $timeout")
+                withTimeout(timeout) {
+                    while (process.isAlive) delay(20)
                 }
-                val output = outputDeferred.await()
+                val output =
+                    withTimeoutOrNull(5_000) { outputDeferred.await() }
+                        ?: throw TapException("`tap ${args.first()}` output drain timed out")
                 drain.join(1_000)
-                if (process.exitValue() !=
-                    0
-                ) {
+                if (process.exitValue() != 0) {
                     throw TapException("`tap ${args.first()}` failed (exit ${process.exitValue()}): ${output.trim()}")
                 }
                 output
+            } catch (timeoutFailure: TimeoutCancellationException) {
+                withContext(NonCancellable) {
+                    runCatching { process.destroyForcibly() }
+                    withTimeoutOrNull(5_000) {
+                        while (process.isAlive) delay(20)
+                    }
+                }
+                throw TapException("`tap ${args.first()}` did not finish within $timeout")
             } catch (cancelled: CancellationException) {
-                process.destroyForcibly()
+                withContext(NonCancellable) {
+                    runCatching { process.destroyForcibly() }
+                    withTimeoutOrNull(5_000) {
+                        while (process.isAlive) delay(20)
+                    }
+                }
                 throw cancelled
             }
         }

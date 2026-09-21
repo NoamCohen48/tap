@@ -15,11 +15,16 @@ import com.company.tap.api.v1.ScreenshotRequest
 import com.company.tap.api.v1.StabilitySignal
 import com.company.tap.api.v1.WaitAppVisible
 import com.company.tap.api.v1.WaitScreenStable
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -62,6 +67,17 @@ data class DeviceOptions(
  * construction ([open]) does too. Closing is `suspend` (no `AutoCloseable`): callers use
  * `try`/`finally` inside the scope. Per-call `withDeadlineAfter` is still applied
  * server-side; caller cancellation promptly cancels the gRPC call client-side.
+ *
+ * Command admission is linearized with [close]: each operation is admitted under a short lock
+ * (closed/invalidated gates checked at admission, an in-flight counter incremented), runs its
+ * RPC without holding the lock, then releases the counter in a cancellation-safe `finally`.
+ * Admission is reentrant by counting, so compound helpers ([awaitUntil], `ElementWait`,
+ * `App` calls that fan back into [execute]) never deadlock. Once [closeAndReport] starts,
+ * new operations are rejected locally with [TapUsageException] and the connection-invalid
+ * gate ([ServiceException] `UNAVAILABLE`) applies at the same admission point; admitted
+ * operations finish before the single `Session Close` RPC (120 s gRPC deadline, mapped).
+ * Concurrent and duplicate closes share one RPC and one result, including the quarantine
+ * detail.
  */
 class Device internal constructor(
     val connection: Connection,
@@ -73,9 +89,16 @@ class Device internal constructor(
     val timeouts: Timeouts,
 ) {
     private val client get() = connection.client
+    private val stateMutex = Mutex()
+    private var activeOps = 0
+    private var drain: CompletableDeferred<Unit>? = null
+    private val closeStarted = AtomicBoolean(false)
+    private var closeDeferred: CompletableDeferred<String?>? = null
+    private val connectionInvalid = AtomicBoolean(false)
+    private val connectionInvalidCause = AtomicReference<Throwable?>(null)
 
-    @Volatile
-    private var closed = false
+    /** True once [closeAndReport] started (new operations are rejected locally). */
+    val isClosed: Boolean get() = closeStarted.get()
 
     // --- Raw protocol escape hatch ----------------------------------------------------------------
 
@@ -88,22 +111,24 @@ class Device internal constructor(
         build: Command.Builder.() -> Unit,
     ): CommandResult {
         ensureTapBound("Device.execute")
-        val command =
-            Command
-                .newBuilder()
-                .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
-                .apply(build)
-                .build()
-        return mapped(serial) {
-            client.sessions
-                .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                .execute(
-                    ExecuteRequest
-                        .newBuilder()
-                        .setSessionId(sessionId)
-                        .setCommand(command)
-                        .build(),
-                )
+        return admitted("Device.execute") {
+            val command =
+                Command
+                    .newBuilder()
+                    .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
+                    .apply(build)
+                    .build()
+            mapped(serial) {
+                client.sessions
+                    .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
+                    .execute(
+                        ExecuteRequest
+                            .newBuilder()
+                            .setSessionId(sessionId)
+                            .setCommand(command)
+                            .build(),
+                    )
+            }
         }
     }
 
@@ -114,10 +139,32 @@ class Device internal constructor(
         build: Command.Builder.() -> Unit,
     ): CommandResult {
         ensureTapBound("Device.executeOrThrow")
-        val command = Command.newBuilder().apply(build).build()
-        val result = execute(timeout) { mergeFrom(command) }
-        if (result.hasError()) throw CommandException(result, command.opCase.name.lowercase(), serial, selector?.render())
-        return result
+        return admitted("Device.executeOrThrow") {
+            val command = Command.newBuilder().apply(build).build()
+            // Build the wire command inline (instead of calling execute()) so admission is
+            // counted once per terminal RPC; nested admission would also be correct (counting
+            // is reentrant) but a single count keeps close-drain accounting exact.
+            val wire =
+                Command
+                    .newBuilder()
+                    .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
+                    .mergeFrom(command)
+                    .build()
+            val result =
+                mapped(serial) {
+                    client.sessions
+                        .withDeadlineAfter(wire.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
+                        .execute(
+                            ExecuteRequest
+                                .newBuilder()
+                                .setSessionId(sessionId)
+                                .setCommand(wire)
+                                .build(),
+                        )
+                }
+            if (result.hasError()) throw CommandException(result, "execute", serial, selector?.render())
+            result
+        }
     }
 
     // --- Elements and waits -------------------------------------------------------------------------
@@ -151,17 +198,19 @@ class Device internal constructor(
     /** PNG bytes, verified against the driver's checksum. */
     suspend fun screenshot(timeout: Duration = timeouts.lifecycle): ByteArray {
         ensureTapBound("Device.screenshot")
-        return mapped(serial) {
-            client.sessions
-                .withDeadlineAfter(timeout.inWholeMilliseconds + 60_000, TimeUnit.MILLISECONDS)
-                .screenshot(
-                    ScreenshotRequest
-                        .newBuilder()
-                        .setSessionId(sessionId)
-                        .setTimeoutMs(timeout.inWholeMilliseconds)
-                        .build(),
-                ).png
-                .toByteArray()
+        return admitted("Device.screenshot") {
+            mapped(serial) {
+                client.sessions
+                    .withDeadlineAfter(timeout.inWholeMilliseconds + 60_000, TimeUnit.MILLISECONDS)
+                    .screenshot(
+                        ScreenshotRequest
+                            .newBuilder()
+                            .setSessionId(sessionId)
+                            .setTimeoutMs(timeout.inWholeMilliseconds)
+                            .build(),
+                    ).png
+                    .toByteArray()
+            }
         }
     }
 
@@ -172,11 +221,13 @@ class Device internal constructor(
     /** The driver instrumentation's recent output lines. */
     suspend fun driverLog(): List<String> {
         ensureTapBound("Device.driverLog")
-        return mapped(serial) {
-            client.sessions
-                .withDeadlineAfter(30, TimeUnit.SECONDS)
-                .driverLog(DriverLogRequest.newBuilder().setSessionId(sessionId).build())
-                .linesList
+        return admitted("Device.driverLog") {
+            mapped(serial) {
+                client.sessions
+                    .withDeadlineAfter(30, TimeUnit.SECONDS)
+                    .driverLog(DriverLogRequest.newBuilder().setSessionId(sessionId).build())
+                    .linesList
+            }
         }
     }
 
@@ -185,15 +236,35 @@ class Device internal constructor(
         packageName: String = autPackage,
         timeout: Duration = timeouts.wait,
     ) {
-        val result = execute(timeout) { waitAppVisible = WaitAppVisible.newBuilder().setPackageName(packageName).build() }
-        if (result.hasError()) {
-            throw WaitTimeoutException(
-                "package $packageName to be in the foreground",
-                serial,
-                result.durationMs,
-                0,
-                "currentPackage=${runCatching { info().currentPackage }.getOrNull()}",
-            )
+        ensureTapBound("Device.awaitAppVisible")
+        admitted("Device.awaitAppVisible") {
+            val command =
+                Command
+                    .newBuilder()
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .setWaitAppVisible(WaitAppVisible.newBuilder().setPackageName(packageName).build())
+                    .build()
+            val result =
+                mapped(serial) {
+                    client.sessions
+                        .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
+                        .execute(
+                            ExecuteRequest
+                                .newBuilder()
+                                .setSessionId(sessionId)
+                                .setCommand(command)
+                                .build(),
+                        )
+                }
+            if (result.hasError()) {
+                throw WaitTimeoutException(
+                    "package $packageName to be in the foreground",
+                    serial,
+                    result.durationMs,
+                    0,
+                    "currentPackage=${runCatching { infoInner() }.getOrNull()?.currentPackage}",
+                )
+            }
         }
     }
 
@@ -212,30 +283,47 @@ class Device internal constructor(
         packageName: String = autPackage,
         signal: StabilitySignal = StabilitySignal.STABILITY_ALL,
     ) {
-        val result =
-            execute(timeout) {
-                waitScreenStable =
-                    WaitScreenStable
-                        .newBuilder()
-                        .setPackageName(packageName)
-                        .setStableForMs(stableFor.inWholeMilliseconds)
-                        .setSignal(signal)
-                        .build()
-            }
-        if (result.hasError()) {
-            val what =
-                when (signal) {
-                    StabilitySignal.STABILITY_TREE -> "hierarchy"
-                    StabilitySignal.STABILITY_PIXELS -> "pixels"
-                    else -> "screen"
+        ensureTapBound("Device.awaitScreenStable")
+        admitted("Device.awaitScreenStable") {
+            val command =
+                Command
+                    .newBuilder()
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .setWaitScreenStable(
+                        WaitScreenStable
+                            .newBuilder()
+                            .setPackageName(packageName)
+                            .setStableForMs(stableFor.inWholeMilliseconds)
+                            .setSignal(signal)
+                            .build(),
+                    ).build()
+            val result =
+                mapped(serial) {
+                    client.sessions
+                        .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
+                        .execute(
+                            ExecuteRequest
+                                .newBuilder()
+                                .setSessionId(sessionId)
+                                .setCommand(command)
+                                .build(),
+                        )
                 }
-            throw WaitTimeoutException(
-                "the $packageName $what to stay unchanged for $stableFor",
-                serial,
-                result.durationMs,
-                0,
-                if (result.error.hasDetail()) result.error.detail else null,
-            )
+            if (result.hasError()) {
+                val what =
+                    when (signal) {
+                        StabilitySignal.STABILITY_TREE -> "hierarchy"
+                        StabilitySignal.STABILITY_PIXELS -> "pixels"
+                        else -> "screen"
+                    }
+                throw WaitTimeoutException(
+                    "the $packageName $what to stay unchanged for $stableFor",
+                    serial,
+                    result.durationMs,
+                    0,
+                    if (result.error.hasDetail()) result.error.detail else null,
+                )
+            }
         }
     }
 
@@ -264,6 +352,9 @@ class Device internal constructor(
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,
      * backend state). Prefer [await] for UI conditions: it polls on the device in one RPC.
      * Uses [delay], so test-root cancellation and sibling failure cancel the poll promptly.
+     * Admitted like any command, so [closeAndReport] waits for an in-flight poll and rejects
+     * new polls once close starts; the [condition] runs inside the admission (reentrant), so
+     * device helpers called from it do not deadlock.
      */
     suspend fun awaitUntil(
         description: String,
@@ -273,45 +364,78 @@ class Device internal constructor(
         condition: suspend () -> Boolean,
     ) {
         ensureTapBound("Device.awaitUntil")
-        val started = System.nanoTime()
-        val deadline = started + timeout.inWholeNanoseconds
-        var polls = 0
-        while (true) {
-            polls++
-            if (condition()) return
-            if (System.nanoTime() >= deadline) {
-                throw WaitTimeoutException(
-                    description,
-                    serial,
-                    (System.nanoTime() - started) / 1_000_000,
-                    polls,
-                    runCatching { observe() }.getOrNull(),
-                )
+        admitted("Device.awaitUntil") {
+            val started = System.nanoTime()
+            val deadline = started + timeout.inWholeNanoseconds
+            var polls = 0
+            while (true) {
+                polls++
+                if (condition()) return@admitted
+                if (System.nanoTime() >= deadline) {
+                    throw WaitTimeoutException(
+                        description,
+                        serial,
+                        (System.nanoTime() - started) / 1_000_000,
+                        polls,
+                        runCatching { observe() }.getOrNull(),
+                    )
+                }
+                delay(pollInterval)
             }
-            delay(pollInterval)
         }
     }
 
     /**
      * Closes the session. Returns the quarantine detail when the device could not be left
-     * clean (the pool keeps it out of circulation), else null. Runs the `Close` RPC under a
-     * bounded non-cancellable context so teardown completes even when the caller is cancelled;
-     * the primary failure (if any) is the caller's to preserve — this method only reports the
-     * session outcome.
+     * clean (the pool keeps it out of circulation), else null. Single-flight: concurrent and
+     * duplicate callers share one `Session Close` RPC (120 s gRPC deadline, mapped) and one
+     * result, including the quarantine detail. Admitted operations finish before the RPC;
+     * operations starting after close began are rejected locally. Runs under a bounded
+     * non-cancellable context so teardown completes even when the caller is cancelled; the
+     * primary failure (if any) is the shared result — this method only reports the session
+     * outcome.
      */
     suspend fun closeAndReport(): String? {
         ensureTapBound("Device.close")
-        if (closed) return null
-        closed = true
-        val response =
-            withContext(NonCancellable) {
-                withTimeout(120_000) {
-                    mapped(serial) {
-                        client.sessions.close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
-                    }
+        val deferred: CompletableDeferred<String?>
+        val isOwner: Boolean
+        withContext(NonCancellable) {
+            stateMutex.withLock {
+                val existing = closeDeferred
+                if (existing != null) {
+                    deferred = existing
+                    isOwner = false
+                } else {
+                    deferred = CompletableDeferred()
+                    closeDeferred = deferred
+                    closeStarted.set(true)
+                    if (activeOps > 0) drain = CompletableDeferred()
+                    isOwner = true
                 }
             }
-        return if (response.clean) null else response.detail
+        }
+        if (!isOwner) {
+            return withContext(NonCancellable) { deferred.await() }
+        }
+        return withContext(NonCancellable) {
+            try {
+                stateMutex.withLock { drain }?.await()
+                val response =
+                    withTimeout(120_000) {
+                        mapped(serial) {
+                            client.sessions
+                                .withDeadlineAfter(120, TimeUnit.SECONDS)
+                                .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
+                        }
+                    }
+                val detail = if (response.clean) null else response.detail
+                deferred.complete(detail)
+                detail
+            } catch (primary: Throwable) {
+                deferred.completeExceptionally(primary)
+                throw primary
+            }
+        }
     }
 
     /** [closeAndReport] that fails when the device was quarantined. */
@@ -320,6 +444,88 @@ class Device internal constructor(
     }
 
     override fun toString(): String = "Device($serial, generation=$generation)"
+
+    /**
+     * Admits one operation: rejects locally when close started ([TapUsageException]) or the
+     * connection liveness stream ended ([ServiceException] `UNAVAILABLE`, including a device
+     * copy of the cause so handles reflect invalidation), then counts the operation until
+     * [block] finishes. Counting (never holding the lock across the RPC) keeps compound
+     * helpers reentrant: [awaitUntil] conditions, `Element`/`ElementWait` terminal calls and
+     * [App] calls that fan back into device helpers admit again without deadlock. Release is
+     * cancellation-safe and wakes a closing waiter when the last admitted operation leaves.
+     */
+    internal suspend fun <T> admitted(
+        operation: String,
+        block: suspend () -> T,
+    ): T {
+        stateMutex.withLock {
+            if (closeStarted.get()) {
+                throw TapUsageException("Device($serial) is closed; $operation rejected")
+            }
+            connectionInvalidCause.get()?.let { cause ->
+                throw ServiceException(
+                    "UNAVAILABLE",
+                    "connection ${connection.id} liveness stream ended; $operation on $serial rejected (${cause.message})",
+                    cause,
+                )
+            }
+            if (connectionInvalid.get()) {
+                throw ServiceException(
+                    "UNAVAILABLE",
+                    "connection ${connection.id} liveness stream ended; $operation on $serial rejected",
+                )
+            }
+            try {
+                connection.ensureUsable(operation)
+            } catch (invalid: ServiceException) {
+                markConnectionInvalid(invalid.cause ?: invalid)
+                throw invalid
+            }
+            activeOps++
+        }
+        try {
+            return block()
+        } finally {
+            withContext(NonCancellable) {
+                stateMutex.withLock {
+                    activeOps--
+                    if (closeStarted.get() && activeOps == 0) {
+                        drain?.complete(Unit)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Marks this handle invalid after the connection liveness stream ended unexpectedly. */
+    internal fun markConnectionInvalid(cause: Throwable) {
+        connectionInvalid.set(true)
+        connectionInvalidCause.compareAndSet(null, cause)
+    }
+
+    /** `info()` without re-entering admission (for use inside an already-admitted block). */
+    private suspend fun infoInner(): DeviceInfo {
+        val command =
+            Command
+                .newBuilder()
+                .setTimeoutMs(timeouts.action.inWholeMilliseconds)
+                .setDeviceInfo(DeviceInfoQuery.getDefaultInstance())
+                .build()
+        val result =
+            mapped(serial) {
+                client.sessions
+                    .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
+                    .execute(
+                        ExecuteRequest
+                            .newBuilder()
+                            .setSessionId(sessionId)
+                            .setCommand(command)
+                            .build(),
+                    )
+            }
+        if (result.hasError()) throw CommandException(result, "info", serial, null)
+        return result.deviceInfo
+    }
 
     companion object {
         internal suspend fun open(
@@ -330,6 +536,7 @@ class Device internal constructor(
             options: DeviceOptions,
         ): Device {
             ensureTapBound("Device.open")
+            connection.ensureUsable("Device.open")
             val request =
                 OpenSessionRequest
                     .newBuilder()

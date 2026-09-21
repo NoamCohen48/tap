@@ -25,6 +25,9 @@ data class ProcessIdentity(
  * All I/O methods are `suspend` and require an owning scope (`tapScope`/`tapTest`); the
  * constructor ([Device.app]) only binds values, so it stays non-suspend. Per-call
  * `withDeadlineAfter` is applied server-side; caller cancellation promptly cancels the RPC.
+ * Every call is admitted through the device's command gate, so a started [Device.close]
+ * or an invalidated connection rejects it locally and an in-flight call delays the session
+ * close.
  */
 class App internal constructor(
     val device: Device,
@@ -45,8 +48,10 @@ class App internal constructor(
         block: suspend (com.company.tap.api.v1.AppServiceGrpcKt.AppServiceCoroutineStub) -> T,
     ): T {
         ensureTapBound("App.$packageName")
-        return mapped(device.serial) {
-            block(apps.withDeadlineAfter(((timeout ?: device.timeouts.lifecycle) + 60.seconds).inWholeMilliseconds, TimeUnit.MILLISECONDS))
+        return device.admitted("App.$packageName") {
+            mapped(device.serial) {
+                block(apps.withDeadlineAfter(((timeout ?: device.timeouts.lifecycle) + 60.seconds).inWholeMilliseconds, TimeUnit.MILLISECONDS))
+            }
         }
     }
 
