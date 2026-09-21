@@ -20,11 +20,14 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
 /** Explicit total budget for the shutdown hook before `server.awaitTermination`. */
 const val SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS = SERVICE_SHUTDOWN_TOTAL_MS
+
+private const val STOP_SLACK_MS = 5_000L
 
 /**
  * `tap start  [--port N] [--state-dir DIR] [--adb PATH]` — start in the background
@@ -123,9 +126,8 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
         // past the advertised hook budget: TapService.close receives only the remaining budget and
         // itself returns within it (on exhaustion it detaches all remaining state and launches
         // every remaining cleanup fire-and-forget on its own scope, without serially awaiting),
-        // then awaitTermination receives only what is still remaining. Core cleanup is deliberately
-        // NonCancellable, but the service-side bound holds regardless, and detached cleanups keep
-        // their own core deadline so they can still journal quarantine and release the lease.
+        // then awaitTermination receives only what is still remaining. Detached cleanups are best
+        // effort and may be cut short by process exit; next open recovers a non-terminal journal.
         val shutdownDeadlineNanos = System.nanoTime() + SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS * 1_000_000L
         runBlocking {
             runCatching { service.close(remainingShutdownMs(shutdownDeadlineNanos)) }
@@ -133,7 +135,10 @@ private fun serve(options: Map<String, String>, stateDir: Path) {
         }
         val grpcTerminationMs = remainingShutdownMs(shutdownDeadlineNanos)
         if (grpcTerminationMs > 0L) server.awaitTermination(grpcTerminationMs, TimeUnit.MILLISECONDS)
-        if (!server.isTerminated) log("shutdown budget ${SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS}ms exceeded; forcing process exit")
+        if (!server.isTerminated) {
+            server.shutdownNow()
+            log("shutdown budget ${SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS}ms exceeded; forcing process exit")
+        }
         runCatching { Files.deleteIfExists(descriptor) }
     })
     server.awaitTermination()
@@ -242,7 +247,12 @@ private fun stop(stateDir: Path) {
         return
     }
     handle.destroy()
-    handle.onExit().get(15, TimeUnit.SECONDS)
+    try {
+        handle.onExit().get(SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS + STOP_SLACK_MS, TimeUnit.MILLISECONDS)
+    } catch (_: TimeoutException) {
+        System.err.println("service pid $pid still shutting down after ${SERVICE_SHUTDOWN_HOOK_TIMEOUT_MS}ms; leaving $descriptor")
+        exitProcess(1)
+    }
     Files.deleteIfExists(descriptor)
     println("stopped service pid $pid")
 }

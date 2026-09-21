@@ -66,6 +66,7 @@ private class FakeDevice(
     val closeCalls = AtomicInteger(0)
     val closeEntered = Channel<Unit>(Channel.UNLIMITED)
     val closeCompleted = CompletableDeferred<Unit>()
+    val closeTimeouts = java.util.concurrent.CopyOnWriteArrayList<Long>()
     override val client: DriverClient
         get() = realClient ?: error("no client in lifecycle fake")
 
@@ -73,10 +74,9 @@ private class FakeDevice(
 
     override suspend fun close(timeoutMs: Long) {
         closeCalls.incrementAndGet()
+        closeTimeouts.add(timeoutMs)
         closeEntered.trySend(Unit)
         try {
-            // Ignore both the timeout argument and caller cancellation: production core cleanup
-            // is NonCancellable too, so this proves the service's independent outer bound.
             withContext(NonCancellable) {
                 if (closeAction != null) closeAction.invoke() else closeGate?.await()
             }
@@ -340,26 +340,51 @@ class TapServiceLifecycleTest {
     @Test
     fun `exhausted shutdown detaches everything launches every cleanup and admits nothing new`() =
         runBlocking {
+            val innerBudgetMs = 25L
+            val sessionDeadlineMs = 5_000L
+            val innerLogs = java.util.concurrent.CopyOnWriteArrayList<String>()
             val opener = FakeOpener()
-            // Twelve uncooperative NonCancellable cleanups across three connections with a short
-            // 400 ms total budget. Serially awaiting even 1 ms per remaining session after the
-            // deadline would overrun it by milliseconds per session and leave later connections
-            // registered; the fixed shutdown detaches all state and returns at the budget.
-            val totalBudgetMs = 400L
-            val devices = (0 until 12).map { FakeDevice(serial = "exhaust-$it", closeGate = CompletableDeferred()) }
+            val sessionCount = 120
+            val devices = (0 until sessionCount).map { FakeDevice(serial = "exhaust-$it", closeGate = CompletableDeferred()) }
             opener.queue.addAll(devices)
-            val service = TapService(testConfig(), opener, shutdownTotalMs = totalBudgetMs, shutdownSessionMs = 5_000)
-            val connections = (0 until 3).map { service.openConnection("exhaust-conn-$it") }
-            connections.forEachIndexed { ci, connection ->
-                repeat(4) { si -> service.openSession(connection, "exhaust-${ci * 4 + si}", "com.test", testOptions()) }
-            }
-            val connectionIds = connections.map { it.id }
-            assertEquals(12, service.sessionIds().size)
+            val service = TapService(testConfig(log = { innerLogs.add(it) }), opener, shutdownTotalMs = innerBudgetMs, shutdownSessionMs = sessionDeadlineMs)
+            val connection = service.openConnection("exhaust-conn")
+            repeat(sessionCount) { service.openSession(connection, "exhaust-$it", "com.test", testOptions()) }
+            assertEquals(sessionCount, service.sessionIds().size)
 
-            // Suspended open racing shutdown: must never escape teardown as a registered session.
+            val startedNanos = System.nanoTime()
+            withTimeout(innerBudgetMs + 4_000) { service.close() }
+            val elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000L
+            assertTrue(elapsedMs < innerBudgetMs + 60L, "shutdown took ${elapsedMs}ms for a ${innerBudgetMs}ms budget")
+            assertTrue(innerLogs.any { it.contains("shutdown budget exhausted") && it.contains("detached with cleanup launched") }, "exact detach branch not proven: $innerLogs")
+            assertTrue(service.sessionIds().isEmpty())
+            assertFalse(service.connectionExists(connection.id))
+            devices.forEach { withTimeout(2_000) { it.closeEntered.receive() } }
+            assertEquals(sessionCount, devices.sumOf { it.closeCalls.get() })
+            val fullDeadline = devices.count { it.closeTimeouts.singleOrNull() == sessionDeadlineMs }
+            assertTrue(fullDeadline >= 50, "detached cleanup must carry the full session deadline, got $fullDeadline/$sessionCount")
+            assertFailsWith<ServiceClosingException> { service.openConnection("during-shutdown") }
+
+            val outerLogs = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val outerOpener = FakeOpener()
+            val outerDevices = (0 until 12).map { FakeDevice(serial = "outer-$it", closeGate = CompletableDeferred()) }
+            outerOpener.queue.addAll(outerDevices)
+            val outerService = TapService(testConfig(log = { outerLogs.add(it) }), outerOpener, shutdownTotalMs = 0, shutdownSessionMs = sessionDeadlineMs)
+            val outerConnections = (0 until 3).map { outerService.openConnection("outer-conn-$it") }
+            outerConnections.forEachIndexed { ci, outerConnection ->
+                repeat(4) { si -> outerService.openSession(outerConnection, "outer-${ci * 4 + si}", "com.test", testOptions()) }
+            }
+            withTimeout(4_000) { outerService.close() }
+            assertTrue(outerLogs.any { it.contains("service shutdown budget 0ms exhausted") }, "outer detach branch not proven: $outerLogs")
+            assertTrue(outerService.sessionIds().isEmpty())
+            outerConnections.forEach { assertFalse(outerService.connectionExists(it.id)) }
+            outerDevices.forEach { withTimeout(2_000) { it.closeEntered.receive() } }
+            assertEquals(12, outerDevices.sumOf { it.closeCalls.get() })
+            outerDevices.forEach { assertEquals(sessionDeadlineMs, it.closeTimeouts.single()) }
+
             val lateOpener = FakeOpener()
             lateOpener.openGate = CompletableDeferred()
-            val lateService = TapService(testConfig(), lateOpener, shutdownTotalMs = totalBudgetMs, shutdownSessionMs = 5_000)
+            val lateService = TapService(testConfig(), lateOpener, shutdownTotalMs = innerBudgetMs, shutdownSessionMs = sessionDeadlineMs)
             val lateConnection = lateService.openConnection("late-conn")
             val lateOpenResult = CompletableDeferred<Result<Session>>()
             val lateOpenJob =
@@ -368,26 +393,7 @@ class TapServiceLifecycleTest {
                 }
             withTimeout(2_000) { lateOpener.entered.receive() }
             val lateClose = async { lateService.close(200) }
-
-            val startedNanos = System.nanoTime()
-            withTimeout(totalBudgetMs + 4_000) { service.close() }
-            val elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000L
-            // Strict bound, not a loose 5 s ceiling: near the configured total budget.
-            assertTrue(elapsedMs < totalBudgetMs + 2_000L, "shutdown took ${elapsedMs}ms for a ${totalBudgetMs}ms budget")
-
-            // All state detached even though every cleanup is still gated.
-            assertTrue(service.sessionIds().isEmpty())
-            connectionIds.forEach { assertFalse(service.connectionExists(it)) }
-            // Every remaining cleanup was launched exactly once, none awaited serially: the gates
-            // are still closed yet every device entered close.
-            devices.forEach { withTimeout(2_000) { it.closeEntered.receive() } }
-            assertEquals(12, devices.sumOf { it.closeCalls.get() })
-            // Nothing opened during shutdown escapes it.
-            assertFailsWith<ServiceClosingException> { service.openConnection("during-shutdown") }
-
             withTimeout(2_000) { lateClose.await() }
-            // Release the suspended late open with a real resource: close won, so it must fail
-            // with UnknownConnectionException and the orphan must be closed, never registered.
             val lateOrphan = FakeDevice(serial = "late-orphan")
             lateOpener.openGate!!.complete(lateOrphan)
             withTimeout(2_000) { lateOpenJob.join() }
@@ -396,11 +402,14 @@ class TapServiceLifecycleTest {
             assertTrue(lateService.sessionIds().isEmpty())
             assertFalse(lateService.connectionExists(lateConnection.id))
 
-            // Release the deliberately gated cleanups; late detached cleanup still finishes.
             devices.forEach { it.closeGate!!.complete(Unit) }
-            withTimeout(5_000) { devices.forEach { it.closeCompleted.await() } }
+            outerDevices.forEach { it.closeGate!!.complete(Unit) }
+            withTimeout(5_000) {
+                devices.forEach { it.closeCompleted.await() }
+                outerDevices.forEach { it.closeCompleted.await() }
+            }
             devices.forEach { assertEquals(1, it.closeCalls.get()) }
-            assertTrue(service.sessionIds().isEmpty())
+            outerDevices.forEach { assertEquals(1, it.closeCalls.get()) }
         }
 
     @Test

@@ -24,9 +24,12 @@ Landed checkpoints, still under final review:
 - `1ce2b7b` — service lifecycle checkpoint: one connection/session state boundary,
   exactly-one Attach, close-vs-open handling, bounded shutdown propagation, and service
   lifecycle tests. This checkpoint is being audited before the lane is considered complete.
-- `03b00b7` — docs checkpoint: shutdown-bound enforcement plus the coroutine documentation
-  sweep (`service-api.md` status, `project-architecture.md` threading/test notes, this file's
-  status). The docs sweep is landed; the lane itself remains under final review.
+- `03b00b7` — docs checkpoint for the coroutine documentation sweep (`service-api.md` status,
+  `project-architecture.md` threading/test notes, this file's status). The docs sweep is landed;
+  the lane itself remains under final review.
+- `7e5efbf` — host-core follow-up: bounded ADB drain lifetime and preserved await cancellation.
+- `3bfb049` — service follow-up: strict shutdown bound (detach-and-launch on exhaustion) and
+  corrected coroutine verification docs.
 
 Verification recorded for this lane is intentionally **non-device only**: host core/service JVM
 unit tests plus protocol tests and compilation/install tasks for validation, fixture tests and

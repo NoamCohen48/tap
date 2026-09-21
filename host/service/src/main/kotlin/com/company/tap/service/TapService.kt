@@ -85,9 +85,6 @@ class Connection internal constructor(
 
     /** The single Attach stream owner; non-null while a stream is registered. */
     internal var attachOwner: Any? = null
-
-    /** Session opens in flight (DeviceSession.open suspended outside the lock). */
-    internal var opening = 0
 }
 
 /**
@@ -171,8 +168,7 @@ const val SERVICE_SHUTDOWN_SESSION_MS = 10_000L
  * adapters over this class so it can be exercised without a server.
  *
  * One synchronized lifecycle lock guards closed state, the single Attach owner, close-callback
- * registration, in-progress session opens, and global/per-connection session registration and
- * removal. Every synchronized block is short and non-suspending; suspension (device open/close,
+ * registration, and global/per-connection session registration and removal. Every synchronized block is short and non-suspending; suspension (device open/close,
  * ADB) always happens outside the lock.
  */
 class TapService(
@@ -300,7 +296,7 @@ class TapService(
                 if (deadlineNanos != null && remainingMs(deadlineNanos) <= 0L) {
                     val rest = snapshot.sessions.subList(index, snapshot.sessions.size)
                     rest.forEach { remaining ->
-                        launchDetachedCleanup(remaining.device, perSessionMs, "session ${remaining.id}")
+                        launchDetachedCleanup(remaining.device, shutdownSessionMs, "session ${remaining.id}")
                     }
                     config.log(
                         "connection $id shutdown budget exhausted; " +
@@ -356,11 +352,8 @@ class TapService(
     }
 
     /**
-     * Fire-and-forget device cleanup on the service-owned scope, used only once the shared
-     * shutdown deadline is exhausted and state is already detached. The cleanup keeps its own
-     * core deadline ([timeoutMs] → `DeviceSession.close(timeoutMs)`), so late cleanup can still
-     * journal quarantine and release the lease; exactly-once holds because the session was removed
-     * from both maps before this launch. Never suspends the shutdown caller.
+     * Fire-and-forget device cleanup for exhausted shutdown: state is already detached.
+     * Best effort: process exit may cut it short; next open recovers a non-terminal journal.
      */
     private fun launchDetachedCleanup(
         device: ServiceDevice,
@@ -379,8 +372,7 @@ class TapService(
         return System.nanoTime().let { now -> if (Long.MAX_VALUE - now < timeoutNanos) Long.MAX_VALUE else now + timeoutNanos }
     }
 
-    private fun remainingMs(deadlineNanos: Long): Long =
-        ((deadlineNanos - System.nanoTime()).coerceAtLeast(0L) / 1_000_000L)
+    private fun remainingMs(deadlineNanos: Long): Long = ((deadlineNanos - System.nanoTime()).coerceAtLeast(0L) / 1_000_000L)
 
     // ---- devices -----------------------------------------------------------------------------
 
@@ -425,12 +417,9 @@ class TapService(
         autPackage: String,
         options: OpenSessionOptions,
     ): Session {
-        // Begin the open under the lock: fail fast when the connection is already gone, else
-        // record one in-progress open so a concurrent close knows an orphan may arrive.
         synchronized(lifecycleLock) {
             val current = connections[connection.id]
             if (current !== connection || connection.closed) throw UnknownConnectionException(connection.id)
-            connection.opening++
         }
         val explicitApks = options.driverApk != null || options.driverTestApk != null
         val useBundled = !explicitApks && !options.skipDriverInstall && config.bundledDriver != null
@@ -463,17 +452,13 @@ class TapService(
             try {
                 opener.open(deviceConfig)
             } catch (error: Throwable) {
-                synchronized(lifecycleLock) {
-                    connection.opening--
-                    if (installedBundled) driverInstalled.remove(serial)
-                }
+                if (installedBundled) synchronized(lifecycleLock) { driverInstalled.remove(serial) }
                 throw error
             }
         // Registration is one lifecycle transaction. When close won while open suspended, the
         // device is closed before exposure and never appears in either map: no orphan lease.
         val registered: Session? =
             synchronized(lifecycleLock) {
-                connection.opening--
                 val current = connections[connection.id]
                 if (current !== connection || connection.closed) {
                     null
@@ -541,8 +526,8 @@ class TapService(
      * scope without serially awaiting any of them, and this function returns immediately — so
      * `close(timeoutMs)` plus the server's `awaitTermination` on the remaining hook budget (see
      * `ServiceMain`) cannot exceed the advertised hook budget beyond scheduling overhead. Detached
-     * cleanups keep their own core deadline (`DeviceSession.close(timeoutMs)`) so late cleanup can
-     * still journal quarantine and release the lease. Never throws. Connections or sessions that
+     * cleanups are best effort with their own core deadline and may be cut short by process exit;
+     * next open recovers a non-terminal journal. Never throws. Connections or sessions that
      * attempt to open during shutdown fail (`ServiceClosingException` / `UnknownConnectionException`)
      * and never escape teardown: `closing` is set before the first close, and registration loses to
      * the detached state so orphans are closed before exposure.

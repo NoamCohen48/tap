@@ -262,8 +262,12 @@ a session taken by either explicit Session Close or connection teardown is close
 The service shutdown hook has one total deadline covering `TapService.close` and gRPC server
 termination. The remaining budget is divided across connections and sessions and passed through
 to `DeviceSession.close(timeoutMs)`. A service-side independent waiter bounds even a
-NonCancellable core cleanup; timed-out core cleanup continues under its own deadline so it can
-journal quarantine and release the lease while shutdown attempts later sessions. Ordinary
+NonCancellable core cleanup; timed-out core cleanup continues under its own deadline while
+shutdown attempts later sessions. Once the shared deadline is exhausted, all remaining
+connections and sessions are atomically detached and every remaining device cleanup is launched
+fire-and-forget on the service-owned scope without serially awaiting, so `close` returns at the
+budget. Detached cleanup is best effort and may be cut short by process exit; a session whose
+journal never reached a terminal state is recovered by the next open. Ordinary
 explicit Connection Close and Session Close retain their existing replies and status mapping.
 
 ## 4. Client expectations
