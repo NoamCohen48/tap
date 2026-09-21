@@ -45,6 +45,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
+import java.nio.file.Files
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -53,7 +55,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -159,17 +163,24 @@ class TapClientTest {
             val second = tapScope { connection.openDevice("emulator-5555", "com.test") }
             assertEquals(2, connection.liveDeviceCount, "registry retains live handles")
             try {
-                // A registration racing the terminal invalidation still ends unusable: either
-                // the pre-RPC gate rejects, or the post-registration check marks the handle.
+                // Gate the OpenSession response so the racing registration is provably in
+                // flight when the terminal invalidation lands (deterministic, no sleep). The
+                // racing call either fails at the pre-RPC gate or returns only as an
+                // invalidated handle; the registry keeps the handle until close either way.
+                fakeSessions.openRelease = CompletableDeferred()
+                fakeSessions.openEntered = CompletableDeferred()
                 val racing =
                     async {
                         runCatching { tapScope { connection.openDevice("emulator-5559", "com.test") } }
                     }
+                withTimeout(5_000) { fakeSessions.openEntered.await() }
                 // Server ends the parked stream after establishment: unexpected termination.
                 fakeConnections.finishParkedAttach()
                 withTimeout(5_000) {
                     while (!connection.isInvalid) delay(10)
                 }
+                // Release the gated OpenSession into the terminal state.
+                fakeSessions.openRelease.complete(Unit)
                 // Both handles observed the post-establishment termination.
                 val executeBefore = fakeSessions.executeCalls.get()
                 tapScope {
@@ -262,6 +273,9 @@ class TapClientTest {
                 withTimeout(5_000) { joined.forEach { it.await() } }
                 withTimeout(5_000) { fakeConnections.closeEntered.await() }
                 assertEquals(1, fakeConnections.closes.get(), "single-flight while the RPC is in flight")
+                // Deterministic shared-flight proof: every duplicate caller joined before the
+                // release and none returns early while the single Close RPC is parked.
+                assertTrue(closers.none { it.isCompleted }, "duplicate closers joined the shared flight; none returns early")
                 fakeConnections.closeRelease.complete(Unit)
                 withTimeout(5_000) { closers.forEach { it.await() } }
                 assertEquals(1, fakeConnections.closes.get())
@@ -329,9 +343,9 @@ class TapClientTest {
     fun `stubborn attach collector does not hold close past its bound`() {
         runBlocking {
             fakeConnections.attachMode = FakeConnections.AttachMode.STUBBORN
-            val prior = Connection.teardownBoundMs
-            Connection.teardownBoundMs = 300
-            val connection = client().connect("test")
+            // Isolated per-instance bound (no shared mutation): safe under parallel tests.
+            val connection = Connection(client(), "conn-stubborn", ConnectionBounds(teardownMs = 300))
+            connection.attach()
             try {
                 val started = System.nanoTime()
                 withTimeout(10_000) { connection.close() }
@@ -339,7 +353,6 @@ class TapClientTest {
                 assertTrue(elapsedMs < 5_000, "bounded teardown despite stubborn collector, took ${elapsedMs}ms")
                 assertEquals(1, fakeConnections.closes.get())
             } finally {
-                Connection.teardownBoundMs = prior
                 runCatching { withTimeoutOrNull(10_000) { connection.close() } }
             }
         }
@@ -400,34 +413,121 @@ class TapClientTest {
                         fakeSessions.closeRelease.complete(Unit)
                         runCatching { device.close() }
                     }
-                    // A parked admitted operation cannot block close forever: with a short
-                    // drain bound the close fails boundedly with a local deadline failure.
-                    val parkedDevice = connection.openDevice("emulator-5555", "com.test")
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `device drain timeout runs late cleanup exactly once`() {
+        runBlocking {
+            val connection = Connection(client(), "conn-late", ConnectionBounds(), DeviceBounds(drainMs = 300))
+            connection.attach()
+            try {
+                tapScope {
+                    val device = connection.openDevice("emulator-5554", "com.test")
+                    assertEquals(1, connection.liveDeviceCount)
                     val firstPoll = CompletableDeferred<Unit>()
                     val parked =
                         async {
-                            parkedDevice.awaitUntil("parked", timeout = 30.seconds) {
+                            device.awaitUntil("parked", timeout = 30.seconds) {
                                 if (!firstPoll.isCompleted) firstPoll.complete(Unit)
                                 false
                             }
                         }
                     withTimeout(5_000) { firstPoll.await() }
-                    val priorDrain = Device.drainBoundMs
-                    Device.drainBoundMs = 300
-                    try {
-                        val started = System.nanoTime()
-                        val bounded = assertFailsWith<ServiceException> { parkedDevice.closeAndReport() }
-                        val elapsedMs = (System.nanoTime() - started) / 1_000_000
-                        assertTrue(bounded.details.contains("drain timed out"), "unexpected: ${bounded.details}")
-                        assertTrue(elapsedMs < 5_000, "bounded close despite parked op, took ${elapsedMs}ms")
-                    } finally {
-                        Device.drainBoundMs = priorDrain
-                        parked.cancelAndJoin()
-                        runCatching { parkedDevice.closeAndReport() }
+                    val started = System.nanoTime()
+                    val bounded = assertFailsWith<ServiceException> { device.closeAndReport() }
+                    val elapsedMs = (System.nanoTime() - started) / 1_000_000
+                    assertTrue(bounded.details.contains("drain timed out"), "unexpected: ${bounded.details}")
+                    assertTrue(bounded.details.contains("late cleanup"), "unexpected: ${bounded.details}")
+                    assertTrue(elapsedMs < 5_000, "bounded close despite parked op, took ${elapsedMs}ms")
+                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close before the drain releases")
+                    assertEquals(1, connection.liveDeviceCount, "handle stays registered until late cleanup")
+                    parked.cancelAndJoin()
+                    withTimeout(5_000) {
+                        while (fakeSessions.closeCalls.get() < 1) delay(10)
                     }
+                    withTimeout(5_000) {
+                        while (connection.liveDeviceCount != 0) delay(10)
+                    }
+                    assertEquals(1, fakeSessions.closeCalls.get(), "exactly one Session Close via late cleanup")
+                    val late = withTimeout(5_000) { device.closeAndReport() }
+                    assertNull(late, "later close returns the late-cleanup result (clean null)")
+                    assertEquals(1, fakeSessions.closeCalls.get(), "later close sends no duplicate RPC")
                 }
             } finally {
-                connection.close()
+                runCatching { connection.close() }
+            }
+        }
+    }
+
+    @Test
+    fun `connection close supersedes pending device late cleanup exactly once`() {
+        runBlocking {
+            val connection = Connection(client(), "conn-race", ConnectionBounds(), DeviceBounds(drainMs = 300))
+            connection.attach()
+            try {
+                tapScope {
+                    val device = connection.openDevice("emulator-5554", "com.test")
+                    val firstPoll = CompletableDeferred<Unit>()
+                    val parked =
+                        async {
+                            device.awaitUntil("parked", timeout = 30.seconds) {
+                                if (!firstPoll.isCompleted) firstPoll.complete(Unit)
+                                false
+                            }
+                        }
+                    withTimeout(5_000) { firstPoll.await() }
+                    assertFailsWith<ServiceException> { device.closeAndReport() }
+                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close before the drain releases")
+                    withTimeout(5_000) { connection.close() }
+                    assertEquals(1, fakeConnections.closes.get(), "exactly one Connection Close")
+                    parked.cancelAndJoin()
+                    withTimeout(5_000) {
+                        while (connection.liveDeviceCount != 0) delay(10)
+                    }
+                    assertEquals(0, fakeSessions.closeCalls.get(), "superseded late cleanup sends no Session Close")
+                    assertEquals(1, fakeConnections.closes.get(), "no duplicate Connection Close")
+                    val late = withTimeout(5_000) { device.closeAndReport() }
+                    assertNull(late, "superseded late cleanup completes clean; later close returns null")
+                }
+            } finally {
+                runCatching { connection.close() }
+            }
+        }
+    }
+
+    @Test
+    fun `hanging info probe preserves outer cancellation identity`() {
+        runBlocking {
+            val entered = CompletableDeferred<Unit>()
+            val service =
+                object : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
+                    override suspend fun info(request: InfoRequest): InfoResponse {
+                        if (!entered.isCompleted) entered.complete(Unit)
+                        awaitCancellation()
+                    }
+                }
+            val server = NettyServerBuilder.forPort(0).addService(service).directExecutor().build().start()
+            try {
+                val dir = Files.createTempDirectory("tap-probe")
+                Files.writeString(dir.resolve("service.json"), "{\"port\":${server.port}}")
+                // The outer withTimeout owns the probe call directly, so its
+                // TimeoutCancellationException is the cancellation identity under test.
+                val probing = async { withTimeout(200.milliseconds) { ServiceDiscovery.running(dir) } }
+                withTimeout(5_000) { entered.await() }
+                val outer = assertFailsWith<TimeoutCancellationException> { probing.await() }
+                assertTrue(
+                    outer.message!!.contains("200ms") || outer.message!!.contains("Timed out"),
+                    "outer timeout identity, got: ${outer.message}",
+                )
+                assertTrue(probing.isCancelled, "hanging probe cancelled, never returned as dead")
+                withTimeout(5_000) { probing.join() }
+            } finally {
+                server.shutdownNow()
             }
         }
     }
@@ -954,9 +1054,15 @@ class TapClientTest {
         val order = CopyOnWriteArrayList<String>()
         val executeCalls = AtomicInteger(0)
         val closeCalls = AtomicInteger(0)
+        // OpenSession gate for the invalidation/open race test: the test parks the response
+        // to prove the OpenSession RPC was admitted before the terminal invalidation lands.
+        var openEntered = CompletableDeferred<Unit>()
+        var openRelease: CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { it.complete(Unit) }
 
         override suspend fun open(request: OpenSessionRequest): OpenSessionResponse {
             opens.add(request.serial)
+            if (!openEntered.isCompleted) openEntered.complete(Unit)
+            withTimeout(30_000) { openRelease.await() }
             return OpenSessionResponse
                 .newBuilder()
                 .setSessionId("sess-${request.serial}")

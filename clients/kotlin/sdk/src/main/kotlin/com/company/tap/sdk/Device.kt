@@ -16,10 +16,15 @@ import com.company.tap.api.v1.StabilitySignal
 import com.company.tap.api.v1.WaitAppVisible
 import com.company.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -36,6 +41,17 @@ import kotlin.time.Duration.Companion.seconds
 const val KEYCODE_HOME = 3
 const val KEYCODE_BACK = 4
 const val DEFAULT_GESTURE_PERCENT = 80
+
+/**
+ * Immutable per-device close bounds. Injected at construction; tests create isolated [Device]
+ * instances (via an isolated [Connection] carrying these bounds) with short bounds instead of
+ * mutating shared state, so parallel test runs stay deterministic. Defaults cover production
+ * (admitted-operation drain + 120 s Session Close deadline + margin).
+ */
+internal data class DeviceBounds(
+    val drainMs: Long = 130_000L,
+    val closeOuterMs: Long = 130_000L,
+)
 
 /** Per-device defaults. Every call also accepts an explicit timeout. */
 data class Timeouts(
@@ -91,6 +107,7 @@ class Device internal constructor(
     /** The AUT package the session was opened for; AUT-scoped selectors resolve in it. */
     val autPackage: String,
     val timeouts: Timeouts,
+    private val bounds: DeviceBounds = DeviceBounds(),
 ) {
     private val client get() = connection.client
     private val stateMutex = Mutex()
@@ -100,6 +117,10 @@ class Device internal constructor(
     private var closeDeferred: CompletableDeferred<String?>? = null
     private val connectionInvalid = AtomicBoolean(false)
     private val connectionInvalidCause = AtomicReference<Throwable?>(null)
+    // Explicitly owned late-cleanup scope: SupervisorJob + IO, one per Device, never GlobalScope.
+    // It hosts at most one late-cleanup job (drain-timeout path only) and is cancelled after
+    // every terminal close path, so no background work outlives the handle.
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** True once [closeAndReport] started (new operations are rejected locally). */
     val isClosed: Boolean get() = closeStarted.get()
@@ -393,13 +414,30 @@ class Device internal constructor(
      * Closes the session. Returns the quarantine detail when the device could not be left
      * clean (the pool keeps it out of circulation), else null. Single-flight: concurrent and
      * duplicate callers share one `Session Close` RPC (120 s gRPC deadline, mapped) and one
-     * result, including the quarantine detail. Admitted operations finish before the RPC under
-     * an explicit total drain bound ([drainBoundMs]); operations starting after close began are
-     * rejected locally. A close invoked from the same admitted operation (for example an
-     * [awaitUntil] condition calling close) fails immediately with [TapUsageException] instead
-     * of waiting for itself. Runs under a bounded non-cancellable context so teardown completes
-     * even when the caller is cancelled; the primary failure (if any) is the shared result.
-     * The handle unregisters from the connection exactly once, on completion or failure.
+     * shared completion, including the quarantine detail. Admitted operations finish before the
+     * RPC under an explicit total drain bound ([DeviceBounds.drainMs]); operations starting
+     * after close began are rejected locally. A close invoked from the same admitted operation
+     * (for example an [awaitUntil] condition calling close) fails immediately with
+     * [TapUsageException] instead of waiting for itself. Runs under a bounded non-cancellable
+     * context so teardown completes even when the caller is cancelled.
+     *
+     * Drain-timeout contract (late cleanup): when admitted operations are still in flight past
+     * the per-instance drain bound, the first caller throws `DEADLINE_EXCEEDED` immediately
+     * (caller-visible) WITHOUT completing the shared completion and WITHOUT unregistering as
+     * cleaned — the service lease is not stranded. Instead exactly one late-cleanup job is
+     * launched on the explicitly owned per-Device [cleanupScope] (never `GlobalScope`): after
+     * the same admitted operations eventually drain it issues one bounded Session Close
+     * ([DeviceBounds.closeOuterMs] outer bound past the 120 s deadline, mapped) and then
+     * unregisters exactly once. A Connection Close or liveness invalidation racing the late
+     * job supersedes safely: the late job observes [Connection.supersedesSessionClose], skips
+     * the Session Close (the connection teardown already covers the sessions), unregisters,
+     * and completes the shared completion as clean (null). Subsequent close callers never send
+     * a second RPC: they await the same shared completion, so a first-call drain timeout is
+     * followed by later calls returning the late-cleanup result (quarantine detail, null, or
+     * the late failure). A late-cleanup failure is observed through that same shared
+     * completion, never as an unhandled scope exception. The owned scope is cancelled after
+     * every terminal path (fast success/failure, late success/failure/supersede).
+     * The handle unregisters from the connection exactly once, on the terminal path.
      */
     suspend fun closeAndReport(): String? {
         ensureTapBound("Device.close")
@@ -427,34 +465,24 @@ class Device internal constructor(
             return withContext(NonCancellable) { deferred.await() }
         }
         return withContext(NonCancellable) {
-            try {
-                val toDrain = stateMutex.withLock { drain }
-                if (toDrain != null) {
-                    val drained = withTimeoutOrNull(drainBoundMs) { toDrain.await() }
-                    if (drained == null) {
-                        throw ServiceException(
-                            "DEADLINE_EXCEEDED",
-                            "device $serial close drain timed out after ${drainBoundMs}ms with admitted operations still in flight",
-                        )
-                    }
+            val toDrain = stateMutex.withLock { drain }
+            if (toDrain != null) {
+                val drained = withTimeoutOrNull(bounds.drainMs) { toDrain.await() }
+                if (drained == null) {
+                    // Bounded local failure: do NOT complete the shared completion and do NOT
+                    // unregister as cleaned. Launch the exactly-once late cleanup and report
+                    // the timeout to this caller only; later callers await the late result.
+                    launchLateCleanup(toDrain, deferred)
+                    throw ServiceException(
+                        "DEADLINE_EXCEEDED",
+                        "device $serial close drain timed out after ${bounds.drainMs}ms " +
+                            "with admitted operations still in flight; late cleanup will close " +
+                            "the session once they drain",
+                    )
                 }
-                val response =
-                    try {
-                        withTimeout(closeOuterBoundMs) {
-                            mapped(serial) {
-                                client.sessions
-                                    .withDeadlineAfter(120, TimeUnit.SECONDS)
-                                    .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
-                            }
-                        }
-                    } catch (bound: TimeoutCancellationException) {
-                        throw ServiceException(
-                            "DEADLINE_EXCEEDED",
-                            "device $serial close timed out after ${closeOuterBoundMs}ms (outer bound past the 120s Session Close deadline)",
-                            bound,
-                        )
-                    }
-                val detail = if (response.clean) null else response.detail
+            }
+            try {
+                val detail = boundedSessionClose()
                 deferred.complete(detail)
                 detail
             } catch (primary: Throwable) {
@@ -462,6 +490,7 @@ class Device internal constructor(
                 throw primary
             } finally {
                 runCatching { connection.unregister(this@Device) }
+                runCatching { cleanupScope.cancel() }
             }
         }
     }
@@ -534,6 +563,64 @@ class Device internal constructor(
         connectionInvalidCause.compareAndSet(null, cause)
     }
 
+    /** One bounded Session Close RPC (120 s gRPC deadline under the per-instance outer bound). */
+    private suspend fun boundedSessionClose(): String? {
+        val response =
+            try {
+                withTimeout(bounds.closeOuterMs) {
+                    mapped(serial) {
+                        client.sessions
+                            .withDeadlineAfter(120, TimeUnit.SECONDS)
+                            .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
+                    }
+                }
+            } catch (bound: TimeoutCancellationException) {
+                throw ServiceException(
+                    "DEADLINE_EXCEEDED",
+                    "device $serial close timed out after ${bounds.closeOuterMs}ms " +
+                        "(outer bound past the 120s Session Close deadline)",
+                    bound,
+                )
+            }
+        return if (response.clean) null else response.detail
+    }
+
+    /**
+     * Launches the exactly-once late cleanup on the owned [cleanupScope]. Awaits the same
+     * [toDrain] the fast path timed out on (eventual, unbounded: admitted ops release via the
+     * cancellation-safe `finally` in [admitted]), then either supersedes (Connection Close or
+     * invalidation already covers the sessions: skip the RPC, complete clean) or issues one
+     * bounded Session Close. Every outcome completes [deferred] (observed by all later close
+     * callers, never a duplicate RPC) and unregisters exactly once; the scope is cancelled
+     * afterwards. All throwables — including scope cancellation — are funneled into the shared
+     * completion so nothing escapes as an unhandled scope exception.
+     */
+    private fun launchLateCleanup(
+        toDrain: CompletableDeferred<Unit>,
+        deferred: CompletableDeferred<String?>,
+    ) {
+        cleanupScope.launch {
+            try {
+                toDrain.await()
+                if (connection.supersedesSessionClose) {
+                    runCatching { deferred.complete(null) }
+                } else {
+                    try {
+                        val detail = boundedSessionClose()
+                        runCatching { deferred.complete(detail) }
+                    } catch (late: Throwable) {
+                        runCatching { deferred.completeExceptionally(late) }
+                    }
+                }
+            } catch (late: Throwable) {
+                runCatching { deferred.completeExceptionally(late) }
+            } finally {
+                runCatching { connection.unregister(this@Device) }
+                runCatching { cleanupScope.cancel() }
+            }
+        }
+    }
+
     /** `info()` without re-entering admission (for use inside an already-admitted block). */
     private suspend fun infoInner(): DeviceInfo {
         val command =
@@ -559,18 +646,13 @@ class Device internal constructor(
     }
 
     companion object {
-        /** Total bound for the admitted-operation drain before the Session Close RPC. Test seam. */
-        internal var drainBoundMs: Long = 130_000L
-
-        /** Outer bound past the 120 s Session Close gRPC deadline. Test seam. */
-        internal var closeOuterBoundMs: Long = 130_000L
-
         internal suspend fun open(
             connection: Connection,
             serial: String,
             autPackage: String,
             timeouts: Timeouts,
             options: DeviceOptions,
+            bounds: DeviceBounds = DeviceBounds(),
         ): Device {
             ensureTapBound("Device.open")
             connection.ensureUsable("Device.open")
@@ -595,7 +677,7 @@ class Device internal constructor(
                         .withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS)
                         .open(request)
                 }
-            return Device(connection, response.sessionId, response.serial, response.generation, autPackage, timeouts)
+            return Device(connection, response.sessionId, response.serial, response.generation, autPackage, timeouts, bounds)
         }
     }
 }

@@ -147,6 +147,17 @@ class TapClient public constructor(
 }
 
 /**
+ * Immutable per-connection bounds. Injected at construction; tests create isolated
+ * [Connection] instances with short bounds instead of mutating shared state, so parallel
+ * test runs stay deterministic. Defaults cover production (60 s Close deadline + margin,
+ * bounded attach teardown).
+ */
+internal data class ConnectionBounds(
+    val closeOuterMs: Long = 65_000L,
+    val teardownMs: Long = 5_000L,
+)
+
+/**
  * This process's identity at the service: every [Device] it opens belongs to it and is closed
  * with it — explicitly by [close], or by the service when the process goes away. One per process
  * is the norm; see [TapClient.connect].
@@ -172,6 +183,8 @@ class TapClient public constructor(
 class Connection internal constructor(
     val client: TapClient,
     val id: String,
+    private val bounds: ConnectionBounds = ConnectionBounds(),
+    private val deviceBounds: DeviceBounds = DeviceBounds(),
 ) {
     private val events = CopyOnWriteArrayList<String>()
     private val attachScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -294,7 +307,7 @@ class Connection internal constructor(
         options: DeviceOptions = DeviceOptions(),
     ): Device {
         ensureUsable("Device.open")
-        val device = Device.open(this, serial, autPackage, timeouts, options)
+        val device = Device.open(this, serial, autPackage, timeouts, options, deviceBounds)
         val terminal: Throwable? =
             stateMutex.withLock {
                 openDevices.add(device)
@@ -352,7 +365,7 @@ class Connection internal constructor(
             var closeError: Throwable? = null
             try {
                 try {
-                    withTimeout(closeOuterBoundMs) {
+                    withTimeout(bounds.closeOuterMs) {
                         mapped {
                             client.connections
                                 .withDeadlineAfter(60, TimeUnit.SECONDS)
@@ -363,7 +376,7 @@ class Connection internal constructor(
                     closeError =
                         ServiceException(
                             "DEADLINE_EXCEEDED",
-                            "connection $id close timed out after ${closeOuterBoundMs}ms " +
+                            "connection $id close timed out after ${bounds.closeOuterMs}ms " +
                                 "(outer bound past the 60s Close deadline)",
                             bound,
                         )
@@ -374,7 +387,7 @@ class Connection internal constructor(
                 var cleanupError: Throwable? = null
                 try {
                     val completed =
-                        withTimeoutOrNull(teardownBoundMs) {
+                        withTimeoutOrNull(bounds.teardownMs) {
                             val job = stateMutex.withLock { attachJob }
                             try {
                                 job?.cancelAndJoin()
@@ -446,13 +459,16 @@ class Connection internal constructor(
     /** Live (opened, not yet closed) handles. Internal observer for tests. */
     internal val liveDeviceCount: Int get() = openDevices.size
 
-    companion object {
-        /** Outer bound past the 60 s Close gRPC deadline. Test seam (must stay longer). */
-        internal var closeOuterBoundMs: Long = 65_000L
+    /**
+     * True once Connection Close started or the liveness stream ended unexpectedly. A pending
+     * [Device] late cleanup observes this before issuing its bounded Session Close: when true
+     * the connection teardown already covers the sessions, so the Session Close is superseded
+     * (skipped) and the handle just unregisters. Internal read-only hook for the race test.
+     */
+    internal val supersedesSessionClose: Boolean get() = closeStarted.get() || unusable.get()
 
-        /** Bound for the attach collector/scope teardown. Test seam. */
-        internal var teardownBoundMs: Long = 5_000L
-    }
+    /** True once [close] took ownership. Internal read-only hook for the race test. */
+    internal val closeInitiated: Boolean get() = closeStarted.get()
 
     private suspend fun boundedCancelJoin(job: Job) {
         withContext(NonCancellable) {
@@ -540,7 +556,8 @@ object ServiceDiscovery {
         val channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build()
         try {
             // Own-timeout ownership: a null return is our 2 s probe timing out (dead service
-            // -> false); an outer CancellationException propagates with its identity intact.
+            // -> false); an outer CancellationException (including TimeoutCancellationException
+            // from an outer withTimeout) propagates with its identity intact, never mapped.
             val answered =
                 withTimeoutOrNull(2_000) {
                     ConnectionServiceGrpcKt
@@ -550,6 +567,8 @@ object ServiceDiscovery {
                     true
                 } ?: return false
             return answered
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             return false
         } finally {
