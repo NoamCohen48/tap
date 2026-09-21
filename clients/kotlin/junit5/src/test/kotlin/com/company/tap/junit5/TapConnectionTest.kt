@@ -683,6 +683,152 @@ class TapConnectionTest {
             assertEquals(2, clientCloses.get())
         }
 
+    @Test
+    fun `cancelled shutdown re-awaits stale rollback before next generation starts`() =
+        runBlocking {
+            val enteredCreate = CompletableDeferred<Unit>()
+            val allowCreate = CompletableDeferred<Unit>()
+            val stopEntered = CompletableDeferred<Unit>()
+            val allowStop = CompletableDeferred<Unit>()
+            val parkedOnTeardown = CompletableDeferred<Unit>()
+            val clientCloses = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = {
+                        val n = stops.incrementAndGet()
+                        if (n == 1) {
+                            stopEntered.complete(Unit)
+                            allowStop.await()
+                        }
+                    },
+                    createClient = {
+                        if (createdClients.get() == 0) {
+                            createdClients.incrementAndGet()
+                            enteredCreate.complete(Unit)
+                            allowCreate.await()
+                            val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                            channels.add(ch)
+                            TapClient("inprocess:$serverName", ch)
+                        } else {
+                            createdClients.incrementAndGet()
+                            val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                            channels.add(ch)
+                            TapClient("inprocess:$serverName", ch)
+                        }
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = { },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        client.close()
+                    },
+                    onTeardownPark = {
+                        if (!parkedOnTeardown.isCompleted) parkedOnTeardown.complete(Unit)
+                    },
+                )
+            // Creator 1 owns the client flight and parks inside create after its owned start.
+            val creator1 = async { connections.client() }
+            withTimeout(10_000) { enteredCreate.await() }
+            // Shutdown installs its teardown gate and awaits creator 1; creator 2 proves the
+            // gate exists by parking on it (no timing assumptions).
+            val shutdown = async { connections.shutdown() }
+            val creator2 = async { connections.client() }
+            withTimeout(10_000) { parkedOnTeardown.await() }
+            // Cancel the shutdown while it awaits the creator flight, then let the creator
+            // finish its I/O into the stale-rollback path whose owned stop stays blocked.
+            // The cancelled shutdown must re-await every captured flight under
+            // NonCancellable: both it and generation 2 stay parked until that stop ends.
+            shutdown.cancel()
+            allowCreate.complete(Unit)
+            withTimeout(10_000) { stopEntered.await() }
+            assertFalse(shutdown.isCompleted, "cancelled shutdown stays parked until stale rollback+stop complete")
+            assertFalse(creator2.isCompleted, "generation 2 stays parked until stale rollback+stop complete")
+            assertEquals(1, starts.get(), "generation 2 must not start until stale rollback+stop complete")
+            assertEquals(1, stops.get(), "stale stop entered exactly once and still held")
+            // Releasing the stale stop lets the gate complete: the original cancellation
+            // is preserved and both creators share the single next generation.
+            allowStop.complete(Unit)
+            assertFailsWith<CancellationException> {
+                withTimeout(10_000) { shutdown.await() }
+            }
+            assertEquals(1, stops.get(), "stale owned stop completed exactly once")
+            assertEquals(1, clientCloses.get(), "stale client closed exactly once")
+            val firstClient = withTimeout(10_000) { creator1.await() }
+            val secondClient = withTimeout(10_000) { creator2.await() }
+            assertSame(firstClient, secondClient, "both share one next generation after the gate")
+            assertEquals(2, starts.get(), "next generation starts only after the stale stop")
+            connections.shutdown()
+            assertEquals(2, stops.get())
+            assertEquals(2, clientCloses.get())
+        }
+
+    @Test
+    fun `throwing hook rolls back client and stop with no leak and retry succeeds`() =
+        runBlocking {
+            val failHook = AtomicBoolean(true)
+            val hookAttempts = AtomicInteger(0)
+            val hookSuccesses = AtomicInteger(0)
+            val clientCloses = AtomicInteger(0)
+            val connections =
+                TapConnectionState(
+                    manageService = { true },
+                    startService = {
+                        starts.incrementAndGet()
+                        true
+                    },
+                    stopService = { stops.incrementAndGet() },
+                    createClient = {
+                        createdClients.incrementAndGet()
+                        val ch = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                        channels.add(ch)
+                        TapClient("inprocess:$serverName", ch)
+                    },
+                    connectClient = { client ->
+                        createdConnections.incrementAndGet()
+                        client.connect("test")
+                    },
+                    onFirstClient = {
+                        hookAttempts.incrementAndGet()
+                        if (failHook.get()) throw IllegalStateException("hook-boom")
+                        hookSuccesses.incrementAndGet()
+                    },
+                    closeClient = { client ->
+                        clientCloses.incrementAndGet()
+                        client.close()
+                    },
+                )
+            // Hook installation is transactional: the just-built client and owned service
+            // roll back under NonCancellable, nothing is published, and cleanup failures
+            // would suppress into the hook failure.
+            val failure = assertFailsWith<IllegalStateException> { connections.client() }
+            assertEquals("hook-boom", failure.message)
+            assertEquals(1, starts.get(), "failed generation started its service")
+            assertEquals(1, stops.get(), "owned start stopped exactly once")
+            assertEquals(1, clientCloses.get(), "just-built client closed exactly once")
+            assertEquals(1, hookAttempts.get())
+            assertEquals(0, hookSuccesses.get())
+            // No fast-path leaked client: the next attempt recreates and installs the hook.
+            failHook.set(false)
+            val second = withTimeout(10_000) { connections.client() }
+            assertEquals(2, createdClients.get(), "failed generation was never published")
+            assertEquals(2, starts.get())
+            assertEquals(1, stops.get())
+            assertEquals(2, hookAttempts.get())
+            assertEquals(1, hookSuccesses.get(), "retry installs the hook successfully")
+            assertSame(second, connections.client(), "published generation shared via fast path")
+            connections.shutdown()
+            assertEquals(2, stops.get(), "second generation stopped exactly once")
+            assertEquals(2, clientCloses.get(), "second generation client closed exactly once")
+        }
+
     // --- Fakes ----------------------------------------------------------------------------------
 
     private class FakeConnections : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {

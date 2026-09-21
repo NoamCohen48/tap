@@ -308,8 +308,8 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    rewritten (`coroutineScope`/`async`, sibling-cancellation device assertion); guides, README
    and KDoc updated; `framework-gaps.md` rows removed with the proving tests; client line
    bumped to 0.2.0 (breaking, source-only — the wire is unchanged). Verified (worker, actual
-   Gradle XML): `:clients:kotlin:sdk:test` (27 `TapClientTest`), `:clients:kotlin:junit5:test`
-   (32: `TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 11),
+   Gradle XML): `:clients:kotlin:sdk:test` (30 `TapClientTest`), `:clients:kotlin:junit5:test`
+   (34: `TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 13),
    `:samples:fixture-tests:compileTestKotlin`, `:host:service:test`, `publishToMavenLocal`,
    plus Dokka for the SDK and JUnit modules. JUnit repair history: `aaca240` (interruption
    teardown, duplicate roles, Execute-backed sibling proof, connection generations, docs),
@@ -326,8 +326,17 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    `createClient`, `connectClient`, and shutdown while awaiting/owning flights (subsequent
    client/connection/shutdown completes, no leaks), plus `create` failure + `stop` failure
    and `connect` failure + `close` + `stop` suppression contents/order with exact-once
-   resources, preserving the ABA fix, sequential reopen, interruption teardown and service
-   accounting. Worker ran `:clients:kotlin:junit5:test` 3x green (32 names), SDK compile,
+   resources, plus the final findings in this lane (hash recorded by the parent): cancelled
+   shutdown re-awaits every captured client/connection flight under `NonCancellable` before
+   reclaiming or completing the teardown gate (next generation starts only after the stale
+   rollback + owned stop finish, original cancellation rethrown), transactional hook
+   installation before publish with close + owned stop rolled back under `NonCancellable`
+   (cleanup suppressed into the hook failure, installed flag reset, safe retry with no
+   fast-path leak), and zero `!!` via stable locals/`requireNotNull`, preserving
+   cancellation-safe flights/rollback and no mutex over I/O. The new tests prove the stale
+   stop gates both the cancelled shutdown and generation 2, and prove the throwing hook
+   closes + stops exactly once with a clean retry, preserving the ABA fix, sequential
+   reopen, interruption teardown and service accounting. Worker ran `:clients:kotlin:junit5:test` 3x green (34 names), SDK compile,
    fixture compile, and Dokka. Host `--no-reboot` validation, native image,
    and Python smoke have passed; the remaining run is the new-client matrix:
    `:samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (13 tests including

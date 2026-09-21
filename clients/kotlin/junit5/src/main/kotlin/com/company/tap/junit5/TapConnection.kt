@@ -46,8 +46,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Creation rollback: when this generation's service start reported `started=true` and the
  * subsequent client create (or the attach connect for a freshly created client) fails, the
  * partial client is closed and the owned service is stopped before the failure propagates;
- * rollback failures are suppressed into the creation failure. Cancellation is owned the same
- * way: once a creator holds its single-flight (or a shutdown holds its teardown gate), every
+ * rollback failures are suppressed into the creation failure. Hook installation is
+ * transactional: the first-client hook runs before publish (installed flag set only on
+ * success) and a hook throw rolls the just-built client and owned service back under
+ * [NonCancellable] with cleanup suppressed into the hook failure, leaving nothing published
+ * for a safe retry. Cancellation is owned the same way: once a creator holds its
+ * single-flight (or a shutdown holds its teardown gate), every
  * state clear, resource rollback, gate completion and mutex transition runs under
  * [NonCancellable] and the original [CancellationException] is rethrown afterwards, so a
  * cancelled handshake never leaks a client, a stop, a flight, or a gate.
@@ -84,7 +88,14 @@ internal class TapConnectionState(
     private class GenerationLostException : Exception("tap generation lost; retry")
 
     private fun installHook(client: TapClient) {
-        if (hookInstalled.compareAndSet(false, true)) onFirstClient(client)
+        if (hookInstalled.compareAndSet(false, true)) {
+            try {
+                onFirstClient(client)
+            } catch (hookFailed: Throwable) {
+                hookInstalled.set(false)
+                throw hookFailed
+            }
+        }
     }
 
     /** The shared client, starting the managed service (when configured) on first use. */
@@ -160,12 +171,13 @@ internal class TapConnectionState(
             }
             // I/O succeeded; a cancellation that landed after the create must still roll
             // the just-built client back instead of leaking it.
+            val freshClient = requireNotNull(created) { "client create returned null without throwing" }
             try {
                 currentCoroutineContext().ensureActive()
             } catch (cancelledAfterIo: CancellationException) {
                 withContext(NonCancellable) {
                     try {
-                        closeClient(created!!)
+                        closeClient(freshClient)
                     } catch (closeFailed: Throwable) {
                         cancelledAfterIo.addSuppressed(closeFailed)
                     }
@@ -181,16 +193,49 @@ internal class TapConnectionState(
                 }
                 throw cancelledAfterIo
             }
+            // Hook installation is transactional and runs before publish (outside the
+            // mutex, no I/O under lock): the installed flag is set only on success
+            // (installHook resets on throw), and a hook failure rolls the just-built
+            // client and owned service back under NonCancellable with cleanup failures
+            // suppressed into the hook failure. Nothing is published, so the next
+            // attempt retries the hook cleanly with no fast-path leaked client.
+            try {
+                installHook(freshClient)
+            } catch (hookFailed: Throwable) {
+                withContext(NonCancellable) {
+                    try {
+                        closeClient(freshClient)
+                    } catch (closeFailed: Throwable) {
+                        hookFailed.addSuppressed(closeFailed)
+                    }
+                    if (started) {
+                        try {
+                            stopService()
+                        } catch (stopFailed: Throwable) {
+                            hookFailed.addSuppressed(stopFailed)
+                        }
+                    }
+                    mutex.withLock { if (clientFlight === myFlight) clientFlight = null }
+                    if (!myFlight.isCompleted) {
+                        if (hookFailed is CancellationException) {
+                            myFlight.completeExceptionally(GenerationLostException())
+                        } else {
+                            myFlight.completeExceptionally(hookFailed)
+                        }
+                    }
+                }
+                throw hookFailed
+            }
             var published = false
             var staleClient: TapClient? = null
             var staleStop = false
             try {
                 mutex.withLock {
                     if (seenGen != generation || teardown != null || clientValue != null) {
-                        staleClient = created
+                        staleClient = freshClient
                         staleStop = started
                     } else {
-                        clientValue = created
+                        clientValue = freshClient
                         startedService = started
                         closed = false
                         published = true
@@ -200,7 +245,7 @@ internal class TapConnectionState(
             } catch (publishCancelled: CancellationException) {
                 withContext(NonCancellable) {
                     try {
-                        closeClient(created!!)
+                        closeClient(freshClient)
                     } catch (closeFailed: Throwable) {
                         publishCancelled.addSuppressed(closeFailed)
                     }
@@ -222,9 +267,11 @@ internal class TapConnectionState(
                 // service we started, then retry on the new generation. Both attempts run
                 // independently under NonCancellable; a stale discard has no primary to
                 // suppress into.
+                val staleToClose =
+                    requireNotNull(staleClient) { "stale client missing for unpublished generation" }
                 withContext(NonCancellable) {
                     try {
-                        closeClient(staleClient!!)
+                        closeClient(staleToClose)
                     } catch (_: Throwable) {
                         // No primary; the stop below still runs.
                     }
@@ -239,16 +286,15 @@ internal class TapConnectionState(
                 if (!myFlight.isCompleted) myFlight.completeExceptionally(GenerationLostException())
                 continue
             }
+            // Published; the hook already succeeded above, so only the flight needs its
+            // terminal state here.
             try {
-                installHook(created!!)
-                myFlight.complete(created!!)
-            } catch (hookFailed: Throwable) {
-                // The client is already published for the next accessor; only the flight
-                // still needs a terminal state so sharers never park forever.
-                if (!myFlight.isCompleted) myFlight.completeExceptionally(hookFailed)
-                throw hookFailed
+                myFlight.complete(freshClient)
+            } catch (completeFailed: Throwable) {
+                if (!myFlight.isCompleted) myFlight.completeExceptionally(completeFailed)
+                throw completeFailed
             }
-            return created!!
+            return freshClient
         }
     }
 
@@ -260,7 +306,8 @@ internal class TapConnectionState(
             // on the teardown gate while a shutdown may be awaiting their flight.
             val clientBefore: TapClient?
             mutex.withLock {
-                if (connectionValue != null) return connectionValue!!
+                val cached = connectionValue
+                if (cached != null) return cached
                 clientBefore = clientValue
             }
             val owner: TapClient
@@ -433,9 +480,11 @@ internal class TapConnectionState(
             if (!published) {
                 // Shutdown won the race during the attach: drop the stale connection
                 // (the client half was accounted by the shutdown) and retry.
+                val staleToClose =
+                    requireNotNull(stale) { "stale connection missing for unpublished attach" }
                 withContext(NonCancellable) {
                     try {
-                        closeConnection(stale!!)
+                        closeConnection(staleToClose)
                     } catch (_: Throwable) {
                         // Stale discard has no primary; the shutdown owns the client half.
                     }
@@ -461,8 +510,10 @@ internal class TapConnectionState(
      * snapshot awaits the gate (close + owned stop complete) before starting the next
      * generation. Teardown work runs outside the mutex. Once the teardown gate is owned, every
      * close, stop, state clear, gate completion and mutex transition runs under
-     * [NonCancellable]; a caller cancelled while owning the teardown still completes it and
-     * then rethrows the original cancellation. Failures are swallowed here
+     * [NonCancellable]; a caller cancelled while joining its captured flights re-awaits every
+     * captured client/connection flight under [NonCancellable] before reclaiming, so the
+     * stale creator's rollback (close + owned stop) finishes before the gate completes and
+     * the next generation starts, and then rethrows the original cancellation. Failures are swallowed here
      * (the edge has nowhere to report them) — per-test teardown in `TapExtension` is the
      * place that preserves failures. A later `client`/`connection` explicitly opens a new
      * generation — launcher sessions are sequential, never overlapping.
@@ -524,6 +575,10 @@ internal class TapConnectionState(
             // doing I/O (client is ensured before the connection flight is installed),
             // so this cannot deadlock, and it keeps a close from landing mid-connect.
             // Newcomers park on the teardown gate above until it completes below.
+            // If the caller is cancelled while joining, both captured flights are
+            // re-awaited under NonCancellable before any reclaim: the stale creator's
+            // rollback (close + owned stop) must finish before the gate completes, so
+            // the next generation can never start on a half-rolled-back generation.
             var joinCancelled: CancellationException? = null
             try {
                 try {
@@ -545,19 +600,35 @@ internal class TapConnectionState(
                     } catch (_: Throwable) {
                     }
                 } else {
-                    // Already cancelled: still drain the second flight without suspending
-                    // on cancellation — its result is irrelevant, but never leave an
-                    // unobserved failure to surface later.
-                    try {
-                        awaitConnection?.await()
-                    } catch (_: Throwable) {
-                    }
+                    // Already cancelled: the second flight has not been joined yet; it is
+                    // re-awaited under NonCancellable below (a cancellable await here
+                    // would throw immediately without waiting for the stale rollback).
                 }
             } catch (joinFailed: CancellationException) {
                 // Defensive: await above only throws the caller's cancellation.
                 joinCancelled = joinFailed
             }
+            val clientFlightToJoin = awaitClient
+            val connectionFlightToJoin = awaitConnection
+            val teardownToComplete =
+                requireNotNull(myTeardown) { "teardown gate missing for owned shutdown" }
+            val connectionToClose = connection
+            val clientToClose = client
+            val stopToRun = stop
             withContext(NonCancellable) {
+                if (joinCancelled != null) {
+                    // Caller cancelled while joining: re-await every captured flight to
+                    // completion (results ignored) so the stale creator's close + owned
+                    // stop finish before reclaiming or completing the gate.
+                    try {
+                        clientFlightToJoin?.await()
+                    } catch (_: Throwable) {
+                    }
+                    try {
+                        connectionFlightToJoin?.await()
+                    } catch (_: Throwable) {
+                    }
+                }
                 // Reclaim anything an in-flight creation published while joining (it saw the
                 // new generation and should have discarded, but never leak a publish).
                 var lateConnection: Connection? = null
@@ -570,15 +641,15 @@ internal class TapConnectionState(
                 }
                 try {
                     try {
-                        if (connection != null) closeConnection(connection)
+                        if (connectionToClose != null) closeConnection(connectionToClose)
                     } catch (_: Throwable) {
                     }
                     try {
-                        if (client != null) closeClient(client)
+                        if (clientToClose != null) closeClient(clientToClose)
                     } catch (_: Throwable) {
                     }
                     try {
-                        if (stop) stopService()
+                        if (stopToRun) stopService()
                     } catch (_: Throwable) {
                     }
                     try {
@@ -594,8 +665,8 @@ internal class TapConnectionState(
                     } catch (_: Throwable) {
                     }
                 } finally {
-                    mutex.withLock { if (teardown === myTeardown) teardown = null }
-                    myTeardown!!.complete(Unit)
+                    mutex.withLock { if (teardown === teardownToComplete) teardown = null }
+                    teardownToComplete.complete(Unit)
                 }
             }
             // The teardown gate is complete; now preserve the caller's cancellation, if any,
