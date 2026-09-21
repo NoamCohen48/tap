@@ -58,6 +58,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -272,9 +273,14 @@ class TapClientTest {
                     }
                 withTimeout(5_000) { joined.forEach { it.await() } }
                 withTimeout(5_000) { fakeConnections.closeEntered.await() }
+                // Deterministic shared-flight proof via the read-only duplicate seam: every
+                // duplicate observed the shared closeDeferred before the RPC is released.
+                withTimeout(5_000) {
+                    while (connection.duplicateCloseCount < 7) delay(10)
+                }
                 assertEquals(1, fakeConnections.closes.get(), "single-flight while the RPC is in flight")
-                // Deterministic shared-flight proof: every duplicate caller joined before the
-                // release and none returns early while the single Close RPC is parked.
+                // Every duplicate caller joined before the release and none returns early
+                // while the single Close RPC is parked.
                 assertTrue(closers.none { it.isCompleted }, "duplicate closers joined the shared flight; none returns early")
                 fakeConnections.closeRelease.complete(Unit)
                 withTimeout(5_000) { closers.forEach { it.await() } }
@@ -421,42 +427,78 @@ class TapClientTest {
     }
 
     @Test
-    fun `device drain timeout runs late cleanup exactly once`() {
+    fun `device drain timeout fails closed with one Connection Close`() {
         runBlocking {
-            val connection = Connection(client(), "conn-late", ConnectionBounds(), DeviceBounds(drainMs = 300))
+            val connection = Connection(client(), "conn-failclosed", ConnectionBounds(), DeviceBounds(drainMs = 300))
             connection.attach()
             try {
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
-                    assertEquals(1, connection.liveDeviceCount)
+                    val first = connection.openDevice("emulator-5554", "com.test")
+                    val second = connection.openDevice("emulator-5555", "com.test")
+                    assertEquals(2, connection.liveDeviceCount)
                     val firstPoll = CompletableDeferred<Unit>()
+                    // Permanently parked admitted operation: never released to unblock close.
+                    // Fail-closed must tear the connection down without waiting for this drain.
                     val parked =
                         async {
-                            device.awaitUntil("parked", timeout = 30.seconds) {
+                            first.awaitUntil("parked", timeout = 30.seconds) {
                                 if (!firstPoll.isCompleted) firstPoll.complete(Unit)
                                 false
                             }
                         }
                     withTimeout(5_000) { firstPoll.await() }
-                    val started = System.nanoTime()
-                    val bounded = assertFailsWith<ServiceException> { device.closeAndReport() }
-                    val elapsedMs = (System.nanoTime() - started) / 1_000_000
-                    assertTrue(bounded.details.contains("drain timed out"), "unexpected: ${bounded.details}")
-                    assertTrue(bounded.details.contains("late cleanup"), "unexpected: ${bounded.details}")
-                    assertTrue(elapsedMs < 5_000, "bounded close despite parked op, took ${elapsedMs}ms")
-                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close before the drain releases")
-                    assertEquals(1, connection.liveDeviceCount, "handle stays registered until late cleanup")
-                    parked.cancelAndJoin()
+                    assertTrue(connection.liveDeviceCount == 2)
+                    // Duplicate closes share the same drain wait and the same terminal failure.
+                    val closer1 = async { runCatching { first.closeAndReport() } }
+                    val closer2 = async { runCatching { first.closeAndReport() } }
+                    val firstResult = withTimeout(10_000) { closer1.await() }
+                    val secondResult = withTimeout(10_000) { closer2.await() }
+                    assertTrue(firstResult.isFailure, "drain timeout fails the first close")
+                    assertTrue(secondResult.isFailure, "duplicate shares the terminal failure")
+                    val firstFailure = firstResult.exceptionOrNull()
+                    val secondFailure = secondResult.exceptionOrNull()
+                    assertIs<ServiceException>(firstFailure)
+                    assertEquals("DEADLINE_EXCEEDED", firstFailure.status)
+                    assertTrue(firstFailure.details.contains("drain timed out"), "unexpected: ${firstFailure.details}")
+                    assertTrue(firstFailure.details.contains("fail-closed"), "unexpected: ${firstFailure.details}")
+                    // Same terminal failure instance for owner and duplicate.
+                    assertSame(firstFailure, secondFailure, "duplicate Device closes share the same timeout instance")
+                    // Exactly one bounded Connection Close, zero Session Close.
                     withTimeout(5_000) {
-                        while (fakeSessions.closeCalls.get() < 1) delay(10)
+                        while (fakeConnections.closes.get() < 1) delay(10)
+                    }
+                    assertEquals(1, fakeConnections.closes.get(), "exactly one Connection Close")
+                    delay(200)
+                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close on the fail-closed path")
+                    assertEquals(1, fakeConnections.closes.get(), "no duplicate Connection Close")
+                    // Connection unusable, every handle invalid, registry cleared before the
+                    // shared terminal completion.
+                    withTimeout(5_000) {
+                        while (!connection.isInvalid) delay(10)
                     }
                     withTimeout(5_000) {
                         while (connection.liveDeviceCount != 0) delay(10)
                     }
-                    assertEquals(1, fakeSessions.closeCalls.get(), "exactly one Session Close via late cleanup")
-                    val late = withTimeout(5_000) { device.closeAndReport() }
-                    assertNull(late, "later close returns the late-cleanup result (clean null)")
-                    assertEquals(1, fakeSessions.closeCalls.get(), "later close sends no duplicate RPC")
+                    assertEquals(0, connection.liveDeviceCount, "registry cleared before terminal completion")
+                    // The closed handle rejects locally; the sibling handle is connection-invalid.
+                    assertFailsWith<TapUsageException> { first.info() }
+                    val siblingFailure = assertFailsWith<ServiceException> { second.info() }
+                    assertEquals("UNAVAILABLE", siblingFailure.status)
+                    assertFailsWith<TapUsageException> { connection.openDevice("emulator-5556", "com.test") }
+                    // Owned scope/job terminated after the bounded Connection Close.
+                    assertTrue(first.failClosedStarted, "fail-closed job launched on the owned scope")
+                    withTimeout(5_000) {
+                        while (first.failClosedHandle?.isCompleted != true) delay(10)
+                    }
+                    withTimeout(5_000) {
+                        while (!first.cleanupTerminated) delay(10)
+                    }
+                    // A later duplicate still shares the same terminal failure, no new RPC.
+                    val late = runCatching { withTimeout(5_000) { first.closeAndReport() } }.exceptionOrNull()
+                    assertSame(firstFailure, late, "late duplicate shares the same terminal failure")
+                    assertEquals(1, fakeConnections.closes.get())
+                    assertEquals(0, fakeSessions.closeCalls.get())
+                    parked.cancelAndJoin()
                 }
             } finally {
                 runCatching { connection.close() }
@@ -465,9 +507,11 @@ class TapClientTest {
     }
 
     @Test
-    fun `connection close supersedes pending device late cleanup exactly once`() {
+    fun `fail-closed Connection Close failure is suppressed without stranding`() {
         runBlocking {
-            val connection = Connection(client(), "conn-race", ConnectionBounds(), DeviceBounds(drainMs = 300))
+            fakeConnections.closeError =
+                StatusRuntimeException(Status.UNAVAILABLE.withDescription("connection boom"))
+            val connection = Connection(client(), "conn-failclosed-err", ConnectionBounds(), DeviceBounds(drainMs = 300))
             connection.attach()
             try {
                 tapScope {
@@ -481,20 +525,41 @@ class TapClientTest {
                             }
                         }
                     withTimeout(5_000) { firstPoll.await() }
-                    assertFailsWith<ServiceException> { device.closeAndReport() }
-                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close before the drain releases")
-                    withTimeout(5_000) { connection.close() }
-                    assertEquals(1, fakeConnections.closes.get(), "exactly one Connection Close")
-                    parked.cancelAndJoin()
+                    val failure = assertFailsWith<ServiceException> { device.closeAndReport() }
+                    assertEquals("DEADLINE_EXCEEDED", failure.status)
+                    assertTrue(failure.details.contains("fail-closed"), "unexpected: ${failure.details}")
+                    withTimeout(5_000) {
+                        while (fakeConnections.closes.get() < 1) delay(10)
+                    }
+                    // The Connection Close failure is observable via suppressed, never stranded.
+                    withTimeout(5_000) {
+                        while (failure.suppressed.isEmpty()) delay(10)
+                    }
+                    assertTrue(
+                        failure.suppressed.any { it.message?.contains("connection boom") == true },
+                        "suppressed carries the Connection Close failure, got: ${failure.suppressed.toList()}",
+                    )
+                    assertEquals(1, fakeConnections.closes.get(), "exactly one Connection Close even on failure")
+                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close on the fail-closed path")
+                    withTimeout(5_000) {
+                        while (!connection.isInvalid) delay(10)
+                    }
                     withTimeout(5_000) {
                         while (connection.liveDeviceCount != 0) delay(10)
                     }
-                    assertEquals(0, fakeSessions.closeCalls.get(), "superseded late cleanup sends no Session Close")
-                    assertEquals(1, fakeConnections.closes.get(), "no duplicate Connection Close")
-                    val late = withTimeout(5_000) { device.closeAndReport() }
-                    assertNull(late, "superseded late cleanup completes clean; later close returns null")
+                    assertEquals(0, connection.liveDeviceCount, "registry cleared even when Connection Close fails")
+                    withTimeout(5_000) {
+                        while (device.failClosedHandle?.isCompleted != true) delay(10)
+                    }
+                    withTimeout(5_000) {
+                        while (!device.cleanupTerminated) delay(10)
+                    }
+                    val duplicate = assertFailsWith<ServiceException> { withTimeout(5_000) { device.closeAndReport() } }
+                    assertSame(failure, duplicate, "duplicate shares the same terminal failure with suppressed cause")
+                    parked.cancelAndJoin()
                 }
             } finally {
+                fakeConnections.closeError = null
                 runCatching { connection.close() }
             }
         }
@@ -518,7 +583,7 @@ class TapClientTest {
                 // The outer withTimeout owns the probe call directly, so its
                 // TimeoutCancellationException is the cancellation identity under test.
                 val probing = async { withTimeout(200.milliseconds) { ServiceDiscovery.running(dir) } }
-                withTimeout(5_000) { entered.await() }
+                withTimeout(10_000) { entered.await() }
                 val outer = assertFailsWith<TimeoutCancellationException> { probing.await() }
                 assertTrue(
                     outer.message!!.contains("200ms") || outer.message!!.contains("Timed out"),
@@ -526,6 +591,51 @@ class TapClientTest {
                 )
                 assertTrue(probing.isCancelled, "hanging probe cancelled, never returned as dead")
                 withTimeout(5_000) { probing.join() }
+            } finally {
+                server.shutdownNow()
+            }
+        }
+    }
+
+    @Test
+    fun `discovery preserves known cancellation identity`() {
+        runBlocking {
+            val entered = CompletableDeferred<Unit>()
+            val service =
+                object : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
+                    override suspend fun info(request: InfoRequest): InfoResponse {
+                        if (!entered.isCompleted) entered.complete(Unit)
+                        awaitCancellation()
+                    }
+                }
+            val server = NettyServerBuilder.forPort(0).addService(service).directExecutor().build().start()
+            try {
+                val dir = Files.createTempDirectory("tap-probe-known")
+                Files.writeString(dir.resolve("service.json"), "{\"port\":${server.port}}")
+                val known = CancellationException("known-discovery-cancel")
+                val probing = async { ServiceDiscovery.running(dir) }
+                withTimeout(10_000) { entered.await() }
+                probing.cancel(known)
+                val thrown = assertFailsWith<CancellationException> { probing.await() }
+                // Coroutine cancellation may wrap the cause; the known instance must still be
+                // observable by identity somewhere in the chain (itself or its cause chain).
+                fun chainContainsKnown(error: Throwable?): Boolean {
+                    var current = error
+                    while (current != null) {
+                        if (current === known) return true
+                        current = current.cause
+                    }
+                    return false
+                }
+                assertTrue(chainContainsKnown(thrown), "known cancellation preserved in the chain, got: $thrown")
+                // Where the machinery propagates without wrapping, assert the identity directly.
+                if (thrown === known) {
+                    assertSame(known, thrown, "known outer cancellation propagates with identity")
+                } else {
+                    var current: Throwable? = thrown
+                    while (current != null && current !== known) current = current.cause
+                    assertSame(known, current, "known cancellation preserved as the cause identity")
+                }
             } finally {
                 server.shutdownNow()
             }

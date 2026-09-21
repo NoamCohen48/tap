@@ -39,6 +39,7 @@ import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -196,6 +197,7 @@ class Connection internal constructor(
     private val unusableCause = AtomicReference<Throwable?>(null)
     private val closeStarted = AtomicBoolean(false)
     private var closeDeferred: CompletableDeferred<Unit>? = null
+    private val duplicateCloseObserved = AtomicInteger(0)
     private val openDevices = CopyOnWriteArrayList<Device>()
 
     /** Messages the service sent on the liveness stream so far (diagnostics). */
@@ -358,6 +360,7 @@ class Connection internal constructor(
             }
         }
         if (!isOwner) {
+            duplicateCloseObserved.incrementAndGet()
             withContext(NonCancellable) { deferred.await() }
             return
         }
@@ -456,19 +459,31 @@ class Connection internal constructor(
         openDevices.remove(device)
     }
 
+    /**
+     * Fail-closed invalidation for a [Device] operation-drain timeout. Marks the connection
+     * unusable, marks every registered handle invalid, and clears the registry — before the
+     * caller publishes the shared Device terminal failure. Connection Close is the
+     * authoritative server-side teardown for all sessions, so no Session Close follows.
+     */
+    internal fun failClosedInvalidate(cause: Throwable) {
+        if (unusable.compareAndSet(false, true)) {
+            unusableCause.compareAndSet(null, cause)
+        }
+        val terminal = unusableCause.get() ?: cause
+        openDevices.forEach { it.markConnectionInvalid(terminal) }
+        openDevices.clear()
+    }
+
     /** Live (opened, not yet closed) handles. Internal observer for tests. */
     internal val liveDeviceCount: Int get() = openDevices.size
 
     /**
-     * True once Connection Close started or the liveness stream ended unexpectedly. A pending
-     * [Device] late cleanup observes this before issuing its bounded Session Close: when true
-     * the connection teardown already covers the sessions, so the Session Close is superseded
-     * (skipped) and the handle just unregisters. Internal read-only hook for the race test.
+     * Duplicates that observed the shared close completion after the owner published it.
+     * Incremented after a non-owner sees [closeDeferred], before it awaits the shared
+     * outcome: a test parks the Close RPC, waits for this to reach duplicates, then releases
+     * the RPC, proving every duplicate joined the single flight deterministically.
      */
-    internal val supersedesSessionClose: Boolean get() = closeStarted.get() || unusable.get()
-
-    /** True once [close] took ownership. Internal read-only hook for the race test. */
-    internal val closeInitiated: Boolean get() = closeStarted.get()
+    internal val duplicateCloseCount: Int get() = duplicateCloseObserved.get()
 
     private suspend fun boundedCancelJoin(job: Job) {
         withContext(NonCancellable) {

@@ -18,6 +18,7 @@ import com.company.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
@@ -117,10 +118,20 @@ class Device internal constructor(
     private var closeDeferred: CompletableDeferred<String?>? = null
     private val connectionInvalid = AtomicBoolean(false)
     private val connectionInvalidCause = AtomicReference<Throwable?>(null)
-    // Explicitly owned late-cleanup scope: SupervisorJob + IO, one per Device, never GlobalScope.
-    // It hosts at most one late-cleanup job (drain-timeout path only) and is cancelled after
+    // Explicitly owned fail-closed scope: SupervisorJob + IO, one per Device, never GlobalScope.
+    // It hosts at most one fail-closed job (drain-timeout path only) and is cancelled after
     // every terminal close path, so no background work outlives the handle.
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var failClosedJob: Job? = null
+
+    /** True once the drain-timeout path launched its fail-closed job. Test-observable. */
+    internal val failClosedStarted: Boolean get() = failClosedJob != null
+
+    /** The fail-closed job, if launched. Test-observable (must be terminal after fail-closed). */
+    internal val failClosedHandle: Job? get() = failClosedJob
+
+    /** True once the owned cleanup scope terminated. Test-observable. */
+    internal val cleanupTerminated: Boolean get() = cleanupScope.coroutineContext[Job]?.isCompleted == true
 
     /** True once [closeAndReport] started (new operations are rejected locally). */
     val isClosed: Boolean get() = closeStarted.get()
@@ -421,23 +432,22 @@ class Device internal constructor(
      * [TapUsageException] instead of waiting for itself. Runs under a bounded non-cancellable
      * context so teardown completes even when the caller is cancelled.
      *
-     * Drain-timeout contract (late cleanup): when admitted operations are still in flight past
+     * Drain-timeout contract (fail closed): when admitted operations are still in flight past
      * the per-instance drain bound, the first caller throws `DEADLINE_EXCEEDED` immediately
-     * (caller-visible) WITHOUT completing the shared completion and WITHOUT unregistering as
-     * cleaned — the service lease is not stranded. Instead exactly one late-cleanup job is
-     * launched on the explicitly owned per-Device [cleanupScope] (never `GlobalScope`): after
-     * the same admitted operations eventually drain it issues one bounded Session Close
-     * ([DeviceBounds.closeOuterMs] outer bound past the 120 s deadline, mapped) and then
-     * unregisters exactly once. A Connection Close or liveness invalidation racing the late
-     * job supersedes safely: the late job observes [Connection.supersedesSessionClose], skips
-     * the Session Close (the connection teardown already covers the sessions), unregisters,
-     * and completes the shared completion as clean (null). Subsequent close callers never send
-     * a second RPC: they await the same shared completion, so a first-call drain timeout is
-     * followed by later calls returning the late-cleanup result (quarantine detail, null, or
-     * the late failure). A late-cleanup failure is observed through that same shared
-     * completion, never as an unhandled scope exception. The owned scope is cancelled after
-     * every terminal path (fast success/failure, late success/failure/supersede).
-     * The handle unregisters from the connection exactly once, on the terminal path.
+     * and exactly one fail-closed job is launched on the explicitly owned per-Device
+     * [cleanupScope] (never `GlobalScope`). That job issues exactly one bounded
+     * Connection Close — the authoritative server-side teardown for all sessions, so no
+     * Session Close follows (no unbounded drain wait, no Session/Connection TOCTOU, no
+     * fabricated unknown-session, no clean-null quarantine claim) — then marks the
+     * connection unusable, marks every registered handle invalid, and removes registry
+     * entries before publishing the shared terminal failure. The original caller throws the
+     * documented `DEADLINE_EXCEEDED`; subsequent callers await the same shared completion
+     * and receive the same terminal failure instance. A Connection Close failure is
+     * suppressed into that failure (observable via `suppressed`) without stranding the
+     * registry or the scope: invalidation, removal and scope cancellation still run. The
+     * owned scope/job terminates after the bounded Connection Close. The normal path
+     * (drain succeeds) still issues one bounded Session Close and returns its quarantine
+     * result.
      */
     suspend fun closeAndReport(): String? {
         ensureTapBound("Device.close")
@@ -469,16 +479,18 @@ class Device internal constructor(
             if (toDrain != null) {
                 val drained = withTimeoutOrNull(bounds.drainMs) { toDrain.await() }
                 if (drained == null) {
-                    // Bounded local failure: do NOT complete the shared completion and do NOT
-                    // unregister as cleaned. Launch the exactly-once late cleanup and report
-                    // the timeout to this caller only; later callers await the late result.
-                    launchLateCleanup(toDrain, deferred)
-                    throw ServiceException(
-                        "DEADLINE_EXCEEDED",
-                        "device $serial close drain timed out after ${bounds.drainMs}ms " +
-                            "with admitted operations still in flight; late cleanup will close " +
-                            "the session once they drain",
-                    )
+                    // Fail closed: report the drain timeout immediately and let exactly one
+                    // owned job tear the connection down. The shared completion stays pending
+                    // until registry removal, so duplicates share the same terminal failure.
+                    val failClosed =
+                        ServiceException(
+                            "DEADLINE_EXCEEDED",
+                            "device $serial close drain timed out after ${bounds.drainMs}ms " +
+                                "with admitted operations still in flight; fail-closed Connection close " +
+                                "triggered (authoritative server-side teardown, no Session Close)",
+                        )
+                    launchFailClosed(failClosed, deferred)
+                    throw failClosed
                 }
             }
             try {
@@ -586,39 +598,37 @@ class Device internal constructor(
     }
 
     /**
-     * Launches the exactly-once late cleanup on the owned [cleanupScope]. Awaits the same
-     * [toDrain] the fast path timed out on (eventual, unbounded: admitted ops release via the
-     * cancellation-safe `finally` in [admitted]), then either supersedes (Connection Close or
-     * invalidation already covers the sessions: skip the RPC, complete clean) or issues one
-     * bounded Session Close. Every outcome completes [deferred] (observed by all later close
-     * callers, never a duplicate RPC) and unregisters exactly once; the scope is cancelled
-     * afterwards. All throwables — including scope cancellation — are funneled into the shared
-     * completion so nothing escapes as an unhandled scope exception.
+     * Launches the exactly-once fail-closed teardown on the owned [cleanupScope]. Issues one
+     * bounded Connection Close (authoritative teardown, no Session Close), then invalidates
+     * every handle and clears the registry before publishing the shared terminal [failure].
+     * A Connection Close failure is suppressed into [failure] (still observable) without
+     * stranding invalidation, removal or scope cancellation. The scope is cancelled after the
+     * bounded close so the job terminates; nothing escapes as an unhandled exception.
      */
-    private fun launchLateCleanup(
-        toDrain: CompletableDeferred<Unit>,
+    private fun launchFailClosed(
+        failure: ServiceException,
         deferred: CompletableDeferred<String?>,
     ) {
-        cleanupScope.launch {
-            try {
-                toDrain.await()
-                if (connection.supersedesSessionClose) {
-                    runCatching { deferred.complete(null) }
-                } else {
-                    try {
-                        val detail = boundedSessionClose()
-                        runCatching { deferred.complete(detail) }
-                    } catch (late: Throwable) {
-                        runCatching { deferred.completeExceptionally(late) }
-                    }
+        failClosedJob =
+            cleanupScope.launch {
+                var closeError: Throwable? = null
+                try {
+                    connection.close()
+                } catch (failed: Throwable) {
+                    closeError = failed
                 }
-            } catch (late: Throwable) {
-                runCatching { deferred.completeExceptionally(late) }
-            } finally {
-                runCatching { connection.unregister(this@Device) }
+                try {
+                    connection.failClosedInvalidate(failure)
+                } catch (failed: Throwable) {
+                    if (closeError == null) closeError = failed
+                }
+                val suppressed = closeError
+                if (suppressed != null && suppressed !== failure) {
+                    runCatching { failure.addSuppressed(suppressed) }
+                }
+                runCatching { deferred.completeExceptionally(failure) }
                 runCatching { cleanupScope.cancel() }
             }
-        }
     }
 
     /** `info()` without re-entering admission (for use inside an already-admitted block). */
