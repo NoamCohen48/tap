@@ -33,6 +33,10 @@ Landed and reviewed checkpoints:
 - `3bfb049`, `04660f3`, `0422109` — service review follow-ups: strict shutdown bounds,
   detach-and-launch cleanup, full detached cleanup deadlines, bounded `tap stop`, explicit gRPC
   termination, corrected verification docs, and deterministic connection-exhaustion coverage.
+- `184dac8`, `109656e`, `aaca240`, `4d8c416`, `a9316c9`, `6207d04`, `eb1f3b7`,
+  `70ff8fd`, `de0a2a8`, `80473e9`, `e950da6` — Kotlin SDK/JUnit coroutine conversion and
+  lifecycle review follow-ups, ending with fail-closed device-drain teardown, cancellation-safe
+  generation ownership, and transactional shutdown-hook installation.
 
 Host core/service verification completed on 2026-09-21: the no-reboot validation flow passed
 on emulator-5554 (API 34) and 85e49002 (API 29), including every required `PHASE_1_*_OK` marker
@@ -308,14 +312,14 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    rewritten (`coroutineScope`/`async`, sibling-cancellation device assertion); guides, README
    and KDoc updated; `framework-gaps.md` rows removed with the proving tests; client line
    bumped to 0.2.0 (breaking, source-only — the wire is unchanged). Verified (worker, actual
-   Gradle XML): `:clients:kotlin:sdk:test` (30 `TapClientTest`), `:clients:kotlin:junit5:test`
+   Gradle XML): `:clients:kotlin:sdk:test` (31 `TapClientTest`), `:clients:kotlin:junit5:test`
    (34: `TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 13),
    `:samples:fixture-tests:compileTestKotlin`, `:host:service:test`, `publishToMavenLocal`,
    plus Dokka for the SDK and JUnit modules. JUnit repair history: `aaca240` (interruption
    teardown, duplicate roles, Execute-backed sibling proof, connection generations, docs),
    `4d8c416` (owned detached coroutine scope), `a9316c9` (Kotlin formatting), `eb1f3b7`
-   (teardown-gated generations with creation rollback), and the cancellation-ownership
-   follow-up in this lane (final hash recorded by the parent): every state clear, resource
+   (teardown-gated generations with creation rollback), and `de0a2a8` (cancellation-safe
+   ownership and suppressed rollback): every state clear, resource
    rollback, gate/deferred completion and mutex transition after `clientFlight`,
    `connectionFlight` or teardown ownership runs under `NonCancellable` with the original
    cancellation rethrown; no never-completed deferreds/gates; `create`/`connect` failure or
@@ -326,7 +330,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    `createClient`, `connectClient`, and shutdown while awaiting/owning flights (subsequent
    client/connection/shutdown completes, no leaks), plus `create` failure + `stop` failure
    and `connect` failure + `close` + `stop` suppression contents/order with exact-once
-   resources, plus the final findings in this lane (hash recorded by the parent): cancelled
+   resources, plus the final findings in `e950da6`: cancelled
    shutdown re-awaits every captured client/connection flight under `NonCancellable` before
    reclaiming or completing the teardown gate (next generation starts only after the stale
    rollback + owned stop finish, original cancellation rethrown), transactional hook
