@@ -1,6 +1,7 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.Health
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -66,7 +67,7 @@ data class DeviceSessionConfig(
  * in place: close this session and open a new one (the generation advances).
  */
 class DeviceSession private constructor(
-    val config: DeviceSessionConfig,
+    internal val config: DeviceSessionConfig,
     private val lease: AutoCloseable,
     private val store: SessionJournalStore,
     private var journal: SessionJournal,
@@ -77,7 +78,12 @@ class DeviceSession private constructor(
     val serial: String get() = config.serial
     val generation: Long get() = journal.generation
     val sessionId: String get() = journal.sessionId
-    val adb: Adb get() = config.adb
+
+    /** Immutable session metadata for cross-module users; the raw runner/config stay internal. */
+    val autPackage: String get() = config.autPackage
+
+    /** The raw runner. Internal: cross-module users go through typed [AppLifecycle] operations. */
+    internal val adb: Adb get() = config.adb
 
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
@@ -110,8 +116,10 @@ class DeviceSession private constructor(
 
     /** Runs an ADB block, poisoning this session sticky only when THIS started command left
      * reap uncertainty. A temporary [AdbRunnerGatedException] (never started: another serial owns
-     * residual capacity) never poisons. Admission atomically rejects after close starts. */
-    suspend fun <T> guardAdb(block: suspend () -> T): T {
+     * residual capacity) never poisons. Admission atomically rejects after close starts.
+     * Internal: cross-module users go through [AppLifecycle]; the session never hands raw runner
+     * access back out. */
+    internal suspend fun <T> guardAdb(block: suspend () -> T): T {
         operationMutex.withLock {
             checkUsable()
             if (operationsClosing) throw IllegalStateException("Session on $serial is closing; new operations are rejected")
@@ -125,9 +133,38 @@ class DeviceSession private constructor(
                 throw error
             }
         } finally {
-            operationMutex.withLock { inFlightOperations-- }
+            // NonCancellable: the caller is typically already cancelled when this runs, and close
+            // may own operationMutex at that moment. A cancellable decrement would skip the
+            // lease, strand close in a false timeout quarantine, and mask the original
+            // cancellation. Never throws, so the primary failure propagates intact.
+            withContext(NonCancellable) {
+                operationMutex.withLock { inFlightOperations-- }
+            }
         }
     }
+
+    /** Test-only probe invoked when the close drain observes an admitted operation still in
+     * flight, so a test can prove close is waiting before releasing the operation's failure.
+     * Null in production. */
+    internal var closeDrainProbeForTest: (() -> Unit)? = null
+
+    /**
+     * Test-only deterministic barrier: holds [operationMutex] between [entered] and [release],
+     * so a test can strand a guarded operation's lease release and a closing drain on the same
+     * mutex. Internal, never part of the supported surface.
+     */
+    internal suspend fun holdOperationsForTest(
+        entered: CompletableDeferred<Unit>,
+        release: CompletableDeferred<Unit>,
+    ) {
+        operationMutex.withLock {
+            entered.complete(Unit)
+            release.await()
+        }
+    }
+
+    /** Test visibility: admitted operations not yet through their poison-recording point. */
+    internal suspend fun inFlightOperationsForTest(): Int = operationMutex.withLock { inFlightOperations }
 
     /** Waits for admitted operations through their poison-recording point, bounded by [timeoutMs].
      * Returns null when drained, otherwise the timeout failure that must quarantine. */
@@ -142,6 +179,7 @@ class DeviceSession private constructor(
                     "Session cleanup on $serial exceeded ${timeoutMs}ms waiting for $remaining in-flight operation(s); device quarantined",
                 )
             }
+            closeDrainProbeForTest?.invoke()
             delay(10)
         }
     }

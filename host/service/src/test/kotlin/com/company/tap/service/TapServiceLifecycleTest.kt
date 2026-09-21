@@ -110,7 +110,7 @@ private class RealSessionDevice(
 ) : ServiceDevice {
     override val serial: String get() = delegate.serial
     override val generation: Long get() = delegate.generation
-    override val autPackage: String get() = delegate.config.autPackage
+    override val autPackage: String get() = delegate.autPackage
     override val client: DriverClient get() = delegate.client
 
     override fun app(packageName: String): AppLifecycle = delegate.app(packageName)

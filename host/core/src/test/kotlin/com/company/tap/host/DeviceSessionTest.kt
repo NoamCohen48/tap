@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -662,18 +663,24 @@ class DeviceSessionTest {
         }
 
     @Test
-    fun `open failing at bootId quarantines and frees the lease`() =
+    fun `open failing at bootId quarantines with the unknown-boot sentinel and later open rejects without erasing it`() =
         runBlocking {
+            var bootIdAttempts = 0
             val adb = FakeAdb(mapOf("shell am force-stop $DRIVER_PACKAGE" to ok("")))
-            adb.responder = { serial, command ->
+            adb.responder = { failSerial, command ->
                 if (command == "shell cat /proc/sys/kernel/random/boot_id") {
-                    throw AdbReapUncertainException(
-                        "ADB process or output drain survived bounded reap: $command",
-                        listOf("adb", "-s", serial) + command.split(" "),
-                        serial,
-                    )
+                    bootIdAttempts++
+                    if (bootIdAttempts == 1) {
+                        throw AdbReapUncertainException(
+                            "ADB process or output drain survived bounded reap: $command",
+                            listOf("adb", "-s", failSerial) + command.split(" "),
+                            failSerial,
+                        )
+                    }
+                    ok("boot-1")
+                } else {
+                    null
                 }
-                null
             }
             val fake = FakeDriverServer("unused", 1, ByteArray(32), acceptAnySession = true)
             try {
@@ -682,10 +689,26 @@ class DeviceSessionTest {
                 }
                 val record = journalStore().read()
                 assertEquals(JournalState.QUARANTINED, record?.state)
+                // Sentinel: the boot identity was never proven and no prior journal existed.
+                assertEquals(UNKNOWN_BOOT_ID, record?.bootId)
+                assertEquals(0, record?.generation)
                 assertTrue(
                     record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
                     record?.quarantineReason,
                 )
+                val reason = record?.quarantineReason
+                journalStore().acquireLease(0).close()
+                // A later open rejects on the quarantine and reconciles nothing away: the
+                // sentinel record (state and reason) survives instead of being erased.
+                val rejected =
+                    assertFailsWith<IllegalStateException> {
+                        DeviceSession.open(sessionConfig(adb, fake, mutableListOf()))
+                    }
+                assertTrue("quarantined" in rejected.message.orEmpty(), rejected.message.orEmpty())
+                val reread = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, reread?.state)
+                assertEquals(UNKNOWN_BOOT_ID, reread?.bootId)
+                assertEquals(reason, reread?.quarantineReason)
                 journalStore().acquireLease(0).close()
             } finally {
                 fake.close()
@@ -695,13 +718,28 @@ class DeviceSessionTest {
     @Test
     fun `open failing in closed-journal recovery quarantines and frees the lease`() =
         runBlocking {
+            // Seed an actual CLOSED journal: recovery must reconcile it (force-stop, forward
+            // cleanup) rather than treat the device as never-opened, and the reap-uncertain
+            // force-stop must still quarantine without losing the prior generation/identity.
+            val store = journalStore()
+            val seeded =
+                SessionJournal(
+                    state = JournalState.CLOSED,
+                    serial = serial,
+                    bootId = "boot-1",
+                    sessionId = "prior-session",
+                    generation = 5,
+                    devicePort = DEVICE_PORT,
+                    hostPort = 41001,
+                )
+            store.write(seeded)
             val adb = FakeAdb(mapOf("shell cat /proc/sys/kernel/random/boot_id" to ok("boot-1")))
-            adb.responder = { serial, command ->
+            adb.responder = { failSerial, command ->
                 if (command == "shell am force-stop $DRIVER_PACKAGE") {
                     throw AdbReapUncertainException(
                         "ADB process or output drain survived bounded reap: $command",
-                        listOf("adb", "-s", serial) + command.split(" "),
-                        serial,
+                        listOf("adb", "-s", failSerial) + command.split(" "),
+                        failSerial,
                     )
                 }
                 null
@@ -711,8 +749,10 @@ class DeviceSessionTest {
                 assertFailsWith<AdbReapUncertainException> {
                     DeviceSession.open(sessionConfig(adb, fake, mutableListOf()))
                 }
-                val record = journalStore().read()
+                val record = store.read()
                 assertEquals(JournalState.QUARANTINED, record?.state)
+                assertEquals(5, record?.generation)
+                assertEquals("prior-session", record?.sessionId)
                 assertTrue(
                     record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
                     record?.quarantineReason,
@@ -836,11 +876,13 @@ class DeviceSessionTest {
                 val app = session.app()
                 val inFlight = async(Dispatchers.IO) { runCatching { app.isRunning() } }
                 withTimeout(5_000) { admitted.await() }
+                // Explicit barrier: the probe proves close entered its admitted-operation drain
+                // before the failure is released, so the late poison deterministically wins.
+                val closeWaiting = CompletableDeferred<Unit>()
+                session.closeDrainProbeForTest = { closeWaiting.complete(Unit) }
                 val closing = async(Dispatchers.IO) { runCatching { session.close(timeoutMs = 10_000) } }
-                withTimeout(5_000) {
-                    while (closing.isCompleted) delay(10)
-                    // Close is still waiting for the admitted operation; nothing terminal yet.
-                }
+                withTimeout(5_000) { closeWaiting.await() }
+                assertFalse(closing.isCompleted, "close must still wait for the admitted operation")
                 releaseFailure.complete(Unit)
                 withTimeout(10_000) { inFlight.await() }
                 withTimeout(10_000) { closing.await() }
@@ -890,6 +932,95 @@ class DeviceSessionTest {
                 session.app()
                 session.close(timeoutMs = 5_000)
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `cancelled guarded operation still releases its lease so close drains clean`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-op-lease", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                // Admit an operation and park it inside the guarded block. These three coroutines
+                // share this thread's event loop and the test never suspends between cancel, close
+                // start and barrier release, so the lease release and the closing drain queue on the
+                // held mutex in order instead of racing it.
+                val opGate = CompletableDeferred<Unit>()
+                val op = async { session.guardAdb { opGate.await() } }
+                withTimeout(5_000) {
+                    while (session.inFlightOperationsForTest() != 1) delay(10)
+                }
+                val holderEntered = CompletableDeferred<Unit>()
+                val holderRelease = CompletableDeferred<Unit>()
+                val holder = async { session.holdOperationsForTest(holderEntered, holderRelease) }
+                withTimeout(5_000) { holderEntered.await() }
+                val original = CancellationException("guarded operation cancelled")
+                op.cancel(original)
+                val closing = async { session.close(timeoutMs = 10_000) }
+                holderRelease.complete(Unit)
+                // The original cancellation survives the lease release ...
+                val thrown = assertFailsWith<CancellationException> { op.await() }
+                assertEquals(original.message, thrown.message)
+                withTimeout(2_000) { holder.join() }
+                // ... and close drains without a false timeout: CLOSED, never quarantine.
+                withTimeout(15_000) { closing.await() }
+                val record = journalStore().read()
+                assertEquals(JournalState.CLOSED, record?.state)
+                assertNull(record?.quarantineReason)
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `raw session adb escapes are not public`() {
+        // The supported surface is typed operations ([AppLifecycle]), immutable metadata and the
+        // client; the raw runner, its config and the guard never come back out of a session.
+        val methods = DeviceSession::class.java.declaredMethods.map { it.name }
+        assertFalse("getConfig" in methods, "DeviceSession.config must not be public")
+        assertFalse("getAdb" in methods, "DeviceSession.adb must not be public")
+        assertFalse("guardAdb" in methods, "DeviceSession.guardAdb must not be public")
+        assertTrue("getAutPackage" in methods, "cross-module users need the immutable autPackage")
+        assertTrue("getClient" in methods)
+        assertTrue("getSerial" in methods)
+        assertTrue("checkUsable" in methods)
+    }
+
+    @Test
+    fun `operation after close starts is rejected before touching adb`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-close-reject", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                assertEquals("com.example", session.autPackage)
+                val app = session.app()
+                // Park close inside exact forward removal, proving close began.
+                adb.hangOn += "forward --remove tcp:${fake.port}"
+                val closing = async(Dispatchers.IO) { runCatching { session.close(timeoutMs = 10_000) } }
+                withTimeout(5_000) {
+                    while (adb.calls.none { it.contains("forward --remove") }) delay(10)
+                }
+                val callsAtReject = adb.calls.size
+                // Later operations reject through the session gate before any FakeAdb call.
+                assertFailsWith<IllegalStateException> { app.isRunning() }
+                assertFailsWith<IllegalStateException> { session.app() }
+                assertEquals(callsAtReject, adb.calls.size, "rejected operation must not touch ADB")
+                adb.hangOn -= "forward --remove tcp:${fake.port}"
+                withTimeout(15_000) { closing.await() }
                 journalStore().acquireLease(0).close()
             } finally {
                 fake.close()

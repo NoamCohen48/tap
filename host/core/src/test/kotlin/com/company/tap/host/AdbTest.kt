@@ -1,6 +1,7 @@
 package com.company.tap.host
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -169,9 +171,11 @@ class AdbTest {
         runBlocking {
             val adb = Adb("fake-adb")
             // Aggregate-bound coverage: a drain that ignores close plus a child that survives
-            // destroy plus a timed wait that never succeeds exercises the drain join AND the
-            // process wait/destroy under the single ADB_REAP_TIMEOUT_MS deadline. Separate per-step
-            // budgets would exceed it; the assertion below fails that old behavior.
+            // destroy plus a timed wait that actually consumes its supplied timeout exercises the
+            // drain join AND the process wait/destroy under the single ADB_REAP_TIMEOUT_MS
+            // deadline. Separate per-step budgets would consume the timeout twice (drain budget
+            // plus process budget); the upper bound below fails that old behavior while the lower
+            // bound proves the reap actually shares one deadline instead of returning instantly.
             val child =
                 FakeProcess(
                     stdout = "",
@@ -179,6 +183,7 @@ class AdbTest {
                     survivesDestroy = true,
                     blockingStdout = true,
                     timedWaitAlwaysFalse = true,
+                    timedWaitConsumesTimeout = true,
                 )
             adb.processStarter = ProcessStarter { child }
             try {
@@ -189,9 +194,14 @@ class AdbTest {
                     }
                 val elapsedMs = (System.nanoTime() - started) / 1_000_000L
                 // Aggregate bound: one ADB_REAP_TIMEOUT_MS deadline shared by drain join plus
-                // process wait/destroy, plus the 200ms outer timeout and CI scheduling slack.
+                // process wait/destroy, plus the 200ms outer timeout. A two-budget implementation
+                // would take ~200 + 2*ADB_REAP_TIMEOUT_MS; CI scheduling slack stays in the margin.
                 assertTrue(
-                    elapsedMs < 200 + ADB_REAP_TIMEOUT_MS + 3_000,
+                    elapsedMs >= 200 + ADB_REAP_TIMEOUT_MS - 1_000,
+                    "cancelled call took only ${elapsedMs}ms; the shared reap deadline must be consumed",
+                )
+                assertTrue(
+                    elapsedMs < 200 + ADB_REAP_TIMEOUT_MS + 1_500,
                     "cancelled call took ${elapsedMs}ms; the aggregate reap deadline is " +
                         "${ADB_REAP_TIMEOUT_MS}ms plus the 200ms outer timeout",
                 )
@@ -283,7 +293,9 @@ class AdbTest {
     fun `concurrent starters never exceed the fixed residual cap and permits recover without ABA`() =
         runBlocking {
             val adb = Adb("fake-adb")
-            val starts = java.util.concurrent.atomic.AtomicInteger(0)
+            val starts =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
             val enteredStart = java.util.concurrent.CountDownLatch(1)
             val releaseStart = java.util.concurrent.CountDownLatch(1)
             val residuals = java.util.concurrent.CopyOnWriteArrayList<FakeProcess>()
@@ -359,7 +371,9 @@ class AdbTest {
     fun `queued admission is cancellable before process start`() =
         runBlocking {
             val adb = Adb("fake-adb")
-            val starts = java.util.concurrent.atomic.AtomicInteger(0)
+            val starts =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
             val enteredStart = java.util.concurrent.CountDownLatch(1)
             val releaseStart = java.util.concurrent.CountDownLatch(1)
             adb.processStarter =
@@ -371,11 +385,13 @@ class AdbTest {
                 }
             val first = async(Dispatchers.IO) { adb.devices(timeoutMs = 30_000) }
             assertTrue(enteredStart.await(5, TimeUnit.SECONDS))
+            // Explicit barrier: the probe proves the second coroutine entered the admission wait
+            // before it is cancelled, so the test never races the wait loop.
+            val enteredAdmissionWait = CompletableDeferred<Unit>()
+            adb.admissionWaitProbeForTest = { enteredAdmissionWait.complete(Unit) }
             // A second caller queued on admission/Mutex never starts when cancelled first.
             val second = async(Dispatchers.IO) { adb.devices(timeoutMs = 30_000) }
-            withTimeout(2_000) {
-                while (starts.get() < 1) delay(10)
-            }
+            withTimeout(2_000) { enteredAdmissionWait.await() }
             second.cancel(CancellationException("queued admission cancelled"))
             assertFailsWith<CancellationException> { second.await() }
             releaseStart.countDown()
@@ -390,7 +406,9 @@ class AdbTest {
             val serialA = "serial-A"
             val serialB = "serial-B"
             val adb = Adb("fake-adb")
-            val starts = java.util.concurrent.atomic.AtomicInteger(0)
+            val starts =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
             val residual = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
             adb.processStarter =
                 ProcessStarter {
@@ -431,5 +449,113 @@ class AdbTest {
                 runCatching { residual.releaseStdout() }
                 runCatching { residual.forceExit() }
             }
+        }
+
+    @Test
+    fun `cancelled proven reap still releases its exact token`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            // Suspend-friendly barriers: the test thread is the op's event loop, so nothing here
+            // may block it (no latch await on this thread); the starter itself runs on Dispatchers.IO.
+            val enteredStart = AtomicBoolean(false)
+            val releaseStart = CountDownLatch(1)
+            adb.processStarter =
+                ProcessStarter {
+                    enteredStart.set(true)
+                    check(releaseStart.await(5, TimeUnit.SECONDS))
+                    FakeProcess(stdout = "List of devices attached\n", exitCode = 0)
+                }
+            // Deterministic barrier: the operation admits first and parks in the starter; only
+            // then the holder owns admissionMutex while the owner is cancelled, so the proven
+            // release must pend on the mutex instead of racing it. The bookkeeping probe proves
+            // the release attempted before the barrier is released. The outcome travels through a
+            // separate deferred because awaiting a coroutine cancelled by the test itself always
+            // rethrows the cancellation instead of the block's result.
+            val holderEntered = CompletableDeferred<Unit>()
+            val holderRelease = CompletableDeferred<Unit>()
+            val bookkeepingAttempted = CompletableDeferred<Unit>()
+            adb.admissionBookkeepingProbeForTest = { bookkeepingAttempted.complete(Unit) }
+            val outcome = CompletableDeferred<Result<List<String>>>()
+            val op = async { outcome.complete(runCatching { adb.devices(timeoutMs = 30_000) }) }
+            withTimeout(5_000) {
+                while (!enteredStart.get()) delay(10)
+            }
+            val holder = async { adb.holdAdmissionForTest(holderEntered, holderRelease) }
+            withTimeout(2_000) { holderEntered.await() }
+            val original = CancellationException("proven reap cancelled")
+            op.cancel(original)
+            releaseStart.countDown()
+            withTimeout(5_000) { bookkeepingAttempted.await() }
+            assertFalse(op.isCompleted, "proven release must pend on the held mutex")
+            holderRelease.complete(Unit)
+            val result = withTimeout(5_000) { outcome.await() }
+            val thrown = assertFailsWith<CancellationException> { result.getOrThrow() }
+            assertEquals(original.message, thrown.message, "original cancellation must survive bookkeeping")
+            withTimeout(2_000) { holder.join() }
+            assertEquals(0, adb.admissionCountForTest(), "proven token must return to zero")
+            assertFalse(adb.isReapGatedForTest())
+            // The runner is reusable: a later proven call succeeds with no gate.
+            adb.processStarter = ProcessStarter { FakeProcess(stdout = "List of devices attached\n", exitCode = 0) }
+            assertEquals(emptyList(), adb.devices(timeoutMs = 5_000))
+        }
+
+    @Test
+    fun `cancelled uncertain reap transfers its exact token to the residual gate`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val residual =
+                FakeProcess(
+                    stdout = "",
+                    exitDelayMs = FakeProcess.NEVER,
+                    survivesDestroy = true,
+                    blockingStdout = true,
+                    timedWaitAlwaysFalse = true,
+                )
+            var starts = 0
+            adb.processStarter =
+                ProcessStarter {
+                    starts++
+                    residual
+                }
+            val holderEntered = CompletableDeferred<Unit>()
+            val holderRelease = CompletableDeferred<Unit>()
+            val bookkeepingAttempted = CompletableDeferred<Unit>()
+            adb.admissionBookkeepingProbeForTest = { bookkeepingAttempted.complete(Unit) }
+            val outcome = CompletableDeferred<Result<List<String>>>()
+            val op = async { outcome.complete(runCatching { adb.devices(timeoutMs = 30_000) }) }
+            // The operation admitted (mutex free); the holder takes the mutex before the reap's
+            // transfer needs it, so the transfer pends deterministically under cancellation.
+            withTimeout(2_000) {
+                while (adb.admissionCountForTest() != 1) delay(10)
+            }
+            val holder = async { adb.holdAdmissionForTest(holderEntered, holderRelease) }
+            withTimeout(2_000) { holderEntered.await() }
+            op.cancel(CancellationException("uncertain reap cancelled"))
+            withTimeout(10_000) { bookkeepingAttempted.await() }
+            assertFalse(op.isCompleted, "uncertain transfer must pend on the held mutex")
+            holderRelease.complete(Unit)
+            val result = withTimeout(10_000) { outcome.await() }
+            val failure = assertFailsWith<AdbReapUncertainException> { result.getOrThrow() }
+            assertTrue("survived bounded reap" in failure.message.orEmpty(), failure.message.orEmpty())
+            withTimeout(2_000) { holder.join() }
+            // The exact token stays gated until its own process/drain resolves: a second start is
+            // rejected and never starts a process.
+            assertTrue(adb.isReapGatedForTest(), "uncertain token must gate the runner")
+            assertEquals(1, adb.admissionCountForTest())
+            assertFailsWith<AdbRunnerGatedException> { adb.devices(timeoutMs = 5_000) }
+            assertEquals(1, starts, "no second process starts while the residual is unresolved")
+            // Resolving the exact process/drain clears the gate and the runner recovers.
+            residual.releaseStdout()
+            residual.forceExit()
+            adb.processStarter = ProcessStarter { FakeProcess(stdout = "List of devices attached\n", exitCode = 0) }
+            withTimeout(10_000) {
+                while (true) {
+                    val attempt = runCatching { adb.devices(timeoutMs = 5_000) }
+                    if (attempt.isSuccess) break
+                    check(attempt.exceptionOrNull() is AdbRunnerGatedException)
+                    delay(10)
+                }
+            }
+            assertFalse(adb.isReapGatedForTest())
         }
 }

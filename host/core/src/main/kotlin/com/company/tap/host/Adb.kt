@@ -1,5 +1,6 @@
 package com.company.tap.host
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -11,10 +12,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -98,6 +99,30 @@ open class Adb(
     private val inFlight = HashMap<Long, String?>()
     private val reapResiduals = LinkedHashMap<Long, ReapResidual>()
 
+    /** Test-only probe invoked when a caller enters the admission wait for an in-flight
+     * permit, so a test can prove the waiter is parked before cancelling it. Null in production. */
+    internal var admissionWaitProbeForTest: (() -> Unit)? = null
+
+    /** Test-only probe invoked synchronously before token bookkeeping (release or residual
+     * transfer) acquires [admissionMutex], so a test holding the mutex can prove the attempt is
+     * pended before releasing the barrier. Null in production. */
+    internal var admissionBookkeepingProbeForTest: (() -> Unit)? = null
+
+    /**
+     * Test-only deterministic barrier: holds [admissionMutex] between [entered] and [release],
+     * so a test can strand token bookkeeping on the mutex, cancel the owner, then release and
+     * prove the bookkeeping still completed. Internal, never part of the supported surface.
+     */
+    internal suspend fun holdAdmissionForTest(
+        entered: CompletableDeferred<Unit>,
+        release: CompletableDeferred<Unit>,
+    ) {
+        admissionMutex.withLock {
+            entered.complete(Unit)
+            release.await()
+        }
+    }
+
     /** Test visibility: whether this runner currently gates new starts on an unreaped drain. */
     internal suspend fun isReapGatedForTest(): Boolean =
         admissionMutex.withLock {
@@ -158,14 +183,30 @@ open class Adb(
             // Permit held by a live in-flight operation, not a residual: wait cancellably for the
             // holder to release or convert, then re-check. Cancellation propagates before start.
             currentCoroutineContext().ensureActive()
+            admissionWaitProbeForTest?.invoke()
             delay(10)
         }
     }
 
+    /**
+     * Releases one exact admission token. Runs NonCancellable: the caller is typically already
+     * cancelled (local timeout or enclosing deadline) when reap finishes, and a cancellable lock
+     * here would skip the decrement, leak the token, and mask the original failure with a
+     * bookkeeping [CancellationException]. Never throws, so the primary failure propagates intact.
+     */
     private suspend fun releaseAdmission(token: Long) {
-        admissionMutex.withLock { inFlight.remove(token) }
+        admissionBookkeepingProbeForTest?.invoke()
+        withContext(NonCancellable) {
+            admissionMutex.withLock { inFlight.remove(token) }
+        }
     }
 
+    /**
+     * Atomically moves one exact token from admitted to residual. Runs NonCancellable for the
+     * same reason as [releaseAdmission]: the transfer must land before any release, even under
+     * an already-cancelled caller, so the uncertain operation gates the runner until its own
+     * process/drain resolves instead of leaking its permit or masking the reap exception.
+     */
     private suspend fun transferToResidual(
         token: Long,
         serial: String?,
@@ -175,9 +216,12 @@ open class Adb(
         executor: java.util.concurrent.ExecutorService,
         scope: CoroutineScope,
     ) {
-        admissionMutex.withLock {
-            inFlight.remove(token)
-            reapResiduals[token] = ReapResidual(token, serial, command, process, drain, executor, scope)
+        admissionBookkeepingProbeForTest?.invoke()
+        withContext(NonCancellable) {
+            admissionMutex.withLock {
+                inFlight.remove(token)
+                reapResiduals[token] = ReapResidual(token, serial, command, process, drain, executor, scope)
+            }
         }
     }
 

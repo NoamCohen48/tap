@@ -23,6 +23,13 @@ class FakeProcess(
     private val survivesDestroy: Boolean = false,
     blockingStdout: Boolean = false,
     private val timedWaitAlwaysFalse: Boolean = false,
+    /**
+     * When true with [timedWaitAlwaysFalse], the timed wait actually consumes the supplied
+     * timeout (sleeping it) instead of returning false immediately. Lets the aggregate-reap test
+     * prove the reap shares one deadline: a per-step two-budget implementation would consume the
+     * timeout twice. Opt-in so unrelated fakes stay fast.
+     */
+    private val timedWaitConsumesTimeout: Boolean = false,
 ) : Process() {
     companion object {
         const val NEVER = Long.MAX_VALUE
@@ -103,7 +110,19 @@ class FakeProcess(
     override fun waitFor(
         timeout: Long,
         unit: TimeUnit,
-    ): Boolean = if (timedWaitAlwaysFalse) false else exited.await(timeout, unit)
+    ): Boolean {
+        if (timedWaitAlwaysFalse) {
+            if (timedWaitConsumesTimeout) {
+                try {
+                    unit.sleep(timeout)
+                } catch (_: InterruptedException) {
+                    // Still unproven: the deadline, not the interrupt, decides the verdict.
+                }
+            }
+            return false
+        }
+        return exited.await(timeout, unit)
+    }
 
     override fun exitValue(): Int {
         if (exited.count > 0) throw IllegalThreadStateException("process has not exited")

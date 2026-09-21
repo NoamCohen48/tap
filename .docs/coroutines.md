@@ -28,6 +28,7 @@ Landed checkpoints, still under final review:
   `project-architecture.md` threading/test notes, this file's status). The docs sweep is landed;
   the lane itself remains under final review.
 - `7e5efbf` — host-core follow-up: bounded ADB drain lifetime and preserved await cancellation.
+- `ffc48d5` — host-core concurrency follow-up: single-flight ADB admission with typed residual gating, session-gated command admission for captured clients, whole-open reap-uncertainty quarantine (with the unknown-boot sentinel), and the close operation lease draining admitted operations through their poison point. Recorded verification is non-device only (host core/service JVM unit tests plus validation/service distribution compilation); device-matrix and native-image verification remain pending.
 - `3bfb049` — service follow-up: strict shutdown bound (detach-and-launch on exhaustion) and
   corrected coroutine verification docs.
 
