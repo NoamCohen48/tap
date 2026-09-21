@@ -717,6 +717,7 @@ class TapClientTest {
         var closeEntered = CompletableDeferred<Unit>()
         var closeRelease: CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { it.complete(Unit) }
         val parkCompletions = CompletableDeferred<Unit>()
+
         @Volatile var parkError: Throwable? = null
 
         fun finishParkedAttach() {
@@ -873,7 +874,8 @@ class TapClientTest {
 
     private class FakeApps : AppServiceGrpcKt.AppServiceCoroutineImplBase() {
         override suspend fun isRunning(request: com.company.tap.api.v1.AppRequest): com.company.tap.api.v1.AppBool =
-            com.company.tap.api.v1.AppBool.getDefaultInstance()
+            com.company.tap.api.v1.AppBool
+                .getDefaultInstance()
     }
 
     private class TestChannel(
