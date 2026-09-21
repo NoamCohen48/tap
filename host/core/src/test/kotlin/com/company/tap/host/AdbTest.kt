@@ -7,9 +7,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import kotlin.test.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -165,7 +165,7 @@ class AdbTest {
         }
 
     @Test
-    fun `cancelled call with a blocking drain returns within the reap bound as uncertain`() =
+    fun `cancelled call with a blocking drain returns within the aggregate reap bound as uncertain`() =
         runBlocking {
             val adb = Adb("fake-adb")
             val child = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
@@ -173,14 +173,16 @@ class AdbTest {
             try {
                 val started = System.nanoTime()
                 val failure =
-                    assertFailsWith<IllegalStateException> {
+                    assertFailsWith<AdbReapUncertainException> {
                         withTimeout(200) { adb.devices(timeoutMs = 30_000) }
                     }
                 val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+                // Aggregate bound: one ADB_REAP_TIMEOUT_MS deadline shared by drain join plus
+                // process wait/destroy, plus the 200ms outer timeout and CI scheduling slack.
                 assertTrue(
-                    elapsedMs < ADB_REAP_TIMEOUT_MS + 10_000,
-                    "cancelled call took ${elapsedMs}ms; a drain that ignores cancellation " +
-                        "must not block return past the reap bound",
+                    elapsedMs < 200 + ADB_REAP_TIMEOUT_MS + 3_000,
+                    "cancelled call took ${elapsedMs}ms; the aggregate reap deadline is " +
+                        "${ADB_REAP_TIMEOUT_MS}ms plus the 200ms outer timeout",
                 )
                 assertTrue(
                     "survived bounded reap" in failure.message.orEmpty(),
@@ -202,5 +204,53 @@ class AdbTest {
             }
             // The owned drain executor is shut down: the released child still answers a later call.
             assertEquals(emptyList(), adb.devices(timeoutMs = 30_000))
+        }
+
+    @Test
+    fun `unreaped drain gates further starts until it completes then recovers`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val starts =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
+            val blocked = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
+            adb.processStarter =
+                ProcessStarter {
+                    if (starts.incrementAndGet() == 1) {
+                        blocked
+                    } else {
+                        FakeProcess(stdout = "List of devices attached\n", exitCode = 0)
+                    }
+                }
+
+            fun drainThreads(): Int = Thread.getAllStackTraces().keys.count { it.name == "adb-output-drain" && it.isAlive }
+            // First call leaves its drain blocked: typed reap uncertainty, gate installed.
+            assertFailsWith<AdbReapUncertainException> {
+                withTimeout(200) { adb.devices(timeoutMs = 30_000) }
+            }
+            assertEquals(1, starts.get())
+            assertTrue(adb.isReapGatedForTest(), "unreaped drain must gate the runner")
+            // Repeated calls are rejected before start: no additional processes or drains.
+            repeat(3) {
+                val gated =
+                    assertFailsWith<AdbReapUncertainException> {
+                        adb.devices(timeoutMs = 5_000)
+                    }
+                assertTrue("gated" in gated.message.orEmpty(), gated.message.orEmpty())
+            }
+            assertEquals(1, starts.get(), "gated calls must not start new processes")
+            // Release the residual: the gate clears, the old executor terminates, reuse succeeds.
+            blocked.releaseStdout()
+            blocked.forceExit()
+            val reused =
+                withTimeout(10_000) {
+                    adb.devices(timeoutMs = 5_000)
+                }
+            assertEquals(emptyList(), reused)
+            assertEquals(2, starts.get())
+            assertFalse(adb.isReapGatedForTest(), "gate must clear once the residual completes")
+            withTimeout(5_000) {
+                while (drainThreads() > 0) delay(10)
+            }
         }
 }

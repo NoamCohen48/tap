@@ -33,6 +33,18 @@ import kotlin.io.path.absolutePathString
 annotation class RawAdb
 
 /**
+ * An ADB child or its output drain survived the bounded reap, so cleanup is unproven. The
+ * device may have mutated; the caller must quarantine, never trust or retry blindly. Carries
+ * the command and serial for the journal reason and diagnostics.
+ */
+class AdbReapUncertainException(
+    message: String,
+    val command: List<String>,
+    val serial: String?,
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
+
+/**
  * Every ADB interaction of the host, one typed method per command. All device commands are
  * serial-specific (`-s`), bounded by a timeout, and return captured output; the parsing of
  * that output lives here too, so a device-family quirk is fixed once. `open` so tests can
@@ -47,6 +59,64 @@ open class Adb(
         ProcessStarter { command ->
             ProcessBuilder(command).redirectErrorStream(true).start()
         }
+
+    private val reapGateLock = Any()
+
+    private data class ReapResidual(
+        val serial: String?,
+        val command: List<String>,
+        val process: Process,
+        val drain: Deferred<String>,
+        val executor: java.util.concurrent.ExecutorService,
+        val scope: CoroutineScope,
+    )
+
+    // Unreaped drains gated here. Entries are only added by calls that passed the gate, so the
+    // size is bounded by the concurrent starters at poison time; gated calls throw before start
+    // and never grow it. Guarded by [reapGateLock].
+    private val reapResiduals = ArrayList<ReapResidual>()
+
+    /** Test visibility: whether this runner currently gates new starts on an unreaped drain. */
+    internal fun isReapGatedForTest(): Boolean = synchronized(reapGateLock) { reapResiduals.isNotEmpty() }
+
+    private fun serialOf(command: List<String>): String? = if (command.size >= 3 && command[1] == "-s") command[2] else null
+
+    /** Rejects a new start while an unproven drain is alive; clears the gate once it completes. */
+    private fun checkReapGate(attemptSerial: String?) {
+        synchronized(reapGateLock) {
+            if (reapResiduals.isEmpty()) return
+            val it = reapResiduals.iterator()
+            while (it.hasNext()) {
+                val residual = it.next()
+                if (residual.drain.isCompleted && !residual.process.isAlive) {
+                    runCatching { residual.scope.cancel() }
+                    residual.executor.shutdownNow()
+                    it.remove()
+                }
+            }
+            if (reapResiduals.isEmpty()) return
+            val first = reapResiduals.first()
+            throw AdbReapUncertainException(
+                "ADB runner gated by unreaped drain (${first.command.joinToString(" ")}" +
+                    " on ${first.serial ?: "no serial"}); refusing start for ${attemptSerial ?: "no serial"}",
+                first.command,
+                attemptSerial,
+            )
+        }
+    }
+
+    private fun noteReapResidual(
+        serial: String?,
+        command: List<String>,
+        process: Process,
+        drain: Deferred<String>,
+        executor: java.util.concurrent.ExecutorService,
+        scope: CoroutineScope,
+    ) {
+        synchronized(reapGateLock) {
+            reapResiduals += ReapResidual(serial, command, process, drain, executor, scope)
+        }
+    }
 
     data class Result(
         val exitCode: Int,
@@ -123,15 +193,17 @@ open class Adb(
      * child of the caller's scope: a drain that ignores cancellation and stream closure (a
      * blocking read) therefore cannot structurally block return after [ADB_REAP_TIMEOUT_MS].
      * When process or drain death cannot be proven within the bound, this throws
-     * [IllegalStateException] (with any in-flight failure suppressed into it) so the caller
-     * quarantines instead of trusting unproven cleanup. The executor is shut down on every path
-     * and its thread is a daemon, so even an abandoned blocking drain cannot hold the JVM open.
+     * [AdbReapUncertainException] (with any in-flight failure suppressed into it) so the caller
+     * quarantines instead of trusting unproven cleanup. An unproven drain gates this runner until it completes, so sequential calls cannot pile up
+     * abandoned drains; the executor is shut down on every path and its thread is a daemon, so
+     * even the one gated drain cannot hold the JVM open.
      */
     private suspend fun runAdbProcess(
         command: List<String>,
         timeoutMs: Long,
         timeoutMessage: () -> String,
     ): Pair<Int, String> {
+        checkReapGate(serialOf(command))
         lateinit var process: Process
         // Install cleanup ownership before returning to the caller's cancellable context. A
         // cancellation while start() is returning cannot discard an already-created child.
@@ -166,6 +238,10 @@ open class Adb(
             }
             try {
                 reap(command, process, drain, primary)
+            } catch (reapError: AdbReapUncertainException) {
+                primary?.let(reapError::addSuppressed)
+                noteReapResidual(serialOf(command), command, process, drain, drainExecutor, drainScope)
+                throw reapError
             } catch (reapError: Throwable) {
                 primary?.let(reapError::addSuppressed)
                 throw reapError
@@ -175,16 +251,17 @@ open class Adb(
             return outcome
         } finally {
             drainScope.cancel()
-            drainExecutor.shutdown()
+            drainExecutor.shutdownNow()
         }
     }
 
     /** Destroys a child that may still be alive (local timeout or caller cancellation), closes
-     * its streams to unblock the drain, and reaps both within [ADB_REAP_TIMEOUT_MS]. Never waits
-     * beyond the bound: when process or drain death cannot be proven, throws
-     * [IllegalStateException] so the caller quarantines instead of trusting unproven cleanup.
-     * The in-flight failure rides in the message (cancellation machinery may drop the suppressed
-     * chain on delivery) as well as suppressed. */
+     * its streams to unblock the drain, and reaps both within one aggregate [ADB_REAP_TIMEOUT_MS]
+     * deadline shared by the drain join and the process wait/destroy. Never waits beyond the bound:
+     * when process or drain death cannot be proven, throws [AdbReapUncertainException] so the
+     * caller quarantines instead of trusting unproven cleanup. The in-flight failure rides in the
+     * message (cancellation machinery may drop the suppressed chain on delivery) as well as
+     * suppressed. */
     private suspend fun reap(
         command: List<String>,
         process: Process,
@@ -194,21 +271,30 @@ open class Adb(
         runCatching { if (process.isAlive) process.destroy() }
         closeProcessStreams(process)
         drain.cancel()
+        val deadlineNanos = System.nanoTime() + ADB_REAP_TIMEOUT_MS * 1_000_000L
+
+        fun remainingMs(): Long = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(0L)
         withContext(NonCancellable) {
-            withTimeoutOrNull(ADB_REAP_TIMEOUT_MS) { drain.join() }
+            withTimeoutOrNull(remainingMs()) { drain.join() }
             if (process.isAlive) {
                 runCatching { process.destroyForcibly() }
-                withContext(Dispatchers.IO) {
-                    runCatching { process.waitFor(ADB_REAP_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
+                val remaining = remainingMs()
+                if (remaining > 0) {
+                    withContext(Dispatchers.IO) {
+                        runCatching { process.waitFor(remaining, TimeUnit.MILLISECONDS) }
+                    }
                 }
             }
         }
         if (drain.isCompleted && !process.isAlive) return
         val inFlight = primary?.let { "; in-flight failure: $it" } ?: ""
-        throw IllegalStateException(
+        throw AdbReapUncertainException(
             "ADB process or output drain survived bounded reap " +
                 "(${ADB_REAP_TIMEOUT_MS}ms): ${command.joinToString(" ")} " +
                 "(processAlive=${process.isAlive}, drainDone=${drain.isCompleted})$inFlight",
+            command,
+            serialOf(command),
+            primary,
         )
     }
 

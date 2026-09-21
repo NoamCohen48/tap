@@ -22,9 +22,9 @@ import io.grpc.inprocess.InProcessServerBuilder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -58,6 +58,7 @@ private class FakeDevice(
     override val serial: String,
     override val generation: Long = 1,
     override val autPackage: String = "com.test",
+    var poisoned: Throwable? = null,
     var closeGate: CompletableDeferred<Unit>? = null,
     var closeError: Throwable? = null,
     private val closeAction: (suspend () -> Unit)? = null,
@@ -71,6 +72,10 @@ private class FakeDevice(
         get() = realClient ?: error("no client in lifecycle fake")
 
     override fun app(packageName: String): AppLifecycle = error("no app in lifecycle fake")
+
+    override fun checkUsable() {
+        poisoned?.let { throw IllegalStateException("FakeDevice quarantined: ${it.message}", it) }
+    }
 
     override suspend fun close(timeoutMs: Long) {
         closeCalls.incrementAndGet()
@@ -224,7 +229,8 @@ class TapServiceLifecycleTest {
             // Captured via runCatching in a launch child so the expected orphan failure does not
             // fail the test scope itself through structured concurrency before it is asserted.
             val openResult = CompletableDeferred<Result<Session>>()
-            val openJob = launch { openResult.complete(runCatching { service.openSession(connection, "serial-orphan", "com.test", testOptions()) }) }
+            val openJob =
+                launch { openResult.complete(runCatching { service.openSession(connection, "serial-orphan", "com.test", testOptions()) }) }
             // Barrier, not a delay race: the opener signals it is suspended inside open.
             withTimeout(2_000) { opener.entered.receive() }
 
@@ -347,7 +353,13 @@ class TapServiceLifecycleTest {
             val sessionCount = 120
             val devices = (0 until sessionCount).map { FakeDevice(serial = "exhaust-$it", closeGate = CompletableDeferred()) }
             opener.queue.addAll(devices)
-            val service = TapService(testConfig(log = { innerLogs.add(it) }), opener, shutdownTotalMs = innerBudgetMs, shutdownSessionMs = sessionDeadlineMs)
+            val service =
+                TapService(
+                    testConfig(log = { innerLogs.add(it) }),
+                    opener,
+                    shutdownTotalMs = innerBudgetMs,
+                    shutdownSessionMs = sessionDeadlineMs,
+                )
             val connection = service.openConnection("exhaust-conn")
             repeat(sessionCount) { service.openSession(connection, "exhaust-$it", "com.test", testOptions()) }
             assertEquals(sessionCount, service.sessionIds().size)
@@ -356,7 +368,12 @@ class TapServiceLifecycleTest {
             withTimeout(innerBudgetMs + 4_000) { service.close() }
             val elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000L
             assertTrue(elapsedMs < innerBudgetMs + 60L, "shutdown took ${elapsedMs}ms for a ${innerBudgetMs}ms budget")
-            assertTrue(innerLogs.any { it.contains("shutdown budget exhausted") && it.contains("detached with cleanup launched") }, "exact detach branch not proven: $innerLogs")
+            assertTrue(
+                innerLogs.any {
+                    it.contains("shutdown budget exhausted") && it.contains("detached with cleanup launched")
+                },
+                "exact detach branch not proven: $innerLogs",
+            )
             assertTrue(service.sessionIds().isEmpty())
             assertFalse(service.connectionExists(connection.id))
             devices.forEach { withTimeout(2_000) { it.closeEntered.receive() } }
@@ -369,7 +386,8 @@ class TapServiceLifecycleTest {
             val outerOpener = FakeOpener()
             val outerDevices = (0 until 12).map { FakeDevice(serial = "outer-$it", closeGate = CompletableDeferred()) }
             outerOpener.queue.addAll(outerDevices)
-            val outerService = TapService(testConfig(log = { outerLogs.add(it) }), outerOpener, shutdownTotalMs = 0, shutdownSessionMs = sessionDeadlineMs)
+            val outerService =
+                TapService(testConfig(log = { outerLogs.add(it) }), outerOpener, shutdownTotalMs = 0, shutdownSessionMs = sessionDeadlineMs)
             val outerConnections = (0 until 3).map { outerService.openConnection("outer-conn-$it") }
             outerConnections.forEachIndexed { ci, outerConnection ->
                 repeat(4) { si -> outerService.openSession(outerConnection, "outer-${ci * 4 + si}", "com.test", testOptions()) }
@@ -492,5 +510,27 @@ class TapServiceLifecycleTest {
                     runCatching { client.close() }
                 }
             }
+        }
+
+    @Test
+    fun `poisoned session rejects direct command paths but still closes`() =
+        runBlocking {
+            val opener = FakeOpener()
+            val service = TapService(testConfig(), opener)
+            val connection = service.openConnection("poison-conn")
+            val device = FakeDevice(serial = "poison-serial")
+            opener.queue.add(device)
+            val session = service.openSession(connection, "poison-serial", "com.test", testOptions())
+            device.poisoned =
+                com.company.tap.host.AdbReapUncertainException(
+                    "ADB process or output drain survived bounded reap",
+                    listOf("adb", "-s", "poison-serial", "shell", "pidof", "com.test"),
+                    "poison-serial",
+                )
+            assertFailsWith<IllegalStateException> { service.session(session.id) }
+            // Cleanup paths do not go through the poison check: the lease still releases.
+            service.closeSession(session.id)
+            assertEquals(1, device.closeCalls.get())
+            assertTrue(service.sessionIds().isEmpty())
         }
 }

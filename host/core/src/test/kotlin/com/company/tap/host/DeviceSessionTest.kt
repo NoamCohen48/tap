@@ -501,4 +501,123 @@ class DeviceSessionTest {
                 fake.close()
             }
         }
+
+    @Test
+    fun `open failing with forward reap uncertainty quarantines even when cleanup succeeds`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-forward-uncertain", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val priorResponder = adb.responder
+                adb.responder = { serial, command ->
+                    if (command.startsWith("forward tcp:0")) {
+                        throw AdbReapUncertainException(
+                            "ADB process or output drain survived bounded reap: $command",
+                            listOf("adb", "-s", serial) + command.split(" "),
+                            serial,
+                        )
+                    }
+                    priorResponder?.invoke(serial, command)
+                }
+                val processes = mutableListOf<FakeProcess>()
+                assertFailsWith<AdbReapUncertainException> {
+                    DeviceSession.open(sessionConfig(adb, fake, processes))
+                }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `open failing with later reap uncertainty still removes the known forward and quarantines`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-late-uncertain", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val priorResponder = adb.responder
+                adb.responder = { serial, command ->
+                    val forwarded = adb.calls.any { it.contains("forward tcp:0") }
+                    if (forwarded && command == "shell pidof $DRIVER_PACKAGE") {
+                        throw AdbReapUncertainException(
+                            "ADB process or output drain survived bounded reap: $command",
+                            listOf("adb", "-s", serial) + command.split(" "),
+                            serial,
+                        )
+                    }
+                    priorResponder?.invoke(serial, command)
+                }
+                val processes = mutableListOf<FakeProcess>()
+                assertFailsWith<AdbReapUncertainException> {
+                    DeviceSession.open(sessionConfig(adb, fake, processes))
+                }
+                assertTrue(
+                    adb.calls.any { it.contains("forward --remove tcp:${fake.port}") },
+                    "known forward must be removed exactly, was ${adb.calls}",
+                )
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_START_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `active reap uncertainty poisons the session and close quarantines without regressing`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-active-poison", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                val session = withTimeout(5_000) { opening.await() }
+                assertEquals(JournalState.READY, journalStore().read()?.state)
+
+                val priorResponder = adb.responder
+                adb.responder = { serial, command ->
+                    if (command == "shell pidof com.example") {
+                        throw AdbReapUncertainException(
+                            "ADB process or output drain survived bounded reap: $command",
+                            listOf("adb", "-s", serial) + command.split(" "),
+                            serial,
+                        )
+                    }
+                    priorResponder?.invoke(serial, command)
+                }
+                val app = session.app()
+                assertFailsWith<AdbReapUncertainException> { app.isRunning() }
+                assertFailsWith<IllegalStateException> { app.isRunning() }
+                assertFailsWith<IllegalStateException> { session.app() }
+                assertFailsWith<IllegalStateException> { session.checkUsable() }
+
+                session.close(timeoutMs = 5_000)
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(
+                    record?.quarantineReason?.startsWith("SESSION_CLEANUP_UNCERTAIN") == true,
+                    record?.quarantineReason,
+                )
+                journalStore().acquireLease(0).close()
+                session.close(timeoutMs = 5_000)
+                assertEquals(JournalState.QUARANTINED, journalStore().read()?.state)
+            } finally {
+                fake.close()
+            }
+        }
 }

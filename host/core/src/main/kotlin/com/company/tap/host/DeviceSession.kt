@@ -16,6 +16,7 @@ import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
@@ -77,12 +78,40 @@ class DeviceSession private constructor(
 
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
+    private val reapUncertain = AtomicReference<AdbReapUncertainException?>()
+
+    /** Records sticky reap uncertainty; further session/app use is rejected, close quarantines. */
+    fun noteReapUncertain(error: AdbReapUncertainException) {
+        reapUncertain.compareAndSet(null, error)
+    }
+
+    /** Rejects use after sticky reap uncertainty; close still runs and quarantines. */
+    fun checkUsable() {
+        reapUncertain.get()?.let {
+            throw IllegalStateException("Session on $serial is quarantined: ${it.message}", it)
+        }
+    }
+
+    /** Runs an ADB block, poisoning this session sticky on reap uncertainty. */
+    suspend fun <T> guardAdb(block: suspend () -> T): T {
+        checkUsable()
+        try {
+            return block()
+        } catch (error: AdbReapUncertainException) {
+            noteReapUncertain(error)
+            throw error
+        }
+    }
+
     /**
      * The [AppLifecycle] of [packageName] on this session, one instance per package for the
      * session's lifetime: it carries the sync identity handed out at bootstrap, which must
      * survive across calls for `awaitIdle` to stay guarded against a restarted process.
      */
-    fun app(packageName: String = config.autPackage): AppLifecycle = apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
+    fun app(packageName: String = config.autPackage): AppLifecycle {
+        checkUsable()
+        return apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
+    }
 
     private val closeStarted = AtomicBoolean(false)
     private val cancellationCleanupScheduled = AtomicBoolean(false)
@@ -118,12 +147,14 @@ class DeviceSession private constructor(
                         "Session cleanup on $serial exceeded ${timeoutMs}ms; device quarantined",
                     )
             }
+            val poison = reapUncertain.get()
+            val quarantined = firstFailure != null || poison != null
             try {
                 store.write(
                     journal.copy(
-                        state = if (firstFailure == null) JournalState.CLOSED else JournalState.QUARANTINED,
+                        state = if (!quarantined) JournalState.CLOSED else JournalState.QUARANTINED,
                         quarantineReason =
-                            firstFailure?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" },
+                            (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" },
                         updatedAtEpochMs = System.currentTimeMillis(),
                     ),
                 )
@@ -287,13 +318,15 @@ class DeviceSession private constructor(
                                     "Session open cleanup on $serial exceeded ${DEVICE_OPEN_CLEANUP_TIMEOUT_MS}ms",
                                 )
                         }
+                        val startupUncertain = findReapUncertain(error)
+                        val quarantined = cleanupFailure != null || startupUncertain != null
                         try {
                             store.write(
                                 journal.copy(
                                     state =
-                                        if (cleanupFailure == null) JournalState.CLOSED else JournalState.QUARANTINED,
+                                        if (!quarantined) JournalState.CLOSED else JournalState.QUARANTINED,
                                     quarantineReason =
-                                        cleanupFailure?.let { "SESSION_START_CLEANUP_UNCERTAIN: ${it.message}" },
+                                        (cleanupFailure ?: startupUncertain)?.let { "SESSION_START_CLEANUP_UNCERTAIN: ${it.message}" },
                                     updatedAtEpochMs = System.currentTimeMillis(),
                                 ),
                             )
@@ -319,3 +352,18 @@ const val DEVICE_SESSION_CLOSE_TIMEOUT_MS = 60_000L
 
 /** Bound for `DeviceSession.open` failure cleanup under an already-cancelled caller. */
 const val DEVICE_OPEN_CLEANUP_TIMEOUT_MS = 60_000L
+
+/** Walks the cause/suppressed chain for sticky reap uncertainty. */
+internal fun findReapUncertain(error: Throwable): AdbReapUncertainException? {
+    val seen = HashSet<Throwable>()
+    val queue = ArrayDeque<Throwable>()
+    queue.add(error)
+    while (queue.isNotEmpty()) {
+        val current = queue.removeFirst()
+        if (!seen.add(current)) continue
+        if (current is AdbReapUncertainException) return current
+        current.cause?.let(queue::add)
+        current.suppressed.forEach(queue::add)
+    }
+    return null
+}

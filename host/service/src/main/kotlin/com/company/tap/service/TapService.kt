@@ -99,6 +99,9 @@ internal interface ServiceDevice {
 
     fun app(packageName: String): AppLifecycle
 
+    /** Rejects use after sticky reap quarantine; cleanup still runs via [close]. */
+    fun checkUsable()
+
     suspend fun close(timeoutMs: Long)
 }
 
@@ -121,6 +124,8 @@ private class CoreDevice(
     override val client: DriverClient get() = delegate.client
 
     override fun app(packageName: String): AppLifecycle = delegate.app(packageName)
+
+    override fun checkUsable() = delegate.checkUsable()
 
     override suspend fun close(timeoutMs: Long) = delegate.close(timeoutMs)
 }
@@ -481,7 +486,15 @@ class TapService(
         return registered
     }
 
-    fun session(id: String): Session = synchronized(lifecycleLock) { sessions[id] } ?: throw UnknownSessionException(id)
+    /**
+     * Returns the session, rejecting use after sticky reap quarantine so a poisoned device
+     * cannot be driven through a direct command path that bypasses [AppLifecycle].
+     */
+    fun session(id: String): Session {
+        val found = synchronized(lifecycleLock) { sessions[id] } ?: throw UnknownSessionException(id)
+        found.device.checkUsable()
+        return found
+    }
 
     /**
      * Returns null when cleanup was clean, otherwise the quarantine detail. The take from both
