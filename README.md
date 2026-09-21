@@ -164,7 +164,9 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
   `DeviceSession` state machine, `AppLifecycle`, and per-device locks shared across processes
   with constraints; a Kotlin SDK (`Device`/`App`/`Element`/waits/selectors) and JUnit 5
   extension with failure artifacts, and a Python client and pytest plugin, all gRPC clients of
-  the service, proven by sample suites on API 29 and API 34.
+  the service. The coroutine host/service implementation passed the no-reboot validation and
+  sample suites on API 29 and API 34, plus the native-image Python smoke flow, on 2026-09-21
+  (the Kotlin client coroutine conversion remains pending; see `.docs/coroutines.md`).
 
 The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/protocol-contract.md).
 

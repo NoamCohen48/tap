@@ -8,7 +8,7 @@ import com.company.tap.service.UnknownConnectionException
 import com.company.tap.service.UnknownSessionException
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
-import io.grpc.stub.StreamObserver
+import kotlinx.coroutines.CancellationException
 
 const val SERVICE_VERSION = ENGINE_VERSION
 
@@ -29,18 +29,13 @@ internal fun Throwable.toStatus(): StatusRuntimeException = when (this) {
     else -> Status.INTERNAL.withDescription("${this::class.simpleName}: $message").withCause(this).asRuntimeException()
 }
 
-/** Runs [block] and completes [observer] with its result or a mapped status. */
-internal inline fun <T> reply(observer: StreamObserver<T>, block: () -> T) {
-    val value = try {
-        block()
-    } catch (error: Throwable) {
-        runCatching { observer.onError(error.toStatus()) }
-        return
-    }
-    // The client may have cancelled while the block ran; delivering then throws and is moot.
-    runCatching {
-        observer.onNext(value)
-        observer.onCompleted()
-    }
+/** Runs [block] and returns its result; failures become the mapped gRPC status. Cancellation
+ * propagates untouched: grpc-kotlin reports it as CANCELLED, and mapping it would lie. */
+internal suspend fun <T> reply(block: suspend () -> T): T = try {
+    block()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (error: Throwable) {
+    throw error.toStatus()
 }
 

@@ -10,6 +10,7 @@ import java.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.delay
 
 @Serializable
 data class SessionJournal(
@@ -67,7 +68,7 @@ class SessionJournalStore(root: Path, private val serial: String) {
      * read-modify-write (generation bump, forward cleanup, quarantine) safe; the OS releases it
      * if the holder dies. Throws [DeviceBusyException] when it is still held at the deadline.
      */
-    fun acquireLease(timeoutMs: Long = 0): AutoCloseable {
+    suspend fun acquireLease(timeoutMs: Long = 0): AutoCloseable {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0))
         while (true) {
             val channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
@@ -89,12 +90,12 @@ class SessionJournalStore(root: Path, private val serial: String) {
             channel.close()
             val remaining = deadline - System.nanoTime()
             if (remaining <= 0) throw DeviceBusyException(serial, timeoutMs)
-            Thread.sleep(minOf(LEASE_POLL_MS, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1)))
+            delay(minOf(LEASE_POLL_MS, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1)))
         }
     }
 
     /** Whether some process currently holds this serial's lock (probe: take and release). */
-    fun isLeased(): Boolean = try {
+    suspend fun isLeased(): Boolean = try {
         acquireLease().close()
         false
     } catch (busy: DeviceBusyException) {

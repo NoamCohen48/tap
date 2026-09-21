@@ -92,7 +92,8 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
             )
             store.write(journal)
 
-            DriverClient(hostPort, sessionId, generation, secret, serial = serial).use { client ->
+            val client = DriverClient.connect(hostPort, sessionId, generation, secret, serial = serial)
+            try {
                 client.execute(Health)
                 journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                 store.write(journal)
@@ -128,6 +129,8 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                     check(ready.ok) { "Screen ${screen.name} did not become ready: $ready" }
                     printProbeResult(serial, autPackage, screen.name, selector, client)
                 }
+            } finally {
+                runCatching { client.close() }.onFailure { cleanupSuccessful = false }
             }
             successful = true
         } finally {
@@ -153,7 +156,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
 
 private data class ProbeScreen(val tapText: String, val readyText: String, val name: String)
 
-private fun executeProbeAction(
+private suspend fun executeProbeAction(
     client: DriverClient,
     autPackage: String,
     action: String,
@@ -180,7 +183,7 @@ private fun parseScreen(value: String): ProbeScreen {
     return ProbeScreen(fields[0], fields[1], fields[2])
 }
 
-private fun printProbeResult(
+private suspend fun printProbeResult(
     serial: String,
     autPackage: String,
     screen: String,

@@ -3,15 +3,19 @@ package com.company.tap.host
 import com.company.tap.protocol.Command
 import com.company.tap.protocol.DeviceInfoQuery
 import com.company.tap.protocol.Returning
-import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncBootstrap
 import com.company.tap.protocol.SyncPoll
+import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
 import com.company.tap.protocol.WaitAppVisible
+import kotlinx.coroutines.delay
 import java.nio.file.Path
 
 /** An AUT lifecycle postcondition did not hold (process still alive, window never appeared...). */
-class AppLifecycleException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class AppLifecycleException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /** A host-side wait ran out of time. Carries the last observation so a log line is diagnosable. */
 class HostWaitTimeoutException(
@@ -21,12 +25,12 @@ class HostWaitTimeoutException(
     val polls: Int,
     val lastObservation: String?,
 ) : RuntimeException(
-    buildString {
-        append("Timed out after ${elapsedMs}ms waiting for $description on $serial")
-        if (polls > 0) append(" ($polls polls)")
-        if (lastObservation != null) append("; last observed: $lastObservation")
-    },
-)
+        buildString {
+            append("Timed out after ${elapsedMs}ms waiting for $description on $serial")
+            if (polls > 0) append(" ($polls polls)")
+            if (lastObservation != null) append("; last observed: $lastObservation")
+        },
+    )
 
 /**
  * Lifecycle of one package on one device, executed by the host. Every operation verifies its
@@ -47,46 +51,53 @@ class AppLifecycle(
     @Volatile
     private var syncIdentity: SyncState? = null
 
-    fun isInstalled(): Boolean = adb.isInstalled(serial, packageName)
+    suspend fun isInstalled(): Boolean = session.guardAdb { adb.isInstalled(serial, packageName) }
 
-    fun install(apk: Path, timeoutMs: Long) {
-        adb.install(serial, apk, timeoutMs)
+    suspend fun install(
+        apk: Path,
+        timeoutMs: Long,
+    ) {
+        session.guardAdb { adb.install(serial, apk, timeoutMs) }
         if (!isInstalled()) throw AppLifecycleException("$packageName is not installed after install on $serial")
         syncIdentity = null
     }
 
-    fun uninstall() {
-        val output = adb.uninstall(serial, packageName)
+    suspend fun uninstall() {
+        val output = session.guardAdb { adb.uninstall(serial, packageName) }
         if (isInstalled()) throw AppLifecycleException("$packageName still installed after uninstall on $serial: $output")
         syncIdentity = null
     }
 
     /** `am force-stop` plus proof that no process of the package remains. */
-    fun forceStop(timeoutMs: Long) {
-        adb.forceStop(serial, packageName)
+    suspend fun forceStop(timeoutMs: Long) {
+        session.guardAdb { adb.forceStop(serial, packageName) }
         awaitNoProcess(timeoutMs, "force-stop")
         syncIdentity = null
     }
 
     /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped. */
-    fun clearData(timeoutMs: Long) {
-        val output = adb.clearData(serial, packageName)
+    suspend fun clearData(timeoutMs: Long) {
+        val output = session.guardAdb { adb.clearData(serial, packageName) }
         if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
         awaitNoProcess(timeoutMs, "pm clear")
         syncIdentity = null
     }
 
-    fun grantPermission(permission: String) {
-        adb.grantPermission(serial, packageName, permission)
+    suspend fun grantPermission(permission: String) {
+        session.guardAdb { adb.grantPermission(serial, packageName, permission) }
     }
 
     /**
      * Starts [activity] (or the launcher activity) and waits until the package owns the
      * focused window. Does not assert anything about prior process state; see [coldLaunch].
      */
-    fun launch(activity: String?, timeoutMs: Long) {
+    suspend fun launch(
+        activity: String?,
+        timeoutMs: Long,
+    ) {
+        session.checkUsable()
         val component = "$packageName/${activity ?: launcherActivity()}"
-        val output = adb.startActivity(serial, component, timeoutMs)
+        val output = session.guardAdb { adb.startActivity(serial, component, timeoutMs) }
         if ("Error" in output || "Exception" in output) {
             throw AppLifecycleException("am start $component failed on $serial: $output")
         }
@@ -94,26 +105,37 @@ class AppLifecycle(
     }
 
     /** Verified force-stop, launch, then proof of a *new* process identity in the foreground. */
-    fun coldLaunch(activity: String?, timeoutMs: Long, stopTimeoutMs: Long = 10_000): ProcessObservation {
+    suspend fun coldLaunch(
+        activity: String?,
+        timeoutMs: Long,
+        stopTimeoutMs: Long = 10_000,
+    ): ProcessObservation {
+        session.checkUsable()
         forceStop(stopTimeoutMs)
         launch(activity, timeoutMs)
-        return observeProcess(adb, serial, packageName, timeoutMs)
+        return session.guardAdb { observeProcess(adb, serial, packageName, timeoutMs) }
     }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
-    fun process(timeoutMs: Long): ProcessObservation = observeProcess(adb, serial, packageName, timeoutMs)
+    suspend fun process(timeoutMs: Long): ProcessObservation = session.guardAdb { observeProcess(adb, serial, packageName, timeoutMs) }
 
-    fun isRunning(): Boolean = adb.processIds(serial, packageName).isNotEmpty()
+    suspend fun isRunning(): Boolean = session.guardAdb { adb.processIds(serial, packageName) }.isNotEmpty()
 
     /** Waits on the device until the package owns the focused window. */
-    fun awaitAppVisible(timeoutMs: Long) {
+    suspend fun awaitAppVisible(timeoutMs: Long) {
+        session.checkUsable()
         val response = client.send(WaitAppVisible(packageName), timeoutMs = timeoutMs)
         if (!response.ok) {
-            val current = runCatching {
-                client.execute(DeviceInfoQuery, timeoutMs = 5_000).deviceInfo.currentPackage
-            }.getOrNull()
+            val current =
+                runCatching {
+                    client.execute(DeviceInfoQuery, timeoutMs = 5_000).deviceInfo.currentPackage
+                }.getOrNull()
             throw HostWaitTimeoutException(
-                "package $packageName to be in the foreground", serial, response.durationMs, 0, "currentPackage=$current",
+                "package $packageName to be in the foreground",
+                serial,
+                response.durationMs,
+                0,
+                "currentPackage=$current",
             )
         }
     }
@@ -124,7 +146,11 @@ class AppLifecycle(
      * call after a launch/clear bootstraps the process identity; a process restart in between
      * fails with `AUT_MISMATCH` rather than silently re-bootstrapping.
      */
-    fun awaitIdle(timeoutMs: Long, stableForMs: Long = 200) {
+    suspend fun awaitIdle(
+        timeoutMs: Long,
+        stableForMs: Long = 200,
+    ) {
+        session.checkUsable()
         val deadline = System.nanoTime() + timeoutMs * 1_000_000
         val identity = syncIdentity ?: bootstrapSync(remainingMs(deadline)).also { syncIdentity = it }
         var zeroGeneration: Long? = null
@@ -134,13 +160,18 @@ class AppLifecycle(
             val remaining = remainingMs(deadline)
             if (remaining <= 0) {
                 throw HostWaitTimeoutException(
-                    "$packageName to become idle", serial, timeoutMs, polls, "zeroGeneration=$zeroGeneration",
+                    "$packageName to become idle",
+                    serial,
+                    timeoutMs,
+                    polls,
+                    "zeroGeneration=$zeroGeneration",
                 )
             }
             polls++
-            val state = callSync(minOf(5_000, remaining)) { before ->
-                SyncPoll(before.pid, before.startToken, identity.processStartUuid, identity.sessionIdentity)
-            }
+            val state =
+                callSync(minOf(5_000, remaining)) { before ->
+                    SyncPoll(before.pid, before.startToken, identity.processStartUuid, identity.sessionIdentity)
+                }
             val now = System.nanoTime()
             if (state.busyCount == 0) {
                 if (zeroGeneration == state.generation && now - zeroObservedAt >= stableForMs * 1_000_000) return
@@ -151,15 +182,18 @@ class AppLifecycle(
             } else {
                 zeroGeneration = null
             }
-            Thread.sleep(pollIntervalMs.coerceAtMost(50))
+            delay(pollIntervalMs.coerceAtMost(50))
         }
     }
 
-    private fun bootstrapSync(timeoutMs: Long): SyncState =
+    private suspend fun bootstrapSync(timeoutMs: Long): SyncState =
         callSync(timeoutMs.coerceIn(1, 5_000)) { before -> SyncBootstrap(before.pid, before.startToken) }
 
     /** The driver checks identity against the process the host observed around the call. */
-    private inline fun <C> callSync(timeoutMs: Long, command: (ProcessObservation) -> C): SyncState
+    private suspend inline fun <C> callSync(
+        timeoutMs: Long,
+        command: (ProcessObservation) -> C,
+    ): SyncState
         where C : Command, C : Returning<SyncResult> {
         val before = process(5_000)
         val state = client.execute(command(before), timeoutMs = timeoutMs).state
@@ -168,27 +202,34 @@ class AppLifecycle(
         return state
     }
 
-    private fun launcherActivity(): String {
-        val component = adb.launcherActivity(serial, packageName)
-            ?: throw AppLifecycleException("No launcher activity for $packageName on $serial")
+    private suspend fun launcherActivity(): String {
+        val component =
+            session.guardAdb { adb.launcherActivity(serial, packageName) }
+                ?: throw AppLifecycleException("No launcher activity for $packageName on $serial")
         return component.substringAfter('/')
     }
 
-    private fun awaitNoProcess(timeoutMs: Long, action: String) {
+    private suspend fun awaitNoProcess(
+        timeoutMs: Long,
+        action: String,
+    ) {
         val started = System.nanoTime()
         val deadline = started + timeoutMs * 1_000_000
         var polls = 0
         while (true) {
             polls++
-            val pids = adb.processIds(serial, packageName)
+            val pids = session.guardAdb { adb.processIds(serial, packageName) }
             if (pids.isEmpty()) return
             if (System.nanoTime() >= deadline) {
                 throw HostWaitTimeoutException(
-                    "$packageName to have no process after $action", serial,
-                    (System.nanoTime() - started) / 1_000_000, polls, "pids=$pids",
+                    "$packageName to have no process after $action",
+                    serial,
+                    (System.nanoTime() - started) / 1_000_000,
+                    polls,
+                    "pids=$pids",
                 )
             }
-            Thread.sleep(pollIntervalMs)
+            delay(pollIntervalMs)
         }
     }
 

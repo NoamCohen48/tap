@@ -32,6 +32,12 @@ See `README.md` for build/run commands.
 - `.docs/service-startup.md` — decision record: the service is started explicitly (`tap start`),
   never by a client; readiness is the `Info` RPC on a port `start` chose, and the alternatives
   (notify socket, ready file, inherited pipe, fixed port) and why they lost.
+- `.docs/coroutines.md` — decision record + work plan: host core, service and the Kotlin
+  client move to kotlinx.coroutines / grpc-kotlin (`tapTest` per plan §12). Host core and host
+  service have landed and passed the API 29/API 34 no-reboot device matrix plus native-image
+  smoke flow (Kotlin client + `tapTest` pending). It lists the pre-migration
+  thread/future design, the per-layer arguments, target design, step order and risks. Update
+  its status with each step.
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /

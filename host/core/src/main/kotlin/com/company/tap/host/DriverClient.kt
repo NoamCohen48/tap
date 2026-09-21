@@ -1,23 +1,24 @@
 package com.company.tap.host
 
-import com.company.tap.protocol.Authentication
 import com.company.tap.protocol.ArtifactInfo
+import com.company.tap.protocol.ArtifactResult
+import com.company.tap.protocol.Authentication
 import com.company.tap.protocol.AuthenticationResult
 import com.company.tap.protocol.BlobEnd
 import com.company.tap.protocol.BlobStart
 import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Challenge
+import com.company.tap.protocol.Command
+import com.company.tap.protocol.CommandResult
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
-import com.company.tap.protocol.Hello
 import com.company.tap.protocol.HOST_BUILD_ID
-import com.company.tap.protocol.MAX_REQUEST_TIMEOUT_MS
-import com.company.tap.protocol.Command
-import com.company.tap.protocol.CommandResult
 import com.company.tap.protocol.Health
+import com.company.tap.protocol.Hello
+import com.company.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import com.company.tap.protocol.Mutation
 import com.company.tap.protocol.ProtocolAuthentication
 import com.company.tap.protocol.ProtocolNegotiation
@@ -25,50 +26,106 @@ import com.company.tap.protocol.ProtocolVersion
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Returning
-import com.company.tap.protocol.Screenshot as ScreenshotCommand
-import com.company.tap.protocol.Targeted
-import com.company.tap.protocol.ArtifactResult
-import com.company.tap.protocol.SelectorValidation
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
+import com.company.tap.protocol.SelectorValidation
+import com.company.tap.protocol.Targeted
 import com.company.tap.protocol.result
 import com.company.tap.protocol.selectors
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.Base64
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.FutureTask
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import com.company.tap.protocol.Screenshot as ScreenshotCommand
 
-class DriverClient(
-    hostPort: Int,
+class DriverClient private constructor(
+    private val hostPort: Int,
     private val sessionId: String,
     private val generation: Long,
     private val secret: ByteArray,
     private val overallDeadlineNanos: Long? = null,
     private val serial: String? = null,
-    /** Idle `PING` cadence that keeps the driver's heartbeat window open; 0 disables (tests only). */
     private val heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
-) : AutoCloseable {
+    /** Padding added to a command's own timeout to form its private response budget. Production
+     * default; tests inject a small value so budget expiry is deterministic without long sleeps. */
+    private val responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
+) {
     private val json = Json { ignoreUnknownKeys = true }
     private val socket = Socket()
-    private val transportLock = Any()
+    private val transportMutex = Mutex()
+    private val pingMutex = Mutex()
+    private val poisonLock = Any()
     private val pending = ConcurrentHashMap<Long, PendingCommand>()
-    private val pongs = LinkedBlockingQueue<Long>()
+    private val pongs = Channel<Long>(Channel.UNLIMITED)
     private var nextRequestId = 1L
+
+    /** Session-owned usability gate, bound once by [DeviceSession]. Null keeps this client usable
+     * standalone (tests, validation probes): the default is a no-op admission. Once bound, every
+     * command admission consults the same sticky session state, so previously captured references
+     * cannot bypass a later poison. Internal bind-once state, never a public mutable hook. */
+    private var sessionGate: (() -> Unit)? = null
+
+    /** Binds the owning session's usability check exactly once; later binds fail. */
+    internal fun bindSessionGate(gate: () -> Unit) {
+        check(sessionGate == null) { "DriverClient session gate is already bound" }
+        sessionGate = gate
+    }
+
     @Volatile private var poisoned = false
+
     @Volatile private var closed = false
+
     @Volatile private var lastWriteNanos = System.nanoTime()
-    private val pingLock = Any()
-    private lateinit var reader: Thread
-    private var heartbeat: Thread? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Test seam: invoked inside the writer task before the physical socket write, so a test can
+     * park the writer deterministically. Null in production; never alters the socket path. */
+    internal var beforePhysicalWrite: (suspend () -> Unit)? = null
+
+    /** Test seam: invoked inside the writer task after the physical write attempt finishes
+     * (success or failure), so a test can observe that the writer is gone. Null in production. */
+    internal var afterPhysicalWrite: (() -> Unit)? = null
+
+    /** Test seam: invoked after a request frame was written but before WRITING -> WRITTEN. */
+    internal var beforeMarkWritten: (() -> Unit)? = null
+
+    /** Test seam: invoked after the reader installs a terminal transmission state. */
+    internal var afterTerminalResponse: (() -> Unit)? = null
+
+    /** Test seam: invoked synchronously in [PendingCommand.await]'s cancellation path after the
+     * cooperative CANCEL is queued and before the original [CancellationException] is rethrown,
+     * so a test can install a terminal response at that exact race point. Null in production. */
+    internal var afterAwaitCancel: (() -> Unit)? = null
+
+    /** Test seam for the physical write itself; the default is the real socket write. */
+    internal var frameSink: FrameSink = FrameSink { frame -> FrameCodec.write(socket.getOutputStream(), frame) }
+
+    /** Whether the transport can no longer be trusted; test visibility without exposing the flag. */
+    internal val isPoisoned: Boolean get() = poisoned
     lateinit var driverInstanceId: String
         private set
     lateinit var negotiatedVersion: ProtocolVersion
@@ -78,25 +135,43 @@ class DriverClient(
     lateinit var driverContract: Challenge
         private set
 
-    init {
-        try {
-            socket.connect(InetSocketAddress("127.0.0.1", hostPort), remainingTimeoutMs(10_000))
-            socket.soTimeout = remainingTimeoutMs(10_000)
-            authenticate()
-            socket.soTimeout = 0
-            reader = Thread(::readFrames, "tap-driver-client-reader").apply {
-                isDaemon = true
-                start()
-            }
-            if (heartbeatIntervalMs > 0) {
-                heartbeat = Thread(::runHeartbeat, "tap-driver-client-heartbeat").apply {
-                    isDaemon = true
-                    start()
+    companion object {
+        suspend fun connect(
+            hostPort: Int,
+            sessionId: String,
+            generation: Long,
+            secret: ByteArray,
+            overallDeadlineNanos: Long? = null,
+            serial: String? = null,
+            heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
+            responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
+        ): DriverClient {
+            val client =
+                DriverClient(
+                    hostPort,
+                    sessionId,
+                    generation,
+                    secret,
+                    overallDeadlineNanos,
+                    serial,
+                    heartbeatIntervalMs,
+                    responseBudgetPaddingMs,
+                )
+            try {
+                withContext(Dispatchers.IO) {
+                    client.socket.connect(InetSocketAddress("127.0.0.1", hostPort), client.remainingTimeoutMs(10_000))
+                    client.socket.soTimeout = client.remainingTimeoutMs(10_000)
+                    client.authenticate()
+                    client.socket.soTimeout = 0
                 }
+                client.scope.launch { client.readFrames() }
+                if (heartbeatIntervalMs > 0) client.scope.launch { client.runHeartbeat() }
+                return client
+            } catch (error: Throwable) {
+                runCatching { client.socket.close() }
+                client.scope.cancel()
+                throw error
             }
-        } catch (error: Throwable) {
-            socket.close()
-            throw error
         }
     }
 
@@ -112,95 +187,232 @@ class DriverClient(
     ) {
         private val selector: String? get() = (command as? Targeted)?.selector?.render()
 
-        private val result = CompletableFuture<Response>()
-        @Volatile var transmissionState: TransmissionState = TransmissionState.NOT_WRITTEN
-            internal set
+        private val result = CompletableDeferred<Response>()
+
+        /** Terminal response once [complete] ran; null while in flight or failed. An explicit
+         * value instead of reading the deferred, so product code needs no experimental API. */
+        @Volatile private var terminal: Response? = null
+
+        private val transmission = AtomicReference(TransmissionState.NOT_WRITTEN)
+        val transmissionState: TransmissionState get() = transmission.get()
         internal var blob: BlobReceiver? = null
+
         @Volatile private var artifactBytes: ByteArray? = null
+
+        /** Set by the writer task when the physical socket write begins; classifies a write that
+         * is cancelled or fails mid-flight. */
+        @Volatile internal var writeStarted = false
+
+        /** Client-owned enforcement of this command's private response budget; cancelled when the
+         * terminal response arrives. Survives caller cancellation so an abandoned entry cannot
+         * leak forever. */
+        @Volatile internal var deadlineWatcher: Job? = null
 
         /**
          * Applies the blob verdict: a successful artifact response whose blob did not arrive
          * intact becomes `ARTIFACT_TRANSFER_FAILED`; a driver failure is never replaced.
          */
         internal fun complete(response: Response) {
-            transmissionState = TransmissionState.TERMINAL_RESPONSE
             val receiver = blob
             val artifact = (response.result as? ArtifactResult)?.artifact
-            val terminal = when {
-                response !is Response.Ok -> response
-                artifact == null -> if (receiver == null) response else artifactFailure(response, ErrorDetail.BLOB_UNEXPECTED)
-                receiver == null -> artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
-                receiver.failureDetail != null -> artifactFailure(response, requireNotNull(receiver.failureDetail))
-                !receiver.complete -> artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
-                receiver.bytes?.size?.toLong() != artifact.byteCount ->
-                    artifactFailure(response, ErrorDetail.BLOB_LENGTH_MISMATCH)
-                else -> response.also { artifactBytes = receiver.bytes }
-            }
-            result.complete(terminal)
+            val terminalResponse =
+                when {
+                    response !is Response.Ok -> {
+                        response
+                    }
+
+                    artifact == null -> {
+                        if (receiver == null) response else artifactFailure(response, ErrorDetail.BLOB_UNEXPECTED)
+                    }
+
+                    receiver == null -> {
+                        artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
+                    }
+
+                    receiver.failureDetail != null -> {
+                        artifactFailure(response, requireNotNull(receiver.failureDetail))
+                    }
+
+                    !receiver.complete -> {
+                        artifactFailure(response, ErrorDetail.BLOB_INCOMPLETE)
+                    }
+
+                    receiver.bytes?.size?.toLong() != artifact.byteCount -> {
+                        artifactFailure(response, ErrorDetail.BLOB_LENGTH_MISMATCH)
+                    }
+
+                    else -> {
+                        response.also { artifactBytes = receiver.bytes }
+                    }
+                }
+            terminal = terminalResponse
+            transmission.getAndSet(TransmissionState.TERMINAL_RESPONSE)
+            afterTerminalResponse?.invoke()
+            deadlineWatcher?.cancel()
+            result.complete(terminalResponse)
         }
 
-        private fun artifactFailure(response: Response, detail: String): Response = Response.failure(
-            ErrorCode.ARTIFACT_TRANSFER_FAILED,
-            detail = detail,
-            message = "Artifact ${(response.result as? ArtifactResult)?.artifact?.blobId} was not received intact",
-            durationMs = response.durationMs,
-        )
+        private fun artifactFailure(
+            response: Response,
+            detail: String,
+        ): Response =
+            Response.failure(
+                ErrorCode.ARTIFACT_TRANSFER_FAILED,
+                detail = detail,
+                message = "Artifact ${(response.result as? ArtifactResult)?.artifact?.blobId} was not received intact",
+                durationMs = response.durationMs,
+            )
 
         /** Verified artifact bytes of a successful artifact response; null otherwise. */
         fun artifact(): ByteArray? = artifactBytes?.copyOf()
 
         internal fun fail(cause: Throwable) {
+            deadlineWatcher?.cancel()
             result.completeExceptionally(cause)
         }
 
-        val isDone: Boolean get() = result.isDone
+        val isDone: Boolean get() = result.isCompleted
 
         /** Diagnostic view of an already-terminal response; null while in flight or failed. */
-        val responseOrNull: Response? get() = if (result.isDone && !result.isCompletedExceptionally) result.get() else null
+        val responseOrNull: Response? get() = terminal
 
-        /** Sends `CANCEL` if the request is in flight. Returns false when there was nothing to cancel. */
-        fun cancel(): Boolean {
-            if (result.isDone || transmissionState != TransmissionState.WRITTEN) return false
-            synchronized(transportLock) {
-                if (poisoned || closed || result.isDone) return false
-                try {
-                    writeFrame(Frame(FrameType.CANCEL, requestId, byteArrayOf()), remainingTimeoutMs(5_000))
-                } catch (error: Throwable) {
-                    poison(error)
-                    return false
+        /** Records `WRITTEN` only from `WRITING`: a reader response that already set
+         * `TERMINAL_RESPONSE` must never regress. */
+        internal fun beginWriting() {
+            check(transmission.compareAndSet(TransmissionState.NOT_WRITTEN, TransmissionState.WRITING))
+        }
+
+        internal fun resetNotWritten() {
+            transmission.compareAndSet(TransmissionState.WRITING, TransmissionState.NOT_WRITTEN)
+        }
+
+        internal fun markWritten() {
+            beforeMarkWritten?.invoke()
+            transmission.compareAndSet(TransmissionState.WRITING, TransmissionState.WRITTEN)
+        }
+
+        private val cancelQueued = AtomicBoolean(false)
+
+        /**
+         * Queues a cooperative `CANCEL` in the client-owned scope if the request is in flight.
+         * The caller never waits for the transport mutex: after acquiring it, the queued task
+         * rechecks that the command and transport are still usable before writing.
+         */
+        suspend fun cancel(): Boolean {
+            if (result.isCompleted || transmissionState != TransmissionState.WRITTEN) return false
+            if (!cancelQueued.compareAndSet(false, true)) return false
+            scope.launch {
+                transportMutex.withLock {
+                    if (
+                        poisoned || closed || result.isCompleted ||
+                        transmissionState != TransmissionState.WRITTEN
+                    ) {
+                        return@withLock
+                    }
+                    try {
+                        writeFrame(Frame(FrameType.CANCEL, requestId, byteArrayOf()), remainingTimeoutMs(5_000))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        poison(error)
+                    }
                 }
             }
             return true
         }
 
-        fun await(): Response {
-            val budget = remainingTimeoutMs((timeoutMs + 5_000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-            return try {
-                result.get(budget.toLong(), TimeUnit.MILLISECONDS)
-            } catch (error: TimeoutException) {
-                poison(SocketTimeoutException("No terminal response within $budget ms").apply { initCause(error) })
-                throw transportFailure(error)
-            } catch (error: ExecutionException) {
-                throw transportFailure(error.cause ?: error)
+        /**
+         * Returns the single terminal response; transport loss throws [CommandTransportException].
+         *
+         * The command owns a private response budget (its timeout plus padding). Expiry of that
+         * budget poisons the transport and maps mutations by [transmissionState], exactly like any
+         * other transport loss. Cancellation imposed by the caller — plain cancel or an enclosing
+         * `withTimeout`/gRPC/JUnit deadline — is *not* the command's outcome: the client forwards
+         * a cooperative `CANCEL` best-effort, keeps the pending entry registered for the reader so
+         * a later frame is never an "unknown request id" and the mutation gate's verdict is
+         * still recorded, and always rethrows the original cancellation, even when a terminal
+         * response is installed concurrently afterwards. A terminal result that already completed
+         * the deferred is returned normally; the cancellation path never returns one. The socket
+         * is never closed merely because the caller was cancelled; a client-owned watcher enforces
+         * the private budget afterwards so the abandoned entry cannot leak.
+         */
+        suspend fun await(): Response {
+            val budgetMs =
+                remainingTimeoutMs((timeoutMs + responseBudgetPaddingMs).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                    .toLong()
+            val deadlineNanos = System.nanoTime() + budgetMs * 1_000_000L
+            ensureDeadlineWatcher(deadlineNanos, budgetMs)
+            try {
+                val remainingMs = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
+                // The private budget's expiry is a null, never an exception: any
+                // CancellationException escaping this block is the caller's, not the command's.
+                val response = withTimeoutOrNull(remainingMs) { result.await() }
+                if (response != null) return response
+                throw poisonAsLoss(budgetMs)
+            } catch (cancelled: CancellationException) {
+                cancel()
+                afterAwaitCancel?.invoke()
+                throw cancelled
+            } catch (failure: Throwable) {
+                throw transportFailure(failure)
             }
+        }
+
+        /** Starts the client-owned budget watcher once; it belongs to the client's scope so it
+         * outlives a cancelled caller. Already-terminal commands need no watcher. */
+        private fun ensureDeadlineWatcher(
+            deadlineNanos: Long,
+            budgetMs: Long,
+        ) {
+            if (result.isCompleted) return
+            synchronized(this) {
+                if (result.isCompleted || deadlineWatcher != null) return
+                deadlineWatcher =
+                    scope.launch {
+                        val delayMs = ((deadlineNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(0L)
+                        delay(delayMs)
+                        if (!result.isCompleted && pending.containsKey(requestId)) {
+                            poison(SocketTimeoutException("No terminal response within $budgetMs ms"))
+                        }
+                    }
+            }
+        }
+
+        private fun poisonAsLoss(budgetMs: Long): CommandTransportException {
+            val error = SocketTimeoutException("No terminal response within $budgetMs ms")
+            poison(error)
+            return transportFailure(error)
         }
 
         /** Like [await] but converts a driver error response into [RemoteCommandException]. */
-        fun awaitOrThrow(): Response.Ok = when (val response = await()) {
-            is Response.Ok -> response
-            is Response.Error ->
-                throw RemoteCommandException.from(response, command.op, requestId, generation, serial, selector, timeoutMs)
-        }
+        suspend fun awaitOrThrow(): Response.Ok =
+            when (val response = await()) {
+                is Response.Ok -> {
+                    response
+                }
+
+                is Response.Error -> {
+                    throw RemoteCommandException.from(response, command.op, requestId, generation, serial, selector, timeoutMs)
+                }
+            }
 
         internal fun transportFailure(cause: Throwable): CommandTransportException {
-            val code = if (command is Mutation && transmissionState != TransmissionState.NOT_WRITTEN) {
-                ErrorCode.INDETERMINATE
-            } else {
-                ErrorCode.TRANSPORT_LOST
-            }
+            val code =
+                if (command is Mutation && transmissionState != TransmissionState.NOT_WRITTEN) {
+                    ErrorCode.INDETERMINATE
+                } else {
+                    ErrorCode.TRANSPORT_LOST
+                }
             return CommandTransportException(
-                code, command.op, requestId, generation, transmissionState, cause,
-                serial, selector, timeoutMs,
+                code,
+                command.op,
+                requestId,
+                generation,
+                transmissionState,
+                cause,
+                serial,
+                selector,
+                timeoutMs,
             )
         }
     }
@@ -211,24 +423,36 @@ class DriverClient(
      * safe by construction: the driver's `CommandHandler` returns the type [Returning] names.
      */
     @Suppress("UNCHECKED_CAST")
-    fun <R : CommandResult, C> execute(command: C, timeoutMs: Long = 5_000): R where C : Command, C : Returning<R> =
-        submit(command, timeoutMs).awaitOrThrow().result as R
+    suspend fun <R : CommandResult, C> execute(
+        command: C,
+        timeoutMs: Long = 5_000,
+    ): R where C : Command, C : Returning<R> = submit(command, timeoutMs).awaitOrThrow().result as R
 
     /** Runs [command] and returns the raw [Response], error or not. */
-    fun send(command: Command, timeoutMs: Long = 5_000): Response = submit(command, timeoutMs).await()
+    suspend fun send(
+        command: Command,
+        timeoutMs: Long = 5_000,
+    ): Response = submit(command, timeoutMs).await()
 
     /**
-     * Allocates the next request ID and writes the complete frame under the transport lock, so
+     * Allocates the next request ID and writes the complete frame under the transport mutex, so
      * concurrent callers can never put a lower ID on the socket after a higher one.
      */
-    fun submit(command: Command, timeoutMs: Long = 5_000): PendingCommand {
+    suspend fun submit(
+        command: Command,
+        timeoutMs: Long = 5_000,
+    ): PendingCommand {
         require(timeoutMs in 0..MAX_REQUEST_TIMEOUT_MS) {
             "timeoutMs must be between 0 and $MAX_REQUEST_TIMEOUT_MS"
         }
         // Structural selector problems fail here, before a request ID is consumed.
         command.selectors.forEach(SelectorValidation::validate)
         val request = Request(sessionId = sessionId, generation = generation, timeoutMs = timeoutMs, command = command)
-        return synchronized(transportLock) {
+        return transportMutex.withLock {
+            // Session-owned sticky poison is consulted here, under the transport mutex and before
+            // request-ID allocation or any frame write, so a poisoned session's captured client
+            // emits no frame and consumes no ID. Standalone clients keep the no-op default.
+            sessionGate?.invoke()
             if (poisoned || closed) {
                 throw CommandTransportException(
                     ErrorCode.TRANSPORT_LOST,
@@ -246,124 +470,169 @@ class DriverClient(
         }
     }
 
+    /** Test seam for deterministic cancellation while another operation owns the transport. */
+    internal suspend fun withTransportLock(block: suspend () -> Unit) = transportMutex.withLock { block() }
+
+    /** Test visibility: the next request ID that [submit] would allocate. */
+    internal suspend fun nextRequestIdForTest(): Long = transportMutex.withLock { nextRequestId }
+
     /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
-    fun screenshot(timeoutMs: Long = 30_000): Screenshot {
+    suspend fun screenshot(timeoutMs: Long = 30_000): Screenshot {
         val command = submit(ScreenshotCommand, timeoutMs = timeoutMs)
         val response = command.awaitOrThrow()
         return Screenshot(requireNotNull(command.artifact()), (response.result as ArtifactResult).artifact)
     }
 
     /** Round-trips a connection-level `PING` on the writer/reader lanes. Returns the latency in ms. */
-    fun ping(timeoutMs: Long = 5_000): Long = synchronized(pingLock) {
-        val started = System.nanoTime()
-        pongs.clear()
-        synchronized(transportLock) {
-            check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
-            try {
-                writeFrame(Frame(FrameType.PING, 0, byteArrayOf()), remainingTimeoutMs(timeoutMs.toInt()))
-            } catch (error: Throwable) {
-                poison(error)
-                throw error
+    suspend fun ping(timeoutMs: Long = 5_000): Long =
+        pingMutex.withLock {
+            val started = System.nanoTime()
+            while (pongs.tryReceive().isSuccess) Unit
+            transportMutex.withLock {
+                sessionGate?.invoke()
+                check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
+                try {
+                    writeFrame(Frame(FrameType.PING, 0, byteArrayOf()), remainingTimeoutMs(timeoutMs.toInt()))
+                } catch (error: Throwable) {
+                    poison(error)
+                    throw error
+                }
             }
+            val pong = withTimeoutOrNull(remainingTimeoutMs(timeoutMs.toInt()).toLong()) { pongs.receive() }
+            if (pong == null) {
+                val timeout = SocketTimeoutException("No PONG within $timeoutMs ms")
+                poison(timeout)
+                throw timeout
+            }
+            (System.nanoTime() - started) / 1_000_000L
         }
-        val pong = pongs.poll(remainingTimeoutMs(timeoutMs.toInt()).toLong(), TimeUnit.MILLISECONDS)
-        if (pong == null) {
-            val timeout = SocketTimeoutException("No PONG within $timeoutMs ms")
-            poison(timeout)
-            throw timeout
-        }
-        (System.nanoTime() - started) / 1_000_000L
-    }
 
     /**
      * Keeps the driver's heartbeat window open while the caller is idle. Any frame counts as
      * host activity on the driver, so a `PING` is only sent after [heartbeatIntervalMs] without
      * a write. A missed `PONG` poisons the client like any other transport failure.
      */
-    private fun runHeartbeat() {
+    private suspend fun runHeartbeat() {
         try {
-            while (!poisoned && !closed) {
+            while (currentCoroutineContext().isActive) {
                 val idleMs = (System.nanoTime() - lastWriteNanos) / 1_000_000L
                 val waitMs = heartbeatIntervalMs - idleMs
                 if (waitMs > 0) {
-                    Thread.sleep(waitMs)
+                    delay(waitMs)
                     continue
                 }
                 ping(heartbeatIntervalMs)
             }
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Throwable) {
-            // ping() already poisoned the client; nothing else to do on this thread.
+            // ping() already poisoned the client; nothing else to do on this coroutine.
         }
     }
 
     /** Validation flow only: sends `health` with an explicit request ID / identity to probe fencing. */
-    fun executeValidationRequest(
+    suspend fun executeValidationRequest(
         requestId: Long,
         requestSessionId: String = sessionId,
         requestGeneration: Long = generation,
     ): Response {
         val request = Request(sessionId = requestSessionId, generation = requestGeneration, timeoutMs = 5_000, command = Health)
-        return awaitValidation(synchronized(transportLock) {
-            check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
-            transmit(requestId, request)
-        })
+        return awaitValidation(
+            transportMutex.withLock {
+                sessionGate?.invoke()
+                check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
+                transmit(requestId, request)
+            },
+        )
     }
 
     /**
      * Validation flow only: sends an arbitrary JSON payload as a `REQUEST` frame, for probing how
      * the driver answers what this build cannot express (an unknown `op`, a malformed command).
      */
-    fun executeRawValidationRequest(requestId: Long, payload: String): Response =
-        awaitValidation(synchronized(transportLock) {
-            check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
-            transmit(requestId, Health, 5_000, payload.encodeToByteArray())
-        })
+    suspend fun executeRawValidationRequest(
+        requestId: Long,
+        payload: String,
+    ): Response =
+        awaitValidation(
+            transportMutex.withLock {
+                sessionGate?.invoke()
+                check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
+                transmit(requestId, Health, 5_000, payload.encodeToByteArray())
+            },
+        )
 
-    private fun awaitValidation(command: PendingCommand): Response = try {
-        command.await()
-    } catch (error: CommandTransportException) {
-        throw error.cause ?: error
-    }
+    private suspend fun awaitValidation(command: PendingCommand): Response =
+        try {
+            command.await()
+        } catch (error: CommandTransportException) {
+            throw error.cause ?: error
+        }
 
     /** Validation flow only: poisons this client as if the transport had failed. */
     fun disconnectForValidation() {
-        synchronized(transportLock) {
+        synchronized(poisonLock) {
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
         }
         poison(IllegalStateException("Disconnected for validation"))
     }
 
-    override fun close() {
-        synchronized(transportLock) {
-            if (closed) return
-            closed = true
-            if (!poisoned) runCatching {
-                writeFrame(Frame(FrameType.CLOSE, 0, byteArrayOf()), remainingTimeoutMs(5_000))
+    suspend fun close() {
+        if (closed) return
+        withContext(NonCancellable) {
+            transportMutex.withLock {
+                if (closed) return@withLock
+                closed = true
+                if (!poisoned) {
+                    runCatching {
+                        writeFrame(Frame(FrameType.CLOSE, 0, byteArrayOf()), remainingTimeoutMs(5_000))
+                    }
+                }
+                runCatching { socket.close() }
             }
-            socket.close()
+            scope.cancel()
+            failPending(IllegalStateException("Driver connection closed"))
         }
-        failPending(IllegalStateException("Driver connection closed"))
-        heartbeat?.interrupt()
-        if (::reader.isInitialized && Thread.currentThread() !== reader) reader.join(2_000)
     }
 
-    // Caller holds transportLock.
-    private fun transmit(requestId: Long, request: Request): PendingCommand =
-        transmit(requestId, request.command, request.timeoutMs, json.encodeToString(request).encodeToByteArray())
+    // Caller holds transportMutex.
+    private suspend fun transmit(
+        requestId: Long,
+        request: Request,
+    ): PendingCommand = transmit(requestId, request.command, request.timeoutMs, json.encodeToString(request).encodeToByteArray())
 
-    // Caller holds transportLock.
-    private fun transmit(requestId: Long, command: Command, timeoutMs: Long, payload: ByteArray): PendingCommand {
+    // Caller holds transportMutex.
+    private suspend fun transmit(
+        requestId: Long,
+        command: Command,
+        timeoutMs: Long,
+        payload: ByteArray,
+    ): PendingCommand {
         val command = PendingCommand(requestId, command, timeoutMs)
         check(pending.putIfAbsent(requestId, command) == null) { "Request $requestId is already pending" }
         // Explicit validation IDs consume the driver watermark too; never allocate below them.
         nextRequestId = maxOf(nextRequestId, Math.addExact(requestId, 1L))
+        command.beginWriting()
         try {
-            command.transmissionState = TransmissionState.WRITING
-            writeFrame(Frame(FrameType.REQUEST, requestId, payload), remainingTimeoutMs(10_000))
-            command.transmissionState = TransmissionState.WRITTEN
+            writeFrame(Frame(FrameType.REQUEST, requestId, payload), remainingTimeoutMs(10_000)) {
+                command.writeStarted = true
+            }
+            command.markWritten()
+        } catch (cancelled: CancellationException) {
+            if (!command.writeStarted) {
+                // The writer never touched the socket: the transport is intact, so the command
+                // leaves no trace and a mutation is still NOT_WRITTEN, never INDETERMINATE.
+                pending.remove(requestId, command)
+                command.resetNotWritten()
+                throw cancelled
+            }
+            poison(cancelled)
+            throw command.transportFailure(cancelled)
         } catch (error: Throwable) {
+            if (!command.writeStarted) {
+                pending.remove(requestId, command)
+                command.resetNotWritten()
+            }
             poison(error)
             throw command.transportFailure(error)
         }
@@ -376,25 +645,37 @@ class DriverClient(
                 val frame = FrameCodec.read(socket.getInputStream())
                 when (frame.type) {
                     FrameType.RESPONSE -> {
-                        val command = pending.remove(frame.requestId)
-                            ?: throw IllegalStateException("Response for unknown request ${frame.requestId}")
+                        val command =
+                            pending.remove(frame.requestId)
+                                ?: throw IllegalStateException("Response for unknown request ${frame.requestId}")
                         command.complete(json.decodeFromString<Response>(frame.payload.decodeToString()))
                     }
+
                     FrameType.PONG -> {
                         check(frame.requestId == 0L) { "PONG must use request ID 0" }
-                        pongs.put(System.nanoTime())
+                        pongs.trySend(System.nanoTime())
                     }
+
                     FrameType.BLOB_START -> {
                         val command = pendingFor(frame)
                         val start = json.decodeFromString<BlobStart>(frame.payload.decodeToString())
                         check(command.blob == null) { "Second BLOB_START for request ${frame.requestId}" }
                         command.blob = BlobReceiver(start)
                     }
-                    FrameType.BLOB_CHUNK -> pendingFor(frame).blob?.chunk(frame.payload)
-                        ?: throw IllegalStateException("BLOB_CHUNK before BLOB_START for request ${frame.requestId}")
-                    FrameType.BLOB_END -> pendingFor(frame).blob?.end(json.decodeFromString<BlobEnd>(frame.payload.decodeToString()))
-                        ?: throw IllegalStateException("BLOB_END before BLOB_START for request ${frame.requestId}")
-                    else -> throw IllegalStateException("Unexpected ${frame.type} frame from driver")
+
+                    FrameType.BLOB_CHUNK -> {
+                        pendingFor(frame).blob?.chunk(frame.payload)
+                            ?: throw IllegalStateException("BLOB_CHUNK before BLOB_START for request ${frame.requestId}")
+                    }
+
+                    FrameType.BLOB_END -> {
+                        pendingFor(frame).blob?.end(json.decodeFromString<BlobEnd>(frame.payload.decodeToString()))
+                            ?: throw IllegalStateException("BLOB_END before BLOB_START for request ${frame.requestId}")
+                    }
+
+                    else -> {
+                        throw IllegalStateException("Unexpected ${frame.type} frame from driver")
+                    }
                 }
             }
         } catch (error: Throwable) {
@@ -407,7 +688,7 @@ class DriverClient(
 
     /** Transport can no longer be trusted: close it and fail every in-flight command. */
     private fun poison(cause: Throwable) {
-        synchronized(transportLock) {
+        synchronized(poisonLock) {
             if (poisoned) return
             poisoned = true
             runCatching { socket.close() }
@@ -421,17 +702,19 @@ class DriverClient(
         commands.forEach { it.fail(cause) }
     }
 
-    private fun authenticate() {
-        val hostNonce = ByteArray(32).also(SecureRandom()::nextBytes).let {
-            Base64.getUrlEncoder().withoutPadding().encodeToString(it)
-        }
-        val hello = Hello(
-            hostBuildId = HOST_BUILD_ID,
-            hostNonce = hostNonce,
-            sessionGeneration = generation,
-            sessionId = sessionId,
-            supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
-        )
+    private suspend fun authenticate() {
+        val hostNonce =
+            ByteArray(32).also(SecureRandom()::nextBytes).let {
+                Base64.getUrlEncoder().withoutPadding().encodeToString(it)
+            }
+        val hello =
+            Hello(
+                hostBuildId = HOST_BUILD_ID,
+                hostNonce = hostNonce,
+                sessionGeneration = generation,
+                sessionId = sessionId,
+                supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
+            )
         val helloPayload = CanonicalJson.encode(hello)
         writeFrame(
             Frame(FrameType.HELLO, 0, helloPayload),
@@ -439,7 +722,7 @@ class DriverClient(
         )
 
         socket.soTimeout = remainingTimeoutMs(10_000)
-        val challengeFrame = FrameCodec.read(socket.getInputStream())
+        val challengeFrame = withContext(Dispatchers.IO) { FrameCodec.read(socket.getInputStream()) }
         check(challengeFrame.type == FrameType.CHALLENGE)
         val challenge = CanonicalJson.decodeCanonical<Challenge>(challengeFrame.payload)
         check(ProtocolNegotiation.isValidChallenge(challenge)) { "Driver contract is invalid" }
@@ -447,26 +730,29 @@ class DriverClient(
         check(challenge.sessionId == sessionId && challenge.sessionGeneration == generation)
         check(challenge.hostNonce == hostNonce)
         check(ProtocolNegotiation.isValidNonce(challenge.driverNonce))
-        val negotiation = requireNotNull(ProtocolNegotiation.negotiate(hello, challenge)) {
-            "Driver does not support a compatible application protocol version"
-        }
-        val transcript = ProtocolAuthentication.transcript(
-            helloPayload,
-            challengeFrame.payload,
-            CanonicalJson.encode(negotiation),
-        )
+        val negotiation =
+            requireNotNull(ProtocolNegotiation.negotiate(hello, challenge)) {
+                "Driver does not support a compatible application protocol version"
+            }
+        val transcript =
+            ProtocolAuthentication.transcript(
+                helloPayload,
+                challengeFrame.payload,
+                CanonicalJson.encode(negotiation),
+            )
 
-        val authentication = Authentication(
-            negotiation = negotiation,
-            transcriptHmac = ProtocolAuthentication.hostMac(secret, transcript),
-        )
+        val authentication =
+            Authentication(
+                negotiation = negotiation,
+                transcriptHmac = ProtocolAuthentication.hostMac(secret, transcript),
+            )
         writeFrame(
             Frame(FrameType.AUTH, 0, CanonicalJson.encode(authentication)),
             remainingTimeoutMs(10_000),
         )
 
         socket.soTimeout = remainingTimeoutMs(10_000)
-        val resultFrame = FrameCodec.read(socket.getInputStream())
+        val resultFrame = withContext(Dispatchers.IO) { FrameCodec.read(socket.getInputStream()) }
         check(resultFrame.type == FrameType.AUTH_RESULT)
         val result = CanonicalJson.decodeCanonical<AuthenticationResult>(resultFrame.payload)
         check(result.ok) { result.error ?: "Authentication failed" }
@@ -476,7 +762,7 @@ class DriverClient(
             ProtocolAuthentication.constantTimeEquals(
                 ProtocolAuthentication.driverMac(secret, transcript),
                 requireNotNull(result.transcriptHmac),
-            )
+            ),
         ) { "Driver authentication failed" }
         negotiatedVersion = negotiation.selectedVersion
         enabledCapabilities = negotiation.enabledCapabilities.toSet()
@@ -490,33 +776,88 @@ class DriverClient(
         return minOf(maximumMs.toLong(), remainingMs).coerceAtLeast(1L).toInt()
     }
 
-    private fun writeFrame(frame: Frame, timeoutMs: Int) {
+    /**
+     * Writes one frame with an explicit deadline. A socket write has no timeout of its own, so
+     * the write runs as a client-scoped child (independent of caller cancellation) while the
+     * waiter holds the deadline. The write's own deadline expiry is a [SocketTimeoutException],
+     * never an exception the caller could confuse with its own cancellation; any
+     * [CancellationException] escaping here is the caller's.
+     *
+     * On caller cancellation before the physical write began, the writer is stopped before it
+     * can touch the socket and the transport survives. Once the physical write began,
+     * cancellation closes the socket to unblock the writer, reaps it boundedly, and the caller
+     * ([transmit]) classifies the command as transport loss.
+     */
+    private suspend fun writeFrame(
+        frame: Frame,
+        timeoutMs: Int,
+        markStarted: () -> Unit = {},
+    ) {
         lastWriteNanos = System.nanoTime()
-        val write = FutureTask {
-            FrameCodec.write(socket.getOutputStream(), frame)
-        }
-        val thread = Thread(write, "tap-socket-writer").apply {
-            isDaemon = true
-            start()
-        }
-        try {
-            write.get(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
-        } catch (error: TimeoutException) {
-            runCatching { socket.close() }
-            write.cancel(true)
-            throw SocketTimeoutException("Socket write exceeded $timeoutMs ms").apply {
-                initCause(error)
+        val started = AtomicBoolean(false)
+        val writer =
+            scope.async(Dispatchers.IO) {
+                beforePhysicalWrite?.invoke()
+                markStarted()
+                started.set(true)
+                try {
+                    frameSink.write(frame)
+                } finally {
+                    afterPhysicalWrite?.invoke()
+                }
             }
-        } catch (error: ExecutionException) {
-            throw error.cause ?: error
-        } finally {
-            thread.join(1_000)
-            check(!thread.isAlive) { "Socket writer survived socket close" }
+        try {
+            val completed =
+                withTimeoutOrNull(timeoutMs.toLong()) {
+                    writer.await()
+                    true
+                }
+            if (completed != true) {
+                unblockAndReap(writer)
+                throw SocketTimeoutException("Socket write exceeded $timeoutMs ms")
+            }
+            // A writer failure surfaces through await() above and reaches the caller unchanged.
+        } catch (cancelled: CancellationException) {
+            if (!started.get()) {
+                writer.cancel()
+                withContext(NonCancellable) {
+                    withTimeoutOrNull(WRITE_REAP_TIMEOUT_MS) { writer.join() }
+                }
+                if (!started.get()) throw cancelled
+                // Lost the race: the writer began after the check; treat as transport loss.
+            }
+            unblockAndReap(writer)
+            throw cancelled
         }
+    }
+
+    /** Cancels the writer, closes the socket to unblock a writer stuck in blocking IO, then
+     * reaps it with a bound; never waits forever inside NonCancellable cleanup. */
+    private suspend fun unblockAndReap(writer: Deferred<Unit>) {
+        writer.cancel()
+        runCatching { socket.close() }
+        withContext(NonCancellable) {
+            withTimeoutOrNull(WRITE_REAP_TIMEOUT_MS) { writer.join() }
+        }
+        writer.cancel()
     }
 }
 
-class Screenshot(val png: ByteArray, val info: ArtifactInfo)
+/** A physical frame write; suspends so tests can gate it. The default is the real socket write. */
+internal fun interface FrameSink {
+    suspend fun write(frame: Frame)
+}
+
+class Screenshot(
+    val png: ByteArray,
+    val info: ArtifactInfo,
+)
 
 /** Well under the driver's default 30 s heartbeat timeout. */
 const val DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000L
+
+/** Padding added to a command's own timeout to form its private response budget. */
+const val DEFAULT_RESPONSE_BUDGET_PADDING_MS = 5_000L
+
+/** Bound for reaping a writer child after its socket was closed; never unbounded. */
+const val WRITE_REAP_TIMEOUT_MS = 2_000L

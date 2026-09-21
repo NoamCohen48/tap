@@ -1,28 +1,30 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.ArtifactInfo
+import com.company.tap.protocol.ArtifactResult
 import com.company.tap.protocol.Authentication
+import com.company.tap.protocol.AuthenticationResult
 import com.company.tap.protocol.BlobEnd
 import com.company.tap.protocol.BlobFrames
 import com.company.tap.protocol.BlobStart
-import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
-import com.company.tap.protocol.AuthenticationResult
 import com.company.tap.protocol.CanonicalJson
 import com.company.tap.protocol.Challenge
+import com.company.tap.protocol.Command
 import com.company.tap.protocol.DRIVER_APK_BUILD_ID
 import com.company.tap.protocol.DRIVER_TEST_APK_BUILD_ID
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Hello
-import com.company.tap.protocol.ArtifactResult
-import com.company.tap.protocol.Command
+import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
 import com.company.tap.protocol.ProtocolAuthentication
 import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.SUPPORTED_CAPABILITIES
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import com.company.tap.protocol.UIAUTOMATOR_BUILD_ID
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.EOFException
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -32,8 +34,6 @@ import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 /**
  * Loopback stand-in for the device driver: performs the real protocol 1.0 handshake, then hands
@@ -43,20 +43,34 @@ import kotlinx.serialization.json.Json
 class FakeDriverServer(
     private val sessionId: String,
     private val generation: Long,
-    private val secret: ByteArray,
+    secret: ByteArray,
+    /** When true, the handshake accepts any session id/generation (for session-open tests where
+     * the id is generated inside the code under test). */
+    private val acceptAnySession: Boolean = false,
 ) : AutoCloseable {
+    /** The session secret the handshake HMACs with; tests update it when the code under test
+     * generates the secret itself (it travels in the instrumentation command). */
+    @Volatile var secret: ByteArray = secret
     private val json = Json { ignoreUnknownKeys = true }
     private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
     private val received = LinkedBlockingQueue<Frame>()
+
     @Volatile private var client: Socket? = null
-    private val acceptor = Thread(::serve, "fake-driver").apply { isDaemon = true; start() }
+    private val acceptor =
+        Thread(::serve, "fake-driver").apply {
+            isDaemon = true
+            start()
+        }
 
     val port: Int get() = server.localPort
 
     fun nextFrame(timeoutMs: Long = 2_000): Frame =
         received.poll(timeoutMs, TimeUnit.MILLISECONDS) ?: error("Driver received no frame within $timeoutMs ms")
 
-    fun respond(requestId: Long, response: Response) {
+    fun respond(
+        requestId: Long,
+        response: Response,
+    ) {
         write(Frame(FrameType.RESPONSE, requestId, json.encodeToString(response).encodeToByteArray()))
     }
 
@@ -66,7 +80,11 @@ class FakeDriverServer(
      * Streams [bytes] as a blob followed by a successful artifact response. [corrupt] lets a
      * test damage one aspect of the transfer after the frames were built.
      */
-    fun sendArtifact(requestId: Long, bytes: ByteArray, corrupt: Corruption = Corruption.NONE): ArtifactInfo {
+    fun sendArtifact(
+        requestId: Long,
+        bytes: ByteArray,
+        corrupt: Corruption = Corruption.NONE,
+    ): ArtifactInfo {
         val blobId = UUID.randomUUID()
         val sha256 = BlobFrames.sha256Hex(bytes)
         val start = BlobStart(blobId.toString(), "image/png", bytes.size.toLong(), sha256)
@@ -79,7 +97,13 @@ class FakeDriverServer(
             write(Frame(FrameType.BLOB_CHUNK, requestId, BlobFrames.encodeChunk(blobId, wireIndex, data, 0, data.size)))
         }
         if (corrupt != Corruption.NO_END) {
-            write(Frame(FrameType.BLOB_END, requestId, json.encodeToString(BlobEnd(blobId.toString(), bytes.size.toLong(), sha256)).encodeToByteArray()))
+            write(
+                Frame(
+                    FrameType.BLOB_END,
+                    requestId,
+                    json.encodeToString(BlobEnd(blobId.toString(), bytes.size.toLong(), sha256)).encodeToByteArray(),
+                ),
+            )
         }
         val info = ArtifactInfo(blobId.toString(), "image/png", bytes.size.toLong(), sha256, 4, 4)
         respond(requestId, Response.ok(ArtifactResult(info), durationMs = 5))
@@ -126,22 +150,30 @@ class FakeDriverServer(
         val helloFrame = FrameCodec.read(input)
         check(helloFrame.type == FrameType.HELLO)
         val hello = CanonicalJson.decodeCanonical<Hello>(helloFrame.payload)
-        check(hello.sessionId == sessionId && hello.sessionGeneration == generation)
+        if (!acceptAnySession) {
+            check(hello.sessionId == sessionId && hello.sessionGeneration == generation)
+        }
         val nonce = ByteArray(32).also(SecureRandom()::nextBytes)
-        val challenge = Challenge(
-            androidApiLevel = 34,
-            capabilities = SUPPORTED_CAPABILITIES,
-            driverApkBuildId = DRIVER_APK_BUILD_ID,
-            driverInstanceId = "fake-driver",
-            driverNonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonce),
-            driverTestApkBuildId = DRIVER_TEST_APK_BUILD_ID,
-            hostNonce = hello.hostNonce,
-            sessionGeneration = generation,
-            sessionId = sessionId,
-            supportedOperations = Command.names,
-            supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
-            uiAutomatorBuildId = UIAUTOMATOR_BUILD_ID,
-        )
+        // Session-open tests generate the id inside the code under test; echo it back so the
+        // client's challenge check (sessionId/sessionGeneration equality) can succeed. Fixed-id
+        // tests keep the constructor values, preserving the fencing check they exercise.
+        val challengeSessionId = if (acceptAnySession) hello.sessionId else sessionId
+        val challengeGeneration = if (acceptAnySession) hello.sessionGeneration else generation
+        val challenge =
+            Challenge(
+                androidApiLevel = 34,
+                capabilities = SUPPORTED_CAPABILITIES,
+                driverApkBuildId = DRIVER_APK_BUILD_ID,
+                driverInstanceId = "fake-driver",
+                driverNonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonce),
+                driverTestApkBuildId = DRIVER_TEST_APK_BUILD_ID,
+                hostNonce = hello.hostNonce,
+                sessionGeneration = challengeGeneration,
+                sessionId = challengeSessionId,
+                supportedOperations = Command.names,
+                supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
+                uiAutomatorBuildId = UIAUTOMATOR_BUILD_ID,
+            )
         val challengePayload = CanonicalJson.encode(challenge)
         FrameCodec.write(output, Frame(FrameType.CHALLENGE, 0, challengePayload))
 
@@ -149,23 +181,25 @@ class FakeDriverServer(
         check(authFrame.type == FrameType.AUTH)
         val authentication = CanonicalJson.decodeCanonical<Authentication>(authFrame.payload)
         check(ProtocolNegotiation.isValid(hello, challenge, authentication.negotiation))
-        val transcript = ProtocolAuthentication.transcript(
-            helloFrame.payload,
-            challengePayload,
-            CanonicalJson.encode(authentication.negotiation),
-        )
+        val transcript =
+            ProtocolAuthentication.transcript(
+                helloFrame.payload,
+                challengePayload,
+                CanonicalJson.encode(authentication.negotiation),
+            )
         check(
             ProtocolAuthentication.constantTimeEquals(
                 ProtocolAuthentication.hostMac(secret, transcript),
                 authentication.transcriptHmac,
+            ),
+        )
+        val result =
+            AuthenticationResult(
+                ok = true,
+                enabledCapabilities = authentication.negotiation.enabledCapabilities,
+                selectedVersion = authentication.negotiation.selectedVersion,
+                transcriptHmac = ProtocolAuthentication.driverMac(secret, transcript),
             )
-        )
-        val result = AuthenticationResult(
-            ok = true,
-            enabledCapabilities = authentication.negotiation.enabledCapabilities,
-            selectedVersion = authentication.negotiation.selectedVersion,
-            transcriptHmac = ProtocolAuthentication.driverMac(secret, transcript),
-        )
         FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, CanonicalJson.encode(result)))
     }
 }
