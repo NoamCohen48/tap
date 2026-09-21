@@ -8,16 +8,24 @@ on-device driver; the tests talk to it over gRPC. Nothing about your app changes
 is a separate package and never links into the app under test.
 
 ```kotlin
+import com.company.tap.junit5.TapTest
+import com.company.tap.junit5.tapTest
+import org.junit.jupiter.api.Test
+
 @TapTest
 class CheckoutTest {
     @Test
     fun buysAnItem(device: Device) {
-        device.app().coldLaunch()
-        device.element(res("buy_button")).tap()
-        device.await(text("Order placed")).visible()
+        tapTest {
+            device.app().coldLaunch()
+            device.element(res("buy_button")).tap()
+            device.await(text("Order placed")).visible()
+        }
     }
 }
 ```
+
+(`tapTest { ... }` is mandatory: `Device` calls are `suspend` on the extension-owned scope.)
 
 ```python
 def test_buys_an_item(tap_device):

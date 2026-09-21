@@ -179,8 +179,10 @@ tap/
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package com.company.tap.junit5)
 |   |       +-- src/main/kotlin/com/company/tap/junit5/
 |   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
+|   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
+|   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
 |   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles
-|   |           +-- TapConnection.kt     one TapClient + Connection per JVM (lazy, closed by a shutdown hook)
+|   |           +-- TapConnection.kt     one TapClient + Connection per JVM generation (managed sequential generations: teardown gate with cancelled-shutdown NonCancellable re-await of captured flights, single-flight shares, transactional hook install before publish with close+stop rollback, creation rollback with suppressed cleanup, NonCancellable ownership with original cancellation rethrown), closed by launcher listener/shutdown hook
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the service)
 |       +-- pyproject.toml, README.md
@@ -243,8 +245,8 @@ fixture-app --------------> device:sync-sdk
 - `device:sync-sdk` depends on nothing from Tap; the driver reaches it only through a
   provider call.
 - `host:core` and the service are coroutine-based (`suspend` throughout, structured scopes);
-  they have no Android API dependency. The Kotlin clients stay synchronous until step 4
-  (`framework-gaps.md`: "Synchronous API instead of `tapTest`"). Only the validation
+  they have no Android API dependency. The Kotlin clients are coroutine-based too (step 4):
+  `suspend` over grpc-kotlin stubs with `tapTest`/`tapScope` ownership. Only the validation
   executable fans out per device, as before.
 - Product test suites depend on `:clients:kotlin:junit5` (which exposes `:clients:kotlin:sdk`
   and `:contracts:api` as `api`) and never on `:host:*`.
@@ -490,8 +492,8 @@ lifecycle code; the language-facing shape is the same in Kotlin and Python.
 ### Kotlin client (`:clients:kotlin:sdk`)
 
 ```kotlin
-val client = TapClient()                      // a running service (`tap start`)
-val connection = client.connect("checkout")   // Attach stream = liveness
+val client = TapClient.create()                    // explicit address or resolved service
+val connection = client.connect("checkout")         // Attach stream = liveness (owned scope)
 val serial = connection.availableSerials().first()   // the service leases nothing; the session holds the device lock
 val device = connection.openDevice(serial, autPackage)
 val app = device.app()                        // autPackage by default
@@ -500,13 +502,19 @@ device.element(resId(pkg, "view_button")).tap()           // exactly one match o
 device.await(text("View tapped")).visible()               // one driver-side wait RPC
 device.element(rawRes("composeList")).scrollUntil(rawRes("item-40"))
 app.awaitIdle()                                           // sync-sdk busy state, identity-guarded
-device.close(); connection.close(); client.close()
+device.close(); connection.close(); client.close()   // all suspend; try/finally in tapScope/tapTest
 ```
 
+Device work runs inside `tapScope { ... }` (scripts) or `tapTest { ... }` (JUnit); selector
+construction (`text(...)`, `res(...)`) is the only non-suspend part.
+
 - The client is a thin gRPC layer over `contracts/api`: no ADB, journals, leases or driver
-  lifecycle. `TapClient` owns the channel and the blocking stubs; `Connection` is this process's
-  identity at the service (attach, `availableSerials`, `openDevice`); `Device` wraps one service session and
+  lifecycle. `TapClient` owns the channel and the coroutine stubs (`TapClient.create` resolves
+  the service); `Connection` is this process's identity at the service (owned attach scope,
+  `availableSerials`, `openDevice`); `Device` wraps one service session and
   `Timeouts(action 10 s, wait 10 s, lifecycle 30 s, poll 100 ms)`, overridable per call.
+  Every I/O method is `suspend` with per-call `withDeadlineAfter` plus caller-cancellation;
+  `close` is `suspend` (no `AutoCloseable`).
 - `Element` is a proto `Selector` plus the device; each terminal call is one `Execute`. A
   `CommandResult` failure becomes `CommandException` (proto `ErrorCode`, detail, selector,
   request identity); transport loss reported by the service is the same exception with
@@ -527,28 +535,35 @@ device.close(); connection.close(); client.close()
   (alive check); it never starts a service. `TapServiceProcess.start/stop` run `tap start` /
   `tap stop` from `tap.bin`/`TAP_BIN`/`tap` on `PATH`; the JUnit extension does so around a run
   when `tap.manageService` is set (`TapLauncherSessionListener` stops it).
-- The API is synchronous. Multi-device tests fan out with threads; the coroutine `tapTest`
-  façade from plan §12 is not built yet (see `framework-gaps.md`).
+- The API is `suspend` throughout; multi-device tests fan out with `coroutineScope`/`async`
+  inside `tapTest`, with `DeviceBarrier` for genuinely simultaneous phases (see `framework-gaps.md`
+  for what was removed with the proving tests).
 
 ### JUnit 5 integration (`:clients:kotlin:junit5`)
 
 ```kotlin
 @TapTest
 class CheckoutTest {
-    @Test fun buys(device: Device) { ... }                       // implicit role "device"
-    @Test @TapDevices("sender", "receiver") fun sync(devices: Devices) { ... }
+    @Test fun buys(device: Device) { tapTest { ... } }       // implicit role "device"
+    @Test @TapDevices("sender", "receiver")
+    fun sync(devices: Devices) { tapTest { ... } }
 }
 ```
 
-`TapExtension` (`BeforeEachCallback`, `AfterEachCallback`, `ParameterResolver`,
-`TestExecutionExceptionHandler`) collects roles from `@TapDevices` (method or class),
+`TapExtension` (`BeforeEachCallback` with per-test root job, `AfterEachCallback` with cancel +
+bounded non-cancellable teardown, `ParameterResolver`, `TestExecutionExceptionHandler`,
+`InvocationInterceptor` binding the `tapTest` context) collects roles from `@TapDevices` (method or class),
 `@TapDevice` parameters, and bare `Device` parameters; maps roles to serials itself (pinned
 by `tap.device.<role>`, then the `tap.serials` order, otherwise the service's device list, free
 devices first); skips the test (assumption) when fewer devices exist than roles; opens the sessions one at
-a time in sorted serial order through the JVM-wide `TapConnection` (one `TapClient` + `Connection`, closed
-by a shutdown hook), each waiting up to `tap.acquireTimeoutSeconds` for a device another
+a time in sorted serial order through the JVM-wide `TapConnection` (one `TapClient` + `Connection`
+per sequential generation — teardown-gated start/connect with single-flight shares, creation
+rollback with suppressed cleanup, and cancellation-safe ownership under `NonCancellable`
+with the original cancellation rethrown — closed by the launcher listener/shutdown hook), each
+waiting up to `tap.acquireTimeoutSeconds` for a device another
 session holds; stores them
-in a per-method namespace; on a test failure captures `<artifactsDir>/<class>/<method>/
+in a per-method namespace; test bodies run only inside `tapTest { ... }` (real-time bridge;
+binding/nesting enforced, timeout/sibling cancellation via the root job); on a test failure captures `<artifactsDir>/<class>/<method>/
 <role>-<serial>.png|.xml|.device-info.txt|.driver.log` plus `failure.txt` while sessions are
 live; then closes the sessions, which frees the devices. Cleanup failures are attached to the
 primary failure, or rethrown when the test itself passed. `TapConfig.current` reads
@@ -604,8 +619,10 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Protocol | `contracts/protocol/src/test` | 5 classes | framing bounds, canonical JSON, negotiation/transcript, error taxonomy, selector validation, golden fixtures (every operation and error code) |
 | Execution engine | `device/driver/command-engine/src/test` | 23 | ordering, overload, cancel states, mutation gate, deadlines, watchdog, heartbeat, blob streaming, shutdown |
 | Host client | `host/core/src/test` | 17 + 6 | real handshake against `FakeDriverServer`: demux, cancel, ping/heartbeat, transport-loss classification, blob corruption; journal atomicity |
+| Kotlin client | `:clients:kotlin:sdk:test` | 31 (`TapClientTest`) | in-process grpc-kotlin fakes: attach ownership/lifetime, Close-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report, fail-closed drain-timeout teardown |
+| JUnit extension | `:clients:kotlin:junit5:test` | 34 (`TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 13) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen, cancellation-safe ownership with NonCancellable state/rollback/gate transitions and original cancellation rethrown, explicit teardown-park hook with no timing, handshake cancellation for create/connect/shutdown with no leaks, create/connect suppression contents/order with exact-once resources, cancelled-shutdown NonCancellable re-await of captured flights before reclaim/gate completion, transactional hook install before publish with close+stop rollback and safe retry), shutdown-vs-connection race, concurrent shares |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
-| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 12 | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), two-device concurrency |
+| Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 device + 1 discovery guard | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay; passed on API 29 + API 34 on 2026-09-21 |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
 | Service | `:host:service:test` | 4 classes (`EnumMirrorTest`, `GoldenRoundTripTest`, `AutResourceTest`, `TapServiceLifecycleTest`) | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
@@ -648,10 +665,12 @@ service.
 
 Not yet built — see [`framework-gaps.md`](framework-gaps.md) for the full, per-section list:
 `session.shutdown`, `inspector.snapshot`, crash/ANR codes, provider
-visibility for non-fixture AUTs, the coroutine `tapTest` façade and `DeviceBarrier`, device
-fake-ADB JVM coverage for the host core and in-process service tests for the clients,
+visibility for non-fixture AUTs, device fake-ADB JVM coverage for the host core and
+in-process service tests for the clients,
 logcat/dumpsys/JSONL/HTML artifacts and reports, per-test deadlines and the remaining JUnit
-contracts, CI lanes.
+contracts, CI lanes. (The coroutine `tapTest` façade and `DeviceBarrier` are built with
+deterministic JVM tests, including in-process accepted-`Execute` cancellation; host no-reboot,
+native image, Python smoke and the 13-device-test 0.2.0-client matrix have passed.)
 
 `PhaseZeroMain.kt` (≈2 300 lines) remains validation code, not framework code; it should
 keep exercising faults the clients cannot inject, and nothing outside `:host:validation` may

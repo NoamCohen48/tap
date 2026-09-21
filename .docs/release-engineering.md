@@ -60,6 +60,12 @@ Because `tap-client` depends on `tap-api:<engine>`, a `client-kotlin/v*` release
 the `tap-api` of the current engine version is already in GitHub Packages and fails with a
 pointer to tag `service/v<engine>` first.
 
+Client 0.2.0 (2026-09-21) is the breaking coroutine release: every `Device`/`App`/`Element`
+call is `suspend` behind `tapTest`/`tapScope`, `Connection` owns its attach scope, and
+`TapClient`/`Connection`/`Device` close via `suspend` (no `AutoCloseable`). The wire is
+unchanged (`tap.v1` only gains no fields here), so the break is source-only: 0.1.x callers
+recompile against `tapTest`/`tapScope`. Engine and Python/sync lines did not move.
+
 ## Versions in the build
 
 `gradle.properties` holds the three Gradle-side versions; the root `build.gradle.kts` assigns
@@ -117,7 +123,7 @@ Consuming:
 
 ```kotlin
 repositories { maven("https://maven.pkg.github.com/NoamCohen48/tap") { credentials { … } } }
-testImplementation("com.company.tap:tap-junit5:0.1.0")
+testImplementation("com.company.tap:tap-junit5:0.2.0")
 ```
 
 ```bash

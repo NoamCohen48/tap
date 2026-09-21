@@ -30,6 +30,10 @@ dependencies {
     implementation("io.grpc:grpc-netty-shaded:1.75.0")
 
     testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("io.grpc:grpc-inprocess:1.75.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.test {

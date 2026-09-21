@@ -2,72 +2,190 @@ package com.company.tap.junit5
 
 import com.company.tap.sdk.Device
 import com.company.tap.sdk.DeviceOptions
-import java.nio.file.Files
-import java.nio.file.Path
+import com.company.tap.sdk.TapContext
+import com.company.tap.sdk.TapException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.extension.AfterEachCallback
 import org.junit.jupiter.api.extension.BeforeEachCallback
 import org.junit.jupiter.api.extension.ExtensionContext
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace
+import org.junit.jupiter.api.extension.InvocationInterceptor
 import org.junit.jupiter.api.extension.ParameterContext
 import org.junit.jupiter.api.extension.ParameterResolver
+import org.junit.jupiter.api.extension.ReflectiveInvocationContext
 import org.junit.jupiter.api.extension.TestExecutionExceptionHandler
+import java.lang.reflect.Method
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
- * Per-test device sessions for JUnit 5. Before each test it maps every declared role to a
- * serial, opens one driver session per role — in sorted serial order, waiting up to
- * `tap.acquireTimeoutSeconds` for a device another session holds, so two multi-device tests
- * can never deadlock — and injects [Device]/[Devices] parameters. After the test it captures
- * failure artifacts (screenshot, hierarchy, driver log) while sessions are live, then closes
- * them, which frees the devices. Sessions never outlive a test, so a poisoned or quarantined
- * session is contained to the test that hit it.
+ * Per-test device sessions for JUnit 5, over the coroutine client. Before each test it maps
+ * every declared role to a serial, creates the per-test root [Job], and opens one driver
+ * session per role — in sorted serial order, waiting up to `tap.acquireTimeoutSeconds` for a
+ * device another session holds, so two multi-device tests can never deadlock — all as children
+ * of the root job. The test body runs only inside [tapTest], which binds this state and
+ * installs the SDK [TapContext]; [Device] calls outside it fail with a usage error, so plain
+ * metadata-only tests stay possible but cannot touch live devices.
+ *
+ * JUnit timeout/interruption cancels the root job (via [tapTest]'s `runBlocking`); sibling
+ * failure in `coroutineScope`/`async` cancels the other device's in-flight RPC by structured
+ * rules. After the test (or setup) it captures failure artifacts while sessions are still
+ * live when possible, then cancels the root job and performs bounded non-cancellable cleanup,
+ * preserving the primary failure and suppressing cleanup failures into it.
  */
-class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, TestExecutionExceptionHandler {
-
+class TapExtension :
+    BeforeEachCallback,
+    AfterEachCallback,
+    ParameterResolver,
+    TestExecutionExceptionHandler,
+    InvocationInterceptor {
     override fun beforeEach(context: ExtensionContext) {
         val config = TapConfig.current
-        val roles = declaredRoles(context)
-        val available = config.serials.ifEmpty { TapConnection.connection.availableSerials() }
-        // Fewer devices than roles is an environment precondition, not a test failure.
-        assumeTrue(roles.size <= available.size) {
-            "${context.requiredTestMethod.name} needs ${roles.size} devices but " +
-                (if (config.serials.isEmpty()) "the pool has $available" else "tap.serials lists ${config.serials}")
+        val method = context.requiredTestMethod.name
+        val rootJob = Job()
+        // Device opens run as children of the root job in a setup scope (SDK marker required);
+        // the test body later uses the same root with its own marker via tapTest.
+        try {
+            val state =
+                runBlocking(rootJob + TapContext("junit:$method:setup")) {
+                    val roles = declaredRoles(context)
+                    val available =
+                        config.serials.ifEmpty {
+                            TapConnection.connection().availableSerials()
+                        }
+                    // Fewer devices than roles is an environment precondition, not a test failure.
+                    assumeTrue(roles.size <= available.size) {
+                        "${context.requiredTestMethod.name} needs ${roles.size} devices but " +
+                            (if (config.serials.isEmpty()) "the pool has $available" else "tap.serials lists ${config.serials}")
+                    }
+                    val assignment = assignSerials(roles, available, config.pinnedRoles)
+                    val connection = TapConnection.connection()
+                    val devices = openAll(connection, assignment, config)
+                    TestState(rootJob, devices, assignment, method)
+                }
+            context.store.put(KEY, state)
+        } catch (failure: Throwable) {
+            rootJob.cancel(CancellationException("beforeEach failed", failure))
+            throw failure
         }
-        val assignment = assignSerials(roles, available, config.pinnedRoles)
-        context.store.put(KEY, TestDevices(openAll(assignment, config), assignment))
     }
 
-    override fun handleTestExecutionException(context: ExtensionContext, throwable: Throwable) {
-        context.store.get(KEY, TestDevices::class.java)?.failure = throwable
+    override fun interceptTestMethod(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        invocationContext: ReflectiveInvocationContext<Method>,
+        extensionContext: ExtensionContext,
+    ) {
+        val state = extensionContext.store.get(KEY, TestState::class.java)
+        if (state == null) {
+            invocation.proceed()
+            return
+        }
+        TapTestBinding.current.set(state)
+        try {
+            invocation.proceed()
+        } catch (failure: Throwable) {
+            if (state.failure == null) state.failure = failure
+            throw failure
+        } finally {
+            TapTestBinding.current.remove()
+        }
+    }
+
+    override fun interceptBeforeEachMethod(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        invocationContext: ReflectiveInvocationContext<Method>,
+        extensionContext: ExtensionContext,
+    ) {
+        try {
+            invocation.proceed()
+        } catch (failure: Throwable) {
+            extensionContext.store.get(KEY, TestState::class.java)?.let {
+                if (it.failure == null) it.failure = failure
+            }
+            throw failure
+        }
+    }
+
+    override fun interceptAfterEachMethod(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        invocationContext: ReflectiveInvocationContext<Method>,
+        extensionContext: ExtensionContext,
+    ) {
+        try {
+            invocation.proceed()
+        } catch (failure: Throwable) {
+            extensionContext.store.get(KEY, TestState::class.java)?.let {
+                if (it.failure == null) it.failure = failure
+            }
+            throw failure
+        }
+    }
+
+    override fun handleTestExecutionException(
+        context: ExtensionContext,
+        throwable: Throwable,
+    ) {
+        context.store.get(KEY, TestState::class.java)?.failure = throwable
         throw throwable
     }
 
     override fun afterEach(context: ExtensionContext) {
-        val state = context.store.remove(KEY, TestDevices::class.java) ?: return
+        val state = context.store.remove(KEY, TestState::class.java) ?: return
         val failure = state.failure ?: context.executionException.orElse(null)
+        // Stop test coroutines promptly; sessions stay usable for artifact capture below.
+        state.rootJob.cancel(CancellationException("test finished"))
         try {
-            if (failure != null) captureArtifacts(context, state)
+            if (failure != null) {
+                runBlocking(TapContext("junit:${state.method}:artifacts")) {
+                    withContext(NonCancellable) {
+                        withTimeoutOrNull(60_000) { captureArtifacts(context, state) }
+                    }
+                }
+            }
         } finally {
-            val closeErrors = state.devices.values.mapNotNull { device -> runCatching { device.close() }.exceptionOrNull() }
-            closeErrors.firstOrNull()?.let { first ->
-                closeErrors.drop(1).forEach(first::addSuppressed)
-                // A cleanup failure after a passing test is a real failure: the device may be quarantined.
-                if (failure == null) throw first
+            val closeErrors = closeAll(state)
+            if (failure == null) {
+                closeErrors.firstOrNull()?.let { first ->
+                    closeErrors.drop(1).forEach(first::addSuppressed)
+                    throw first
+                }
+            } else {
+                closeErrors.forEach(failure::addSuppressed)
+                // A cleanup failure after a passing test is thrown above; after a failing test the
+                // primary failure (already recorded) stays the report, with cleanup suppressed.
+                // When the primary came from executionException (not our stored failure), rethrow
+                // is unnecessary: JUnit reports it. When it is stored, it was already thrown.
             }
         }
     }
 
-    override fun supportsParameter(parameter: ParameterContext, context: ExtensionContext): Boolean {
+    override fun supportsParameter(
+        parameter: ParameterContext,
+        context: ExtensionContext,
+    ): Boolean {
         val type = parameter.parameter.type
         return type == Device::class.java || type == Devices::class.java
     }
 
-    override fun resolveParameter(parameter: ParameterContext, context: ExtensionContext): Any {
-        val state = requireNotNull(context.store.get(KEY, TestDevices::class.java)) {
-            "Tap devices are only available inside a test method (not constructors or static callbacks)"
-        }
+    override fun resolveParameter(
+        parameter: ParameterContext,
+        context: ExtensionContext,
+    ): Any {
+        val state =
+            requireNotNull(context.store.get(KEY, TestState::class.java)) {
+                "Tap devices are only available inside a test method (not constructors or static callbacks)"
+            }
         return when (parameter.parameter.type) {
-            Devices::class.java -> Devices(state.devices)
+            Devices::class.java -> {
+                Devices(state.devices)
+            }
+
             else -> {
                 val role = parameter.findAnnotation(TapDevice::class.java).map { it.role }.orElse(DEFAULT_ROLE)
                 state.devices[role] ?: throw IllegalArgumentException(
@@ -79,14 +197,19 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
 
     private fun declaredRoles(context: ExtensionContext): List<String> {
         val method = context.requiredTestMethod
-        val fromAnnotation = method.getAnnotation(TapDevices::class.java)?.roles?.toList()
-            ?: context.requiredTestClass.getAnnotation(TapDevices::class.java)?.roles?.toList()
+        val fromAnnotation =
+            method.getAnnotation(TapDevices::class.java)?.roles?.toList()
+                ?: context.requiredTestClass
+                    .getAnnotation(TapDevices::class.java)
+                    ?.roles
+                    ?.toList()
         val fromParameters = method.parameters.mapNotNull { it.getAnnotation(TapDevice::class.java)?.role }
-        val implicit = if (method.parameters.any { it.type == Device::class.java && it.getAnnotation(TapDevice::class.java) == null }) {
-            listOf(DEFAULT_ROLE)
-        } else {
-            emptyList()
-        }
+        val implicit =
+            if (method.parameters.any { it.type == Device::class.java && it.getAnnotation(TapDevice::class.java) == null }) {
+                listOf(DEFAULT_ROLE)
+            } else {
+                emptyList()
+            }
         val roles = (fromAnnotation.orEmpty() + fromParameters + implicit).distinct()
         require(roles.isNotEmpty()) { "${method.name} declares no Tap devices; add a Device parameter or @TapDevices" }
         return roles
@@ -95,37 +218,101 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
     /**
      * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then
      * [available] in declaration order. [available] is `tap.serials` or, when none are
-     * configured, what the service's device list reports.
+     * configured, what the service's device list reports. Duplicate serials (two roles
+     * pinned to the same device) fail here, before any session opens: two sessions on one
+     * device would serialize on its lock instead of testing concurrently.
      */
-    private fun assignSerials(roles: List<String>, available: List<String>, pinned: Map<String, String>): Map<String, String> {
-        val free = available.filter { it !in pinned.values }.toMutableList()
-        return roles.associateWith { role -> pinned[role] ?: free.removeFirst() }
+    internal fun assignSerials(
+        roles: List<String>,
+        available: List<String>,
+        pinned: Map<String, String>,
+    ): Map<String, String> {
+        val relevantPins = pinned.filterKeys { it in roles }
+        val duplicatedPins =
+            relevantPins.values
+                .groupingBy { it }
+                .eachCount()
+                .filter { it.value > 1 }
+        require(duplicatedPins.isEmpty()) {
+            "duplicate tap.device pins for serials ${duplicatedPins.keys}: ${relevantPins.filterValues { it in duplicatedPins }}; " +
+                "each role needs its own device"
+        }
+        val free = available.filter { it !in relevantPins.values }.toMutableList()
+        val assignment = roles.associateWith { role -> relevantPins[role] ?: free.removeFirst() }
+        require(assignment.values.toSet().size == assignment.size) {
+            "duplicate serial assignment $assignment; each role needs its own device"
+        }
+        return assignment
     }
 
     /**
      * Opens the sessions one at a time in sorted serial order. Every process takes device locks
      * in the same order, so two tests wanting the same two devices cannot deadlock; the second
-     * simply waits (bounded by `tap.acquireTimeoutSeconds`) for the first to finish.
+     * simply waits (bounded by `tap.acquireTimeoutSeconds`) for the first to finish. Caller
+     * runs inside the setup scope (a child of the root job), so setup cancellation propagates.
+     * A duplicated serial in [assignment] fails before any session opens (see [assignSerials]).
+     * On failure every opened device is closed (bounded, non-cancellable) with the errors
+     * suppressed into the opener before rethrow.
      */
-    private fun openAll(assignment: Map<String, String>, config: TapConfig): Map<String, Device> {
+    internal suspend fun openAll(
+        connection: com.company.tap.sdk.Connection,
+        assignment: Map<String, String>,
+        config: TapConfig,
+    ): Map<String, Device> {
+        require(assignment.values.toSet().size == assignment.size) {
+            "duplicate serial assignment $assignment; each role needs its own device"
+        }
         val opened = linkedMapOf<String, Device>()
         val options = DeviceOptions(waitForDevice = config.acquireTimeout)
         try {
             assignment.entries.sortedBy { it.value }.forEach { (role, serial) ->
-                opened[role] = TapConnection.connection.openDevice(serial, config.autPackage, options = options)
+                opened[role] = connection.openDevice(serial, config.autPackage, options = options)
             }
         } catch (error: Throwable) {
-            opened.values.forEach { device -> runCatching { device.close() }.exceptionOrNull()?.let(error::addSuppressed) }
+            withContext(NonCancellable) {
+                withTimeoutOrNull(120_000) {
+                    opened.values.forEach { device ->
+                        runCatching {
+                            withContext(TapContext("junit:setup-cleanup")) { device.close() }
+                        }.exceptionOrNull()?.let(error::addSuppressed)
+                    }
+                }
+            }
             throw error
         }
         return assignment.keys.associateWith { opened.getValue(it) }
     }
 
-    private fun captureArtifacts(context: ExtensionContext, state: TestDevices) {
-        val dir = TapConfig.current.artifactsDir
-            .resolve(context.requiredTestClass.name)
-            .resolve(context.requiredTestMethod.name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-        Files.createDirectories(dir)
+    /**
+     * Closes every opened device (sorted serial order is open order; close order follows the
+     * stored map) under a bounded non-cancellable context, collecting — never throwing —
+     * per-device errors for the caller to preserve against the primary failure.
+     */
+    internal fun closeAll(state: TestState): List<Throwable> {
+        val errors = mutableListOf<Throwable>()
+        runBlocking(TapContext("junit:${state.method}:teardown")) {
+            withContext(NonCancellable) {
+                withTimeoutOrNull(120_000) {
+                    state.devices.values.forEach { device ->
+                        runCatching { device.close() }.exceptionOrNull()?.let(errors::add)
+                    }
+                } ?: errors.add(TapException("device teardown timed out"))
+            }
+        }
+        return errors
+    }
+
+    private suspend fun captureArtifacts(
+        context: ExtensionContext,
+        state: TestState,
+    ) {
+        val dir =
+            TapConfig.current.artifactsDir
+                .resolve(context.requiredTestClass.name)
+                .resolve(context.requiredTestMethod.name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { Files.createDirectories(dir) }
+        }
         state.devices.forEach { (role, device) ->
             val prefix = "$role-${device.serial}"
             capture(dir.resolve("$prefix.png")) { device.screenshot() }
@@ -138,17 +325,18 @@ class TapExtension : BeforeEachCallback, AfterEachCallback, ParameterResolver, T
         }
     }
 
-    private fun capture(path: Path, produce: () -> ByteArray) {
-        // Artifact capture must never mask the test failure or block cleanup.
-        runCatching { Files.write(path, produce()) }
-    }
-
-    private class TestDevices(
-        val devices: Map<String, Device>,
-        val assignment: Map<String, String>,
+    private suspend fun capture(
+        path: Path,
+        produce: suspend () -> ByteArray,
     ) {
-        @Volatile
-        var failure: Throwable? = null
+        // Artifact capture must never mask the test failure or block cleanup.
+        runCatching {
+            val bytes =
+                withTimeoutOrNull(30_000) { produce() } ?: return
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { Files.write(path, bytes) }
+            }
+        }
     }
 
     private val ExtensionContext.store: ExtensionContext.Store

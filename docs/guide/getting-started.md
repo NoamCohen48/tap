@@ -64,7 +64,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("com.company.tap:tap-junit5:0.1.0")   // brings tap-client and tap-api
+    testImplementation("com.company.tap:tap-junit5:0.2.0")   // brings tap-client and tap-api
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 
@@ -79,21 +79,32 @@ Write a test:
 
 ```kotlin
 import com.company.tap.junit5.TapTest
+import com.company.tap.junit5.tapTest
 import com.company.tap.sdk.*
 import org.junit.jupiter.api.Test
+import java.nio.file.Path
 
 @TapTest
 class SmokeTest {
     @Test
     fun opensTheHomeScreen(device: Device) {
-        val app = device.app()                       // the configured AUT package
-        app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
-        app.coldLaunch()                             // resolves the launcher activity, waits for its window
-        device.await(text("Welcome")).visible()
-        device.element(res("search")).setText("socks")
+        tapTest {
+            val app = device.app()                       // the configured AUT package
+            app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
+            app.coldLaunch()                             // resolves the launcher activity, waits for its window
+            device.await(text("Welcome")).visible()
+            device.element(res("search")).setText("socks")
+        }
     }
 }
 ```
+
+Use a block-bodied test method as shown: `tapTest` is generic, so an expression body can infer
+a non-`Unit` JVM return type that JUnit does not discover. Every test body runs inside
+`tapTest { ... }`, the real-time bridge onto the extension-owned per-test coroutine scope.
+All `Device`/`App`/`Element` calls are `suspend`; building selectors
+(`text(...)`, `res(...)`) is not. Calls outside `tapTest` — or from `GlobalScope` — fail with
+`TapUsageException`, so timeouts and failing siblings cancel in-flight RPCs.
 
 ```bash
 ./gradlew test -Ptap.serials=emulator-5554
@@ -143,15 +154,31 @@ service, opens a session per device.
 === "Kotlin"
 
     ```kotlin
-    TapClient().use { client ->
-        val connection = client.connect("smoke")
-        connection.openDevice("emulator-5554", "com.shop").use { device ->
-            device.app().coldLaunch()
-            println(device.element(text("Welcome")).exists())
+    runBlocking {
+        val client = TapClient.create()              // resolves tap.service / service.json
+        try {
+            val connection = client.connect("smoke")
+            try {
+                tapScope {
+                    val device = connection.openDevice("emulator-5554", "com.shop")
+                    try {
+                        device.app().coldLaunch()
+                        println(device.element(text("Welcome")).exists())
+                    } finally {
+                        device.close()
+                    }
+                }
+            } finally {
+                connection.close()
+            }
+        } finally {
+            client.close()
         }
-        connection.close()
     }
     ```
+
+    Device work (open, use, close) lives inside `tapScope { ... }`; closing is `suspend`
+    (no `AutoCloseable`), so callers use `try`/`finally` inside the scope.
 
 === "Python"
 

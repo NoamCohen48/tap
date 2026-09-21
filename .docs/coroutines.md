@@ -5,13 +5,13 @@ refactor lands and mark each step with the commit that delivered it.
 
 ## Status
 
-**In progress: host core and service complete; Kotlin client pending.** On 2026-09-20 the
-user decided that all three layers — `:host:core`, `:host:service` and the Kotlin client
-(`:clients:kotlin:sdk` + `:clients:kotlin:junit5`) — move to `kotlinx.coroutines` (`suspend`
-functions, structured concurrency), replacing the thread + `CompletableFuture` + blocking-stub
-design. The host core and coroutine service checkpoints are now in the tree; the Kotlin client
-and `tapTest` step has not started. The Python client is out of scope (an `asyncio` façade stays
-a later item in `framework-gaps.md`).
+**Complete: all four steps and the API 29/API 34 client matrix passed on 2026-09-21.**
+On 2026-09-20 the user decided that all three layers — `:host:core`, `:host:service` and the
+Kotlin client (`:clients:kotlin:sdk` + `:clients:kotlin:junit5`) — move to `kotlinx.coroutines`
+(`suspend` functions, structured concurrency), replacing the thread + `CompletableFuture` +
+blocking-stub design. Host core, the coroutine service and now the Kotlin client/`tapTest`
+checkpoints are implemented; the Python client is out of scope (an `asyncio` façade stays a
+later item in `framework-gaps.md`).
 
 Landed and reviewed checkpoints:
 
@@ -33,6 +33,14 @@ Landed and reviewed checkpoints:
 - `3bfb049`, `04660f3`, `0422109` — service review follow-ups: strict shutdown bounds,
   detach-and-launch cleanup, full detached cleanup deadlines, bounded `tap stop`, explicit gRPC
   termination, corrected verification docs, and deterministic connection-exhaustion coverage.
+- `184dac8`, `109656e`, `aaca240`, `4d8c416`, `a9316c9`, `6207d04`, `eb1f3b7`,
+  `70ff8fd`, `de0a2a8`, `80473e9`, `e950da6`, `e9fff23` — Kotlin SDK/JUnit coroutine
+  conversion and lifecycle review follow-ups, ending with fail-closed device-drain teardown,
+  cancellation-safe generation ownership, transactional shutdown-hook installation, and
+  deterministic per-call service-discovery cancellation coverage.
+- `8d40be3` — explicit block-bodied `Unit` fixture methods plus a device-free discovery guard;
+  this made all 13 device tests visible to JUnit instead of silently omitting four methods whose
+  expression bodies inferred a non-`Unit` return type.
 
 Host core/service verification completed on 2026-09-21: the no-reboot validation flow passed
 on emulator-5554 (API 34) and 85e49002 (API 29), including every required `PHASE_1_*_OK` marker
@@ -40,7 +48,9 @@ and `PHASE_0_OK`; all 12 Kotlin fixture tests passed on the two-device matrix; `
 succeeded; and all 12 Python tests passed against both the native image and a tracing-agent JVM
 service. The tracing-agent run added coroutine reflection metadata to the committed native-image
 configuration. The destructive reboot-only late-mutation scenario was intentionally skipped by
-`--no-reboot`; the Kotlin client and `tapTest` conversion remain pending.
+`--no-reboot`; the Kotlin client and `tapTest` conversion subsequently landed as `184dac8`
+(client 0.2.0). After lifecycle review repairs and the fixture discovery fix, all 13 device
+fixture tests plus the device-free discovery guard passed on the same API 29/API 34 matrix.
 
 This reverses a recorded invariant from the pre-migration architecture ("`host:core`, the
 Kotlin clients and the service have no Android API or coroutine dependency; only the validation
@@ -222,8 +232,9 @@ recommendation is kept here only as the record of the trade-off.
   cancels the RPC client-side.
 - JUnit 5 (`TapExtension`), per plan §12: `BeforeEachCallback` creates the per-test root
   `Job` + deadline; `InvocationInterceptor` binds it; `tapTest { }` is the mandatory entry
-  point for suspending framework calls (`@Test fun x() = tapTest { … }` — JUnit methods are
-  not `suspend`, so `tapTest` is `runBlocking`-style on the extension-owned context; nesting
+  point for suspending framework calls (`@Test fun x() { tapTest { … } }` — use a block body
+  so the generic `tapTest` result cannot infer a non-`Unit` JVM return type that JUnit skips).
+  JUnit methods are not `suspend`, so `tapTest` is `runBlocking`-style on the extension-owned context; nesting
   or use without `@TapTest` is a usage error). `AfterEachCallback` cancels the job then runs
   bounded `NonCancellable` cleanup, preserving the primary failure. Add `DeviceBarrier` only
   if a fixture test needs simultaneous phases; `MultiDeviceTest` becomes
@@ -284,7 +295,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 1. **Landed before this lane: `contracts/api` grpc-kotlin generation** (`78cfed3`, pin note
    `875c512`). Java stubs remain; the module also generates coroutine stubs and exports the
    grpc-kotlin/coroutines dependencies.
-2. **Landed, under final review: `:host:core` → coroutines, then `:host:service` → coroutine servicers**
+2. **Landed and reviewed: `:host:core` → coroutines, then `:host:service` → coroutine servicers**
    (`38358c0`, `b88d2e8`, follow-ups `8c1332f`, `1ce2b7b`) **in one lane**
    (staging decision above; steps 2 and 3 below are the two commits of that lane).
    `:host:core`: `DriverClient`, `Adb`, `DriverLifecycle`, `AppLifecycle`,
@@ -299,9 +310,46 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
    dist, then `nativeCompile` + re-record native-image config + `TAP_BIN=<native>
    TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` (Python client is the
    unchanged consumer, so it proves wire compatibility).
-4. **Pending: Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** Fixture tests rewritten; docs guide,
-   README, KDoc; `framework-gaps.md` rows "Synchronous API instead of `tapTest`" and
-   "No `DeviceBarrier`" moved out only with the test that proves cancellation of a sibling.
+4. **Merged as `184dac8`: Kotlin SDK + JUnit 5 → `suspend` + `tapTest`.** `TapClient`/`Connection`/`Device`/
+   `App`/`Element`/`ElementWait` are `suspend` over grpc-kotlin `CoroutineStub`s (selectors stay
+   non-suspend); `Connection.attach` owns its scope with Close-first ordering; `tapTest` is the
+   mandatory bridge with per-test root job, binding/nesting enforcement and timeout/sibling
+   cancellation; `DeviceBarrier` (reusable/one-shot) for simultaneous phases; fixture tests
+   rewritten (`coroutineScope`/`async`, sibling-cancellation device assertion); guides, README
+   and KDoc updated; `framework-gaps.md` rows removed with the proving tests; client line
+   bumped to 0.2.0 (breaking, source-only — the wire is unchanged). Verified (worker, actual
+   Gradle XML): `:clients:kotlin:sdk:test` (31 `TapClientTest`), `:clients:kotlin:junit5:test`
+   (34: `TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 13),
+   `:samples:fixture-tests:compileTestKotlin`, `:host:service:test`, `publishToMavenLocal`,
+   plus Dokka for the SDK and JUnit modules. JUnit repair history: `aaca240` (interruption
+   teardown, duplicate roles, Execute-backed sibling proof, connection generations, docs),
+   `4d8c416` (owned detached coroutine scope), `a9316c9` (Kotlin formatting), `eb1f3b7`
+   (teardown-gated generations with creation rollback), and `de0a2a8` (cancellation-safe
+   ownership and suppressed rollback): every state clear, resource
+   rollback, gate/deferred completion and mutex transition after `clientFlight`,
+   `connectionFlight` or teardown ownership runs under `NonCancellable` with the original
+   cancellation rethrown; no never-completed deferreds/gates; `create`/`connect` failure or
+   cancellation with owned service/client closes the client and stops the owned service
+   independently with every cleanup failure suppressed into the primary; the managed-generation
+   test proves generation 2 is parked on the teardown gate via an explicit `onTeardownPark`
+   hook (no timing assumptions). `TapConnectionTest` now covers handshake cancellation for
+   `createClient`, `connectClient`, and shutdown while awaiting/owning flights (subsequent
+   client/connection/shutdown completes, no leaks), plus `create` failure + `stop` failure
+   and `connect` failure + `close` + `stop` suppression contents/order with exact-once
+   resources, plus the final findings in `e950da6`: cancelled
+   shutdown re-awaits every captured client/connection flight under `NonCancellable` before
+   reclaiming or completing the teardown gate (next generation starts only after the stale
+   rollback + owned stop finish, original cancellation rethrown), transactional hook
+   installation before publish with close + owned stop rolled back under `NonCancellable`
+   (cleanup suppressed into the hook failure, installed flag reset, safe retry with no
+   fast-path leak), and zero `!!` via stable locals/`requireNotNull`, preserving
+   cancellation-safe flights/rollback and no mutex over I/O. The new tests prove the stale
+   stop gates both the cancelled shutdown and generation 2, and prove the throwing hook
+   closes + stops exactly once with a clean retry, preserving the ABA fix, sequential
+   reopen, interruption teardown and service accounting. Worker ran `:clients:kotlin:junit5:test` 3x green (34 names), SDK compile,
+   fixture compile, and Dokka. Host `--no-reboot` validation, native image and Python smoke
+   passed. The new-client matrix then passed on emulator-5554 + 85e49002: 13 device tests,
+   including `siblingFailureCancelsWaitWithoutReplay`, plus one device-free discovery guard.
 5. **Landed (`03b00b7`): docs sweep**: `service-api.md` (status mapping unchanged but the servicer description),
    `project-architecture.md` module table and threading notes, `release-engineering.md`
    version lines, `phase-1-progress.md` if any checklist row is touched, this file's status.
@@ -313,8 +361,9 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
   existing `CANCEL` frame and never onto closing the socket mid-command; a cancelled
   `await()` must still let the reader record the terminal response. JVM regressions now cover
   this in `DriverClientTest` and through an in-process grpc-kotlin `Execute` call in
-  `TapServiceLifecycleTest` (`CANCEL` written, terminal consumed, no poison). The device
-  validation scenario next to `PHASE_1_CANCEL_AFTER_MUTATION_OK` remains pending.
+  `TapServiceLifecycleTest` (`CANCEL` written, terminal consumed, no poison). The host device
+  validation for it passed on 2026-09-21 (`PHASE_1_CANCEL_AFTER_MUTATION_OK` on API 29 and
+  API 34); the new-client `tapTest` matrix subsequently passed on both devices (step 4).
 - **Blocking reads are not cancellable.** Socket reads and `Process.waitFor` only unblock by
   closing/destroying. Scope cancellation must close the resource, which is the existing
   `close()` behaviour — keep `close()` idempotent and callable from a `finally`.
@@ -323,8 +372,11 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
   (`limitedParallelism` / own dispatcher) if a pool of dozens of devices appears.
 - **`runBlocking` in JUnit.** `tapTest` blocks the JUnit thread by design (plan §12: real time,
   not virtual). JUnit's `@Timeout` interrupts the thread; `runBlocking` translates the
-  interrupt into cancellation of the root job, which is exactly the plan's behaviour — verify
-  with a fixture test.
+  interrupt into cancellation of the root job, which is exactly the plan's behaviour — covered
+  by deterministic unit tests (`TapTestBridgeTest`: thread interruption cancels the root job;
+  the interrupt is consumed so `AfterEach` teardown still closes every device)
+  with the device-matrix confirmation left to the parent run (`siblingFailureCancelsWaitWithoutReplay`
+  asserts prompt cancellation on hardware).
 - **Native image.** Re-record config after adding grpc-kotlin; check `nativeCompile` output
   for coroutine `ServiceLoader` warnings (`kotlinx.coroutines.CoroutineExceptionHandler`,
   `MainDispatcherFactory` — both absent-but-harmless on the JVM, must be confirmed harmless in
@@ -334,6 +386,12 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
   `release-engineering.md`.
 - **Python parity.** The Python client stays synchronous over the same wire; nothing here
   changes `tap.proto`. An `asyncio` client remains a separate gap.
+- **Step-4 residual risks.** Host `--no-reboot` validation, the native image build, Python
+  smoke, and the new-client `tapTest` matrix (13 device tests incl. sibling cancellation without
+  replay) have passed.
+  Watch for: attach-scope behavior under parallel JUnit classes sharing one `TapConnection`
+  (JVM-wide connection, per-test roots); `Dispatchers.IO` pressure from many concurrent
+  attaches; and the known Compose `scrollUntil`→`exists` race noted in `framework-gaps.md`.
 - **Validation executable.** `:host:validation` already uses coroutines for fan-out; it must
   not become a product dependency (rule in `CLAUDE.md`) and its scenarios remain the device
   proof for step 2.

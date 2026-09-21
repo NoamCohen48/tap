@@ -13,24 +13,43 @@ pytest plugin map roles to serials and then open one session per role.
 === "Kotlin"
 
     ```kotlin
+    import kotlinx.coroutines.async
+    import kotlinx.coroutines.awaitAll
+    import kotlinx.coroutines.coroutineScope
+
     @TapTest
     class ChatTest {
         @Test
         @TapDevices("sender", "receiver")
         fun deliversAMessage(devices: Devices) {
-            val sender = devices["sender"]
-            val receiver = devices["receiver"]
-            sender.app().coldLaunch()
-            receiver.app().coldLaunch()
-            sender.element(res("compose")).setText("hi")
-            sender.element(text("Send")).tap()
-            receiver.await(text("hi"), timeout = 20.seconds).visible()
+            tapTest {
+                coroutineScope {
+                    awaitAll(
+                        async { devices["sender"].app().coldLaunch() },
+                        async { devices["receiver"].app().coldLaunch() },
+                    )
+                }
+                val sender = devices["sender"]
+                val receiver = devices["receiver"]
+                sender.element(res("compose")).setText("hi")
+                sender.element(text("Send")).tap()
+                receiver.await(text("hi"), timeout = 20.seconds).visible()
+            }
         }
     }
     ```
 
+    (`awaitAll` takes the deferreds — `coroutineScope { async { } async { } }.awaitAll()`
+    does not compile, because the block value is only the last `Deferred`, not a collection.
+    The same shape runs sample-backed
+    in `samples/fixture-tests` `MultiDeviceTest`.)
+
     `@TapDevices` goes on the method or the class. With a single default role the parameter is
     just `device: Device`; `@TapDevice("receiver") device: Device` injects one named role.
+    Use `coroutineScope` + `async`/`awaitAll` for concurrent phases; a failing sibling cancels
+    the other's in-flight RPC. `DeviceBarrier(2)` is only for genuinely simultaneous phases
+    (neither side proceeds until both arrive); backend propagation still waits on the
+    observing device's UI.
 
 === "Python"
 
@@ -83,7 +102,14 @@ call away in either client:
 === "Kotlin"
 
     ```kotlin
-    TapClient().use { client -> client.devices().forEach(::println) }
+    runBlocking {
+        val client = TapClient.create()
+        try {
+            client.devices().forEach(::println)
+        } finally {
+            client.close()
+        }
+    }
     ```
 
 === "Python"
