@@ -54,8 +54,8 @@ fixture tests plus the device-free discovery guard passed on the same API 29/API
 
 This reverses a recorded invariant from the pre-migration architecture ("`host:core`, the
 Kotlin clients and the service have no Android API or coroutine dependency; only the validation
-executable uses kotlinx.coroutines"). The current architecture now records the landed host
-state while retaining the synchronous Kotlin-client note. It is *not* a
+executable uses kotlinx.coroutines"). The current architecture now records the landed host,
+service and Kotlin-client coroutine state; the obsolete synchronous-client note was removed. It is *not* a
 departure from the implementation plan: plan §12 always specified a coroutine test surface
 (`tapTest`, one coroutine per device, `DeviceBarrier`, root job cancelled by JUnit timeout,
 bounded non-cancellable teardown); the synchronous API was a deliberate simplification

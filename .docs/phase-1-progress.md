@@ -1,12 +1,13 @@
 # Phase 1 Progress
 
-Date: 2026-09-18
+Last updated: 2026-09-21
 
 Status: in progress.
 
 ## Completed
 
-- Application protocol version `1.0` independent of bootstrap framing version 1.
+- Application protocol version `2.0` independent of bootstrap framing version 1; 2.0 replaced
+  1.0's flat operation/optional-field model with sealed per-command and per-result shapes.
 - Canonical handshake JSON with recursive key ordering and malformed-canonical rejection.
 - Authenticated HELLO/CHALLENGE/NEGOTIATION transcript with separate HMAC domains.
 - Highest-common-version selection and authenticated capability subset.
@@ -31,18 +32,18 @@ Status: in progress.
   text input and scrolling. Those findings were fixed and the targeted device validation was
   repeated successfully.
 
-- Driver execution split into independent lanes in the pure-JVM `:driver:command-engine`
+- Driver execution split into independent lanes in the pure-JVM `:device:driver:command-engine`
   module: socket reader, bounded queue (16, `OVERLOADED` on overflow), single serialized
   executor, writer, and watchdog. Deadlines start at acceptance and queue residence consumes
-  them. 19 JVM tests cover ordering, overload, queued/running cancellation, the mutation gate,
+  them. 23 JVM tests cover ordering, overload, queued/running cancellation, the mutation gate,
   post-mutation cancel being ignored, deadline-in-queue, watchdog poisoning before and after
   mutation, late-work suppression after poison, pong bypassing a busy executor, write failure,
   and shutdown.
 - `CANCEL`, `PING`, and `PONG` frames. The driver connection thread is reader-only; the
   watchdog poisons the session, emits `TAP_POISONED`, and kills the process after a flush grace
   (disabled only for the late-work fault so host-side forced termination stays testable).
-- Host `DriverClient` demultiplexes responses on a reader thread and exposes `submit`/
-  `PendingCommand.cancel`/`ping`. 10 JVM tests against a loopback `FakeDriverServer` (real
+- Host `DriverClient` demultiplexes responses and exposes `submit`/
+  `PendingCommand.cancel`/`ping`. 27 JVM tests against a loopback `FakeDriverServer` (real
   handshake) cover out-of-order responses, cancel framing, cancel-after-mutation, ping, transport
   loss classification, unknown-ID poisoning, and concurrent ID ordering.
 - Device-proven on API 29 and API 34 (`host --no-reboot`, 2026-09-18):
@@ -74,8 +75,10 @@ Status: in progress.
   `ENDS_WITH`/`REGEX`), `flag` (nine booleans), `resource`, `related` (parent/ancestor/child/
   descendant), `all_of`, `any_of`; `Scope` is `aut` | `system(packageName)`; `Pick` is
   `exactly_one` | `first` | `at(index)` (choosing `first`/`at` is the accessibility-order
-  opt-in). One validator (`SelectorValidation`) runs on the host before a request ID is
-  allocated and on the driver before any lookup: depth ≤ 32, ≤ 256 nodes, ≤ 1024 chars,
+  opt-in). `CommandValidation.validate(command)` dispatches over `ScrollUntil`, other
+  `Targeted` commands and non-targeted commands on the host before a request ID is allocated;
+  `validateSelector` applies the same structural rules during device compilation before lookup:
+  depth ≤ 32, ≤ 256 nodes, ≤ 1024 chars,
   ≥ 2 combinator operands, non-empty resource values, RE2-only regexes. The driver compiles to
   a window-scoped `BySelector` (`UiWindow.findObjects` on the scope package's focused window)
   unless the tree holds a regex, an `any_of` or a repeated single-valued `BySelector` slot,
@@ -106,7 +109,7 @@ Status: in progress.
   idle on a background thread. `PHASE_1_HEARTBEAT_EXPIRY_OK` on API 29/34 forces the 3 s
   timeout with host pings disabled and observes the poison marker, the terminal code, and the
   driver process exiting — the watchdog poisoning path is now device-proven without a reboot.
-- Synchronization extracted to the `:sync-sdk` Android library (`com.company.tap.sync`,
+- Synchronization extracted to the `:device:sync-sdk` Android library (`com.company.tap.sync`,
   authority `${applicationId}.tap-sync`, signature permission declared in the library
   manifest). The fixture-only late-mutation hook moved to `FixtureFaultProvider`
   (`com.company.tap.fixture.fault`, driver argument `tapFaultAuthority`), so the SDK contains
@@ -128,14 +131,14 @@ Status: in progress.
   into `SNAPSHOT.text` (found by the SDK sample suite). One `displayedText()` helper now backs
   `SNAPSHOT`, the text-verification loop, and key-event input; the validation flow clears the
   hinted keyboard field and checks the snapshot reads empty text plus the hint.
-- Host split into a reusable library (`:host`: `Adb`, `DriverClient`, `DriverLifecycle`,
+- Host split into a reusable library (`:host:core`: `Adb`, `DriverClient`, `DriverLifecycle`,
   `DeviceSession`, `SessionJournal`) and the validation executable (`:host:validation`), so
   product code never depends on `PhaseZeroMain`.
-- Phase 2 public API delivered on top (`:host:sdk`, `:host:junit5`, `:samples:fixture-tests`;
-  see `.docs/project-architecture.md` §5–7): `Device`/`App`/`Element`/`ElementWait`,
-  selector DSL, all-or-none device pool, `@TapTest` JUnit 5 extension with failure artifacts,
-  and nine sample tests that pass against the fixture app on API 29 + API 34 concurrently
-  (2026-09-18).
+- Phase 2 public API delivered on top (`:clients:kotlin:sdk`, `:clients:kotlin:junit5`,
+  `:samples:fixture-tests`; see `.docs/project-architecture.md` §5–7): coroutine
+  `Device`/`App`/`Element`/`ElementWait`, selector DSL, client-side role assignment,
+  `@TapTest` JUnit 5 extension with failure artifacts, and 13 device tests plus one discovery
+  guard passing against the fixture app on API 29 + API 34 concurrently (2026-09-21).
 
 Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2026-09-18):
 

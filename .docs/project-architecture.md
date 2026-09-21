@@ -1,9 +1,9 @@
 # Tap Project Architecture
 
-Date: 2026-09-19
+Last updated: 2026-09-21
 
-Status: current implementation overview after Phase 1 (contract and driver), the first
-usable cut of Phase 2 (host session service, Kotlin/JUnit 5 and Python clients). The normative future design remains
+Status: current implementation overview after Phase 1's implemented operation set and the
+usable Phase 2 host session service, Kotlin/JUnit 5 and Python clients. The normative future design remains
 [`android-e2e-framework-implementation-plan.md`](android-e2e-framework-implementation-plan.md);
 the exact wire contract is [`protocol-contract.md`](protocol-contract.md); progress is in
 [`phase-1-progress.md`](phase-1-progress.md) and the remaining delta to the plan in
@@ -66,7 +66,7 @@ These are the invariants the code is organized around (see `CLAUDE.md` for the s
 | One device is never assigned to two tests | the per-serial file lock (`SessionJournalStore.acquireLease`) held by every live `DeviceSession`, across processes; `Open` waits for it or fails; nothing else to acquire (`pool-and-leases.md`) |
 | Clients hold no lifecycle logic; the host service never depends on a client | `clients/*` depend on `:contracts:api` only; `:host:service` depends on `:host:core` + `:contracts:api` |
 | Bounded everything: payload 1 MiB, text 256 chars, timeout 120 s, selector depth/nodes/strings, artifact 64 MiB, queue 16 | constants in `protocol/Messages.kt`, `Selector.kt`, `Blob.kt`; `CommandPipeline` |
-| Both sides validate the same selector rules | `SelectorValidation` is called by `DriverClient` before an ID is allocated and by `DriverCommandEngine` before any lookup |
+| Both sides validate the same selector rules | `CommandValidation` dispatches by command type on the host before an ID is allocated; `SelectorCompiler` applies the same selector validation before device lookup |
 | Failure taxonomy is closed and typed, with may-have-mutated/retryable flags | `ErrorCode` enum, `ErrorDetail` constants, `Response.failure` |
 
 ## 3. Repository layout
@@ -93,7 +93,7 @@ tap/
 |   |   |   +-- Commands.kt          Request envelope; sealed Command (one class per op, `op` discriminator), Mutation/Targeted, Returning<R>, CommandHandler + dispatch, RequestDecoder
 |   |   |   +-- Results.kt           sealed CommandResult (`kind`), Response.Ok/Error (`type`), CommandFailure
 |   |   |   +-- Selector.kt          Selector(node, scope, pick); sealed Node (match/flag/resource/related/all_of/any_of), Scope, Pick; factories, and/or
-|   |   |   +-- SelectorValidation.kt shared structural validation -> NATIVE | TRAVERSAL plan kind (regex, any_of, repeated single-valued slot)
+|   |   |   +-- CommandValidation.kt command-level selector dispatch + shared structural validation -> NATIVE | TRAVERSAL plan kind
 |   |   |   +-- ErrorCode.kt         closed error taxonomy + ErrorDetail sub-reasons
 |   |   |   +-- Blob.kt              BlobStart/BlobEnd/ArtifactInfo, chunk encoding, SHA-256
 |   |   |   +-- FrameCodec.kt        TAP1 header encode/decode, bounds checks
@@ -101,7 +101,7 @@ tap/
 |   |   |   +-- Authentication.kt    Hello/Challenge/Negotiation, HMAC domains, transcript
 |   |   +-- src/test/kotlin/...      FrameCodecTest, ProtocolContractTest, ErrorCodeTest, SelectorTest, GoldenMessageTest
 |   |   +-- src/test/resources/golden/  60 golden request/response JSON fixtures (one per command, per result kind, per error code)
-|   +-- api/                     :contracts:api — host service API; protobuf/gRPC Java codegen (java-library)
+|   +-- api/                     :contracts:api — host service API; protobuf/gRPC Java + grpc-kotlin coroutine stubs
 |       +-- proto/               package tap.v1, one file per concern (selector, command, connection, device, session, app); single source for the Kotlin stubs (Gradle) and the Python stubs (gen_stubs.py)
 |       +-- BREAKING_BASELINE     commit before which CI skips `buf breaking` (the deliberate 2.0 break)
 |
@@ -300,9 +300,11 @@ Node  = Match(property: TEXT|CONTENT_DESCRIPTION|HINT|CLASS_NAME, value, mode = 
 Factories: `Selector.text(v, mode)`, `.contentDescription(v)`, `.rawResource(name)`,
 `.androidResource(pkg, name)`, `.inSystemPackage(pkg)`, `.first()`, `.at(i)`; `Node.text/…/child/descendant`,
 `Node.allOf`/`anyOf` and infix `and`/`or` (flattening, single operand returned as is).
-`SelectorValidation.validate` returns `NATIVE` (everything expressible in one `BySelector`) or
-`TRAVERSAL` (any `REGEX`, any `any_of`, or a conjunction repeating a single-valued `BySelector`
-slot), or throws `InvalidSelectorException(detail)`.
+`CommandValidation.validate(command)` validates every selector carried by a command (`ScrollUntil`
+validates both target and container; other `Targeted` commands validate their target). The device
+uses `CommandValidation.validateSelector(selector)` to return `NATIVE` (everything expressible in
+one `BySelector`) or `TRAVERSAL` (any `REGEX`, any `any_of`, or a conjunction repeating a
+single-valued `BySelector` slot), or throws `InvalidSelectorException(detail)`.
 
 ## 5. Driver
 
@@ -530,7 +532,7 @@ construction (`text(...)`, `res(...)`) is the only non-suspend part.
   `GrantPermission`, `Process`, `AwaitIdle`, …); the implementation is `host/core`
   `AppLifecycle`. `FAILED_PRECONDITION` maps to `AppLifecycleException`.
 - `Selectors.kt` builds the proto `Selector`; the service converts it to the protocol AST and
-  `SelectorValidation` still runs before an ID is allocated.
+  `CommandValidation` validates selectors from the typed command before an ID is allocated.
 - `ServiceDiscovery` resolves `tap.service`/`TAP_SERVICE`, then `<state dir>/service.json`
   (alive check); it never starts a service. `TapServiceProcess.start/stop` run `tap start` /
   `tap stop` from `tap.bin`/`TAP_BIN`/`tap` on `PATH`; the JUnit extension does so around a run
@@ -618,13 +620,13 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 |---|---|---:|---|
 | Protocol | `contracts/protocol/src/test` | 5 classes | framing bounds, canonical JSON, negotiation/transcript, error taxonomy, selector validation, golden fixtures (every operation and error code) |
 | Execution engine | `device/driver/command-engine/src/test` | 23 | ordering, overload, cancel states, mutation gate, deadlines, watchdog, heartbeat, blob streaming, shutdown |
-| Host client | `host/core/src/test` | 17 + 6 | real handshake against `FakeDriverServer`: demux, cancel, ping/heartbeat, transport-loss classification, blob corruption; journal atomicity |
+| Host core | `host/core/src/test` | 70 (`AdbTest` 17, `DeviceSessionTest` 20, `DriverClientTest` 27, `SessionJournalTest` 6) | typed/fake ADB process ownership and parsing; session open/cleanup/quarantine; real handshake against `FakeDriverServer` for demux, cancellation, heartbeat, transport-loss and blobs; journal atomicity |
 | Kotlin client | `:clients:kotlin:sdk:test` | 31 (`TapClientTest`) | in-process grpc-kotlin fakes: attach ownership/lifetime, Close-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report, fail-closed drain-timeout teardown |
 | JUnit extension | `:clients:kotlin:junit5:test` | 34 (`TapTestBridgeTest` 14, `DeviceBarrierTest` 7, `TapConnectionTest` 13) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen, cancellation-safe ownership with NonCancellable state/rollback/gate transitions and original cancellation rethrown, explicit teardown-park hook with no timing, handshake cancellation for create/connect/shutdown with no leaks, create/connect suppression contents/order with exact-once resources, cancelled-shutdown NonCancellable re-await of captured flights before reclaim/gate completion, transactional hook install before publish with close+stop rollback and safe retry), shutdown-vs-connection race, concurrent shares |
 | Device | `host --no-reboot <serials> <apks>` | – | every `PHASE_*` marker on API 29 (Samsung SM-J810G) and API 34 (emulator) |
 | Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 device + 1 discovery guard | Kotlin API + JUnit extension through a runner-managed service (`tap.manageService`), structured two-device concurrency incl. sibling cancellation without replay; passed on API 29 + API 34 on 2026-09-21 |
-| Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 9 | the same suite through the pytest plugin |
-| Service | `:host:service:test` | 4 classes (`EnumMirrorTest`, `GoldenRoundTripTest`, `AutResourceTest`, `TapServiceLifecycleTest`) | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
+| Device, Python client | `TAP_BIN=… TAP_MANAGE_SERVICE=1 TAP_SERIALS=… pytest clients/python/tests` | 12 | the same suite through the pytest plugin |
+| Service | `:host:service:test` | 23 in 4 classes (`EnumMirrorTest`, `GoldenRoundTripTest`, `AutResourceTest`, `TapServiceLifecycleTest`) | proto mirrors/round trips, AUT-resource conversion, deterministic attach/open/close/shutdown races, and in-process gRPC Execute cancellation |
 | Device, destructive | `host <serials> <apks>` | – | adds the late-mutation quarantine + reboot recovery |
 
 Build and JVM tests:

@@ -1,6 +1,6 @@
 # Framework Gaps
 
-Date: 2026-09-18
+Last updated: 2026-09-21
 
 This is the honest delta between what `.docs/android-e2e-framework-implementation-plan.md`
 specifies and what the repository implements and proves on devices today. It is the
@@ -80,7 +80,7 @@ cancels the other's in-flight wait without replaying the pre-scope mutation; the
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
 | Device constraints | The service leases nothing (decided 2026-09-20, `pool-and-leases.md`: exclusive use is the per-serial journal lock a session holds; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier service-side matcher and lease table are archived under `archive/pool-roles/` and `archive/pool-leases/`. | Client-side selection (`getprop` per serial, or `DeviceInfo` after open); a `@TapDevice(minApi = …)` style annotation. |
-| Fake ADB / fake driver coverage for host core and clients | `DriverClient` has loopback tests; the Kotlin client and `TapExtension`/`tapTest`/`DeviceBarrier`/`TapConnectionState` have deterministic in-process gRPC/unit tests (`TapClientTest`, `TapTestBridgeTest`, `DeviceBarrierTest`, `TapConnectionTest`); `DeviceSession`, `AppLifecycle`, `TapService` failure paths (install failure, forward conflict, pool timeout, artifact capture failure) still have no JVM tests. | Highest-value testing gap. `Adb` is now `open` with one typed method per command and its parsing unit-tested against a fake (`AdbTest`, 2026-09-20); a fake `Adb` + the existing `FakeDriverServer` would cover the rest. |
+| Remaining fake-ADB lifecycle coverage | `AdbTest` (17), `DeviceSessionTest` (20), `DriverClientTest` (27), `SessionJournalTest` (6) and `TapServiceLifecycleTest` (12) now cover typed ADB parsing/process ownership, session open/cleanup/quarantine, transport races and service lifecycle with fakes. Dedicated `AppLifecycle` failure/postcondition tests and artifact-capture failure paths remain. | Highest-value remaining JVM testing gap; extend the existing `FakeAdb` rather than introducing another abstraction. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
 ## JUnit 5 integration (plan §18) — Phase 3
@@ -215,12 +215,11 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 
 ## Suggested order
 
-1. Fake-ADB JVM tests for `DeviceSession`/`AppLifecycle`/`TapService` failure paths (Kotlin
-   client/`TapExtension` in-process tests landed with client 0.2.0).
+1. Finish fake-ADB JVM coverage for `AppLifecycle` failure/postcondition paths and artifact
+   capture; `DeviceSession` and `TapService` lifecycle coverage has landed.
 2. Provider visibility decision + `session.shutdown` (small protocol
    additions; update `protocol-contract.md` and golden fixtures in the same change).
 3. Logcat + `dumpsys` in failure artifacts, run layout, JSONL events, then JUnit XML/HTML.
 4. Crash/ANR codes with a crashing fixture activity.
-5. Coroutine façade (`tapTest`, `DeviceBarrier`) — landed in client 0.2.0 with deterministic
-   tests; the remaining device-matrix verification is tracked in `coroutines.md` step 4.
-6. Quarantine re-run and the remaining Phase 3 JUnit contracts.
+5. Quarantine re-run and the remaining Phase 3 JUnit contracts. The coroutine façade and its
+   13-device-test API 29/API 34 matrix are complete (`coroutines.md`).
