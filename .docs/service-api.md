@@ -3,12 +3,11 @@
 Date: 2026-09-19 (names revised 2026-09-20, see §6; commands became a `oneof` and the proto
 was split into files 2026-09-20, see §7)
 
-Status: implemented (`:host:service`, `contracts/api/proto/*.proto`). The pre-migration
-thread + `CompletableFuture` implementation was device-proven on API 29 and API 34 with the
-Python client. The current grpc-kotlin coroutine implementation has landed and is covered by
-JVM unit tests plus protocol-test and compilation/install tasks only; device-matrix and
-native-image verification of the coroutine implementation remain pending (see
-`coroutines.md`). This is the contract between language bindings and the host; the
+Status: implemented (`:host:service`, `contracts/api/proto/*.proto`). The grpc-kotlin
+coroutine implementation passed the no-reboot validation flow and the Kotlin fixture suite on
+API 29 and API 34, and the Python suite against the native image, on 2026-09-21. JVM unit and
+protocol tests also pass; the tracing-agent JVM smoke flow was used to refresh native-image
+metadata (see `coroutines.md`). This is the contract between language bindings and the host; the
 device wire protocol is documented in `protocol-contract.md`.
 
 ## 1. Purpose
@@ -56,11 +55,11 @@ JUnit (Kotlin)   --gRPC (loopback)-->  (same service, same devices)
 - `adb` is resolved from `--adb`, `TAP_ADB`, or `PATH`. Every ADB call is serial-specific.
 - Builds: `:host:service:installDist` (JVM distribution, `host/service/build/install/tap/bin/tap`)
   and `:host:service:nativeCompile` (GraalVM native image,
-  `host/service/build/native/nativeCompile/tap`, ~39 MB, links only libc/libz). Reachability
+  `host/service/build/native/nativeCompile/tap`, ~55 MB, links only libc/libz). Reachability
   metadata lives under `host/service/src/main/resources/META-INF/native-image/` and was
-  recorded with the tracing agent over the smoke flow for the pre-migration implementation;
-  re-recording for the coroutine implementation is pending with the native-image verification.
-  Re-record it when a dependency that uses reflection is added.
+  re-recorded with the tracing agent over the coroutine JVM smoke flow on 2026-09-21; the
+  resulting native image then passed the Python suite on both local devices. Re-record it when
+  a dependency that uses reflection is added.
 
 ## 3. API (`contracts/api/proto/`, package `tap.v1`)
 

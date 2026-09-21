@@ -34,8 +34,8 @@ See `README.md` for build/run commands.
   (notify socket, ready file, inherited pipe, fixed port) and why they lost.
 - `.docs/coroutines.md` — decision record + work plan: host core, service and the Kotlin
   client move to kotlinx.coroutines / grpc-kotlin (`tapTest` per plan §12). Host core and host
-  service have landed (Kotlin client + `tapTest` pending); device-matrix and native-image
-  verification of the coroutine implementation remain pending. It lists the pre-migration
+  service have landed and passed the API 29/API 34 no-reboot device matrix plus native-image
+  smoke flow (Kotlin client + `tapTest` pending). It lists the pre-migration
   thread/future design, the per-layer arguments, target design, step order and risks. Update
   its status with each step.
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /

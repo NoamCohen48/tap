@@ -5,7 +5,7 @@ refactor lands and mark each step with the commit that delivered it.
 
 ## Status
 
-**In progress: host core and service landed; final review in progress.** On 2026-09-20 the
+**In progress: host core and service complete; Kotlin client pending.** On 2026-09-20 the
 user decided that all three layers — `:host:core`, `:host:service` and the Kotlin client
 (`:clients:kotlin:sdk` + `:clients:kotlin:junit5`) — move to `kotlinx.coroutines` (`suspend`
 functions, structured concurrency), replacing the thread + `CompletableFuture` + blocking-stub
@@ -13,7 +13,7 @@ design. The host core and coroutine service checkpoints are now in the tree; the
 and `tapTest` step has not started. The Python client is out of scope (an `asyncio` façade stays
 a later item in `framework-gaps.md`).
 
-Landed checkpoints, still under final review:
+Landed and reviewed checkpoints:
 
 - `38358c0` — host core `DriverClient` suspend API, coroutine reader/heartbeat scope and the
   first coroutine conversion of ADB/session lifecycle callers.
@@ -23,10 +23,9 @@ Landed checkpoints, still under final review:
   non-cancellable session cleanup, and deterministic cancellation/cleanup tests.
 - `1ce2b7b` — service lifecycle checkpoint: one connection/session state boundary,
   exactly-one Attach, close-vs-open handling, bounded shutdown propagation, and service
-  lifecycle tests. This checkpoint is being audited before the lane is considered complete.
+  lifecycle tests.
 - `03b00b7` — docs checkpoint for the coroutine documentation sweep (`service-api.md` status,
-  `project-architecture.md` threading/test notes, this file's status). The docs sweep is landed;
-  the lane itself remains under final review.
+  `project-architecture.md` threading/test notes, this file's status).
 - `635946b`, `7e5efbf`, `62eda7c`, `ffc48d5`, `8d3208f` — host-core review
   follow-ups: cancellation ownership, bounded drain lifetime, typed reap uncertainty, linearized
   single-flight ADB admission, captured-client command gating, whole-open quarantine, close
@@ -35,11 +34,13 @@ Landed checkpoints, still under final review:
   detach-and-launch cleanup, full detached cleanup deadlines, bounded `tap stop`, explicit gRPC
   termination, corrected verification docs, and deterministic connection-exhaustion coverage.
 
-Verification recorded for this lane is intentionally **non-device only**: host core/service JVM
-unit tests plus protocol tests and compilation/install tasks for validation, fixture tests and
-the JVM service distribution. No validation executable, fixture/device suite, Python suite or
-native image build has been run for these coroutine checkpoints; device-matrix and native-image
-verification remain pending.
+Host core/service verification completed on 2026-09-21: the no-reboot validation flow passed
+on emulator-5554 (API 34) and 85e49002 (API 29), including every required `PHASE_1_*_OK` marker
+and `PHASE_0_OK`; all 12 Kotlin fixture tests passed on the two-device matrix; `nativeCompile`
+succeeded; and all 12 Python tests passed against both the native image and a tracing-agent JVM
+service. The tracing-agent run added coroutine reflection metadata to the committed native-image
+configuration. The destructive reboot-only late-mutation scenario was intentionally skipped by
+`--no-reboot`; the Kotlin client and `tapTest` conversion remain pending.
 
 This reverses a recorded invariant from the pre-migration architecture ("`host:core`, the
 Kotlin clients and the service have no Android API or coroutine dependency; only the validation
