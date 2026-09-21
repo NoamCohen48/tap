@@ -45,7 +45,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import java.nio.file.Files
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -569,31 +568,65 @@ class TapClientTest {
     fun `hanging info probe preserves outer cancellation identity`() {
         runBlocking {
             val entered = CompletableDeferred<Unit>()
-            val service =
-                object : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
-                    override suspend fun info(request: InfoRequest): InfoResponse {
+            val probeChannel = TestChannel()
+            var seenAddress: String? = null
+            // Deterministic fake for this invocation only: gates `entered` synchronously
+            // before parking in the cancellable region, with no socket involved. The large
+            // own timeout keeps ownership with the outer 200 ms timeout deterministically.
+            val hanging =
+                ServiceDiscovery.DiscoveryDeps(
+                    channelFactory = { address ->
+                        seenAddress = address
+                        probeChannel
+                    },
+                    infoProbe = {
                         if (!entered.isCompleted) entered.complete(Unit)
                         awaitCancellation()
-                    }
-                }
-            val server = NettyServerBuilder.forPort(0).addService(service).directExecutor().build().start()
-            try {
-                val dir = Files.createTempDirectory("tap-probe")
-                Files.writeString(dir.resolve("service.json"), "{\"port\":${server.port}}")
-                // The outer withTimeout owns the probe call directly, so its
-                // TimeoutCancellationException is the cancellation identity under test.
-                val probing = async { withTimeout(200.milliseconds) { ServiceDiscovery.running(dir) } }
-                withTimeout(10_000) { entered.await() }
-                val outer = assertFailsWith<TimeoutCancellationException> { probing.await() }
-                assertTrue(
-                    outer.message!!.contains("200ms") || outer.message!!.contains("Timed out"),
-                    "outer timeout identity, got: ${outer.message}",
+                    },
+                    probeTimeoutMs = 10_000L,
                 )
-                assertTrue(probing.isCancelled, "hanging probe cancelled, never returned as dead")
-                withTimeout(5_000) { probing.join() }
-            } finally {
-                server.shutdownNow()
-            }
+            val dir = Files.createTempDirectory("tap-probe")
+            Files.writeString(dir.resolve("service.json"), "{\"port\":1}")
+            // The outer withTimeout owns the probe call directly, so its
+            // TimeoutCancellationException is the cancellation identity under test.
+            val probing = async { withTimeout(200.milliseconds) { ServiceDiscovery.running(dir, hanging) } }
+            withTimeout(10_000) { entered.await() }
+            val outer = assertFailsWith<TimeoutCancellationException> { probing.await() }
+            assertTrue(
+                outer.message!!.contains("200ms") || outer.message!!.contains("Timed out"),
+                "outer timeout identity, got: ${outer.message}",
+            )
+            assertTrue(probing.isCancelled, "hanging probe cancelled, never returned as dead")
+            withTimeout(5_000) { probing.join() }
+            assertEquals("127.0.0.1:1", seenAddress, "probe dialled the descriptor address")
+            assertEquals(1, probeChannel.shutdownNows.get(), "probe channel shut down in NonCancellable")
+            assertEquals(1, probeChannel.awaits.get(), "probe channel awaited after shutdownNow")
+            // Ordinary probe failure still maps to dead (null), never throws, with cleanup.
+            val deadChannel = TestChannel()
+            val dead =
+                ServiceDiscovery.DiscoveryDeps(
+                    channelFactory = { deadChannel },
+                    infoProbe = { throw StatusRuntimeException(Status.UNAVAILABLE.withDescription("dead")) },
+                )
+            val deadDir = Files.createTempDirectory("tap-probe-dead")
+            Files.writeString(deadDir.resolve("service.json"), "{\"port\":2}")
+            assertNull(withTimeout(10_000) { ServiceDiscovery.running(deadDir, dead) }, "probe failure maps to dead")
+            assertEquals(1, deadChannel.shutdownNows.get(), "failed probe channel still shut down")
+            assertEquals(1, deadChannel.awaits.get(), "failed probe channel awaited after shutdownNow")
+            // Own timeout maps to dead (null): a hanging probe with a short injected bound
+            // returns null without an outer timeout involved.
+            val timeoutChannel = TestChannel()
+            val ownTimeout =
+                ServiceDiscovery.DiscoveryDeps(
+                    channelFactory = { timeoutChannel },
+                    infoProbe = { awaitCancellation() },
+                    probeTimeoutMs = 200L,
+                )
+            val timeoutDir = Files.createTempDirectory("tap-probe-timeout")
+            Files.writeString(timeoutDir.resolve("service.json"), "{\"port\":3}")
+            assertNull(withTimeout(10_000) { ServiceDiscovery.running(timeoutDir, ownTimeout) }, "own timeout maps to dead")
+            assertEquals(1, timeoutChannel.shutdownNows.get(), "timed-out probe channel still shut down")
+            assertEquals(1, timeoutChannel.awaits.get(), "timed-out probe channel awaited after shutdownNow")
         }
     }
 
@@ -601,44 +634,47 @@ class TapClientTest {
     fun `discovery preserves known cancellation identity`() {
         runBlocking {
             val entered = CompletableDeferred<Unit>()
-            val service =
-                object : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
-                    override suspend fun info(request: InfoRequest): InfoResponse {
+            val probeChannel = TestChannel()
+            // Deterministic fake for this invocation only: gates `entered` synchronously
+            // before parking in the cancellable region, with no socket involved.
+            val hanging =
+                ServiceDiscovery.DiscoveryDeps(
+                    channelFactory = { probeChannel },
+                    infoProbe = {
                         if (!entered.isCompleted) entered.complete(Unit)
                         awaitCancellation()
-                    }
+                    },
+                    probeTimeoutMs = 10_000L,
+                )
+            val dir = Files.createTempDirectory("tap-probe-known")
+            Files.writeString(dir.resolve("service.json"), "{\"port\":1}")
+            val known = CancellationException("known-discovery-cancel")
+            val probing = async { ServiceDiscovery.running(dir, hanging) }
+            withTimeout(10_000) { entered.await() }
+            probing.cancel(known)
+            val thrown = assertFailsWith<CancellationException> { probing.await() }
+            // Coroutine cancellation may wrap the cause; the known instance must still be
+            // observable by identity somewhere in the chain (itself or its cause chain).
+            fun chainContainsKnown(error: Throwable?): Boolean {
+                var current = error
+                while (current != null) {
+                    if (current === known) return true
+                    current = current.cause
                 }
-            val server = NettyServerBuilder.forPort(0).addService(service).directExecutor().build().start()
-            try {
-                val dir = Files.createTempDirectory("tap-probe-known")
-                Files.writeString(dir.resolve("service.json"), "{\"port\":${server.port}}")
-                val known = CancellationException("known-discovery-cancel")
-                val probing = async { ServiceDiscovery.running(dir) }
-                withTimeout(10_000) { entered.await() }
-                probing.cancel(known)
-                val thrown = assertFailsWith<CancellationException> { probing.await() }
-                // Coroutine cancellation may wrap the cause; the known instance must still be
-                // observable by identity somewhere in the chain (itself or its cause chain).
-                fun chainContainsKnown(error: Throwable?): Boolean {
-                    var current = error
-                    while (current != null) {
-                        if (current === known) return true
-                        current = current.cause
-                    }
-                    return false
-                }
-                assertTrue(chainContainsKnown(thrown), "known cancellation preserved in the chain, got: $thrown")
-                // Where the machinery propagates without wrapping, assert the identity directly.
-                if (thrown === known) {
-                    assertSame(known, thrown, "known outer cancellation propagates with identity")
-                } else {
-                    var current: Throwable? = thrown
-                    while (current != null && current !== known) current = current.cause
-                    assertSame(known, current, "known cancellation preserved as the cause identity")
-                }
-            } finally {
-                server.shutdownNow()
+                return false
             }
+            assertTrue(chainContainsKnown(thrown), "known cancellation preserved in the chain, got: $thrown")
+            // Where the machinery propagates without wrapping, assert the identity directly.
+            if (thrown === known) {
+                assertSame(known, thrown, "known outer cancellation propagates with identity")
+            } else {
+                var current: Throwable? = thrown
+                while (current != null && current !== known) current = current.cause
+                assertSame(known, current, "known cancellation preserved as the cause identity")
+            }
+            withTimeout(5_000) { probing.join() }
+            assertEquals(1, probeChannel.shutdownNows.get(), "cancelled probe channel still shut down")
+            assertEquals(1, probeChannel.awaits.get(), "cancelled probe channel awaited after shutdownNow")
         }
     }
 

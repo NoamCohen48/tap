@@ -523,6 +523,26 @@ class Connection internal constructor(
 
 /** Finds a running service; never starts one (see [TapServiceProcess]). */
 object ServiceDiscovery {
+    /**
+     * Per-call probe dependencies for [running]. Immutable: each [running] invocation gets
+     * its own instance, so parallel tests stay deterministic with no shared mutation.
+     * Production uses the defaults (real plaintext channel, real `Info` probe, 2 s own
+     * timeout); tests pass fakes for this invocation only.
+     */
+    internal data class DiscoveryDeps(
+        val channelFactory: (String) -> ManagedChannel = { address ->
+            ManagedChannelBuilder.forTarget(address).usePlaintext().build()
+        },
+        val infoProbe: suspend (ManagedChannel) -> Unit = { channel ->
+            ConnectionServiceGrpcKt
+                .ConnectionServiceCoroutineStub(channel)
+                .withDeadlineAfter(2, TimeUnit.SECONDS)
+                .info(InfoRequest.getDefaultInstance())
+            Unit
+        },
+        val probeTimeoutMs: Long = 2_000L,
+    )
+
     fun stateDir(): Path =
         System.getenv("TAP_STATE_DIR")?.let(Path::of)
             ?: Path.of(System.getProperty("user.home"), ".tap")
@@ -541,10 +561,21 @@ object ServiceDiscovery {
     }
 
     /** Address of the service `service.json` in [dir] points at, if it answers `Info`. */
-    suspend fun running(dir: Path = stateDir()): String? {
+    suspend fun running(dir: Path = stateDir()): String? = running(dir, DiscoveryDeps())
+
+    /**
+     * Per-call injectable [running]: tests pass their own channel factory and suspending
+     * info probe for this invocation only. Exercises the same [alive] implementation as
+     * production (own-timeout ownership, cancellation catch/rethrow, NonCancellable
+     * shutdown/await); only the dependencies differ.
+     */
+    internal suspend fun running(
+        dir: Path,
+        deps: DiscoveryDeps,
+    ): String? {
         val port = descriptorPort(dir) ?: return null
         val address = "127.0.0.1:$port"
-        return if (alive(address)) address else null
+        return if (alive(address, deps)) address else null
     }
 
     /** The `tap` executable: `tap.bin` / `TAP_BIN`, else `tap` on `PATH`. */
@@ -567,18 +598,18 @@ object ServiceDiscovery {
                 ?.toInt()
         }.getOrNull()
 
-    private suspend fun alive(address: String): Boolean {
-        val channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build()
+    private suspend fun alive(
+        address: String,
+        deps: DiscoveryDeps,
+    ): Boolean {
+        val channel = deps.channelFactory(address)
         try {
-            // Own-timeout ownership: a null return is our 2 s probe timing out (dead service
+            // Own-timeout ownership: a null return is our probe timing out (dead service
             // -> false); an outer CancellationException (including TimeoutCancellationException
             // from an outer withTimeout) propagates with its identity intact, never mapped.
             val answered =
-                withTimeoutOrNull(2_000) {
-                    ConnectionServiceGrpcKt
-                        .ConnectionServiceCoroutineStub(channel)
-                        .withDeadlineAfter(2, TimeUnit.SECONDS)
-                        .info(InfoRequest.getDefaultInstance())
+                withTimeoutOrNull(deps.probeTimeoutMs) {
+                    deps.infoProbe(channel)
                     true
                 } ?: return false
             return answered
