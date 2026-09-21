@@ -24,11 +24,16 @@ publishing {
 dependencies {
     api(project(":clients:kotlin:sdk"))
     api("org.junit.jupiter:junit-jupiter-api:5.13.4")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     // TapLauncherSessionListener (stops a service this JVM started). The launcher is on every
     // JUnit Platform test runtime already; it is not forced onto consumers' compile classpath.
     compileOnly("org.junit.platform:junit-platform-launcher:1.13.4")
 
     testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("io.grpc:grpc-inprocess:1.75.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.test {

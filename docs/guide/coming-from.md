@@ -35,6 +35,9 @@ The two ideas that do not carry over: Maestro **retries and settles implicitly**
 neither; Maestro's **YAML** is replaced by ordinary code with a typed client, so loops,
 fixtures, helpers and assertions come from JUnit / pytest.
 
+Kotlin note: every `tap()`/`setText()`/`await()` below is `suspend` inside `tapTest { ... }`
+(`tapScope` in scripts); selector builders themselves are plain values.
+
 ## Appium (UiAutomator2 driver)
 
 | Appium | Tap | Note |

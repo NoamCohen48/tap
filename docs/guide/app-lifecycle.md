@@ -21,7 +21,7 @@ state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 
 ```kotlin
 @Test
-fun survivesAKill(device: Device) {
+fun survivesAKill(device: Device) = tapTest {
     val app = device.app()
     val first = app.coldLaunch()
     device.element(text("Add to cart")).tap()
@@ -31,6 +31,8 @@ fun survivesAKill(device: Device) {
     device.await(text("1 item")).visible()
 }
 ```
+
+All `App` calls are `suspend` inside `tapTest` (or `tapScope` in scripts).
 
 Because the driver is its own package, none of this disturbs the session: you can force-stop,
 clear and reinstall the app under test in the middle of a test and keep issuing commands. The
@@ -81,6 +83,8 @@ device.element(text("Place order")).tap()
 device.app().awaitIdle()                      // busy count 0 and stable for 200 ms
 device.await(text("Order placed")).visible()
 ```
+
+(inside `tapTest`; the AUT-side `busy()`/`close()` is ordinary app code, not suspend).
 
 The provider (`<applicationId>.tap-sync`) is protected by a signature-level permission, so the
 driver must be signed with the same certificate as the E2E build of the app; a mismatch is

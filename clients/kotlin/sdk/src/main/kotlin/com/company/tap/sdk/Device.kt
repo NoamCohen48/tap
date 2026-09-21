@@ -3,18 +3,22 @@ package com.company.tap.sdk
 import com.company.tap.api.v1.CloseSessionRequest
 import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.CommandResult
-import com.company.tap.api.v1.DeviceInfoQuery
-import com.company.tap.api.v1.DumpHierarchy
-import com.company.tap.api.v1.PressKey
-import com.company.tap.api.v1.WaitAppVisible
-import com.company.tap.api.v1.WaitScreenStable
 import com.company.tap.api.v1.DeviceInfo
+import com.company.tap.api.v1.DeviceInfoQuery
 import com.company.tap.api.v1.Direction
-import com.company.tap.api.v1.StabilitySignal
 import com.company.tap.api.v1.DriverLogRequest
+import com.company.tap.api.v1.DumpHierarchy
 import com.company.tap.api.v1.ExecuteRequest
 import com.company.tap.api.v1.OpenSessionRequest
+import com.company.tap.api.v1.PressKey
 import com.company.tap.api.v1.ScreenshotRequest
+import com.company.tap.api.v1.StabilitySignal
+import com.company.tap.api.v1.WaitAppVisible
+import com.company.tap.api.v1.WaitScreenStable
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -48,10 +52,16 @@ data class DeviceOptions(
 
 /**
  * One device under one live driver session, proxied by the host service. All calls are
- * blocking and serialized on the device; use separate `Device`s (and threads) for concurrency
- * across devices. Nothing here caches UI state: [element] returns a lazy selector that every
- * action resolves again, and mutations fail with `AMBIGUOUS`/`NOT_FOUND` before any input when
- * the selector does not match exactly one node.
+ * `suspend` and serialized on the device; use `coroutineScope` + `async` for concurrency
+ * across devices (sibling failure cancels the other's in-flight RPC). Nothing here caches UI
+ * state: [element] returns a lazy selector that every action resolves again, and mutations
+ * fail with `AMBIGUOUS`/`NOT_FOUND` before any input when the selector does not match exactly
+ * one node.
+ *
+ * Every suspending call requires an owning scope (`tapScope` in scripts, `tapTest` in JUnit);
+ * construction ([open]) does too. Closing is `suspend` (no `AutoCloseable`): callers use
+ * `try`/`finally` inside the scope. Per-call `withDeadlineAfter` is still applied
+ * server-side; caller cancellation promptly cancels the gRPC call client-side.
  */
 class Device internal constructor(
     val connection: Connection,
@@ -61,9 +71,11 @@ class Device internal constructor(
     /** The AUT package the session was opened for; AUT-scoped selectors resolve in it. */
     val autPackage: String,
     val timeouts: Timeouts,
-) : AutoCloseable {
+) {
     private val client get() = connection.client
-    @Volatile private var closed = false
+
+    @Volatile
+    private var closed = false
 
     // --- Raw protocol escape hatch ----------------------------------------------------------------
 
@@ -71,19 +83,37 @@ class Device internal constructor(
      * Runs one protocol command and returns the result as data (the outcome may be `error`).
      * [build] sets exactly one `op` case on the builder; [timeout] defaults to [Timeouts.action].
      */
-    fun execute(timeout: Duration? = null, build: Command.Builder.() -> Unit): CommandResult {
-        val command = Command.newBuilder()
-            .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
-            .apply(build)
-            .build()
+    suspend fun execute(
+        timeout: Duration? = null,
+        build: Command.Builder.() -> Unit,
+    ): CommandResult {
+        ensureTapBound("Device.execute")
+        val command =
+            Command
+                .newBuilder()
+                .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
+                .apply(build)
+                .build()
         return mapped(serial) {
-            client.sessions.withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                .execute(ExecuteRequest.newBuilder().setSessionId(sessionId).setCommand(command).build())
+            client.sessions
+                .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
+                .execute(
+                    ExecuteRequest
+                        .newBuilder()
+                        .setSessionId(sessionId)
+                        .setCommand(command)
+                        .build(),
+                )
         }
     }
 
     /** [execute] that throws [CommandException] instead of returning a failed result. */
-    fun executeOrThrow(timeout: Duration? = null, selector: Selector? = null, build: Command.Builder.() -> Unit): CommandResult {
+    suspend fun executeOrThrow(
+        timeout: Duration? = null,
+        selector: Selector? = null,
+        build: Command.Builder.() -> Unit,
+    ): CommandResult {
+        ensureTapBound("Device.executeOrThrow")
         val command = Command.newBuilder().apply(build).build()
         val result = execute(timeout) { mergeFrom(command) }
         if (result.hasError()) throw CommandException(result, command.opCase.name.lowercase(), serial, selector?.render())
@@ -92,51 +122,76 @@ class Device internal constructor(
 
     // --- Elements and waits -------------------------------------------------------------------------
 
-    /** A lazy [Element] for [selector]. */
+    /** A lazy [Element] for [selector]. Performs no I/O, so it is not suspend. */
     fun element(selector: Selector): Element = Element(this, selector)
 
-    /** An [ElementWait] on [selector]. */
-    fun await(selector: Selector, timeout: Duration = timeouts.wait): ElementWait = ElementWait(this, selector, timeout)
+    /** An [ElementWait] on [selector]. Performs no I/O, so it is not suspend. */
+    fun await(
+        selector: Selector,
+        timeout: Duration = timeouts.wait,
+    ): ElementWait = ElementWait(this, selector, timeout)
 
-    /** The [App] for [packageName] (default: the app under test). */
+    /** The [App] for [packageName] (default: the app under test). Performs no I/O, so it is not suspend. */
     fun app(packageName: String = autPackage): App = App(this, packageName)
 
     /** Serial, API level, model and display size. */
-    fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo
+    suspend fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo
 
     /** Send `KEYCODE_BACK`. */
-    fun pressBack() = pressKey(KEYCODE_BACK)
+    suspend fun pressBack() = pressKey(KEYCODE_BACK)
+
     /** Send `KEYCODE_HOME`. */
-    fun pressHome() = pressKey(KEYCODE_HOME)
+    suspend fun pressHome() = pressKey(KEYCODE_HOME)
 
     /** Injects one Android key code (a mutation: never replayed on transport loss). */
-    fun pressKey(keyCode: Int) {
+    suspend fun pressKey(keyCode: Int) {
         executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
     }
 
     /** PNG bytes, verified against the driver's checksum. */
-    fun screenshot(timeout: Duration = timeouts.lifecycle): ByteArray = mapped(serial) {
-        client.sessions.withDeadlineAfter(timeout.inWholeMilliseconds + 60_000, TimeUnit.MILLISECONDS)
-            .screenshot(ScreenshotRequest.newBuilder().setSessionId(sessionId).setTimeoutMs(timeout.inWholeMilliseconds).build())
-            .png.toByteArray()
+    suspend fun screenshot(timeout: Duration = timeouts.lifecycle): ByteArray {
+        ensureTapBound("Device.screenshot")
+        return mapped(serial) {
+            client.sessions
+                .withDeadlineAfter(timeout.inWholeMilliseconds + 60_000, TimeUnit.MILLISECONDS)
+                .screenshot(
+                    ScreenshotRequest
+                        .newBuilder()
+                        .setSessionId(sessionId)
+                        .setTimeoutMs(timeout.inWholeMilliseconds)
+                        .build(),
+                ).png
+                .toByteArray()
+        }
     }
 
     /** Diagnostic accessibility XML. Never used by selectors; keep it out of assertions. */
-    fun dumpHierarchy(timeout: Duration = timeouts.lifecycle): String =
+    suspend fun dumpHierarchy(timeout: Duration = timeouts.lifecycle): String =
         executeOrThrow(timeout) { dumpHierarchy = DumpHierarchy.getDefaultInstance() }.text
 
     /** The driver instrumentation's recent output lines. */
-    fun driverLog(): List<String> = mapped(serial) {
-        client.sessions.withDeadlineAfter(30, TimeUnit.SECONDS)
-            .driverLog(DriverLogRequest.newBuilder().setSessionId(sessionId).build()).linesList
+    suspend fun driverLog(): List<String> {
+        ensureTapBound("Device.driverLog")
+        return mapped(serial) {
+            client.sessions
+                .withDeadlineAfter(30, TimeUnit.SECONDS)
+                .driverLog(DriverLogRequest.newBuilder().setSessionId(sessionId).build())
+                .linesList
+        }
     }
 
     /** Waits on the device until [packageName] owns the focused window. */
-    fun awaitAppVisible(packageName: String = autPackage, timeout: Duration = timeouts.wait) {
+    suspend fun awaitAppVisible(
+        packageName: String = autPackage,
+        timeout: Duration = timeouts.wait,
+    ) {
         val result = execute(timeout) { waitAppVisible = WaitAppVisible.newBuilder().setPackageName(packageName).build() }
         if (result.hasError()) {
             throw WaitTimeoutException(
-                "package $packageName to be in the foreground", serial, result.durationMs, 0,
+                "package $packageName to be in the foreground",
+                serial,
+                result.durationMs,
+                0,
                 "currentPackage=${runCatching { info().currentPackage }.getOrNull()}",
             )
         }
@@ -151,27 +206,34 @@ class Device internal constructor(
      * keeps changing (indeterminate spinner, ticker, video) times out with `SCREEN_CHANGING`.
      * [awaitAppSettled] and [awaitAnimationEnd] are the two single-signal shorthands.
      */
-    fun awaitScreenStable(
+    suspend fun awaitScreenStable(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
         signal: StabilitySignal = StabilitySignal.STABILITY_ALL,
     ) {
-        val result = execute(timeout) {
-            waitScreenStable = WaitScreenStable.newBuilder()
-                .setPackageName(packageName)
-                .setStableForMs(stableFor.inWholeMilliseconds)
-                .setSignal(signal)
-                .build()
-        }
-        if (result.hasError()) {
-            val what = when (signal) {
-                StabilitySignal.STABILITY_TREE -> "hierarchy"
-                StabilitySignal.STABILITY_PIXELS -> "pixels"
-                else -> "screen"
+        val result =
+            execute(timeout) {
+                waitScreenStable =
+                    WaitScreenStable
+                        .newBuilder()
+                        .setPackageName(packageName)
+                        .setStableForMs(stableFor.inWholeMilliseconds)
+                        .setSignal(signal)
+                        .build()
             }
+        if (result.hasError()) {
+            val what =
+                when (signal) {
+                    StabilitySignal.STABILITY_TREE -> "hierarchy"
+                    StabilitySignal.STABILITY_PIXELS -> "pixels"
+                    else -> "screen"
+                }
             throw WaitTimeoutException(
-                "the $packageName $what to stay unchanged for $stableFor", serial, result.durationMs, 0,
+                "the $packageName $what to stay unchanged for $stableFor",
+                serial,
+                result.durationMs,
+                0,
                 if (result.error.hasDetail()) result.error.detail else null,
             )
         }
@@ -182,7 +244,7 @@ class Device internal constructor(
      * window has not changed for [stableFor]. Cheap (no screenshots); sees layout, text and
      * state changes but not pure drawing (a canvas animation, video).
      */
-    fun awaitAppSettled(
+    suspend fun awaitAppSettled(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
@@ -192,7 +254,7 @@ class Device internal constructor(
      * Maestro's `waitForAnimationToEnd`, on request only: the AUT's window pixels have not
      * changed (beyond 0.5 %) for [stableFor]. Costs one screenshot per 100 ms while waiting.
      */
-    fun awaitAnimationEnd(
+    suspend fun awaitAnimationEnd(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
@@ -201,14 +263,16 @@ class Device internal constructor(
     /**
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,
      * backend state). Prefer [await] for UI conditions: it polls on the device in one RPC.
+     * Uses [delay], so test-root cancellation and sibling failure cancel the poll promptly.
      */
-    fun awaitUntil(
+    suspend fun awaitUntil(
         description: String,
         timeout: Duration = timeouts.wait,
         pollInterval: Duration = timeouts.pollInterval,
-        observe: () -> String? = { null },
-        condition: () -> Boolean,
+        observe: suspend () -> String? = { null },
+        condition: suspend () -> Boolean,
     ) {
+        ensureTapBound("Device.awaitUntil")
         val started = System.nanoTime()
         val deadline = started + timeout.inWholeNanoseconds
         var polls = 0
@@ -217,51 +281,76 @@ class Device internal constructor(
             if (condition()) return
             if (System.nanoTime() >= deadline) {
                 throw WaitTimeoutException(
-                    description, serial, (System.nanoTime() - started) / 1_000_000, polls, runCatching(observe).getOrNull(),
+                    description,
+                    serial,
+                    (System.nanoTime() - started) / 1_000_000,
+                    polls,
+                    runCatching { observe() }.getOrNull(),
                 )
             }
-            Thread.sleep(pollInterval.inWholeMilliseconds)
+            delay(pollInterval)
         }
     }
 
     /**
      * Closes the session. Returns the quarantine detail when the device could not be left
-     * clean (the pool keeps it out of circulation), else null.
+     * clean (the pool keeps it out of circulation), else null. Runs the `Close` RPC under a
+     * bounded non-cancellable context so teardown completes even when the caller is cancelled;
+     * the primary failure (if any) is the caller's to preserve — this method only reports the
+     * session outcome.
      */
-    fun closeAndReport(): String? {
+    suspend fun closeAndReport(): String? {
+        ensureTapBound("Device.close")
         if (closed) return null
         closed = true
-        val response = mapped(serial) {
-            client.sessions.withDeadlineAfter(120, TimeUnit.SECONDS)
-                .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
-        }
+        val response =
+            withContext(NonCancellable) {
+                withTimeout(120_000) {
+                    mapped(serial) {
+                        client.sessions.close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
+                    }
+                }
+            }
         return if (response.clean) null else response.detail
     }
 
     /** [closeAndReport] that fails when the device was quarantined. */
-    override fun close() {
+    suspend fun close() {
         closeAndReport()?.let { throw TapException("$serial quarantined on close: $it") }
     }
 
     override fun toString(): String = "Device($serial, generation=$generation)"
 
     companion object {
-        internal fun open(connection: Connection, serial: String, autPackage: String, timeouts: Timeouts, options: DeviceOptions): Device {
-            val request = OpenSessionRequest.newBuilder()
-                .setConnectionId(connection.id)
-                .setSerial(serial)
-                .setAutPackage(autPackage)
-                .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
-                .setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
-                .addAllAllowedSystemPackages(options.allowedSystemPackages)
-                .apply {
-                    options.driverApk?.let { setDriverApk(it) }
-                    options.driverTestApk?.let { setDriverTestApk(it) }
-                    if (options.skipDriverInstall) setSkipDriverInstall(true)
-                    options.syncAuthority?.let { setSyncAuthority(it) }
+        internal suspend fun open(
+            connection: Connection,
+            serial: String,
+            autPackage: String,
+            timeouts: Timeouts,
+            options: DeviceOptions,
+        ): Device {
+            ensureTapBound("Device.open")
+            val request =
+                OpenSessionRequest
+                    .newBuilder()
+                    .setConnectionId(connection.id)
+                    .setSerial(serial)
+                    .setAutPackage(autPackage)
+                    .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
+                    .setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
+                    .addAllAllowedSystemPackages(options.allowedSystemPackages)
+                    .apply {
+                        options.driverApk?.let { setDriverApk(it) }
+                        options.driverTestApk?.let { setDriverTestApk(it) }
+                        if (options.skipDriverInstall) setSkipDriverInstall(true)
+                        options.syncAuthority?.let { setSyncAuthority(it) }
+                    }.build()
+            val response =
+                mapped(serial) {
+                    connection.client.sessions
+                        .withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS)
+                        .open(request)
                 }
-                .build()
-            val response = mapped(serial) { connection.client.sessions.withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS).open(request) }
             return Device(connection, response.sessionId, response.serial, response.generation, autPackage, timeouts)
         }
     }

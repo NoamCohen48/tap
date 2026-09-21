@@ -17,11 +17,13 @@ pytest plugin map roles to serials and then open one session per role.
     class ChatTest {
         @Test
         @TapDevices("sender", "receiver")
-        fun deliversAMessage(devices: Devices) {
+        fun deliversAMessage(devices: Devices) = tapTest {
+            coroutineScope {
+                async { devices["sender"].app().coldLaunch() }
+                async { devices["receiver"].app().coldLaunch() }
+            }.awaitAll()
             val sender = devices["sender"]
             val receiver = devices["receiver"]
-            sender.app().coldLaunch()
-            receiver.app().coldLaunch()
             sender.element(res("compose")).setText("hi")
             sender.element(text("Send")).tap()
             receiver.await(text("hi"), timeout = 20.seconds).visible()
@@ -31,6 +33,10 @@ pytest plugin map roles to serials and then open one session per role.
 
     `@TapDevices` goes on the method or the class. With a single default role the parameter is
     just `device: Device`; `@TapDevice("receiver") device: Device` injects one named role.
+    Use `coroutineScope` + `async`/`awaitAll` for concurrent phases; a failing sibling cancels
+    the other's in-flight RPC. `DeviceBarrier(2)` is only for genuinely simultaneous phases
+    (neither side proceeds until both arrive); backend propagation still waits on the
+    observing device's UI.
 
 === "Python"
 
@@ -83,7 +89,14 @@ call away in either client:
 === "Kotlin"
 
     ```kotlin
-    TapClient().use { client -> client.devices().forEach(::println) }
+    runBlocking {
+        val client = TapClient.create()
+        try {
+            client.devices().forEach(::println)
+        } finally {
+            client.close()
+        }
+    }
     ```
 
 === "Python"

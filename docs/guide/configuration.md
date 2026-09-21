@@ -82,7 +82,8 @@ tasks.test {
 Timeouts are per device, not global: `Timeouts(action = 10.seconds, wait = 10.seconds,
 lifecycle = 30.seconds, pollInterval = 100.milliseconds)` is the default, and every method also
 takes an explicit `timeout`. With the SDK directly, pass `Timeouts` and `DeviceOptions` to
-`run.openDevice(...)`.
+`connection.openDevice(...)` (a `suspend` call; device open/use/close live inside `tapScope`,
+`tapTest` in JUnit).
 
 ## Python + pytest
 
@@ -106,7 +107,7 @@ Fixtures: `tap_device` (the default role), `tap_devices` (dict role → `Device`
 
 ## Session options
 
-Both `run.openDevice(...)` / `run.open_device(...)` accept:
+Both `connection.openDevice(...)` / `connection.open_device(...)` accept (`suspend` in Kotlin):
 
 | Option | Meaning |
 |---|---|

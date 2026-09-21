@@ -26,7 +26,7 @@ Add `:clients:kotlin:junit5` to a JUnit 5 test source set and annotate the class
 @TapTest
 class CheckoutTest {
     @Test
-    fun buysAnItem(device: Device) {
+    fun buysAnItem(device: Device) = tapTest {
         val app = device.app()                    // the configured AUT package
         app.clearData()
         app.launch()                              // resolves the launcher activity, waits for the window
@@ -36,12 +36,25 @@ class CheckoutTest {
 
     @Test
     @TapDevices("sender", "receiver")
-    fun messagePropagates(devices: Devices) {
-        devices["sender"].element(rawRes("sendButton")).tap()
-        devices["receiver"].await(text("hello"), timeout = 20.seconds).visible()
+    fun messagePropagates(devices: Devices) = tapTest {
+        coroutineScope {
+            async {
+                devices["sender"].element(rawRes("sendButton")).tap()
+            }
+            async {
+                devices["receiver"].await(text("hello"), timeout = 20.seconds).visible()
+            }
+        }.awaitAll()
     }
 }
 ```
+
+Every test body runs inside `tapTest { ... }`: the real-time `runBlocking`-style bridge onto
+the extension-owned per-test coroutine scope (root job + deadline). Suspending calls outside
+it — or from a coroutine that does not inherit it (`GlobalScope`) — fail with
+`TapUsageException`, so a JUnit timeout and a failing sibling both cancel the other device's
+in-flight RPC. `DeviceBarrier(parties)` coordinates genuinely simultaneous phases; backend
+propagation still uses the observing device's UI condition, not a barrier.
 
 - `device.element(selector)` is lazy; every action resolves the selector again on the device
   and requires exactly one match (`CommandException` with `ERR_AMBIGUOUS`/`ERR_NOT_FOUND`
@@ -85,7 +98,7 @@ itself. Configuration is read from system properties or environment variables:
 ```
 
 It builds the fixture app and the service distribution, starts the service (`tap.manageService`,
-which installs the driver), runs twelve tests (including a two-device test that is skipped with
+which installs the driver), runs thirteen tests (including two two-device tests that are skipped with
 one serial) concurrently across the devices, and stops the service again unless one was already
 running (`-Ptap.manageService=false` to require a running one).
 
@@ -162,11 +175,13 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
   device-contract negotiation.
 - A per-machine host service (`tap start`, gRPC, native image) with a reusable
   `DeviceSession` state machine, `AppLifecycle`, and per-device locks shared across processes
-  with constraints; a Kotlin SDK (`Device`/`App`/`Element`/waits/selectors) and JUnit 5
-  extension with failure artifacts, and a Python client and pytest plugin, all gRPC clients of
-  the service. The coroutine host/service implementation passed the no-reboot validation and
-  sample suites on API 29 and API 34, plus the native-image Python smoke flow, on 2026-09-21
-  (the Kotlin client coroutine conversion remains pending; see `.docs/coroutines.md`).
+with constraints; a coroutine Kotlin SDK (`Device`/`App`/`Element`/waits/selectors, all `suspend`
+behind `tapTest`/`tapScope`) and JUnit 5 extension (`tapTest` bridge, per-test root job,
+`DeviceBarrier`, failure artifacts), and a Python client and pytest plugin, all gRPC clients of
+the service. The coroutine host/service/client implementation passed the no-reboot validation
+(run `host --no-reboot` and the sample suites on API 29 and API 34, plus the native-image
+Python smoke flow, on 2026-09-21; the Kotlin `tapTest` device matrix is the remaining
+verification, see `.docs/coroutines.md`).
 
 The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/protocol-contract.md).
 

@@ -5,6 +5,11 @@ Everything on this page is a method of `Element` (built with `device.element(sel
 Kotlin names are shown; Python uses the same names in `snake_case` (`setText` → `set_text`,
 `awaitAppSettled` → `await_app_settled`, `device.await(...)` → `device.wait(...)`).
 
+!!! info "Kotlin is suspend"
+    Every Kotlin call below is `suspend` and runs inside `tapTest { ... }` (JUnit) or
+    `tapScope { ... }` (scripts); building selectors (`text(...)`, `res(...)`) is not. The
+    fragments omit the wrapper for brevity.
+
 Every method takes an optional `timeout`. Actions default to `timeouts.action` (10 s), waits to
 `timeouts.wait` (10 s), app lifecycle to `timeouts.lifecycle` (30 s). The timeout is the
 deadline of the *whole* command on the device, including the lookup; nothing else sleeps.

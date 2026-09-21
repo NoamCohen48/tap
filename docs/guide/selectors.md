@@ -1,7 +1,8 @@
 # Selectors
 
 A selector describes *which* node of the accessibility tree you mean. It is a small, immutable
-value — no I/O happens when you build one. `device.element(selector)` wraps it in an `Element`
+value — no I/O happens when you build one, so builders stay non-`suspend` and work outside
+`tapTest`/`tapScope`. `device.element(selector)` wraps it in an `Element`
 whose every action resolves the selector again on the device, so there is nothing to go stale.
 
 === "Kotlin"
