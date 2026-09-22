@@ -38,7 +38,7 @@ class SelectorTest {
             ),
         )
         assertEquals(selector, json.decodeFromString<Selector>(json.encodeToString(selector)))
-        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(selector))
+        assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(selector))
     }
 
     @Test
@@ -56,52 +56,78 @@ class SelectorTest {
     @Test
     fun choosesTraversalWhenBySelectorCannotExpressIt() {
         val nested = Selector(Node.descendant(Node.text("^Item \\d+$", MatchMode.REGEX)))
-        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(nested))
-        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector.text("Item 1", MatchMode.CONTAINS)))
+        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(nested))
+        assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector.text("Item 1", MatchMode.CONTAINS)))
 
-        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(Node.text("Yes") or Node.text("OK"))))
-        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(Node.child(Node.text("Yes") or Node.text("OK")))))
+        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(Node.text("Yes") or Node.text("OK"))))
+        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(Node.child(Node.text("Yes") or Node.text("OK")))))
 
         // Two constraints on one text property, or two parents/ancestors, exceed BySelector's single slots.
         val twoTexts = Node.text("Item", MatchMode.STARTS_WITH) and Node.text("9", MatchMode.ENDS_WITH)
-        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(twoTexts)))
+        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(twoTexts)))
         val nestedTwoTexts = Node.Flag(NodeFlag.CLICKABLE) and Node.AllOf(listOf(Node.text("a"), Node.AllOf(listOf(Node.text("b"), Node.hint("h")))))
-        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(nestedTwoTexts)))
+        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(nestedTwoTexts)))
         val twoAncestors = Node.ancestor(Node.Resource("list")) and Node.ancestor(Node.Resource("row"))
-        assertEquals(SelectorPlanKind.TRAVERSAL, SelectorValidation.validate(Selector(twoAncestors)))
+        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(twoAncestors)))
         // Children and descendants are lists in BySelector, so several stay native.
         val twoChildren = Node.child(Node.text("a")) and Node.child(Node.text("b")) and Node.descendant(Node.text("c")) and Node.descendant(Node.text("d"))
-        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector(twoChildren)))
+        assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector(twoChildren)))
         // The same text property at different levels is fine.
         val textInChild = Node.text("a") and Node.child(Node.text("b"))
-        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector(textInChild)))
+        assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector(textInChild)))
     }
 
     @Test
     fun rejectsRe2UnsupportedRegex() {
-        assertDetail(ErrorDetail.INVALID_REGEX, Selector.text("(a)\\1", MatchMode.REGEX))
-        assertDetail(ErrorDetail.INVALID_REGEX, Selector.text("(?<=a)b", MatchMode.REGEX))
-        assertDetail(ErrorDetail.INVALID_REGEX, Selector.text("[", MatchMode.REGEX))
+        assertDetail<InvalidSelectorRegexException>(ErrorDetail.INVALID_REGEX, Selector.text("(a)\\1", MatchMode.REGEX))
+        assertDetail<InvalidSelectorRegexException>(ErrorDetail.INVALID_REGEX, Selector.text("(?<=a)b", MatchMode.REGEX))
+        assertDetail<InvalidSelectorRegexException>(ErrorDetail.INVALID_REGEX, Selector.text("[", MatchMode.REGEX))
     }
 
     @Test
     fun enforcesStructuralLimits() {
         var deep: Node = Node.text("leaf")
         repeat(MAX_SELECTOR_DEPTH) { deep = Node.child(deep) }
-        assertDetail(ErrorDetail.SELECTOR_TOO_DEEP, Selector(deep))
+        assertDetail<SelectorTooDeepException>(ErrorDetail.SELECTOR_TOO_DEEP, Selector(deep))
 
         fun tree(depth: Int): Node =
             if (depth == 0) Node.text("leaf")
             else Node.AllOf(listOf(Node.child(tree(depth - 1)), Node.descendant(tree(depth - 1))))
         val wide = tree(7) // 381 nodes, depth 15
-        assertDetail(ErrorDetail.SELECTOR_TOO_LARGE, Selector(wide))
+        assertDetail<SelectorTooLargeException>(ErrorDetail.SELECTOR_TOO_LARGE, Selector(wide))
 
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(emptyList())))
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(listOf(Node.text("x")))))
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.child(Node.AnyOf(listOf(Node.text("x"))))))
-        assertDetail(ErrorDetail.EMPTY_VALUE, Selector.rawResource(""))
-        assertDetail(ErrorDetail.EMPTY_VALUE, Selector(Node.Resource("x", "")))
-        assertDetail(ErrorDetail.STRING_TOO_LONG, Selector.text("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)))
+        assertDetail<EmptySelectorNodeException>(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(emptyList())))
+        assertDetail<EmptySelectorNodeException>(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(listOf(Node.text("x")))))
+        assertDetail<EmptySelectorNodeException>(ErrorDetail.EMPTY_NODE, Selector(Node.child(Node.AnyOf(listOf(Node.text("x"))))))
+        assertDetail<EmptySelectorValueException>(ErrorDetail.EMPTY_VALUE, Selector.rawResource(""))
+        assertDetail<EmptySelectorValueException>(ErrorDetail.EMPTY_VALUE, Selector(Node.Resource("x", "")))
+        assertDetail<SelectorStringTooLongException>(
+            ErrorDetail.STRING_TOO_LONG,
+            Selector.text("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+        )
+    }
+
+    @Test
+    fun commandValidationChecksEverySelectorCarriedByTheCommand() {
+        CommandValidation.validate(Health)
+        CommandValidation.validate(Tap(Selector.text("Save")))
+
+        val invalidTarget =
+            assertFailsWith<InvalidSelectorException> {
+                CommandValidation.validate(Tap(Selector.rawResource("")))
+            }
+        assertEquals(ErrorDetail.EMPTY_VALUE, invalidTarget.detail)
+
+        val invalidContainer =
+            assertFailsWith<InvalidSelectorException> {
+                CommandValidation.validate(
+                    ScrollUntil(
+                        selector = Selector.text("Item"),
+                        container = Selector.rawResource(""),
+                    ),
+                )
+            }
+        assertEquals(ErrorDetail.EMPTY_VALUE, invalidContainer.detail)
     }
 
     @Test
@@ -111,12 +137,15 @@ class SelectorTest {
         assertFailsWith<IllegalArgumentException> {
             json.decodeFromString<Selector>("""{"node":{"kind":"match","property":"TEXT","value":"x"},"pick":{"kind":"at","index":-1}}""")
         }
-        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector.text("x").first()))
-        assertEquals(SelectorPlanKind.NATIVE, SelectorValidation.validate(Selector.text("x").at(2)))
+        assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector.text("x").first()))
+        assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector.text("x").at(2)))
     }
 
-    private fun assertDetail(detail: String, selector: Selector) {
-        val error = assertFailsWith<InvalidSelectorException> { SelectorValidation.validate(selector) }
+    private inline fun <reified T : InvalidSelectorException> assertDetail(
+        detail: String,
+        selector: Selector,
+    ) {
+        val error = assertFailsWith<T> { CommandValidation.validateSelector(selector) }
         assertEquals(detail, error.detail, error.message)
     }
 }

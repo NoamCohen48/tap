@@ -240,8 +240,10 @@ detail. A resource with an explicit `packageName` must match the scope package; 
 scope outside the driver's allowlist is `SCOPE_DENIED`; a target and container with different
 scope packages is `SCOPE_MISMATCH`.
 
-`SelectorValidation.validate` also returns the query plan. A selector compiles to one
-window-scoped `BySelector` (`ByBuilder` plus `UiWindow.findObjects` on the focused window of
+`CommandValidation.validate(command)` dispatches by command type and validates every selector
+it carries; `ScrollUntil` validates both its target and container. On the device,
+`CommandValidation.validateSelector(selector)` also returns the query plan. A selector compiles
+to one window-scoped `BySelector` (`ByBuilder` plus `UiWindow.findObjects` on the focused window of
 the scope package) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
 `any_of`, or a conjunction that repeats one of `BySelector`'s single-valued slots (the same
 text property twice, the same flag twice, two resources, two parents or two ancestors —

@@ -16,7 +16,6 @@ import com.company.tap.protocol.DeviceInfoResult
 import com.company.tap.protocol.Done
 import com.company.tap.protocol.DumpHierarchy
 import com.company.tap.protocol.ErrorCode
-import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Exists
 import com.company.tap.protocol.Health
 import com.company.tap.protocol.InvalidSelectorException
@@ -29,6 +28,7 @@ import com.company.tap.protocol.Response
 import com.company.tap.protocol.Screenshot
 import com.company.tap.protocol.Scroll
 import com.company.tap.protocol.ScrollUntil
+import com.company.tap.protocol.SelectorScopeMismatchException
 import com.company.tap.protocol.SetText
 import com.company.tap.protocol.Snapshot
 import com.company.tap.protocol.SnapshotResult
@@ -37,6 +37,7 @@ import com.company.tap.protocol.SyncBootstrap
 import com.company.tap.protocol.SyncPoll
 import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.Tap
+import com.company.tap.protocol.Targeted
 import com.company.tap.protocol.TextResult
 import com.company.tap.protocol.TypeText
 import com.company.tap.protocol.WaitAppVisible
@@ -44,7 +45,6 @@ import com.company.tap.protocol.WaitGone
 import com.company.tap.protocol.WaitScreenStable
 import com.company.tap.protocol.WaitVisible
 import com.company.tap.protocol.dispatch
-import com.company.tap.protocol.selectors
 import java.net.Socket
 
 /**
@@ -99,12 +99,18 @@ internal class DriverCommandEngine(
 
     /** Structural and scope validation before any lookup; malformed selectors never touch UI. */
     private fun validateSelectors(command: Command) {
-        val compiled = command.selectors.map(compiler::compile)
-        if (compiled.size == 2 && compiled[0].scopePackage != compiled[1].scopePackage) {
-            throw InvalidSelectorException(
-                ErrorDetail.SCOPE_MISMATCH,
-                "Target and container selectors must share one scope package",
-            )
+        when (command) {
+            is ScrollUntil -> {
+                val target = compiler.compile(command.selector)
+                val container = compiler.compile(command.container)
+                if (target.scopePackage != container.scopePackage) {
+                    throw SelectorScopeMismatchException(
+                        "Target and container selectors must share one scope package",
+                    )
+                }
+            }
+            is Targeted -> compiler.compile(command.selector)
+            else -> Unit
         }
     }
 

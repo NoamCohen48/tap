@@ -309,14 +309,6 @@ fun Command.dispatch(handler: CommandHandler): CommandResult = when (this) {
     is SyncPoll -> handler.syncPoll(this)
 }
 
-/** The selector(s) a command validates before touching the UI: target first, then container. */
-val Command.selectors: List<Selector>
-    get() = when (this) {
-        is ScrollUntil -> listOf(selector, container)
-        is Targeted -> listOf(selector)
-        else -> emptyList()
-    }
-
 /**
  * `op` names are owned by the `@SerialName` annotations; this reads them back through the
  * sealed serializer so the name exists in exactly one place. Cached per class after the first
