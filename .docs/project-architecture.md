@@ -26,7 +26,7 @@ Test process (any language)
         v
 Host service `tap serve` (one per machine, JVM dist or GraalVM native image)
 +-- :host:service    connections (liveness via Attach), device list, sessions, Execute proxy, App lifecycle RPCs
-+-- :host:core       Adb, SessionJournal, DriverLifecycle, DeviceSession, DriverClient, AppLifecycle
++-- :host:core       Adb, SessionJournal, DriverLifecycle, DeviceSession, DriverClient/DriverTransport, AppLifecycle
 +-- :host:validation `host` executable: PhaseZeroMain fault/validation flow, ProductProbe (uses :host:core directly)
         |
         | adb forward tcp:<host> tcp:27183   (one TAP1 socket per device session; contracts/protocol)
@@ -59,8 +59,8 @@ These are the invariants the code is organized around (see `CLAUDE.md` for the s
 | No hierarchy dump or XPath on the selector hot path | `SelectorCompiler` + `UiObjectAccess` use `BySelector`/tree walk only; `DUMP_HIERARCHY` is diagnostic |
 | No persistent `UiObject2` handles across commands | every command resolves and recycles inside `UiAutomationCommands.gesture/editText` |
 | Mutations require exactly one match; `AMBIGUOUS`/`NOT_FOUND` before input | `UiObjectAccess.resolve(EXACTLY_ONE)` fetches two matches; checked before the mutation gate |
-| Never replay a transmitted mutation; transport loss after acceptance is `INDETERMINATE` | `DriverClient` state `WRITTEN` + `isMutating`; `CommandTransportException` |
-| Request IDs strictly increasing per generation; old generations rejected | `DriverClient` transport mutex; `ClientConnection` watermark; `SESSION_MISMATCH` |
+| Never replay a transmitted mutation; transport loss after acceptance is `INDETERMINATE` | `PendingCommand` transmission state + `DriverTransport` failure routing; `CommandTransportException` |
+| Request IDs strictly increasing per generation; old generations rejected | `DriverTransport` admission mutex; `ClientConnection` watermark; `SESSION_MISMATCH` |
 | Every ADB call is serial-specific; never `forward --remove-all` | `Adb` API takes `serial` on every method; `removeExactForward` |
 | Elements are lazy selectors; creating one performs no I/O | client `Element` holds a proto `Selector`; every terminal call is one `Execute` that resolves again on the driver |
 | One device is never assigned to two tests | the per-serial file lock (`SessionJournalStore.acquireLease`) held by every live `DeviceSession`, across processes; `Open` waits for it or fails; nothing else to acquire (`pool-and-leases.md`) |
@@ -140,7 +140,8 @@ tap/
 |   |   |   +-- SessionJournal.kt    JournalState, SessionJournal, SessionJournalStore (lease + fsync'd atomic write)
 |   |   |   +-- DriverLifecycle.kt   start-with-retry, port range, forward, process observation, journal recovery, cleanup
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
-|   |   |   +-- DriverClient.kt      handshake, request IDs, reader/heartbeat coroutines, PendingCommand, screenshot()
+|   |   |   +-- DriverClient.kt      authenticated client API, PendingCommand outcome/cancellation semantics, heartbeat policy, screenshot()
+|   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
 |   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits)
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
 |   |   |   +-- CommandException.kt  RemoteCommandException / CommandTransportException, selector rendering

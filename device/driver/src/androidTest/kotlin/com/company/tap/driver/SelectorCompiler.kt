@@ -5,7 +5,6 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiObject2
 import com.company.tap.protocol.CommandValidation
-import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.InvalidSelectorException
 import com.company.tap.protocol.MAX_SELECTOR_DEPTH
 import com.company.tap.protocol.MatchMode
@@ -15,6 +14,7 @@ import com.company.tap.protocol.Relation
 import com.company.tap.protocol.Scope
 import com.company.tap.protocol.Selector
 import com.company.tap.protocol.SelectorPlanKind
+import com.company.tap.protocol.SelectorScopeDeniedException
 import com.company.tap.protocol.TextProperty
 import com.google.re2j.Pattern
 
@@ -62,8 +62,7 @@ internal class SelectorCompiler(
         Scope.Aut -> expectedAut
         is Scope.System -> {
             if (scope.packageName !in allowedSystemPackages) {
-                throw InvalidSelectorException(
-                    ErrorDetail.SCOPE_DENIED,
+                throw SelectorScopeDeniedException(
                     "System package ${scope.packageName} is not on the driver allowlist",
                 )
             }
@@ -74,8 +73,7 @@ internal class SelectorCompiler(
     /** An AUT-scoped selector may only name resources of the AUT, at any nesting level. */
     private fun requireAutResources(node: Node) {
         if (node is Node.Resource && node.packageName != null && node.packageName != expectedAut) {
-            throw InvalidSelectorException(
-                ErrorDetail.SCOPE_DENIED,
+            throw SelectorScopeDeniedException(
                 "AUT-scoped resource package ${node.packageName} does not match $expectedAut",
             )
         }

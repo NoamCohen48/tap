@@ -16,7 +16,6 @@ import com.company.tap.protocol.DeviceInfoResult
 import com.company.tap.protocol.Done
 import com.company.tap.protocol.DumpHierarchy
 import com.company.tap.protocol.ErrorCode
-import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Exists
 import com.company.tap.protocol.Health
 import com.company.tap.protocol.InvalidSelectorException
@@ -29,6 +28,7 @@ import com.company.tap.protocol.Response
 import com.company.tap.protocol.Screenshot
 import com.company.tap.protocol.Scroll
 import com.company.tap.protocol.ScrollUntil
+import com.company.tap.protocol.SelectorScopeMismatchException
 import com.company.tap.protocol.SetText
 import com.company.tap.protocol.Snapshot
 import com.company.tap.protocol.SnapshotResult
@@ -104,8 +104,7 @@ internal class DriverCommandEngine(
                 val target = compiler.compile(command.selector)
                 val container = compiler.compile(command.container)
                 if (target.scopePackage != container.scopePackage) {
-                    throw InvalidSelectorException(
-                        ErrorDetail.SCOPE_MISMATCH,
+                    throw SelectorScopeMismatchException(
                         "Target and container selectors must share one scope package",
                     )
                 }

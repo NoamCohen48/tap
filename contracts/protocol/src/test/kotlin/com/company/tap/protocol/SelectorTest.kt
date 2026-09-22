@@ -79,29 +79,32 @@ class SelectorTest {
 
     @Test
     fun rejectsRe2UnsupportedRegex() {
-        assertDetail(ErrorDetail.INVALID_REGEX, Selector.text("(a)\\1", MatchMode.REGEX))
-        assertDetail(ErrorDetail.INVALID_REGEX, Selector.text("(?<=a)b", MatchMode.REGEX))
-        assertDetail(ErrorDetail.INVALID_REGEX, Selector.text("[", MatchMode.REGEX))
+        assertDetail<InvalidSelectorRegexException>(ErrorDetail.INVALID_REGEX, Selector.text("(a)\\1", MatchMode.REGEX))
+        assertDetail<InvalidSelectorRegexException>(ErrorDetail.INVALID_REGEX, Selector.text("(?<=a)b", MatchMode.REGEX))
+        assertDetail<InvalidSelectorRegexException>(ErrorDetail.INVALID_REGEX, Selector.text("[", MatchMode.REGEX))
     }
 
     @Test
     fun enforcesStructuralLimits() {
         var deep: Node = Node.text("leaf")
         repeat(MAX_SELECTOR_DEPTH) { deep = Node.child(deep) }
-        assertDetail(ErrorDetail.SELECTOR_TOO_DEEP, Selector(deep))
+        assertDetail<SelectorTooDeepException>(ErrorDetail.SELECTOR_TOO_DEEP, Selector(deep))
 
         fun tree(depth: Int): Node =
             if (depth == 0) Node.text("leaf")
             else Node.AllOf(listOf(Node.child(tree(depth - 1)), Node.descendant(tree(depth - 1))))
         val wide = tree(7) // 381 nodes, depth 15
-        assertDetail(ErrorDetail.SELECTOR_TOO_LARGE, Selector(wide))
+        assertDetail<SelectorTooLargeException>(ErrorDetail.SELECTOR_TOO_LARGE, Selector(wide))
 
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(emptyList())))
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(listOf(Node.text("x")))))
-        assertDetail(ErrorDetail.EMPTY_NODE, Selector(Node.child(Node.AnyOf(listOf(Node.text("x"))))))
-        assertDetail(ErrorDetail.EMPTY_VALUE, Selector.rawResource(""))
-        assertDetail(ErrorDetail.EMPTY_VALUE, Selector(Node.Resource("x", "")))
-        assertDetail(ErrorDetail.STRING_TOO_LONG, Selector.text("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)))
+        assertDetail<EmptySelectorNodeException>(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(emptyList())))
+        assertDetail<EmptySelectorNodeException>(ErrorDetail.EMPTY_NODE, Selector(Node.AllOf(listOf(Node.text("x")))))
+        assertDetail<EmptySelectorNodeException>(ErrorDetail.EMPTY_NODE, Selector(Node.child(Node.AnyOf(listOf(Node.text("x"))))))
+        assertDetail<EmptySelectorValueException>(ErrorDetail.EMPTY_VALUE, Selector.rawResource(""))
+        assertDetail<EmptySelectorValueException>(ErrorDetail.EMPTY_VALUE, Selector(Node.Resource("x", "")))
+        assertDetail<SelectorStringTooLongException>(
+            ErrorDetail.STRING_TOO_LONG,
+            Selector.text("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+        )
     }
 
     @Test
@@ -138,8 +141,11 @@ class SelectorTest {
         assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector.text("x").at(2)))
     }
 
-    private fun assertDetail(detail: String, selector: Selector) {
-        val error = assertFailsWith<InvalidSelectorException> { CommandValidation.validateSelector(selector) }
+    private inline fun <reified T : InvalidSelectorException> assertDetail(
+        detail: String,
+        selector: Selector,
+    ) {
+        val error = assertFailsWith<T> { CommandValidation.validateSelector(selector) }
         assertEquals(detail, error.detail, error.message)
     }
 }
