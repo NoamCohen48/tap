@@ -1,6 +1,6 @@
 # Command-line parsing for `tap` — library options and the decision
 
-Date: 2026-09-20. Research note for `host/daemon/src/main/kotlin/com/company/tap/daemon/TapDaemonMain.kt`,
+Date: 2026-09-20. Research note for `host/daemon/src/main/kotlin/io/github/noamcohen48/tap/daemon/TapDaemonMain.kt`,
 which parses the `tap` command line by hand.
 
 ## What the CLI is today
@@ -41,7 +41,7 @@ help, typed options and consistent error messages stop being nice-to-have.
 When that happens, adopt **Clikt with `clikt-core`**, in the same change that adds the first
 new command:
 
-- one `CliktCommand` per verb under `com.company.tap.daemon.cli`, `main` = `Tap().subcommands(Start(), Serve(), Status(), Stop(), ...).main(args)`;
+- one `CliktCommand` per verb under `io.github.noamcohen48.tap.daemon.cli`, `main` = `Tap().subcommands(Start(), Serve(), Status(), Stop(), ...).main(args)`;
 - `--adb` / `--state-dir` declared with `envvar` (`TAP_ADB`, `TAP_STATE_DIR`) instead of
   `System.getenv` at the use site; `--port` as `int()`;
 - keep the existing flag names and defaults so `README.md`, `docs/guide/configuration.md`,

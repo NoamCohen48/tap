@@ -33,7 +33,7 @@ val clientProjects = setOf(":clients:kotlin:sdk", ":clients:kotlin:junit5", ":sa
 val syncSdkProjects = setOf(":device:sync-sdk")
 
 allprojects {
-    group = "com.company.tap"
+    group = "io.github.noamcohen48.tap"
     version =
         when (path) {
             in clientProjects -> kotlinClientVersion

@@ -1,4 +1,4 @@
-// Archived from host/service/src/main/kotlin/com/company/tap/service/Servicers.kt (commit 3afba99): the role-shaped PoolServicer.acquire and leased_role.
+// Archived from host/service/src/main/kotlin/io/github/noamcohen48/tap/service/Servicers.kt (commit 3afba99): the role-shaped PoolServicer.acquire and leased_role.
 
     override fun acquire(request: AcquireRequest, observer: StreamObserver<AcquireResponse>) = reply(observer) {
         val run = service.run(request.runId)

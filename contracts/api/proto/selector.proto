@@ -10,7 +10,7 @@ syntax = "proto3";
 
 package tap.v1;
 
-option java_package = "com.company.tap.api.v1";
+option java_package = "io.github.noamcohen48.tap.api.v1";
 option java_multiple_files = true;
 option java_outer_classname = "SelectorProto";
 

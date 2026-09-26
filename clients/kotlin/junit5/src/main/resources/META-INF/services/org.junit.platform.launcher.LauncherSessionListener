@@ -1,1 +1,1 @@
-com.company.tap.junit5.TapLauncherSessionListener
+io.github.noamcohen48.tap.junit5.TapLauncherSessionListener

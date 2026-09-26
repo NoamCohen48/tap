@@ -25,7 +25,7 @@ dependencies {
 
 application {
     applicationName = "tap"
-    mainClass.set("com.company.tap.daemon.TapDaemonMainKt")
+    mainClass.set("io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
 }
 
 /*
@@ -43,7 +43,7 @@ val bundleDriver by tasks.registering(Copy::class) {
     dependsOn(":device:driver:assembleDebug", ":device:driver:assembleDebugAndroidTest")
     from(driverApk) { rename { "driver.apk" } }
     from(driverTestApk) { rename { "driver-test.apk" } }
-    into(layout.buildDirectory.dir("bundled-driver/com/company/tap/daemon/driver"))
+    into(layout.buildDirectory.dir("bundled-driver/io/github/noamcohen48/tap/daemon/driver"))
 }
 
 sourceSets.main {
@@ -73,7 +73,7 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("tap")
-            mainClass.set("com.company.tap.daemon.TapDaemonMainKt")
+            mainClass.set("io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
             buildArgs.addAll(
                 "--no-fallback",
                 "-H:+ReportExceptionStackTraces",

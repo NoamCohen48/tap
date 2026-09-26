@@ -5,10 +5,10 @@ push of the tag builds and publishes that family from the tagged commit.
 
 | Family | Tag | Artifacts | Where |
 |---|---|---|---|
-| **Server** (engine: the `tap` executable + bundled driver + `tap-api`) | `daemon/vX.Y.Z` | `tap-X.Y.Z-linux-x86_64`, `tap-X.Y.Z-macos-aarch64`, `tap-X.Y.Z-jvm.zip`; Maven `com.company.tap:tap-api:X.Y.Z` | GitHub Release; GitHub Packages |
-| **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `com.company.tap:tap-client`, `com.company.tap:tap-junit5` | GitHub Packages |
+| **Server** (engine: the `tap` executable + bundled driver + `tap-api`) | `daemon/vX.Y.Z` | `tap-X.Y.Z-linux-x86_64`, `tap-X.Y.Z-macos-aarch64`, `tap-X.Y.Z-jvm.zip`; Maven `io.github.noamcohen48.tap:tap-api:X.Y.Z` | GitHub Release; GitHub Packages |
+| **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | GitHub Packages |
 | **Python client** | `client-python/vX.Y.Z` | `tap_e2e-X.Y.Z-py3-none-any.whl`, sdist | GitHub Release (PyPI when enabled) |
-| **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `com.company.tap:tap-sync-sdk` (AAR) | GitHub Packages |
+| **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | GitHub Packages |
 
 The server and the on-device driver are **one** artifact: the driver APKs are bundled inside
 the daemon binary and installed by it, and both report the same *engine version* (`tap

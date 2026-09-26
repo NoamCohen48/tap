@@ -11,10 +11,10 @@ The repository builds four things people install, each on its own version line:
 
 | Family | Tag | Artifacts | Version source |
 |---|---|---|---|
-| **engine** (`server`) | `daemon/vX.Y.Z` | `tap` native binary (linux-x86_64, macos-aarch64) and JVM dist on a GitHub Release; Maven `com.company.tap:tap-api` (generated `tap.v1` stubs) to GitHub Packages | `gradle.properties` `tap.version.engine` |
-| **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `com.company.tap:tap-client`, `com.company.tap:tap-junit5` | `gradle.properties` `tap.version.client.kotlin` |
+| **engine** (`server`) | `daemon/vX.Y.Z` | `tap` native binary (linux-x86_64, macos-aarch64) and JVM dist on a GitHub Release; Maven `io.github.noamcohen48.tap:tap-api` (generated `tap.v1` stubs) to GitHub Packages | `gradle.properties` `tap.version.engine` |
+| **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | `gradle.properties` `tap.version.client.kotlin` |
 | **Python client** | `client-python/vX.Y.Z` | `tap-e2e` wheel + sdist on a GitHub Release (PyPI opt-in) | `clients/python/pyproject.toml` |
-| **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `com.company.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
+| **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
 
 ### The host daemon and the driver are one artifact (the engine)
 
@@ -70,7 +70,7 @@ recompile against `tapTest`/`tapScope`. Engine and Python/sync lines did not mov
 
 `gradle.properties` holds the three Gradle-side versions; the root `build.gradle.kts` assigns
 each module the version of its family (`clients/kotlin/*` and `samples` → Kotlin client,
-`device/sync-sdk` → sync-sdk, everything else → engine) and the group `com.company.tap`.
+`device/sync-sdk` → sync-sdk, everything else → engine) and the group `io.github.noamcohen48.tap`.
 From the engine version:
 
 - `:contracts:protocol` generates `EngineVersion.kt` (`ENGINE_VERSION`), which is what
@@ -123,7 +123,7 @@ Consuming:
 
 ```kotlin
 repositories { maven("https://maven.pkg.github.com/NoamCohen48/tap") { credentials { … } } }
-testImplementation("com.company.tap:tap-junit5:0.2.0")
+testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")
 ```
 
 ```bash
@@ -133,7 +133,7 @@ curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.1.
 
 ## Open points
 
-- Group id `com.company.tap` is the placeholder used by the source packages; rename both
+- Group id `io.github.noamcohen48.tap` is the placeholder used by the source packages; rename both
   together before anything external depends on it.
 - Maven Central / PyPI instead of GitHub Packages / Release assets once the repository is
   public: Central needs a verified namespace and signing; PyPI needs the trusted-publisher

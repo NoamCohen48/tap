@@ -64,7 +64,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("com.company.tap:tap-junit5:0.2.0")   // brings tap-client and tap-api
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")   // brings tap-client and tap-api
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 
@@ -78,9 +78,9 @@ tasks.test {
 Write a test:
 
 ```kotlin
-import com.company.tap.junit5.TapTest
-import com.company.tap.junit5.tapTest
-import com.company.tap.sdk.*
+import io.github.noamcohen48.tap.junit5.TapTest
+import io.github.noamcohen48.tap.junit5.tapTest
+import io.github.noamcohen48.tap.sdk.*
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
 

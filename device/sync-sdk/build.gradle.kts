@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.company.tap.sync"
+    namespace = "io.github.noamcohen48.tap.sync"
     compileSdk = 36
 
     defaultConfig {
@@ -21,7 +21,7 @@ android {
     }
 }
 
-// Published as com.company.tap:tap-sync-sdk (its own version): apps under test add it to their
+// Published as io.github.noamcohen48.tap:tap-sync-sdk (its own version): apps under test add it to their
 // E2E builds, so it is released independently of the engine.
 afterEvaluate {
     publishing {

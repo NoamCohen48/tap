@@ -21,7 +21,7 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Published as com.company.tap:tap-api (engine version); the Kotlin client depends on it.
+// Published as io.github.noamcohen48.tap:tap-api (engine version); the Kotlin client depends on it.
 publishing {
     publications {
         create<MavenPublication>("maven") {

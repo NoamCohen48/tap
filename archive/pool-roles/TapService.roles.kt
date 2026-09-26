@@ -1,7 +1,7 @@
-// Archived from host/service/src/main/kotlin/com/company/tap/service/TapService.kt (commit 3afba99).
+// Archived from host/service/src/main/kotlin/io/github/noamcohen48/tap/service/TapService.kt (commit 3afba99).
 // Role-based, constraint-matched acquisition. Not compiled; kept for a future client-side or separate scheduler.
 
-import com.company.tap.api.v1.DeviceConstraints
+import io.github.noamcohen48.tap.api.v1.DeviceConstraints
 
     /**
      * All-or-none assignment of [roles] (role → constraints) for [run]. Waits until every role

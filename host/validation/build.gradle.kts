@@ -6,13 +6,13 @@ plugins {
 kotlin {
     jvmToolchain(17)
     // Validation and fault injection run arbitrary ADB on purpose; product code may not.
-    compilerOptions.optIn.add("com.company.tap.host.RawAdb")
+    compilerOptions.optIn.add("io.github.noamcohen48.tap.host.RawAdb")
 }
 
 application {
     // Keeps the documented `host` executable name: host/validation/build/install/host/bin/host.
     applicationName = "host"
-    mainClass = "com.company.tap.host.validation.PhaseZeroMainKt"
+    mainClass = "io.github.noamcohen48.tap.host.validation.PhaseZeroMainKt"
 }
 
 dependencies {

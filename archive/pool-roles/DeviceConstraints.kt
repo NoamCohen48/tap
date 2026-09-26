@@ -1,4 +1,4 @@
-// Archived from clients/kotlin/sdk/src/main/kotlin/com/company/tap/sdk/TapClient.kt (commit 3afba99).
+// Archived from clients/kotlin/sdk/src/main/kotlin/io/github/noamcohen48/tap/sdk/TapClient.kt (commit 3afba99).
 
 /** Per-role pool constraints for [Run.acquire]. Null means unconstrained. */
 data class DeviceConstraints(

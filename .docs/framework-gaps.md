@@ -49,7 +49,7 @@ describes.
 ## Sync SDK visibility (plan §16)
 
 The driver manifest's `<queries>` lists only the fixture's authorities
-(`com.company.tap.fixture.tap-sync`, `com.company.tap.fixture.fault`). On API 30+ a product
+(`io.github.noamcohen48.tap.fixture.tap-sync`, `io.github.noamcohen48.tap.fixture.fault`). On API 30+ a product
 AUT's `${applicationId}.tap-sync` provider is invisible to the driver, so `App.awaitIdle`
 fails with `SYNC_*` details for any app other than the fixture. Options, in order of
 preference: `<queries><intent>` with a Tap-specific provider action declared by

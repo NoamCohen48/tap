@@ -34,8 +34,8 @@
         <!-- Synchronization state comes from the :sync-sdk manifest (authority <applicationId>.tap-sync). -->
         <provider
             android:name=".FixtureFaultProvider"
-            android:authorities="com.company.tap.fixture.fault"
+            android:authorities="io.github.noamcohen48.tap.fixture.fault"
             android:exported="true"
-            android:permission="com.company.tap.permission.SYNCHRONIZATION" />
+            android:permission="io.github.noamcohen48.tap.permission.SYNCHRONIZATION" />
     </application>
 </manifest>

@@ -65,7 +65,7 @@ signature-level permission; never release it):
 
 ```kotlin
 dependencies {
-    e2eImplementation("com.company.tap:tap-sync-sdk:0.1.0")
+    e2eImplementation("io.github.noamcohen48.tap:tap-sync-sdk:0.1.0")
 }
 ```
 
