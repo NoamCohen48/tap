@@ -1,0 +1,70 @@
+// tap.v1 — structured detail for a failed RPC. Every non-OK status the daemon returns carries
+// a serialized `Failure` in the binary trailer `tap-failure-bin`, so clients switch on
+// `reason` instead of matching the status message. The status code stays the coarse class
+// (NOT_FOUND, FAILED_PRECONDITION, …); the message is for humans only and may change.
+// A device command that ran and failed is not an RPC failure: it is a `CommandResult.error`.
+
+syntax = "proto3";
+
+package tap.v1;
+
+import "command.proto";
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "FailureProto";
+
+enum FailureReason {
+  FAILURE_REASON_UNSPECIFIED = 0;
+  // A bug in the daemon or host core (INTERNAL). Report it with the daemon log.
+  FAILURE_REASON_INTERNAL = 1;
+  // Caller input the daemon rejects before doing anything (INVALID_ARGUMENT).
+  FAILURE_REASON_INVALID_ARGUMENT = 2;
+  // Missing or wrong daemon token (UNAUTHENTICATED).
+  FAILURE_REASON_UNAUTHENTICATED = 3;
+  // The client_connection_id is not (or no longer) known (NOT_FOUND).
+  FAILURE_REASON_UNKNOWN_CLIENT_CONNECTION = 4;
+  // The attached_device_id is not (or no longer) attached (NOT_FOUND).
+  FAILURE_REASON_UNKNOWN_ATTACHED_DEVICE = 5;
+  // The device is attached by another client connection (PERMISSION_DENIED).
+  FAILURE_REASON_NOT_OWNER = 6;
+  // Another session holds the device's lock: FAILED_PRECONDITION without a wait,
+  // DEADLINE_EXCEEDED after `waited_ms`.
+  FAILURE_REASON_DEVICE_BUSY = 7;
+  // The device's journal keeps it out of service until an explicit reset (FAILED_PRECONDITION).
+  FAILURE_REASON_DEVICE_QUARANTINED = 8;
+  // A host-side wait (app process, window, idle) ran out of time (DEADLINE_EXCEEDED).
+  FAILURE_REASON_HOST_WAIT_TIMEOUT = 9;
+  // An ADB command did not finish within its timeout (DEADLINE_EXCEEDED).
+  FAILURE_REASON_ADB_TIMEOUT = 10;
+  // An ADB command failed, or is gated by an earlier unreaped one (UNAVAILABLE).
+  FAILURE_REASON_ADB_FAILED = 11;
+  // An ADB command left an uncertain residual; the device may have changed (FAILED_PRECONDITION).
+  FAILURE_REASON_ADB_REAP_UNCERTAIN = 12;
+  // An app lifecycle postcondition did not hold (FAILED_PRECONDITION).
+  FAILURE_REASON_APP_LIFECYCLE = 13;
+  // The installed driver is not the build this daemon expects (FAILED_PRECONDITION).
+  FAILURE_REASON_DRIVER_BUILD_MISMATCH = 14;
+  // The driver could not be started or authenticated (UNAVAILABLE).
+  FAILURE_REASON_DRIVER_START_FAILED = 15;
+  // The driver connection was lost around a host-issued command (UNAVAILABLE).
+  FAILURE_REASON_DRIVER_TRANSPORT = 16;
+  // A host-issued driver command (for example attach's device info) failed with
+  // `error_code` (FAILED_PRECONDITION).
+  FAILURE_REASON_DRIVER_COMMAND = 17;
+  // The session can no longer run operations: detach and attach again (ABORTED).
+  FAILURE_REASON_SESSION_UNUSABLE = 18;
+  // The daemon cannot serve the request in its current state (FAILED_PRECONDITION).
+  FAILURE_REASON_DAEMON_PRECONDITION = 19;
+}
+
+message Failure {
+  FailureReason reason = 1;
+  // The device the failure is about, when there is one.
+  string serial = 2;
+  // DEVICE_BUSY: how long the lock was waited for. HOST_WAIT_TIMEOUT: how long the wait ran.
+  int64 waited_ms = 3;
+  // DRIVER_COMMAND / DRIVER_TRANSPORT: the driver or transport error code and its detail.
+  ErrorCode error_code = 4;
+  string detail = 5;
+}

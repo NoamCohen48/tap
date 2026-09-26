@@ -4,7 +4,6 @@
     <uses-permission android:name="io.github.noamcohen48.tap.permission.SYNCHRONIZATION" />
     <queries>
         <provider android:authorities="io.github.noamcohen48.tap.fixture.tap-sync" />
-        <provider android:authorities="io.github.noamcohen48.tap.fixture.fault" />
     </queries>
     <application
         android:allowBackup="false"

@@ -20,7 +20,8 @@ top-level files only.
 | --- | --- |
 | `selector.proto` | `MatchMode`, `TextProperty`, `NodeFlag`, `Relation`, `Node` (`oneof kind`: `Match`, `Flag`, `ResourceId`, `Related`, `AllOf`, `AnyOf`), `Selector` (`oneof scope`, `oneof pick`) |
 | `command.proto` | `ErrorCode`, `Direction`, `StabilitySignal`, one message per public command, `Command` (`oneof op`), result payloads, `Error`, `CommandResult` (`oneof outcome`) |
-| `client_connection.proto` | `ClientConnectionService` — Connect / Observe / Disconnect / Info |
+| `failure.proto` | `FailureReason`, `Failure` — the `tap-failure-bin` trailer on every non-OK status |
+| `client_connection.proto` | `ClientConnectionService` — Connect / Observe / Disconnect / Info (with the daemon's `Defaults`) |
 | `device.proto` | `DeviceService` — ListDevices / Attach / Detach / Execute / Screenshot / DriverLog |
 | `app.proto` | `AppService` — streamed install, uninstall, launch, cold launch, force-stop, clear-data, permissions, process, idle |
 | `wire/wire.proto` | handshake (`Hello`, `Challenge`, `Negotiation`, `Authentication`, `AuthenticationResult`), `Request`, `Response`, host-internal operations, `SyncState`, `ArtifactInfo`, `BlobStart`, `BlobEnd` |

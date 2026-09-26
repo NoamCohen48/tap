@@ -88,12 +88,13 @@ jobs:
         run: >
           ./gradlew
           :contracts:protocol:test :host:core:test :host:daemon:test
-          :device:driver:command-engine:test :clients:kotlin:sdk:test
+          :device:driver:command-engine:test :device:driver:core:test
+          :device:driver:core:lint :clients:kotlin:sdk:test
           :clients:kotlin:junit5:test
       - name: Assemble driver, fixture, daemon and validation
         run: >
           ./gradlew
-          :device:driver:assembleDebug :device:driver:assembleDebugAndroidTest
+          :device:driver:assembleDebug :device:driver:assembleAndroidTest
           :fixture-app:assembleDebug :host:daemon:installDist
           :host:daemon:distZip
           :host:validation:installDist
@@ -136,14 +137,14 @@ jobs:
       - name: Install and build
         run: |
           python -m pip install --quiet build "clients/python[dev]"
-          python -c "import tap; print('tap-e2e', tap.__version__)"
+          python -c "import tap_e2e; print('tap-e2e', tap_e2e.__version__)"
           python -m build --outdir dist clients/python
       - name: >-
           Plugin loads (the sample suite itself needs a device and the fixture
           APK)
         run: >-
           python -c
-          "import tap.pytest_plugin, tap._gen.device_pb2_grpc"
+          "import tap_e2e.pytest_plugin, tap_e2e._gen.device_pb2_grpc"
       - uses: actions/upload-artifact@v4
         if: matrix.python == '3.13'
         with:

@@ -1,16 +1,21 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.Failure
+import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.grpc.Metadata
 import io.grpc.Status
 import io.grpc.StatusException
 import io.grpc.StatusRuntimeException
+import io.grpc.protobuf.lite.ProtoLiteUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.CoroutineContext
 
-/** The server's wording for a held per-serial lock (`DeviceBusyException` in `:host:core`). */
-internal const val DEVICE_BUSY_MARKER = "is in use by another session"
+/** The binary trailer carrying a serialized [Failure] on every non-OK status (`failure.proto`). */
+internal val FAILURE_TRAILER: Metadata.Key<Failure> =
+    Metadata.Key.of("tap-failure-bin", ProtoLiteUtils.metadataMarshaller(Failure.getDefaultInstance()))
 
 /**
  * Ownership marker for suspending device calls. Installed by [tapScope] (scripts) and by the
@@ -80,45 +85,44 @@ internal suspend fun <T> mapped(
         throw mapStatus(error.status, serial, error)
     }
 
-private fun mapStatus(
+/**
+ * Switches on the server's `tap-failure-bin` reason; the status message is only carried along
+ * for humans. A status without the trailer (a proxy, a transport failure, a cancelled call) is a
+ * [ServerException] with reason `FAILURE_REASON_UNSPECIFIED`.
+ */
+internal fun mapStatus(
     status: Status,
     serial: String?,
     cause: Throwable,
 ): TapException {
     val details = status.description.orEmpty()
-    return when {
-        status.code == Status.Code.UNAUTHENTICATED -> {
+    val failure = Status.trailersFromThrowable(cause)?.get(FAILURE_TRAILER) ?: Failure.getDefaultInstance()
+    val failedSerial = failure.serial.ifEmpty { serial ?: "?" }
+    return when (failure.reason) {
+        FailureReason.FAILURE_REASON_UNAUTHENTICATED -> {
             ServerException(
                 status.code.name,
                 "wrong or missing daemon token (read from daemon.json in the state dir, or " +
                     "tap.token / TAP_TOKEN with an explicit address): $details",
                 cause,
+                failure.reason,
             )
         }
 
-        status.code == Status.Code.PERMISSION_DENIED -> {
+        FailureReason.FAILURE_REASON_NOT_OWNER -> {
             ServerException(
                 status.code.name,
-                "device ${serial ?: "?"} is attached by another client connection; only the connection " +
+                "device $failedSerial is attached by another client connection; only the connection " +
                     "that attached it may use or detach it: $details",
                 cause,
+                failure.reason,
             )
         }
 
-        status.code == Status.Code.DEADLINE_EXCEEDED && details.startsWith("Timed out") -> {
-            WaitTimeoutException(details, serial ?: "?", 0, cause = cause)
-        }
-
-        details.contains(DEVICE_BUSY_MARKER) -> {
-            DeviceBusyException(details, cause)
-        }
-
-        status.code == Status.Code.FAILED_PRECONDITION -> {
-            AppLifecycleException(details, cause)
-        }
-
-        else -> {
-            ServerException(status.code.name, details, cause)
-        }
+        FailureReason.FAILURE_REASON_HOST_WAIT_TIMEOUT -> WaitTimeoutException(details, failedSerial, failure.waitedMs, cause = cause)
+        FailureReason.FAILURE_REASON_DEVICE_BUSY -> DeviceBusyException(details, cause)
+        FailureReason.FAILURE_REASON_DEVICE_QUARANTINED -> DeviceQuarantinedException(failedSerial, details, cause)
+        FailureReason.FAILURE_REASON_APP_LIFECYCLE -> AppLifecycleException(details, cause)
+        else -> ServerException(status.code.name, details, cause, failure.reason)
     }
 }

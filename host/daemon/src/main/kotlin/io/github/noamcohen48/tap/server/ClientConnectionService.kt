@@ -84,6 +84,7 @@ class ClientConnectionService(
                 .setStateDir(daemon.config.stateDir.toString())
                 .setDriverAvailable(daemon.config.driver != null)
                 .setPid(ProcessHandle.current().pid())
+                .setDefaults(Defaults.message)
                 .build()
         }
 

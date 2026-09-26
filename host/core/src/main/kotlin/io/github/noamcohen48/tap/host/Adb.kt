@@ -67,17 +67,18 @@ class AdbRunnerGatedException(
  * Every ADB interaction of the host, one typed method per command. All device commands are
  * serial-specific (`-s`), bounded by a timeout, and return captured output; the parsing of
  * that output lives here too, so a device-family quirk is fixed once. `open` so tests can
- * substitute a fake.
+ * substitute a fake; [processStarter] starts each ADB child (tests pass a [FakeProcess] starter so
+ * cancellation and reap are deterministic without real subprocesses).
  */
-open class Adb(
-    val executable: String = "adb",
+open class Adb internal constructor(
+    val executable: String,
+    private val processStarter: ProcessStarter,
+    private val hooks: AdbHooks,
 ) {
-    /** Starts an OS process; tests substitute a [FakeProcess] so cancellation and reap are
-     * deterministic without real subprocesses. Production default is the real [ProcessBuilder]. */
-    internal var processStarter: ProcessStarter =
-        ProcessStarter { command ->
-            ProcessBuilder(command).redirectErrorStream(true).start()
-        }
+    constructor(
+        executable: String = "adb",
+        processStarter: ProcessStarter = DefaultProcessStarter,
+    ) : this(executable, processStarter, AdbHooks.None)
 
     private val admissionMutex = Mutex()
 
@@ -111,39 +112,9 @@ open class Adb(
         admissionChanged = CompletableDeferred()
     }
 
-    /** Test-only probe invoked when a caller enters the admission wait for an in-flight
-     * permit, so a test can prove the waiter is parked before cancelling it. Null in production. */
-    internal var admissionWaitProbeForTest: (() -> Unit)? = null
-
-    /** Test-only probe invoked synchronously before token bookkeeping (release or residual
-     * transfer) acquires [admissionMutex], so a test holding the mutex can prove the attempt is
-     * pended before releasing the barrier. Null in production. */
-    internal var admissionBookkeepingProbeForTest: (() -> Unit)? = null
-
-    /**
-     * Test-only deterministic barrier: holds [admissionMutex] between [entered] and [release],
-     * so a test can strand token bookkeeping on the mutex, cancel the owner, then release and
-     * prove the bookkeeping still completed. Internal, never part of the supported surface.
-     */
-    internal suspend fun holdAdmissionForTest(
-        entered: CompletableDeferred<Unit>,
-        release: CompletableDeferred<Unit>,
-    ) {
-        admissionMutex.withLock {
-            entered.complete(Unit)
-            release.await()
-        }
-    }
-
-    /** Test visibility: whether any lane currently holds an unreaped drain or a live operation. */
-    internal suspend fun isReapGatedForTest(): Boolean =
-        admissionMutex.withLock {
-            pruneCompletedResiduals()
-            reapResiduals.isNotEmpty() || inFlight.isNotEmpty()
-        }
-
-    /** Test visibility: admitted-but-unproven operations plus unresolved residuals. */
-    internal suspend fun admissionCountForTest(): Int =
+    /** Admitted-but-unproven operations plus unresolved residuals; zero means no lane is
+     * gated. A read-only snapshot for diagnostics and tests. */
+    internal suspend fun admittedTokenCount(): Int =
         admissionMutex.withLock {
             pruneCompletedResiduals()
             inFlight.size + reapResiduals.size
@@ -197,7 +168,7 @@ open class Adb(
             // A slot is held by a live in-flight operation, not a residual: suspend until some
             // holder releases or converts, then re-check. Cancellation propagates before start.
             currentCoroutineContext().ensureActive()
-            admissionWaitProbeForTest?.invoke()
+            hooks.onAdmissionWait()
             changed.await()
         }
     }
@@ -220,8 +191,8 @@ open class Adb(
      * bookkeeping [CancellationException]. Never throws, so the primary failure propagates intact.
      */
     private suspend fun releaseAdmission(token: Long) {
-        admissionBookkeepingProbeForTest?.invoke()
         withContext(NonCancellable) {
+            hooks.beforeAdmissionBookkeeping()
             admissionMutex.withLock {
                 inFlight.remove(token)
                 signalAdmissionChanged()
@@ -244,8 +215,8 @@ open class Adb(
         executor: java.util.concurrent.ExecutorService,
         scope: CoroutineScope,
     ) {
-        admissionBookkeepingProbeForTest?.invoke()
         withContext(NonCancellable) {
+            hooks.beforeAdmissionBookkeeping()
             admissionMutex.withLock {
                 inFlight.remove(token)
                 reapResiduals[token] = ReapResidual(token, serial, command, process, drain, executor, scope)

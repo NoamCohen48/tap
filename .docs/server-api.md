@@ -158,19 +158,42 @@ its own response message. The RPCs are:
 
 All of them delegate to `AppLifecycle` in `:host:core`.
 
-### Status mapping (`server/common.kt`, `Throwable.toStatus()`)
+### Failures (`failure.proto`, `server/common.kt` `Throwable.toStatus()`)
 
-| Condition | gRPC status |
-|---|---|
-| Missing or wrong token | `UNAUTHENTICATED` |
-| Unknown client connection or attached device | `NOT_FOUND` |
-| Attached device owned by another connection | `PERMISSION_DENIED` |
-| Invalid argument (unspecified enum, bad selector, missing field, non-positive timeout, bad upload) | `INVALID_ARGUMENT` |
-| Lock still held after `lease_timeout_ms`; host wait or ADB timeout | `DEADLINE_EXCEEDED` |
-| Any of: <br>• lock held with no wait <br>• duplicate Observe <br>• daemon closing <br>• device quarantined <br>• app lifecycle failure <br>• driver build mismatch <br>• ADB reap uncertain <br>• remote command failure | `FAILED_PRECONDITION` |
-| Session unusable (poisoned driver connection) | `ABORTED` |
-| Driver start failure, ADB command failure, gated ADB runner, command transport failure | `UNAVAILABLE` |
-| Anything else | `INTERNAL`; the stack goes to the daemon log |
+Every non-OK status carries a serialized `tap.v1.Failure` in the binary trailer
+`tap-failure-bin`: a `FailureReason`, the `serial` when the failure is about one device,
+`waited_ms` for a busy lock or a host wait, and the driver `error_code`/`detail` for a failed
+host-issued command. Clients switch on `reason`; the status message is for humans and may
+change. A status without the trailer did not come from the daemon (a proxy, a transport
+failure, a client-side deadline).
+
+| Condition | gRPC status | `FailureReason` |
+|---|---|---|
+| Missing or wrong token | `UNAUTHENTICATED` | `UNAUTHENTICATED` |
+| Unknown client connection / attached device | `NOT_FOUND` | `UNKNOWN_CLIENT_CONNECTION` / `UNKNOWN_ATTACHED_DEVICE` |
+| Attached device owned by another connection | `PERMISSION_DENIED` | `NOT_OWNER` |
+| Invalid argument (`InvalidArgumentException` from servicer checks, `InvalidCommandException` from pre-flight command validation) | `INVALID_ARGUMENT` | `INVALID_ARGUMENT` |
+| Lock held: no wait / after `lease_timeout_ms` | `FAILED_PRECONDITION` / `DEADLINE_EXCEEDED` | `DEVICE_BUSY` |
+| Host wait timeout / ADB timeout | `DEADLINE_EXCEEDED` | `HOST_WAIT_TIMEOUT` / `ADB_TIMEOUT` |
+| Device quarantined | `FAILED_PRECONDITION` | `DEVICE_QUARANTINED` |
+| App lifecycle postcondition | `FAILED_PRECONDITION` | `APP_LIFECYCLE` |
+| Driver build mismatch | `FAILED_PRECONDITION` | `DRIVER_BUILD_MISMATCH` |
+| ADB reap uncertain | `FAILED_PRECONDITION` | `ADB_REAP_UNCERTAIN` |
+| Host-issued driver command failed | `FAILED_PRECONDITION` | `DRIVER_COMMAND` |
+| Duplicate Observe, daemon closing | `FAILED_PRECONDITION` | `DAEMON_PRECONDITION` |
+| Session unusable (poisoned driver connection) | `ABORTED` | `SESSION_UNUSABLE` |
+| Driver start failure | `UNAVAILABLE` | `DRIVER_START_FAILED` |
+| ADB command failure, gated ADB runner | `UNAVAILABLE` | `ADB_FAILED` |
+| Command transport failure | `UNAVAILABLE` | `DRIVER_TRANSPORT` |
+| Anything else, including a bare `IllegalArgumentException`/`IllegalStateException` | `INTERNAL`; the stack goes to the daemon log | `INTERNAL` |
+
+### Defaults
+
+`Info` returns `defaults` (`action_timeout_ms` 10 s, `wait_timeout_ms` 10 s,
+`lifecycle_timeout_ms` 30 s, `idle_stable_ms` 200 ms, `acquire_timeout_ms` 300 s), the values
+the daemon applies to an omitted timeout (`server/common.kt` `Defaults`). The clients' own
+defaults are pinned to the same numbers by `contracts/conformance/client-conformance.json`,
+which the daemon, Kotlin and Python unit suites all load.
 
 Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
 
@@ -213,7 +236,8 @@ A conforming client:
 3. Attaches several devices in sorted serial order (a global lock order) and detaches every
    device it attached.
 4. Treats an `error` outcome as a typed failure keyed on `error.code`, and never retries a
-   mutation on `INDETERMINATE`.
+   mutation on `INDETERMINATE`. Maps RPC failures by the `tap-failure-bin` reason, never by
+   the status message.
 5. Puts a client-side deadline on every call that is longer than the command's own timeout.
 
 ## 6. Not implemented

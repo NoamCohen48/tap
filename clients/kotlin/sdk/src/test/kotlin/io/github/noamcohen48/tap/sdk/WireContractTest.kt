@@ -18,6 +18,7 @@ import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogResponse
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
+import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.api.v1.ForceStopRequest
 import io.github.noamcohen48.tap.api.v1.ForceStopResponse
 import io.github.noamcohen48.tap.api.v1.InstallRequest
@@ -262,7 +263,7 @@ class WireContractTest {
 
         override suspend fun execute(request: ExecuteRequest): ExecuteResponse {
             owners.add("execute" to request.clientConnectionId)
-            if (denyExecute) throw Status.PERMISSION_DENIED.withDescription("not your device").asException()
+            if (denyExecute) throw daemonFailure(Status.PERMISSION_DENIED, FailureReason.FAILURE_REASON_NOT_OWNER, "not your device")
             return ExecuteResponse
                 .newBuilder()
                 .setResult(CommandResult.newBuilder().setDone(Done.getDefaultInstance()))

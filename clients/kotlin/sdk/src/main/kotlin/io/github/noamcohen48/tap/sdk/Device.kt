@@ -73,7 +73,15 @@ data class Timeouts(
     /** Default for app launches and screenshots. */
     val lifecycle: Duration = 30.seconds,
     val pollInterval: Duration = 100.milliseconds,
-)
+) {
+    companion object {
+        /** Default quiet period for `App.awaitIdle`. */
+        val IDLE_STABLE_FOR: Duration = 200.milliseconds
+
+        /** Default wait for a device another session holds (the JUnit `tap.acquireTimeoutSeconds`). */
+        val ACQUIRE: Duration = 300.seconds
+    }
+}
 
 /**
  * Device-attachment options. The driver is always the daemon's (bundled, or the APKs given to
@@ -693,10 +701,9 @@ class Device internal constructor(
 
 /** Lower-case hex SHA-256 of [bytes]. */
 internal fun sha256Hex(bytes: ByteArray): String =
-    java.security.MessageDigest
-        .getInstance("SHA-256")
-        .digest(bytes)
-        .joinToString("") { "%02x".format(it) }
+    java.util.HexFormat
+        .of()
+        .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
 
 /** Direction aliases without the proto prefix. */
 object Directions {

@@ -2,7 +2,6 @@ package io.github.noamcohen48.tap.host
 
 import io.github.noamcohen48.tap.protocol.Requests
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -54,13 +53,7 @@ data class DeviceSessionConfig(
      * driver the loser was still going to install.
      */
     val installDriver: () -> Boolean = { true },
-) {
-    /** Test-only ownership-transfer gate. Production leaves this as the no-op default. */
-    internal var beforeOwnershipTransfer: suspend () -> Unit = {}
-
-    /** Test-only observer proving cancellation cleanup completed and its scope was stopped. */
-    internal var afterCancellationCleanup: () -> Unit = {}
-}
+)
 
 /**
  * One disposable session unit: device lease, journal, driver instrumentation, ADB forward,
@@ -79,6 +72,7 @@ class DeviceSession private constructor(
     private val running: RunningInstrumentation,
     private val hostPort: Int,
     val client: DriverClient,
+    private val hooks: SessionHooks,
 ) {
     val serial: String get() = config.serial
     val generation: Long get() = journal.generation
@@ -159,33 +153,11 @@ class DeviceSession private constructor(
             // lease, strand close in a false timeout quarantine, and mask the original
             // cancellation. Never throws, so the primary failure propagates intact.
             withContext(NonCancellable) {
+                hooks.beforeOperationRelease()
                 operationMutex.withLock { inFlightOperations-- }
             }
         }
     }
-
-    /** Test-only probe invoked when the close drain observes an admitted operation still in
-     * flight, so a test can prove close is waiting before releasing the operation's failure.
-     * Null in production. */
-    internal var closeDrainProbeForTest: (() -> Unit)? = null
-
-    /**
-     * Test-only deterministic barrier: holds [operationMutex] between [entered] and [release],
-     * so a test can strand a guarded operation's lease release and a closing drain on the same
-     * mutex. Internal, never part of the supported surface.
-     */
-    internal suspend fun holdOperationsForTest(
-        entered: CompletableDeferred<Unit>,
-        release: CompletableDeferred<Unit>,
-    ) {
-        operationMutex.withLock {
-            entered.complete(Unit)
-            release.await()
-        }
-    }
-
-    /** Test visibility: admitted operations not yet through their poison-recording point. */
-    internal suspend fun inFlightOperationsForTest(): Int = operationMutex.withLock { inFlightOperations }
 
     /** Waits for admitted operations through their poison-recording point, bounded by [timeoutMs].
      * Returns null when drained, otherwise the timeout failure that must quarantine. */
@@ -201,7 +173,7 @@ class DeviceSession private constructor(
                     "Session cleanup on $serial exceeded ${timeoutMs}ms waiting for $remaining in-flight operation(s); device quarantined",
                 )
             }
-            closeDrainProbeForTest?.invoke()
+            hooks.onCloseDrainWait()
             delay(10)
         }
     }
@@ -304,13 +276,19 @@ class DeviceSession private constructor(
                 close(DEVICE_OPEN_CLEANUP_TIMEOUT_MS)
             } finally {
                 cancellationCleanupScope.cancel()
-                config.afterCancellationCleanup()
+                hooks.afterCancellationCleanup()
             }
         }
     }
 
     companion object {
-        suspend fun open(config: DeviceSessionConfig): DeviceSession {
+        suspend fun open(config: DeviceSessionConfig): DeviceSession = open(config, SessionHooks.None)
+
+        /** [open] with session [hooks]; host/core tests park or observe the race points. */
+        internal suspend fun open(
+            config: DeviceSessionConfig,
+            hooks: SessionHooks,
+        ): DeviceSession {
             val adb = config.adb
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)
@@ -394,7 +372,7 @@ class DeviceSession private constructor(
                     client.execute(Requests.health())
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
-                    session = DeviceSession(config, lease, store, journal, running, hostPort, client)
+                    session = DeviceSession(config, lease, store, journal, running, hostPort, client, hooks)
                     // Bind the session-owned usability gate once: every later command admission on
                     // this client — including through previously captured references — consults the
                     // same sticky poison/closing state under the transport mutex, before any ID or
@@ -406,7 +384,7 @@ class DeviceSession private constructor(
                     // cancellable continuation as the ownership-transfer point: cancellation
                     // that wins that race throws into this catch and cleans the still-owned
                     // session; successful resumption transfers cleanup responsibility.
-                    withContext(NonCancellable) { config.beforeOwnershipTransfer() }
+                    withContext(NonCancellable) { hooks.beforeOwnershipTransfer() }
                     transferAttempted = true
                     return suspendCancellableCoroutine { continuation ->
                         continuation.resume(session) { _, unaccepted, _ ->

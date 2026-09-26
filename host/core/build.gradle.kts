@@ -1,26 +1,18 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
+    id("tap.kotlin-jvm")
     id("org.jetbrains.kotlin.plugin.serialization")
     `java-test-fixtures`
-}
-
-kotlin {
-    jvmToolchain(17)
 }
 
 dependencies {
     api(project(":contracts:protocol"))
     // The session journal's JSON (SessionJournal.kt); the wire protocol is protobuf.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation(libs.serialization.json)
+    implementation(libs.coroutines.core)
 
     testFixturesApi(project(":contracts:protocol"))
-    testFixturesImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    testFixturesImplementation(libs.coroutines.core)
 
     testImplementation(kotlin("test"))
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
-}
-
-tasks.test {
-    useJUnitPlatform()
+    testImplementation(libs.coroutines.test)
 }

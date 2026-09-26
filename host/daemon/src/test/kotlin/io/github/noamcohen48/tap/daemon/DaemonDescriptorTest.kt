@@ -2,8 +2,10 @@ package io.github.noamcohen48.tap.daemon
 
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.server.FAILURE_TRAILER
 import io.github.noamcohen48.tap.server.TokenAuthInterceptor
 import io.grpc.Metadata
 import io.grpc.ServerInterceptors
@@ -96,6 +98,7 @@ class DaemonDescriptorTest {
             for (bad in listOf(null, "Bearer ${DaemonDescriptor.newToken()}", token, "Bearer ")) {
                 val error = assertFailsWith<StatusRuntimeException> { info(bad) }
                 assertEquals(Status.Code.UNAUTHENTICATED, error.status.code)
+                assertEquals(FailureReason.FAILURE_REASON_UNAUTHENTICATED, error.trailers?.get(FAILURE_TRAILER)?.reason)
             }
         } finally {
             channel.shutdownNow()

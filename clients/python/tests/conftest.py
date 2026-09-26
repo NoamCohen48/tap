@@ -14,7 +14,7 @@ import pathlib
 import threading
 
 import pytest  # type: ignore[import-not-found]
-from tap import App, Device
+from tap_e2e import App, Device
 
 PACKAGE = "io.github.noamcohen48.tap.fixture"
 REPO = pathlib.Path(__file__).resolve().parents[3]

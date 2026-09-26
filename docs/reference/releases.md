@@ -34,7 +34,7 @@ version`, `ENGINE_VERSION`, the driver's `versionName`). They are never mixed.
 
 ```bash
 tap version                      # tap daemon 0.1.0
-python -c "import tap; print(tap.__version__)"
+python -c "import tap_e2e; print(tap_e2e.__version__)"
 ```
 
 In Kotlin, `TapClient().info()` (Python `TapServer().info()`) returns the server version, the

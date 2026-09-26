@@ -1,16 +1,12 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-}
-
-kotlin {
-    jvmToolchain(17)
+    id("tap.kotlin-jvm")
 }
 
 dependencies {
     testImplementation(project(":clients:kotlin:junit5"))
-    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 /*
@@ -25,7 +21,6 @@ val fixtureApk = rootProject.layout.projectDirectory.file("fixture-app/build/out
 val daemonBin = rootProject.layout.projectDirectory.file("host/daemon/build/install/tap/bin/tap")
 
 tasks.test {
-    useJUnitPlatform()
     enabled = serials.isPresent
     dependsOn(":fixture-app:assembleDebug", ":host:daemon:installDist")
     outputs.upToDateWhen { false }

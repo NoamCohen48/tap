@@ -27,6 +27,7 @@ import io.github.noamcohen48.tap.sdk.TapUsageException
 import io.github.noamcohen48.tap.sdk.tapScope
 import io.github.noamcohen48.tap.sdk.text
 import io.grpc.ManagedChannel
+import io.grpc.protobuf.lite.ProtoLiteUtils
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
 import kotlinx.coroutines.CancellationException
@@ -61,6 +62,12 @@ import kotlin.time.Duration.Companion.seconds
  * root job, structured sibling cancellation of an accepted in-flight `Execute`, teardown
  * closing every device while preserving the primary failure, and sorted-serial opens.
  */
+private val FAILURE_TRAILER =
+    io.grpc.Metadata.Key.of(
+        "tap-failure-bin",
+        ProtoLiteUtils.metadataMarshaller(io.github.noamcohen48.tap.api.v1.Failure.getDefaultInstance()),
+    )
+
 class TapTestBridgeTest {
     private lateinit var serverName: String
     private lateinit var fakeConnections: FakeConnections
@@ -638,9 +645,16 @@ class TapTestBridgeTest {
             opens.add(request.serial)
             waits.add(request.leaseTimeoutMs)
             if (request.serial in busySerials && !request.hasLeaseTimeoutMs()) {
-                throw io.grpc.Status.UNAVAILABLE
-                    .withDescription("device ${request.serial} is in use by another session")
-                    .asException()
+                val failure =
+                    io.github.noamcohen48.tap.api.v1.Failure
+                        .newBuilder()
+                        .setReason(io.github.noamcohen48.tap.api.v1.FailureReason.FAILURE_REASON_DEVICE_BUSY)
+                        .setSerial(request.serial)
+                        .build()
+                val trailers = io.grpc.Metadata().apply { put(FAILURE_TRAILER, failure) }
+                throw io.grpc.Status.FAILED_PRECONDITION
+                    .withDescription("device ${request.serial} is held by another session")
+                    .asException(trailers)
             }
             return AttachResponse
                 .newBuilder()

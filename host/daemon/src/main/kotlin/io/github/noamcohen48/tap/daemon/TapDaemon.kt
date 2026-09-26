@@ -253,10 +253,12 @@ class TapDaemon internal constructor(
         config.log("client connection ${connection.id} connected ($name)")
         // Observe is the only liveness signal, so a client that dies between Connect and Observe
         // would otherwise leak its connection (and anything it attached) until daemon shutdown.
+        // The reaper holds only the id, so a connection disconnected earlier is not retained.
+        val id = connection.id
         cleanupScope.launch {
             delay(observeGraceMs)
-            val unobserved = synchronized(lifecycleLock) { !connection.closed && connection.observeOwner == null }
-            if (unobserved) disconnectClient(connection.id, "no Observe stream within ${observeGraceMs}ms")
+            val unobserved = synchronized(lifecycleLock) { clientConnectionsById[id]?.let { !it.closed && it.observeOwner == null } ?: false }
+            if (unobserved) disconnectClient(id, "no Observe stream within ${observeGraceMs}ms")
         }
         return connection
     }
@@ -334,28 +336,12 @@ class TapDaemon internal constructor(
         completedObserveCloser: ((String) -> Unit)? = null,
     ): Int =
         withContext(NonCancellable) {
-            val snapshot: Snapshot? =
-                synchronized(lifecycleLock) {
-                    val connection = clientConnectionsById[id] ?: return@synchronized null
-                    if (connection.closed) return@synchronized null
-                    if (expectedObserveOwner != null && connection.observeOwner !== expectedObserveOwner) {
-                        return@synchronized null
-                    }
-                    check(clientConnectionsById.remove(id, connection))
-                    connection.closed = true
-                    // AttachedDevice.ownerConnectionId is the sole ownership index. Scan and remove
-                    // every match atomically; slow DeviceSession cleanup happens outside the lock.
-                    val owned = detachOwnedAttachedDevices(connection.id)
-                    completedObserveCloser?.let { connection.onDisconnect.remove(it) }
-                    val hooks = connection.onDisconnect.toList()
-                    connection.onDisconnect.clear()
-                    connection.observeOwner = null
-                    Snapshot(owned, hooks)
-                }
-            if (snapshot == null) return@withContext 0
+            val snapshot =
+                synchronized(lifecycleLock) { removeConnectionLocked(id, expectedObserveOwner, completedObserveCloser) }
+                    ?: return@withContext 0
             // End Observe promptly once disconnect owns the state transition. Device cleanup may take
             // its full bound and must not keep a dead liveness stream heartbeating meanwhile.
-            snapshot.hooks.forEach { hook -> runCatching { hook(reason) } }
+            snapshot.endObserve(reason)
             val deadlineNanos = totalTimeoutMs?.let(::deadlineAfterMs)
             val devices = snapshot.attachedDevices
             // Once the connection's shutdown share is exhausted, the snapshot has already removed
@@ -384,7 +370,34 @@ class TapDaemon internal constructor(
     private data class Snapshot(
         val attachedDevices: List<AttachedDevice>,
         val hooks: List<(String) -> Unit>,
-    )
+    ) {
+        fun endObserve(reason: String) = hooks.forEach { hook -> runCatching { hook(reason) } }
+    }
+
+    /**
+     * The one connection teardown transition, called with [lifecycleLock] held: removes the
+     * connection and every device it owns from the registries and takes its Observe hooks. Null
+     * when the connection is gone, already closed, or (with [expectedObserveOwner]) observed by
+     * another stream. Slow device cleanup happens after the lock is released.
+     */
+    private fun removeConnectionLocked(
+        id: String,
+        expectedObserveOwner: Any? = null,
+        completedObserveCloser: ((String) -> Unit)? = null,
+    ): Snapshot? {
+        val connection = clientConnectionsById[id] ?: return null
+        if (connection.closed) return null
+        if (expectedObserveOwner != null && connection.observeOwner !== expectedObserveOwner) return null
+        check(clientConnectionsById.remove(id, connection))
+        connection.closed = true
+        // AttachedDevice.ownerConnectionId is the sole ownership index.
+        val owned = detachOwnedAttachedDevices(connection.id)
+        completedObserveCloser?.let { connection.onDisconnect.remove(it) }
+        val hooks = connection.onDisconnect.toList()
+        connection.onDisconnect.clear()
+        connection.observeOwner = null
+        return Snapshot(owned, hooks)
+    }
 
     /** Called with [lifecycleLock] held; scans and removes every device owned by [connectionId]. */
     private fun detachOwnedAttachedDevices(connectionId: String): List<AttachedDevice> {
@@ -415,8 +428,8 @@ class TapDaemon internal constructor(
         val close = cleanupScope.async { runCatching { device.close(coreTimeoutMs) } }
         val outcome = withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) { close.await() }
         if (outcome == null) {
+            // Returned, not logged: the caller logs the detach once with this detail.
             val timeoutDetail = "SESSION_CLEANUP_TIMEOUT: $label exceeded ${timeoutMs}ms; cleanup continues under its core deadline"
-            config.log(timeoutDetail)
             close.invokeOnCompletion { error ->
                 if (error != null) config.log("$label eventual cleanup failed: ${error.message}")
             }
@@ -656,19 +669,8 @@ class TapDaemon internal constructor(
                     // every remaining cleanup without awaiting, and return immediately. The old code
                     // logged "may remain" here and left later connections registered.
                     val detached =
-                        synchronized(lifecycleLock) {
-                            ids.subList(index, ids.size).mapNotNull { remainingId ->
-                                val connection = clientConnectionsById.remove(remainingId) ?: return@mapNotNull null
-                                if (connection.closed) return@mapNotNull null
-                                connection.closed = true
-                                val owned = detachOwnedAttachedDevices(connection.id)
-                                val hooks = connection.onDisconnect.toList()
-                                connection.onDisconnect.clear()
-                                connection.observeOwner = null
-                                Snapshot(owned, hooks)
-                            }
-                        }
-                    detached.forEach { snapshot -> snapshot.hooks.forEach { hook -> runCatching { hook("daemon shutdown") } } }
+                        synchronized(lifecycleLock) { ids.subList(index, ids.size).mapNotNull { removeConnectionLocked(it) } }
+                    detached.forEach { it.endObserve("daemon shutdown") }
                     val detachedDevices = detached.flatMap { it.attachedDevices }
                     detachedDevices.forEach { attachedDevice ->
                         launchDetachedCleanup(

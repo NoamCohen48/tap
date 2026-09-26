@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Validation flavor only: makes the fixture (and so its fault provider, which the late-mutation
+  fault schedules work through) visible. A package query, because the manifest merger folds a
+  second <provider> query into the main manifest's one.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="io.github.noamcohen48.tap.fixture" />
+    </queries>
+</manifest>

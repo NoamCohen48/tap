@@ -1,6 +1,6 @@
 # pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportMissingImports=false
 from conftest import launch
-from tap import res, text
+from tap_e2e import res, text
 
 
 def test_cold_launch_produces_a_new_process_and_survives_clear_data(tap_device):

@@ -17,6 +17,7 @@ import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
+import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
@@ -98,7 +99,6 @@ class TapClientTest {
 
     @AfterEach
     fun stop() {
-        TapDaemonProcess.processStarter = null
         channel.shutdownNow()
         grpcServer.shutdownNow()
     }
@@ -298,7 +298,7 @@ class TapClientTest {
     fun `close failure is shared by duplicate callers with mapping preserved`() {
         runBlocking {
             fakeConnections.closeError =
-                StatusRuntimeException(Status.DEADLINE_EXCEEDED.withDescription("Timed out waiting for close"))
+                daemonFailure(Status.DEADLINE_EXCEEDED, FailureReason.FAILURE_REASON_HOST_WAIT_TIMEOUT, "Timed out waiting for close")
             val connection = client().connect("test")
             try {
                 val first = async(Dispatchers.Default) { runCatching { connection.close() } }
@@ -586,6 +586,28 @@ class TapClientTest {
     }
 
     /** Runs [call] against a fake whose every Execute fails with [code]; returns what it threw. */
+    @Test
+    fun `scrollUntil returns the target scoped to the container`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        val list = device.element(rawRes("list"))
+                        assertEquals(rawRes("list").descendant(text("row 40")), list.scrollUntil(text("row 40")).selector)
+                        // A picked container cannot be carried into a relation: the bare target comes back.
+                        assertEquals(text("row 40"), list.first().scrollUntil(text("row 40")).selector)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
     private fun waitMapping(
         code: ErrorCode,
         call: suspend (Device) -> Unit,
@@ -1021,7 +1043,7 @@ class TapClientTest {
     fun `session close deadline mapping is preserved`() {
         runBlocking {
             fakeDevices.closeError =
-                StatusRuntimeException(Status.DEADLINE_EXCEEDED.withDescription("Timed out waiting for close"))
+                daemonFailure(Status.DEADLINE_EXCEEDED, FailureReason.FAILURE_REASON_HOST_WAIT_TIMEOUT, "Timed out waiting for close")
             val connection = client().connect("test")
             try {
                 tapScope {
@@ -1071,13 +1093,13 @@ class TapClientTest {
         runBlocking {
             val fake = FakeProcess("started 127.0.0.1:9999\n", alive = true)
             val starterEntered = CompletableDeferred<Unit>()
-            TapDaemonProcess.processStarter = {
+            val starter: (List<String>) -> Process = {
                 starterEntered.complete(Unit)
                 fake
             }
-            try {
+            run {
                 val started = System.nanoTime()
-                val job = async(Dispatchers.IO) { TapDaemonProcess.start(binary = "fake", timeout = 30.seconds) }
+                val job = async(Dispatchers.IO) { TapDaemonProcess.start(binary = "fake", timeout = 30.seconds, starter = starter) }
                 // Handshake: the executable really started before cancellation is requested.
                 withTimeout(5_000) { starterEntered.await() }
                 job.cancelAndJoin()
@@ -1089,19 +1111,17 @@ class TapClientTest {
                 // never reported as the executable's own bounded-wait timeout.
                 val fake2 = FakeProcess("", alive = true)
                 val starter2Entered = CompletableDeferred<Unit>()
-                TapDaemonProcess.processStarter = {
+                val starter2: (List<String>) -> Process = {
                     starter2Entered.complete(Unit)
                     fake2
                 }
                 val outer =
                     assertFailsWith<TimeoutCancellationException> {
                         withTimeout(200.milliseconds) {
-                            TapDaemonProcess.start(binary = "fake", timeout = 30.seconds)
+                            TapDaemonProcess.start(binary = "fake", timeout = 30.seconds, starter = starter2)
                         }
                     }
                 assertTrue(fake2.destroyed.get(), "outer-timed-out process destroyed and reaped")
-            } finally {
-                TapDaemonProcess.processStarter = null
             }
         }
     }
@@ -1109,17 +1129,12 @@ class TapClientTest {
     @Test
     fun `daemon process death returns parsed output`() {
         runBlocking {
-            TapDaemonProcess.processStarter = { FakeProcess("started 127.0.0.1:1234\n", alive = false) }
-            try {
-                val result =
-                    withTimeout(10_000) {
-                        TapDaemonProcess.start(binary = "fake", timeout = 5.seconds)
-                    }
-                assertEquals("127.0.0.1:1234", result.address)
-                assertTrue(result.started)
-            } finally {
-                TapDaemonProcess.processStarter = null
-            }
+            val result =
+                withTimeout(10_000) {
+                    TapDaemonProcess.start(binary = "fake", timeout = 5.seconds) { FakeProcess("started 127.0.0.1:1234\n", alive = false) }
+                }
+            assertEquals("127.0.0.1:1234", result.address)
+            assertTrue(result.started)
         }
     }
 
@@ -1127,19 +1142,14 @@ class TapClientTest {
     fun `daemon process timeout destroys and reports boundedly`() {
         runBlocking {
             val fake = FakeProcess("", alive = true)
-            TapDaemonProcess.processStarter = { fake }
-            try {
-                val failure =
-                    assertFailsWith<TapException> {
-                        withTimeout(10_000) {
-                            TapDaemonProcess.start(binary = "fake", timeout = 200.milliseconds)
-                        }
+            val failure =
+                assertFailsWith<TapException> {
+                    withTimeout(10_000) {
+                        TapDaemonProcess.start(binary = "fake", timeout = 200.milliseconds) { fake }
                     }
-                assertTrue(failure.message!!.contains("did not finish"), "unexpected: ${failure.message}")
-                assertTrue(fake.destroyed.get(), "timed-out process destroyed and reaped")
-            } finally {
-                TapDaemonProcess.processStarter = null
-            }
+                }
+            assertTrue(failure.message!!.contains("did not finish"), "unexpected: ${failure.message}")
+            assertTrue(fake.destroyed.get(), "timed-out process destroyed and reaped")
         }
     }
 

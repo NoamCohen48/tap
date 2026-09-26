@@ -2,10 +2,7 @@ package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.ErrorCode
-import io.grpc.Status
-import io.grpc.StatusException
-import io.grpc.StatusRuntimeException
-import kotlinx.coroutines.CancellationException
+import io.github.noamcohen48.tap.api.v1.FailureReason
 
 /** Base of everything the client raises deliberately. */
 open class TapException(
@@ -13,11 +10,16 @@ open class TapException(
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 
-/** The host server rejected or failed a call (unknown run/session, bad argument, ...). */
+/**
+ * The host server rejected or failed a call (unknown connection or device, bad argument, driver
+ * start failure, ...). [status] is the gRPC status code name; [reason] is the server's structured
+ * failure reason, `FAILURE_REASON_UNSPECIFIED` when the failure did not come from the daemon.
+ */
 class ServerException(
     val status: String,
     val details: String,
     cause: Throwable? = null,
+    val reason: FailureReason = FailureReason.FAILURE_REASON_UNSPECIFIED,
 ) : TapException("$status: $details", cause)
 
 /**
@@ -78,6 +80,17 @@ class AppLifecycleException(
  * was zero or ran out. The device is fine; try later or pick another serial.
  */
 class DeviceBusyException(
+    message: String,
+    cause: Throwable? = null,
+) : TapException(message, cause)
+
+/**
+ * The device's session journal keeps it out of service (a mutation whose outcome could not be
+ * proven, a corrupt journal, an uncertain ADB cleanup). It stays unusable until an explicit
+ * reset; retrying or waiting does not help.
+ */
+class DeviceQuarantinedException(
+    val serial: String,
     message: String,
     cause: Throwable? = null,
 ) : TapException(message, cause)

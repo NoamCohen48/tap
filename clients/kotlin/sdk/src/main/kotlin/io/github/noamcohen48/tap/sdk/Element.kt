@@ -145,7 +145,9 @@ class Element internal constructor(
 
     /**
      * Scrolls this container until [target] is visible inside it and returns the target as a
-     * lazy element. Once it has scrolled, a failure is a [CommandException] `INDETERMINATE` whose
+     * lazy element scoped to this container (`descendant`), so a later action cannot hit a
+     * duplicate elsewhere on screen; a container with `first()`/`at()` cannot be carried into a
+     * relation, and then the bare [target] is returned. Once it has scrolled, a failure is a [CommandException] `INDETERMINATE` whose
      * detail says why (`END_REACHED`, `MAX_SCROLLS` or `WAIT_TIMEOUT`): the list moved, so the
      * failure is not side-effect free and is never reported as a plain wait timeout. Before the
      * first scroll it fails like any command (`NOT_FOUND`/`AMBIGUOUS` for the container), and a
@@ -180,7 +182,7 @@ class Element internal constructor(
             }
             throw CommandException(result, "scroll_until", device.serial, target.render())
         }
-        return Element(device, target)
+        return Element(device, if (selector.hasPick) target else selector.descendant(target))
     }
 
     // --- Derived elements ---------------------------------------------------------------------

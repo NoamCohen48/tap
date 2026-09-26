@@ -3,7 +3,7 @@ import time
 
 import pytest  # type: ignore[import-not-found]
 from conftest import launch
-from tap import WaitTimeoutError, res
+from tap_e2e import WaitTimeoutError, res
 
 
 def test_waits_for_animation_to_end(tap_device):

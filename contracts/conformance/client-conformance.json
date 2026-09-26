@@ -1,0 +1,28 @@
+{
+  "_comment": "Behaviour every client binding must share, loaded by the Kotlin and Python unit suites (and the daemon's for `defaults`). Change a client and this table together.",
+  "defaults": {
+    "action_timeout_ms": 10000,
+    "wait_timeout_ms": 10000,
+    "lifecycle_timeout_ms": 30000,
+    "idle_stable_ms": 200,
+    "acquire_timeout_ms": 300000
+  },
+  "failures": [
+    {"status": "DEADLINE_EXCEEDED", "reason": "FAILURE_REASON_HOST_WAIT_TIMEOUT", "serial": "emulator-5554", "waited_ms": 3000, "details": "Timed out after 3000ms waiting for window", "raises": "wait_timeout"},
+    {"status": "FAILED_PRECONDITION", "reason": "FAILURE_REASON_DEVICE_BUSY", "serial": "emulator-5554", "details": "held", "raises": "device_busy"},
+    {"status": "DEADLINE_EXCEEDED", "reason": "FAILURE_REASON_DEVICE_BUSY", "serial": "emulator-5554", "waited_ms": 1200, "details": "held", "raises": "device_busy"},
+    {"status": "FAILED_PRECONDITION", "reason": "FAILURE_REASON_DEVICE_QUARANTINED", "serial": "85e49002", "details": "quarantined", "raises": "device_quarantined"},
+    {"status": "FAILED_PRECONDITION", "reason": "FAILURE_REASON_APP_LIFECYCLE", "details": "process still alive", "raises": "app_lifecycle"},
+    {"status": "FAILED_PRECONDITION", "reason": "FAILURE_REASON_DRIVER_BUILD_MISMATCH", "details": "reinstall", "raises": "server"},
+    {"status": "FAILED_PRECONDITION", "reason": "FAILURE_REASON_DAEMON_PRECONDITION", "details": "shutting down", "raises": "server"},
+    {"status": "PERMISSION_DENIED", "reason": "FAILURE_REASON_NOT_OWNER", "details": "not yours", "raises": "server"},
+    {"status": "UNAUTHENTICATED", "reason": "FAILURE_REASON_UNAUTHENTICATED", "details": "token", "raises": "server"},
+    {"status": "NOT_FOUND", "reason": "FAILURE_REASON_UNKNOWN_ATTACHED_DEVICE", "details": "gone", "raises": "server"},
+    {"status": "INVALID_ARGUMENT", "reason": "FAILURE_REASON_INVALID_ARGUMENT", "details": "bad", "raises": "server"},
+    {"status": "UNAVAILABLE", "reason": "FAILURE_REASON_DRIVER_START_FAILED", "details": "no ready", "raises": "server"},
+    {"status": "ABORTED", "reason": "FAILURE_REASON_SESSION_UNUSABLE", "details": "poisoned", "raises": "server"},
+    {"status": "INTERNAL", "reason": "FAILURE_REASON_INTERNAL", "details": "bug", "raises": "server"},
+    {"_comment": "no trailer: the message text is never interpreted", "status": "DEADLINE_EXCEEDED", "details": "Timed out: device x is in use by another session", "raises": "server"},
+    {"_comment": "no trailer", "status": "FAILED_PRECONDITION", "details": "anything", "raises": "server"}
+  ]
+}

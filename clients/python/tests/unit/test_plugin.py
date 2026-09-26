@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pathlib
 
-from tap import TapServer
-from tap.pytest_plugin import TapConfig, _assign, _attach_single, _rotate
+from tap_e2e import TapServer
+from tap_e2e.pytest_plugin import TapConfig, _assign, _attach_single, _rotate
 
 from .conftest import TOKEN
 

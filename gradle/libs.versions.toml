@@ -1,0 +1,59 @@
+# One place for every external version (build-logic reads the plugin versions from here too).
+[versions]
+agp = "9.0.1"
+kotlin = "2.3.20"
+dokka = "2.1.0"
+protobuf-plugin = "0.9.5"
+graalvm-native = "0.11.3"
+grpc = "1.75.0"
+# grpc-kotlin lags grpc-java: 1.5.0 is built against grpc-stub 1.62.2 and used here with
+# grpc-java 1.75.0, which resolves because its metadata requires that version softly.
+grpc-kotlin = "1.5.0"
+protobuf = "4.32.1"
+coroutines = "1.10.2"
+serialization = "1.10.0"
+junit = "5.13.4"
+junit-platform = "1.13.4"
+
+[libraries]
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
+grpc-inprocess = { module = "io.grpc:grpc-inprocess", version.ref = "grpc" }
+grpc-protobuf-lite = { module = "io.grpc:grpc-protobuf-lite", version.ref = "grpc" }
+grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpc-kotlin" }
+grpc-protoc-gen-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
+grpc-protoc-gen-kotlin = { module = "io.grpc:protoc-gen-grpc-kotlin", version.ref = "grpc-kotlin" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
+javax-annotation-api = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+re2j = { module = "com.google.re2j:re2j", version = "1.8" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+junit4 = { module = "junit:junit", version = "4.13.2" }
+androidx-test-runner = { module = "androidx.test:runner", version = "1.7.0" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version = "1.3.0" }
+androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version = "2.4.0" }
+compose-bom = { module = "androidx.compose:compose-bom", version = "2026.03.01" }
+activity-compose = { module = "androidx.activity:activity-compose", version = "1.13.0" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+dokka-gfm-plugin = { module = "org.jetbrains.dokka:gfm-plugin", version.ref = "dokka" }
+# build-logic compiles against these (compileOnly); the root build puts them on the classpath.
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+dokka-gradle-plugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "dokka" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }

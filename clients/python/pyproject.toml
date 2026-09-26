@@ -20,10 +20,10 @@ dependencies = [
 dev = ["grpcio-tools>=1.84.0", "pytest>=8", "typing_extensions>=4.0"]
 
 [project.entry-points.pytest11]
-tap = "tap.pytest_plugin"
+tap_e2e = "tap_e2e.pytest_plugin"
 
 [tool.setuptools.packages.find]
-include = ["tap", "tap.*"]
+include = ["tap_e2e", "tap_e2e.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

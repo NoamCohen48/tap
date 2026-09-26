@@ -1,9 +1,5 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-}
-
-kotlin {
-    jvmToolchain(17)
+    id("tap.kotlin-jvm")
 }
 
 /*
@@ -14,7 +10,7 @@ kotlin {
 dependencies {
     api(project(":contracts:schema"))
     // RE2 regex for user selectors: linear time, no backreferences/lookaround (plan §10).
-    api("com.google.re2j:re2j:1.8")
+    api(libs.re2j)
 
     testImplementation(kotlin("test"))
 }
@@ -46,7 +42,6 @@ val generateEngineVersion by tasks.registering {
 kotlin.sourceSets.main { kotlin.srcDir(generateEngineVersion) }
 
 tasks.test {
-    useJUnitPlatform()
     // `./gradlew :contracts:protocol:test -Dtap.golden.update=true` rewrites the golden wire fixtures.
     systemProperty("tap.golden.update", System.getProperty("tap.golden.update") ?: "false")
 }

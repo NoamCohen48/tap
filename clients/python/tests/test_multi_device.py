@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest  # type: ignore[import-not-found]
 from conftest import launch
-from tap import res, text
+from tap_e2e import res, text
 
 
 @pytest.mark.tap_devices("left", "right")

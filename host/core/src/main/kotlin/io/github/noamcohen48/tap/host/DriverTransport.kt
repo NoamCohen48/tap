@@ -41,6 +41,7 @@ internal class DriverTransport(
     private val generation: Long,
     private val serial: String?,
     private val timeoutProvider: (Int) -> Int,
+    private val hooks: TransportHooks,
     private val pendingFactory: (Long, Request, Long) -> DriverClient.PendingCommand,
 ) {
     private val mutex = Mutex()
@@ -56,13 +57,6 @@ internal class DriverTransport(
 
     @Volatile var lastWriteNanos: Long = System.nanoTime()
         private set
-
-    internal var beforePhysicalWrite: (suspend () -> Unit)? = null
-    internal var afterPhysicalWrite: (() -> Unit)? = null
-    internal var beforeMarkWritten: (() -> Unit)? = null
-    internal var afterTerminalResponse: (() -> Unit)? = null
-    internal var afterAwaitCancel: (() -> Unit)? = null
-    internal var frameSink: FrameSink = FrameSink { frame -> FrameCodec.write(socket.getOutputStream(), frame) }
 
     val isPoisoned: Boolean get() = poisoned
 
@@ -81,19 +75,11 @@ internal class DriverTransport(
             transmit(nextRequestId++, request, request.timeoutMs, request.toByteArray())
         }
 
-    suspend fun submitValidation(
-        requestId: Long,
-        request: Request,
-        admission: () -> Unit,
-    ): DriverClient.PendingCommand =
-        mutex.withLock {
-            admission()
-            check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
-            transmit(requestId, request, request.timeoutMs, request.toByteArray())
-        }
-
-    /** [request] only classifies the pending entry; [payload] is what goes on the wire. */
-    suspend fun submitRawValidation(
+    /**
+     * Validation only ([ValidationTransport]): transmits [payload] under the caller's [requestId]
+     * instead of the next allocated one. [request] only classifies the pending entry.
+     */
+    suspend fun submitWithExplicitId(
         requestId: Long,
         request: Request,
         timeoutMs: Long,
@@ -279,6 +265,7 @@ internal class DriverTransport(
         }
     }
 
+    /** Validation only ([ValidationTransport]): poisons a healthy transport as if it had failed. */
     fun disconnectForValidation() {
         synchronized(poisonLock) {
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
@@ -309,10 +296,6 @@ internal class DriverTransport(
 
     fun isPending(command: DriverClient.PendingCommand): Boolean = pending[command.requestId] === command
 
-    suspend fun withLock(block: suspend () -> Unit) = mutex.withLock { block() }
-
-    suspend fun nextRequestIdForTest(): Long = mutex.withLock { nextRequestId }
-
     fun remainingTimeoutMs(maximumMs: Int): Int = timeoutProvider(maximumMs)
 
     suspend fun writeFrame(
@@ -324,13 +307,13 @@ internal class DriverTransport(
         val started = AtomicBoolean(false)
         val writer =
             scope.async(Dispatchers.IO) {
-                beforePhysicalWrite?.invoke()
+                hooks.beforePhysicalWrite()
                 markStarted()
                 started.set(true)
                 try {
-                    frameSink.write(frame)
+                    hooks.physicalWrite(frame) { FrameCodec.write(socket.getOutputStream(), it) }
                 } finally {
-                    afterPhysicalWrite?.invoke()
+                    hooks.afterPhysicalWrite()
                 }
             }
         try {
@@ -364,11 +347,6 @@ internal class DriverTransport(
         }
         writer.cancel()
     }
-}
-
-/** A physical frame write; suspends so tests can gate it. */
-internal fun interface FrameSink {
-    suspend fun write(frame: Frame)
 }
 
 /** Bound for reaping a writer child after its socket was closed. */

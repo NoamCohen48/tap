@@ -1,48 +1,48 @@
 # Python client
 
 Package `tap-e2e`, importable as `tap`. Everything below is generated from the docstrings and
-type hints of `clients/python/tap`.
+type hints of `clients/python/tap_e2e`.
 
 ```python
-from tap import TapServer, res_id, text, desc, CONTAINS, DOWN, STABILITY_TREE
-from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServerError
+from tap_e2e import TapServer, res_id, text, desc, CONTAINS, DOWN, STABILITY_TREE
+from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServerError
 ```
 
 ## Device
 
-::: tap.device.Device
+::: tap_e2e.device.Device
 
-::: tap.device.Timeouts
+::: tap_e2e.device.Timeouts
 
 ## Element and waits
 
-::: tap.element.Element
+::: tap_e2e.element.Element
 
-::: tap.element.ElementWait
+::: tap_e2e.element.ElementWait
 
 ## Selectors
 
-::: tap.selectors
+::: tap_e2e.selectors
 
 ## App lifecycle
 
-::: tap.app.App
+::: tap_e2e.app.App
 
-::: tap.app.ProcessIdentity
+::: tap_e2e.app.ProcessIdentity
 
 ## Server and client connection
 
-::: tap.server.TapServer
+::: tap_e2e.server.TapServer
 
-::: tap.server.ClientConnection
+::: tap_e2e.server.ClientConnection
 
 ## Errors
 
-::: tap.errors
+::: tap_e2e.errors
 
 ## pytest plugin
 
-::: tap.pytest_plugin
+::: tap_e2e.pytest_plugin
     options:
       members:
         - TapConfig

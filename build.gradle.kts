@@ -1,10 +1,12 @@
 plugins {
-    id("com.android.application") version "9.0.1" apply false
-    id("com.android.library") version "9.0.1" apply false
-    id("org.jetbrains.kotlin.jvm") version "2.3.20" apply false
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.3.20" apply false
-    id("org.jetbrains.dokka") version "2.1.0"
+    // Versions: gradle/libs.versions.toml. Declared once here so every project (and the
+    // build-logic convention plugins, which compile against them) share one classloader copy.
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.dokka)
 }
 
 /*
