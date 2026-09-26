@@ -634,11 +634,11 @@ class CommandPipelineTest {
         assertEquals(ErrorCode.ERR_NOT_FOUND, nextResponse().response.errorCode)
         pipeline.submit(2, 5_000) { ctx ->
             ctx.markMutationStarted()
-            Responses.failure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = 0)
+            Responses.failure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.PARTIAL_INPUT, durationMs = 0)
         }
         val rejected = nextResponse().response
         assertEquals(ErrorCode.ERR_ACTION_REJECTED, rejected.errorCode)
-        assertEquals(ErrorDetail.TEXT_MISMATCH, rejected.detail)
+        assertEquals(ErrorDetail.PARTIAL_INPUT, rejected.detail)
     }
 
     private inline fun <reified T : Outbound> next(): T {

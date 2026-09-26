@@ -1,11 +1,12 @@
 package io.github.noamcohen48.tap.driver
 
 import android.app.Instrumentation
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.TypeText
@@ -14,8 +15,11 @@ import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 
 /**
- * `set_text`, `clear_text` and `type_text`: resolve an editable target, pass the gate, input,
- * then verify the effect with [TextVerifier] before reporting success.
+ * `set_text`, `clear_text` and `type_text`. The driver assumes nothing about how the app reacts
+ * to input: it resolves exactly one node, acts on that node, and reports only what Android
+ * returned for the action or key events. It never reads the field back or resolves the
+ * selector again, because what the app does with the text (reformat, truncate, reject, copy
+ * it elsewhere) is for the test to assert.
  */
 internal class TextInputCommands(
     private val instrumentation: Instrumentation,
@@ -26,90 +30,68 @@ internal class TextInputCommands(
         context: CommandContext,
         command: SetText,
         target: CompiledSelector,
-    ) = editText(context, target, expected = command.text) { element, expected ->
-        element.text = expected
-    }
+    ) = performSetText(context, target, command.text)
 
     fun clearText(
         context: CommandContext,
         target: CompiledSelector,
-    ) = editText(context, target, expected = "") { element, _ -> element.clear() }
+    ) = performSetText(context, target, "")
 
-    /** Accessibility `ACTION_SET_TEXT` shape: resolve, require editable, gate, set, verify. */
-    private inline fun editText(
+    /**
+     * Accessibility `ACTION_SET_TEXT` on the resolved node. `ACTION_REJECTED` when the node
+     * refuses the action (not editable, disabled, a view that does not implement it).
+     */
+    private fun performSetText(
         context: CommandContext,
         target: CompiledSelector,
-        expected: String,
-        mutate: (UiObject2, String) -> Unit,
+        text: String,
     ) {
         context.checkpoint()
         val element = objects.resolveTarget(target)
-        try {
-            if (!element.accessibilityNodeInfo.isEditable) throw CommandFailure(ErrorCode.ERR_NOT_INTERACTABLE)
-            context.markMutationStarted()
-            mutate(element, expected)
-        } finally {
-            element.recycle()
-        }
-        val verificationDeadline = minOf(context.deadlineMs, context.nowMs() + TextVerifier.EDIT_VERIFY_MS)
-        if (!awaitText(context, target, expected, verificationDeadline)) {
-            throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH)
-        }
+        val accepted =
+            try {
+                val node = element.accessibilityNodeInfo
+                val arguments = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+                context.markMutationStarted()
+                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            } finally {
+                element.recycle()
+            }
+        if (!accepted) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "The node refused ACTION_SET_TEXT")
     }
 
+    /**
+     * Clicks the resolved node, lets the UI settle (bounded; never fails the command), then
+     * injects [TypeText.getText] as key events wherever input focus is. Reports whether every
+     * event was accepted; where the characters landed is for the test to assert.
+     */
     fun typeText(
         context: CommandContext,
         command: TypeText,
         target: CompiledSelector,
     ) {
         context.checkpoint()
+        val events =
+            KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(command.text.toCharArray())
+                ?: throw CommandFailure(
+                    ErrorCode.ERR_INVALID_REQUEST,
+                    detail = ErrorDetail.UNSUPPORTED_CHARACTERS,
+                    message = "Text cannot be represented as Android key events",
+                )
         val element = objects.resolveTarget(target)
-        val deadline = context.deadlineMs
         try {
-            if (!element.accessibilityNodeInfo.isEditable) throw CommandFailure(ErrorCode.ERR_NOT_INTERACTABLE)
             if (context.isExpired()) throw CommandFailure(ErrorCode.ERR_DEADLINE_EXCEEDED)
-
-            val text = command.text
-            val events =
-                KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(text.toCharArray())
-                    ?: throw CommandFailure(
-                        ErrorCode.ERR_INVALID_REQUEST,
-                        detail = ErrorDetail.UNSUPPORTED_CHARACTERS,
-                        message = "Text cannot be represented as Android key events",
-                    )
-
-            val initialText = element.displayedText().orEmpty()
-            // The focusing click is the first injected input; everything after it is definitive.
+            // The click is the first injected input; everything after it is definitive.
             context.markMutationStarted()
             element.click()
-            while (!isFocused(target)) {
-                val remaining = deadline - context.nowMs()
-                if (remaining <= 0) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.FOCUS_TIMEOUT)
-                Thread.sleep(minOf(TextVerifier.POLL_MS, remaining))
-            }
-
-            if (context.isExpired()) throw deadlineAfterFocus()
-            device.waitForIdle(minOf(FOCUS_IDLE_WAIT_MS, context.remainingMs()))
-            val revalidation = objects.resolve(target)
-            val revalidated = revalidation.element ?: throw staleTarget(revalidation)
-            val stillFocused =
-                try {
-                    revalidated.isFocused
-                } finally {
-                    revalidated.recycle()
-                }
-            if (!stillFocused) throw CommandFailure(ErrorCode.ERR_STALE_DURING_COMMAND, detail = ErrorDetail.FOCUS_LOST)
-            if (context.isExpired()) throw deadlineAfterFocus()
-
-            injectKeys(context, events)
-
-            val expected = TextVerifier.expectedAfterTyping(initialText, text)
-            if (!awaitText(context, target, expected, deadline)) {
-                throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH)
-            }
         } finally {
             element.recycle()
         }
+        device.waitForIdle(minOf(SETTLE_WAIT_MS, context.remainingMs()))
+        if (context.isExpired()) {
+            throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.DEADLINE_AFTER_FOCUS)
+        }
+        injectKeys(context, events)
     }
 
     /**
@@ -150,44 +132,8 @@ internal class TextInputCommands(
         if (rejected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED)
     }
 
-    private fun awaitText(
-        context: CommandContext,
-        target: CompiledSelector,
-        expected: String,
-        deadlineMs: Long,
-    ): Boolean =
-        TextVerifier.awaitText(
-            expected,
-            deadlineMs,
-            now = context::nowMs,
-            sleep = Thread::sleep,
-            read = { currentText(target) },
-        )
-
-    /** The target's shown text now, or null when it does not resolve. */
-    private fun currentText(target: CompiledSelector): String? {
-        val current = objects.resolve(target).element ?: return null
-        return try {
-            current.displayedText().orEmpty()
-        } finally {
-            current.recycle()
-        }
-    }
-
-    private fun isFocused(target: CompiledSelector): Boolean {
-        val current = objects.resolve(target).element ?: return false
-        return try {
-            current.isFocused
-        } finally {
-            current.recycle()
-        }
-    }
-
-    private fun deadlineAfterFocus(): CommandFailure =
-        CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.DEADLINE_AFTER_FOCUS)
-
     private companion object {
-        /** Bound for the idle wait between focusing and typing. */
-        const val FOCUS_IDLE_WAIT_MS = 3_000L
+        /** Bound for letting the UI settle between the click and the first key event. */
+        const val SETTLE_WAIT_MS = 3_000L
     }
 }

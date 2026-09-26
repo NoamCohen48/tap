@@ -43,10 +43,10 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | DR-12 | H | Open | Driver `<queries>` names only the fixture's sync provider; a real AUT's provider is invisible, so idle sync cannot work outside the fixture | S |
-| DR-3 | H | Open | Text verification re-resolves the selector after the edit → false `TEXT_MISMATCH`/`FOCUS_TIMEOUT`. Resolved by the decision above | M |
+| DR-3 | H | Fixed | Text verification re-resolves the selector after the edit → false `TEXT_MISMATCH`/`FOCUS_TIMEOUT`. Resolved by the decision above | M |
 | DR-5 | H | Partial | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost; measure first) | M–L |
-| DR-4 | M | Open | Password fields can never match expected text. Resolved by the decision above | S |
-| DR-6 | M | Partial | `type_text` verifies an append after a centre tap until the full deadline; key-up events built with `downTime=0` | S |
+| DR-4 | M | Fixed | Password fields can never match expected text. Resolved by the decision above | S |
+| DR-6 | M | Partial | Verification removed (decision above); key-up events still built with `downTime=0` | S |
 | DR-10 | M | Open | Text predicate (`NodePredicate.kt:51`, native `By.text`) matches the shown hint; snapshots strip it | S |
 | DR-11 | M | Partial | scrollUntil fingerprint still walks `UiObject2` (`ScrollUntilCommand.kt:93-113`) | S |
 | DR-13 | M | Open | Signature permission defined only in sync-sdk; install order can drop the grant (unverified) | S |
@@ -110,7 +110,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | K-15 | L→bug | Open | `DeviceAdmission` holds one device; detaching A inside B's admitted block waits on its own drain | M |
-| J-5 | L→bug | Open | `DeviceBarrier` withdrawal under a cancellable `Mutex` (fixed in the working tree: plain monitor) | S |
+| J-5 | L→bug | Fixed | `DeviceBarrier` uses a plain monitor; withdrawal can no longer be cancelled | S |
 | K-4 | M | Open | Proto types in the public API (`Device.info(): DeviceInfo`, `execute: CommandResult`); `App.ProcessIdentity` clashes with the proto name. Breaking — ask first | L |
 | K-9 | M | Open | `tapScope`/`ensureTapBound` mandatory; no `use {}`/`attach {}` helpers | M |
 | K-1 | M | Open | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |

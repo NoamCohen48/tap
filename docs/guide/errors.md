@@ -38,7 +38,7 @@ The codes, grouped by what they tell you:
 |---|---|
 | `NOT_FOUND` | zero matches (for `scrollUntil`: before its first scroll) |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()`/`at(n)` |
-| `NOT_INTERACTABLE` | the node exists but cannot take the action (not editable, not scrollable); `FOCUS_TIMEOUT` when a text field never took focus |
+| `NOT_INTERACTABLE` | the node exists but cannot take the action (disabled for a tap, not scrollable for a scroll); nothing was sent |
 | `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
 | `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `typeText` has no key mapping for a character |
 
@@ -46,8 +46,8 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS`, `FOCUS_LOST` |
-| `ACTION_REJECTED` | input was issued but did not take effect: `TEXT_MISMATCH` (read-back differs), `PARTIAL_INPUT`, `DEADLINE_AFTER_FOCUS` |
+| `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS` |
+| `ACTION_REJECTED` | Android refused the input: the node refused set-text, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing), `DEADLINE_AFTER_FOCUS` |
 | `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance), or a command failed after it had already sent input: the detail then names why (`END_REACHED` / `MAX_SCROLLS` / `WAIT_TIMEOUT` when `scrollUntil` scrolled without finding its target) |
 
 **Waits:**

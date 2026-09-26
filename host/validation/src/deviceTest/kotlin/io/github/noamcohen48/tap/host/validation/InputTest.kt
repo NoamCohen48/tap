@@ -11,12 +11,13 @@ import io.github.noamcohen48.tap.protocol.ok
 /**
  * Text input: `SET_TEXT`, key-event `TYPE_TEXT` (the field sees real key events), a refused
  * character the key map cannot type, and `CLEAR_TEXT` on a hinted field that reports its hint
- * as text once empty.
+ * as text once empty. The driver does not read the field back; like any test, this one asserts
+ * the effect itself.
  */
 @DeviceTest
 class InputTest {
     @OnEachDevice
-    fun `set, type and clear text verify their effect`(serial: String) =
+    fun `set, type and clear text reach the field`(serial: String) =
         deviceTest(serial) { device ->
             device.withSession { session ->
                 val client = session.client
@@ -36,7 +37,7 @@ class InputTest {
                         unsupportedInput.detail == ErrorDetail.UNSUPPORTED_CHARACTERS,
                 ) { "Untypeable characters were not refused: $unsupportedInput" }
                 check(client.execute(Commands.exists(Selectors.text("keys 42"))).bool)
-                // A hinted field reports its hint as `text` once empty; clearing must still verify.
+                // A hinted field reports its hint as `text` once empty; the snapshot must not show it.
                 val clearedHinted = client.send(Commands.clearText(keyboardInput))
                 check(clearedHinted.ok) { "CLEAR_TEXT on a hinted field failed: $clearedHinted" }
                 val clearedSnapshot = client.execute(Commands.snapshot(keyboardInput)).snapshot

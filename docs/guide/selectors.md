@@ -47,7 +47,7 @@ rejected before it reaches the device.
 
 !!! note "Text vs hint"
     An empty `EditText` reports its hint as its accessibility text. Tap's text *observations*
-    (`element.text()`, the verification behind `setText`) treat that as empty text, but text
+    (`element.text()`, `snapshot()`) treat that as empty text, but text
     *selectors* match what UiAutomator sees. Use `hint(...)` to find an empty field.
 
 ## Refinements

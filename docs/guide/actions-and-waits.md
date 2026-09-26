@@ -33,13 +33,24 @@ exactly one.
 |---|---|
 | `tap()` | click at the centre of the node's visible bounds |
 | `longTap()` | long click |
-| `setText(value)` | focus the field, replace its content, then **verify** the text reads back — otherwise `ACTION_REJECTED`/`TEXT_MISMATCH` |
-| `typeText(value)` | focus and type character by character with key events (IME-free); unsupported characters are rejected *before* input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` |
-| `clearText()` | focus and clear |
+| `setText(value)` | accessibility set-text on the node; `ACTION_REJECTED` only if the node refuses it. The field is **not** read back — assert it (see below) |
+| `typeText(value)` | click the node, then type character by character with key events (IME-free) wherever focus is; unsupported characters are rejected *before* input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS`. Not read back |
+| `clearText()` | `setText("")` |
 | `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves |
 | `scroll(direction, distancePercent = 80)` | one scroll of a scrollable container towards `direction`'s content edge (`DOWN` reveals content below). Returns `true` while more content remains |
 | `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80)` | scroll the container until `target` is visible inside it; returns `target` as an `Element`. Once it has scrolled, fails with `INDETERMINATE` and detail `END_REACHED`, `MAX_SCROLLS` or `WAIT_TIMEOUT` (the list moved, so the failure is not side-effect free); before the first scroll, `NOT_FOUND`/`AMBIGUOUS`/`WAIT_TIMEOUT` |
 | `device.pressBack()`, `device.pressHome()`, `device.pressKey(code)` | key events |
+
+Text actions report only what Android said about the input, never what the app did with it:
+apps reformat, truncate, reject or copy text elsewhere, and the framework assumes none of
+that. Assert the outcome with a selector that still identifies the field after the edit (its
+resource id, not its old text):
+
+```kotlin
+val email = device.element(resourceId("email"))
+email.setText("user@example.com")
+email.waitUntil.textEquals("user@example.com")
+```
 
 Directions are `UP`/`DOWN`/`LEFT`/`RIGHT` (`Direction.DIR_*` in the Kotlin proto types, plain
 constants exported by both SDKs).

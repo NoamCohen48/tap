@@ -69,7 +69,12 @@ class Element internal constructor(
         run(timeout) { longTap = LongTap.newBuilder().setSelector(target).build() }
     }
 
-    /** Accessibility text replacement, verified on the device. */
+    /**
+     * Accessibility text replacement (`ACTION_SET_TEXT`) on the one matching node. Fails with
+     * `ACTION_REJECTED` only when the node refuses the action; the field is not read back, so
+     * assert the effect yourself with a selector that survives the edit:
+     * `element(resourceId("email")).waitUntil.textEquals("new")`.
+     */
     suspend fun setText(
         value: String,
         timeout: Duration? = null,
@@ -84,7 +89,11 @@ class Element internal constructor(
         }
     }
 
-    /** Focus plus real key events; unsupported characters are rejected before any input. */
+    /**
+     * Clicks the one matching node, then types [value] as real key events wherever input focus
+     * is. Unsupported characters are rejected before any input; otherwise it reports whether
+     * every key event was accepted. The field is not read back: assert the effect yourself.
+     */
     suspend fun typeText(
         value: String,
         timeout: Duration? = null,
@@ -99,7 +108,7 @@ class Element internal constructor(
         }
     }
 
-    /** Focus the one matching editable node and clear its text. */
+    /** [setText] with an empty string: `ACTION_SET_TEXT` on the one matching node, not read back. */
     suspend fun clearText(timeout: Duration? = null) {
         run(timeout) { clearText = ClearText.newBuilder().setSelector(target).build() }
     }

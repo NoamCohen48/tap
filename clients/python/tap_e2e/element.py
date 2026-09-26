@@ -77,15 +77,24 @@ class Element:
         self._run(timeout, long_tap=pb.LongTap(selector=self._target))
 
     def set_text(self, value: str, timeout: float | None = None) -> None:
-        """Accessibility text replacement, verified on the device."""
+        """Accessibility text replacement (``ACTION_SET_TEXT``) on the one matching node.
+
+        Fails with ``ACTION_REJECTED`` only when the node refuses the action. The field is not
+        read back: assert the effect with a selector that survives the edit, e.g.
+        ``d.element(resource_id("email")).text_equals("new")``.
+        """
         self._run(timeout, set_text=pb.SetText(selector=self._target, text=value))
 
     def type_text(self, value: str, timeout: float | None = None) -> None:
-        """Focus plus real key events; unsupported characters are rejected before any input."""
+        """Click the one matching node, then type ``value`` as key events wherever focus is.
+
+        Unsupported characters are rejected before any input; otherwise it reports whether every
+        key event was accepted. The field is not read back: assert the effect yourself.
+        """
         self._run(timeout, type_text=pb.TypeText(selector=self._target, text=value))
 
     def clear_text(self, timeout: float | None = None) -> None:
-        """Focus the one matching editable node and clear its text."""
+        """``set_text("")``: ``ACTION_SET_TEXT`` on the one matching node, not read back."""
         self._run(timeout, clear_text=pb.ClearText(selector=self._target))
 
     def swipe(

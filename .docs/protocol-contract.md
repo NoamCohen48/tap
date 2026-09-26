@@ -169,9 +169,9 @@ result type.
 | `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window, or `WAIT_TIMEOUT` |
 | `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click |
-| `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: replaces the text; verified within 1 s |
-| `type_text` | `TypeText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: appends via key events; verified |
-| `clear_text` | `ClearText` (mutation) | `selector` | `done`: empties the field; verified |
+| `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: `ACTION_SET_TEXT` accepted by the node (not read back) |
+| `type_text` | `TypeText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: clicks the node, every key event injected (not read back) |
+| `clear_text` | `ClearText` (mutation) | `selector` | `done`: `ACTION_SET_TEXT` with "" accepted (not read back) |
 | `swipe` | `Swipe` (mutation) | `selector`, `direction` (required), `distance_percent` 1..100 | `moved` = true: finger gesture across the element |
 | `scroll` | `Scroll` (mutation) | `selector` (scrollable), `direction` (required), `distance_percent` | one scroll segment; `moved` = true while more content remains in that direction (UiAutomator semantics), false at the end or when no scroll event was observed |
 | `scroll_until` | `ScrollUntil` (mutation) | `selector`, `container`, `direction` (default `DOWN`), `distance_percent`, `max_scrolls` 1..100 (default 20) | `done` once the target is visible inside the container |
@@ -192,8 +192,7 @@ is `INVALID_REQUEST`, a selector problem `INVALID_SELECTOR`, and a `Request` wit
 `UNSUPPORTED`. All of this is decided on the reader lane before any UI access, and the request
 ID is consumed either way.
 
-Text observations (`SNAPSHOT.text`, and the verification behind `SET_TEXT`/`TYPE_TEXT`/
-`CLEAR_TEXT`) exclude a displayed hint: an empty `EditText` reports its hint as accessibility
+Text observations (`SNAPSHOT.text`) exclude a displayed hint: an empty `EditText` reports its hint as accessibility
 text with `isShowingHintText` set, and the driver reads that as empty text. Text *selectors*
 still match what UiAutomator's `By.text` sees (see the gaps document).
 
@@ -425,9 +424,9 @@ policy; Tap itself never retries.
 | `AUT_MISMATCH` | no | no | Observed AUT identity differs. `PROCESS_RESTARTED`, `PROCESS_MISMATCH` from synchronization. |
 | `NOT_FOUND` | no | yes | Zero matches. `END_REACHED`, `MAX_SCROLLS` for `SCROLL_UNTIL`. |
 | `AMBIGUOUS` | no | no | More than one match; returned before any input. |
-| `NOT_INTERACTABLE` | no | yes | Target exists but cannot take the action (not editable, not scrollable, focus never arrived: `FOCUS_TIMEOUT`). |
-| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `FOCUS_LOST`, `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
-| `ACTION_REJECTED` | yes | no | Input was issued but did not take effect. `TEXT_MISMATCH`, `FOCUS_TIMEOUT`, `DEADLINE_AFTER_FOCUS`, `PARTIAL_INPUT`. |
+| `NOT_INTERACTABLE` | no | yes | Target exists but cannot take the action (disabled tap target, non-scrollable scroll target). Checked before the gate. |
+| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
+| `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `DEADLINE_AFTER_FOCUS`, `PARTIAL_INPUT`. Effects are never read back. |
 | `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
