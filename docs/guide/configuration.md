@@ -59,7 +59,7 @@ Set `TAP_STATE_DIR` for both the daemon and the clients if you want it anywhere 
 ## Kotlin + JUnit 5
 
 Read once per JVM from system properties, falling back to environment variables with the same
-name upper-cased and dotted → underscored (`tap.autPackage` → `TAP_AUTPACKAGE`):
+name with camelCase and dots turned into underscores, upper-cased (`tap.autPackage` → `TAP_AUT_PACKAGE`, `tap.device.sender` → `TAP_DEVICE_SENDER`):
 
 | Property | Meaning | Default |
 |---|---|---|
@@ -105,7 +105,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | `tap_server` | `TAP_SERVER` | `host:port` of a running server | the one in `daemon.json` |
 | — | `TAP_TOKEN` | bearer token for an explicit `TAP_SERVER` | the one in `daemon.json` |
 | `tap_manage_daemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test, `tap stop` after the last one if that start created the daemon | `false` |
-| `tap_acquire_timeout` | `TAP_ACQUIRE_TIMEOUT` | seconds to wait for a device another session holds | `120` |
+| `tap_acquire_timeout` | `TAP_ACQUIRE_TIMEOUT` | seconds to wait for a device another session holds | `300` |
 | — | `TAP_BIN` | the `tap` executable `tap_manage_daemon` runs | `tap` on `PATH` |
 | — | `TAP_STATE_DIR` | state dir shared with the daemon | `~/.tap` |
 

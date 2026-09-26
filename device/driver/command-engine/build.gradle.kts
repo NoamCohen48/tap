@@ -1,17 +1,9 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-}
-
-kotlin {
-    jvmToolchain(17)
+    id("tap.kotlin-jvm")
 }
 
 dependencies {
     api(project(":contracts:protocol"))
 
     testImplementation(kotlin("test"))
-}
-
-tasks.test {
-    useJUnitPlatform()
 }

@@ -164,7 +164,7 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 ## Lifecycle, ADB control plane, cleanup (plan §6–7)
 
 - The late-mutation quarantine scenario (device reboot recovery) has not been re-run since
-  the watchdog/heartbeat changes; `host --no-reboot` skips it. Needs an explicit go-ahead
+  the watchdog/heartbeat changes; the deviceTest suite excludes its `reboot` tag unless `-Ptap.reboot=true`. Needs an explicit go-ahead
   because it reboots both devices.
 - Journal recovery runs at session open, but there is no standalone `tap doctor` / cleanup
   command for orphaned forwards, instrumentation, or leases outside a test run.

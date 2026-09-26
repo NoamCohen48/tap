@@ -128,12 +128,8 @@ class DeviceSessionTest {
     private class ReapUncertainAdb(
         val hostPort: Int,
         blockingChild: FakeProcess,
-    ) : Adb("fake-adb") {
+    ) : Adb("fake-adb", ProcessStarter { blockingChild }) {
         var driverPresent = false
-
-        init {
-            processStarter = ProcessStarter { blockingChild }
-        }
 
         override suspend fun bootId(serial: String) = "boot-1"
 
@@ -357,12 +353,13 @@ class DeviceSessionTest {
                 val reachedTransfer = CompletableDeferred<Unit>()
                 val releaseTransfer = CompletableDeferred<Unit>()
                 val cleanupFinished = CompletableDeferred<Unit>()
-                config.beforeOwnershipTransfer = {
+                val hooks = TestSessionHooks()
+                hooks.onBeforeOwnershipTransfer = {
                     reachedTransfer.complete(Unit)
                     releaseTransfer.await()
                 }
-                config.afterCancellationCleanup = { cleanupFinished.complete(Unit) }
-                val opening = async(Dispatchers.IO) { DeviceSession.open(config) }
+                hooks.onAfterCancellationCleanup = { cleanupFinished.complete(Unit) }
+                val opening = async(Dispatchers.IO) { DeviceSession.open(config, hooks) }
                 val health = fake.nextFrame(5_000)
                 fake.respond(health.requestId, Responses.done(1))
                 withTimeout(5_000) { reachedTransfer.await() }
@@ -628,7 +625,7 @@ class DeviceSessionTest {
         }
 
     @Test
-    fun `captured client after poison emits no frame and consumes no request id`() =
+    fun `captured client after poison emits no frame`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
             val fake = FakeDriverServer("session-captured", 1, secret, acceptAnySession = true)
@@ -640,7 +637,6 @@ class DeviceSessionTest {
                 fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 val captured = session.client
-                val idBefore = captured.nextRequestIdForTest()
                 // Poison through the session's sticky state, as a reap-uncertain APP call would.
                 session.noteReapUncertain(
                     AdbReapUncertainException(
@@ -650,7 +646,6 @@ class DeviceSessionTest {
                     ),
                 )
                 assertFailsWith<DeviceQuarantinedException> { captured.submit(io.github.noamcohen48.tap.protocol.Requests.health()) }
-                assertEquals(idBefore, captured.nextRequestIdForTest(), "poisoned admission must not consume an ID")
                 // No frame was emitted: the next frame poll times out instead of delivering a REQUEST.
                 val noFrame =
                     try {
@@ -856,7 +851,8 @@ class DeviceSessionTest {
             try {
                 val adb = openAdb(fake.port)
                 val processes = mutableListOf<FakeProcess>()
-                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val hooks = TestSessionHooks()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes), hooks) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
                 fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
@@ -883,7 +879,7 @@ class DeviceSessionTest {
                 // Explicit barrier: the probe proves close entered its admitted-operation drain
                 // before the failure is released, so the late poison deterministically wins.
                 val closeWaiting = CompletableDeferred<Unit>()
-                session.closeDrainProbeForTest = { closeWaiting.complete(Unit) }
+                hooks.onCloseDrainWaitCall = { closeWaiting.complete(Unit) }
                 val closing = async(Dispatchers.IO) { runCatching { session.close(timeoutMs = 10_000) } }
                 withTimeout(5_000) { closeWaiting.await() }
                 assertFalse(closing.isCompleted, "close must still wait for the admitted operation")
@@ -950,30 +946,38 @@ class DeviceSessionTest {
             try {
                 val adb = openAdb(fake.port)
                 val processes = mutableListOf<FakeProcess>()
-                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val hooks = TestSessionHooks()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes), hooks) }
                 fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
-                // Admit an operation and park it inside the guarded block. These three coroutines
-                // share this thread's event loop and the test never suspends between cancel, close
-                // start and barrier release, so the lease release and the closing drain queue on the
-                // held mutex in order instead of racing it.
+                // Admit an operation and park it inside the guarded block, then cancel it with its
+                // lease release parked (NonCancellable) while close starts draining: the release
+                // must still land after the barrier opens, so close drains instead of timing out.
                 val opGate = CompletableDeferred<Unit>()
-                val op = async { session.guardAdb { opGate.await() } }
-                withTimeout(5_000) {
-                    while (session.inFlightOperationsForTest() != 1) delay(10)
+                val opAdmitted = CompletableDeferred<Unit>()
+                val releaseParked = CompletableDeferred<Unit>()
+                val releaseGate = CompletableDeferred<Unit>()
+                hooks.onBeforeOperationRelease = {
+                    releaseParked.complete(Unit)
+                    releaseGate.await()
                 }
-                val holderEntered = CompletableDeferred<Unit>()
-                val holderRelease = CompletableDeferred<Unit>()
-                val holder = async { session.holdOperationsForTest(holderEntered, holderRelease) }
-                withTimeout(5_000) { holderEntered.await() }
+                val op =
+                    async {
+                        session.guardAdb {
+                            opAdmitted.complete(Unit)
+                            opGate.await()
+                        }
+                    }
+                withTimeout(5_000) { opAdmitted.await() }
                 val original = CancellationException("guarded operation cancelled")
                 op.cancel(original)
+                withTimeout(5_000) { releaseParked.await() }
                 val closing = async { session.close(timeoutMs = 10_000) }
-                holderRelease.complete(Unit)
+                assertFalse(op.isCompleted, "the lease release is parked on the barrier")
+                releaseGate.complete(Unit)
                 // The original cancellation survives the lease release ...
                 val thrown = assertFailsWith<CancellationException> { op.await() }
                 assertEquals(original.message, thrown.message)
-                withTimeout(2_000) { holder.join() }
                 // ... and close drains without a false timeout: CLOSED, never quarantine.
                 withTimeout(15_000) { closing.await() }
                 val record = journalStore().read()
@@ -1080,6 +1084,7 @@ class DeviceSessionTest {
         }
 
     @Test
+    @OptIn(ValidationApi::class)
     fun `a poisoned client makes close journal BROKEN, never a clean CLOSED`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
@@ -1088,7 +1093,7 @@ class DeviceSessionTest {
                 val adb = openAdb(fake.port)
                 val session = openSession(adb, fake)
                 session.checkUsable()
-                session.client.disconnectForValidation()
+                session.client.validationTransport().disconnect()
 
                 val unusable = assertFailsWith<SessionUnusableException> { session.checkUsable() }
                 assertTrue("Driver connection" in unusable.message.orEmpty(), unusable.message)

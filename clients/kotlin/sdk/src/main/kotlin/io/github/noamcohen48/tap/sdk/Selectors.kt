@@ -219,7 +219,7 @@ class Selector internal constructor(
     }
 
     /** True when a non-default match choice (`first`/`at`) is set; `exactly_one` is the default. */
-    private val hasPick: Boolean
+    internal val hasPick: Boolean
         get() = proto.pickCase == SelectorProto.PickCase.FIRST || proto.pickCase == SelectorProto.PickCase.AT
 
     /** True when a non-default scope (a system package) is set; `aut` is the default. */

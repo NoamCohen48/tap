@@ -195,7 +195,7 @@ class App internal constructor(
      */
     suspend fun awaitIdle(
         timeout: Duration = device.timeouts.wait,
-        stableFor: Duration = 200.milliseconds,
+        stableFor: Duration = Timeouts.IDLE_STABLE_FOR,
     ) {
         call(timeout) {
             it.awaitIdle(

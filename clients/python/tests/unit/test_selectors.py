@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest  # type: ignore[import-not-found]
 
-from tap import _gen as pb
-from tap import all_of, any_of, clickable, raw_res, res, text
+from tap_e2e import _gen as pb
+from tap_e2e import all_of, any_of, clickable, raw_res, res, text
 
 SYSTEM = "com.google.android.permissioncontroller"
 

@@ -1,10 +1,14 @@
 package io.github.noamcohen48.tap.junit5
 
+import io.github.noamcohen48.tap.sdk.Timeouts
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/** Resolved once per JVM from system properties, falling back to `TAP_*` environment variables. */
+/**
+ * Resolved once per JVM from system properties, falling back to environment variables named by
+ * [envName] (`tap.autPackage` → `TAP_AUT_PACKAGE`, `tap.device.sender` → `TAP_DEVICE_SENDER`).
+ */
 data class TapConfig(
     /** Serials roles map to, in order from a per-test rotating start; empty = whatever the server's device list offers. */
     val serials: List<String>,
@@ -19,12 +23,15 @@ data class TapConfig(
     companion object {
         val current: TapConfig by lazy { load() }
 
+        /** The environment variable for a `tap.*` property: camelCase and dots become `_`, upper-cased. */
+        internal fun envName(key: String): String = key.replace(Regex("([a-z0-9])([A-Z])"), "$1_$2").replace('.', '_').uppercase()
+
         internal fun load(
-            property: (String) -> String? = { key ->
-                System.getProperty(key) ?: System.getenv(key.uppercase().replace('.', '_'))
-            },
+            property: (String) -> String? = { key -> System.getProperty(key) ?: System.getenv(envName(key)) },
             allProperties: () -> Map<String, String> = {
-                System.getProperties().entries.associate { it.key.toString() to it.value.toString() }
+                System.getenv().entries.filter { it.key.startsWith("TAP_DEVICE_") }.associate {
+                    "tap.device.${it.key.removePrefix("TAP_DEVICE_").lowercase()}" to it.value
+                } + System.getProperties().entries.associate { it.key.toString() to it.value.toString() }
             },
         ): TapConfig {
             val serials =
@@ -36,7 +43,7 @@ data class TapConfig(
             require(serials.distinct().size == serials.size) { "tap.serials contains duplicates: $serials" }
             val autPackage =
                 requireNotNull(property("tap.autPackage") ?: property("tap.aut")) {
-                    "tap.autPackage (or TAP_AUTPACKAGE / TAP_AUT) is required"
+                    "tap.autPackage (or TAP_AUT_PACKAGE / TAP_AUT) is required"
                 }
             val pinned =
                 allProperties()
@@ -52,9 +59,9 @@ data class TapConfig(
                 serials = serials,
                 autPackage = autPackage,
                 artifactsDir = Path.of(property("tap.artifactsDir") ?: "build/tap-artifacts"),
-                acquireTimeout = (property("tap.acquireTimeoutSeconds")?.toLong() ?: 300L).seconds,
+                acquireTimeout = property("tap.acquireTimeoutSeconds")?.toLong()?.seconds ?: Timeouts.ACQUIRE,
                 pinnedRoles = pinned,
-                manageDaemon = (property("tap.manageDaemon") ?: System.getenv("TAP_MANAGE_DAEMON"))?.toBoolean() ?: false,
+                manageDaemon = property("tap.manageDaemon")?.toBoolean() ?: false,
             )
         }
     }

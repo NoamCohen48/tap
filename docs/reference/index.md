@@ -6,7 +6,7 @@ from the code:
 | | Generated from | With |
 |---|---|---|
 | [Kotlin client](kotlin.md) | KDoc in `clients/kotlin/sdk` and `clients/kotlin/junit5` | [Dokka](https://kotlinlang.org/docs/dokka-introduction.html) |
-| [Python client](python.md) | docstrings and type hints in `clients/python/tap` | [mkdocstrings](https://mkdocstrings.github.io/) |
+| [Python client](python.md) | docstrings and type hints in `clients/python/tap_e2e` | [mkdocstrings](https://mkdocstrings.github.io/) |
 | [gRPC server API](grpc.md) | `contracts/proto/*.proto` (`tap.v1`) | [protoc-gen-doc](https://github.com/pseudomuto/protoc-gen-doc) |
 
 `scripts/build-docs.sh` runs the three generators and then `mkdocs build --strict`; the

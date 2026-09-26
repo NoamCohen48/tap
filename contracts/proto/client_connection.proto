@@ -78,4 +78,20 @@ message InfoResponse {
   // Whether attach installs a driver this daemon carries (bundled, or `tap serve --driver-apk`).
   bool driver_available = 6;
   int64 pid = 7;
+  // The defaults the daemon applies to an omitted timeout; clients use the same numbers.
+  Defaults defaults = 8;
+}
+
+message Defaults {
+  // Attach without `default_timeout_ms` (the timeout of every command without its own), and
+  // force-stop, clear-data and process queries without `timeout_ms`.
+  int64 action_timeout_ms = 1;
+  // `AwaitIdle` without `timeout_ms`.
+  int64 wait_timeout_ms = 2;
+  // Install, launch and cold launch without `timeout_ms`.
+  int64 lifecycle_timeout_ms = 3;
+  // `AwaitIdle` without `stable_for_ms`.
+  int64 idle_stable_ms = 4;
+  // How long clients wait for a device another session holds (Attach `lease_timeout_ms`).
+  int64 acquire_timeout_ms = 5;
 }

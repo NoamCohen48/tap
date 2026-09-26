@@ -1,7 +1,7 @@
 # pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportMissingImports=false
 import pytest  # type: ignore[import-not-found]
 from conftest import launch
-from tap import (
+from tap_e2e import (
     UP,
     CommandError,
     ErrorCode,

@@ -157,6 +157,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.Defaults",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.DetachRequest",
     "allDeclaredFields": true
   },
@@ -222,6 +226,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.Exists",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.Failure",
     "allDeclaredFields": true
   },
   {

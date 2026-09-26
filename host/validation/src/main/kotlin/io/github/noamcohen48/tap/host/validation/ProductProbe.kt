@@ -23,6 +23,11 @@ import org.xml.sax.InputSource
 
 private const val PROBE_DEVICE_PORT = 27183
 
+/** Machine-wide Tap state: `TAP_STATE_DIR`, default `~/.tap` (the daemon's rule). */
+internal fun tapStateDir(): Path =
+    System.getenv("TAP_STATE_DIR")?.takeIf(String::isNotBlank)?.let(Path::of)
+        ?: Path.of(System.getProperty("user.home"), ".tap")
+
 internal suspend fun runProductProbe(arguments: List<String>) = withContext(Dispatchers.IO) {
     require(arguments.size >= 7) {
         "Product probe requires <serial> <driver.apk> <driver-test.apk> <aut.apk> <package> " +
@@ -36,10 +41,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
     val activity = arguments[5]
     val screens = arguments.drop(6).map(::parseScreen)
     val adb = Adb()
-    val store = SessionJournalStore(
-        Path.of(System.getProperty("user.home"), ".tap", "sessions"),
-        serial,
-    )
+    val store = SessionJournalStore(tapStateDir().resolve("sessions"), serial)
 
     store.acquireLease().use {
         val bootId = adb.run(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")

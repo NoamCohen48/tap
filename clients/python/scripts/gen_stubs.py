@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates tap/_gen from contracts/proto/*.proto, or verifies it is current (--check).
+"""Regenerates tap_e2e/_gen from contracts/proto/*.proto, or verifies it is current (--check).
 
 The generated modules are committed so `pip install tap-e2e` needs no protoc; CI runs
 `gen_stubs.py --check` to fail when the proto and the stubs drift apart.
@@ -17,7 +17,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 API = ROOT / "contracts" / "proto"
-OUT = ROOT / "clients" / "python" / "tap" / "_gen"
+OUT = ROOT / "clients" / "python" / "tap_e2e" / "_gen"
 PROTOS = sorted(API.glob("*.proto"))
 # Every proto yields <name>_pb2.py/.pyi and <name>_pb2_grpc.py (empty of stubs when it has no server).
 FILES = tuple(
@@ -61,7 +61,7 @@ def generate(into: pathlib.Path) -> None:
     )
     (into / "__init__.py").write_text(
         "# Generated from contracts/proto/*.proto by scripts/gen_stubs.py; do not edit.\n"
-        f"# The package namespace is the union of {modules}: `from tap._gen import Selector`.\n"
+        f"# The package namespace is the union of {modules}: `from tap_e2e._gen import Selector`.\n"
         + exports
     )
 
@@ -73,31 +73,44 @@ def _relative_import(match: re.Match[str]) -> str:
     return f"from . import {module} as {alias}"
 
 
-def check_generator() -> None:
+def generator_matches() -> bool:
     from importlib.metadata import version
 
     installed = version("grpcio-tools")
     if installed != GENERATOR_VERSION:
         print(
-            f"warning: grpcio-tools {installed} installed, stubs are pinned to {GENERATOR_VERSION}",
+            f"grpcio-tools {installed} installed, stubs are pinned to {GENERATOR_VERSION}",
             file=sys.stderr,
         )
+        return False
+    return True
 
 
 def main(argv: list[str]) -> int:
-    check_generator()
+    matches = generator_matches()
     if "--check" in argv:
+        # Another generator release emits different bytes: a check with it proves nothing.
+        if not matches:
+            return 1
         with tempfile.TemporaryDirectory() as tmp:
             fresh = pathlib.Path(tmp)
             generate(fresh)
             stale = [
                 name
                 for name in FILES
-                if not filecmp.cmp(fresh / name, OUT / name, shallow=False)
+                if not (OUT / name).is_file()
+                or not filecmp.cmp(fresh / name, OUT / name, shallow=False)
             ]
-        if stale:
+        # Files no proto generates any more (a deleted or renamed proto) are stale too.
+        extra = sorted(
+            path.name
+            for path in OUT.iterdir()
+            if path.is_file() and path.name not in FILES
+        )
+        if stale or extra:
             print(
-                f"stale generated stubs: {', '.join(stale)}; run clients/python/scripts/gen_stubs.py",
+                f"stale generated stubs: {', '.join(stale + extra)}; "
+                "run clients/python/scripts/gen_stubs.py",
                 file=sys.stderr,
             )
             return 1

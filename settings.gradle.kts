@@ -1,4 +1,5 @@
 pluginManagement {
+    includeBuild("build-logic")
     repositories {
         google()
         mavenCentral()
@@ -24,6 +25,7 @@ include(":contracts:api") // host server API, tap.v1 (host daemon <-> clients)
 // On-device component.
 include(":device:driver")
 include(":device:driver:command-engine")
+include(":device:driver:core") // driver product code (Android library); :device:driver is the instrumentation shell
 include(":device:sync-sdk")
 
 // Host daemon.

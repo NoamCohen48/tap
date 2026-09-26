@@ -9,8 +9,8 @@ import time
 import grpc
 import pytest  # type: ignore[import-not-found]
 
-from tap import ServerError, TapError, TapServer
-from tap import server as server_module
+from tap_e2e import ServerError, TapError, TapServer
+from tap_e2e import server as server_module
 
 from .conftest import TOKEN
 

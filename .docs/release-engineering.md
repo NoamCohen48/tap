@@ -99,8 +99,8 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 | `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64: `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`) (one serial, so two-device tests are skipped). Failure artifacts are uploaded. |
 | `native-image` | (push to `main` only) GraalVM 21 `nativeCompile` + `tap version` smoke; catches missing reflection metadata before a release. |
 
-Not in CI, still local: `host --no-reboot`/full validation flow (needs the two-device local
-matrix and reboots), the Samsung API 29 lane.
+Not in CI, still local: `:host:validation:deviceTest` (needs the two-device local matrix; the
+`reboot`-tagged scenario reboots), the Samsung API 29 lane.
 
 ## Docs (`docs.yml`)
 

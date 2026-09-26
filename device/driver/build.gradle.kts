@@ -17,6 +17,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    /*
+     * `product` is the driver the daemon bundles: fault injection is not in it. `validation`
+     * wires the fault controller (androidTestValidation) into the same entry point for the
+     * host fault-validation suite. Both keep one application id, so the host installs and
+     * instruments either the same way.
+     */
+    flavorDimensions += "faults"
+    productFlavors {
+        create("product") { dimension = "faults" }
+        create("validation") { dimension = "faults" }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -24,9 +36,7 @@ android {
 }
 
 dependencies {
-    androidTestImplementation(project(":contracts:protocol"))
-    androidTestImplementation(project(":device:driver:command-engine"))
-    androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    androidTestImplementation(project(":device:driver:core"))
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

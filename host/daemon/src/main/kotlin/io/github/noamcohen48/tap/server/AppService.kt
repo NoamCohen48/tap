@@ -45,7 +45,7 @@ class AppService(
 ) : AppServiceGrpcKt.AppServiceCoroutineImplBase() {
     /** The [AppLifecycle] of the target package, on a device the calling connection owns. */
     private fun app(target: AppTarget): AppLifecycle {
-        require(target.packageName.isNotBlank()) { "package_name is required" }
+        argument(target.packageName.isNotBlank()) { "package_name is required" }
         return daemon.attachedDevice(target.attachedDeviceId, target.clientConnectionId).deviceSession.app(target.packageName)
     }
 
@@ -67,29 +67,29 @@ class AppService(
                         requests.collect { part ->
                             when (part.partCase) {
                                 InstallRequest.PartCase.HEADER -> {
-                                    require(header == null) { "InstallHeader must be sent exactly once, first" }
+                                    argument(header == null) { "InstallHeader must be sent exactly once, first" }
                                     val h = part.header
-                                    require(h.sizeBytes in 1..MAX_INSTALL_BYTES) { "size_bytes must be in 1..$MAX_INSTALL_BYTES" }
+                                    argument(h.sizeBytes in 1..MAX_INSTALL_BYTES) { "size_bytes must be in 1..$MAX_INSTALL_BYTES" }
                                     header = h
                                 }
 
                                 InstallRequest.PartCase.CHUNK -> {
-                                    val size = requireNotNull(header) { "InstallHeader must come before any chunk" }.sizeBytes
+                                    val size = argumentNotNull(header) { "InstallHeader must come before any chunk" }.sizeBytes
                                     received += part.chunk.size()
-                                    require(received <= size) { "upload exceeds size_bytes $size" }
+                                    argument(received <= size) { "upload exceeds size_bytes $size" }
                                     part.chunk.writeTo(out)
                                 }
 
                                 InstallRequest.PartCase.PART_NOT_SET, null -> {
-                                    throw IllegalArgumentException("InstallRequest.part must be set")
+                                    throw InvalidArgumentException("InstallRequest.part must be set")
                                 }
                             }
                         }
                     }
                 }
-                val h = requireNotNull(header) { "InstallHeader is required" }
-                require(received == h.sizeBytes) { "upload ended after $received of ${h.sizeBytes} bytes" }
-                val timeout = if (h.hasTimeoutMs()) positive(h.timeoutMs, "timeout_ms") else DEFAULT_LIFECYCLE_TIMEOUT_MS
+                val h = argumentNotNull(header) { "InstallHeader is required" }
+                argument(received == h.sizeBytes) { "upload ended after $received of ${h.sizeBytes} bytes" }
+                val timeout = if (h.hasTimeoutMs()) positive(h.timeoutMs, "timeout_ms") else Defaults.LIFECYCLE_TIMEOUT_MS
                 app(h.app).install(apk, timeout)
                 InstallResponse.getDefaultInstance()
             } finally {
@@ -110,19 +110,19 @@ class AppService(
 
     override suspend fun forceStop(request: ForceStopRequest) =
         reply {
-            app(request.app).forceStop(timeout(request.hasTimeoutMs(), request.timeoutMs, DEFAULT_ACTION_TIMEOUT_MS))
+            app(request.app).forceStop(timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS))
             ForceStopResponse.getDefaultInstance()
         }
 
     override suspend fun clearData(request: ClearDataRequest) =
         reply {
-            app(request.app).clearData(timeout(request.hasTimeoutMs(), request.timeoutMs, DEFAULT_ACTION_TIMEOUT_MS))
+            app(request.app).clearData(timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS))
             ClearDataResponse.getDefaultInstance()
         }
 
     override suspend fun grantPermission(request: GrantPermissionRequest) =
         reply {
-            require(request.permission.isNotBlank()) { "permission is required" }
+            argument(request.permission.isNotBlank()) { "permission is required" }
             app(request.app).grantPermission(request.permission)
             GrantPermissionResponse.getDefaultInstance()
         }
@@ -131,7 +131,7 @@ class AppService(
         reply {
             app(request.app).launch(
                 request.takeIf { it.hasActivity() }?.activity,
-                timeout(request.hasTimeoutMs(), request.timeoutMs, DEFAULT_LIFECYCLE_TIMEOUT_MS),
+                timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.LIFECYCLE_TIMEOUT_MS),
             )
             LaunchResponse.getDefaultInstance()
         }
@@ -141,14 +141,14 @@ class AppService(
             val process =
                 app(request.app).coldLaunch(
                     request.takeIf { it.hasActivity() }?.activity,
-                    timeout(request.hasTimeoutMs(), request.timeoutMs, DEFAULT_LIFECYCLE_TIMEOUT_MS),
+                    timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.LIFECYCLE_TIMEOUT_MS),
                 )
             ColdLaunchResponse.newBuilder().setProcess(process.toProto()).build()
         }
 
     override suspend fun process(request: ProcessRequest) =
         reply {
-            val process = app(request.app).process(timeout(request.hasTimeoutMs(), request.timeoutMs, DEFAULT_ACTION_TIMEOUT_MS))
+            val process = app(request.app).process(timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS))
             ProcessResponse.newBuilder().setProcess(process.toProto()).build()
         }
 
@@ -159,8 +159,8 @@ class AppService(
 
     override suspend fun awaitIdle(request: AwaitIdleRequest) =
         reply {
-            val stableFor = if (request.hasStableForMs()) positive(request.stableForMs, "stable_for_ms") else DEFAULT_IDLE_STABLE_MS
-            app(request.app).awaitIdle(timeout(request.hasTimeoutMs(), request.timeoutMs, DEFAULT_WAIT_TIMEOUT_MS), stableFor)
+            val stableFor = if (request.hasStableForMs()) positive(request.stableForMs, "stable_for_ms") else Defaults.IDLE_STABLE_MS
+            app(request.app).awaitIdle(timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.WAIT_TIMEOUT_MS), stableFor)
             AwaitIdleResponse.getDefaultInstance()
         }
 

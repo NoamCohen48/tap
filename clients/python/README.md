@@ -33,7 +33,7 @@ when `tap_manage_daemon = true` / `TAP_MANAGE_DAEMON=1`, stopping only a daemon 
 ## Script usage
 
 ```python
-from tap import TapServer, text, res
+from tap_e2e import TapServer, text, res
 
 server = TapServer()
 with server.connect("smoke") as connection:  # observing: if this process dies, the server detaches its devices
@@ -61,7 +61,7 @@ Configuration comes from ini options or environment variables: `tap_aut`/`TAP_AU
 
 ```python
 import pytest
-from tap import text
+from tap_e2e import text
 
 def test_login(tap_device):                      # one device, role "device"
     tap_device.element(text("Login")).tap()
@@ -84,5 +84,5 @@ TAP_BIN=$PWD/host/daemon/build/native/nativeCompile/tap TAP_SERIALS=emulator-555
 
 ## Generated stubs
 
-`tap/_gen` is generated from `contracts/proto/*.proto` and committed. After editing the proto run
+`tap_e2e/_gen` is generated from `contracts/proto/*.proto` and committed. After editing the proto run
 `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools`); CI runs `gen_stubs.py --check`.

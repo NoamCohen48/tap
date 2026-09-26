@@ -147,7 +147,7 @@ Two things hold at every level:
   is a later option.
 - **The driver APKs ship inside the binary** as resources so `tap serve` can install the
   matching driver on any device without a checkout. That couples the service build to
-  `:device:driver:assembleDebug` / `:device:driver:assembleDebugAndroidTest`.
+  `:device:driver:assembleProductDebug` / `:device:driver:assembleProductDebugAndroidTest`.
 
 ## 5. Schema for bindings
 

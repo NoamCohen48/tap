@@ -33,8 +33,8 @@ class DeviceService(
 
     override suspend fun attach(request: AttachRequest): AttachResponse =
         reply {
-            require(request.serial.isNotBlank()) { "serial is required" }
-            require(request.autPackage.isNotBlank()) { "aut_package is required" }
+            argument(request.serial.isNotBlank()) { "serial is required" }
+            argument(request.autPackage.isNotBlank()) { "aut_package is required" }
             val attachedDevice =
                 daemon.attachDevice(
                     request.clientConnectionId,
@@ -44,7 +44,7 @@ class DeviceService(
                         skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
                         syncAuthority = request.takeIf { it.hasSyncAuthority() }?.syncAuthority,
                         allowedSystemPackages = request.allowedSystemPackagesList.toSet(),
-                        defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else DEFAULT_ACTION_TIMEOUT_MS,
+                        defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else Defaults.ACTION_TIMEOUT_MS,
                         leaseTimeoutMs = if (request.hasLeaseTimeoutMs()) nonNegative(request.leaseTimeoutMs, "lease_timeout_ms") else 0L,
                     ),
                 )
@@ -52,7 +52,7 @@ class DeviceService(
             val info =
                 try {
                     attachedDevice.deviceSession.client
-                        .execute(Commands.deviceInfo(), timeoutMs = DEFAULT_ACTION_TIMEOUT_MS)
+                        .execute(Commands.deviceInfo(), timeoutMs = Defaults.ACTION_TIMEOUT_MS)
                         .deviceInfo
                 } catch (error: Exception) {
                     runCatching { daemon.detachDevice(attachedDevice.id, request.clientConnectionId) }
@@ -97,7 +97,7 @@ class DeviceService(
     override suspend fun screenshot(request: ScreenshotRequest): ScreenshotResponse =
         reply {
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
-            val timeout = if (request.hasTimeoutMs()) positive(request.timeoutMs, "timeout_ms") else DEFAULT_LIFECYCLE_TIMEOUT_MS
+            val timeout = if (request.hasTimeoutMs()) positive(request.timeoutMs, "timeout_ms") else Defaults.LIFECYCLE_TIMEOUT_MS
             val shot = attachedDevice.deviceSession.client.screenshot(timeout)
             ScreenshotResponse
                 .newBuilder()

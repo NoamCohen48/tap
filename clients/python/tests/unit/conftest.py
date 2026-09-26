@@ -11,10 +11,17 @@ from concurrent import futures
 import grpc
 import pytest  # type: ignore[import-not-found]
 
-from tap import _gen as pb
-from tap._gen import app_pb2_grpc, client_connection_pb2_grpc, device_pb2_grpc
+from tap_e2e import _gen as pb
+from tap_e2e._gen import app_pb2_grpc, client_connection_pb2_grpc, device_pb2_grpc
 
 TOKEN = "ab" * 32
+
+
+def fail(context, code, reason, message: str, serial: str = "") -> None:
+    """Aborts like the daemon: the status plus a ``tap-failure-bin`` trailer."""
+    failure = pb.Failure(reason=reason, serial=serial)
+    context.set_trailing_metadata((("tap-failure-bin", failure.SerializeToString()),))
+    context.abort(code, message)
 
 
 class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer):
@@ -97,15 +104,23 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def _own(self, rpc: str, request, context) -> None:
         self.owners.append((rpc, request.client_connection_id))
         if self.deny:
-            context.abort(grpc.StatusCode.PERMISSION_DENIED, "not your device")
+            fail(
+                context,
+                grpc.StatusCode.PERMISSION_DENIED,
+                pb.FAILURE_REASON_NOT_OWNER,
+                "not your device",
+            )
 
     def Attach(self, request, context):
         self.attach_requests.append(request)
         self.attaches.append((request.serial, request.lease_timeout_ms))
         if request.serial in self.busy and not request.HasField("lease_timeout_ms"):
-            context.abort(
-                grpc.StatusCode.UNAVAILABLE,
-                f"device {request.serial} is in use by another session",
+            fail(
+                context,
+                grpc.StatusCode.FAILED_PRECONDITION,
+                pb.FAILURE_REASON_DEVICE_BUSY,
+                f"device {request.serial} is held by another session",
+                serial=request.serial,
             )
         return pb.AttachResponse(
             attached_device_id=f"attached-{request.serial}",
@@ -177,7 +192,12 @@ class _TokenCheck(grpc.ServerInterceptor):
         self.fake.seen_tokens.append(header)
         if self.required and header != f"Bearer {TOKEN}":
             def deny(request, context):
-                context.abort(grpc.StatusCode.UNAUTHENTICATED, "missing or invalid bearer token")
+                fail(
+                    context,
+                    grpc.StatusCode.UNAUTHENTICATED,
+                    pb.FAILURE_REASON_UNAUTHENTICATED,
+                    "missing or wrong daemon token",
+                )
 
             handler = continuation(handler_call_details)
             if handler is not None and handler.unary_stream:

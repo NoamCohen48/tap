@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.server
 
+import io.github.noamcohen48.tap.api.v1.Failure
+import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.grpc.Metadata
 import io.grpc.ServerCall
 import io.grpc.ServerCallHandler
@@ -24,7 +26,8 @@ class TokenAuthInterceptor(
     ): ServerCall.Listener<ReqT> {
         val presented = headers.get(AUTHORIZATION)?.toByteArray(Charsets.UTF_8)
         if (presented == null || !MessageDigest.isEqual(presented, expected)) {
-            call.close(Status.UNAUTHENTICATED.withDescription("missing or wrong daemon token"), Metadata())
+            val trailers = Metadata().apply { put(FAILURE_TRAILER, Failure.newBuilder().setReason(FailureReason.FAILURE_REASON_UNAUTHENTICATED).build()) }
+            call.close(Status.UNAUTHENTICATED.withDescription("missing or wrong daemon token"), trailers)
             return object : ServerCall.Listener<ReqT>() {}
         }
         return next.startCall(call, headers)

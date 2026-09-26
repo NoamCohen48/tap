@@ -723,8 +723,7 @@ object DaemonDiscovery {
  * server; it picks the port, detaches the process and waits for `Info` to answer.
  */
 object TapDaemonProcess {
-    /** Test seam (same-module fakes): replaces process creation. Null means `ProcessBuilder`. */
-    internal var processStarter: ((List<String>) -> Process)? = null
+    private val processBuilder: (List<String>) -> Process = { ProcessBuilder(it).redirectErrorStream(true).start() }
 
     /** [address] of the server and whether this call [started] it (false = it was already running). */
     data class StartResult(
@@ -743,8 +742,17 @@ object TapDaemonProcess {
         stateDir: Path = DaemonDiscovery.stateDir(),
         options: List<String> = emptyList(),
         timeout: Duration = 45.seconds,
+    ): StartResult = start(binary, stateDir, options, timeout, processBuilder)
+
+    /** [start] with an injected process factory (same-module fakes). */
+    internal suspend fun start(
+        binary: String?,
+        stateDir: Path = DaemonDiscovery.stateDir(),
+        options: List<String> = emptyList(),
+        timeout: Duration,
+        starter: (List<String>) -> Process,
     ): StartResult {
-        val output = run(binary, listOf("start", "--state-dir", stateDir.toString()) + options, timeout)
+        val output = run(binary, listOf("start", "--state-dir", stateDir.toString()) + options, timeout, starter)
         val match =
             Regex("""^(started|running) (\S+)""", RegexOption.MULTILINE).find(output)
                 ?: throw TapException("unexpected `tap start` output: $output")
@@ -757,23 +765,21 @@ object TapDaemonProcess {
         stateDir: Path = DaemonDiscovery.stateDir(),
         timeout: Duration = 30.seconds,
     ) {
-        run(binary, listOf("stop", "--state-dir", stateDir.toString()), timeout)
+        run(binary, listOf("stop", "--state-dir", stateDir.toString()), timeout, processBuilder)
     }
 
     private suspend fun run(
         binary: String?,
         args: List<String>,
         timeout: Duration,
+        starter: (List<String>) -> Process,
     ): String =
         withContext(Dispatchers.IO) {
             val executable =
                 binary ?: DaemonDiscovery.findBinary()
                     ?: throw TapException("no `tap` executable found (set tap.bin / TAP_BIN or add it to PATH)")
             val command = listOf(executable) + args
-            val starter = processStarter
-            val process =
-                starter?.invoke(command)
-                    ?: ProcessBuilder(command).redirectErrorStream(true).start()
+            val process = starter(command)
             process.outputStream.close()
             val outputDeferred = CompletableDeferred<String>()
             val drain =

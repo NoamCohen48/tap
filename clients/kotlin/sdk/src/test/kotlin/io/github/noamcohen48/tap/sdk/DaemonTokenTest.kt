@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.grpc.Metadata
@@ -41,7 +42,10 @@ class DaemonTokenTest {
                 val header = headers.get(authorization)
                 seen.add(header)
                 if (header != "Bearer $token") {
-                    call.close(Status.UNAUTHENTICATED.withDescription("missing or invalid bearer token"), Metadata())
+                    call.close(
+                        Status.UNAUTHENTICATED.withDescription("missing or invalid bearer token"),
+                        failureTrailers(FailureReason.FAILURE_REASON_UNAUTHENTICATED),
+                    )
                     return object : ServerCall.Listener<Q>() {}
                 }
                 return next.startCall(call, headers)

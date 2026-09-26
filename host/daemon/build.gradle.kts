@@ -1,26 +1,20 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-    id("org.graalvm.buildtools.native") version "0.11.3"
+    id("tap.kotlin-jvm")
+    alias(libs.plugins.graalvm.native)
     application
 }
-
-kotlin {
-    jvmToolchain(17)
-}
-
-val grpcVersion = "1.75.0"
 
 dependencies {
     implementation(project(":host:core"))
     implementation(project(":contracts:api"))
-    implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation(libs.grpc.netty.shaded)
+    implementation(libs.coroutines.core)
     // The daemon descriptor file (DaemonDescriptor.kt).
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
+    implementation(libs.serialization.json)
 
     testImplementation(kotlin("test"))
-    testImplementation("io.grpc:grpc-inprocess:$grpcVersion")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation(libs.grpc.inprocess)
+    testImplementation(libs.coroutines.test)
     testImplementation(testFixtures(project(":host:core")))
 }
 
@@ -32,16 +26,17 @@ application {
 /*
  * The driver APKs ride inside the daemon so `tap serve` can install the matching driver on
  * any device without a checkout. They are copied into resources from the driver module's
- * debug outputs.
+ * `product` flavor debug outputs (the `validation` flavor, with fault injection, is never bundled).
  */
-val driverApk = rootProject.layout.projectDirectory.file("device/driver/build/outputs/apk/debug/driver-debug.apk")
+val driverApk =
+    rootProject.layout.projectDirectory.file("device/driver/build/outputs/apk/product/debug/driver-product-debug.apk")
 val driverTestApk =
     rootProject.layout.projectDirectory.file(
-        "device/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk",
+        "device/driver/build/outputs/apk/androidTest/product/debug/driver-product-debug-androidTest.apk",
     )
 
 val bundleDriver by tasks.registering(Copy::class) {
-    dependsOn(":device:driver:assembleDebug", ":device:driver:assembleDebugAndroidTest")
+    dependsOn(":device:driver:assembleProductDebug", ":device:driver:assembleProductDebugAndroidTest")
     from(driverApk) { rename { "driver.apk" } }
     from(driverTestApk) { rename { "driver-test.apk" } }
     into(layout.buildDirectory.dir("bundled-driver/io/github/noamcohen48/tap/daemon/driver"))
@@ -49,10 +44,6 @@ val bundleDriver by tasks.registering(Copy::class) {
 
 sourceSets.main {
     resources.srcDir(bundleDriver.map { layout.buildDirectory.dir("bundled-driver").get() })
-}
-
-tasks.test {
-    useJUnitPlatform()
 }
 
 /*

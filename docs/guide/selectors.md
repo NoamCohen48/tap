@@ -18,7 +18,7 @@ whose every action resolves the selector again on the device, so there is nothin
 === "Python"
 
     ```python
-    from tap import res, text, class_name
+    from tap_e2e import res, text, class_name
 
     device.element(res("buy_button")).tap()          # <aut>:id/buy_button
     device.element(text("Add to cart").clickable()).tap()

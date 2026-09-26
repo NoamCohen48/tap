@@ -1,6 +1,6 @@
 # Errors and artifacts
 
-Tap distinguishes four kinds of failure, each its own exception type, and never converts one
+Tap distinguishes these kinds of failure, each its own exception type, and never converts one
 into another:
 
 | Kotlin | Python | Raised when |
@@ -9,7 +9,8 @@ into another:
 | `WaitTimeoutException` | `WaitTimeoutError` | an `await(...)` / `awaitUntil` condition did not hold in time (the device reported `WAIT_TIMEOUT`; any other failure during a wait — driver unhealthy, transport lost — is a `CommandException` / `CommandError`) |
 | `AppLifecycleException` | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
 | `DeviceBusyException` | `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
-| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection) |
+| `DeviceQuarantinedException` | `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
+| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FAILURE_REASON_DRIVER_START_FAILED`); branch on it, not on the message |
 
 All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of
 course, yours.

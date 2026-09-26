@@ -6,9 +6,9 @@ from __future__ import annotations
 import grpc
 import pytest  # type: ignore[import-not-found]
 
-from tap import CommandError, ErrorCode, ServerError, TapError, TapServer, WaitTimeoutError
-from tap import _gen as pb
-from tap import raw_res, text
+from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapServer, WaitTimeoutError
+from tap_e2e import _gen as pb
+from tap_e2e import raw_res, text
 
 from .conftest import TOKEN
 
@@ -123,7 +123,7 @@ def test_screenshot_is_checked_and_written_client_side(fake, device, tmp_path):
 
 
 def test_install_streams_a_header_then_1_mib_chunks(fake, device, tmp_path):
-    from tap.app import INSTALL_CHUNK_BYTES
+    from tap_e2e.app import INSTALL_CHUNK_BYTES
 
     data = bytes(i % 251 for i in range(INSTALL_CHUNK_BYTES * 2 + 123))
     apk = tmp_path / "app.apk"
@@ -143,3 +143,12 @@ def test_install_of_a_missing_file_fails_before_any_rpc(fake, device, tmp_path):
     with pytest.raises(OSError):
         device.app().install(tmp_path / "missing.apk")
     assert fake.apps.install_parts == []
+
+
+def test_scroll_until_returns_the_target_scoped_to_the_container(device):
+    lst = device.element(raw_res("list"))
+    assert lst.scroll_until(text("row 40")).selector == raw_res("list").descendant(
+        text("row 40")
+    )
+    # A picked container cannot be carried into a relation: the bare target comes back.
+    assert lst.first().scroll_until(text("row 40")).selector == text("row 40")

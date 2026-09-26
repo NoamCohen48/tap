@@ -6,40 +6,17 @@
  * clients/python/scripts/gen_stubs.py generates the committed Python stubs for tap.v1.
  */
 plugins {
-    `java-library`
-    `maven-publish`
-    id("org.jetbrains.kotlin.jvm")
-    id("com.google.protobuf") version "0.9.5"
-}
-
-java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
-    withSourcesJar()
-}
-
-kotlin {
-    jvmToolchain(17)
+    id("tap.kotlin-jvm")
+    id("tap.published")
+    alias(libs.plugins.protobuf)
 }
 
 // Published as io.github.noamcohen48.tap:tap-schema (engine version); tap-api depends on it.
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            artifactId = "tap-schema"
-            from(components["java"])
-            pom {
-                name.set("tap-schema")
-                description.set("tap.v1 and tap.wire.v1 protobuf-lite messages")
-            }
-        }
-    }
-}
-
-val protobufVersion = "4.32.1"
+tapPublication { maven("tap-schema", "tap.v1 and tap.wire.v1 protobuf-lite messages") }
 
 dependencies {
-    api("com.google.protobuf:protobuf-javalite:$protobufVersion")
-    api("com.google.protobuf:protobuf-kotlin-lite:$protobufVersion")
+    api(libs.protobuf.javalite)
+    api(libs.protobuf.kotlin.lite)
 }
 
 sourceSets.main {
@@ -47,7 +24,7 @@ sourceSets.main {
 }
 
 protobuf {
-    protoc { artifact = "com.google.protobuf:protoc:$protobufVersion" }
+    protoc { artifact = libs.protobuf.protoc.get().toString() }
     generateProtoTasks {
         all().forEach { task ->
             task.builtins {

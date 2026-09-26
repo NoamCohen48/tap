@@ -6,49 +6,21 @@ import com.google.protobuf.gradle.id
  * no message classes of its own.
  */
 plugins {
-    `java-library`
-    `maven-publish`
-    id("org.jetbrains.kotlin.jvm")
-    id("com.google.protobuf") version "0.9.5"
-}
-
-java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
-    withSourcesJar()
-}
-
-kotlin {
-    jvmToolchain(17)
+    id("tap.kotlin-jvm")
+    id("tap.published")
+    alias(libs.plugins.protobuf)
 }
 
 // Published as io.github.noamcohen48.tap:tap-api (engine version); the Kotlin client depends on it.
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            artifactId = "tap-api"
-            from(components["java"])
-            pom {
-                name.set("tap-api")
-                description.set("tap.v1 host server API: generated gRPC stubs over tap-schema")
-            }
-        }
-    }
-}
-
-val grpcVersion = "1.75.0"
-val protobufVersion = "4.32.1"
-// grpc-kotlin lags grpc-java: 1.5.0 is built against grpc-stub 1.62.2 and used here with
-// grpc-java 1.75.0, which resolves because its metadata requires that version softly.
-val grpcKotlinVersion = "1.5.0"
-val coroutinesVersion = "1.10.2"
+tapPublication { maven("tap-api", "tap.v1 host server API: generated gRPC stubs over tap-schema") }
 
 dependencies {
     api(project(":contracts:schema"))
-    api("io.grpc:grpc-protobuf-lite:$grpcVersion")
-    api("io.grpc:grpc-stub:$grpcVersion")
-    api("io.grpc:grpc-kotlin-stub:$grpcKotlinVersion")
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
-    compileOnly("javax.annotation:javax.annotation-api:1.3.2")
+    api(libs.grpc.protobuf.lite)
+    api(libs.grpc.stub)
+    api(libs.grpc.kotlin.stub)
+    api(libs.coroutines.core)
+    compileOnly(libs.javax.annotation.api)
 }
 
 sourceSets.main {
@@ -58,10 +30,10 @@ sourceSets.main {
 }
 
 protobuf {
-    protoc { artifact = "com.google.protobuf:protoc:$protobufVersion" }
+    protoc { artifact = libs.protobuf.protoc.get().toString() }
     plugins {
-        id("grpc") { artifact = "io.grpc:protoc-gen-grpc-java:$grpcVersion" }
-        id("grpckt") { artifact = "io.grpc:protoc-gen-grpc-kotlin:$grpcKotlinVersion:jdk8@jar" }
+        id("grpc") { artifact = libs.grpc.protoc.gen.java.get().toString() }
+        id("grpckt") { artifact = "${libs.grpc.protoc.gen.kotlin.get()}:jdk8@jar" }
     }
     generateProtoTasks {
         all().forEach { task ->

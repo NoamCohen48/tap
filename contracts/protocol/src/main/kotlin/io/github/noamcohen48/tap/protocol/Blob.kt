@@ -53,5 +53,17 @@ object BlobFrames {
         return BlobChunk(blobId, index, payload.copyOfRange(CHUNK_HEADER_BYTES, payload.size))
     }
 
-    fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    /** Lower-case hex SHA-256 of [bytes]. Hand-rolled: `java.util.HexFormat` needs API 34 on Android. */
+    fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        val hex = CharArray(digest.size * 2)
+        digest.forEachIndexed { index, byte ->
+            val value = byte.toInt() and 0xFF
+            hex[index * 2] = HEX_DIGITS[value ushr 4]
+            hex[index * 2 + 1] = HEX_DIGITS[value and 0x0F]
+        }
+        return String(hex)
+    }
+
+    private val HEX_DIGITS = "0123456789abcdef".toCharArray()
 }

@@ -92,15 +92,15 @@ itself. Configuration is read from system properties or environment variables:
 
 | Property | Env | Meaning |
 |---|---|---|
-| `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
+| `tap.autPackage` | `TAP_AUT_PACKAGE` | application under test (required) |
 | `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, rotating the start device per test (default: any device the server lists) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
 | `tap.server` | `TAP_SERVER` | `host:port` of a running server (default: the one in `<state dir>/daemon.json`) |
 | `tap.token` | `TAP_TOKEN` | bearer token for an explicit `tap.server` (default: the one in `daemon.json`) |
 | `tap.manageDaemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test and `tap stop` after the last one if that start created the server (default `false`) |
 | `tap.bin` | `TAP_BIN` | the `tap` executable `tap.manageDaemon` runs (default: `tap` on `PATH`) |
-| `tap.artifactsDir` | `TAP_ARTIFACTSDIR` | failure artifacts (default `build/tap-artifacts`) |
-| `tap.acquireTimeoutSeconds` | `TAP_ACQUIRETIMEOUTSECONDS` | wait for a device another session holds (default 300) |
+| `tap.artifactsDir` | `TAP_ARTIFACTS_DIR` | failure artifacts (default `build/tap-artifacts`) |
+| `tap.acquireTimeoutSeconds` | `TAP_ACQUIRE_TIMEOUT_SECONDS` | wait for a device another session holds (default 300) |
 
 `samples/fixture-tests` is a complete example wired through Gradle; run it with
 
@@ -131,7 +131,7 @@ The Python API mirrors the Kotlin one; `tap_device` is a per-test session:
 
 ```python
 import pytest
-from tap import text, res
+from tap_e2e import text, res
 
 def test_view_button(tap_device):
     tap_device.app().cold_launch(".MainActivity")
@@ -206,15 +206,16 @@ The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/p
 - JDK 17.
 - ADB-visible Android API 26+ devices.
 
-The workstation's default Java 26 is not compatible with the Android JDK image transform.
-Set `JAVA_HOME` to a JDK 17 installation before building (Gradle's provisioned toolchain
-lives at `~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2` on the current workstation).
+Gradle itself runs on a JDK 17 whatever `JAVA_HOME` points at
+(`gradle/gradle-daemon-jvm.properties`): it must find one locally (an OS install, `~/.gradle/jdks`
+or setup-java's `JAVA_HOME_17_*` in CI). Dependency and plugin versions live in
+`gradle/libs.versions.toml`; shared JVM module setup in the `build-logic` convention plugins.
 
 ## Build
 
 ```bash
-./gradlew :contracts:protocol:test :device:driver:command-engine:test :host:core:test :host:validation:installDist \
-  :device:driver:assembleDebug :device:driver:assembleDebugAndroidTest \
+./gradlew :contracts:protocol:test :device:driver:command-engine:test :device:driver:core:test :host:core:test \
+  :host:validation:installDist :device:driver:assembleDebug :device:driver:assembleAndroidTest \
   :fixture-app:assembleDebug
 ```
 
@@ -223,11 +224,13 @@ Modules, by component:
 - `contracts/` — `contracts/proto` is the one protobuf schema (`tap.v1` server API +
   `tap.wire.v1` device payloads): `:contracts:schema` (generated lite messages),
   `:contracts:api` (gRPC stubs), `:contracts:protocol` (TAP1 framing, handshake, validation).
-- `device/` — `:device:driver` + `:device:driver:command-engine` (on-device driver),
-  `:device:sync-sdk` (optional AUT library).
+- `device/` — `:device:driver:core` (driver product code, Android library) +
+  `:device:driver:command-engine` (pure-JVM pipeline), run by `:device:driver` (instrumentation
+  shell; flavor `product` is what the daemon bundles, `validation` adds fault injection for the
+  validation flow), `:device:sync-sdk` (optional AUT library).
 - `host/` — `:host:core` (ADB, journals, sessions, `DriverClient`, `AppLifecycle`),
-  `:host:daemon` (gRPC host daemon, `tap` executable), `:host:validation` (the `host`
-  validation executable). Nothing here depends on `clients/`.
+  `:host:daemon` (gRPC host daemon, `tap` executable), `:host:validation` (device
+  validation suite + `tap-product-probe`). Nothing here depends on `clients/`.
 - `clients/` — `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `clients/python` (tap-e2e);
   each depends only on `contracts/api`.
 - `:fixture-app`, `:samples:fixture-tests`.
@@ -242,36 +245,37 @@ GRAALVM_HOME=... ./gradlew :host:daemon:nativeCompile
 
 ## Run the validation flow
 
-Pass one serial or a comma-separated set of unique serials:
-
-**Warning:** the Phase 0 command below includes destructive late-mutation validation and
-intentionally reboots every supplied device. Do not use it for routine development or shared
-devices.
+Device validation is a JUnit 5 suite (`:host:validation:deviceTest`, one class per scenario:
+recovery, fencing, transport faults, cancellation, heartbeat, selectors, input, scroll,
+permissions, multi-device disconnect isolation, ...). Pass one serial or a comma-separated set;
+without `-Ptap.serials` every test is skipped:
 
 ```bash
-./host/validation/build/install/host/bin/host \
-  emulator-5554,DEVICE_SERIAL \
-  "$PWD/device/driver/build/outputs/apk/debug/driver-debug.apk" \
-  "$PWD/device/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk" \
-  "$PWD/fixture-app/build/outputs/apk/debug/fixture-app-debug.apk"
+./gradlew :host:validation:deviceTest -Ptap.serials=emulator-5554,DEVICE_SERIAL
 ```
 
-The run prints `PHASE_0_OK` only after the device flow and instrumentation process both
-finish successfully. Pass `--no-reboot` (anywhere in the arguments) to skip only the
-late-mutation quarantine scenario; every other check, including the Phase 1 proofs
-(`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK`, `PHASE_1_HEARTBEAT_EXPIRY_OK`,
-`PHASE_1_SCREENSHOT_OK`, `PHASE_1_SELECTORS_OK`, `PHASE_1_OBSERVATION_OK`), still runs and no
-device is rebooted.
+The driver and fixture APKs default to
+`device/driver/build/outputs/apk/validation/debug/driver-validation-debug.apk`,
+`device/driver/build/outputs/apk/androidTest/validation/debug/driver-validation-debug-androidTest.apk`
+and `fixture-app/build/outputs/apk/debug/fixture-app-debug.apk` (build them first); override
+with `-Ptap.driverApk=`, `-Ptap.driverTestApk=` and `-Ptap.fixtureApk=`. Journals and leases
+live in `$TAP_STATE_DIR/sessions` (default `~/.tap/sessions`). Timings are printed as
+`TAP_VALIDATION <scenario> serial=...` lines.
+
+**Warning:** `-Ptap.reboot=true` adds `LateMutationQuarantineTest` (tagged `reboot`), which
+intentionally reboots every supplied device. Do not use it for routine development or shared
+devices. Without it no device is rebooted.
 
 To benchmark and inventory screens in an arbitrary installed product shape without adding
-product logic to Tap, use product-probe mode. Each final argument is
+product logic to Tap, use the product probe. Each final argument is
 `tap text|ready text|screen name`; use `-` for the initial screen:
 
 ```bash
-./host/validation/build/install/host/bin/host --product-probe \
+./gradlew :host:validation:installDist
+./host/validation/build/install/tap-product-probe/bin/tap-product-probe \
   emulator-5554 \
-  "$PWD/device/driver/build/outputs/apk/debug/driver-debug.apk" \
-  "$PWD/device/driver/build/outputs/apk/androidTest/debug/driver-debug-androidTest.apk" \
+  "$PWD/device/driver/build/outputs/apk/product/debug/driver-product-debug.apk" \
+  "$PWD/device/driver/build/outputs/apk/androidTest/product/debug/driver-product-debug-androidTest.apk" \
   /path/to/app.apk com.example.app .MainActivity \
   '-|Home|home' 'Settings|Appearance|settings'
 ```
@@ -299,7 +303,7 @@ package): [`.docs/release-engineering.md`](.docs/release-engineering.md).
 
 `docs/` is the public documentation (MkDocs Material, `mkdocs.yml`): a hand-written guide and
 three generated references — Kotlin (Dokka, `./gradlew :dokkaGenerate`), Python (mkdocstrings
-from the docstrings of `clients/python/tap`) and the `tap.v1` gRPC API (protoc-gen-doc from
+from the docstrings of `clients/python/tap_e2e`) and the `tap.v1` gRPC API (protoc-gen-doc from
 `contracts/proto`). `scripts/build-docs.sh` runs the generators and `mkdocs build --strict` into
 `build/site`, and also assembles `build/docs-md/` (+ `build/tap-docs-md.zip`): the same guide
 and references as plain Markdown (Dokka GFM and lazydocs instead of Dokka HTML and

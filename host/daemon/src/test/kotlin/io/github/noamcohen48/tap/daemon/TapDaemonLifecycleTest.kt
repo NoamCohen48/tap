@@ -47,6 +47,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.io.TempDir
+import java.lang.ref.WeakReference
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -55,6 +56,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private fun testConfig(log: (String) -> Unit = {}): DaemonConfig {
@@ -201,15 +203,22 @@ class TapDaemonLifecycleTest {
         }
 
     @Test
-    fun `attached device ownership has a sole id edge and no object cycle`() {
-        val connectionFields = ClientConnection::class.java.declaredFields.associateBy { it.name }
-        assertFalse("sessionIds" in connectionFields)
-        assertFalse(connectionFields.values.any { it.type == AttachedDevice::class.java })
-
-        val attachedDeviceFields = AttachedDevice::class.java.declaredFields.associateBy { it.name }
-        assertEquals(String::class.java, attachedDeviceFields.getValue("ownerConnectionId").type)
-        assertEquals(DaemonDeviceSession::class.java, attachedDeviceFields.getValue("deviceSession").type)
-        assertFalse(attachedDeviceFields.values.any { it.type == ClientConnection::class.java })
+    fun `a disconnected connection and its attached devices are not retained`() {
+        val daemon = TapDaemon(testConfig(), FakeOpener())
+        val (connection, attached) =
+            runBlocking {
+                val connection = daemon.connectClient("collectable")
+                val attached = daemon.attachDevice(connection.id, "serial-gc", "com.test", testOptions())
+                assertEquals(1, daemon.disconnectClient(connection.id, "test"))
+                WeakReference(connection) to WeakReference(attached)
+            }
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while ((connection.get() != null || attached.get() != null) && System.nanoTime() < deadline) {
+            System.gc()
+            Thread.sleep(10)
+        }
+        assertNull(connection.get(), "the daemon still references the disconnected ClientConnection")
+        assertNull(attached.get(), "the daemon still references the detached AttachedDevice")
     }
 
     @Test

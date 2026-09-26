@@ -66,6 +66,7 @@ class DriverClient private constructor(
     /** Padding added to a command's own timeout to form its private response budget. Production
      * default; tests inject a small value so budget expiry is deterministic without long sleeps. */
     private val responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
+    private val hooks: TransportHooks = TransportHooks.None,
 ) {
     private val socket = Socket()
 
@@ -87,42 +88,11 @@ class DriverClient private constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val transport =
-        DriverTransport(socket, scope, generation, serial, ::remainingTimeoutMs) { requestId, request, timeoutMs ->
+        DriverTransport(socket, scope, generation, serial, ::remainingTimeoutMs, hooks) { requestId, request, timeoutMs ->
             PendingCommand(requestId, request, timeoutMs)
         }
 
-    internal var beforePhysicalWrite: (suspend () -> Unit)?
-        get() = transport.beforePhysicalWrite
-        set(value) {
-            transport.beforePhysicalWrite = value
-        }
-    internal var afterPhysicalWrite: (() -> Unit)?
-        get() = transport.afterPhysicalWrite
-        set(value) {
-            transport.afterPhysicalWrite = value
-        }
-    internal var beforeMarkWritten: (() -> Unit)?
-        get() = transport.beforeMarkWritten
-        set(value) {
-            transport.beforeMarkWritten = value
-        }
-    internal var afterTerminalResponse: (() -> Unit)?
-        get() = transport.afterTerminalResponse
-        set(value) {
-            transport.afterTerminalResponse = value
-        }
-    internal var afterAwaitCancel: (() -> Unit)?
-        get() = transport.afterAwaitCancel
-        set(value) {
-            transport.afterAwaitCancel = value
-        }
-    internal var frameSink: FrameSink
-        get() = transport.frameSink
-        set(value) {
-            transport.frameSink = value
-        }
-
-    /** Whether the transport can no longer be trusted; test visibility without exposing the flag. */
+    /** Whether the transport can no longer be trusted; the owning session's usability check. */
     internal val isPoisoned: Boolean get() = transport.isPoisoned
 
     /** The first failure that poisoned the transport; null while healthy. */
@@ -153,6 +123,30 @@ class DriverClient private constructor(
             serial: String? = null,
             heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
             responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
+        ): DriverClient =
+            connect(
+                hostPort,
+                sessionId,
+                generation,
+                secret,
+                overallDeadlineNanos,
+                serial,
+                heartbeatIntervalMs,
+                responseBudgetPaddingMs,
+                TransportHooks.None,
+            )
+
+        /** [connect] with transport [hooks]; host/core tests park or observe the race points. */
+        internal suspend fun connect(
+            hostPort: Int,
+            sessionId: String,
+            generation: Long,
+            secret: ByteArray,
+            overallDeadlineNanos: Long? = null,
+            serial: String? = null,
+            heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
+            responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
+            hooks: TransportHooks,
         ): DriverClient {
             val client =
                 DriverClient(
@@ -164,6 +158,7 @@ class DriverClient private constructor(
                     serial,
                     heartbeatIntervalMs,
                     responseBudgetPaddingMs,
+                    hooks,
                 )
             try {
                 withContext(Dispatchers.IO) {
@@ -259,7 +254,7 @@ class DriverClient private constructor(
                 }
             terminal = terminalResponse
             transmission.getAndSet(TransmissionState.TERMINAL_RESPONSE)
-            afterTerminalResponse?.invoke()
+            hooks.afterTerminalResponse()
             deadlineWatcher?.cancel()
             result.complete(terminalResponse)
         }
@@ -301,7 +296,7 @@ class DriverClient private constructor(
         }
 
         internal fun markWritten() {
-            beforeMarkWritten?.invoke()
+            hooks.beforeMarkWritten()
             transmission.compareAndSet(TransmissionState.WRITING, TransmissionState.WRITTEN)
         }
 
@@ -349,7 +344,7 @@ class DriverClient private constructor(
                 throw poisonAsLoss(budgetMs)
             } catch (cancelled: CancellationException) {
                 cancel()
-                afterAwaitCancel?.invoke()
+                hooks.afterAwaitCancel()
                 throw cancelled
             } catch (failure: Throwable) {
                 throw transportFailure(failure)
@@ -464,12 +459,6 @@ class DriverClient private constructor(
         return transport.submit(request.withEnvelope(sessionId, generation, timeoutMs)) { sessionGate?.invoke() }
     }
 
-    /** Test seam for deterministic cancellation while another operation owns the transport. */
-    internal suspend fun withTransportLock(block: suspend () -> Unit) = transport.withLock(block)
-
-    /** Test visibility: the next request ID that [submit] would allocate. */
-    internal suspend fun nextRequestIdForTest(): Long = transport.nextRequestIdForTest()
-
     /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
     suspend fun screenshot(timeoutMs: Long = 30_000): Screenshot {
         val command = submit(Requests.screenshot(), timeoutMs = timeoutMs)
@@ -520,42 +509,52 @@ class DriverClient private constructor(
 
     private class HeartbeatStopped(cause: Throwable) : RuntimeException(cause)
 
-    /** Validation flow only: sends `health` with an explicit request ID / identity to probe fencing. */
-    suspend fun executeValidationRequest(
-        requestId: Long,
-        requestSessionId: String = sessionId,
-        requestGeneration: Long = generation,
-    ): Response {
-        val request = Requests.health().withEnvelope(requestSessionId, requestGeneration, 5_000)
-        return awaitValidation(
-            transport.submitValidation(requestId, request) { sessionGate?.invoke() },
-        )
-    }
-
     /**
-     * Validation flow only: sends arbitrary bytes as a `REQUEST` payload, for probing how the
-     * driver answers what [submit] refuses to send (malformed protobuf, an unset body, invalid
-     * arguments). The pending entry is classified as a non-mutating `health`.
+     * The opt-in side door for fault probes (explicit request IDs, raw payloads, simulated
+     * disconnect); see [ValidationTransport]. Its requests pass the same session admission gate.
      */
-    suspend fun executeRawValidationRequest(
-        requestId: Long,
-        payload: ByteArray,
-    ): Response =
-        awaitValidation(
-            transport.submitRawValidation(requestId, Requests.health(), 5_000, payload) {
-                sessionGate?.invoke()
-            },
-        )
+    @ValidationApi
+    fun validationTransport(): ValidationTransport = Validation()
 
-    private suspend fun awaitValidation(command: PendingCommand): Response =
-        try {
-            command.await()
-        } catch (error: CommandTransportException) {
-            throw error.cause ?: error
+    @OptIn(ValidationApi::class)
+    private inner class Validation : ValidationTransport {
+        override suspend fun executeHealth(
+            requestId: Long,
+            sessionId: String?,
+            generation: Long?,
+        ): Response {
+            val request =
+                Requests.health().withEnvelope(
+                    sessionId ?: this@DriverClient.sessionId,
+                    generation ?: this@DriverClient.generation,
+                    5_000,
+                )
+            return awaitValidation(
+                transport.submitWithExplicitId(requestId, request, request.timeoutMs, request.toByteArray()) {
+                    sessionGate?.invoke()
+                },
+            )
         }
 
-    /** Validation flow only: poisons this client as if the transport had failed. */
-    fun disconnectForValidation() = transport.disconnectForValidation()
+        override suspend fun executeRaw(
+            requestId: Long,
+            payload: ByteArray,
+        ): Response =
+            awaitValidation(
+                transport.submitWithExplicitId(requestId, Requests.health(), 5_000, payload) {
+                    sessionGate?.invoke()
+                },
+            )
+
+        override fun disconnect() = transport.disconnectForValidation()
+
+        private suspend fun awaitValidation(command: PendingCommand): Response =
+            try {
+                command.await()
+            } catch (error: CommandTransportException) {
+                throw error.cause ?: error
+            }
+    }
 
     suspend fun close() =
         withContext(NonCancellable) {

@@ -128,7 +128,7 @@ tap_aut = com.shop
 ```
 
 ```python
-from tap import text, res
+from tap_e2e import text, res
 
 def test_opens_the_home_screen(tap_device):
     app = tap_device.app()
@@ -182,7 +182,7 @@ server, then attaches each device it needs.
 === "Python"
 
     ```python
-    from tap import TapServer, text
+    from tap_e2e import TapServer, text
 
     with TapServer().connect("smoke") as connection:
         with connection.attach_device("emulator-5554", "com.shop") as device:

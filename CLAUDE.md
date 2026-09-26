@@ -93,20 +93,24 @@ Rules when doing so:
 
 ## Build notes
 
-- JDK 17 is required: `export JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2`
-  on this workstation; the default JDK is not compatible with AGP.
-- The validation executable is `host/validation/build/install/host/bin/host`
-  (`:host:validation:installDist`). The full flow (`host <serials> <apks>`) is destructive
-  and reboots devices. Do not run it against shared devices without asking.
-  `host --no-reboot ...` skips only the reboot scenario and is safe for routine validation on
-  the local matrix (emulator-5554 API 34, 85e49002 Samsung SM-J810G API 29).
+- Gradle runs on JDK 17 via `gradle/gradle-daemon-jvm.properties` (discovered in `~/.gradle/jdks`),
+  so `JAVA_HOME` no longer matters. Versions live in `gradle/libs.versions.toml`; shared JVM module
+  setup (`tap.kotlin-jvm`, `tap.published`, `tap.dokka`) in `build-logic/`.
+- Device validation is the JUnit 5 `deviceTest` suite in `:host:validation`:
+  `./gradlew :host:validation:deviceTest -Ptap.serials=emulator-5554,85e49002` (one class per
+  scenario; skipped without serials). APKs default to the validation-flavor driver + fixture;
+  override with `-Ptap.driverApk=… -Ptap.driverTestApk=… -Ptap.fixtureApk=…`. The default run
+  never reboots and is safe for routine validation on the local matrix (emulator-5554 API 34,
+  85e49002 Samsung SM-J810G API 29). `-Ptap.reboot=true` adds the `@Tag("reboot")`
+  `LateMutationQuarantineTest`, which reboots devices: do not run it against shared devices
+  without asking. `tap-product-probe` (`:host:validation:installDist`) is the product probe.
 - Client/server changes are validated with
   `./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554,85e49002` (starts the JVM
   daemon dist via `tap.manageDaemon` and stops it afterwards unless one was already running)
   and the Python suite below. Clients never start the server: `tap start` / `tap stop`
   (`.docs/daemon-startup.md`). Unit tests: `:host:core:test :host:daemon:test :contracts:protocol:test
   :device:driver:command-engine:test`.
-- Product code must never depend on `:host:validation`; `PhaseZeroMain` is fault-injection
+- Product code must never depend on `:host:validation`; the device tests are fault-injection
   validation, not framework code.
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.
 - `contracts/proto/**/*.proto` are the single schema for the server API and the device wire
@@ -116,7 +120,7 @@ Rules when doing so:
   the script), and update `.docs/server-api.md`. CI also runs `buf lint`/`buf breaking`
   (`contracts/proto/buf.yaml`): only add fields/values; never remove, renumber or retype.
 - Native image: `GRAALVM_HOME=~/.local/share/graalvm/graalvm-community-openjdk-21.0.2+13.1
-  ./gradlew :host:daemon:nativeCompile` (JAVA_HOME stays JDK 17). If a new dependency uses
+  ./gradlew :host:daemon:nativeCompile`. If a new dependency uses
   reflection, re-record `host/daemon/src/main/resources/META-INF/native-image` with the
   tracing agent (`JAVA_OPTS=-agentlib:native-image-agent=config-output-dir=...` on the JVM
   dist while running the smoke flow).
