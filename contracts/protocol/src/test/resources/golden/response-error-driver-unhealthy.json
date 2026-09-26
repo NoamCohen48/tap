@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "DRIVER_UNHEALTHY",
-  "detail": "HEARTBEAT_EXPIRED",
-  "message": "example",
-  "durationMs": 5
-}

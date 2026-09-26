@@ -2,7 +2,7 @@
 
 Python client and pytest plugin for the Tap host daemon. All device logic lives in the
 daemon (`host/daemon`, the `tap` binary); this package is a thin gRPC client generated from
-`contracts/api/proto/*.proto` plus a small ergonomic layer that mirrors the Kotlin SDK (`Device`, `Element`,
+`contracts/proto/*.proto` plus a small ergonomic layer that mirrors the Kotlin SDK (`Device`, `Element`,
 waits, selectors, `App`).
 
 ## Install
@@ -84,5 +84,5 @@ TAP_BIN=$PWD/host/daemon/build/native/nativeCompile/tap TAP_SERIALS=emulator-555
 
 ## Generated stubs
 
-`tap/_gen` is generated from `contracts/api/proto/*.proto` and committed. After editing the proto run
+`tap/_gen` is generated from `contracts/proto/*.proto` and committed. After editing the proto run
 `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools`); CI runs `gen_stubs.py --check`.

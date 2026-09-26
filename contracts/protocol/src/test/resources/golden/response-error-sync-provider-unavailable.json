@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "SYNC_PROVIDER_UNAVAILABLE",
-  "detail": "PROVIDER_TIMEOUT",
-  "message": "example",
-  "durationMs": 5
-}

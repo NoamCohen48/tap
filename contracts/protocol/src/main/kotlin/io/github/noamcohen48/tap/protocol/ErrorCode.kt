@@ -1,69 +1,91 @@
 package io.github.noamcohen48.tap.protocol
 
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_ACTION_REJECTED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_AMBIGUOUS
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_ARTIFACT_TRANSFER_FAILED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_AUT_ANR
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_AUT_CRASHED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_AUT_MISMATCH
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_AUT_NOT_INSTALLED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_CANCELLED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_DEADLINE_EXCEEDED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_DRIVER_UNHEALTHY
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_DUPLICATE_OR_STALE
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_INDETERMINATE
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_INTERNAL
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_INVALID_REQUEST
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_INVALID_SELECTOR
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_NOT_FOUND
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_NOT_INTERACTABLE
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_OVERLOADED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_PAYLOAD_TOO_LARGE
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_SESSION_MISMATCH
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_STALE_DURING_COMMAND
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_TRANSPORT_LOST
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_UNAUTHENTICATED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_UNKNOWN
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_UNSPECIFIED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_UNSUPPORTED
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_WAIT_TIMEOUT
+import io.github.noamcohen48.tap.api.v1.ErrorCode.UNRECOGNIZED
+
+/*
+ * The closed remote error taxonomy is `tap.v1.ErrorCode`. A response carries exactly one code;
+ * finer, stable sub-reasons travel in `Error.detail` ([ErrorDetail]) so the enum stays small and
+ * every client can branch on it without knowing driver internals. Both `when`s below are
+ * exhaustive, so a new code does not compile until it is classified.
+ */
 
 /**
- * Closed remote error taxonomy. A response carries exactly one code; finer, stable sub-reasons
- * travel in [Response.Error.detail] (see [ErrorDetail]) so the enum stays small and every client can
- * branch on it without knowing driver internals.
- *
- * [mayHaveMutated] is the safety property: a code with `false` guarantees the device state was
- * not changed by this command, so a caller's policy may retry it. `true` codes must never be
- * retried blindly.
+ * The safety property: `false` guarantees the command did not change device state, so a
+ * caller's policy may retry it. `true` codes must never be retried blindly; anything this build
+ * cannot name counts as `true`.
  */
-@Serializable(with = ErrorCodeSerializer::class)
-enum class ErrorCode(val mayHaveMutated: Boolean, val retryable: Boolean) {
-    // Request rejected before any work.
-    INVALID_REQUEST(false, false),
-    INVALID_SELECTOR(false, false),
-    UNSUPPORTED(false, false),
-    UNAUTHENTICATED(false, false),
-    SESSION_MISMATCH(false, false),
-    DUPLICATE_OR_STALE(false, false),
-    OVERLOADED(false, true),
+val ErrorCode.mayHaveMutated: Boolean
+    get() =
+        when (this) {
+            ERR_INVALID_REQUEST, ERR_INVALID_SELECTOR, ERR_UNSUPPORTED, ERR_UNAUTHENTICATED,
+            ERR_SESSION_MISMATCH, ERR_DUPLICATE_OR_STALE, ERR_OVERLOADED, ERR_AUT_MISMATCH,
+            ERR_NOT_FOUND, ERR_AMBIGUOUS, ERR_NOT_INTERACTABLE, ERR_WAIT_TIMEOUT, ERR_CANCELLED,
+            ERR_DEADLINE_EXCEEDED, ERR_AUT_NOT_INSTALLED, ERR_SYNC_PROVIDER_UNAVAILABLE,
+            ERR_DRIVER_UNHEALTHY, ERR_TRANSPORT_LOST,
+            -> false
 
-    // Target state.
-    AUT_MISMATCH(false, false),
-    NOT_FOUND(false, true),
-    AMBIGUOUS(false, false),
-    NOT_INTERACTABLE(false, true),
-    STALE_DURING_COMMAND(true, false),
+            ERR_STALE_DURING_COMMAND, ERR_ACTION_REJECTED, ERR_AUT_CRASHED, ERR_AUT_ANR,
+            ERR_INDETERMINATE, ERR_ARTIFACT_TRANSFER_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_INTERNAL,
+            ERR_UNKNOWN, ERR_UNSPECIFIED, UNRECOGNIZED,
+            -> true
+        }
 
-    // Outcome of an attempted action or wait.
-    ACTION_REJECTED(true, false),
-    WAIT_TIMEOUT(false, true),
-    CANCELLED(false, true),
-    DEADLINE_EXCEEDED(false, true),
+/** Whether the same command may reasonably succeed if tried again later. */
+val ErrorCode.retryable: Boolean
+    get() =
+        when (this) {
+            ERR_OVERLOADED, ERR_NOT_FOUND, ERR_NOT_INTERACTABLE, ERR_WAIT_TIMEOUT, ERR_CANCELLED,
+            ERR_DEADLINE_EXCEEDED, ERR_SYNC_PROVIDER_UNAVAILABLE,
+            -> true
 
-    // Application lifecycle.
-    AUT_NOT_INSTALLED(false, false),
-    AUT_CRASHED(true, false),
-    AUT_ANR(true, false),
-    SYNC_PROVIDER_UNAVAILABLE(false, true),
+            ERR_INVALID_REQUEST, ERR_INVALID_SELECTOR, ERR_UNSUPPORTED, ERR_UNAUTHENTICATED,
+            ERR_SESSION_MISMATCH, ERR_DUPLICATE_OR_STALE, ERR_AUT_MISMATCH, ERR_AMBIGUOUS,
+            ERR_STALE_DURING_COMMAND, ERR_ACTION_REJECTED, ERR_AUT_NOT_INSTALLED, ERR_AUT_CRASHED,
+            ERR_AUT_ANR, ERR_DRIVER_UNHEALTHY, ERR_TRANSPORT_LOST, ERR_INDETERMINATE,
+            ERR_ARTIFACT_TRANSFER_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_INTERNAL, ERR_UNKNOWN,
+            ERR_UNSPECIFIED, UNRECOGNIZED,
+            -> false
+        }
 
-    // Session and transport.
-    DRIVER_UNHEALTHY(false, false),
-    TRANSPORT_LOST(false, false),
-    INDETERMINATE(true, false),
-    ARTIFACT_TRANSFER_FAILED(true, false),
-    PAYLOAD_TOO_LARGE(true, false),
-    INTERNAL(true, false),
+/**
+ * A received code as this build understands it: a value it does not know (a newer peer), or
+ * the zero value, is [ERR_UNKNOWN]. Senders never put either on the wire.
+ */
+fun ErrorCode.normalized(): ErrorCode = if (this == UNRECOGNIZED || this == ERR_UNSPECIFIED) ERR_UNKNOWN else this
 
-    /** Host-side decode fallback for a code this build does not know. Never sent by a driver. */
-    UNKNOWN(true, false);
+/** `NOT_FOUND` for `ERR_NOT_FOUND`: the protocol name used in messages and logs. */
+val ErrorCode.label: String get() = normalized().name.removePrefix("ERR_")
 
-    companion object {
-        fun fromWire(name: String): ErrorCode = entries.firstOrNull { it.name == name } ?: UNKNOWN
-    }
-}
-
-/** Stable machine-readable sub-reasons carried in [Response.Error.detail]. */
+/** Stable machine-readable sub-reasons carried in `Error.detail`. */
 object ErrorDetail {
     // INVALID_SELECTOR
     const val SCOPE_DENIED = "SCOPE_DENIED"
@@ -74,11 +96,12 @@ object ErrorDetail {
     const val EMPTY_NODE = "EMPTY_NODE"
     const val EMPTY_VALUE = "EMPTY_VALUE"
     const val INVALID_REGEX = "INVALID_REGEX"
+    const val UNSPECIFIED_VALUE = "UNSPECIFIED_VALUE"
 
     // INVALID_REQUEST
     const val UNSUPPORTED_CHARACTERS = "UNSUPPORTED_CHARACTERS"
 
-    // NOT_FOUND (scrolling)
+    // INDETERMINATE (scrolling after at least one scroll)
     const val END_REACHED = "END_REACHED"
     const val MAX_SCROLLS = "MAX_SCROLLS"
 
@@ -125,15 +148,14 @@ object ErrorDetail {
     const val HEARTBEAT_EXPIRED = "HEARTBEAT_EXPIRED"
 }
 
-/** Encodes as the enum name; decodes unknown names to [ErrorCode.UNKNOWN] instead of failing. */
-object ErrorCodeSerializer : KSerializer<ErrorCode> {
-    override val descriptor: SerialDescriptor =
-        PrimitiveSerialDescriptor("io.github.noamcohen48.tap.protocol.ErrorCode", PrimitiveKind.STRING)
-
-    override fun serialize(encoder: Encoder, value: ErrorCode) {
-        require(value != ErrorCode.UNKNOWN) { "UNKNOWN is a decode fallback and is never sent" }
-        encoder.encodeString(value.name)
-    }
-
-    override fun deserialize(decoder: Decoder): ErrorCode = ErrorCode.fromWire(decoder.decodeString())
+/**
+ * Thrown by a [CommandHandler] method to end the command with an error response. The engine
+ * converts it; handlers never build responses themselves.
+ */
+class CommandFailure(
+    val code: ErrorCode,
+    val detail: String? = null,
+    message: String? = null,
+) : RuntimeException(message ?: code.label) {
+    val remoteMessage: String? = message
 }

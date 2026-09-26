@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "NOT_FOUND",
-  "detail": "END_REACHED",
-  "message": "example",
-  "durationMs": 5
-}

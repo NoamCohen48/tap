@@ -8,7 +8,7 @@
 # Generated inputs (all ignored by git, regenerated on every run):
 #   docs/reference/kotlin/         Dokka HTML aggregate of :clients:kotlin:sdk + :junit5 (site)
 #   build/docs-md/reference/kotlin/ Dokka GFM of the same modules (-Ptap.dokkaFormat=gfm)
-#   docs/reference/grpc.md         protoc-gen-doc Markdown for contracts/api/proto/*.proto (both)
+#   docs/reference/grpc.md         protoc-gen-doc Markdown for contracts/proto/*.proto (both)
 #   (Python, site)                 mkdocstrings renders clients/python/tap at mkdocs time
 #   build/docs-md/reference/python/ lazydocs Markdown of the same modules
 #
@@ -50,11 +50,11 @@ plugins:
     out: $tmp/out
     opt: markdown,grpc.md
 YAML
-"$BUF" generate --template "$tmp/buf.gen.yaml" contracts/api
+"$BUF" generate --template "$tmp/buf.gen.yaml" contracts/proto --exclude-path contracts/proto/wire
 {
   echo "# gRPC server API (tap.v1)"
   echo
-  echo "Generated from \`contracts/api/proto/*.proto\` by protoc-gen-doc. The narrative"
+  echo "Generated from \`contracts/proto/*.proto\` by protoc-gen-doc. The narrative"
   echo "contract — run liveness, the pool, sessions, status mapping — is in the repository's"
   echo "\`.docs/server-api.md\`."
   echo

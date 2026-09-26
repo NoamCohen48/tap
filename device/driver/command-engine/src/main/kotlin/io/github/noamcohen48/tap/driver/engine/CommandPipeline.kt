@@ -1,9 +1,13 @@
 package io.github.noamcohen48.tap.driver.engine
 
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.DRIVER_UNINTERRUPTIBLE_GRACE_MS
-import io.github.noamcohen48.tap.protocol.ErrorCode
 import io.github.noamcohen48.tap.protocol.ErrorDetail
-import io.github.noamcohen48.tap.protocol.Response
+import io.github.noamcohen48.tap.protocol.Responses
+import io.github.noamcohen48.tap.protocol.errorOrNull
+import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.mayHaveMutated
+import io.github.noamcohen48.tap.wire.v1.Response
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -107,11 +111,11 @@ class CommandPipeline(
         when (admission) {
             Admission.UNHEALTHY -> terminate(
                 command,
-                error(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG, poisonReason),
+                error(ErrorCode.ERR_DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG, poisonReason),
             )
             Admission.OVERLOADED -> terminate(
                 command,
-                error(ErrorCode.OVERLOADED, null, "Command queue holds $queueCapacity requests"),
+                error(ErrorCode.ERR_OVERLOADED, null, "Command queue holds $queueCapacity requests"),
             )
             Admission.QUEUED, Admission.CLOSED -> Unit
         }
@@ -139,7 +143,7 @@ class CommandPipeline(
                 null
             }
         }
-        if (removed != null) terminate(removed, error(ErrorCode.CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE))
+        if (removed != null) terminate(removed, error(ErrorCode.ERR_CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE))
     }
 
     /**
@@ -153,7 +157,7 @@ class CommandPipeline(
             queued.forEach { it.phase = CommandPhase.TERMINAL }
             queued
         }
-        discarded.forEach { terminate(it, error(ErrorCode.CANCELLED, ErrorDetail.TRANSPORT_CLOSED)) }
+        discarded.forEach { terminate(it, error(ErrorCode.ERR_CANCELLED, ErrorDetail.TRANSPORT_CLOSED)) }
     }
 
     /**
@@ -247,10 +251,10 @@ class CommandPipeline(
             while (queue.isNotEmpty()) {
                 val queued = queue.removeFirst()
                 queued.phase = CommandPhase.TERMINAL
-                doomed += queued to error(ErrorCode.DRIVER_UNHEALTHY, detail, reason)
+                doomed += queued to error(ErrorCode.ERR_DRIVER_UNHEALTHY, detail, reason)
             }
             running?.let { current ->
-                val code = if (current.mutationStarted) ErrorCode.INDETERMINATE else ErrorCode.DRIVER_UNHEALTHY
+                val code = if (current.mutationStarted) ErrorCode.ERR_INDETERMINATE else ErrorCode.ERR_DRIVER_UNHEALTHY
                 doomed += current to error(code, detail, reason)
             }
             queueChanged.signalAll()
@@ -270,10 +274,10 @@ class CommandPipeline(
             // Once open the gate stays open: a later call must never report a non-mutating
             // CANCELLED/DEADLINE_EXCEEDED for a command that already touched the device.
             if (command.mutationStarted) return
-            if (poisoned) throw CommandInterrupted(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG)
-            if (command.isTerminal) throw CommandInterrupted(ErrorCode.CANCELLED)
-            if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
-            if (clock.nowMs() >= command.deadlineMs) throw CommandInterrupted(ErrorCode.DEADLINE_EXCEEDED)
+            if (poisoned) throw CommandInterrupted(ErrorCode.ERR_DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG)
+            if (command.isTerminal) throw CommandInterrupted(ErrorCode.ERR_CANCELLED)
+            if (command.cancelRequested) throw CommandInterrupted(ErrorCode.ERR_CANCELLED)
+            if (clock.nowMs() >= command.deadlineMs) throw CommandInterrupted(ErrorCode.ERR_DEADLINE_EXCEEDED)
             command.mutationStarted = true
         }
     }
@@ -307,14 +311,14 @@ class CommandPipeline(
 
     private fun execute(command: Command) {
         val response = when {
-            command.cancelRequested -> error(ErrorCode.CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE)
-            clock.nowMs() >= command.deadlineMs -> error(ErrorCode.DEADLINE_EXCEEDED, ErrorDetail.EXPIRED_IN_QUEUE)
+            command.cancelRequested -> error(ErrorCode.ERR_CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE)
+            clock.nowMs() >= command.deadlineMs -> error(ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorDetail.EXPIRED_IN_QUEUE)
             else -> try {
                 command.work(CommandContext(command, clock, ::mutationGate, ::transfer))
             } catch (interrupted: CommandInterrupted) {
                 error(interrupted.errorCode, interrupted.detail, null, command)
             } catch (error: Throwable) {
-                error(ErrorCode.INTERNAL, null, error.toString(), command)
+                error(ErrorCode.ERR_INTERNAL, null, error.toString(), command)
             }
         }
         terminate(command, afterGate(command, response))
@@ -327,13 +331,17 @@ class CommandPipeline(
      * kept (or the original code name when there was none) so callers can still see why it ended.
      */
     private fun afterGate(command: Command, response: Response): Response {
-        if (!command.mutationStarted || response !is Response.Error || response.code.mayHaveMutated) return response
-        val original = listOfNotNull(response.code.name, response.detail).joinToString("/")
-        return response.copy(
-            code = ErrorCode.INDETERMINATE,
-            detail = response.detail ?: response.code.name,
-            message = "$original after the mutation started" + (response.message?.let { ": $it" } ?: ""),
-        )
+        val error = response.errorOrNull
+        if (!command.mutationStarted || error == null || error.code.mayHaveMutated) return response
+        val detail = error.takeIf { it.hasDetail() }?.detail
+        val original = listOfNotNull(error.code.label, detail).joinToString("/")
+        val message = "$original after the mutation started" + (error.takeIf { it.hasMessage() }?.let { ": ${it.message}" } ?: "")
+        val rewritten =
+            error.toBuilder()
+                .setCode(ErrorCode.ERR_INDETERMINATE)
+                .setDetail(detail ?: error.code.label)
+                .setMessage(message)
+        return response.toBuilder().setResult(response.result.toBuilder().setError(rewritten)).build()
     }
 
     private fun error(
@@ -341,7 +349,7 @@ class CommandPipeline(
         detail: String?,
         message: String? = null,
         command: Command? = null,
-    ): Response = Response.failure(
+    ): Response = Responses.failure(
         code,
         detail = detail,
         message = message,

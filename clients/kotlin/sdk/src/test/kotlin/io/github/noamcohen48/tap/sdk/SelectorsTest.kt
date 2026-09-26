@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector.PickCase
 import io.github.noamcohen48.tap.api.v1.Selector.ScopeCase
@@ -95,5 +96,40 @@ class SelectorsTest {
         assertEquals(text("a") and clickable(), text("a") and clickable())
         assertEquals((text("a") and clickable()).hashCode(), (text("a") and clickable()).hashCode())
         assertEquals(setOf(text("a")), setOf(text("a"), text("a")))
+    }
+
+    @Test
+    fun `render prints one-line protobuf text of the tree`() {
+        assertEquals(
+            """node { match { property: PROPERTY_TEXT value: "OK" mode: MATCH_EXACT } }""",
+            text("OK").render(),
+        )
+        assertEquals(
+            "node { all_of { nodes { resource { name: \"login\" aut_package: true } } " +
+                "nodes { flag { property: FLAG_CLICKABLE value: true } } } } first { }",
+            (res("login") and clickable()).first().render(),
+        )
+        assertEquals(
+            """node { resource { name: "button1" package_name: "android" } } system { package_name: "$system" } at { }""",
+            resId("android", "button1").inSystemPackage(system).at(0).render(),
+        )
+        assertEquals(
+            "node { all_of { nodes { match { property: PROPERTY_TEXT value: \"a\" mode: MATCH_EXACT } } " +
+                "nodes { related { relation: RELATION_PARENT node { any_of { " +
+                "nodes { match { property: PROPERTY_CLASS_NAME value: \"List\" mode: MATCH_CONTAINS } } " +
+                "nodes { flag { property: FLAG_SCROLLABLE value: true } } } } } } } } at { index: 2 }",
+            text("a").hasParent(className("List", MatchMode.MATCH_CONTAINS) or scrollable()).at(2).render(),
+        )
+        assertEquals(text("x").render(), text("x").toString())
+    }
+
+    @Test
+    fun `render escapes strings like protobuf text format`() {
+        assertEquals(
+            """node { match { property: PROPERTY_TEXT value: "say \"hi\" \\ \303\274\n" mode: MATCH_EXACT } }""",
+            text("say \"hi\" \\ \u00fc\n").render(),
+        )
+        assertEquals("""node { resource { name: "tag" } }""", rawRes("tag").render())
+        assertEquals("""node { match { property: PROPERTY_HINT mode: MATCH_EXACT } }""", hint("").render())
     }
 }

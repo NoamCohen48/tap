@@ -8,28 +8,45 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class FrameCodecTest {
     @Test
-    fun roundTripsFrame() {
-        val expected = Frame(FrameType.REQUEST, 42, "payload".encodeToByteArray())
-        val bytes = ByteArrayOutputStream().also { FrameCodec.write(it, expected) }.toByteArray()
-        val actual = FrameCodec.read(ByteArrayInputStream(bytes))
+    fun roundTripsEveryFrameType() {
+        FrameType.entries.forEachIndexed { index, type ->
+            val expected = Frame(type, index * 1_000_000_007L, "payload $index".encodeToByteArray())
+            val actual = FrameCodec.read(ByteArrayInputStream(encode(expected)))
 
-        assertEquals(expected.type, actual.type)
-        assertEquals(expected.requestId, actual.requestId)
-        assertContentEquals(expected.payload, actual.payload)
+            assertEquals(expected.type, actual.type)
+            assertEquals(expected.requestId, actual.requestId)
+            assertContentEquals(expected.payload, actual.payload)
+        }
+    }
+
+    @Test
+    fun readsConsecutiveFramesFromOneStream() {
+        val bytes = encode(Frame(FrameType.PING, 0, byteArrayOf())) + encode(Frame(FrameType.CANCEL, 7, byteArrayOf()))
+        val input = ByteArrayInputStream(bytes)
+
+        assertEquals(FrameType.PING, FrameCodec.read(input).type)
+        assertEquals(7L, FrameCodec.read(input).requestId)
+        assertFailsWith<EOFException> { FrameCodec.read(input) }
     }
 
     @Test
     fun writesTheWholeFrameInOneWriteWithTheWireLayout() {
         val writes = mutableListOf<ByteArray>()
-        val sink = object : OutputStream() {
-            override fun write(b: Int) = error("single-byte write")
-            override fun write(b: ByteArray, off: Int, len: Int) { writes += b.copyOfRange(off, off + len) }
-        }
+        val sink =
+            object : OutputStream() {
+                override fun write(b: Int) = error("single-byte write")
+
+                override fun write(
+                    b: ByteArray,
+                    off: Int,
+                    len: Int,
+                ) {
+                    writes += b.copyOfRange(off, off + len)
+                }
+            }
         FrameCodec.write(sink, Frame(FrameType.PING, 0x0102030405060708, byteArrayOf(9)))
 
         assertEquals(1, writes.size, "one write per frame")
@@ -37,12 +54,32 @@ class FrameCodecTest {
             byteArrayOf(0x54, 0x41, 0x50, 0x31, 1, 9, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 1, 9),
             writes.single(),
         )
+        assertEquals(20, FrameCodec.HEADER_BYTES)
+    }
+
+    @Test
+    fun acceptsTheLargestControlPayloadAndRejectsOneMore() {
+        val largest = Frame(FrameType.RESPONSE, 1, ByteArray(MAX_CONTROL_PAYLOAD) { it.toByte() })
+        assertContentEquals(largest.payload, FrameCodec.read(ByteArrayInputStream(encode(largest))).payload)
+
+        assertFailsWith<IllegalArgumentException> {
+            FrameCodec.write(ByteArrayOutputStream(), Frame(FrameType.RESPONSE, 1, ByteArray(MAX_CONTROL_PAYLOAD + 1)))
+        }
+        // A header announcing MAX_CONTROL_PAYLOAD + 1 bytes is refused before any payload is read.
+        val oversized = encode(Frame(FrameType.RESPONSE, 1, byteArrayOf())).also { header ->
+            java.nio.ByteBuffer.wrap(header).putInt(16, MAX_CONTROL_PAYLOAD + 1)
+        }
+        assertFailsWith<ProtocolException> { FrameCodec.read(ByteArrayInputStream(oversized)) }
     }
 
     @Test
     fun rejectsMalformedFrames() {
-        val good = ByteArrayOutputStream().also { FrameCodec.write(it, Frame(FrameType.PING, 0, byteArrayOf())) }.toByteArray()
-        fun mutated(index: Int, value: Int) = good.copyOf().also { it[index] = value.toByte() }
+        val good = encode(Frame(FrameType.PING, 0, byteArrayOf()))
+
+        fun mutated(
+            index: Int,
+            value: Int,
+        ) = good.copyOf().also { it[index] = value.toByte() }
 
         assertFailsWith<ProtocolException> { FrameCodec.read(ByteArrayInputStream(mutated(0, 0))) } // magic
         assertFailsWith<ProtocolException> { FrameCodec.read(ByteArrayInputStream(mutated(4, 2))) } // framing version
@@ -55,18 +92,12 @@ class FrameCodecTest {
     }
 
     @Test
-    fun authenticatesBothSidesWithDifferentDomainMacs() {
-        val secret = ByteArray(32) { it.toByte() }
-        val transcript = ProtocolAuthentication.transcript(
-            "hello".encodeToByteArray(),
-            "challenge".encodeToByteArray(),
-            "negotiation".encodeToByteArray(),
-        )
-        val hostMac = ProtocolAuthentication.hostMac(secret, transcript)
-        val driverMac = ProtocolAuthentication.driverMac(secret, transcript)
-
-        assertFalse(hostMac == driverMac)
-        assertTrue(ProtocolAuthentication.constantTimeEquals(hostMac, hostMac))
-        assertFalse(ProtocolAuthentication.constantTimeEquals(hostMac, driverMac))
+    fun frameTypesHaveStableWireValues() {
+        assertEquals((1..13).map(Int::toByte), FrameType.entries.map(FrameType::wireValue))
+        assertEquals(FrameType.BLOB_END, FrameType.fromWireValue(13))
+        assertFailsWith<ProtocolException> { FrameType.fromWireValue(0) }
+        assertFailsWith<ProtocolException> { FrameType.fromWireValue(14) }
     }
+
+    private fun encode(frame: Frame): ByteArray = ByteArrayOutputStream().also { FrameCodec.write(it, frame) }.toByteArray()
 }

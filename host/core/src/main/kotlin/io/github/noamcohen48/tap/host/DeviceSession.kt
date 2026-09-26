@@ -1,6 +1,6 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.Health
+import io.github.noamcohen48.tap.protocol.Requests
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -391,7 +391,7 @@ class DeviceSession private constructor(
                             serial = serial,
                             heartbeatIntervalMs = config.heartbeatIntervalMs,
                         )
-                    client.execute(Health)
+                    client.execute(Requests.health())
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
                     session = DeviceSession(config, lease, store, journal, running, hostPort, client)

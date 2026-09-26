@@ -1,0 +1,164 @@
+// tap.wire.v1 — TAP1 frame payloads between the host and the on-device driver.
+//
+// Internal: the host and the driver ship together (the driver APK carries the engine build id
+// and the handshake rejects a mismatch), so this package is never seen by clients. The command
+// and result shapes are the public tap.v1 messages themselves, so the daemon forwards a client's
+// `tap.v1.Command` into a `Request` and the driver's `tap.v1.CommandResult` back unchanged. Only
+// what clients must not send or see lives here: the handshake, the host-internal operations
+// (health, screenshot capture, sync provider access) and blob transfer metadata.
+//
+// Frame layout, request ids, HMAC transcript and mutation semantics are unchanged by the payload
+// encoding; see .docs/protocol-contract.md.
+syntax = "proto3";
+
+package tap.wire.v1;
+
+import "command.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "WireProto";
+option java_package = "io.github.noamcohen48.tap.wire.v1";
+
+// ---- handshake: HELLO → CHALLENGE → AUTH → AUTH_RESULT ------------------------------------------
+
+message ProtocolVersion {
+  int32 major = 1;
+  int32 minor = 2;
+}
+
+// HELLO: the host's identity and the versions it speaks (ascending, distinct).
+message Hello {
+  string host_build_id = 1;
+  bytes host_nonce = 2; // 32 random bytes
+  int64 session_generation = 3;
+  string session_id = 4;
+  repeated ProtocolVersion supported_versions = 5;
+}
+
+// CHALLENGE: the driver's identity, echoing the host's session and nonce.
+message Challenge {
+  int32 android_api_level = 1;
+  repeated string capabilities = 2; // sorted, distinct
+  string driver_apk_build_id = 3;
+  string driver_instance_id = 4;
+  bytes host_nonce = 5; // echoed from HELLO
+  bytes driver_nonce = 6; // 32 random bytes
+  string driver_test_apk_build_id = 7;
+  int64 session_generation = 8;
+  string session_id = 9;
+  repeated string supported_operations = 10; // wire names, sorted, distinct
+  repeated ProtocolVersion supported_versions = 11; // ascending, distinct
+  string ui_automator_build_id = 12;
+}
+
+// What the host selected from the challenge.
+message Negotiation {
+  repeated string enabled_capabilities = 1; // sorted, distinct
+  ProtocolVersion selected_version = 2;
+}
+
+// AUTH. `negotiation` is a serialized Negotiation carried as bytes so both sides MAC exactly the
+// bytes that were sent, never a re-encoding.
+message Authentication {
+  bytes negotiation = 1;
+  bytes transcript_hmac = 2; // HMAC-SHA256("TAP1-HOST-AUTH" 0x00 transcript)
+}
+
+// AUTH_RESULT.
+message AuthenticationResult {
+  bool ok = 1;
+  repeated string enabled_capabilities = 2;
+  optional string error = 3; // an ErrorCode name when !ok
+  ProtocolVersion selected_version = 4;
+  bytes transcript_hmac = 5; // HMAC-SHA256("TAP1-DRIVER-AUTH" 0x00 transcript) when ok
+}
+
+// ---- host-internal operations --------------------------------------------------------------------
+
+// Liveness probe; the reply is the only observation.
+message Health {}
+
+// PNG of the whole display; the bytes arrive in blob frames before the response.
+message CaptureScreenshot {}
+
+// First contact with the AUT's sync provider for the process the host observed.
+message SyncBootstrap {
+  int32 observed_pid = 1;
+  string observed_start_token = 2;
+}
+
+// Reads the sync provider's state; AUT_MISMATCH when the process identity moved.
+message SyncPoll {
+  int32 observed_pid = 1;
+  string observed_start_token = 2;
+  string expected_process_start_uuid = 3;
+  string expected_session_identity = 4;
+}
+
+// ---- REQUEST / RESPONSE -------------------------------------------------------------------------
+
+// REQUEST payload. The request id travels in the frame header. `timeout_ms` is the whole
+// command's budget from acceptance (0..120000); a `tap.v1.Command.timeout_ms` is ignored.
+message Request {
+  string session_id = 1;
+  int64 generation = 2;
+  int64 timeout_ms = 3;
+  oneof body {
+    tap.v1.Command command = 4;
+    Health health = 5;
+    CaptureScreenshot screenshot = 6;
+    SyncBootstrap sync_bootstrap = 7;
+    SyncPoll sync_poll = 8;
+  }
+}
+
+// The sync provider's view of the AUT process.
+message SyncState {
+  bool initialized = 1;
+  int32 process_id = 2;
+  string process_start_uuid = 3;
+  string session_identity = 4;
+  int64 generation = 5;
+  int32 busy_count = 6;
+  int64 last_transition_elapsed_ms = 7;
+  optional string error = 8;
+}
+
+// Metadata of a blob that arrived in the blob frames preceding the response.
+message ArtifactInfo {
+  string blob_id = 1;
+  string media_type = 2;
+  int64 byte_count = 3;
+  string sha256 = 4; // lowercase hex
+  optional int32 width = 5;
+  optional int32 height = 6;
+}
+
+// RESPONSE payload: exactly one per request. `result` carries duration, request id, generation
+// and either the outcome or the error. A host-internal operation that succeeded has
+// `result.done` plus its data in `internal`.
+message Response {
+  tap.v1.CommandResult result = 1;
+  oneof internal {
+    ArtifactInfo artifact = 2; // screenshot
+    SyncState sync = 3; // sync_bootstrap, sync_poll
+  }
+}
+
+// ---- blob transfer ------------------------------------------------------------------------------
+
+// BLOB_START; the frame's request id is the owning request. BLOB_CHUNK payloads are raw
+// (16-byte blob UUID, 4-byte big-endian index, bytes).
+message BlobStart {
+  string blob_id = 1;
+  string media_type = 2;
+  int64 total_length = 3;
+  string sha256 = 4;
+}
+
+// BLOB_END; repeats the identity so a truncated stream is detectable.
+message BlobEnd {
+  string blob_id = 1;
+  int64 byte_count = 2;
+  string sha256 = 3;
+}

@@ -17,10 +17,10 @@ import io.github.noamcohen48.tap.api.v1.ScreenshotResponse
 import io.github.noamcohen48.tap.daemon.DeviceEntry
 import io.github.noamcohen48.tap.daemon.DeviceStatus
 import io.github.noamcohen48.tap.daemon.TapDaemon
-import io.github.noamcohen48.tap.daemon.toCommand
-import io.github.noamcohen48.tap.daemon.toProto
 import io.github.noamcohen48.tap.host.AdbDeviceState
-import io.github.noamcohen48.tap.protocol.DeviceInfoQuery
+import io.github.noamcohen48.tap.protocol.CommandValidation
+import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.Requests
 import com.google.protobuf.ByteString
 
 class DeviceService(
@@ -52,7 +52,7 @@ class DeviceService(
             val info =
                 try {
                     attachedDevice.deviceSession.client
-                        .execute(DeviceInfoQuery, timeoutMs = DEFAULT_ACTION_TIMEOUT_MS)
+                        .execute(Commands.deviceInfo(), timeoutMs = DEFAULT_ACTION_TIMEOUT_MS)
                         .deviceInfo
                 } catch (error: Exception) {
                     runCatching { daemon.detachDevice(attachedDevice.id, request.clientConnectionId) }
@@ -63,7 +63,7 @@ class DeviceService(
                 .setAttachedDeviceId(attachedDevice.id)
                 .setSerial(attachedDevice.deviceSession.serial)
                 .setGeneration(attachedDevice.deviceSession.generation)
-                .setDeviceInfo(info.toProto())
+                .setDeviceInfo(info)
                 .build()
         }
 
@@ -77,16 +77,21 @@ class DeviceService(
                 .build()
         }
 
-    /** Cancellation propagates to the pending TAP1 command and requests cooperative cancel. */
+    /**
+     * Forwards the client's command unchanged: optional fields and `ResourceId.aut_package` are
+     * the driver's to resolve, and its result comes back as it was sent. The shared validation
+     * runs first as a pre-flight, so a malformed command is `INVALID_ARGUMENT` before any device
+     * work. Cancellation propagates to the pending TAP1 command and requests cooperative cancel.
+     */
     override suspend fun execute(request: ExecuteRequest): ExecuteResponse =
         reply {
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
-            val command = request.command.toCommand(attachedDevice.deviceSession.autPackage)
+            val command = request.command
+            CommandValidation.validate(command)
             val timeoutMs =
-                if (request.command.hasTimeoutMs()) positive(request.command.timeoutMs, "command.timeout_ms") else attachedDevice.defaultTimeoutMs
-            val pending = attachedDevice.deviceSession.client.submit(command, timeoutMs)
-            val result = daemon.await(pending).toProto(pending.requestId, attachedDevice.deviceSession.generation)
-            ExecuteResponse.newBuilder().setResult(result).build()
+                if (command.hasTimeoutMs()) positive(command.timeoutMs, "command.timeout_ms") else attachedDevice.defaultTimeoutMs
+            val pending = attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)
+            ExecuteResponse.newBuilder().setResult(daemon.await(pending)).build()
         }
 
     override suspend fun screenshot(request: ScreenshotRequest): ScreenshotResponse =
@@ -99,8 +104,8 @@ class DeviceService(
                 .setPng(ByteString.copyFrom(shot.png))
                 .setSha256(shot.info.sha256)
                 .apply {
-                    shot.info.width?.let { width = it }
-                    shot.info.height?.let { height = it }
+                    if (shot.info.hasWidth()) width = shot.info.width
+                    if (shot.info.hasHeight()) height = shot.info.height
                 }.build()
         }
 

@@ -1,14 +1,10 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.Command
-import io.github.noamcohen48.tap.protocol.DeviceInfoQuery
-import io.github.noamcohen48.tap.protocol.ErrorCode
-import io.github.noamcohen48.tap.protocol.Returning
-import io.github.noamcohen48.tap.protocol.SyncBootstrap
-import io.github.noamcohen48.tap.protocol.SyncPoll
-import io.github.noamcohen48.tap.protocol.SyncResult
-import io.github.noamcohen48.tap.protocol.SyncState
-import io.github.noamcohen48.tap.protocol.WaitAppVisible
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.Requests
+import io.github.noamcohen48.tap.wire.v1.Request
+import io.github.noamcohen48.tap.wire.v1.SyncState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.nio.file.Path
@@ -149,13 +145,13 @@ class AppLifecycle(
     suspend fun awaitAppVisible(timeoutMs: Long) {
         session.checkUsable()
         try {
-            client.execute(WaitAppVisible(packageName), timeoutMs = timeoutMs)
+            client.execute(Commands.waitAppVisible(packageName), timeoutMs = timeoutMs)
         } catch (timeout: RemoteCommandException) {
-            if (timeout.code != ErrorCode.WAIT_TIMEOUT) throw timeout
+            if (timeout.code != ErrorCode.ERR_WAIT_TIMEOUT) throw timeout
             // Diagnostic only: a failed lookup must not mask the timeout, but cancellation wins.
             val current =
                 try {
-                    client.execute(DeviceInfoQuery, timeoutMs = 5_000).deviceInfo.currentPackage
+                    client.execute(Commands.deviceInfo(), timeoutMs = 5_000).deviceInfo.takeIf { it.hasCurrentPackage() }?.currentPackage
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -202,7 +198,7 @@ class AppLifecycle(
             polls++
             val state =
                 callSync(minOf(5_000, remaining)) { before ->
-                    SyncPoll(before.pid, before.startToken, identity.processStartUuid, identity.sessionIdentity)
+                    Requests.syncPoll(before.pid, before.startToken, identity.processStartUuid, identity.sessionIdentity)
                 }
             val now = System.nanoTime()
             if (state.busyCount == 0) {
@@ -219,16 +215,15 @@ class AppLifecycle(
     }
 
     private suspend fun bootstrapSync(timeoutMs: Long): SyncState =
-        callSync(timeoutMs.coerceIn(1, 5_000)) { before -> SyncBootstrap(before.pid, before.startToken) }
+        callSync(timeoutMs.coerceIn(1, 5_000)) { before -> Requests.syncBootstrap(before.pid, before.startToken) }
 
     /** The driver checks identity against the process the host observed around the call. */
-    private suspend inline fun <C> callSync(
+    private suspend inline fun callSync(
         timeoutMs: Long,
-        command: (ProcessObservation) -> C,
-    ): SyncState
-        where C : Command, C : Returning<SyncResult> {
+        request: (ProcessObservation) -> Request,
+    ): SyncState {
         val before = process(5_000)
-        val state = client.execute(command(before), timeoutMs = timeoutMs).state
+        val state = client.execute(request(before), timeoutMs = timeoutMs).sync
         val after = process(5_000)
         if (after != before) throw AppLifecycleException("$packageName restarted during a synchronization call: $before -> $after")
         return state

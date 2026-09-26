@@ -1,14 +1,13 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.ErrorCode
-import io.github.noamcohen48.tap.protocol.Response
-import io.github.noamcohen48.tap.protocol.Selector
-import io.github.noamcohen48.tap.protocol.MatchMode
-import io.github.noamcohen48.tap.protocol.Node
-import io.github.noamcohen48.tap.protocol.NodeFlag
-import io.github.noamcohen48.tap.protocol.Pick
-import io.github.noamcohen48.tap.protocol.Scope
-import io.github.noamcohen48.tap.protocol.TextProperty
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.protocol.detail
+import io.github.noamcohen48.tap.protocol.errorCode
+import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.mayHaveMutated
+import io.github.noamcohen48.tap.protocol.message
+import io.github.noamcohen48.tap.protocol.retryable
+import io.github.noamcohen48.tap.wire.v1.Response
 
 /**
  * A driver command that did not succeed. Every failure carries the typed [code] plus enough
@@ -55,7 +54,7 @@ class RemoteCommandException(
     selector,
     timeoutMs,
     buildString {
-        append(code)
+        append(code.label)
         if (detail != null) append('/').append(detail)
         append(" from ").append(operation)
         if (selector != null) append(' ').append(selector)
@@ -68,8 +67,9 @@ class RemoteCommandException(
     },
 ) {
     companion object {
+        /** [response] must be an error response. */
         fun from(
-            response: Response.Error,
+            response: Response,
             operation: String,
             requestId: Long,
             sessionGeneration: Long,
@@ -77,10 +77,10 @@ class RemoteCommandException(
             selector: String? = null,
             timeoutMs: Long? = null,
         ): RemoteCommandException = RemoteCommandException(
-            code = response.code,
+            code = requireNotNull(response.errorCode) { "Not an error response" },
             detail = response.detail,
             remoteMessage = response.message,
-            durationMs = response.durationMs,
+            durationMs = response.result.durationMs,
             operation = operation,
             requestId = requestId,
             sessionGeneration = sessionGeneration,
@@ -114,12 +114,12 @@ class CommandTransportException(
     serial,
     selector,
     timeoutMs,
-    "$code during $operation request $requestId in generation $sessionGeneration ($transmissionState)",
+    "${code.label} during $operation request $requestId in generation $sessionGeneration ($transmissionState)",
     cause,
 ) {
     init {
-        require(code == ErrorCode.TRANSPORT_LOST || code == ErrorCode.INDETERMINATE) {
-            "Transport failures are TRANSPORT_LOST or INDETERMINATE, not $code"
+        require(code == ErrorCode.ERR_TRANSPORT_LOST || code == ErrorCode.ERR_INDETERMINATE) {
+            "Transport failures are TRANSPORT_LOST or INDETERMINATE, not ${code.label}"
         }
     }
 }
@@ -129,47 +129,4 @@ enum class TransmissionState {
     WRITING,
     WRITTEN,
     TERMINAL_RESPONSE,
-}
-
-/** Compact, log-safe rendering used in exception messages and reports. */
-fun Selector.render(): String = buildString {
-    append(node.render())
-    when (val pick = pick) {
-        Pick.ExactlyOne -> Unit
-        Pick.First -> append(".first()")
-        is Pick.At -> append(".at(").append(pick.index).append(')')
-    }
-    when (val scope = scope) {
-        Scope.Aut -> Unit
-        is Scope.System -> append(" in system:").append(scope.packageName)
-    }
-}
-
-/** `text="OK" clickable=true` for a conjunction, `(a | b)` for a disjunction, `child(...)` for a relation. */
-fun Node.render(): String = when (this) {
-    is Node.Match -> "${property.render()}${mode.render()}\"$value\""
-    is Node.Flag -> "${property.render()}=$value"
-    is Node.Resource -> if (packageName == null) "res=\"$name\"" else "id=$packageName:\"$name\""
-    is Node.Related -> "${relation.name.lowercase()}(${node.render()})"
-    is Node.AllOf -> nodes.joinToString(" ") { it.render() }
-    is Node.AnyOf -> nodes.joinToString(" | ", prefix = "(", postfix = ")") { it.render() }
-}
-
-private fun TextProperty.render(): String = when (this) {
-    TextProperty.TEXT -> "text"
-    TextProperty.CONTENT_DESCRIPTION -> "contentDescription"
-    TextProperty.HINT -> "hint"
-    TextProperty.CLASS_NAME -> "className"
-}
-
-/** `LONG_CLICKABLE` -> `longClickable`. */
-private fun NodeFlag.render(): String =
-    name.lowercase().replace(Regex("_([a-z])")) { it.groupValues[1].uppercase() }
-
-private fun MatchMode.render(): String = when (this) {
-    MatchMode.EXACT -> "="
-    MatchMode.CONTAINS -> "~="
-    MatchMode.STARTS_WITH -> "^="
-    MatchMode.ENDS_WITH -> "$="
-    MatchMode.REGEX -> "/="
 }

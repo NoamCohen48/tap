@@ -5,10 +5,9 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.UiWindow
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.protocol.MAX_MATCH_COUNT
-import io.github.noamcohen48.tap.protocol.Pick
-import io.github.noamcohen48.tap.protocol.Selector
 
 /**
  * Selector evaluation against the focused window of the scope package. Objects are resolved
@@ -24,29 +23,42 @@ internal class UiObjectAccess(
     fun compile(selector: Selector): CompiledSelector = compiler.compile(selector)
 
     /**
-     * Resolves an action target according to the selector's [Pick]. `ExactlyOne` stops after a
-     * second match and reports `AMBIGUOUS`; `First`/`At` pick from traversal order.
+     * Resolves an action target according to the selector's pick. Exactly one (the default when
+     * no pick is set) stops after a second match and reports `AMBIGUOUS`; `first`/`at` pick from
+     * traversal order.
      */
     fun resolve(selector: Selector): Resolution {
         val compiled = compile(selector)
-        val pick = selector.pick
-        val wanted = when (pick) {
-            Pick.ExactlyOne -> 2
-            Pick.First -> 1
-            is Pick.At -> pick.index + 1
+        val exactlyOne: Boolean
+        val wanted: Int
+        val index: Int
+        when (selector.pickCase) {
+            Selector.PickCase.FIRST -> {
+                exactlyOne = false
+                wanted = 1
+                index = 0
+            }
+
+            Selector.PickCase.AT -> {
+                exactlyOne = false
+                wanted = selector.at.index + 1
+                index = selector.at.index
+            }
+
+            Selector.PickCase.EXACTLY_ONE, Selector.PickCase.PICK_NOT_SET, null -> {
+                exactlyOne = true
+                wanted = 2
+                index = 0
+            }
         }
         val elements = findObjects(compiled, wanted)
-        val chosenIndex = when (pick) {
-            Pick.ExactlyOne -> if (elements.size == 1) 0 else -1
-            Pick.First -> 0
-            is Pick.At -> pick.index
-        }
+        val chosenIndex = if (exactlyOne && elements.size != 1) -1 else index
         val chosen = elements.getOrNull(chosenIndex)
-        elements.forEachIndexed { index, element -> if (index != chosenIndex) element.recycle() }
+        elements.forEachIndexed { i, element -> if (i != chosenIndex) element.recycle() }
         return when {
             chosen != null -> Resolution(chosen, null)
-            pick == Pick.ExactlyOne && elements.size > 1 -> Resolution(null, ErrorCode.AMBIGUOUS)
-            else -> Resolution(null, ErrorCode.NOT_FOUND)
+            exactlyOne && elements.size > 1 -> Resolution(null, ErrorCode.ERR_AMBIGUOUS)
+            else -> Resolution(null, ErrorCode.ERR_NOT_FOUND)
         }
     }
 

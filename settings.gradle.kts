@@ -17,7 +17,8 @@ dependencyResolutionManagement {
 rootProject.name = "tap"
 
 // Contracts shared across components.
-include(":contracts:protocol") // device wire protocol (device <-> host)
+include(":contracts:schema") // contracts/proto compiled to protobuf-lite (tap.v1 + tap.wire.v1)
+include(":contracts:protocol") // TAP1 framing, handshake, validation and dispatch over the schema
 include(":contracts:api") // host server API, tap.v1 (host daemon <-> clients)
 
 // On-device component.

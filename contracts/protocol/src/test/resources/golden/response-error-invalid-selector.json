@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "INVALID_SELECTOR",
-  "detail": "INVALID_REGEX",
-  "message": "example",
-  "durationMs": 5
-}

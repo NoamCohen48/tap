@@ -6,17 +6,21 @@ Status: in progress.
 
 ## Completed
 
-- Application protocol version `2.0` independent of bootstrap framing version 1; 2.0 replaced
-  1.0's flat operation/optional-field model with sealed per-command and per-result shapes.
-- Canonical handshake JSON with recursive key ordering and malformed-canonical rejection.
+- Application protocol version `3.0` independent of bootstrap framing version 1. 3.0 (2026-09-26)
+  made every payload protobuf (`tap.wire.v1` wrapping the public `tap.v1.Command`/`CommandResult`,
+  one schema in `contracts/proto`); 2.0 replaced 1.0's flat operation/optional-field model with
+  per-command and per-result shapes. Full API 29/API 34 `--no-reboot` flow, Kotlin fixture tests
+  and Python suite (JVM and native daemon) re-passed after the 3.0 migration.
+- The handshake MACs the payload bytes as sent (negotiation carried as serialized bytes), so no
+  canonical encoding is needed; a payload that does not parse fails the handshake.
 - Authenticated HELLO/CHALLENGE/NEGOTIATION transcript with separate HMAC domains.
 - Highest-common-version selection and authenticated capability subset.
 - Driver metadata for Android API, component builds, driver instance, operations, operation
   versions, and capabilities.
-- One class per command, discriminated by `op`; an unknown `op` is `UNSUPPORTED` before execution.
+- One message per command (`oneof op`); an unset or unknown `op` is `UNSUPPORTED` before execution.
 - Rejected payloads (unknown `op`, malformed command) consume their request ID and cannot be replayed.
 - No-common-version rejection before normal authentication.
-- Golden canonical payload, malformed JSON, negotiation, downgrade, capability, and
+- Golden wire encoding, malformed payload, negotiation, downgrade, capability, and
   transcript-binding unit tests.
 - Full API 29/API 34 device suite passed after the handshake migration.
 - Mutating selectors use shared exact-one resolution. `TAP`, `SET_TEXT`, `TYPE_TEXT`, and
@@ -114,10 +118,12 @@ Status: in progress.
   manifest). The fixture-only late-mutation hook moved to `FixtureFaultProvider`
   (`io.github.noamcohen48.tap.fixture.fault`, driver argument `tapFaultAuthority`), so the SDK contains
   nothing test-fixture specific. Full device flow re-passed through the extracted provider.
-- Golden wire fixtures under `protocol/src/test/resources/golden`: one request per operation
-  (plus relational and system-scoped selector shapes) and one response per error code and
-  success shape; `GoldenMessageTest` fails on decode or encoding drift and checks that no
-  operation or code is missing a fixture.
+- Golden wire encodings under `contracts/protocol/src/test/resources/golden` (30 `.hex`:
+  handshake messages, representative requests incl. relational/system-scoped/AUT-resource
+  selectors and default-omitting optionals, one response per outcome case plus error shapes);
+  `GoldenWireTest` fails on encoding drift. Per-operation coverage is structural: the catalogue
+  and the driver's dispatch are exhaustive `when`s over the generated case enums
+  (`OperationsTest`).
 
 - Observation and key operations (`DEVICE_INFO`, `PRESS_KEY`, `COUNT`, `SNAPSHOT`,
   `WAIT_GONE`, `WAIT_APP_VISIBLE`) with typed `DeviceInfo`/`ElementSnapshot`/`Bounds`
@@ -159,7 +165,9 @@ Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2
 - [x] Add screenshots with bounded binary transfer and checksum validation.
 - [x] Add long tap, directional swipe/scroll, clear text, and fixture coverage.
 - [x] Extract synchronization into an optional debug/E2E-only SDK module.
-- [x] Add golden request/response fixtures and coverage for every operation/error.
+- [x] Add golden request/response fixtures and coverage for every operation/error (3.0: golden
+  encodings per message shape + exhaustive dispatch over every operation, `ErrorCodeTest` over
+  every code).
 - [x] Prove cancellation either leaves a session reusable or explicitly poisons it
   (`PHASE_1_CANCELLATION_OK`, `PHASE_1_CANCEL_AFTER_MUTATION_OK`,
   `PHASE_1_HEARTBEAT_EXPIRY_OK` on API 29/34).

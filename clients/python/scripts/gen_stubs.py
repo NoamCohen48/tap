@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates tap/_gen from contracts/api/proto/*.proto, or verifies it is current (--check).
+"""Regenerates tap/_gen from contracts/proto/*.proto, or verifies it is current (--check).
 
 The generated modules are committed so `pip install tap-e2e` needs no protoc; CI runs
 `gen_stubs.py --check` to fail when the proto and the stubs drift apart.
@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-API = ROOT / "contracts" / "api" / "proto"
+API = ROOT / "contracts" / "proto"
 OUT = ROOT / "clients" / "python" / "tap" / "_gen"
 PROTOS = sorted(API.glob("*.proto"))
 # Every proto yields <name>_pb2.py/.pyi and <name>_pb2_grpc.py (empty of stubs when it has no server).
@@ -60,7 +60,7 @@ def generate(into: pathlib.Path) -> None:
         f"from .{proto.stem}_pb2 import *  # noqa: F401,F403\n" for proto in PROTOS
     )
     (into / "__init__.py").write_text(
-        "# Generated from contracts/api/proto/*.proto by scripts/gen_stubs.py; do not edit.\n"
+        "# Generated from contracts/proto/*.proto by scripts/gen_stubs.py; do not edit.\n"
         f"# The package namespace is the union of {modules}: `from tap._gen import Selector`.\n"
         + exports
     )

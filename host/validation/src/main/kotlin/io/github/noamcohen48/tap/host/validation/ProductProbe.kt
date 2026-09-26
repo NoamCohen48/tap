@@ -2,16 +2,13 @@ package io.github.noamcohen48.tap.host.validation
 
 import io.github.noamcohen48.tap.host.*
 
-import io.github.noamcohen48.tap.protocol.DumpHierarchy
-import io.github.noamcohen48.tap.protocol.Exists
-import io.github.noamcohen48.tap.protocol.Health
-import io.github.noamcohen48.tap.protocol.ScrollUntil
-import io.github.noamcohen48.tap.protocol.Node
-import io.github.noamcohen48.tap.protocol.Selector
-import io.github.noamcohen48.tap.protocol.SetText
-import io.github.noamcohen48.tap.protocol.Tap
-import io.github.noamcohen48.tap.protocol.WaitVisible
+import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.Requests
+import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.errorCode
+import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.ok
 import java.io.StringReader
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -94,7 +91,7 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
 
             val client = DriverClient.connect(hostPort, sessionId, generation, secret, serial = serial)
             try {
-                client.execute(Health)
+                client.execute(Requests.health())
                 journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                 store.write(journal)
                 adb.run(serial, "shell", "am", "force-stop", autPackage)
@@ -119,13 +116,13 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                         if (expectedError == null) {
                             check(tap.ok) { "Could not navigate to ${screen.name}: $tap" }
                         } else {
-                            check(tap.errorCode?.name == expectedError) {
+                            check(tap.errorCode?.label == expectedError) {
                                 "Expected $expectedError while entering ${screen.name}, got $tap"
                             }
                         }
                     }
-                    val selector = Selector.text(screen.readyText)
-                    val ready = client.send(WaitVisible(selector), timeoutMs = 15_000)
+                    val selector = Selectors.text(screen.readyText)
+                    val ready = client.send(Commands.waitVisible(selector), timeoutMs = 15_000)
                     check(ready.ok) { "Screen ${screen.name} did not become ready: $ready" }
                     printProbeResult(serial, autPackage, screen.name, selector, client)
                 }
@@ -163,16 +160,16 @@ private suspend fun executeProbeAction(
 ) = when {
     action.startsWith("SET_TEXT@") -> {
         val resource = action.substringAfter('@')
-        client.send(SetText(Selector.androidResource(autPackage, resource), "must-not-write"), timeoutMs = 10_000)
+        client.send(Commands.setText(Selectors.androidResource(autPackage, resource), "must-not-write"), timeoutMs = 10_000)
     }
     action.startsWith("SCROLL_UNTIL@") -> {
         val resource = action.substringAfter('@')
         client.send(
-            ScrollUntil(Selector.text("Missing target"), container = Selector.androidResource(autPackage, resource)),
+            Commands.scrollUntil(Selectors.text("Missing target"), container = Selectors.androidResource(autPackage, resource)),
             timeoutMs = 10_000,
         )
     }
-    else -> client.send(Tap(Selector.text(action)), timeoutMs = 10_000)
+    else -> client.send(Commands.tap(Selectors.text(action)), timeoutMs = 10_000)
 }
 
 private fun parseScreen(value: String): ProbeScreen {
@@ -191,17 +188,17 @@ private suspend fun printProbeResult(
     client: DriverClient,
 ) {
     val coldStarted = System.nanoTime()
-    check(client.execute(Exists(selector)).value)
+    check(client.execute(Commands.exists(selector)).bool)
     val coldMs = elapsedMs(coldStarted)
 
     val direct = List(100) {
         val started = System.nanoTime()
-        check(client.execute(Exists(selector)).value)
+        check(client.execute(Commands.exists(selector)).bool)
         elapsedMs(started)
     }
     val dumps = List(10) {
         val started = System.nanoTime()
-        val hierarchy = client.execute(DumpHierarchy, timeoutMs = 15_000).text
+        val hierarchy = client.execute(Commands.dumpHierarchy(), timeoutMs = 15_000).text
         elapsedMs(started) to hierarchy
     }
     val hierarchy = dumps.last().second
@@ -209,7 +206,7 @@ private suspend fun printProbeResult(
         val started = System.nanoTime()
         val document = parseHierarchy(hierarchy)
         val nodes = document.getElementsByTagName("node")
-        check((0 until nodes.length).any { nodes.item(it).attributes?.getNamedItem("text")?.nodeValue == (selector.node as Node.Match).value })
+        check((0 until nodes.length).any { nodes.item(it).attributes?.getNamedItem("text")?.nodeValue == selector.node.match.value })
         elapsedMs(started)
     }
     val inventory = inventory(hierarchy, autPackage)

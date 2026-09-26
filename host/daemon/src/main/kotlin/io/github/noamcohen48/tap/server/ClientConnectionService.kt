@@ -14,7 +14,9 @@ import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.daemon.TapDaemon
 import io.github.noamcohen48.tap.protocol.HOST_BUILD_ID
+import io.github.noamcohen48.tap.protocol.PROTOCOL_VERSION_ORDER
 import io.github.noamcohen48.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
+import io.github.noamcohen48.tap.protocol.render
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -77,7 +79,7 @@ class ClientConnectionService(
                 .newBuilder()
                 .setDaemonVersion(DAEMON_VERSION)
                 .setHostBuildId(HOST_BUILD_ID)
-                .setProtocolVersion(SUPPORTED_PROTOCOL_VERSIONS.max().let { "${it.major}.${it.minor}" })
+                .setProtocolVersion(SUPPORTED_PROTOCOL_VERSIONS.maxWith(PROTOCOL_VERSION_ORDER).render())
                 .setAdbExecutable(daemon.config.adb.executable)
                 .setStateDir(daemon.config.stateDir.toString())
                 .setDriverAvailable(daemon.config.driver != null)

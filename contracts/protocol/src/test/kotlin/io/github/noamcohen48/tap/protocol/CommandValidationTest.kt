@@ -1,0 +1,300 @@
+package io.github.noamcohen48.tap.protocol
+
+import io.github.noamcohen48.tap.api.v1.AllOf
+import io.github.noamcohen48.tap.api.v1.AnyOf
+import io.github.noamcohen48.tap.api.v1.AutScope
+import io.github.noamcohen48.tap.api.v1.Command
+import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Flag
+import io.github.noamcohen48.tap.api.v1.Match
+import io.github.noamcohen48.tap.api.v1.MatchMode
+import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.Related
+import io.github.noamcohen48.tap.api.v1.Relation
+import io.github.noamcohen48.tap.api.v1.ResourceId
+import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.Swipe
+import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.wire.v1.Request
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+
+class CommandValidationTest {
+    private val button = Selectors.text("OK")
+    private val list = Selectors.androidResource(AUT, "list")
+
+    // ---- commands --------------------------------------------------------------------------------
+
+    @Test
+    fun acceptsEveryRepresentativeCommand() {
+        OperationsTest.sampleCommands.values.forEach { CommandValidation.validate(it) }
+        OperationsTest.sampleRequests.values.forEach { CommandValidation.validate(it) }
+    }
+
+    @Test
+    fun rejectsAnUnsetOperationAsUnsupported() {
+        assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Command.getDefaultInstance()) }
+        assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Request.getDefaultInstance()) }
+        // A newer host's operation arrives as an unknown field: the op stays unset.
+        val unknownOp = Command.parseFrom(byteArrayOf(0xFA.toByte(), 0x01, 0x00)) // field 31, empty message
+        assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(unknownOp) }
+    }
+
+    @Test
+    fun rejectsOutOfRangeArguments() {
+        val invalid =
+            mapOf(
+                "timeout" to Commands.exists(button).toBuilder().setTimeoutMs(MAX_REQUEST_TIMEOUT_MS + 1).build(),
+                "negative timeout" to Commands.exists(button).toBuilder().setTimeoutMs(-1).build(),
+                "key code" to Commands.pressKey(-1),
+                "app package" to Commands.waitAppVisible(" "),
+                "stable package" to Commands.waitScreenStable(""),
+                "stable zero" to Commands.waitScreenStable(AUT, stableForMs = 0),
+                "stable too long" to Commands.waitScreenStable(AUT, stableForMs = MAX_STABLE_FOR_MS + 1),
+                "set_text length" to Commands.setText(button, "x".repeat(MAX_TEXT_INPUT_CHARS + 1)),
+                "type_text length" to Commands.typeText(button, "x".repeat(MAX_TEXT_INPUT_CHARS + 1)),
+                "swipe direction" to Commands.swipe(button, Direction.DIR_UNSPECIFIED),
+                "swipe percent" to Commands.swipe(button, Direction.DIR_UP, distancePercent = 0),
+                "scroll direction" to Commands.scroll(list, Direction.DIR_UNSPECIFIED),
+                "scroll percent" to Commands.scroll(list, Direction.DIR_DOWN, distancePercent = 101),
+                "scroll_until percent" to Commands.scrollUntil(button, list, distancePercent = 0),
+                "scroll_until max_scrolls" to Commands.scrollUntil(button, list, maxScrolls = 0),
+                "scroll_until max_scrolls high" to Commands.scrollUntil(button, list, maxScrolls = MAX_SCROLLS + 1),
+                "at index" to Commands.tap(button.pickAt(-1)),
+            )
+        invalid.forEach { (name, command) ->
+            assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
+        }
+    }
+
+    @Test
+    fun acceptsBoundaryArguments() {
+        listOf(
+            Commands.exists(button).toBuilder().setTimeoutMs(0).build(),
+            Commands.exists(button).toBuilder().setTimeoutMs(MAX_REQUEST_TIMEOUT_MS).build(),
+            Commands.pressKey(0),
+            Commands.waitScreenStable(AUT, stableForMs = 1, signal = StabilitySignal.STABILITY_UNSPECIFIED),
+            Commands.waitScreenStable(AUT, stableForMs = MAX_STABLE_FOR_MS),
+            Commands.setText(button, "x".repeat(MAX_TEXT_INPUT_CHARS)),
+            Commands.setText(button, ""),
+            Commands.swipe(button, Direction.DIR_LEFT, distancePercent = 1),
+            Commands.scroll(list, Direction.DIR_RIGHT, distancePercent = 100),
+            Commands.scrollUntil(button, list, maxScrolls = 1),
+            Commands.scrollUntil(button, list, direction = Direction.DIR_UNSPECIFIED, maxScrolls = MAX_SCROLLS),
+            Commands.tap(button.pickAt(0)),
+        ).forEach { CommandValidation.validate(it) }
+    }
+
+    @Test
+    fun rejectsEnumValuesThisBuildDoesNotKnow() {
+        val swipe = Commands.swipe(button, Direction.DIR_UP).toBuilder()
+        swipe.setSwipe(Swipe.newBuilder(swipe.swipe).setDirectionValue(99))
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(swipe.build()) }
+
+        val scrollUntil = Commands.scrollUntil(button, list).toBuilder()
+        scrollUntil.setScrollUntil(scrollUntil.scrollUntil.toBuilder().setDirectionValue(42))
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(scrollUntil.build()) }
+
+        val stable = Commands.waitScreenStable(AUT).toBuilder()
+        stable.setWaitScreenStable(stable.waitScreenStable.toBuilder().setSignalValue(7))
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(stable.build()) }
+
+        val property = Node.newBuilder().setMatch(Match.newBuilder().setPropertyValue(99).setValue("x")).build()
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.UNSPECIFIED_VALUE) { validate(property) }
+        val mode = Node.newBuilder().setMatch(Match.newBuilder().setProperty(TextProperty.PROPERTY_TEXT).setModeValue(99).setValue("x")).build()
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.UNSPECIFIED_VALUE) { validate(mode) }
+        val flag = Node.newBuilder().setFlag(Flag.newBuilder().setPropertyValue(99)).build()
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.UNSPECIFIED_VALUE) { validate(flag) }
+        val relation = Node.newBuilder().setRelated(Related.newBuilder().setRelationValue(99).setNode(Nodes.text("x"))).build()
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.UNSPECIFIED_VALUE) { validate(relation) }
+    }
+
+    @Test
+    fun everyTargetedCommandNeedsASelector() {
+        val missing = Selector.getDefaultInstance()
+        listOf(
+            Commands.exists(missing),
+            Commands.count(missing),
+            Commands.snapshot(missing),
+            Commands.waitVisible(missing),
+            Commands.waitGone(missing),
+            Commands.tap(missing),
+            Commands.longTap(missing),
+            Commands.setText(missing, "x"),
+            Commands.typeText(missing, "x"),
+            Commands.clearText(missing),
+            Commands.swipe(missing, Direction.DIR_UP),
+            Commands.scroll(missing, Direction.DIR_UP),
+            Commands.scrollUntil(missing, list),
+            Commands.scrollUntil(button, missing),
+        ).forEach { command ->
+            assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_NODE, command.op) { CommandValidation.validate(command) }
+        }
+    }
+
+    @Test
+    fun scrollUntilTargetAndContainerMustShareAScope() {
+        val system = "com.android.permissioncontroller"
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.SCOPE_MISMATCH) {
+            CommandValidation.validate(Commands.scrollUntil(button.inSystemPackage(system), list))
+        }
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.SCOPE_MISMATCH) {
+            CommandValidation.validate(Commands.scrollUntil(button.inSystemPackage(system), list.inSystemPackage("other")))
+        }
+        // An explicit AUT scope and the default one are the same scope.
+        val explicitAut = list.toBuilder().setAut(AutScope.getDefaultInstance()).build()
+        CommandValidation.validate(Commands.scrollUntil(button, explicitAut))
+        CommandValidation.validate(Commands.scrollUntil(button.inSystemPackage(system), list.inSystemPackage(system)))
+    }
+
+    @Test
+    fun validatesSyncArguments() {
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncBootstrap(1, " ")) }
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncPoll(1, "", "uuid", "id")) }
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncPoll(1, "t", "", "id")) }
+        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncPoll(1, "t", "uuid", " ")) }
+    }
+
+    // ---- selectors -------------------------------------------------------------------------------
+
+    @Test
+    fun rejectsStructurallyInvalidSelectors() {
+        val longString = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)
+        val cases: List<Triple<String, String, Selector>> =
+            listOf(
+                Triple("no node", ErrorDetail.EMPTY_NODE, Selector.newBuilder().setAut(AutScope.getDefaultInstance()).build()),
+                Triple("empty kind", ErrorDetail.EMPTY_NODE, Selectors.of(Node.getDefaultInstance())),
+                Triple("blank system package", ErrorDetail.EMPTY_VALUE, button.inSystemPackage(" ")),
+                Triple("long system package", ErrorDetail.STRING_TOO_LONG, button.inSystemPackage(longString)),
+                Triple("long value", ErrorDetail.STRING_TOO_LONG, Selectors.text(longString)),
+                Triple("long resource", ErrorDetail.STRING_TOO_LONG, Selectors.rawResource(longString)),
+                Triple("long resource package", ErrorDetail.STRING_TOO_LONG, Selectors.androidResource(longString, "id")),
+                Triple("empty contains", ErrorDetail.EMPTY_VALUE, Selectors.text("", MatchMode.MATCH_CONTAINS)),
+                Triple("empty regex", ErrorDetail.EMPTY_VALUE, Selectors.text("", MatchMode.MATCH_REGEX)),
+                Triple("bad regex", ErrorDetail.INVALID_REGEX, Selectors.text("(", MatchMode.MATCH_REGEX)),
+                Triple("backreference", ErrorDetail.INVALID_REGEX, Selectors.text("(a)\\1", MatchMode.MATCH_REGEX)),
+                Triple(
+                    "unspecified property",
+                    ErrorDetail.UNSPECIFIED_VALUE,
+                    Selectors.of(Node.newBuilder().setMatch(Match.newBuilder().setValue("x")).build()),
+                ),
+                Triple("unspecified flag", ErrorDetail.UNSPECIFIED_VALUE, Selectors.of(Node.newBuilder().setFlag(Flag.getDefaultInstance()).build())),
+                Triple("empty resource", ErrorDetail.EMPTY_VALUE, Selectors.rawResource("")),
+                Triple("empty resource package", ErrorDetail.EMPTY_VALUE, Selectors.androidResource("", "id")),
+                Triple(
+                    "package and aut_package",
+                    ErrorDetail.EMPTY_VALUE,
+                    Selectors.of(
+                        Node.newBuilder().setResource(ResourceId.newBuilder().setName("id").setPackageName(AUT).setAutPackage(true)).build(),
+                    ),
+                ),
+                Triple(
+                    "unspecified relation",
+                    ErrorDetail.UNSPECIFIED_VALUE,
+                    Selectors.of(Node.newBuilder().setRelated(Related.newBuilder().setNode(Nodes.text("x"))).build()),
+                ),
+                Triple(
+                    "relation without node",
+                    ErrorDetail.EMPTY_NODE,
+                    Selectors.of(Node.newBuilder().setRelated(Related.newBuilder().setRelation(Relation.RELATION_PARENT)).build()),
+                ),
+                Triple(
+                    "single all_of",
+                    ErrorDetail.EMPTY_NODE,
+                    Selectors.of(Node.newBuilder().setAllOf(AllOf.newBuilder().addNodes(Nodes.text("x"))).build()),
+                ),
+                Triple(
+                    "single any_of",
+                    ErrorDetail.EMPTY_NODE,
+                    Selectors.of(Node.newBuilder().setAnyOf(AnyOf.newBuilder().addNodes(Nodes.text("x"))).build()),
+                ),
+                Triple("empty nested operand", ErrorDetail.EMPTY_NODE, Selectors.of(Nodes.allOf(Nodes.text("x"), Node.getDefaultInstance()))),
+                Triple("too deep", ErrorDetail.SELECTOR_TOO_DEEP, Selectors.of(nested(MAX_SELECTOR_DEPTH + 1))),
+                Triple(
+                    "too many nodes",
+                    ErrorDetail.SELECTOR_TOO_LARGE,
+                    Selectors.of(Nodes.anyOf((1..MAX_SELECTOR_NODES).map { Nodes.text("$it") })),
+                ),
+            )
+        cases.forEach { (name, detail, selector) ->
+            assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, detail, name) { CommandValidation.validateSelector(selector) }
+        }
+    }
+
+    @Test
+    fun acceptsSelectorsAtTheLimits() {
+        CommandValidation.validateSelector(Selectors.of(nested(MAX_SELECTOR_DEPTH)))
+        CommandValidation.validateSelector(Selectors.of(Nodes.anyOf((1 until MAX_SELECTOR_NODES).map { Nodes.text("$it") })))
+        CommandValidation.validateSelector(Selectors.text("x".repeat(MAX_SELECTOR_STRING_CHARS)))
+        // EXACT "" is meaningful (an empty value); so is the unspecified mode, which means EXACT.
+        CommandValidation.validateSelector(Selectors.text(""))
+        CommandValidation.validateSelector(Selectors.of(Nodes.match(TextProperty.PROPERTY_HINT, "", MatchMode.MATCH_UNSPECIFIED)))
+        CommandValidation.validateSelector(Selectors.of(Nodes.autResource("login")))
+    }
+
+    @Test
+    fun choosesTheNativePlanWhenBySelectorCanHoldEveryPredicate() {
+        val native =
+            listOf(
+                Selectors.text("OK"),
+                Selectors.text("OK", MatchMode.MATCH_ENDS_WITH),
+                Selectors.androidResource(AUT, "login"),
+                Selectors.of(Nodes.autResource("login")),
+                Selectors.of(Nodes.text("OK") and Nodes.flag(NodeFlag.FLAG_ENABLED) and Nodes.parent(Nodes.className("List"))),
+                Selectors.of(Nodes.text("OK") and Nodes.contentDescription("OK") and Nodes.hint("OK")),
+                // BySelector holds any number of child/descendant constraints.
+                Selectors.of(Nodes.child(Nodes.text("a")) and Nodes.child(Nodes.text("b")) and Nodes.descendant(Nodes.text("c"))),
+                Selectors.of(Nodes.ancestor(Nodes.text("a")) and Nodes.parent(Nodes.text("b"))),
+            )
+        native.forEach { assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(it), it.render()) }
+    }
+
+    @Test
+    fun choosesTraversalForRegexAnyOfAndRepeatedSingleValuedPredicates() {
+        val traversal =
+            listOf(
+                Selectors.text("Row \\d+", MatchMode.MATCH_REGEX),
+                Selectors.of(Nodes.text("Allow") or Nodes.contentDescription("Allow")),
+                Selectors.of(Nodes.text("a", MatchMode.MATCH_CONTAINS) and Nodes.text("b", MatchMode.MATCH_CONTAINS)),
+                Selectors.of(Nodes.flag(NodeFlag.FLAG_ENABLED) and Nodes.flag(NodeFlag.FLAG_ENABLED, false)),
+                Selectors.of(Nodes.rawResource("a") and Nodes.androidResource(AUT, "b")),
+                Selectors.of(Nodes.parent(Nodes.text("a")) and Nodes.parent(Nodes.text("b"))),
+                Selectors.of(Nodes.ancestor(Nodes.text("a")) and Nodes.ancestor(Nodes.text("b"))),
+                // A traversal-only predicate anywhere in the tree makes the whole selector traversal.
+                Selectors.of(Nodes.text("OK") and Nodes.descendant(Nodes.text("x.*", MatchMode.MATCH_REGEX))),
+                Selectors.of(Nodes.child(Nodes.text("a") or Nodes.text("b"))),
+            )
+        traversal.forEach { assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(it), it.render()) }
+    }
+
+    @Test
+    fun invalidCommandExceptionConvertsToAFailure() {
+        val failure =
+            assertFailsWith<InvalidCommandException> { CommandValidation.validateSelector(Selectors.text("(", MatchMode.MATCH_REGEX)) }
+                .toFailure()
+        assertEquals(ErrorCode.ERR_INVALID_SELECTOR, failure.code)
+        assertEquals(ErrorDetail.INVALID_REGEX, failure.detail)
+    }
+
+    private fun validate(node: Node) = CommandValidation.validateSelector(Selectors.of(node))
+
+    /** A chain of [depth] nodes: `parent(parent(…text…))`. */
+    private fun nested(depth: Int): Node = (1 until depth).fold(Nodes.text("leaf")) { node, _ -> Nodes.parent(node) }
+
+    private fun assertInvalid(
+        code: ErrorCode,
+        detail: String? = null,
+        message: String? = null,
+        block: () -> Unit,
+    ) {
+        val error = assertFailsWith<InvalidCommandException>(message) { block() }
+        assertEquals(code, error.code, message)
+        assertEquals(detail, error.detail, message)
+    }
+}
+
+internal const val AUT = "io.github.noamcohen48.tap.fixture"

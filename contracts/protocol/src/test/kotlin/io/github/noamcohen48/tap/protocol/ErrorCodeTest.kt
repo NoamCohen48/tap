@@ -1,79 +1,73 @@
 package io.github.noamcohen48.tap.protocol
 
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class ErrorCodeTest {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val sendable = ErrorCode.entries - setOf(ErrorCode.UNRECOGNIZED, ErrorCode.ERR_UNSPECIFIED, ErrorCode.ERR_UNKNOWN)
 
     @Test
-    fun everySendableCodeRoundTripsByName() {
-        ErrorCode.entries.filter { it != ErrorCode.UNKNOWN }.forEach { code ->
-            val response = Response.failure(code, durationMs = 1, detail = "D", message = "m")
-            val encoded = json.encodeToString(response)
-            assertTrue("\"code\":\"${code.name}\"" in encoded, encoded)
-            assertEquals(response, json.decodeFromString<Response>(encoded))
+    fun mutationRiskIsExplicitForEveryCode() {
+        val safe =
+            setOf(
+                ErrorCode.ERR_INVALID_REQUEST, ErrorCode.ERR_INVALID_SELECTOR, ErrorCode.ERR_UNSUPPORTED,
+                ErrorCode.ERR_UNAUTHENTICATED, ErrorCode.ERR_SESSION_MISMATCH, ErrorCode.ERR_DUPLICATE_OR_STALE,
+                ErrorCode.ERR_OVERLOADED, ErrorCode.ERR_AUT_MISMATCH, ErrorCode.ERR_NOT_FOUND, ErrorCode.ERR_AMBIGUOUS,
+                ErrorCode.ERR_NOT_INTERACTABLE, ErrorCode.ERR_WAIT_TIMEOUT, ErrorCode.ERR_CANCELLED,
+                ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorCode.ERR_AUT_NOT_INSTALLED, ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE,
+                ErrorCode.ERR_DRIVER_UNHEALTHY, ErrorCode.ERR_TRANSPORT_LOST,
+            )
+        ErrorCode.entries.forEach { code ->
+            assertEquals(code !in safe, code.mayHaveMutated, "$code mutation risk")
         }
     }
 
     @Test
-    fun unknownCodeDecodesToUnknownInsteadOfFailing() {
-        val decoded = json.decodeFromString<Response>(
-            """{"type":"error","code":"FROM_THE_FUTURE","durationMs":3}""",
-        )
-        assertEquals(ErrorCode.UNKNOWN, decoded.errorCode)
-        assertTrue(decoded.errorCode!!.mayHaveMutated)
-        assertFalse(decoded.errorCode!!.retryable)
-    }
-
-    @Test
-    fun unknownIsNeverEncoded() {
-        assertFailsWith<IllegalArgumentException> {
-            json.encodeToString(Response.failure(ErrorCode.UNKNOWN, durationMs = 0))
+    fun unknownCodesCountAsPossiblyMutatedAndNotRetryable() {
+        listOf(ErrorCode.UNRECOGNIZED, ErrorCode.ERR_UNSPECIFIED, ErrorCode.ERR_UNKNOWN).forEach { code ->
+            assertTrue(code.mayHaveMutated, "$code")
+            assertFalse(code.retryable, "$code")
         }
     }
 
     @Test
-    fun okAndErrorAreDistinctVariants() {
-        val ok = Response.ok(Done, durationMs = 0)
-        val error = Response.failure(ErrorCode.NOT_FOUND, durationMs = 0)
-        assertTrue(ok.ok && ok.errorCode == null && ok.result == Done)
-        assertFalse(error.ok)
-        assertEquals(ErrorCode.NOT_FOUND, error.errorCode)
-        assertEquals(null, error.result)
-    }
-
-    @Test
-    fun goldenErrorResponse() {
-        val encoded = json.encodeToString(
-            Response.failure(ErrorCode.NOT_FOUND, durationMs = 42, detail = ErrorDetail.END_REACHED),
-        )
-        assertEquals("""{"type":"error","code":"NOT_FOUND","detail":"END_REACHED","durationMs":42}""", encoded)
-    }
-
-    @Test
-    fun retryableCodesNeverAdmitMutation() {
-        ErrorCode.entries.filter { it.retryable }.forEach { code ->
-            assertFalse(code.mayHaveMutated, "$code is retryable but may have mutated")
+    fun onlyNonMutatingCodesAreRetryable() {
+        val retryable =
+            setOf(
+                ErrorCode.ERR_OVERLOADED, ErrorCode.ERR_NOT_FOUND, ErrorCode.ERR_NOT_INTERACTABLE, ErrorCode.ERR_WAIT_TIMEOUT,
+                ErrorCode.ERR_CANCELLED, ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE,
+            )
+        ErrorCode.entries.forEach { code ->
+            assertEquals(code in retryable, code.retryable, "$code retryable")
+            if (code.retryable) assertFalse(code.mayHaveMutated, "retryable $code must not mutate")
         }
     }
 
     @Test
-    fun taxonomyMatchesTheDesignList() {
-        val planned = """
-            INVALID_REQUEST INVALID_SELECTOR UNSUPPORTED UNAUTHENTICATED
-            SESSION_MISMATCH DUPLICATE_OR_STALE AUT_MISMATCH NOT_FOUND AMBIGUOUS NOT_INTERACTABLE
-            ACTION_REJECTED WAIT_TIMEOUT CANCELLED DEADLINE_EXCEEDED
-            STALE_DURING_COMMAND AUT_NOT_INSTALLED AUT_CRASHED AUT_ANR
-            SYNC_PROVIDER_UNAVAILABLE DRIVER_UNHEALTHY TRANSPORT_LOST INDETERMINATE
-            ARTIFACT_TRANSFER_FAILED INTERNAL
-        """.trim().split(Regex("\\s+")).toSet()
-        val additions = setOf("OVERLOADED", "PAYLOAD_TOO_LARGE", "UNKNOWN")
-        assertEquals(planned + additions, ErrorCode.entries.map { it.name }.toSet())
+    fun normalizationMapsDecodeFallbacksToUnknown() {
+        assertEquals(ErrorCode.ERR_UNKNOWN, ErrorCode.UNRECOGNIZED.normalized())
+        assertEquals(ErrorCode.ERR_UNKNOWN, ErrorCode.ERR_UNSPECIFIED.normalized())
+        (sendable + ErrorCode.ERR_UNKNOWN).forEach { assertEquals(it, it.normalized()) }
+    }
+
+    @Test
+    fun labelsAreTheProtocolNames() {
+        assertEquals("NOT_FOUND", ErrorCode.ERR_NOT_FOUND.label)
+        assertEquals("UNKNOWN", ErrorCode.UNRECOGNIZED.label)
+        sendable.forEach { code ->
+            assertEquals(code.name, "ERR_" + code.label)
+            assertTrue(code.label.matches(Regex("[A-Z_]+")), code.label)
+        }
+    }
+
+    @Test
+    fun commandFailureDefaultsItsMessageToTheLabel() {
+        val failure = CommandFailure(ErrorCode.ERR_AMBIGUOUS, ErrorDetail.TARGET_AMBIGUOUS)
+        assertEquals("AMBIGUOUS", failure.message)
+        assertEquals(null, failure.remoteMessage)
+        assertEquals("why", CommandFailure(ErrorCode.ERR_INTERNAL, message = "why").remoteMessage)
     }
 }

@@ -1,9 +1,10 @@
 package io.github.noamcohen48.tap.driver.engine
 
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.protocol.label
 
 /**
  * Thrown from [CommandContext.checkpoint] or [CommandContext.markMutationStarted] when a command
  * must stop before mutating. The pipeline converts it into the terminal response for [errorCode].
  */
-class CommandInterrupted(val errorCode: ErrorCode, val detail: String? = null) : RuntimeException(errorCode.name)
+class CommandInterrupted(val errorCode: ErrorCode, val detail: String? = null) : RuntimeException(errorCode.label)

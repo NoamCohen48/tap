@@ -1,9 +1,9 @@
 import com.google.protobuf.gradle.id
 
 /*
- * Host server API (tap.v1). The files under `proto/` are the single source of truth:
- * this module generates the Java/gRPC classes for the host daemon and the Kotlin client;
- * clients/python/scripts/gen_stubs.py generates (and CI verifies) the committed Python stubs.
+ * Host server API (tap.v1) gRPC stubs: grpc-java (lite) and grpc-kotlin coroutine stubs for the
+ * services in contracts/proto. The messages come from :contracts:schema; this module generates
+ * no message classes of its own.
  */
 plugins {
     `java-library`
@@ -29,7 +29,7 @@ publishing {
             from(components["java"])
             pom {
                 name.set("tap-api")
-                description.set("tap.v1 host server API: generated gRPC/protobuf stubs")
+                description.set("tap.v1 host server API: generated gRPC stubs over tap-schema")
             }
         }
     }
@@ -43,16 +43,18 @@ val grpcKotlinVersion = "1.5.0"
 val coroutinesVersion = "1.10.2"
 
 dependencies {
-    api("io.grpc:grpc-protobuf:$grpcVersion")
+    api(project(":contracts:schema"))
+    api("io.grpc:grpc-protobuf-lite:$grpcVersion")
     api("io.grpc:grpc-stub:$grpcVersion")
     api("io.grpc:grpc-kotlin-stub:$grpcKotlinVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
-    api("com.google.protobuf:protobuf-java:$protobufVersion")
     compileOnly("javax.annotation:javax.annotation-api:1.3.2")
 }
 
 sourceSets.main {
-    proto.srcDir("proto")
+    // Only the service files; wire/ has no services and is not part of the API.
+    proto.srcDir("../proto")
+    proto.exclude("wire/**")
 }
 
 protobuf {
@@ -63,9 +65,11 @@ protobuf {
     }
     generateProtoTasks {
         all().forEach { task ->
+            // The message classes are :contracts:schema's.
+            task.builtins { removeIf { it.name == "java" } }
             task.plugins {
-                id("grpc")
-                id("grpckt")
+                id("grpc") { option("lite") }
+                id("grpckt") { option("lite") }
             }
         }
     }

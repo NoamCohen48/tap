@@ -1,6 +1,0 @@
-{
-  "type": "error",
-  "code": "DUPLICATE_OR_STALE",
-  "message": "example",
-  "durationMs": 5
-}

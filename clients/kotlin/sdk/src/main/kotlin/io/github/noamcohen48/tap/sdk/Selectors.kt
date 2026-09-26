@@ -16,7 +16,6 @@ import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.SystemScope
 import io.github.noamcohen48.tap.api.v1.TextProperty
-import com.google.protobuf.TextFormat
 import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
 
 /**
@@ -27,9 +26,9 @@ import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
  * it with [Device.element]. Matching happens on the device, scoped to the app under test, and
  * mutations require exactly one match.
  *
- * A [Selector] wraps the server API's own `tap.v1.Selector`, a small expression tree that
- * mirrors the device protocol's AST one-to-one, so anything built here is validated identically
- * by the server and the driver and rendered in exceptions. Building a selector performs no
+ * A [Selector] wraps the server API's own `tap.v1.Selector`, a small expression tree that the
+ * server forwards to the driver unchanged, so anything built here is validated identically by
+ * the server and the driver and rendered in exceptions. Building a selector performs no
  * I/O; each terminal action resolves it again.
  */
 class Selector internal constructor(
@@ -251,8 +250,11 @@ class Selector internal constructor(
     /** Accept the [index]-th match (0-based) in accessibility order instead of requiring exactly one. */
     fun at(index: Int): Selector = Selector(proto.toBuilder().setAt(At.newBuilder().setIndex(index)).build())
 
-    /** The selector as protobuf text, exactly as the device will see it; also used in exceptions. */
-    fun render(): String = TextFormat.printer().shortDebugString(proto)
+    /**
+     * The selector as one-line protobuf text, exactly the tree the device will see (for example
+     * `node { match { property: PROPERTY_TEXT value: "OK" } }`); also used in exceptions.
+     */
+    fun render(): String = proto.renderText()
 
     override fun toString(): String = render()
 
@@ -344,7 +346,7 @@ fun resId(
 
 /**
  * View resource id `name` of the **app under test**: `<aut>:id/name`, with the package filled in
- * by the server from the session, so the same selector works on every device and role. Use
+ * on the device from the session, so the same selector works on every device and role. Use
  * [resId] for another package (a system dialog with [Selector.inSystemPackage]).
  */
 fun res(name: String): Selector = selector(autResource(name))

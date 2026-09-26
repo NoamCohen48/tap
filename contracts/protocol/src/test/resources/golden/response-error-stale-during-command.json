@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "STALE_DURING_COMMAND",
-  "detail": "TARGET_GONE",
-  "message": "example",
-  "durationMs": 5
-}

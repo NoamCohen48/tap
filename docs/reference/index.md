@@ -7,7 +7,7 @@ from the code:
 |---|---|---|
 | [Kotlin client](kotlin.md) | KDoc in `clients/kotlin/sdk` and `clients/kotlin/junit5` | [Dokka](https://kotlinlang.org/docs/dokka-introduction.html) |
 | [Python client](python.md) | docstrings and type hints in `clients/python/tap` | [mkdocstrings](https://mkdocstrings.github.io/) |
-| [gRPC server API](grpc.md) | `contracts/api/proto/*.proto` (`tap.v1`) | [protoc-gen-doc](https://github.com/pseudomuto/protoc-gen-doc) |
+| [gRPC server API](grpc.md) | `contracts/proto/*.proto` (`tap.v1`) | [protoc-gen-doc](https://github.com/pseudomuto/protoc-gen-doc) |
 
 `scripts/build-docs.sh` runs the three generators and then `mkdocs build --strict`; the
 guide pages are plain Markdown under `docs/` and can be served alone with `mkdocs serve`.

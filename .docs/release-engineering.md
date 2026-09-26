@@ -11,7 +11,7 @@ The repository builds four things people install, each on its own version line:
 
 | Family | Tag | Artifacts | Version source |
 |---|---|---|---|
-| **engine** (`server`) | `daemon/vX.Y.Z` | `tap` native binary (linux-x86_64, macos-aarch64) and JVM dist on a GitHub Release; Maven `io.github.noamcohen48.tap:tap-api` (generated `tap.v1` stubs) to GitHub Packages | `gradle.properties` `tap.version.engine` |
+| **engine** (`server`) | `daemon/vX.Y.Z` | `tap` native binary (linux-x86_64, macos-aarch64) and JVM dist on a GitHub Release; Maven `io.github.noamcohen48.tap:tap-schema` (generated protobuf-lite messages of `contracts/proto`) and `tap-api` (the `tap.v1` gRPC stubs, depending on `tap-schema`) to GitHub Packages | `gradle.properties` `tap.version.engine` |
 | **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | `gradle.properties` `tap.version.client.kotlin` |
 | **Python client** | `client-python/vX.Y.Z` | `tap-e2e` wheel + sdist on a GitHub Release (PyPI opt-in) | `clients/python/pyproject.toml` |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
@@ -27,12 +27,15 @@ per device) and they share one version with it:
   nobody needs: no user ever picks a driver version, `tap serve` installs the one it was built
   with, and the handshake's `HOST_BUILD_ID`/`DRIVER_APK_BUILD_ID` (both = `ENGINE_VERSION`)
   already refuse a mismatch.
-- The TAP1 protocol version (`1.0`) remains the *wire* compatibility statement inside the
+- The TAP1 protocol version (`3.0`) remains the *wire* compatibility statement inside the
   handshake; the engine version is the *release* identifier. They move independently: many
   engine releases per protocol version.
 - `contracts/protocol` is therefore not published to Maven either; it is compiled into the
-  server and the driver. Only `contracts/api` (`tap.v1`, the surface clients speak) is
-  published, at the engine version, because clients depend on it. It also generates the
+  server and the driver. Only `contracts/schema` (the lite messages of `contracts/proto`;
+  clients use the `tap.v1` ones, `tap.wire.v1` rides along unused) and `contracts/api` (the
+  `tap.v1` service stubs) are published, at the engine version, because clients depend on
+  them. Both use protobuf-javalite, the one runtime the Android driver can share with the
+  host. `contracts/api` also generates the
   grpc-kotlin coroutine stubs, so it carries `grpc-kotlin-stub`, `kotlinx-coroutines-core`
   and `kotlin-stdlib` at compile scope in the published POM: grpc-kotlin 1.5.0 with grpc-java
   1.75.0 (pinned in `contracts/api/build.gradle.kts`; grpc-kotlin releases lag grpc-java, so
@@ -53,8 +56,8 @@ committed `_gen` stubs), and the runtime check is `Info().daemon_version` /
 `protocol_version` from the server. `tap.v1` is the API compatibility contract: within it,
 fields are only added (`buf breaking` in CI enforces wire compatibility), so a newer client
 against an older server degrades to "unknown field ignored" rather than breaking, and an
-older client against a newer server keeps working. A `tap.v2` package would be a new
-`contracts/api` module.
+older client against a newer server keeps working. A `tap.v2` package would be new
+files under `contracts/proto`.
 
 Because `tap-client` depends on `tap-api:<engine>`, a `client-kotlin/v*` release checks that
 the `tap-api` of the current engine version is already in GitHub Packages and fails with a
@@ -90,8 +93,8 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 
 | Job | Proves |
 |---|---|
-| `api-contract` | `buf lint` on `contracts/api` (STANDARD minus the naming rules the file deliberately breaks, see `contracts/api/buf.yaml`); `buf breaking` (`WIRE_JSON`) against the PR base / previous push, so removing, renumbering or retyping a field fails; `gen_stubs.py --check` with the pinned `grpcio-tools`, so the committed Python stubs match the proto. |
-| `jvm` | Unit tests (`:contracts:protocol`, `:host:core`, `:host:daemon` — enum mirror + golden round trip —, `:device:driver:command-engine`, both Kotlin client modules); assembles driver APKs, fixture, daemon dist/zip and validation executable; `publishToMavenLocal` for the four Maven artifacts (POMs resolve); `tap version` equals `tap.version.engine`. Uploads the JVM dist. |
+| `api-contract` | `buf lint` on `contracts/proto` (STANDARD minus the naming rules the file deliberately breaks, see `contracts/proto/buf.yaml`); `buf breaking` (`WIRE_JSON`) against the PR base / previous push, so removing, renumbering or retyping a field fails; `gen_stubs.py --check` with the pinned `grpcio-tools`, so the committed Python stubs match the proto. |
+| `jvm` | Unit tests (`:contracts:protocol`, `:host:core`, `:host:daemon`, `:device:driver:command-engine`, both Kotlin client modules); assembles driver APKs, fixture, daemon dist/zip and validation executable; `publishToMavenLocal` for the five Maven artifacts (POMs resolve); `tap version` equals `tap.version.engine`. Uploads the JVM dist. |
 | `python` | Install + wheel build on 3.10 and 3.13, `tap.__version__`, pytest collection of the sample suite. Uploads the wheel. |
 | `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64: `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`) (one serial, so two-device tests are skipped). Failure artifacts are uploaded. |
 | `native-image` | (push to `main` only) GraalVM 21 `nativeCompile` + `tap version` smoke; catches missing reflection metadata before a release. |

@@ -1,16 +1,18 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.BlobEnd
-import io.github.noamcohen48.tap.protocol.BlobStart
-import io.github.noamcohen48.tap.protocol.Command
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameCodec
 import io.github.noamcohen48.tap.protocol.FrameType
 import io.github.noamcohen48.tap.protocol.ProtocolException
-import io.github.noamcohen48.tap.protocol.Request
-import io.github.noamcohen48.tap.protocol.Response
-import io.github.noamcohen48.tap.protocol.Targeted
+import io.github.noamcohen48.tap.protocol.op
+import io.github.noamcohen48.tap.protocol.parsePayload
+import io.github.noamcohen48.tap.protocol.render
+import io.github.noamcohen48.tap.protocol.targetSelector
+import io.github.noamcohen48.tap.wire.v1.BlobEnd
+import io.github.noamcohen48.tap.wire.v1.BlobStart
+import io.github.noamcohen48.tap.wire.v1.Request
+import io.github.noamcohen48.tap.wire.v1.Response
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -23,8 +25,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
@@ -38,11 +38,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class DriverTransport(
     private val socket: Socket,
     private val scope: CoroutineScope,
-    private val json: Json,
     private val generation: Long,
     private val serial: String?,
     private val timeoutProvider: (Int) -> Int,
-    private val pendingFactory: (Long, Command, Long) -> DriverClient.PendingCommand,
+    private val pendingFactory: (Long, Request, Long) -> DriverClient.PendingCommand,
 ) {
     private val mutex = Mutex()
     private val pingMutex = Mutex()
@@ -71,14 +70,15 @@ internal class DriverTransport(
     @Volatile var poisonCause: Throwable? = null
         private set
 
+    /** Transmits [request], which already carries its session envelope, under the next request ID. */
     suspend fun submit(
         request: Request,
         admission: () -> Unit,
     ): DriverClient.PendingCommand =
         mutex.withLock {
             admission()
-            ensureUsable(request.command, request.timeoutMs)
-            transmit(nextRequestId++, request.command, request.timeoutMs, json.encodeToString(request).encodeToByteArray())
+            ensureUsable(request)
+            transmit(nextRequestId++, request, request.timeoutMs, request.toByteArray())
         }
 
     suspend fun submitValidation(
@@ -89,12 +89,13 @@ internal class DriverTransport(
         mutex.withLock {
             admission()
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
-            transmit(requestId, request.command, request.timeoutMs, json.encodeToString(request).encodeToByteArray())
+            transmit(requestId, request, request.timeoutMs, request.toByteArray())
         }
 
+    /** [request] only classifies the pending entry; [payload] is what goes on the wire. */
     suspend fun submitRawValidation(
         requestId: Long,
-        command: Command,
+        request: Request,
         timeoutMs: Long,
         payload: ByteArray,
         admission: () -> Unit,
@@ -102,34 +103,31 @@ internal class DriverTransport(
         mutex.withLock {
             admission()
             check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
-            transmit(requestId, command, timeoutMs, payload)
+            transmit(requestId, request, timeoutMs, payload)
         }
 
-    private fun ensureUsable(
-        command: Command,
-        timeoutMs: Long,
-    ) {
+    private fun ensureUsable(request: Request) {
         if (!poisoned && !closed) return
         throw CommandTransportException(
-            ErrorCode.TRANSPORT_LOST,
-            command.op,
+            ErrorCode.ERR_TRANSPORT_LOST,
+            request.op,
             -1,
             generation,
             TransmissionState.NOT_WRITTEN,
             IllegalStateException("Driver connection is closed or poisoned"),
             serial,
-            (command as? Targeted)?.selector?.render(),
-            timeoutMs,
+            request.targetSelector?.render(),
+            request.timeoutMs,
         )
     }
 
     private suspend fun transmit(
         requestId: Long,
-        command: Command,
+        request: Request,
         timeoutMs: Long,
         payload: ByteArray,
     ): DriverClient.PendingCommand {
-        val pendingCommand = pendingFactory(requestId, command, timeoutMs)
+        val pendingCommand = pendingFactory(requestId, request, timeoutMs)
         check(pending.putIfAbsent(requestId, pendingCommand) == null) { "Request $requestId is already pending" }
         nextRequestId = maxOf(nextRequestId, Math.addExact(requestId, 1L))
         pendingCommand.beginWriting()
@@ -185,7 +183,7 @@ internal class DriverTransport(
                 admission()
                 if (poisoned || closed) {
                     throw CommandTransportException(
-                        ErrorCode.TRANSPORT_LOST,
+                        ErrorCode.ERR_TRANSPORT_LOST,
                         "ping",
                         0,
                         generation,
@@ -221,7 +219,7 @@ internal class DriverTransport(
                         val command =
                             pending.remove(frame.requestId)
                                 ?: throw ProtocolException("Response for unknown request ${frame.requestId}")
-                        command.complete(json.decodeFromString<Response>(frame.payload.decodeToString()))
+                        command.complete(parsePayload("RESPONSE", frame.payload, Response::parseFrom))
                     }
 
                     FrameType.PONG -> {
@@ -231,7 +229,7 @@ internal class DriverTransport(
 
                     FrameType.BLOB_START -> {
                         val command = pendingFor(frame)
-                        val start = json.decodeFromString<BlobStart>(frame.payload.decodeToString())
+                        val start = parsePayload("BLOB_START", frame.payload, BlobStart::parseFrom)
                         if (command.blob != null) throw ProtocolException("Second BLOB_START for request ${frame.requestId}")
                         command.blob = BlobReceiver(start)
                     }
@@ -242,7 +240,7 @@ internal class DriverTransport(
                     }
 
                     FrameType.BLOB_END -> {
-                        pendingFor(frame).blob?.end(json.decodeFromString<BlobEnd>(frame.payload.decodeToString()))
+                        pendingFor(frame).blob?.end(parsePayload("BLOB_END", frame.payload, BlobEnd::parseFrom))
                             ?: throw ProtocolException("BLOB_END before BLOB_START for request ${frame.requestId}")
                     }
 

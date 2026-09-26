@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "AUT_MISMATCH",
-  "detail": "PROCESS_MISMATCH",
-  "message": "example",
-  "durationMs": 5
-}

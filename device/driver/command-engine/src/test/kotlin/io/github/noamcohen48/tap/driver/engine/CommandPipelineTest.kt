@@ -1,17 +1,25 @@
 package io.github.noamcohen48.tap.driver.engine
 
-import io.github.noamcohen48.tap.protocol.ArtifactResult
+import io.github.noamcohen48.tap.api.v1.CommandResult
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.protocol.BlobFrames
-import io.github.noamcohen48.tap.protocol.BoolResult
-import io.github.noamcohen48.tap.protocol.Done
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS
+import io.github.noamcohen48.tap.protocol.Requests
+import io.github.noamcohen48.tap.protocol.Selectors
+import io.github.noamcohen48.tap.protocol.inSystemPackage
+import io.github.noamcohen48.tap.protocol.withEnvelope
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.MAX_BLOB_CHUNK_BYTES
-import io.github.noamcohen48.tap.protocol.Response
+import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.detail
 import io.github.noamcohen48.tap.protocol.errorCode
+import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.mayHaveMutated
 import io.github.noamcohen48.tap.protocol.message
-import io.github.noamcohen48.tap.protocol.result
+import io.github.noamcohen48.tap.protocol.ok
+import io.github.noamcohen48.tap.wire.v1.Response
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -64,12 +72,12 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { ctx ->
             gate.await(1, TimeUnit.SECONDS)
             synchronized(order) { order += ctx.requestId }
-            Response.ok(Done, durationMs = 0)
+            Responses.done()
         }
         awaitRunning(1)
         pipeline.submit(2, 5_000) { ctx ->
             synchronized(order) { order += ctx.requestId }
-            Response.ok(BoolResult(true), durationMs = 0)
+            boolResponse(true)
         }
         assertEquals(listOf(2L), pipeline.snapshot().queued)
         gate.countDown()
@@ -83,7 +91,7 @@ class CommandPipelineTest {
     @Test
     fun overloadIsAStructuredErrorWithoutRunning() {
         val release = CountDownLatch(1)
-        pipeline.submit(1, 5_000) { release.await(); Response.ok(Done, durationMs = 0) }
+        pipeline.submit(1, 5_000) { release.await(); Responses.done() }
         awaitRunning(1)
         assertEquals(CommandPipeline.Admission.QUEUED, pipeline.submit(2, 5_000) { ok() })
         assertEquals(CommandPipeline.Admission.QUEUED, pipeline.submit(3, 5_000) { ok() })
@@ -95,7 +103,7 @@ class CommandPipelineTest {
 
         val overloaded = nextResponse()
         assertEquals(4L, overloaded.requestId)
-        assertEquals(ErrorCode.OVERLOADED, overloaded.response.errorCode)
+        assertEquals(ErrorCode.ERR_OVERLOADED, overloaded.response.errorCode)
         release.countDown()
         assertEquals(listOf(1L, 2L, 3L), List(3) { nextResponse().requestId })
         assertFalse(ran.get())
@@ -113,7 +121,7 @@ class CommandPipelineTest {
 
         val cancelled = nextResponse()
         assertEquals(2L, cancelled.requestId)
-        assertEquals(ErrorCode.CANCELLED, cancelled.response.errorCode)
+        assertEquals(ErrorCode.ERR_CANCELLED, cancelled.response.errorCode)
         assertEquals(emptyList(), pipeline.snapshot().queued)
         release.countDown()
         assertEquals(1L, nextResponse().requestId)
@@ -139,7 +147,7 @@ class CommandPipelineTest {
 
         val response = nextResponse()
         assertEquals(1L, response.requestId)
-        assertEquals(ErrorCode.CANCELLED, response.response.errorCode)
+        assertEquals(ErrorCode.ERR_CANCELLED, response.response.errorCode)
         assertFalse(mutated.get())
     }
 
@@ -157,7 +165,7 @@ class CommandPipelineTest {
         assertTrue(entered.await(1, TimeUnit.SECONDS))
         pipeline.cancel(1)
 
-        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
         assertFalse(mutated.get())
     }
 
@@ -170,7 +178,7 @@ class CommandPipelineTest {
             mutating.countDown()
             finish.await()
             ctx.checkpoint()
-            Response.ok(BoolResult(true), durationMs = 0)
+            boolResponse(true)
         }
         assertTrue(mutating.await(1, TimeUnit.SECONDS))
 
@@ -179,7 +187,7 @@ class CommandPipelineTest {
 
         val response = nextResponse()
         assertTrue(response.response.ok)
-        assertEquals(BoolResult(true), response.response.result)
+        assertTrue(response.response.result.bool)
         assertTrue(written.isEmpty())
     }
 
@@ -208,7 +216,7 @@ class CommandPipelineTest {
         assertEquals(1L, nextResponse().requestId)
         val expired = nextResponse()
         assertEquals(2L, expired.requestId)
-        assertEquals(ErrorCode.DEADLINE_EXCEEDED, expired.response.errorCode)
+        assertEquals(ErrorCode.ERR_DEADLINE_EXCEEDED, expired.response.errorCode)
         assertFalse(ran.get())
     }
 
@@ -226,7 +234,7 @@ class CommandPipelineTest {
         now.addAndGet(100)
         advance.countDown()
 
-        assertEquals(ErrorCode.DEADLINE_EXCEEDED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_DEADLINE_EXCEEDED, nextResponse().response.errorCode)
     }
 
     @Test
@@ -234,7 +242,7 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { throw IllegalStateException("boom") }
 
         val response = nextResponse()
-        assertEquals(ErrorCode.INTERNAL, response.response.errorCode)
+        assertEquals(ErrorCode.ERR_INTERNAL, response.response.errorCode)
         assertEquals("java.lang.IllegalStateException: boom", response.response.message)
     }
 
@@ -260,8 +268,8 @@ class CommandPipelineTest {
         assertTrue(pipeline.checkWatchdog())
 
         val responses = List(2) { nextResponse() }.associateBy { it.requestId }
-        assertEquals(ErrorCode.DRIVER_UNHEALTHY, responses.getValue(1L).response.errorCode)
-        assertEquals(ErrorCode.DRIVER_UNHEALTHY, responses.getValue(2L).response.errorCode)
+        assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, responses.getValue(1L).response.errorCode)
+        assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, responses.getValue(2L).response.errorCode)
         assertEquals(1, poisonReasons.size)
         assertTrue(pipeline.isPoisoned)
 
@@ -269,7 +277,7 @@ class CommandPipelineTest {
             CommandPipeline.Admission.UNHEALTHY,
             pipeline.submit(3, 5_000) { ok() },
         )
-        assertEquals(ErrorCode.DRIVER_UNHEALTHY, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, nextResponse().response.errorCode)
 
         release.countDown()
         assertTrue(pipeline.awaitTermination(1_000))
@@ -286,14 +294,14 @@ class CommandPipelineTest {
             ctx.markMutationStarted()
             mutating.countDown()
             release.await()
-            Response.ok(BoolResult(true), durationMs = 0)
+            boolResponse(true)
         }
         assertTrue(mutating.await(1, TimeUnit.SECONDS))
 
         now.addAndGet(600)
         assertTrue(pipeline.checkWatchdog())
 
-        assertEquals(ErrorCode.INDETERMINATE, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_INDETERMINATE, nextResponse().response.errorCode)
         release.countDown()
         pipeline.awaitTermination(1_000)
         assertNull(written.poll(100, TimeUnit.MILLISECONDS))
@@ -375,7 +383,7 @@ class CommandPipelineTest {
 
         pipeline.discardQueued()
 
-        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
         assertEquals(1L, pipeline.snapshot().running)
         release.countDown()
         assertEquals(1L, nextResponse().requestId)
@@ -390,12 +398,12 @@ class CommandPipelineTest {
             entered.countDown()
             proceed.await()
             ctx.checkCancelled()
-            Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = 0)
+            Responses.failure(ErrorCode.ERR_WAIT_TIMEOUT, durationMs = 0)
         }
         assertTrue(entered.await(1, TimeUnit.SECONDS))
         now.addAndGet(500)
         proceed.countDown()
-        assertEquals(ErrorCode.WAIT_TIMEOUT, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_WAIT_TIMEOUT, nextResponse().response.errorCode)
 
         val entered2 = CountDownLatch(1)
         pipeline.submit(2, 5_000) { ctx ->
@@ -406,7 +414,7 @@ class CommandPipelineTest {
         }
         assertTrue(entered2.await(1, TimeUnit.SECONDS))
         pipeline.cancel(2)
-        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
     }
 
     @Test
@@ -415,7 +423,7 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { ctx ->
             val (blob, outcome) = ctx.transferBlob("image/png", bytes)
             assertEquals(BlobTransfer.Outcome.COMPLETED, outcome)
-            Response.ok(ArtifactResult(blob.artifactInfo(1, 2)), durationMs = 0)
+            Response.newBuilder(Responses.done()).setArtifact(blob.artifactInfo(1, 2)).build()
         }
         val start = next<Outbound.BlobStartFrame>()
         assertEquals(bytes.size.toLong(), start.start.totalLength)
@@ -433,7 +441,7 @@ class CommandPipelineTest {
         assertTrue(bytes.contentEquals(reassembled.toByteArray()))
         val response = nextResponse()
         assertEquals(1L, response.requestId)
-        assertEquals(start.start.blobId, (response.response.result as ArtifactResult).artifact.blobId)
+        assertEquals(start.start.blobId, response.response.artifact.blobId)
         assertTrue(written.isEmpty())
     }
 
@@ -449,7 +457,7 @@ class CommandPipelineTest {
         }
         next<Outbound.BlobStartFrame>()
         next<Outbound.BlobChunkFrame>()
-        assertEquals(ErrorCode.CANCELLED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
         assertTrue(written.isEmpty())
     }
 
@@ -460,10 +468,10 @@ class CommandPipelineTest {
             now.addAndGet(200)
             val (_, outcome) = ctx.transferBlob("image/png", bytes)
             assertEquals(BlobTransfer.Outcome.DEADLINE_EXCEEDED, outcome)
-            Response.failure(ErrorCode.DEADLINE_EXCEEDED, durationMs = 0)
+            Responses.failure(ErrorCode.ERR_DEADLINE_EXCEEDED, durationMs = 0)
         }
         next<Outbound.BlobStartFrame>()
-        assertEquals(ErrorCode.DEADLINE_EXCEEDED, nextResponse().response.errorCode)
+        assertEquals(ErrorCode.ERR_DEADLINE_EXCEEDED, nextResponse().response.errorCode)
     }
 
     @Test
@@ -489,7 +497,7 @@ class CommandPipelineTest {
             assertTrue(heartbeatPipeline.checkWatchdog())
             assertTrue(poisonReasons.poll(1, TimeUnit.SECONDS)!!.contains("heartbeat"))
             val response = (heartbeatWritten.poll(2, TimeUnit.SECONDS) as Outbound.TerminalResponse).response
-            assertEquals(ErrorCode.DRIVER_UNHEALTHY, response.errorCode)
+            assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, response.errorCode)
             assertEquals(ErrorDetail.HEARTBEAT_EXPIRED, response.detail)
             assertEquals(CommandPipeline.Admission.UNHEALTHY, heartbeatPipeline.submit(2, 1_000) { ok() })
             release.countDown()
@@ -504,13 +512,66 @@ class CommandPipelineTest {
         pipeline.submit(1, 5_000) { release.await(); ok() }
         awaitRunning(1)
 
-        pipeline.respond(2, Response.failure(ErrorCode.UNSUPPORTED, durationMs = 0))
+        pipeline.respond(2, Responses.failure(ErrorCode.ERR_UNSUPPORTED, durationMs = 0))
         release.countDown()
 
         val rejected = nextResponse()
         assertEquals(2L, rejected.requestId)
-        assertEquals(ErrorCode.UNSUPPORTED, rejected.response.errorCode)
+        assertEquals(ErrorCode.ERR_UNSUPPORTED, rejected.response.errorCode)
         assertEquals(1L, nextResponse().requestId)
+    }
+
+    @Test
+    fun invalidRequestIsAnsweredOnTheReaderLaneWhileAnotherCommandRuns() {
+        val release = CountDownLatch(1)
+        pipeline.submit(1, 30_000) { release.await(); ok() }
+        awaitRunning(1)
+        // Fill the queue: a request that reached the pipeline now would come back OVERLOADED.
+        pipeline.submit(2, 30_000) { ok() }
+        pipeline.submit(3, 30_000) { ok() }
+
+        // The reader lane screens before submitting, so each rejection goes straight to the writer.
+        val list = Selectors.androidResource(SCREEN_AUT, "list")
+        val rejected =
+            mapOf(
+                4L to Requests.of(Commands.tap(Selector.getDefaultInstance())).withEnvelope(SESSION, GENERATION, 5_000),
+                5L to Requests.of(Commands.scrollUntil(Selectors.text("OK").inSystemPackage("com.android.systemui"), list))
+                    .withEnvelope(SESSION, GENERATION, 5_000),
+                6L to Requests.health().withEnvelope(SESSION, GENERATION, MAX_REQUEST_TIMEOUT_MS + 1),
+                7L to Requests.health().withEnvelope(SESSION, GENERATION + 1, 5_000),
+            )
+        rejected.forEach { (id, request) ->
+            val rejection = RequestScreening.screen(request, SESSION, GENERATION) ?: fail("request $id must be rejected")
+            pipeline.respond(id, rejection)
+        }
+
+        val answers = List(rejected.size) { nextResponse() }
+        assertEquals(listOf(4L, 5L, 6L, 7L), answers.map { it.requestId })
+        assertEquals(
+            listOf(
+                ErrorCode.ERR_INVALID_SELECTOR,
+                ErrorCode.ERR_INVALID_SELECTOR,
+                ErrorCode.ERR_INVALID_REQUEST,
+                ErrorCode.ERR_SESSION_MISMATCH,
+            ),
+            answers.map { it.response.errorCode },
+        )
+        assertEquals(ErrorDetail.EMPTY_NODE, answers[0].response.detail)
+        assertEquals(ErrorDetail.SCOPE_MISMATCH, answers[1].response.detail)
+        assertEquals(1L, pipeline.snapshot().running, "the long command is still running")
+        assertEquals(listOf(2L, 3L), pipeline.snapshot().queued)
+
+        release.countDown()
+        assertEquals(listOf(1L, 2L, 3L), List(3) { nextResponse().requestId })
+    }
+
+    @Test
+    fun screeningPassesAWellFormedRequestForTheSession() {
+        val tap = Requests.of(Commands.tap(Selectors.text("OK"))).withEnvelope(SESSION, GENERATION, 5_000)
+        assertNull(RequestScreening.screen(tap, SESSION, GENERATION))
+        assertNull(RequestScreening.screen(Requests.health().withEnvelope(SESSION, GENERATION, 0), SESSION, GENERATION))
+        val otherSession = RequestScreening.screen(tap, "other", GENERATION)
+        assertEquals(ErrorCode.ERR_SESSION_MISMATCH, otherSession?.errorCode)
     }
 
     @Test
@@ -519,7 +580,7 @@ class CommandPipelineTest {
         val release = CountDownLatch(1)
         pipeline.submit(1, 5_000) { entered.countDown(); release.await(); ok() }
         assertTrue(entered.await(1, TimeUnit.SECONDS))
-        pipeline.respond(2, Response.failure(ErrorCode.UNSUPPORTED, durationMs = 0))
+        pipeline.respond(2, Responses.failure(ErrorCode.ERR_UNSUPPORTED, durationMs = 0))
 
         assertTrue(pipeline.close("DUPLICATE_OR_STALE: request ID 1", 1_000))
 
@@ -552,31 +613,31 @@ class CommandPipelineTest {
             val requestId = index + 1L
             pipeline.submit(requestId, 5_000) { ctx ->
                 ctx.markMutationStarted()
-                Response.failure(code, detail = "SUB", message = "why", durationMs = 0)
+                Responses.failure(code, detail = "SUB", message = "why", durationMs = 0)
             }
             val response = nextResponse()
             assertEquals(requestId, response.requestId)
-            assertEquals(ErrorCode.INDETERMINATE, response.response.errorCode, "$code after the gate")
+            assertEquals(ErrorCode.ERR_INDETERMINATE, response.response.errorCode, "$code after the gate")
             assertEquals("SUB", response.response.detail)
-            assertTrue(response.response.message!!.startsWith("$code/SUB after the mutation started: why"))
+            assertTrue(response.response.message!!.startsWith("${code.label}/SUB after the mutation started: why"))
         }
         pipeline.submit(100, 5_000) { ctx ->
             ctx.markMutationStarted()
-            Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = 0)
+            Responses.failure(ErrorCode.ERR_WAIT_TIMEOUT, durationMs = 0)
         }
         assertEquals("WAIT_TIMEOUT", nextResponse().response.detail, "the code name stands in for a missing detail")
     }
 
     @Test
     fun failuresBeforeGateOrAlreadyMutatingAreUnchanged() {
-        pipeline.submit(1, 5_000) { Response.failure(ErrorCode.NOT_FOUND, durationMs = 0) }
-        assertEquals(ErrorCode.NOT_FOUND, nextResponse().response.errorCode)
+        pipeline.submit(1, 5_000) { Responses.failure(ErrorCode.ERR_NOT_FOUND, durationMs = 0) }
+        assertEquals(ErrorCode.ERR_NOT_FOUND, nextResponse().response.errorCode)
         pipeline.submit(2, 5_000) { ctx ->
             ctx.markMutationStarted()
-            Response.failure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = 0)
+            Responses.failure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = 0)
         }
         val rejected = nextResponse().response
-        assertEquals(ErrorCode.ACTION_REJECTED, rejected.errorCode)
+        assertEquals(ErrorCode.ERR_ACTION_REJECTED, rejected.errorCode)
         assertEquals(ErrorDetail.TEXT_MISMATCH, rejected.detail)
     }
 
@@ -585,7 +646,9 @@ class CommandPipelineTest {
         return message as? T ?: fail("Unexpected outbound $message")
     }
 
-    private fun ok() = Response.ok(Done, durationMs = 0)
+    private fun ok() = Responses.done()
+
+    private fun boolResponse(value: Boolean): Response = Response.newBuilder().setResult(CommandResult.newBuilder().setBool(value)).build()
 
     private fun nextResponse(): Outbound.TerminalResponse {
         val message = written.poll(2, TimeUnit.SECONDS) ?: fail("No response written")
@@ -598,5 +661,11 @@ class CommandPipelineTest {
             check(System.nanoTime() < deadline) { "Request $requestId never started" }
             Thread.sleep(2)
         }
+    }
+
+    private companion object {
+        const val SESSION = "session-1"
+        const val GENERATION = 3L
+        const val SCREEN_AUT = "com.example.aut"
     }
 }

@@ -4,28 +4,30 @@ import android.app.Instrumentation
 import android.os.Bundle
 import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.driver.engine.CommandPipeline
-import io.github.noamcohen48.tap.protocol.Authentication
-import io.github.noamcohen48.tap.protocol.AuthenticationResult
-import io.github.noamcohen48.tap.protocol.CanonicalJson
-import io.github.noamcohen48.tap.protocol.Challenge
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import io.github.noamcohen48.tap.protocol.DRIVER_TEST_APK_BUILD_ID
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameCodec
 import io.github.noamcohen48.tap.protocol.FrameType
-import io.github.noamcohen48.tap.protocol.Hello
-import io.github.noamcohen48.tap.protocol.Command
+import io.github.noamcohen48.tap.protocol.Operations
 import io.github.noamcohen48.tap.protocol.ProtocolAuthentication
 import io.github.noamcohen48.tap.protocol.ProtocolNegotiation
 import io.github.noamcohen48.tap.protocol.SUPPORTED_CAPABILITIES
 import io.github.noamcohen48.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import io.github.noamcohen48.tap.protocol.UIAUTOMATOR_BUILD_ID
+import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.parsePayload
+import io.github.noamcohen48.tap.wire.v1.Authentication
+import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
+import io.github.noamcohen48.tap.wire.v1.Challenge
+import io.github.noamcohen48.tap.wire.v1.Hello
+import io.github.noamcohen48.tap.wire.v1.Negotiation
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
-import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 
@@ -112,69 +114,66 @@ internal class TapDriverServer(
         instrumentation.sendStatus(2, Bundle().apply { putString("tapReady", ready) })
     }
 
+    /**
+     * HELLO → CHALLENGE → AUTH → AUTH_RESULT. The transcript MACs the exact HELLO and CHALLENGE
+     * payloads and the serialized negotiation bytes the host sent, never a re-encoding.
+     */
     private fun authenticate(input: InputStream, output: OutputStream): Boolean {
         val helloFrame = FrameCodec.read(input)
         require(helloFrame.type == FrameType.HELLO && helloFrame.requestId == 0L)
-        val hello = CanonicalJson.decodeCanonical<Hello>(helloFrame.payload)
+        val hello = parsePayload("HELLO", helloFrame.payload, Hello::parseFrom)
         require(hello.sessionId == config.sessionId && hello.sessionGeneration == config.generation)
         require(ProtocolNegotiation.isValidHello(hello))
-        if (ProtocolNegotiation.selectVersion(hello.supportedVersions, SUPPORTED_PROTOCOL_VERSIONS) == null) {
+        if (ProtocolNegotiation.selectVersion(hello.supportedVersionsList, SUPPORTED_PROTOCOL_VERSIONS) == null) {
             return false
         }
 
-        val nonceBytes = ByteArray(32).also(SecureRandom()::nextBytes)
-        val challenge = Challenge(
-            androidApiLevel = android.os.Build.VERSION.SDK_INT,
-            capabilities = SUPPORTED_CAPABILITIES,
-            driverApkBuildId = DRIVER_APK_BUILD_ID,
-            driverInstanceId = driverInstanceId,
-            driverNonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes),
-            driverTestApkBuildId = DRIVER_TEST_APK_BUILD_ID,
-            hostNonce = hello.hostNonce,
-            sessionGeneration = config.generation,
-            sessionId = config.sessionId,
-            supportedOperations = Command.names,
-            supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
-            uiAutomatorBuildId = UIAUTOMATOR_BUILD_ID,
-        )
-        val challengePayload = CanonicalJson.encode(challenge)
+        val challenge = Challenge.newBuilder()
+            .setAndroidApiLevel(android.os.Build.VERSION.SDK_INT)
+            .addAllCapabilities(SUPPORTED_CAPABILITIES)
+            .setDriverApkBuildId(DRIVER_APK_BUILD_ID)
+            .setDriverInstanceId(driverInstanceId)
+            .setDriverNonce(ProtocolAuthentication.nonce())
+            .setDriverTestApkBuildId(DRIVER_TEST_APK_BUILD_ID)
+            .setHostNonce(hello.hostNonce)
+            .setSessionGeneration(config.generation)
+            .setSessionId(config.sessionId)
+            .addAllSupportedOperations(Operations.ALL)
+            .addAllSupportedVersions(SUPPORTED_PROTOCOL_VERSIONS)
+            .setUiAutomatorBuildId(UIAUTOMATOR_BUILD_ID)
+            .build()
+        val challengePayload = challenge.toByteArray()
         FrameCodec.write(output, Frame(FrameType.CHALLENGE, 0, challengePayload))
 
         val authFrame = FrameCodec.read(input)
         require(authFrame.type == FrameType.AUTH && authFrame.requestId == 0L)
-        val authentication = CanonicalJson.decodeCanonical<Authentication>(authFrame.payload)
-        val validNegotiation = ProtocolNegotiation.isValid(hello, challenge, authentication.negotiation)
-        val transcript = ProtocolAuthentication.transcript(
-            helloFrame.payload,
-            challengePayload,
-            CanonicalJson.encode(authentication.negotiation),
-        )
+        val authentication = parsePayload("AUTH", authFrame.payload, Authentication::parseFrom)
+        val negotiationPayload = authentication.negotiation.toByteArray()
+        val negotiation = parsePayload("AUTH negotiation", negotiationPayload, Negotiation::parseFrom)
+        val validNegotiation = ProtocolNegotiation.isValid(hello, challenge, negotiation)
+        val transcript = ProtocolAuthentication.transcript(helloFrame.payload, challengePayload, negotiationPayload)
         val expected = ProtocolAuthentication.hostMac(config.secret, transcript)
         if (
             !validNegotiation ||
             !ProtocolAuthentication.constantTimeEquals(expected, authentication.transcriptHmac)
         ) {
-            FrameCodec.write(
-                output,
-                Frame(
-                    FrameType.AUTH_RESULT,
-                    0,
-                    CanonicalJson.encode(AuthenticationResult(ok = false, error = "UNAUTHENTICATED")),
-                ),
-            )
+            val rejected = AuthenticationResult.newBuilder()
+                .setOk(false)
+                .setError(ErrorCode.ERR_UNAUTHENTICATED.label)
+                .build()
+            FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, rejected.toByteArray()))
             return false
         }
 
-        val result = AuthenticationResult(
-            ok = true,
-            enabledCapabilities = authentication.negotiation.enabledCapabilities,
-            selectedVersion = authentication.negotiation.selectedVersion,
-            transcriptHmac = ProtocolAuthentication.driverMac(config.secret, transcript),
-        )
-        FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, CanonicalJson.encode(result)))
+        val result = AuthenticationResult.newBuilder()
+            .setOk(true)
+            .addAllEnabledCapabilities(negotiation.enabledCapabilitiesList)
+            .setSelectedVersion(negotiation.selectedVersion)
+            .setTranscriptHmac(ProtocolAuthentication.driverMac(config.secret, transcript))
+            .build()
+        FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, result.toByteArray()))
         return true
     }
-
 }
 
 private const val POISON_KILL_GRACE_MS = 2_000L

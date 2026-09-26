@@ -119,13 +119,14 @@ jobs:
           cp "host/daemon/build/distributions/tap-${version}.zip" \
              "release/tap-${version}-jvm.zip"
       - name: >-
-          Publish tap-api ${{ needs.resolve.outputs.version }} to GitHub
+          Publish tap-schema + tap-api ${{ needs.resolve.outputs.version }} to GitHub
           Packages
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
           ./gradlew
+          :contracts:schema:publishAllPublicationsToGitHubPackagesRepository
           :contracts:api:publishAllPublicationsToGitHubPackagesRepository
       - uses: actions/upload-artifact@v4
         with:
