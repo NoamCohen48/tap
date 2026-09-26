@@ -9,17 +9,21 @@ import com.company.tap.protocol.Challenge
 import com.company.tap.protocol.Command
 import com.company.tap.protocol.CommandResult
 import com.company.tap.protocol.CommandValidation
+import com.company.tap.protocol.DRIVER_APK_BUILD_ID
+import com.company.tap.protocol.DRIVER_TEST_APK_BUILD_ID
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.HOST_BUILD_ID
+import com.company.tap.protocol.HOST_RESPONSE_PADDING_MS
 import com.company.tap.protocol.Health
 import com.company.tap.protocol.Hello
 import com.company.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import com.company.tap.protocol.Mutation
 import com.company.tap.protocol.ProtocolAuthentication
+import com.company.tap.protocol.ProtocolJson
 import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.ProtocolVersion
 import com.company.tap.protocol.Request
@@ -42,7 +46,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.Json
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
@@ -57,15 +60,19 @@ class DriverClient private constructor(
     private val sessionId: String,
     private val generation: Long,
     private val secret: ByteArray,
-    private val overallDeadlineNanos: Long? = null,
+    handshakeDeadlineNanos: Long? = null,
     private val serial: String? = null,
     private val heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
     /** Padding added to a command's own timeout to form its private response budget. Production
      * default; tests inject a small value so budget expiry is deterministic without long sleeps. */
     private val responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = ProtocolJson.codec
     private val socket = Socket()
+
+    /** Bounds connect + handshake only; cleared once authenticated so no later frame write,
+     * ping or response budget inherits the caller's connect deadline. */
+    @Volatile private var handshakeDeadlineNanos: Long? = handshakeDeadlineNanos
 
     /** Session-owned usability gate, bound once by [DeviceSession]. Null keeps this client usable
      * standalone (tests, validation probes): the default is a no-op admission. Once bound, every
@@ -118,6 +125,9 @@ class DriverClient private constructor(
 
     /** Whether the transport can no longer be trusted; test visibility without exposing the flag. */
     internal val isPoisoned: Boolean get() = transport.isPoisoned
+
+    /** The first failure that poisoned the transport; null while healthy. */
+    internal val poisonCause: Throwable? get() = transport.poisonCause
     lateinit var driverInstanceId: String
         private set
     lateinit var negotiatedVersion: ProtocolVersion
@@ -128,6 +138,13 @@ class DriverClient private constructor(
         private set
 
     companion object {
+        /**
+         * Connects to the forwarded driver port and authenticates. [overallDeadlineNanos] bounds
+         * the TCP connect and the handshake only; the returned client's commands, heartbeat and
+         * cancels are bounded by their own timeouts. A failure before the driver's `CHALLENGE`
+         * arrives is an [java.io.IOException] (the driver may simply not be listening yet); any
+         * failure after it is a [DriverHandshakeException] and never worth retrying.
+         */
         suspend fun connect(
             hostPort: Int,
             sessionId: String,
@@ -151,11 +168,14 @@ class DriverClient private constructor(
                 )
             try {
                 withContext(Dispatchers.IO) {
+                    // Whole frames go out in one write; don't let Nagle hold them for an ACK.
+                    client.socket.tcpNoDelay = true
                     client.socket.connect(InetSocketAddress("127.0.0.1", hostPort), client.remainingTimeoutMs(10_000))
                     client.socket.soTimeout = client.remainingTimeoutMs(10_000)
                     client.authenticate()
                     client.socket.soTimeout = 0
                 }
+                client.handshakeDeadlineNanos = null
                 client.scope.launch { client.transport.readFrames() }
                 if (heartbeatIntervalMs > 0) client.scope.launch { client.runHeartbeat() }
                 return client
@@ -455,14 +475,31 @@ class DriverClient private constructor(
                     delay(waitMs)
                     continue
                 }
-                ping(heartbeatIntervalMs)
+                try {
+                    transport.ping(heartbeatIntervalMs) {
+                        try {
+                            sessionGate?.invoke()
+                        } catch (rejected: Exception) {
+                            throw HeartbeatStopped(rejected)
+                        }
+                    }
+                } catch (_: HeartbeatStopped) {
+                    // The owning session is closing or quarantined; its own state decides the
+                    // journal, so the heartbeat just stops without poisoning.
+                    return
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Throwable) {
-            // ping() already poisoned the client; nothing else to do on this coroutine.
+        } catch (error: Throwable) {
+            // Whatever ended the heartbeat, the driver's heartbeat window is no longer being kept
+            // open: poison so the client fails fast instead of dying silently (a closed client
+            // stays closed, not poisoned).
+            transport.poisonUnlessClosed(error)
         }
     }
+
+    private class HeartbeatStopped(cause: Throwable) : RuntimeException(cause)
 
     /** Validation flow only: sends `health` with an explicit request ID / identity to probe fencing. */
     suspend fun executeValidationRequest(
@@ -527,6 +564,25 @@ class DriverClient private constructor(
 
         socket.soTimeout = remainingTimeoutMs(10_000)
         val challengeFrame = withContext(Dispatchers.IO) { FrameCodec.read(socket.getInputStream()) }
+        try {
+            completeHandshake(hello, helloPayload, hostNonce, challengeFrame)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (typed: DriverStartException) {
+            throw typed
+        } catch (error: Exception) {
+            throw DriverHandshakeException("Driver handshake failed: ${error.message}", error)
+        }
+    }
+
+    /** Everything after a frame answered `HELLO`: a failure here is a real rejection or a
+     * mismatched driver, never "not listening yet". */
+    private suspend fun completeHandshake(
+        hello: Hello,
+        helloPayload: ByteArray,
+        hostNonce: String,
+        challengeFrame: Frame,
+    ) {
         check(challengeFrame.type == FrameType.CHALLENGE)
         val challenge = CanonicalJson.decodeCanonical<Challenge>(challengeFrame.payload)
         check(ProtocolNegotiation.isValidChallenge(challenge)) { "Driver contract is invalid" }
@@ -568,19 +624,51 @@ class DriverClient private constructor(
                 requireNotNull(result.transcriptHmac),
             ),
         ) { "Driver authentication failed" }
+        // Checked only once the transcript MAC proved the challenge came from our driver. The
+        // driver APKs carry the engine version they were built with; a host talking to another
+        // build's driver may disagree on commands or semantics the negotiation cannot see.
+        if (challenge.driverApkBuildId != DRIVER_APK_BUILD_ID || challenge.driverTestApkBuildId != DRIVER_TEST_APK_BUILD_ID) {
+            throw DriverBuildMismatchException(
+                expected = DRIVER_APK_BUILD_ID,
+                driverApkBuildId = challenge.driverApkBuildId,
+                driverTestApkBuildId = challenge.driverTestApkBuildId,
+                serial = serial,
+            )
+        }
         negotiatedVersion = negotiation.selectedVersion
         enabledCapabilities = negotiation.enabledCapabilities.toSet()
         driverContract = challenge
     }
 
     private fun remainingTimeoutMs(maximumMs: Int): Int {
-        val deadline = overallDeadlineNanos ?: return maximumMs
+        val deadline = handshakeDeadlineNanos ?: return maximumMs
         val remainingMs = (deadline - System.nanoTime()) / 1_000_000L
-        check(remainingMs > 0) { "Driver operation exceeded its containing deadline" }
+        if (remainingMs <= 0) throw DriverStartException("Driver connect${serial?.let { " on $it" } ?: ""} exceeded its handshake deadline")
         return minOf(maximumMs.toLong(), remainingMs).coerceAtLeast(1L).toInt()
     }
-
 }
+
+/** The driver answered `HELLO` but the handshake then failed (bad contract, identity, version,
+ * or authentication). Not transient: retrying reaches the same driver with the same answer. */
+open class DriverHandshakeException(
+    message: String,
+    cause: Throwable? = null,
+) : DriverStartException(message, cause)
+
+/**
+ * The authenticated driver was built from another engine version than this host
+ * ([DRIVER_APK_BUILD_ID] / [DRIVER_TEST_APK_BUILD_ID]). Reinstall the driver APKs that ship with
+ * this host; the session is not opened.
+ */
+class DriverBuildMismatchException(
+    val expected: String,
+    val driverApkBuildId: String,
+    val driverTestApkBuildId: String,
+    serial: String?,
+) : DriverHandshakeException(
+        "Driver build mismatch${serial?.let { " on $it" } ?: ""}: host expects $expected, device runs " +
+            "driver $driverApkBuildId / driver test $driverTestApkBuildId; reinstall the bundled driver APKs",
+    )
 
 class Screenshot(
     val png: ByteArray,
@@ -590,5 +678,8 @@ class Screenshot(
 /** Well under the driver's default 30 s heartbeat timeout. */
 const val DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000L
 
-/** Padding added to a command's own timeout to form its private response budget. */
-const val DEFAULT_RESPONSE_BUDGET_PADDING_MS = 5_000L
+/**
+ * Padding added to a command's own timeout to form its private response budget; derived from
+ * the driver's watchdog grace so a late command's driver-side verdict still arrives in time.
+ */
+const val DEFAULT_RESPONSE_BUDGET_PADDING_MS = HOST_RESPONSE_PADDING_MS

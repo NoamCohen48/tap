@@ -18,13 +18,13 @@ import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Hello
 import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
 import com.company.tap.protocol.ProtocolAuthentication
+import com.company.tap.protocol.ProtocolJson
 import com.company.tap.protocol.ProtocolNegotiation
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.SUPPORTED_CAPABILITIES
 import com.company.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import com.company.tap.protocol.UIAUTOMATOR_BUILD_ID
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.EOFException
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -47,11 +47,15 @@ class FakeDriverServer(
     /** When true, the handshake accepts any session id/generation (for session-open tests where
      * the id is generated inside the code under test). */
     private val acceptAnySession: Boolean = false,
+    /** Build ids the fake driver reports in its challenge; tests change them to prove the
+     * host rejects a driver of another build. */
+    private val driverApkBuildId: String = DRIVER_APK_BUILD_ID,
+    private val driverTestApkBuildId: String = DRIVER_TEST_APK_BUILD_ID,
 ) : AutoCloseable {
     /** The session secret the handshake HMACs with; tests update it when the code under test
      * generates the secret itself (it travels in the instrumentation command). */
     @Volatile var secret: ByteArray = secret
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = ProtocolJson.codec
     private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
     private val received = LinkedBlockingQueue<Frame>()
 
@@ -134,6 +138,7 @@ class FakeDriverServer(
     private fun serve() {
         try {
             val socket = server.accept()
+            socket.tcpNoDelay = true
             client = socket
             authenticate(socket)
             while (true) {
@@ -163,10 +168,10 @@ class FakeDriverServer(
             Challenge(
                 androidApiLevel = 34,
                 capabilities = SUPPORTED_CAPABILITIES,
-                driverApkBuildId = DRIVER_APK_BUILD_ID,
+                driverApkBuildId = driverApkBuildId,
                 driverInstanceId = "fake-driver",
                 driverNonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonce),
-                driverTestApkBuildId = DRIVER_TEST_APK_BUILD_ID,
+                driverTestApkBuildId = driverTestApkBuildId,
                 hostNonce = hello.hostNonce,
                 sessionGeneration = challengeGeneration,
                 sessionId = challengeSessionId,

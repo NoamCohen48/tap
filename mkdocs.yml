@@ -1,7 +1,9 @@
-# Public documentation site. Build with scripts/build-docs.sh (generates the Kotlin, Python
-# and gRPC references first) or `mkdocs serve` for the hand-written pages alone.
+# Public documentation site. Build with scripts/build-docs.sh. It generates
+# the Kotlin, Python, and gRPC references before the hand-written pages.
 site_name: Tap
-site_description: Host-driven Android end-to-end testing — one service per machine, thin Kotlin and Python clients.
+site_description: >-
+  Host-driven Android end-to-end testing — one daemon per machine, with
+  thin Kotlin and Python clients.
 repo_url: https://github.com/NoamCohen48/tap
 edit_uri: edit/main/docs/
 docs_dir: docs
@@ -24,12 +26,12 @@ theme:
       scheme: default
       primary: custom
       accent: custom
-      toggle: { icon: material/brightness-7, name: Dark mode }
+      toggle: {icon: material/brightness-7, name: Dark mode}
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: custom
       accent: custom
-      toggle: { icon: material/brightness-4, name: Light mode }
+      toggle: {icon: material/brightness-4, name: Light mode}
 
 extra_css:
   - stylesheets/brand.css
@@ -38,11 +40,11 @@ markdown_extensions:
   - admonition
   - attr_list
   - tables
-  - toc: { permalink: true }
+  - toc: {permalink: true}
   - pymdownx.details
   - pymdownx.superfences
-  - pymdownx.tabbed: { alternate_style: true }
-  - pymdownx.highlight: { anchor_linenums: false }
+  - pymdownx.tabbed: {alternate_style: true}
+  - pymdownx.highlight: {anchor_linenums: false}
   - pymdownx.inlinehilite
 
 plugins:
@@ -59,7 +61,9 @@ plugins:
             separate_signature: true
             members_order: source
             docstring_style: google
-            filters: ["!^_", "!^pb$"]
+            filters:
+              - "!^_"
+              - "!^pb$"
             show_if_no_docstring: true
 
 nav:
@@ -78,5 +82,5 @@ nav:
       - Overview: reference/index.md
       - Kotlin client: reference/kotlin.md
       - Python client: reference/python.md
-      - gRPC service API (tap.v1): reference/grpc.md
+      - gRPC server API (tap.v1): reference/grpc.md
       - Releases and versions: reference/releases.md

@@ -1,20 +1,22 @@
 package com.company.tap.sdk
 
-import com.company.tap.api.v1.CloseSessionRequest
+import com.company.tap.api.v1.AttachRequest
 import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.CommandResult
+import com.company.tap.api.v1.DetachRequest
 import com.company.tap.api.v1.DeviceInfo
 import com.company.tap.api.v1.DeviceInfoQuery
 import com.company.tap.api.v1.Direction
+import com.company.tap.api.v1.ErrorCode
 import com.company.tap.api.v1.DriverLogRequest
 import com.company.tap.api.v1.DumpHierarchy
 import com.company.tap.api.v1.ExecuteRequest
-import com.company.tap.api.v1.OpenSessionRequest
 import com.company.tap.api.v1.PressKey
 import com.company.tap.api.v1.ScreenshotRequest
 import com.company.tap.api.v1.StabilitySignal
 import com.company.tap.api.v1.WaitAppVisible
 import com.company.tap.api.v1.WaitScreenStable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,14 +46,22 @@ const val KEYCODE_BACK = 4
 const val DEFAULT_GESTURE_PERCENT = 80
 
 /**
+ * Extra time the gRPC deadline of a device RPC allows past the command's own timeout: the
+ * server enforces the command timeout on the device, and the slack covers the server-side
+ * session handshake and transport so that a command timeout is reported by the device as a
+ * result rather than as a client-side `DEADLINE_EXCEEDED`.
+ */
+internal const val RPC_DEADLINE_SLACK_MS = 60_000L
+
+/**
  * Immutable per-device close bounds. Injected at construction; tests create isolated [Device]
- * instances (via an isolated [Connection] carrying these bounds) with short bounds instead of
+ * instances (via an isolated [ClientConnection] carrying these bounds) with short bounds instead of
  * mutating shared state, so parallel test runs stay deterministic. Defaults cover production
- * (admitted-operation drain + 120 s Session Close deadline + margin).
+ * (admitted-operation drain + 120 s DetachDevice deadline + margin).
  */
 internal data class DeviceBounds(
     val drainMs: Long = 130_000L,
-    val closeOuterMs: Long = 130_000L,
+    val detachOuterMs: Long = 130_000L,
 )
 
 /** Per-device defaults. Every call also accepts an explicit timeout. */
@@ -65,63 +75,70 @@ data class Timeouts(
     val pollInterval: Duration = 100.milliseconds,
 )
 
-/** Session-open options; the defaults use the driver bundled in the service. */
+/**
+ * Device-attachment options. The driver is always the daemon's (bundled, or the APKs given to
+ * `tap serve --driver-apk X --driver-test-apk Y`); [skipDriverInstall] only skips reinstalling it.
+ */
 data class DeviceOptions(
-    val driverApk: String? = null,
-    val driverTestApk: String? = null,
+    /** Skip installing the daemon's driver: the device already has the right one. */
     val skipDriverInstall: Boolean = false,
+    /** Content-provider authority of the AUT's `sync-sdk`, when it is not the default. */
     val syncAuthority: String? = null,
+    /** System packages (permission controller, ...) that system-scoped selectors may match. */
     val allowedSystemPackages: List<String> = emptyList(),
     /** How long to wait for a device another session holds before failing; zero fails at once. */
     val waitForDevice: Duration = Duration.ZERO,
 )
 
 /**
- * One device under one live driver session, proxied by the host service. All calls are
- * `suspend` and serialized on the device; use `coroutineScope` + `async` for concurrency
- * across devices (sibling failure cancels the other's in-flight RPC). Nothing here caches UI
+ * One attached device backed by one live driver session, proxied by the host server. All calls are
+ * `suspend`. The client does not serialize calls on one device: issue them sequentially (the
+ * normal test style), and use `coroutineScope` + `async` for concurrency across devices
+ * (sibling failure cancels the other's in-flight RPC). Nothing here caches UI
  * state: [element] returns a lazy selector that every action resolves again, and mutations
  * fail with `AMBIGUOUS`/`NOT_FOUND` before any input when the selector does not match exactly
  * one node.
  *
  * Every suspending call requires an owning scope (`tapScope` in scripts, `tapTest` in JUnit);
- * construction ([open]) does too. Closing is `suspend` (no `AutoCloseable`): callers use
+ * construction ([attachDevice]) does too. Detaching is `suspend` (no `AutoCloseable`): callers use
  * `try`/`finally` inside the scope. Per-call `withDeadlineAfter` is still applied
  * server-side; caller cancellation promptly cancels the gRPC call client-side.
  *
- * Command admission is linearized with [close]: each operation is admitted under a short lock
+ * Command admission is linearized with [detach]: each operation is admitted under a short lock
  * (closed/invalidated gates checked at admission, an in-flight counter incremented), runs its
  * RPC without holding the lock, then releases the counter in a cancellation-safe `finally`.
  * Admission is reentrant by counting, so compound helpers ([awaitUntil], `ElementWait`,
- * `App` calls that fan back into [execute]) never deadlock. Once [closeAndReport] starts,
+ * `App` calls that fan back into [execute]) never deadlock. Once [detachAndReport] starts,
  * new operations are rejected locally with [TapUsageException] and the connection-invalid
- * gate ([ServiceException] `UNAVAILABLE`) applies at the same admission point; admitted
- * operations finish before the single `Session Close` RPC (120 s gRPC deadline, mapped).
+ * gate ([ServerException] `UNAVAILABLE`) applies at the same admission point; admitted
+ * operations finish before the single `Detach` RPC (120 s gRPC deadline, mapped).
  * Concurrent and duplicate closes share one RPC and one result, including the quarantine
  * detail.
  */
 class Device internal constructor(
-    val connection: Connection,
-    val sessionId: String,
+    val ownerConnection: ClientConnection,
+    val attachedDeviceId: String,
     val serial: String,
     val generation: Long,
-    /** The AUT package the session was opened for; AUT-scoped selectors resolve in it. */
+    /** The AUT package the device was attached for; AUT-scoped selectors resolve in it. */
     val autPackage: String,
     val timeouts: Timeouts,
     private val bounds: DeviceBounds = DeviceBounds(),
 ) {
-    private val client get() = connection.client
+    private val client get() = ownerConnection.client
     private val stateMutex = Mutex()
     private var activeOps = 0
     private var drain: CompletableDeferred<Unit>? = null
-    private val closeStarted = AtomicBoolean(false)
-    private var closeDeferred: CompletableDeferred<String?>? = null
+    private val detachStarted = AtomicBoolean(false)
+    private var detachDeferred: CompletableDeferred<String?>? = null
     private val connectionInvalid = AtomicBoolean(false)
     private val connectionInvalidCause = AtomicReference<Throwable?>(null)
+
     // Explicitly owned fail-closed scope: SupervisorJob + IO, one per Device, never GlobalScope.
     // It hosts at most one fail-closed job (drain-timeout path only) and is cancelled after
     // every terminal close path, so no background work outlives the handle.
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     @Volatile private var failClosedJob: Job? = null
 
     /** True once the drain-timeout path launched its fail-closed job. Test-observable. */
@@ -133,8 +150,8 @@ class Device internal constructor(
     /** True once the owned cleanup scope terminated. Test-observable. */
     internal val cleanupTerminated: Boolean get() = cleanupScope.coroutineContext[Job]?.isCompleted == true
 
-    /** True once [closeAndReport] started (new operations are rejected locally). */
-    val isClosed: Boolean get() = closeStarted.get()
+    /** True once [detachAndReport] started (new operations are rejected locally). */
+    val isDetached: Boolean get() = detachStarted.get()
 
     // --- Raw protocol escape hatch ----------------------------------------------------------------
 
@@ -148,23 +165,7 @@ class Device internal constructor(
     ): CommandResult {
         ensureTapBound("Device.execute")
         return admitted("Device.execute") {
-            val command =
-                Command
-                    .newBuilder()
-                    .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
-                    .apply(build)
-                    .build()
-            mapped(serial) {
-                client.sessions
-                    .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                    .execute(
-                        ExecuteRequest
-                            .newBuilder()
-                            .setSessionId(sessionId)
-                            .setCommand(command)
-                            .build(),
-                    )
-            }
+            rpcExecute(timeout ?: timeouts.action, build)
         }
     }
 
@@ -176,28 +177,7 @@ class Device internal constructor(
     ): CommandResult {
         ensureTapBound("Device.executeOrThrow")
         return admitted("Device.executeOrThrow") {
-            val command = Command.newBuilder().apply(build).build()
-            // Build the wire command inline (instead of calling execute()) so admission is
-            // counted once per terminal RPC; nested admission would also be correct (counting
-            // is reentrant) but a single count keeps close-drain accounting exact.
-            val wire =
-                Command
-                    .newBuilder()
-                    .setTimeoutMs((timeout ?: timeouts.action).inWholeMilliseconds)
-                    .mergeFrom(command)
-                    .build()
-            val result =
-                mapped(serial) {
-                    client.sessions
-                        .withDeadlineAfter(wire.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                        .execute(
-                            ExecuteRequest
-                                .newBuilder()
-                                .setSessionId(sessionId)
-                                .setCommand(wire)
-                                .build(),
-                        )
-                }
+            val result = rpcExecute(timeout ?: timeouts.action, build)
             if (result.hasError()) throw CommandException(result, "execute", serial, selector?.render())
             result
         }
@@ -231,22 +211,35 @@ class Device internal constructor(
         executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
     }
 
-    /** PNG bytes, verified against the driver's checksum. */
+    /**
+     * PNG bytes of the screen. The server verifies them against the driver's checksum and the
+     * client checks the returned `sha256` again, so a corrupted transfer fails instead of
+     * producing a broken file. Write them wherever you like (for example `Path.writeBytes`).
+     */
     suspend fun screenshot(timeout: Duration = timeouts.lifecycle): ByteArray {
         ensureTapBound("Device.screenshot")
         return admitted("Device.screenshot") {
-            mapped(serial) {
-                client.sessions
-                    .withDeadlineAfter(timeout.inWholeMilliseconds + 60_000, TimeUnit.MILLISECONDS)
-                    .screenshot(
-                        ScreenshotRequest
-                            .newBuilder()
-                            .setSessionId(sessionId)
-                            .setTimeoutMs(timeout.inWholeMilliseconds)
-                            .build(),
-                    ).png
-                    .toByteArray()
+            val response =
+                mapped(serial) {
+                    client.devices
+                        .withDeadlineAfter(timeout.inWholeMilliseconds + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
+                        .screenshot(
+                            ScreenshotRequest
+                                .newBuilder()
+                                .setClientConnectionId(ownerConnection.id)
+                                .setAttachedDeviceId(attachedDeviceId)
+                                .setTimeoutMs(timeout.inWholeMilliseconds)
+                                .build(),
+                        )
+                }
+            val png = response.png.toByteArray()
+            if (response.sha256.isNotEmpty()) {
+                val actual = sha256Hex(png)
+                if (!actual.equals(response.sha256, ignoreCase = true)) {
+                    throw TapException("screenshot of $serial failed its checksum: sha256 $actual, server said ${response.sha256}")
+                }
             }
+            png
         }
     }
 
@@ -259,46 +252,45 @@ class Device internal constructor(
         ensureTapBound("Device.driverLog")
         return admitted("Device.driverLog") {
             mapped(serial) {
-                client.sessions
+                client.devices
                     .withDeadlineAfter(30, TimeUnit.SECONDS)
-                    .driverLog(DriverLogRequest.newBuilder().setSessionId(sessionId).build())
+                    .driverLog(
+                        DriverLogRequest
+                            .newBuilder()
+                            .setClientConnectionId(ownerConnection.id)
+                            .setAttachedDeviceId(attachedDeviceId)
+                            .build(),
+                    )
                     .linesList
             }
         }
     }
 
-    /** Waits on the device until [packageName] owns the focused window. */
+    /**
+     * Waits on the device until [packageName] owns the focused window. Throws
+     * [WaitTimeoutException] only when the device reports `WAIT_TIMEOUT`; any other failure
+     * (driver unhealthy, transport lost, ...) is a [CommandException].
+     */
     suspend fun awaitAppVisible(
         packageName: String = autPackage,
         timeout: Duration = timeouts.wait,
     ) {
         ensureTapBound("Device.awaitAppVisible")
         admitted("Device.awaitAppVisible") {
-            val command =
-                Command
-                    .newBuilder()
-                    .setTimeoutMs(timeout.inWholeMilliseconds)
-                    .setWaitAppVisible(WaitAppVisible.newBuilder().setPackageName(packageName).build())
-                    .build()
             val result =
-                mapped(serial) {
-                    client.sessions
-                        .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                        .execute(
-                            ExecuteRequest
-                                .newBuilder()
-                                .setSessionId(sessionId)
-                                .setCommand(command)
-                                .build(),
-                        )
+                rpcExecute(timeout) {
+                    waitAppVisible = WaitAppVisible.newBuilder().setPackageName(packageName).build()
                 }
             if (result.hasError()) {
+                if (result.error.code != ErrorCode.ERR_WAIT_TIMEOUT) {
+                    throw CommandException(result, "wait_app_visible", serial, null)
+                }
                 throw WaitTimeoutException(
                     "package $packageName to be in the foreground",
                     serial,
                     result.durationMs,
                     0,
-                    "currentPackage=${runCatching { infoInner() }.getOrNull()?.currentPackage}",
+                    "currentPackage=${observeOrNull { infoInner() }?.currentPackage}",
                 )
             }
         }
@@ -311,7 +303,8 @@ class Device internal constructor(
      * Content-changed events restart the quiet period. Use it explicitly after an action that
      * starts an animation or a transition; no command waits for this implicitly. A screen that
      * keeps changing (indeterminate spinner, ticker, video) times out with `SCREEN_CHANGING`.
-     * [awaitAppSettled] and [awaitAnimationEnd] are the two single-signal shorthands.
+     * [awaitAppSettled] and [awaitAnimationEnd] are the two single-signal shorthands. Only a
+     * device `WAIT_TIMEOUT` becomes [WaitTimeoutException]; other failures are [CommandException]s.
      */
     suspend fun awaitScreenStable(
         stableFor: Duration = 500.milliseconds,
@@ -321,31 +314,20 @@ class Device internal constructor(
     ) {
         ensureTapBound("Device.awaitScreenStable")
         admitted("Device.awaitScreenStable") {
-            val command =
-                Command
-                    .newBuilder()
-                    .setTimeoutMs(timeout.inWholeMilliseconds)
-                    .setWaitScreenStable(
+            val result =
+                rpcExecute(timeout) {
+                    waitScreenStable =
                         WaitScreenStable
                             .newBuilder()
                             .setPackageName(packageName)
                             .setStableForMs(stableFor.inWholeMilliseconds)
                             .setSignal(signal)
-                            .build(),
-                    ).build()
-            val result =
-                mapped(serial) {
-                    client.sessions
-                        .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                        .execute(
-                            ExecuteRequest
-                                .newBuilder()
-                                .setSessionId(sessionId)
-                                .setCommand(command)
-                                .build(),
-                        )
+                            .build()
                 }
             if (result.hasError()) {
+                if (result.error.code != ErrorCode.ERR_WAIT_TIMEOUT) {
+                    throw CommandException(result, "wait_screen_stable", serial, null)
+                }
                 val what =
                     when (signal) {
                         StabilitySignal.STABILITY_TREE -> "hierarchy"
@@ -388,7 +370,7 @@ class Device internal constructor(
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,
      * backend state). Prefer [await] for UI conditions: it polls on the device in one RPC.
      * Uses [delay], so test-root cancellation and sibling failure cancel the poll promptly.
-     * Admitted like any command, so [closeAndReport] waits for an in-flight poll and rejects
+     * Admitted like any command, so [detachAndReport] waits for an in-flight poll and rejects
      * new polls once close starts; the [condition] runs inside the admission (reentrant), so
      * device helpers called from it do not deadlock.
      */
@@ -413,7 +395,7 @@ class Device internal constructor(
                         serial,
                         (System.nanoTime() - started) / 1_000_000,
                         polls,
-                        runCatching { observe() }.getOrNull(),
+                        observeOrNull { observe() },
                     )
                 }
                 delay(pollInterval)
@@ -422,50 +404,48 @@ class Device internal constructor(
     }
 
     /**
-     * Closes the session. Returns the quarantine detail when the device could not be left
+     * Detaches the device. Returns the quarantine detail when the device could not be left
      * clean (the pool keeps it out of circulation), else null. Single-flight: concurrent and
-     * duplicate callers share one `Session Close` RPC (120 s gRPC deadline, mapped) and one
+     * duplicate callers share one `Detach` RPC (120 s gRPC deadline, mapped) and one
      * shared completion, including the quarantine detail. Admitted operations finish before the
      * RPC under an explicit total drain bound ([DeviceBounds.drainMs]); operations starting
-     * after close began are rejected locally. A close invoked from the same admitted operation
-     * (for example an [awaitUntil] condition calling close) fails immediately with
+     * after detach began are rejected locally. A detach invoked from the same admitted operation
+     * (for example an [awaitUntil] condition calling detach) fails immediately with
      * [TapUsageException] instead of waiting for itself. Runs under a bounded non-cancellable
      * context so teardown completes even when the caller is cancelled.
      *
-     * Drain-timeout contract (fail closed): when admitted operations are still in flight past
-     * the per-instance drain bound, the first caller throws `DEADLINE_EXCEEDED` immediately
-     * and exactly one fail-closed job is launched on the explicitly owned per-Device
-     * [cleanupScope] (never `GlobalScope`). That job issues exactly one bounded
-     * Connection Close — the authoritative server-side teardown for all sessions, so no
-     * Session Close follows (no unbounded drain wait, no Session/Connection TOCTOU, no
-     * fabricated unknown-session, no clean-null quarantine claim) — then marks the
-     * connection unusable, marks every registered handle invalid, and removes registry
-     * entries before publishing the shared terminal failure. The original caller throws the
-     * documented `DEADLINE_EXCEEDED`; subsequent callers await the same shared completion
-     * and receive the same terminal failure instance. A Connection Close failure is
-     * suppressed into that failure (observable via `suppressed`) without stranding the
-     * registry or the scope: invalidation, removal and scope cancellation still run. The
-     * owned scope/job terminates after the bounded Connection Close. The normal path
-     * (drain succeeds) still issues one bounded Session Close and returns its quarantine
-     * result.
+     * Drain-timeout contract (fail closed, this device only): when admitted operations are
+     * still in flight past the per-instance drain bound, the first caller throws
+     * `DEADLINE_EXCEEDED` immediately. The handle is already poisoned (detach started, so every
+     * new operation is rejected locally) and exactly one fail-closed job is launched on the
+     * explicitly owned per-Device [cleanupScope] (never `GlobalScope`). That job sends one
+     * best-effort, bounded `Detach` for this device — the server tears the session down
+     * even with the stuck command in flight — then unregisters the handle and publishes the
+     * shared terminal failure. The owner [ClientConnection] and every other device attached
+     * through it are left untouched: one wedged command must not tear down unrelated devices
+     * (in JUnit, the connection is shared by every later test). A `Detach` failure or
+     * quarantine detail is suppressed into that failure (observable via `suppressed`) without
+     * stranding the registry or the scope. Subsequent callers await the same shared
+     * completion and receive the same terminal failure instance. The normal path (drain
+     * succeeds) issues one bounded `Detach` and returns its quarantine result.
      */
-    suspend fun closeAndReport(): String? {
-        ensureTapBound("Device.close")
+    suspend fun detachAndReport(): String? {
+        ensureTapBound("Device.detach")
         if (currentCoroutineContext()[DeviceAdmission]?.device === this) {
-            throw TapUsageException("Device($serial).close invoked from its own admitted operation; refusing to self-wait")
+            throw TapUsageException("Device($serial).detach invoked from its own admitted operation; refusing to self-wait")
         }
         val deferred: CompletableDeferred<String?>
         val isOwner: Boolean
         withContext(NonCancellable) {
             stateMutex.withLock {
-                val existing = closeDeferred
+                val existing = detachDeferred
                 if (existing != null) {
                     deferred = existing
                     isOwner = false
                 } else {
                     deferred = CompletableDeferred()
-                    closeDeferred = deferred
-                    closeStarted.set(true)
+                    detachDeferred = deferred
+                    detachStarted.set(true)
                     if (activeOps > 0) drain = CompletableDeferred()
                     isOwner = true
                 }
@@ -483,40 +463,40 @@ class Device internal constructor(
                     // owned job tear the connection down. The shared completion stays pending
                     // until registry removal, so duplicates share the same terminal failure.
                     val failClosed =
-                        ServiceException(
+                        ServerException(
                             "DEADLINE_EXCEEDED",
-                            "device $serial close drain timed out after ${bounds.drainMs}ms " +
-                                "with admitted operations still in flight; fail-closed Connection close " +
-                                "triggered (authoritative server-side teardown, no Session Close)",
+                            "device $serial detach drain timed out after ${bounds.drainMs}ms " +
+                                "with admitted operations still in flight; fail-closed: best-effort DetachDevice " +
+                                "for this device only (the client connection and other devices stay attached)",
                         )
                     launchFailClosed(failClosed, deferred)
                     throw failClosed
                 }
             }
             try {
-                val detail = boundedSessionClose()
+                val detail = boundedDetach()
                 deferred.complete(detail)
                 detail
             } catch (primary: Throwable) {
                 deferred.completeExceptionally(primary)
                 throw primary
             } finally {
-                runCatching { connection.unregister(this@Device) }
+                runCatching { ownerConnection.unregister(this@Device) }
                 runCatching { cleanupScope.cancel() }
             }
         }
     }
 
-    /** [closeAndReport] that fails when the device was quarantined. */
-    suspend fun close() {
-        closeAndReport()?.let { throw TapException("$serial quarantined on close: $it") }
+    /** [detachAndReport] that fails when the device was quarantined. */
+    suspend fun detach() {
+        detachAndReport()?.let { throw TapException("$serial quarantined on detach: $it") }
     }
 
     override fun toString(): String = "Device($serial, generation=$generation)"
 
     /**
-     * Admits one operation: rejects locally when close started ([TapUsageException]) or the
-     * connection liveness stream ended ([ServiceException] `UNAVAILABLE`), then counts the
+     * Admits one operation: rejects locally when detach started ([TapUsageException]) or the
+     * connection liveness stream ended ([ServerException] `UNAVAILABLE`), then counts the
      * operation until [block] finishes. Admission carries a coroutine-context token
      * ([DeviceAdmission]): a nested call for the same device runs inline without double
      * counting, so compound helpers ([awaitUntil] conditions, `Element`/`ElementWait` terminal
@@ -531,25 +511,25 @@ class Device internal constructor(
             return block()
         }
         stateMutex.withLock {
-            if (closeStarted.get()) {
+            if (detachStarted.get()) {
                 throw TapUsageException("Device($serial) is closed; $operation rejected")
             }
             connectionInvalidCause.get()?.let { cause ->
-                throw ServiceException(
+                throw ServerException(
                     "UNAVAILABLE",
-                    "connection ${connection.id} liveness stream ended; $operation on $serial rejected (${cause.message})",
+                    "client connection ${ownerConnection.id} liveness stream ended; $operation on $serial rejected (${cause.message})",
                     cause,
                 )
             }
             if (connectionInvalid.get()) {
-                throw ServiceException(
+                throw ServerException(
                     "UNAVAILABLE",
-                    "connection ${connection.id} liveness stream ended; $operation on $serial rejected",
+                    "client connection ${ownerConnection.id} liveness stream ended; $operation on $serial rejected",
                 )
             }
             try {
-                connection.ensureUsable(operation)
-            } catch (invalid: ServiceException) {
+                ownerConnection.ensureUsable(operation)
+            } catch (invalid: ServerException) {
                 markConnectionInvalid(invalid.cause ?: invalid)
                 throw invalid
             }
@@ -561,7 +541,7 @@ class Device internal constructor(
             withContext(NonCancellable) {
                 stateMutex.withLock {
                     activeOps--
-                    if (closeStarted.get() && activeOps == 0) {
+                    if (detachStarted.get() && activeOps == 0) {
                         drain?.complete(Unit)
                     }
                 }
@@ -575,22 +555,28 @@ class Device internal constructor(
         connectionInvalidCause.compareAndSet(null, cause)
     }
 
-    /** One bounded Session Close RPC (120 s gRPC deadline under the per-instance outer bound). */
-    private suspend fun boundedSessionClose(): String? {
+    /** One bounded AttachedDevice Detach RPC (120 s gRPC deadline under the per-instance outer bound). */
+    private suspend fun boundedDetach(): String? {
         val response =
             try {
-                withTimeout(bounds.closeOuterMs) {
+                withTimeout(bounds.detachOuterMs) {
                     mapped(serial) {
-                        client.sessions
+                        client.devices
                             .withDeadlineAfter(120, TimeUnit.SECONDS)
-                            .close(CloseSessionRequest.newBuilder().setSessionId(sessionId).build())
+                            .detach(
+                                DetachRequest
+                                    .newBuilder()
+                                    .setClientConnectionId(ownerConnection.id)
+                                    .setAttachedDeviceId(attachedDeviceId)
+                                    .build(),
+                            )
                     }
                 }
             } catch (bound: TimeoutCancellationException) {
-                throw ServiceException(
+                throw ServerException(
                     "DEADLINE_EXCEEDED",
-                    "device $serial close timed out after ${bounds.closeOuterMs}ms " +
-                        "(outer bound past the 120s Session Close deadline)",
+                    "device $serial detach timed out after ${bounds.detachOuterMs}ms " +
+                        "(outer bound past the 120s DetachDevice deadline)",
                     bound,
                 )
             }
@@ -598,34 +584,26 @@ class Device internal constructor(
     }
 
     /**
-     * Launches the exactly-once fail-closed teardown on the owned [cleanupScope]. Issues one
-     * bounded Connection Close (authoritative teardown, no Session Close), then invalidates
-     * every handle and clears the registry before publishing the shared terminal [failure].
-     * A Connection Close failure is suppressed into [failure] (still observable) without
-     * stranding invalidation, removal or scope cancellation. The scope is cancelled after the
-     * bounded close so the job terminates; nothing escapes as an unhandled exception.
+     * Launches the exactly-once fail-closed teardown on the owned [cleanupScope]: one bounded,
+     * best-effort `Detach` for this device, then registry removal, then the shared
+     * terminal [failure]. A detach failure (or quarantine detail) is suppressed into [failure]
+     * without stranding removal or scope cancellation; nothing escapes as an unhandled
+     * exception, and the owner connection is never closed from here.
      */
     private fun launchFailClosed(
-        failure: ServiceException,
+        failure: ServerException,
         deferred: CompletableDeferred<String?>,
     ) {
         failClosedJob =
             cleanupScope.launch {
-                var closeError: Throwable? = null
                 try {
-                    connection.close()
+                    boundedDetach()?.let { detail ->
+                        failure.addSuppressed(TapException("$serial quarantined on fail-closed detach: $detail"))
+                    }
                 } catch (failed: Throwable) {
-                    closeError = failed
+                    if (failed !== failure) runCatching { failure.addSuppressed(failed) }
                 }
-                try {
-                    connection.failClosedInvalidate(failure)
-                } catch (failed: Throwable) {
-                    if (closeError == null) closeError = failed
-                }
-                val suppressed = closeError
-                if (suppressed != null && suppressed !== failure) {
-                    runCatching { failure.addSuppressed(suppressed) }
-                }
+                runCatching { ownerConnection.unregister(this@Device) }
                 runCatching { deferred.completeExceptionally(failure) }
                 runCatching { cleanupScope.cancel() }
             }
@@ -633,64 +611,92 @@ class Device internal constructor(
 
     /** `info()` without re-entering admission (for use inside an already-admitted block). */
     private suspend fun infoInner(): DeviceInfo {
-        val command =
-            Command
-                .newBuilder()
-                .setTimeoutMs(timeouts.action.inWholeMilliseconds)
-                .setDeviceInfo(DeviceInfoQuery.getDefaultInstance())
-                .build()
-        val result =
-            mapped(serial) {
-                client.sessions
-                    .withDeadlineAfter(command.timeoutMs + 60_000, TimeUnit.MILLISECONDS)
-                    .execute(
-                        ExecuteRequest
-                            .newBuilder()
-                            .setSessionId(sessionId)
-                            .setCommand(command)
-                            .build(),
-                    )
-            }
+        val result = rpcExecute(timeouts.action) { deviceInfo = DeviceInfoQuery.getDefaultInstance() }
         if (result.hasError()) throw CommandException(result, "info", serial, null)
         return result.deviceInfo
     }
 
+    /**
+     * The one `Execute` RPC every command goes through: [build] sets the `op`; [timeout] becomes
+     * the command timeout unless [build] sets one, and the gRPC deadline allows
+     * [RPC_DEADLINE_SLACK_MS] on top. Does not admit; callers run it inside [admitted].
+     */
+    private suspend fun rpcExecute(
+        timeout: Duration,
+        build: Command.Builder.() -> Unit,
+    ): CommandResult {
+        val command =
+            Command
+                .newBuilder()
+                .setTimeoutMs(timeout.inWholeMilliseconds)
+                .apply(build)
+                .build()
+        return mapped(serial) {
+            client.devices
+                .withDeadlineAfter(command.timeoutMs + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
+                .execute(
+                    ExecuteRequest
+                        .newBuilder()
+                        .setClientConnectionId(ownerConnection.id)
+                        .setAttachedDeviceId(attachedDeviceId)
+                        .setCommand(command)
+                        .build(),
+                ).result
+        }
+    }
+
+    /** Best-effort diagnostics for a timeout message: null on failure, but never swallows cancellation. */
+    private suspend fun <T> observeOrNull(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+
     companion object {
-        internal suspend fun open(
-            connection: Connection,
+        internal suspend fun attachDevice(
+            connection: ClientConnection,
             serial: String,
             autPackage: String,
             timeouts: Timeouts,
             options: DeviceOptions,
             bounds: DeviceBounds = DeviceBounds(),
         ): Device {
-            ensureTapBound("Device.open")
-            connection.ensureUsable("Device.open")
+            ensureTapBound("Device.attachDevice")
+            connection.ensureUsable("Device.attachDevice")
             val request =
-                OpenSessionRequest
+                AttachRequest
                     .newBuilder()
-                    .setConnectionId(connection.id)
+                    .setClientConnectionId(connection.id)
                     .setSerial(serial)
                     .setAutPackage(autPackage)
                     .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
-                    .setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                     .addAllAllowedSystemPackages(options.allowedSystemPackages)
                     .apply {
-                        options.driverApk?.let { setDriverApk(it) }
-                        options.driverTestApk?.let { setDriverTestApk(it) }
+                        // Absent = fail at once when another session holds the device.
+                        if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                         if (options.skipDriverInstall) setSkipDriverInstall(true)
                         options.syncAuthority?.let { setSyncAuthority(it) }
                     }.build()
             val response =
                 mapped(serial) {
-                    connection.client.sessions
+                    connection.client.devices
                         .withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS)
-                        .open(request)
+                        .attach(request)
                 }
-            return Device(connection, response.sessionId, response.serial, response.generation, autPackage, timeouts, bounds)
+            return Device(connection, response.attachedDeviceId, response.serial, response.generation, autPackage, timeouts, bounds)
         }
     }
 }
+
+/** Lower-case hex SHA-256 of [bytes]. */
+internal fun sha256Hex(bytes: ByteArray): String =
+    java.security.MessageDigest
+        .getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString("") { "%02x".format(it) }
 
 /** Direction aliases without the proto prefix. */
 object Directions {

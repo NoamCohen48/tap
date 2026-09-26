@@ -19,7 +19,7 @@ import kotlin.test.fail
  * `-Dtap.golden.update=true` only alongside the matching `.docs/protocol-contract.md` edit.
  */
 class GoldenMessageTest {
-    private val pretty = Json { prettyPrint = true; prettyPrintIndent = "  " }
+    private val pretty = Json(ProtocolJson.codec) { prettyPrint = true; prettyPrintIndent = "  " }
     private val update = System.getProperty("tap.golden.update") == "true"
     private val goldenDir = Path.of(System.getProperty("tap.golden.dir") ?: "src/test/resources/golden")
 
@@ -218,7 +218,7 @@ class GoldenMessageTest {
         val golden = Files.readString(file)
         // Decoding must reproduce the in-code example and encoding must reproduce the file.
         val decoded = try {
-            CanonicalJson.codec.decodeFromString<T>(golden)
+            ProtocolJson.codec.decodeFromString<T>(golden)
         } catch (e: Exception) {
             fail("Golden fixture $file no longer decodes: ${e.message}")
         }

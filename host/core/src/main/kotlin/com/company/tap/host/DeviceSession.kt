@@ -62,9 +62,11 @@ data class DeviceSessionConfig(
 /**
  * One disposable session unit: device lease, journal, driver instrumentation, ADB forward,
  * authenticated [client], and session generation. [open] either returns a `READY` session or
- * cleans up everything it created; [close] releases in reverse and journals `CLOSED`, or
- * `QUARANTINED` when cleanup could not be proven. A lost or poisoned client is not repaired
- * in place: close this session and open a new one (the generation advances).
+ * cleans up everything it created; [close] releases in reverse and journals `CLOSED`,
+ * `BROKEN` when cleanup was clean but the driver connection had been poisoned (a mutation may
+ * have been left half-applied, so the next open runs full journal recovery), or `QUARANTINED`
+ * when cleanup could not be proven. A lost or poisoned client is not repaired in place: close
+ * this session and open a new one (the generation advances).
  */
 class DeviceSession private constructor(
     internal val config: DeviceSessionConfig,
@@ -94,14 +96,30 @@ class DeviceSession private constructor(
         reapUncertain.compareAndSet(null, error)
     }
 
-    /** Rejects use after sticky reap uncertainty; close still runs and quarantines. */
+    /**
+     * Rejects use after sticky reap uncertainty, once close started, or once the driver client
+     * is poisoned (its transport is gone; only close and reopen help). Close still runs and
+     * journals `QUARANTINED` / `BROKEN` accordingly.
+     */
     fun checkUsable() {
+        checkAdmissible()
+        if (client.isPoisoned) {
+            throw SessionUnusableException(
+                serial,
+                "Driver connection on $serial was lost; close this session and open a new one",
+                client.poisonCause,
+            )
+        }
+    }
+
+    /** The session-level half of [checkUsable]: reap uncertainty and closing. ADB work and the
+     * client's own admission use it, so a poisoned client still reports its own typed
+     * `TRANSPORT_LOST`/`INDETERMINATE` and ADB-only lifecycle work stays possible. */
+    private fun checkAdmissible() {
         reapUncertain.get()?.let {
-            throw IllegalStateException("Session on $serial is quarantined: ${it.message}", it)
+            throw DeviceQuarantinedException(serial, "Session on $serial is quarantined: ${it.message}", it)
         }
-        if (closeStarted.get()) {
-            throw IllegalStateException("Session on $serial is closing; new operations are rejected")
-        }
+        if (closeStarted.get()) throw SessionClosingException(serial)
     }
 
     /**
@@ -121,8 +139,8 @@ class DeviceSession private constructor(
      * access back out. */
     internal suspend fun <T> guardAdb(block: suspend () -> T): T {
         operationMutex.withLock {
-            checkUsable()
-            if (operationsClosing) throw IllegalStateException("Session on $serial is closing; new operations are rejected")
+            checkAdmissible()
+            if (operationsClosing) throw SessionClosingException(serial)
             inFlightOperations++
         }
         try {
@@ -175,7 +193,8 @@ class DeviceSession private constructor(
             val remaining = operationMutex.withLock { inFlightOperations }
             if (remaining <= 0) return null
             if (System.nanoTime() >= deadlineNanos) {
-                return IllegalStateException(
+                return DeviceQuarantinedException(
+                    serial,
                     "Session cleanup on $serial exceeded ${timeoutMs}ms waiting for $remaining in-flight operation(s); device quarantined",
                 )
             }
@@ -190,7 +209,7 @@ class DeviceSession private constructor(
      * survive across calls for `awaitIdle` to stay guarded against a restarted process.
      */
     fun app(packageName: String = config.autPackage): AppLifecycle {
-        checkUsable()
+        checkAdmissible()
         return apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
     }
 
@@ -203,12 +222,13 @@ class DeviceSession private constructor(
      * and releases the lease. The whole cleanup runs NonCancellable with an explicit
      * [timeoutMs]: journal finalization and lease release always run, and on timeout or
      * uncertainty the journal records quarantine. Throws the first cleanup failure (or a timeout
-     * describing the quarantine); the journal detail is what the service reports.
+     * describing the quarantine); the journal detail is what the server reports.
      */
     suspend fun close(timeoutMs: Long = DEVICE_SESSION_CLOSE_TIMEOUT_MS) {
         withContext(NonCancellable) {
             if (!closeStarted.compareAndSet(false, true)) return@withContext
             var firstFailure: Throwable? = null
+            var clientPoison: Throwable? = null
             val finished =
                 withTimeoutOrNull(timeoutMs) {
                     // Admitted operations drain first, through their poison-recording point, so the
@@ -217,6 +237,9 @@ class DeviceSession private constructor(
                     // bound and quarantines on expiry.
                     val drainFailure = awaitAdmittedOperations(timeoutMs)
                     if (drainFailure != null) firstFailure = firstFailure ?: drainFailure
+                    // Read before client.close(): a deliberate close never poisons, so this is
+                    // exactly "the transport failed while the session was in use".
+                    clientPoison = if (client.isPoisoned) client.poisonCause ?: IllegalStateException("poisoned") else null
                     // cleanupStep, not runCatching: a bound firing must reach withTimeoutOrNull
                     // as cancellation (finished == null below), never as a recorded failure.
                     cleanupStep({ firstFailure = it }) { client.close() }
@@ -230,18 +253,30 @@ class DeviceSession private constructor(
                 }
             if (finished == null) {
                 firstFailure =
-                    firstFailure ?: IllegalStateException(
+                    firstFailure ?: DeviceQuarantinedException(
+                        serial,
                         "Session cleanup on $serial exceeded ${timeoutMs}ms; device quarantined",
                     )
             }
             val poison = reapUncertain.get()
             val quarantined = firstFailure != null || poison != null
+            // Cleanup was proven, but a poisoned client may have left a mutation half-applied:
+            // BROKEN makes the next open run full recovery (identity-checked driver stop, forward
+            // removal, boot check) instead of trusting a clean CLOSED; it does not block the
+            // device the way QUARANTINED does, because nothing about the device is unproven.
+            val state =
+                when {
+                    quarantined -> JournalState.QUARANTINED
+                    clientPoison != null -> JournalState.BROKEN
+                    else -> JournalState.CLOSED
+                }
             try {
                 store.write(
                     journal.copy(
-                        state = if (!quarantined) JournalState.CLOSED else JournalState.QUARANTINED,
+                        state = state,
                         quarantineReason =
-                            (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" },
+                            (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" }
+                                ?: clientPoison?.let { "DRIVER_CONNECTION_POISONED: ${it.message}" },
                         updatedAtEpochMs = System.currentTimeMillis(),
                     ),
                 )
@@ -330,7 +365,9 @@ class DeviceSession private constructor(
                             store.write(journal)
                         }
                     hostPort = adb.forward(serial, running.devicePort)
-                    val driverPid = adb.processIds(serial, DRIVER_PACKAGE).single()
+                    val driverPid =
+                        adb.processIds(serial, DRIVER_PACKAGE).singleOrNull()
+                            ?: throw DriverStartException("Driver on $serial reported ready but is not exactly one process")
                     journal =
                         journal.copy(
                             state = JournalState.ACTIVE,
@@ -359,7 +396,7 @@ class DeviceSession private constructor(
                     // this client — including through previously captured references — consults the
                     // same sticky poison/closing state under the transport mutex, before any ID or
                     // frame. Standalone clients keep the no-op default.
-                    session.client.bindSessionGate(session::checkUsable)
+                    session.client.bindSessionGate(session::checkAdmissible)
                     leaseOwnedBySession = true
                     // Cancellation may arrive after READY but before the caller accepts the
                     // returned value. Keep the deterministic seam non-cancellable, then use a
@@ -410,8 +447,9 @@ class DeviceSession private constructor(
                             }
                         if (finished == null) {
                             cleanupFailure =
-                                cleanupFailure ?: IllegalStateException(
-                                    "Session open cleanup on $serial exceeded ${DEVICE_OPEN_CLEANUP_TIMEOUT_MS}ms",
+                                cleanupFailure ?: DeviceQuarantinedException(
+                                    serial,
+                                    "Session open cleanup on $serial exceeded ${DEVICE_OPEN_CLEANUP_TIMEOUT_MS}ms; device quarantined",
                                 )
                         }
                         val startupUncertain = findReapUncertain(error)

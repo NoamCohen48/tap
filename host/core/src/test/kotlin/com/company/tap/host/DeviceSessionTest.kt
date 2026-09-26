@@ -1,13 +1,19 @@
 package com.company.tap.host
 
 import com.company.tap.protocol.Done
+import com.company.tap.protocol.ErrorCode
+import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameType
+import com.company.tap.protocol.ProtocolJson
+import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
+import com.company.tap.protocol.WaitAppVisible
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -273,7 +279,7 @@ class DeviceSessionTest {
             var attempts = 0
             try {
                 val failure =
-                    assertFailsWith<IllegalStateException> {
+                    assertFailsWith<DeviceQuarantinedException> {
                         startDriverWithRetry(
                             adb,
                             serial,
@@ -449,7 +455,7 @@ class DeviceSessionTest {
 
                 adb.hangOn += "forward --remove tcp:${fake.port}"
                 val started = System.nanoTime()
-                val failure = assertFailsWith<IllegalStateException> { session.close(timeoutMs = 300) }
+                val failure = assertFailsWith<DeviceQuarantinedException> { session.close(timeoutMs = 300) }
                 val elapsedMs = (System.nanoTime() - started) / 1_000_000L
                 assertTrue(elapsedMs < 10_000, "close took ${elapsedMs}ms")
                 assertTrue("quarantined" in failure.message.orEmpty(), failure.message.orEmpty())
@@ -483,7 +489,7 @@ class DeviceSessionTest {
                 assertEquals(JournalState.READY, journalStore().read()?.state)
 
                 val started = System.nanoTime()
-                val failure = assertFailsWith<IllegalStateException> { session.close(timeoutMs = 2_000) }
+                val failure = assertFailsWith<AdbReapUncertainException> { session.close(timeoutMs = 2_000) }
                 val elapsedMs = (System.nanoTime() - started) / 1_000_000L
                 assertTrue(elapsedMs < 15_000, "close took ${elapsedMs}ms")
                 assertTrue(
@@ -604,9 +610,9 @@ class DeviceSessionTest {
                 }
                 val app = session.app()
                 assertFailsWith<AdbReapUncertainException> { app.isRunning() }
-                assertFailsWith<IllegalStateException> { app.isRunning() }
-                assertFailsWith<IllegalStateException> { session.app() }
-                assertFailsWith<IllegalStateException> { session.checkUsable() }
+                assertFailsWith<DeviceQuarantinedException> { app.isRunning() }
+                assertFailsWith<DeviceQuarantinedException> { session.app() }
+                assertFailsWith<DeviceQuarantinedException> { session.checkUsable() }
 
                 session.close(timeoutMs = 5_000)
                 val record = journalStore().read()
@@ -645,7 +651,7 @@ class DeviceSessionTest {
                         serial,
                     ),
                 )
-                assertFailsWith<IllegalStateException> { captured.submit(com.company.tap.protocol.Health) }
+                assertFailsWith<DeviceQuarantinedException> { captured.submit(com.company.tap.protocol.Health) }
                 assertEquals(idBefore, captured.nextRequestIdForTest(), "poisoned admission must not consume an ID")
                 // No frame was emitted: the next frame poll times out instead of delivering a REQUEST.
                 val noFrame =
@@ -656,7 +662,7 @@ class DeviceSessionTest {
                         true
                     }
                 assertTrue(noFrame, "poisoned submit emitted a frame")
-                assertFailsWith<IllegalStateException> { session.app() }
+                assertFailsWith<DeviceQuarantinedException> { session.app() }
             } finally {
                 fake.close()
             }
@@ -701,7 +707,7 @@ class DeviceSessionTest {
                 // A later open rejects on the quarantine and reconciles nothing away: the
                 // sentinel record (state and reason) survives instead of being erased.
                 val rejected =
-                    assertFailsWith<IllegalStateException> {
+                    assertFailsWith<DeviceQuarantinedException> {
                         DeviceSession.open(sessionConfig(adb, fake, mutableListOf()))
                     }
                 assertTrue("quarantined" in rejected.message.orEmpty(), rejected.message.orEmpty())
@@ -982,6 +988,137 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `am start output is judged by line prefix, not by substring`() {
+        val ok =
+            """
+            Starting: Intent { cmp=com.x.exceptions/.ErrorActivity }
+            Status: ok
+            LaunchState: COLD
+            Activity: com.x.exceptions/.ErrorActivity
+            TotalTime: 412
+            Complete
+            """.trimIndent()
+        assertNull(AmStartOutput.failure(ok))
+        assertNull(AmStartOutput.failure("Starting: Intent { cmp=a/.B }\nStatus: timeout\nComplete"))
+        assertNull(
+            AmStartOutput.failure(
+                "Warning: Activity not started, its current task has been brought to the front\nStatus: ok",
+            ),
+        )
+        assertEquals(
+            "Error: Activity class {com.example/.Missing} does not exist.",
+            AmStartOutput.failure("Starting: Intent { cmp=com.example/.Missing }\nError: Activity class {com.example/.Missing} does not exist."),
+        )
+        assertEquals("Error type 3", AmStartOutput.failure("Starting: x\nError type 3\nError: nope"))
+        assertEquals(
+            "java.lang.SecurityException: Permission Denial: starting Intent",
+            AmStartOutput.failure("Starting: x\njava.lang.SecurityException: Permission Denial: starting Intent"),
+        )
+        assertEquals("Status: error", AmStartOutput.failure("Starting: x\nStatus: error"))
+    }
+
+    @Test
+    fun `launch shares one deadline between am start and the visibility wait`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-launch-deadline", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val session = openSession(adb, fake)
+                val priorResponder = adb.responder
+                adb.responder = { serial, command ->
+                    if (command == "shell am start -W -n com.example/.Main") {
+                        Thread.sleep(400)
+                        ok("Starting: Intent { cmp=com.example/.ErrorActivity }\nStatus: ok\nComplete")
+                    } else {
+                        priorResponder?.invoke(serial, command)
+                    }
+                }
+                val launching = async(Dispatchers.IO) { session.app().launch(".Main", timeoutMs = 2_000) }
+                val wait = withTimeout(5_000) { fake.nextFrame() }
+                val request = ProtocolJson.codec.decodeFromString(Request.serializer(), wait.payload.decodeToString())
+                assertTrue(request.command is WaitAppVisible)
+                assertTrue(request.timeoutMs <= 1_600, "visibility wait got ${request.timeoutMs}ms of a 2000ms launch")
+                fake.respond(wait.requestId, Response.ok(Done, durationMs = 1))
+                withTimeout(5_000) { launching.await() }
+                session.close(timeoutMs = 5_000)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `awaitAppVisible converts only WAIT_TIMEOUT to a host timeout`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-app-visible", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val session = openSession(adb, fake)
+                val app = session.app()
+
+                val timingOut = async(Dispatchers.IO) { runCatching { app.awaitAppVisible(1_000) } }
+                fake.respond(
+                    withTimeout(5_000) { fake.nextFrame() }.requestId,
+                    Response.failure(ErrorCode.WAIT_TIMEOUT, detail = ErrorDetail.APP_NOT_VISIBLE, durationMs = 1_000),
+                )
+                // The diagnostic device-info lookup fails; the timeout must still win.
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.failure(ErrorCode.INTERNAL, durationMs = 1))
+                val timeout = withTimeout(5_000) { timingOut.await() }.exceptionOrNull()
+                assertTrue(timeout is HostWaitTimeoutException, "got $timeout")
+                assertTrue("currentPackage=null" in timeout.message.orEmpty())
+
+                val unhealthy = async(Dispatchers.IO) { runCatching { app.awaitAppVisible(1_000) } }
+                fake.respond(
+                    withTimeout(5_000) { fake.nextFrame() }.requestId,
+                    Response.failure(ErrorCode.DRIVER_UNHEALTHY, detail = ErrorDetail.WATCHDOG, durationMs = 1),
+                )
+                val failure = withTimeout(5_000) { unhealthy.await() }.exceptionOrNull()
+                assertTrue(failure is RemoteCommandException && failure.code == ErrorCode.DRIVER_UNHEALTHY, "got $failure")
+                session.close(timeoutMs = 5_000)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `a poisoned client makes close journal BROKEN, never a clean CLOSED`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-poisoned", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val session = openSession(adb, fake)
+                session.checkUsable()
+                session.client.disconnectForValidation()
+
+                val unusable = assertFailsWith<SessionUnusableException> { session.checkUsable() }
+                assertTrue("Driver connection" in unusable.message.orEmpty(), unusable.message)
+                // ADB-only lifecycle work does not need the driver and stays admissible.
+                session.app()
+
+                session.close(timeoutMs = 5_000)
+                val record = journalStore().read()
+                assertEquals(JournalState.BROKEN, record?.state)
+                assertTrue(record?.quarantineReason?.startsWith("DRIVER_CONNECTION_POISONED") == true, record?.quarantineReason)
+                journalStore().acquireLease(0).close()
+            } finally {
+                fake.close()
+            }
+        }
+
+    private suspend fun openSession(
+        adb: FakeAdb,
+        fake: FakeDriverServer,
+    ): DeviceSession =
+        coroutineScope {
+            val processes = mutableListOf<FakeProcess>()
+            val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+            fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+            withTimeout(5_000) { opening.await() }
+        }
+
+    @Test
     fun `raw session adb escapes are not public`() {
         // The supported surface is typed operations ([AppLifecycle]), immutable metadata and the
         // client; the raw runner, its config and the guard never come back out of a session.
@@ -1016,8 +1153,8 @@ class DeviceSessionTest {
                 }
                 val callsAtReject = adb.calls.size
                 // Later operations reject through the session gate before any FakeAdb call.
-                assertFailsWith<IllegalStateException> { app.isRunning() }
-                assertFailsWith<IllegalStateException> { session.app() }
+                assertFailsWith<SessionClosingException> { app.isRunning() }
+                assertFailsWith<SessionClosingException> { session.app() }
                 assertEquals(callsAtReject, adb.calls.size, "rejected operation must not touch ADB")
                 adb.hangOn -= "forward --remove tcp:${fake.port}"
                 withTimeout(15_000) { closing.await() }

@@ -1,8 +1,8 @@
 import com.google.protobuf.gradle.id
 
 /*
- * Host service API (tap.v1). The files under `proto/` are the single source of truth:
- * this module generates the Java/gRPC classes for the host service and the Kotlin client;
+ * Host server API (tap.v1). The files under `proto/` are the single source of truth:
+ * this module generates the Java/gRPC classes for the host daemon and the Kotlin client;
  * clients/python/scripts/gen_stubs.py generates (and CI verifies) the committed Python stubs.
  */
 plugins {
@@ -27,7 +27,10 @@ publishing {
         create<MavenPublication>("maven") {
             artifactId = "tap-api"
             from(components["java"])
-            pom { name.set("tap-api"); description.set("tap.v1 host service API: generated gRPC/protobuf stubs") }
+            pom {
+                name.set("tap-api")
+                description.set("tap.v1 host server API: generated gRPC/protobuf stubs")
+            }
         }
     }
 }

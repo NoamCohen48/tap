@@ -501,16 +501,21 @@ internal class UiAutomationCommands(
             context.checkCancelled()
             if (context.isExpired()) throw waitTimeout()
             val resolved = objects.resolve(containerSelector)
-            val scrollable = resolved.element ?: throw CommandFailure(
-                requireNotNull(resolved.errorCode),
-                message = "Scroll container was not uniquely resolved",
-            )
+            val scrollable = resolved.element ?: throw if (context.mutationStarted) {
+                // Once a gesture was sent, losing the container is a stale target, never a
+                // "nothing happened" NOT_FOUND/AMBIGUOUS.
+                staleTarget(resolved, "Scroll container was not uniquely resolved after scrolling")
+            } else {
+                CommandFailure(requireNotNull(resolved.errorCode), message = "Scroll container was not uniquely resolved")
+            }
             val before = try {
                 if (objects.containerHasObject(scrollable, target)) return Done
                 val fingerprint = visibleFingerprint(scrollable)
                 if (context.isExpired()) throw waitTimeout()
-                // The first gesture makes the command definitive; later cancels are ignored.
-                context.markMutationStarted()
+                // Gate once, before the first gesture: from then on the command is definitive,
+                // later cancels are ignored and every exit reports that input was sent (the
+                // pipeline rewrites non-mutating codes to INDETERMINATE).
+                if (!context.mutationStarted) context.markMutationStarted()
                 scrollable.scroll(direction, percent)
                 fingerprint
             } finally {

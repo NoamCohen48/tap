@@ -341,10 +341,10 @@ object RequestDecoder {
     }
 
     fun decode(payload: String): Outcome = try {
-        Outcome.Decoded(CanonicalJson.codec.decodeFromString(Request.serializer(), payload))
+        Outcome.Decoded(ProtocolJson.codec.decodeFromString(Request.serializer(), payload))
     } catch (error: kotlinx.serialization.SerializationException) {
         val op = runCatching {
-            CanonicalJson.codec.parseToJsonElement(payload).jsonObject["command"]?.jsonObject?.get("op")?.jsonPrimitive?.content
+            ProtocolJson.codec.parseToJsonElement(payload).jsonObject["command"]?.jsonObject?.get("op")?.jsonPrimitive?.content
         }.getOrNull()
         if (op != null && op !in Command.names) Outcome.Rejected(ErrorCode.UNSUPPORTED, "Unknown op '$op'")
         else Outcome.Rejected(ErrorCode.INVALID_REQUEST, error.message)

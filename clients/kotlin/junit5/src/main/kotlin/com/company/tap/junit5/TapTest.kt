@@ -40,9 +40,9 @@ internal object TapTestBinding {
 
 /**
  * The mandatory entry point for suspending framework calls in JUnit tests:
- * `@Test fun x(device: Device) { tapTest { ... } }`. Use a block-bodied JUnit method: because
- * [tapTest] is generic, an expression body can infer a non-`Unit` JVM return type that JUnit
- * does not discover. JUnit test methods are not `suspend`, so this is the real-time
+ * `@Test fun x(device: Device) = tapTest { ... }` (a block body works too). [tapTest] returns
+ * `Unit`, so the test method compiles to a `void` JUnit can discover whatever the block's last
+ * expression is. JUnit test methods are not `suspend`, so this is the real-time
  * `runBlocking`-style bridge onto the extension-owned per-test context
  * (root job + [TapContext]); it never uses virtual time because ADB, devices and command
  * deadlines are external real-time systems.
@@ -63,7 +63,7 @@ internal object TapTestBinding {
  * Sibling failure inside `coroutineScope`/`async` in [block] cancels the other
  * device's work by structured-concurrency rules.
  */
-fun <T> tapTest(block: suspend CoroutineScope.() -> T): T {
+fun tapTest(block: suspend CoroutineScope.() -> Unit) {
     // Nesting first: the flag propagates through the coroutine context, so a child coroutine
     // on another thread (which has no ThreadLocal binding) still reports "nested", not
     // "no binding". Outside any tapTest body the flag is never set, so this costs nothing.
@@ -79,7 +79,7 @@ fun <T> tapTest(block: suspend CoroutineScope.() -> T): T {
     // Propagate the nesting flag to child coroutines so `async { tapTest { } }` also fails.
     val context = state.rootJob + TapContext("junit:${state.method}") + TapTestBinding.inTapTest.asContextElement(true)
     try {
-        return runBlocking(context) { block() }
+        runBlocking(context) { block() }
     } catch (interrupted: InterruptedException) {
         state.rootJob.cancel(CancellationException("JUnit timeout/interruption", interrupted))
         // Consume, never reinterrupt: AfterEach runs runBlocking teardown on this same

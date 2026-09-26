@@ -34,68 +34,69 @@ class AppServiceStub:
         Args:
             channel: A grpc.Channel.
         """
-        self.Install = channel.unary_unary(
+        self.Install = channel.stream_unary(
                 '/tap.v1.AppService/Install',
-                request_serializer=app__pb2.AppInstallRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.InstallRequest.SerializeToString,
+                response_deserializer=app__pb2.InstallResponse.FromString,
                 _registered_method=True)
         self.Uninstall = channel.unary_unary(
                 '/tap.v1.AppService/Uninstall',
-                request_serializer=app__pb2.AppRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.UninstallRequest.SerializeToString,
+                response_deserializer=app__pb2.UninstallResponse.FromString,
                 _registered_method=True)
         self.IsInstalled = channel.unary_unary(
                 '/tap.v1.AppService/IsInstalled',
-                request_serializer=app__pb2.AppRequest.SerializeToString,
-                response_deserializer=app__pb2.AppBool.FromString,
+                request_serializer=app__pb2.IsInstalledRequest.SerializeToString,
+                response_deserializer=app__pb2.IsInstalledResponse.FromString,
                 _registered_method=True)
         self.ForceStop = channel.unary_unary(
                 '/tap.v1.AppService/ForceStop',
-                request_serializer=app__pb2.AppRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.ForceStopRequest.SerializeToString,
+                response_deserializer=app__pb2.ForceStopResponse.FromString,
                 _registered_method=True)
         self.ClearData = channel.unary_unary(
                 '/tap.v1.AppService/ClearData',
-                request_serializer=app__pb2.AppRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.ClearDataRequest.SerializeToString,
+                response_deserializer=app__pb2.ClearDataResponse.FromString,
                 _registered_method=True)
         self.GrantPermission = channel.unary_unary(
                 '/tap.v1.AppService/GrantPermission',
-                request_serializer=app__pb2.AppGrantRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.GrantPermissionRequest.SerializeToString,
+                response_deserializer=app__pb2.GrantPermissionResponse.FromString,
                 _registered_method=True)
         self.Launch = channel.unary_unary(
                 '/tap.v1.AppService/Launch',
-                request_serializer=app__pb2.AppLaunchRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.LaunchRequest.SerializeToString,
+                response_deserializer=app__pb2.LaunchResponse.FromString,
                 _registered_method=True)
         self.ColdLaunch = channel.unary_unary(
                 '/tap.v1.AppService/ColdLaunch',
-                request_serializer=app__pb2.AppLaunchRequest.SerializeToString,
-                response_deserializer=app__pb2.ProcessIdentity.FromString,
+                request_serializer=app__pb2.ColdLaunchRequest.SerializeToString,
+                response_deserializer=app__pb2.ColdLaunchResponse.FromString,
                 _registered_method=True)
         self.Process = channel.unary_unary(
                 '/tap.v1.AppService/Process',
-                request_serializer=app__pb2.AppRequest.SerializeToString,
-                response_deserializer=app__pb2.ProcessIdentity.FromString,
+                request_serializer=app__pb2.ProcessRequest.SerializeToString,
+                response_deserializer=app__pb2.ProcessResponse.FromString,
                 _registered_method=True)
         self.IsRunning = channel.unary_unary(
                 '/tap.v1.AppService/IsRunning',
-                request_serializer=app__pb2.AppRequest.SerializeToString,
-                response_deserializer=app__pb2.AppBool.FromString,
+                request_serializer=app__pb2.IsRunningRequest.SerializeToString,
+                response_deserializer=app__pb2.IsRunningResponse.FromString,
                 _registered_method=True)
         self.AwaitIdle = channel.unary_unary(
                 '/tap.v1.AppService/AwaitIdle',
-                request_serializer=app__pb2.AppAwaitIdleRequest.SerializeToString,
-                response_deserializer=app__pb2.AppEmpty.FromString,
+                request_serializer=app__pb2.AwaitIdleRequest.SerializeToString,
+                response_deserializer=app__pb2.AwaitIdleResponse.FromString,
                 _registered_method=True)
 
 
 class AppServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
-    def Install(self, request, context):
-        """`adb install -r -t`, verified.
+    def Install(self, request_iterator, context):
+        """`adb install -r -t` of the uploaded APK, verified. The client streams an InstallHeader
+        first, then the APK bytes in chunks.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -173,60 +174,60 @@ class AppServiceServicer:
 
 def add_AppServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'Install': grpc.unary_unary_rpc_method_handler(
+            'Install': grpc.stream_unary_rpc_method_handler(
                     servicer.Install,
-                    request_deserializer=app__pb2.AppInstallRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.InstallRequest.FromString,
+                    response_serializer=app__pb2.InstallResponse.SerializeToString,
             ),
             'Uninstall': grpc.unary_unary_rpc_method_handler(
                     servicer.Uninstall,
-                    request_deserializer=app__pb2.AppRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.UninstallRequest.FromString,
+                    response_serializer=app__pb2.UninstallResponse.SerializeToString,
             ),
             'IsInstalled': grpc.unary_unary_rpc_method_handler(
                     servicer.IsInstalled,
-                    request_deserializer=app__pb2.AppRequest.FromString,
-                    response_serializer=app__pb2.AppBool.SerializeToString,
+                    request_deserializer=app__pb2.IsInstalledRequest.FromString,
+                    response_serializer=app__pb2.IsInstalledResponse.SerializeToString,
             ),
             'ForceStop': grpc.unary_unary_rpc_method_handler(
                     servicer.ForceStop,
-                    request_deserializer=app__pb2.AppRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.ForceStopRequest.FromString,
+                    response_serializer=app__pb2.ForceStopResponse.SerializeToString,
             ),
             'ClearData': grpc.unary_unary_rpc_method_handler(
                     servicer.ClearData,
-                    request_deserializer=app__pb2.AppRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.ClearDataRequest.FromString,
+                    response_serializer=app__pb2.ClearDataResponse.SerializeToString,
             ),
             'GrantPermission': grpc.unary_unary_rpc_method_handler(
                     servicer.GrantPermission,
-                    request_deserializer=app__pb2.AppGrantRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.GrantPermissionRequest.FromString,
+                    response_serializer=app__pb2.GrantPermissionResponse.SerializeToString,
             ),
             'Launch': grpc.unary_unary_rpc_method_handler(
                     servicer.Launch,
-                    request_deserializer=app__pb2.AppLaunchRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.LaunchRequest.FromString,
+                    response_serializer=app__pb2.LaunchResponse.SerializeToString,
             ),
             'ColdLaunch': grpc.unary_unary_rpc_method_handler(
                     servicer.ColdLaunch,
-                    request_deserializer=app__pb2.AppLaunchRequest.FromString,
-                    response_serializer=app__pb2.ProcessIdentity.SerializeToString,
+                    request_deserializer=app__pb2.ColdLaunchRequest.FromString,
+                    response_serializer=app__pb2.ColdLaunchResponse.SerializeToString,
             ),
             'Process': grpc.unary_unary_rpc_method_handler(
                     servicer.Process,
-                    request_deserializer=app__pb2.AppRequest.FromString,
-                    response_serializer=app__pb2.ProcessIdentity.SerializeToString,
+                    request_deserializer=app__pb2.ProcessRequest.FromString,
+                    response_serializer=app__pb2.ProcessResponse.SerializeToString,
             ),
             'IsRunning': grpc.unary_unary_rpc_method_handler(
                     servicer.IsRunning,
-                    request_deserializer=app__pb2.AppRequest.FromString,
-                    response_serializer=app__pb2.AppBool.SerializeToString,
+                    request_deserializer=app__pb2.IsRunningRequest.FromString,
+                    response_serializer=app__pb2.IsRunningResponse.SerializeToString,
             ),
             'AwaitIdle': grpc.unary_unary_rpc_method_handler(
                     servicer.AwaitIdle,
-                    request_deserializer=app__pb2.AppAwaitIdleRequest.FromString,
-                    response_serializer=app__pb2.AppEmpty.SerializeToString,
+                    request_deserializer=app__pb2.AwaitIdleRequest.FromString,
+                    response_serializer=app__pb2.AwaitIdleResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -240,7 +241,7 @@ class AppService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def Install(request,
+    def Install(request_iterator,
             target,
             options=(),
             channel_credentials=None,
@@ -250,12 +251,12 @@ class AppService:
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
+        return grpc.experimental.stream_unary(
+            request_iterator,
             target,
             '/tap.v1.AppService/Install',
-            app__pb2.AppInstallRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.InstallRequest.SerializeToString,
+            app__pb2.InstallResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -281,8 +282,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/Uninstall',
-            app__pb2.AppRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.UninstallRequest.SerializeToString,
+            app__pb2.UninstallResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -308,8 +309,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/IsInstalled',
-            app__pb2.AppRequest.SerializeToString,
-            app__pb2.AppBool.FromString,
+            app__pb2.IsInstalledRequest.SerializeToString,
+            app__pb2.IsInstalledResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -335,8 +336,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/ForceStop',
-            app__pb2.AppRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.ForceStopRequest.SerializeToString,
+            app__pb2.ForceStopResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -362,8 +363,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/ClearData',
-            app__pb2.AppRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.ClearDataRequest.SerializeToString,
+            app__pb2.ClearDataResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -389,8 +390,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/GrantPermission',
-            app__pb2.AppGrantRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.GrantPermissionRequest.SerializeToString,
+            app__pb2.GrantPermissionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -416,8 +417,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/Launch',
-            app__pb2.AppLaunchRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.LaunchRequest.SerializeToString,
+            app__pb2.LaunchResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -443,8 +444,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/ColdLaunch',
-            app__pb2.AppLaunchRequest.SerializeToString,
-            app__pb2.ProcessIdentity.FromString,
+            app__pb2.ColdLaunchRequest.SerializeToString,
+            app__pb2.ColdLaunchResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -470,8 +471,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/Process',
-            app__pb2.AppRequest.SerializeToString,
-            app__pb2.ProcessIdentity.FromString,
+            app__pb2.ProcessRequest.SerializeToString,
+            app__pb2.ProcessResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -497,8 +498,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/IsRunning',
-            app__pb2.AppRequest.SerializeToString,
-            app__pb2.AppBool.FromString,
+            app__pb2.IsRunningRequest.SerializeToString,
+            app__pb2.IsRunningResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -524,8 +525,8 @@ class AppService:
             request,
             target,
             '/tap.v1.AppService/AwaitIdle',
-            app__pb2.AppAwaitIdleRequest.SerializeToString,
-            app__pb2.AppEmpty.FromString,
+            app__pb2.AwaitIdleRequest.SerializeToString,
+            app__pb2.AwaitIdleResponse.FromString,
             options,
             channel_credentials,
             insecure,

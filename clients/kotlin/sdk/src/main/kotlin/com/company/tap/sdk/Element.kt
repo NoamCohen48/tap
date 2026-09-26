@@ -5,6 +5,7 @@ import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.Count
 import com.company.tap.api.v1.Direction
 import com.company.tap.api.v1.ElementSnapshot
+import com.company.tap.api.v1.ErrorCode
 import com.company.tap.api.v1.Exists
 import com.company.tap.api.v1.LongTap
 import com.company.tap.api.v1.Scroll
@@ -143,8 +144,12 @@ class Element internal constructor(
         }.moved
 
     /**
-     * Scrolls this container until [target] is visible inside it, or fails with `NOT_FOUND`
-     * (`END_REACHED`/`MAX_SCROLLS`) or `WAIT_TIMEOUT`. Returns the target as a lazy element.
+     * Scrolls this container until [target] is visible inside it and returns the target as a
+     * lazy element. Once it has scrolled, a failure is a [CommandException] `INDETERMINATE` whose
+     * detail says why (`END_REACHED`, `MAX_SCROLLS` or `WAIT_TIMEOUT`): the list moved, so the
+     * failure is not side-effect free and is never reported as a plain wait timeout. Before the
+     * first scroll it fails like any command (`NOT_FOUND`/`AMBIGUOUS` for the container), and a
+     * device `WAIT_TIMEOUT` then becomes [WaitTimeoutException].
      */
     suspend fun scrollUntil(
         target: Selector,
@@ -153,16 +158,27 @@ class Element internal constructor(
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         timeout: Duration? = null,
     ): Element {
-        device.executeOrThrow(timeout ?: device.timeouts.wait, target) {
-            scrollUntil =
-                ScrollUntil
-                    .newBuilder()
-                    .setSelector(target.proto)
-                    .setContainer(this@Element.target)
-                    .setDirection(direction)
-                    .setMaxScrolls(maxScrolls)
-                    .setDistancePercent(distancePercent)
-                    .build()
+        val result =
+            device.execute(timeout ?: device.timeouts.wait) {
+                scrollUntil =
+                    ScrollUntil
+                        .newBuilder()
+                        .setSelector(target.proto)
+                        .setContainer(this@Element.target)
+                        .setDirection(direction)
+                        .setMaxScrolls(maxScrolls)
+                        .setDistancePercent(distancePercent)
+                        .build()
+            }
+        if (result.hasError()) {
+            if (result.error.code == ErrorCode.ERR_WAIT_TIMEOUT) {
+                throw WaitTimeoutException(
+                    "${target.render()} to scroll into view in ${selector.render()}",
+                    device.serial,
+                    result.durationMs,
+                )
+            }
+            throw CommandException(result, "scroll_until", device.serial, target.render())
         }
         return Element(device, target)
     }

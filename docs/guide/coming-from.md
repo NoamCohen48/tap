@@ -21,7 +21,7 @@ deliberately different.
 | `eraseText` | `element.clearText()` | |
 | `back` | `device.pressBack()` | |
 | `scroll` / `swipe` | `element.scroll(DOWN)` / `element.swipe(UP)` | always relative to an element |
-| `scrollUntilVisible` | `container.scrollUntil(target)` | fails with `END_REACHED` / `MAX_SCROLLS` |
+| `scrollUntilVisible` | `container.scrollUntil(target)` | fails `INDETERMINATE` with detail `END_REACHED` / `MAX_SCROLLS` |
 | `assertVisible` | `device.await(sel).visible()` | Maestro's assert already waits; so does this |
 | `assertNotVisible` | `device.await(sel).gone()` | |
 | `assertTrue` / `extendedWaitUntil` | `device.await(sel).textEquals(...)`, `.enabled()`, `.count(n)`; `device.awaitUntil { … }` for anything else | |
@@ -42,7 +42,7 @@ Kotlin note: every `tap()`/`setText()`/`await()` below is `suspend` inside `tapT
 
 | Appium | Tap | Note |
 |---|---|---|
-| `AppiumDriver(url, caps)` | `@TapTest` + `Device` parameter / `tap_device` fixture | no server URL, no capabilities: the service is found or started |
+| `AppiumDriver(url, caps)` | `@TapTest` + `Device` parameter / `tap_device` fixture | no server URL, no capabilities: the server is found or started |
 | `findElement(By.id("x"))` | `device.element(res("x"))` | returns a lazy element, never a handle |
 | `findElement(AppiumBy.accessibilityId("x"))` | `device.element(desc("x"))` | |
 | `findElement(AppiumBy.androidUIAutomator("…"))` | selector DSL | no string queries |

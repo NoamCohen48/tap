@@ -21,6 +21,176 @@ import kotlin.test.assertTrue
 class AdbTest {
     private val serial = "emulator-5554"
 
+    /** Runs every command through a fake child answering [stdout]/[exitCode]; records argv. */
+    private fun scriptedAdb(
+        stdout: String,
+        exitCode: Int = 0,
+        commands: MutableList<List<String>> = mutableListOf(),
+    ): Adb =
+        Adb("fake-adb").apply {
+            processStarter =
+                ProcessStarter { command ->
+                    commands += command
+                    FakeProcess(stdout = stdout, exitCode = exitCode)
+                }
+        }
+
+    @Test
+    fun `device states keep offline unauthorized and other rows`() =
+        runBlocking {
+            val adb =
+                scriptedAdb(
+                    """
+                    * daemon not running; starting now at tcp:5037
+                    * daemon started successfully
+                    List of devices attached
+                    emulator-5554	device
+                    85e49002	unauthorized
+                    192.168.1.20:5555	offline
+                    R58M12ABCDE	recovery
+                    0123456789ABCDEF	no permissions (missing udev rules? user is in the plugdev group); see [http://developer.android.com/tools/device.html]
+
+                    """.trimIndent(),
+                )
+            assertEquals(
+                listOf(
+                    AdbDevice("emulator-5554", AdbDeviceState.ONLINE, "device"),
+                    AdbDevice("85e49002", AdbDeviceState.UNAUTHORIZED, "unauthorized"),
+                    AdbDevice("192.168.1.20:5555", AdbDeviceState.OFFLINE, "offline"),
+                    AdbDevice("R58M12ABCDE", AdbDeviceState.OTHER, "recovery"),
+                    AdbDevice(
+                        "0123456789ABCDEF",
+                        AdbDeviceState.OTHER,
+                        "no permissions (missing udev rules? user is in the plugdev group); see [http://developer.android.com/tools/device.html]",
+                    ),
+                ),
+                adb.deviceStates(),
+            )
+            assertEquals(listOf("emulator-5554"), adb.devices())
+        }
+
+    @Test
+    fun `a failing adb devices is a typed command failure`() =
+        runBlocking {
+            val failure = assertFailsWith<AdbCommandException> { scriptedAdb("error: protocol fault", exitCode = 1).deviceStates() }
+            assertNull(failure.serial)
+            assertEquals(1, failure.exitCode)
+            assertEquals("error: protocol fault", failure.output)
+        }
+
+    @Test
+    fun `a non-zero exit carries serial command exit code and output`() =
+        runBlocking {
+            val adb = scriptedAdb("Failure [DELETE_FAILED_INTERNAL_ERROR]", exitCode = 1)
+            val failure = assertFailsWith<AdbCommandException> { adb.uninstall(serial, "com.example") }
+            assertEquals(serial, failure.serial)
+            assertEquals(listOf("uninstall", "com.example"), failure.command)
+            assertEquals(1, failure.exitCode)
+            assertEquals("Failure [DELETE_FAILED_INTERNAL_ERROR]", failure.output)
+        }
+
+    @Test
+    fun `shell arguments from callers are quoted`() =
+        runBlocking {
+            val commands = mutableListOf<List<String>>()
+            val adb = scriptedAdb("Status: ok", commands = commands)
+            adb.startActivity(serial, "com.example/.Outer\$Inner", 5_000)
+            adb.forceStop(serial, "com.example;reboot")
+            adb.grantPermission(serial, "com.example", "android.permission.CAMERA && id")
+            adb.clearData(serial, "com.example")
+            assertEquals(
+                listOf(
+                    listOf("shell", "am", "start", "-W", "-n", "'com.example/.Outer\$Inner'"),
+                    listOf("shell", "am", "force-stop", "'com.example;reboot'"),
+                    listOf("shell", "pm", "grant", "com.example", "'android.permission.CAMERA && id'"),
+                    listOf("shell", "pm", "clear", "com.example"),
+                ),
+                commands.map { it.drop(3) },
+            )
+        }
+
+    @Test
+    fun `installed package reads versionName and versionCode on API 29 and 34`() =
+        runBlocking {
+            for (output in listOf(DUMPSYS_API_29, DUMPSYS_API_34)) {
+                val commands = mutableListOf<List<String>>()
+                val adb = scriptedAdb(output, commands = commands)
+                assertEquals(InstalledPackage(DRIVER_PACKAGE, "0.1.0", 100), adb.installedPackage(serial, DRIVER_PACKAGE))
+                assertEquals(listOf("shell", "dumpsys", "package", DRIVER_PACKAGE), commands.single().drop(3))
+            }
+        }
+
+    @Test
+    fun `installed package tolerates a missing versionName and ignores other sections`() {
+        assertEquals(
+            InstalledPackage(DRIVER_TEST_PACKAGE, null, 0),
+            parseDumpsysPackage(DUMPSYS_TEST_APK, DRIVER_TEST_PACKAGE),
+        )
+        // The Key Set Manager / Dexopt sections name the package in brackets too; only a
+        // `Package [name] (...)` header counts, and a longer package with the same prefix never matches.
+        assertNull(parseDumpsysPackage(DUMPSYS_TEST_APK, DRIVER_PACKAGE))
+        // An updated system app lists the live package first and the hidden system one later.
+        assertEquals(
+            InstalledPackage("com.android.chrome", "120.0.6099.230", 609923033),
+            parseDumpsysPackage(DUMPSYS_UPDATED_SYSTEM_APP, "com.android.chrome"),
+        )
+    }
+
+    @Test
+    fun `installed package is null when absent and typed when unreadable`() =
+        runBlocking {
+            assertNull(scriptedAdb(DUMPSYS_NOT_INSTALLED).installedPackage(serial, DRIVER_PACKAGE))
+            assertNull(scriptedAdb("Unable to find package: $DRIVER_PACKAGE").installedPackage(serial, DRIVER_PACKAGE))
+            val malformed =
+                assertFailsWith<AdbCommandException> {
+                    scriptedAdb("Packages:\n  Package [$DRIVER_PACKAGE] (1a2b3c):\n    userId=10187\n")
+                        .installedPackage(serial, DRIVER_PACKAGE)
+                }
+            assertTrue("without a versionCode" in malformed.message.orEmpty(), malformed.message)
+            assertFailsWith<AdbCommandException> {
+                scriptedAdb("error: device offline", exitCode = 1).installedPackage(serial, DRIVER_PACKAGE)
+            }
+        }
+
+    @Test
+    fun `shell quoting leaves safe tokens alone and single-quotes everything else`() {
+        assertEquals("com.example/.Main", shellQuote("com.example/.Main"))
+        assertEquals("abc-DEF_123", shellQuote("abc-DEF_123"))
+        assertEquals("'a; reboot'", shellQuote("a; reboot"))
+        assertEquals("'\$(id)'", shellQuote("\$(id)"))
+        assertEquals("'it'\\''s'", shellQuote("it's"))
+        assertEquals("''", shellQuote(""))
+    }
+
+    @Test
+    fun `instrumentation arguments reach the device shell quoted`() =
+        runBlocking {
+            val adb = FakeAdb()
+            val captured = CompletableDeferred<List<String>>()
+            val starter =
+                ProcessStarter { command ->
+                    captured.complete(command)
+                    throw IllegalStateException("stop after capture")
+                }
+            assertFailsWith<IllegalStateException> {
+                startDriverWithRetry(
+                    adb,
+                    serial,
+                    "session-1",
+                    1,
+                    "c2VjcmV0",
+                    "com.example",
+                    driverArguments = mapOf("tapFault" to "x; reboot"),
+                    processStarter = starter,
+                    onStarting = {},
+                )
+            }
+            val command = captured.await()
+            assertEquals(listOf("fake-adb", "-s", serial, "shell", "am", "instrument"), command.take(6))
+            assertTrue("'x; reboot'" in command, "unsafe value must be one quoted token: $command")
+            assertEquals("c2VjcmV0", command[command.indexOf("tapSecret") + 1])
+        }
+
     @Test
     fun `process stat reads the start token after the parenthesised command name`() =
         runTest {
@@ -40,10 +210,10 @@ class AdbTest {
             assertEquals(Adb.ProcessStat.Gone, gone.processStat(serial, 7))
 
             val denied = FakeAdb(mapOf("shell cat /proc/7/stat" to Adb.Result(1, "cat: /proc/7/stat: Permission denied")))
-            assertFailsWith<IllegalStateException> { denied.processStat(serial, 7) }
+            assertFailsWith<AdbCommandException> { denied.processStat(serial, 7) }
 
             val malformed = FakeAdb(mapOf("shell cat /proc/7/stat" to ok("7 (short) S 1 2")))
-            assertFailsWith<IllegalStateException> { malformed.processStat(serial, 7) }
+            assertFailsWith<AdbCommandException> { malformed.processStat(serial, 7) }
         }
 
     @Test
@@ -95,7 +265,7 @@ class AdbTest {
             val child = FakeProcess(stdout = "partial", exitDelayMs = FakeProcess.NEVER)
             adb.processStarter = ProcessStarter { child }
             val failure =
-                assertFailsWith<IllegalStateException> {
+                assertFailsWith<AdbTimeoutException> {
                     adb.runResult(serial, "shell", "sleep", "30", timeoutMs = 100)
                 }
             assertTrue("timed out" in failure.message.orEmpty(), failure.message.orEmpty())
@@ -331,9 +501,10 @@ class AdbTest {
                 releaseStart.countDown()
                 withTimeout(20_000) { jobs.forEach { it.join() } }
                 assertEquals(callerCount, outcomes.size)
-                // Fixed cap: process starts and residual workers never exceed ADB_RUNNER_PERMITS.
-                assertTrue(starts.get() <= ADB_RUNNER_PERMITS, "started ${starts.get()} with cap $ADB_RUNNER_PERMITS")
-                assertTrue(adb.admissionCountForTest() <= ADB_RUNNER_PERMITS)
+                // Fixed cap: one lane (serial-less `devices`), so process starts and residual
+                // workers never exceed ADB_PERMITS_PER_SERIAL.
+                assertTrue(starts.get() <= ADB_PERMITS_PER_SERIAL, "started ${starts.get()} with cap $ADB_PERMITS_PER_SERIAL")
+                assertTrue(adb.admissionCountForTest() <= ADB_PERMITS_PER_SERIAL)
                 val uncertain = outcomes.count { it.exceptionOrNull() is AdbReapUncertainException }
                 val gated = outcomes.count { it.exceptionOrNull() is AdbRunnerGatedException }
                 assertEquals(callerCount, uncertain + gated, "every caller is uncertain-started or temporarily gated: $outcomes")
@@ -401,7 +572,7 @@ class AdbTest {
 
     @Test
     @OptIn(RawAdb::class)
-    fun `shared runner gates another serial without a process start until the residual resolves`() =
+    fun `a residual gates only its own serial and another serial keeps running`() =
         runBlocking {
             val serialA = "serial-A"
             val serialB = "serial-B"
@@ -411,34 +582,34 @@ class AdbTest {
                     .AtomicInteger(0)
             val residual = FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true)
             adb.processStarter =
-                ProcessStarter {
+                ProcessStarter { command ->
                     starts.incrementAndGet()
-                    residual
+                    if (serialA in command) residual else FakeProcess(stdout = "4242\n", exitCode = 0)
                 }
             try {
-                // Poison A: this started command leaves an unresolved residual and gates the runner.
+                // Poison A: this started command leaves an unresolved residual in A's lane.
                 assertFailsWith<AdbReapUncertainException> {
                     withTimeout(5_000) { adb.run(serialA, "shell", "pidof", "com.example", timeoutMs = 30_000) }
                 }
                 assertEquals(1, starts.get())
-                assertTrue(adb.isReapGatedForTest())
-                // B never starts while the gate is full: typed temporary rejection carrying both
-                // serials, never uncertainty, never a new process.
+                // A is gated without a process start: typed temporary rejection, never uncertainty.
                 val gated =
                     assertFailsWith<AdbRunnerGatedException> {
-                        adb.run(serialB, "shell", "pidof", "com.example", timeoutMs = 5_000)
+                        adb.run(serialA, "shell", "pidof", "com.example", timeoutMs = 5_000)
                     }
-                assertEquals(serialB, gated.attemptSerial)
+                assertEquals(serialA, gated.attemptSerial)
                 assertEquals(serialA, gated.blockingSerial)
                 assertTrue(gated.blockingCommand.joinToString(" ").contains("pidof"))
                 assertEquals(1, starts.get(), "gated serial must not start a process")
-                // Release A: the residual's own token frees its own permit (no ABA) and B recovers.
+                // B's lane is independent: it runs while A's residual is unresolved.
+                assertEquals("4242", adb.run(serialB, "shell", "pidof", "com.example", timeoutMs = 5_000))
+                assertEquals(2, starts.get())
+                // Release A: the residual's own token frees its own permit (no ABA) and A recovers.
                 residual.releaseStdout()
                 residual.forceExit()
-                adb.processStarter = ProcessStarter { FakeProcess(stdout = "4242\n", exitCode = 0) }
                 withTimeout(10_000) {
                     while (true) {
-                        val attempt = runCatching { adb.run(serialB, "shell", "pidof", "com.example", timeoutMs = 5_000) }
+                        val attempt = runCatching { adb.run(serialA, "shell", "pidof", "com.example", timeoutMs = 5_000) }
                         if (attempt.isSuccess) break
                         check(attempt.exceptionOrNull() is AdbRunnerGatedException)
                         delay(10)
@@ -448,6 +619,68 @@ class AdbTest {
             } finally {
                 runCatching { residual.releaseStdout() }
                 runCatching { residual.forceExit() }
+            }
+        }
+
+    @Test
+    @OptIn(RawAdb::class)
+    fun `different serials run concurrently while one serial stays single-flight`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val running = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
+            val peakPerSerial = java.util.concurrent.ConcurrentHashMap<String, Int>()
+            val bothStarted = CountDownLatch(2)
+            val release = CountDownLatch(1)
+            adb.processStarter =
+                ProcessStarter { command ->
+                    val serial = command[2]
+                    val now = running.computeIfAbsent(serial) { java.util.concurrent.atomic.AtomicInteger() }.incrementAndGet()
+                    peakPerSerial.merge(serial, now, ::maxOf)
+                    bothStarted.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                    running.getValue(serial).decrementAndGet()
+                    FakeProcess(stdout = "ok\n", exitCode = 0)
+                }
+            val calls =
+                listOf("serial-A", "serial-B", "serial-A").map { serial ->
+                    async(Dispatchers.IO) { adb.run(serial, "shell", "true", timeoutMs = 10_000) }
+                }
+            // A and B are both inside process start at once: no global serialization.
+            assertTrue(bothStarted.await(5, TimeUnit.SECONDS), "two serials must run concurrently")
+            release.countDown()
+            calls.forEach { assertEquals("ok", withTimeout(10_000) { it.await() }) }
+            assertEquals(1, peakPerSerial["serial-A"], "one serial never runs two commands at once")
+            assertEquals(0, adb.admissionCountForTest())
+        }
+
+    @Test
+    @OptIn(RawAdb::class)
+    fun `a global cap held only by residuals rejects further serials`() =
+        runBlocking {
+            val adb = Adb("fake-adb")
+            val residuals = java.util.concurrent.CopyOnWriteArrayList<FakeProcess>()
+            adb.processStarter =
+                ProcessStarter {
+                    FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER, blockingStdout = true).also(residuals::add)
+                }
+            try {
+                repeat(ADB_GLOBAL_PERMITS) { index ->
+                    assertFailsWith<AdbReapUncertainException> {
+                        withTimeout(5_000) { adb.run("serial-$index", "shell", "true", timeoutMs = 30_000) }
+                    }
+                }
+                assertEquals(ADB_GLOBAL_PERMITS, adb.admissionCountForTest())
+                val gated =
+                    assertFailsWith<AdbRunnerGatedException> {
+                        adb.run("serial-fresh", "shell", "true", timeoutMs = 5_000)
+                    }
+                assertEquals("serial-fresh", gated.attemptSerial)
+                assertEquals(ADB_GLOBAL_PERMITS, residuals.size, "a gated call must not start a process")
+            } finally {
+                residuals.forEach {
+                    runCatching { it.releaseStdout() }
+                    runCatching { it.forceExit() }
+                }
             }
         }
 
@@ -559,3 +792,153 @@ class AdbTest {
             assertFalse(adb.isReapGatedForTest())
         }
 }
+
+// `dumpsys package` layouts (trimmed to the sections the parser must survive), following the
+// shape API 29 (SM-J810G) and API 34 (emulator) print for the driver packages.
+private val DUMPSYS_API_29 =
+    """
+    Activity Resolver Table:
+      Non-Data Actions:
+          android.intent.action.MAIN:
+            4f1c2d7 com.company.tap.driver/.MainActivity filter 9e3a0b1
+              Action: "android.intent.action.MAIN"
+              Category: "android.intent.category.LAUNCHER"
+
+    Key Set Manager:
+      [com.company.tap.driver]
+          Signing KeySets: 61
+
+    Packages:
+      Package [com.company.tap.driver] (3e5b1c2):
+        userId=10245
+        pkg=Package{9a8b7c6 com.company.tap.driver}
+        codePath=/data/app/com.company.tap.driver-AbCdEf==
+        resourcePath=/data/app/com.company.tap.driver-AbCdEf==
+        legacyNativeLibraryDir=/data/app/com.company.tap.driver-AbCdEf==/lib
+        primaryCpuAbi=null
+        secondaryCpuAbi=null
+        versionCode=100 minSdk=26 targetSdk=36
+        versionName=0.1.0
+        splits=[base]
+        apkSigningVersion=2
+        applicationInfo=ApplicationInfo{1d2e3f4 com.company.tap.driver}
+        flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
+        timeStamp=2026-09-20 10:11:12
+        firstInstallTime=2026-09-01 09:00:00
+        lastUpdateTime=2026-09-20 10:11:13
+        signatures=PackageSignatures{5a6b7c8 version:2, signatures:[1f2e3d4c], past signatures:[]}
+        installPermissionsFixed=true
+        pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
+        User 0: ceDataInode=409731 installed=true hidden=false suspended=false stopped=false notLaunched=false enabled=0 instant=false virtual=false
+          gids=[3003]
+          runtime permissions:
+
+    Dexopt state:
+      [com.company.tap.driver]
+        path: /data/app/com.company.tap.driver-AbCdEf==/base.apk
+          arm64: [status=quicken] [reason=install]
+    """.trimIndent()
+
+private val DUMPSYS_API_34 =
+    """
+    Activity Resolver Table:
+      Non-Data Actions:
+          android.intent.action.MAIN:
+            b41e9d2 com.company.tap.driver/.MainActivity filter 07a3c55
+              Action: "android.intent.action.MAIN"
+              Category: "android.intent.category.LAUNCHER"
+
+    Key Set Manager:
+      [com.company.tap.driver]
+          Signing KeySets: 57
+
+    Packages:
+      Package [com.company.tap.driver] (8f3c2a1):
+        appId=10187
+        pkg=Package{5d1e0b7 com.company.tap.driver}
+        codePath=/data/app/~~Xy12Ab==/com.company.tap.driver-Cd34Ef==
+        resourcePath=/data/app/~~Xy12Ab==/com.company.tap.driver-Cd34Ef==
+        legacyNativeLibraryDir=/data/app/~~Xy12Ab==/com.company.tap.driver-Cd34Ef==/lib
+        extractNativeLibs=false
+        primaryCpuAbi=null
+        secondaryCpuAbi=null
+        cpuAbiOverride=null
+        versionCode=100 minSdk=26 targetSdk=36
+        minExtensionVersions=[]
+        versionName=0.1.0
+        usesNonSdkApi=false
+        splits=[base]
+        apkSigningVersion=2
+        flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
+        privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+        forceQueryable=false
+        dataDir=/data/user/0/com.company.tap.driver
+        timeStamp=2026-09-20 10:11:12.345
+        lastUpdateTime=2026-09-20 10:11:13.012
+        installerPackageName=null
+        installerPackageUid=-1
+        User 0: ceDataInode=16302 deDataInode=0 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+          installReason=0
+          dataDir=/data/user/0/com.company.tap.driver
+          gids=[3003]
+          runtime permissions:
+
+    Queries:
+      system apps queryable: false
+
+    Dexopt state:
+      [com.company.tap.driver]
+        path: /data/app/~~Xy12Ab==/com.company.tap.driver-Cd34Ef==/base.apk
+          arm64: [status=verify] [reason=install] [primary-abi]
+    """.trimIndent()
+
+/** The instrumentation APK: AGP stamps no version on it. */
+private val DUMPSYS_TEST_APK =
+    """
+    Key Set Manager:
+      [com.company.tap.driver.test]
+          Signing KeySets: 58
+
+    Packages:
+      Package [com.company.tap.driver.test] (2c7d9e0):
+        appId=10188
+        pkg=Package{6e2f1a8 com.company.tap.driver.test}
+        codePath=/data/app/~~Gh56Ij==/com.company.tap.driver.test-Kl78Mn==
+        versionCode=0 minSdk=26 targetSdk=36
+        minExtensionVersions=[]
+        versionName=null
+        flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
+        User 0: ceDataInode=16310 installed=true hidden=false suspended=false stopped=true notLaunched=true enabled=0 instant=false virtual=false
+
+    Dexopt state:
+      [com.company.tap.driver.test]
+        path: /data/app/~~Gh56Ij==/com.company.tap.driver.test-Kl78Mn==/base.apk
+    """.trimIndent()
+
+private val DUMPSYS_UPDATED_SYSTEM_APP =
+    """
+    Packages:
+      Package [com.android.chrome] (a1b2c3d):
+        appId=10123
+        versionCode=609923033 minSdk=29 targetSdk=34
+        versionName=120.0.6099.230
+        User 0: installed=true hidden=false
+
+    Hidden system packages:
+      Package [com.android.chrome] (e4f5a6b):
+        appId=10123
+        versionCode=559807533 minSdk=29 targetSdk=33
+        versionName=110.0.5481.153
+    """.trimIndent()
+
+/** A package that is not installed: the resolver tables print, no `Packages:` section. */
+private val DUMPSYS_NOT_INSTALLED =
+    """
+    Activity Resolver Table:
+
+    Permissions:
+
+    Key Set Manager:
+
+    Dexopt state:
+    """.trimIndent()

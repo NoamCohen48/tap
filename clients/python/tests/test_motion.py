@@ -1,10 +1,9 @@
+# pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportMissingImports=false
 import time
 
-import pytest
-
-from tap import WaitTimeoutError, res
-
+import pytest  # type: ignore[import-not-found]
 from conftest import launch
+from tap import WaitTimeoutError, res
 
 
 def test_waits_for_animation_to_end(tap_device):

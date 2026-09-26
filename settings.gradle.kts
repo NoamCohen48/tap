@@ -17,17 +17,17 @@ dependencyResolutionManagement {
 rootProject.name = "tap"
 
 // Contracts shared across components.
-include(":contracts:protocol")   // device wire protocol (device <-> host)
-include(":contracts:api")        // host service API, tap.v1 (host service <-> clients)
+include(":contracts:protocol") // device wire protocol (device <-> host)
+include(":contracts:api") // host server API, tap.v1 (host daemon <-> clients)
 
 // On-device component.
 include(":device:driver")
 include(":device:driver:command-engine")
 include(":device:sync-sdk")
 
-// Host service.
+// Host daemon.
 include(":host:core")
-include(":host:service")
+include(":host:daemon")
 include(":host:validation")
 
 // Clients (Python lives in clients/python, outside Gradle).

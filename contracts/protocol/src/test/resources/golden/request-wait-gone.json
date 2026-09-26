@@ -8,6 +8,12 @@
       "node": {
         "kind": "resource",
         "name": "spinner"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     }
   }

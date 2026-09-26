@@ -29,7 +29,7 @@ whose every action resolves the selector again on the device, so there is nothin
 
 | Kotlin | Python | Matches |
 |---|---|---|
-| `res(name)` | `res(name)` | View resource id `name` of the **app under test** — `<aut>:id/name`, with the package filled in by the service from the session, so the same selector works on every device and role |
+| `res(name)` | `res(name)` | View resource id `name` of the **app under test** — `<aut>:id/name`, with the package filled in by the server from the session, so the same selector works on every device and role |
 | `resId(pkg, name)` | `res_id(pkg, name)` | resource id `pkg:id/name` in an explicit package (a system dialog, another app) |
 | `rawRes(name)` | `raw_res(name)` | the exact, unqualified resource name — a Compose `testTag` when the app sets `testTagsAsResourceId`. It does **not** match View ids, whose name is always `pkg:id/name` |
 | `text(value)` | `text(value)` | exact text |
@@ -56,7 +56,7 @@ Everything after the entry point narrows the same node:
 
 | Kotlin | Python |
 |---|---|
-| `.andText(v)`, `.andDesc(v)`, `.andHint(v)`, `.andClassName(v)`, `.andRes(name)`, `.andRes(pkg, name)` | `.and_text`, `.and_desc`, `.and_hint`, `.and_class_name`, `.and_res_aut(name)`, `.and_res(pkg, name)` |
+| `.andText(v)`, `.andDesc(v)`, `.andHint(v)`, `.andClassName(v)`, `.andRes(name)`, `.andRes(pkg, name)` | `.and_text`, `.and_desc`, `.and_hint`, `.and_class_name`, `.and_res(name)`, `.and_res(pkg, name)` |
 | `.clickable()`, `.longClickable()`, `.scrollable()`, `.checkable()`, `.checked()`, `.enabled()`, `.focusable()`, `.focused()`, `.selected()` — each takes an optional `Boolean` | same, snake_case |
 
 ```kotlin
@@ -91,7 +91,10 @@ action apply to it as a whole.
     ```
 
 Combinators nest freely (`(a or b) and clickable()`), including inside relations
-(`hasChild(a or b)`). Scope and `first()`/`at(n)` are taken from the left-hand operand.
+(`hasChild(a or b)`). The result keeps the left-hand operand's scope and `first()`/`at(n)`.
+Nothing is dropped silently: a right-hand operand (of `and`/`or` or a `has*` relation) that
+carries its own `first()`/`at(n)`, or a different `inSystemPackage(...)`, is rejected
+(`IllegalArgumentException` / `ValueError`) — apply them to the combined selector instead.
 A selector with an `or` is evaluated by walking the window's node tree rather than by a
 native UiAutomator lookup; it returns exactly the same matches and never dumps the
 hierarchy, but on a very large screen it is a little slower — prefer a single distinguishing
@@ -122,7 +125,11 @@ device.element(row.descendant(text("Delete"))).tap()
 ```
 
 Both `Element.descendant(...)`/`Element.child(...)` and the selector methods exist, so you can
-navigate from an `Element` you already hold.
+navigate from an `Element` you already hold. The result keeps the inner selector's
+`first()`/`at(n)` and the outer one's scope. The outer selector itself cannot carry
+`first()`/`at(n)` — `list.at(2).descendant(x)` would otherwise search under every list — so it is
+rejected; narrow the outer node with properties, or pick among the results
+(`list.descendant(x).at(2)`).
 
 ## Exactly one, or say otherwise
 
@@ -180,7 +187,7 @@ Any other package is `SCOPE_DENIED`. (For tests that just need the permission, p
 - **No NOT, sibling or "nearest".** A negative or positional selector tends to match something
   unintended when the screen changes; describe the node you want instead.
 - **No XPath and no string query language.** Selectors are an AST validated identically by the
-  client, the service and the driver, and compiled on the device to window-scoped
+  client, the server and the driver, and compiled on the device to window-scoped
   UiAutomator lookups. This is what keeps lookups fast and error messages precise.
 - **No element handles.** There is no `findElement()` returning an id to reuse; an `Element`
   is the selector plus the device. Re-resolving is cheap (one round trip, no hierarchy dump)

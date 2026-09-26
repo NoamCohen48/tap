@@ -1,6 +1,7 @@
 package com.company.tap.junit5
 
 import com.company.tap.sdk.Device
+import com.company.tap.sdk.DeviceBusyException
 import com.company.tap.sdk.DeviceOptions
 import com.company.tap.sdk.TapContext
 import com.company.tap.sdk.TapException
@@ -23,11 +24,13 @@ import org.junit.jupiter.api.extension.TestExecutionExceptionHandler
 import java.lang.reflect.Method
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Per-test device sessions for JUnit 5, over the coroutine client. Before each test it maps
- * every declared role to a serial, creates the per-test root [Job], and opens one driver
- * session per role — in sorted serial order, waiting up to `tap.acquireTimeoutSeconds` for a
+ * every declared role to a serial (rotating the starting device from test to test; a
+ * single-role test also moves on to the next device when one is busy), creates the per-test
+ * root [Job], and opens one driver session per role — in sorted serial order, waiting up to `tap.acquireTimeoutSeconds` for a
  * device another session holds, so two multi-device tests can never deadlock — all as children
  * of the root job. The test body runs only inside [tapTest], which binds this state and
  * installs the SDK [TapContext]; [Device] calls outside it fail with a usage error, so plain
@@ -57,17 +60,24 @@ class TapExtension :
                     val roles = declaredRoles(context)
                     val available =
                         config.serials.ifEmpty {
-                            TapConnection.connection().availableSerials()
+                            TapClientConnection.connection().availableSerials()
                         }
                     // Fewer devices than roles is an environment precondition, not a test failure.
                     assumeTrue(roles.size <= available.size) {
                         "${context.requiredTestMethod.name} needs ${roles.size} devices but " +
                             (if (config.serials.isEmpty()) "the pool has $available" else "tap.serials lists ${config.serials}")
                     }
-                    val assignment = assignSerials(roles, available, config.pinnedRoles)
-                    val connection = TapConnection.connection()
-                    val devices = openAll(connection, assignment, config)
-                    TestState(rootJob, devices, assignment, method)
+                    val start = ROTATION.getAndIncrement()
+                    val assignment = assignSerials(roles, available, config.pinnedRoles, start)
+                    val connection = TapClientConnection.connection()
+                    val single = roles.singleOrNull()?.takeIf { it !in config.pinnedRoles }
+                    val devices =
+                        if (single != null) {
+                            openSingle(connection, single, rotate(available, start), config)
+                        } else {
+                            openAll(connection, assignment, config)
+                        }
+                    TestState(rootJob, devices, devices.mapValues { it.value.serial }, method)
                 }
             context.store.put(KEY, state)
         } catch (failure: Throwable) {
@@ -216,16 +226,19 @@ class TapExtension :
     }
 
     /**
-     * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then
-     * [available] in declaration order. [available] is `tap.serials` or, when none are
-     * configured, what the service's device list reports. Duplicate serials (two roles
-     * pinned to the same device) fail here, before any session opens: two sessions on one
+     * Roles → serials, decided by the client: pinned explicitly (`tap.device.<role>`), then the
+     * unpinned [available] serials in declaration order, starting at index [start] (wrapping).
+     * [available] is `tap.serials` or, when none are configured, what the server's device list
+     * reports. [beforeEach] advances [start] for every test, so concurrent single-device tests
+     * spread over the devices instead of queueing on the first one. Duplicate serials (two
+     * roles pinned to the same device) fail here, before any session opens: two sessions on one
      * device would serialize on its lock instead of testing concurrently.
      */
     internal fun assignSerials(
         roles: List<String>,
         available: List<String>,
         pinned: Map<String, String>,
+        start: Int = 0,
     ): Map<String, String> {
         val relevantPins = pinned.filterKeys { it in roles }
         val duplicatedPins =
@@ -237,12 +250,46 @@ class TapExtension :
             "duplicate tap.device pins for serials ${duplicatedPins.keys}: ${relevantPins.filterValues { it in duplicatedPins }}; " +
                 "each role needs its own device"
         }
-        val free = available.filter { it !in relevantPins.values }.toMutableList()
+        val free = rotate(available.filter { it !in relevantPins.values }, start).toMutableList()
         val assignment = roles.associateWith { role -> relevantPins[role] ?: free.removeFirst() }
         require(assignment.values.toSet().size == assignment.size) {
             "duplicate serial assignment $assignment; each role needs its own device"
         }
         return assignment
+    }
+
+    /** [serials] starting at index [start] (modulo the size), wrapping around. */
+    internal fun rotate(
+        serials: List<String>,
+        start: Int,
+    ): List<String> {
+        if (serials.isEmpty()) return serials
+        val offset = Math.floorMod(start, serials.size)
+        return serials.drop(offset) + serials.take(offset)
+    }
+
+    /**
+     * Opens one unpinned [role] on the first of [candidates] that is free right now (no wait),
+     * trying the next on [DeviceBusyException]. When every candidate is busy it waits for the
+     * first one, bounded by `tap.acquireTimeoutSeconds`, as a multi-role test does.
+     */
+    internal suspend fun openSingle(
+        connection: com.company.tap.sdk.ClientConnection,
+        role: String,
+        candidates: List<String>,
+        config: TapConfig,
+    ): Map<String, Device> {
+        if (candidates.size > 1) {
+            for (serial in candidates) {
+                try {
+                    return mapOf(role to connection.attachDevice(serial, config.autPackage, options = DeviceOptions()))
+                } catch (_: DeviceBusyException) {
+                    // Held by another session right now: try the next device.
+                }
+            }
+        }
+        val options = DeviceOptions(waitForDevice = config.acquireTimeout)
+        return mapOf(role to connection.attachDevice(candidates.first(), config.autPackage, options = options))
     }
 
     /**
@@ -255,7 +302,7 @@ class TapExtension :
      * suppressed into the opener before rethrow.
      */
     internal suspend fun openAll(
-        connection: com.company.tap.sdk.Connection,
+        connection: com.company.tap.sdk.ClientConnection,
         assignment: Map<String, String>,
         config: TapConfig,
     ): Map<String, Device> {
@@ -266,14 +313,14 @@ class TapExtension :
         val options = DeviceOptions(waitForDevice = config.acquireTimeout)
         try {
             assignment.entries.sortedBy { it.value }.forEach { (role, serial) ->
-                opened[role] = connection.openDevice(serial, config.autPackage, options = options)
+                opened[role] = connection.attachDevice(serial, config.autPackage, options = options)
             }
         } catch (error: Throwable) {
             withContext(NonCancellable) {
                 withTimeoutOrNull(120_000) {
                     opened.values.forEach { device ->
                         runCatching {
-                            withContext(TapContext("junit:setup-cleanup")) { device.close() }
+                            withContext(TapContext("junit:setup-cleanup")) { device.detach() }
                         }.exceptionOrNull()?.let(error::addSuppressed)
                     }
                 }
@@ -294,7 +341,7 @@ class TapExtension :
             withContext(NonCancellable) {
                 withTimeoutOrNull(120_000) {
                     state.devices.values.forEach { device ->
-                        runCatching { device.close() }.exceptionOrNull()?.let(errors::add)
+                        runCatching { device.detach() }.exceptionOrNull()?.let(errors::add)
                     }
                 } ?: errors.add(TapException("device teardown timed out"))
             }
@@ -344,5 +391,8 @@ class TapExtension :
 
     private companion object {
         const val KEY = "tap.devices"
+
+        /** JVM-wide start index for [assignSerials]; advanced once per test. */
+        val ROTATION = AtomicInteger(0)
     }
 }

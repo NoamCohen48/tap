@@ -9,6 +9,12 @@
         "kind": "resource",
         "name": "email",
         "packageName": "com.example.app"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     }
   }

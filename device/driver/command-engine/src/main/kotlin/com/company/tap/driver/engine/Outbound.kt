@@ -13,6 +13,12 @@ sealed interface Outbound {
     /** [payload] is the complete `BLOB_CHUNK` payload (header included). */
     class BlobChunkFrame(val requestId: Long, val payload: ByteArray) : Outbound
     data class BlobEndFrame(val requestId: Long, val end: BlobEnd) : Outbound
+
+    /**
+     * Orderly driver-initiated close after a protocol violation: the connection-level `CLOSE`
+     * frame carrying [reason]. Nothing is written after it.
+     */
+    data class Close(val reason: String) : Outbound
 }
 
 fun interface OutboundSink {

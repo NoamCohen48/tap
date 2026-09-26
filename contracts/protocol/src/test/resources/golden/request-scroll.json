@@ -9,8 +9,15 @@
         "kind": "resource",
         "name": "list",
         "packageName": "com.example.app"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     },
-    "direction": "DOWN"
+    "direction": "DOWN",
+    "distancePercent": 80
   }
 }

@@ -2,24 +2,27 @@ package com.company.tap.sdk
 
 import com.company.tap.api.v1.AppServiceGrpcKt
 import com.company.tap.api.v1.AttachRequest
-import com.company.tap.api.v1.CloseConnectionRequest
-import com.company.tap.api.v1.CloseConnectionResponse
-import com.company.tap.api.v1.CloseSessionRequest
-import com.company.tap.api.v1.CloseSessionResponse
+import com.company.tap.api.v1.AttachResponse
+import com.company.tap.api.v1.ClientConnectionServiceGrpcKt
+import com.company.tap.api.v1.Heartbeat
+import com.company.tap.api.v1.Observing
 import com.company.tap.api.v1.CommandResult
-import com.company.tap.api.v1.ConnectionEvent
-import com.company.tap.api.v1.ConnectionServiceGrpcKt
+import com.company.tap.api.v1.ConnectRequest
+import com.company.tap.api.v1.ConnectResponse
+import com.company.tap.api.v1.DetachRequest
+import com.company.tap.api.v1.DetachResponse
 import com.company.tap.api.v1.DeviceServiceGrpcKt
+import com.company.tap.api.v1.DisconnectRequest
+import com.company.tap.api.v1.DisconnectResponse
+import com.company.tap.api.v1.ErrorCode
 import com.company.tap.api.v1.ExecuteRequest
+import com.company.tap.api.v1.ExecuteResponse
 import com.company.tap.api.v1.InfoRequest
 import com.company.tap.api.v1.InfoResponse
 import com.company.tap.api.v1.ListDevicesRequest
 import com.company.tap.api.v1.ListDevicesResponse
-import com.company.tap.api.v1.OpenConnectionRequest
-import com.company.tap.api.v1.OpenConnectionResponse
-import com.company.tap.api.v1.OpenSessionRequest
-import com.company.tap.api.v1.OpenSessionResponse
-import com.company.tap.api.v1.SessionServiceGrpcKt
+import com.company.tap.api.v1.ObserveRequest
+import com.company.tap.api.v1.ObserveResponse
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
 import io.grpc.MethodDescriptor
@@ -45,10 +48,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import java.nio.file.Files
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -63,14 +66,13 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * In-process grpc-kotlin fakes for the coroutine client: linearized attach ownership/lifetime,
+ * In-process grpc-kotlin fakes for the coroutine client: linearized Observe ownership/lifetime,
  * single-flight closes, device admission vs. close, cancellation propagation and the process /
  * channel teardown seams. No real devices involved.
  */
 class TapClientTest {
     private lateinit var serverName: String
     private lateinit var fakeConnections: FakeConnections
-    private lateinit var fakeSessions: FakeSessions
     private lateinit var fakeDevices: FakeDevices
     private lateinit var fakeApps: FakeApps
     private lateinit var grpcServer: io.grpc.Server
@@ -80,7 +82,6 @@ class TapClientTest {
     fun start() {
         serverName = InProcessServerBuilder.generateName()
         fakeConnections = FakeConnections()
-        fakeSessions = FakeSessions()
         fakeDevices = FakeDevices()
         fakeApps = FakeApps()
         grpcServer =
@@ -88,7 +89,6 @@ class TapClientTest {
                 .forName(serverName)
                 .directExecutor()
                 .addService(fakeConnections)
-                .addService(fakeSessions)
                 .addService(fakeDevices)
                 .addService(fakeApps)
                 .build()
@@ -98,7 +98,7 @@ class TapClientTest {
 
     @AfterEach
     fun stop() {
-        TapServiceProcess.processStarter = null
+        TapDaemonProcess.processStarter = null
         channel.shutdownNow()
         grpcServer.shutdownNow()
     }
@@ -111,7 +111,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 assertTrue(connection.recentEvents.isNotEmpty(), "attach first event before connect returns")
-                assertEquals(1, fakeConnections.attaches.get(), "exactly one Attach")
+                assertEquals(1, fakeConnections.observes.get(), "exactly one Observe")
             } finally {
                 connection.close()
             }
@@ -121,13 +121,13 @@ class TapClientTest {
     @Test
     fun `empty attach fails connect and closes the id`() {
         runBlocking {
-            fakeConnections.attachMode = FakeConnections.AttachMode.EMPTY
+            fakeConnections.observeMode = FakeConnections.ObserveMode.EMPTY
             val failure =
                 assertFailsWith<TapException> {
                     withTimeout(10_000) { client().connect("test") }
                 }
             assertTrue(failure.message!!.contains("empty stream"), "unexpected: ${failure.message}")
-            assertEquals(1, fakeConnections.attaches.get(), "exactly one Attach even when empty")
+            assertEquals(1, fakeConnections.observes.get(), "exactly one Observe even when empty")
             withTimeout(5_000) {
                 while (fakeConnections.closes.get() < 1) delay(10)
             }
@@ -136,22 +136,22 @@ class TapClientTest {
     }
 
     @Test
-    fun `attach error before first event fails connect and closes the id`() {
+    fun `observe error before first event fails connect and disconnects the id`() {
         runBlocking {
-            fakeConnections.attachMode = FakeConnections.AttachMode.ERROR_BEFORE_FIRST
-            fakeConnections.attachError = StatusRuntimeException(Status.UNAVAILABLE.withDescription("attach boom"))
+            fakeConnections.observeMode = FakeConnections.ObserveMode.ERROR_BEFORE_FIRST
+            fakeConnections.observeError = StatusRuntimeException(Status.UNAVAILABLE.withDescription("attach boom"))
             val failure =
                 assertFailsWith<TapException> {
                     withTimeout(10_000) { client().connect("test") }
                 }
             assertTrue(
-                failure is ServiceException && failure.status == "UNAVAILABLE",
+                failure is ServerException && failure.status == "UNAVAILABLE",
                 "setup failure keeps gRPC mapping, got $failure",
             )
             withTimeout(5_000) {
                 while (fakeConnections.closes.get() < 1) delay(10)
             }
-            assertEquals(1, fakeConnections.attaches.get())
+            assertEquals(1, fakeConnections.observes.get())
         }
     }
 
@@ -159,62 +159,62 @@ class TapClientTest {
     fun `attach normal termination after first event invalidates devices and rejects opens`() {
         runBlocking {
             val connection = client().connect("test")
-            val first = tapScope { connection.openDevice("emulator-5554", "com.test") }
-            val second = tapScope { connection.openDevice("emulator-5555", "com.test") }
+            val first = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+            val second = tapScope { connection.attachDevice("emulator-5555", "com.test") }
             assertEquals(2, connection.liveDeviceCount, "registry retains live handles")
             try {
-                // Gate the OpenSession response so the racing registration is provably in
+                // Gate the AttachDevice response so the racing registration is provably in
                 // flight when the terminal invalidation lands (deterministic, no sleep). The
                 // racing call either fails at the pre-RPC gate or returns only as an
                 // invalidated handle; the registry keeps the handle until close either way.
-                fakeSessions.openRelease = CompletableDeferred()
-                fakeSessions.openEntered = CompletableDeferred()
+                fakeDevices.openRelease = CompletableDeferred()
+                fakeDevices.openEntered = CompletableDeferred()
                 val racing =
                     async {
-                        runCatching { tapScope { connection.openDevice("emulator-5559", "com.test") } }
+                        runCatching { tapScope { connection.attachDevice("emulator-5559", "com.test") } }
                     }
-                withTimeout(5_000) { fakeSessions.openEntered.await() }
+                withTimeout(5_000) { fakeDevices.openEntered.await() }
                 // Server ends the parked stream after establishment: unexpected termination.
-                fakeConnections.finishParkedAttach()
+                fakeConnections.finishParkedObserve()
                 withTimeout(5_000) {
                     while (!connection.isInvalid) delay(10)
                 }
-                // Release the gated OpenSession into the terminal state.
-                fakeSessions.openRelease.complete(Unit)
+                // Release the gated AttachDevice into the terminal state.
+                fakeDevices.openRelease.complete(Unit)
                 // Both handles observed the post-establishment termination.
-                val executeBefore = fakeSessions.executeCalls.get()
+                val executeBefore = fakeDevices.executeCalls.get()
                 tapScope {
-                    assertFailsWith<ServiceException> { first.info() }
-                    assertFailsWith<ServiceException> { second.screenshot() }
-                    assertFailsWith<ServiceException> { first.driverLog() }
-                    assertFailsWith<ServiceException> {
+                    assertFailsWith<ServerException> { first.info() }
+                    assertFailsWith<ServerException> { second.screenshot() }
+                    assertFailsWith<ServerException> { first.driverLog() }
+                    assertFailsWith<ServerException> {
                         first.awaitUntil("x", timeout = 100.milliseconds) { true }
                     }
-                    assertFailsWith<ServiceException> { first.app().isRunning() }
+                    assertFailsWith<ServerException> { first.app().isRunning() }
                 }
-                assertEquals(executeBefore, fakeSessions.executeCalls.get(), "invalidated ops rejected without RPC")
+                assertEquals(executeBefore, fakeDevices.executeCalls.get(), "invalidated ops rejected without RPC")
                 // The racing registration resolved during the terminal drop: either rejected at
                 // the gate or returned only as an invalidated handle.
                 val raced = withTimeout(5_000) { racing.await() }
                 raced.onSuccess { handle ->
-                    tapScope { assertFailsWith<ServiceException> { handle.info() } }
-                    tapScope { runCatching { handle.close() } }
+                    tapScope { assertFailsWith<ServerException> { handle.info() } }
+                    tapScope { runCatching { handle.detach() } }
                 }
-                val opensAfterRace = fakeSessions.opens.size
-                assertFailsWith<ServiceException> {
-                    tapScope { connection.openDevice("emulator-5556", "com.test") }
+                val opensAfterRace = fakeDevices.opens.size
+                assertFailsWith<ServerException> {
+                    tapScope { connection.attachDevice("emulator-5556", "com.test") }
                 }
-                assertEquals(opensAfterRace, fakeSessions.opens.size, "no new session opened after invalidation")
+                assertEquals(opensAfterRace, fakeDevices.opens.size, "no new session opened after invalidation")
                 // Closing invalidated handles unregisters them; the registry returns to zero.
                 tapScope {
-                    runCatching { first.close() }
-                    runCatching { second.close() }
+                    runCatching { first.detach() }
+                    runCatching { second.detach() }
                 }
                 withTimeout(5_000) {
                     while (connection.liveDeviceCount != 0) delay(10)
                 }
                 assertEquals(0, connection.liveDeviceCount, "closed handles leave the registry")
-                // Explicit close still sends Close exactly once.
+                // Explicit close still sends Disconnect exactly once.
                 connection.close()
                 assertEquals(1, fakeConnections.closes.get())
             } finally {
@@ -224,19 +224,19 @@ class TapClientTest {
     }
 
     @Test
-    fun `attach error termination after first event invalidates with cause`() {
+    fun `observe error termination after first event invalidates with cause`() {
         runBlocking {
             val connection = client().connect("test")
-            val device = tapScope { connection.openDevice("emulator-5554", "com.test") }
+            val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
             fakeConnections.parkError =
                 StatusRuntimeException(Status.UNAVAILABLE.withDescription("stream cut"))
-            fakeConnections.finishParkedAttach()
+            fakeConnections.finishParkedObserve()
             try {
                 withTimeout(5_000) {
                     while (!connection.isInvalid) delay(10)
                 }
                 val failure =
-                    assertFailsWith<ServiceException> {
+                    assertFailsWith<ServerException> {
                         tapScope { device.info() }
                     }
                 assertEquals("UNAVAILABLE", failure.status)
@@ -248,11 +248,11 @@ class TapClientTest {
     }
 
     @Test
-    fun `close sends Close before dropping attach`() {
+    fun `close sends Disconnect before dropping observe`() {
         runBlocking {
             val connection = client().connect("test")
             connection.close()
-            assertEquals(listOf("close", "attach-cancelled"), fakeConnections.order.toList())
+            assertEquals(listOf("disconnect", "observe-cancelled"), fakeConnections.order.toList())
         }
     }
 
@@ -279,7 +279,7 @@ class TapClientTest {
                 }
                 assertEquals(1, fakeConnections.closes.get(), "single-flight while the RPC is in flight")
                 // Every duplicate caller joined before the release and none returns early
-                // while the single Close RPC is parked.
+                // while the single Disconnect RPC is parked.
                 assertTrue(closers.none { it.isCompleted }, "duplicate closers joined the shared flight; none returns early")
                 fakeConnections.closeRelease.complete(Unit)
                 withTimeout(5_000) { closers.forEach { it.await() } }
@@ -308,7 +308,7 @@ class TapClientTest {
                     assertTrue(result.isFailure, "both callers observe the primary failure")
                     assertIs<WaitTimeoutException>(result.exceptionOrNull())
                 }
-                assertEquals(1, fakeConnections.closes.get(), "exactly one Close RPC even on failure")
+                assertEquals(1, fakeConnections.closes.get(), "exactly one Disconnect RPC even on failure")
                 // A later repeated close rethrows the same primary failure, still one RPC.
                 assertFailsWith<WaitTimeoutException> {
                     withTimeout(5_000) { connection.close() }
@@ -335,7 +335,7 @@ class TapClientTest {
                 assertTrue(job.isCompleted, "cancelled close still completes teardown")
                 assertEquals(1, fakeConnections.closes.get())
                 withTimeout(5_000) {
-                    while (!fakeConnections.order.contains("attach-cancelled")) delay(10)
+                    while (!fakeConnections.order.contains("observe-cancelled")) delay(10)
                 }
             } finally {
                 fakeConnections.closeRelease.complete(Unit)
@@ -345,12 +345,12 @@ class TapClientTest {
     }
 
     @Test
-    fun `stubborn attach collector does not hold close past its bound`() {
+    fun `stubborn observe collector does not hold close past its bound`() {
         runBlocking {
-            fakeConnections.attachMode = FakeConnections.AttachMode.STUBBORN
+            fakeConnections.observeMode = FakeConnections.ObserveMode.STUBBORN
             // Isolated per-instance bound (no shared mutation): safe under parallel tests.
-            val connection = Connection(client(), "conn-stubborn", ConnectionBounds(teardownMs = 300))
-            connection.attach()
+            val connection = ClientConnection(client(), "conn-stubborn", ClientConnectionBounds(teardownMs = 300))
+            connection.observe()
             try {
                 val started = System.nanoTime()
                 withTimeout(10_000) { connection.close() }
@@ -364,59 +364,59 @@ class TapClientTest {
     }
 
     @Test
-    fun `dropped attach still lets close run`() {
+    fun `dropped observation still lets close run`() {
         runBlocking {
             val connection = client().connect("test")
             // Server ends the stream after the first event; the client marks the connection
             // unusable, but an explicit Close still runs and the scope still cleans up once.
-            fakeConnections.finishParkedAttach()
+            fakeConnections.finishParkedObserve()
             withTimeout(5_000) {
                 while (!connection.isInvalid) delay(10)
             }
             withTimeout(5_000) {
-                while (!fakeConnections.order.contains("attach-cancelled")) delay(10)
+                while (!fakeConnections.order.contains("observe-cancelled")) delay(10)
             }
             connection.close()
-            assertTrue(fakeConnections.order.contains("close"))
-            assertEquals(1, fakeConnections.order.count { it == "attach-cancelled" })
+            assertTrue(fakeConnections.order.contains("disconnect"))
+            assertEquals(1, fakeConnections.order.count { it == "observe-cancelled" })
         }
     }
 
     @Test
-    fun `execute admitted before close finishes before Session Close and later calls rejected`() {
+    fun `execute admitted before detach finishes before DetachDevice and later calls rejected`() {
         runBlocking {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    fakeSessions.hangExecute.complete(Unit)
-                    val device = connection.openDevice("emulator-5554", "com.test")
+                    fakeDevices.hangExecute.complete(Unit)
+                    val device = connection.attachDevice("emulator-5554", "com.test")
                     try {
                         val running = async { device.info() }
-                        withTimeout(5_000) { fakeSessions.enteredExecute.await() }
-                        fakeSessions.closeRelease = CompletableDeferred()
-                        val closing = async { device.close() }
+                        withTimeout(5_000) { fakeDevices.enteredExecute.await() }
+                        fakeDevices.closeRelease = CompletableDeferred()
+                        val closing = async { device.detach() }
                         withTimeout(5_000) {
-                            while (!device.isClosed) delay(10)
+                            while (!device.isDetached) delay(10)
                         }
                         // New operations after close started are rejected locally, no new RPC.
-                        val callsBefore = fakeSessions.executeCalls.get()
+                        val callsBefore = fakeDevices.executeCalls.get()
                         assertFailsWith<TapUsageException> { device.info() }
                         assertFailsWith<TapUsageException> { device.screenshot() }
-                        assertEquals(callsBefore, fakeSessions.executeCalls.get())
-                        // Let the admitted Execute finish; the session close follows it.
-                        fakeSessions.hangExecuteResult.complete(CommandResult.getDefaultInstance())
+                        assertEquals(callsBefore, fakeDevices.executeCalls.get())
+                        // Let the admitted Execute finish; the device detach follows it.
+                        fakeDevices.hangExecuteResult.complete(CommandResult.getDefaultInstance())
                         withTimeout(5_000) { running.await() }
-                        fakeSessions.closeRelease.complete(Unit)
+                        fakeDevices.closeRelease.complete(Unit)
                         withTimeout(5_000) { closing.await() }
                         assertEquals(
-                            listOf("execute-enter", "execute-exit", "session-close"),
-                            fakeSessions.order.toList(),
+                            listOf("execute-enter", "execute-exit", "device-detach"),
+                            fakeDevices.order.toList(),
                         )
-                        assertEquals(1, fakeSessions.closeCalls.get())
+                        assertEquals(1, fakeDevices.closeCalls.get())
                     } finally {
-                        fakeSessions.hangExecuteResult.complete(CommandResult.getDefaultInstance())
-                        fakeSessions.closeRelease.complete(Unit)
-                        runCatching { device.close() }
+                        fakeDevices.hangExecuteResult.complete(CommandResult.getDefaultInstance())
+                        fakeDevices.closeRelease.complete(Unit)
+                        runCatching { device.detach() }
                     }
                 }
             } finally {
@@ -426,18 +426,17 @@ class TapClientTest {
     }
 
     @Test
-    fun `device drain timeout fails closed with one Connection Close`() {
+    fun `device drain timeout detaches only that device and keeps the connection`() {
         runBlocking {
-            val connection = Connection(client(), "conn-failclosed", ConnectionBounds(), DeviceBounds(drainMs = 300))
-            connection.attach()
+            val connection = ClientConnection(client(), "conn-failclosed", ClientConnectionBounds(), DeviceBounds(drainMs = 300))
+            connection.observe()
             try {
                 tapScope {
-                    val first = connection.openDevice("emulator-5554", "com.test")
-                    val second = connection.openDevice("emulator-5555", "com.test")
+                    val first = connection.attachDevice("emulator-5554", "com.test")
+                    val second = connection.attachDevice("emulator-5555", "com.test")
                     assertEquals(2, connection.liveDeviceCount)
                     val firstPoll = CompletableDeferred<Unit>()
                     // Permanently parked admitted operation: never released to unblock close.
-                    // Fail-closed must tear the connection down without waiting for this drain.
                     val parked =
                         async {
                             first.awaitUntil("parked", timeout = 30.seconds) {
@@ -446,58 +445,38 @@ class TapClientTest {
                             }
                         }
                     withTimeout(5_000) { firstPoll.await() }
-                    assertTrue(connection.liveDeviceCount == 2)
                     // Duplicate closes share the same drain wait and the same terminal failure.
-                    val closer1 = async { runCatching { first.closeAndReport() } }
-                    val closer2 = async { runCatching { first.closeAndReport() } }
-                    val firstResult = withTimeout(10_000) { closer1.await() }
-                    val secondResult = withTimeout(10_000) { closer2.await() }
-                    assertTrue(firstResult.isFailure, "drain timeout fails the first close")
-                    assertTrue(secondResult.isFailure, "duplicate shares the terminal failure")
-                    val firstFailure = firstResult.exceptionOrNull()
-                    val secondFailure = secondResult.exceptionOrNull()
-                    assertIs<ServiceException>(firstFailure)
+                    val closer1 = async { runCatching { first.detachAndReport() } }
+                    val closer2 = async { runCatching { first.detachAndReport() } }
+                    val firstFailure = withTimeout(10_000) { closer1.await() }.exceptionOrNull()
+                    val secondFailure = withTimeout(10_000) { closer2.await() }.exceptionOrNull()
+                    assertIs<ServerException>(firstFailure)
                     assertEquals("DEADLINE_EXCEEDED", firstFailure.status)
                     assertTrue(firstFailure.details.contains("drain timed out"), "unexpected: ${firstFailure.details}")
                     assertTrue(firstFailure.details.contains("fail-closed"), "unexpected: ${firstFailure.details}")
-                    // Same terminal failure instance for owner and duplicate.
                     assertSame(firstFailure, secondFailure, "duplicate Device closes share the same timeout instance")
-                    // Exactly one bounded Connection Close, zero Session Close.
-                    withTimeout(5_000) {
-                        while (fakeConnections.closes.get() < 1) delay(10)
-                    }
-                    assertEquals(1, fakeConnections.closes.get(), "exactly one Connection Close")
-                    delay(200)
-                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close on the fail-closed path")
-                    assertEquals(1, fakeConnections.closes.get(), "no duplicate Connection Close")
-                    // Connection unusable, every handle invalid, registry cleared before the
-                    // shared terminal completion.
-                    withTimeout(5_000) {
-                        while (!connection.isInvalid) delay(10)
-                    }
-                    withTimeout(5_000) {
-                        while (connection.liveDeviceCount != 0) delay(10)
-                    }
-                    assertEquals(0, connection.liveDeviceCount, "registry cleared before terminal completion")
-                    // The closed handle rejects locally; the sibling handle is connection-invalid.
-                    assertFailsWith<TapUsageException> { first.info() }
-                    val siblingFailure = assertFailsWith<ServiceException> { second.info() }
-                    assertEquals("UNAVAILABLE", siblingFailure.status)
-                    assertFailsWith<TapUsageException> { connection.openDevice("emulator-5556", "com.test") }
-                    // Owned scope/job terminated after the bounded Connection Close.
-                    assertTrue(first.failClosedStarted, "fail-closed job launched on the owned scope")
+                    // Exactly one best-effort DetachDevice, for this device only; no Disconnect.
                     withTimeout(5_000) {
                         while (first.failClosedHandle?.isCompleted != true) delay(10)
                     }
+                    assertEquals(listOf("attached-emulator-5554"), fakeDevices.closes.toList())
+                    assertEquals(0, fakeConnections.closes.get(), "the shared connection is not disconnected")
+                    assertFalse(connection.isInvalid, "the shared connection stays usable")
+                    assertEquals(1, connection.liveDeviceCount, "only the poisoned handle is unregistered")
                     withTimeout(5_000) {
                         while (!first.cleanupTerminated) delay(10)
                     }
+                    // The poisoned handle rejects locally; the sibling and new attaches still work.
+                    assertFailsWith<TapUsageException> { first.info() }
+                    second.info()
+                    val third = connection.attachDevice("emulator-5556", "com.test")
                     // A later duplicate still shares the same terminal failure, no new RPC.
-                    val late = runCatching { withTimeout(5_000) { first.closeAndReport() } }.exceptionOrNull()
+                    val late = runCatching { withTimeout(5_000) { first.detachAndReport() } }.exceptionOrNull()
                     assertSame(firstFailure, late, "late duplicate shares the same terminal failure")
-                    assertEquals(1, fakeConnections.closes.get())
-                    assertEquals(0, fakeSessions.closeCalls.get())
+                    assertEquals(1, fakeDevices.closeCalls.get())
                     parked.cancelAndJoin()
+                    second.detach()
+                    third.detach()
                 }
             } finally {
                 runCatching { connection.close() }
@@ -506,15 +485,14 @@ class TapClientTest {
     }
 
     @Test
-    fun `fail-closed Connection Close failure is suppressed without stranding`() {
+    fun `fail-closed DetachDevice failure is suppressed without stranding`() {
         runBlocking {
-            fakeConnections.closeError =
-                StatusRuntimeException(Status.UNAVAILABLE.withDescription("connection boom"))
-            val connection = Connection(client(), "conn-failclosed-err", ConnectionBounds(), DeviceBounds(drainMs = 300))
-            connection.attach()
+            fakeDevices.closeError = StatusRuntimeException(Status.UNAVAILABLE.withDescription("detach boom"))
+            val connection = ClientConnection(client(), "conn-failclosed-err", ClientConnectionBounds(), DeviceBounds(drainMs = 300))
+            connection.observe()
             try {
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554", "com.test")
                     val firstPoll = CompletableDeferred<Unit>()
                     val parked =
                         async {
@@ -524,45 +502,120 @@ class TapClientTest {
                             }
                         }
                     withTimeout(5_000) { firstPoll.await() }
-                    val failure = assertFailsWith<ServiceException> { device.closeAndReport() }
+                    val failure = assertFailsWith<ServerException> { device.detachAndReport() }
                     assertEquals("DEADLINE_EXCEEDED", failure.status)
-                    assertTrue(failure.details.contains("fail-closed"), "unexpected: ${failure.details}")
-                    withTimeout(5_000) {
-                        while (fakeConnections.closes.get() < 1) delay(10)
-                    }
-                    // The Connection Close failure is observable via suppressed, never stranded.
-                    withTimeout(5_000) {
-                        while (failure.suppressed.isEmpty()) delay(10)
-                    }
-                    assertTrue(
-                        failure.suppressed.any { it.message?.contains("connection boom") == true },
-                        "suppressed carries the Connection Close failure, got: ${failure.suppressed.toList()}",
-                    )
-                    assertEquals(1, fakeConnections.closes.get(), "exactly one Connection Close even on failure")
-                    assertEquals(0, fakeSessions.closeCalls.get(), "no Session Close on the fail-closed path")
-                    withTimeout(5_000) {
-                        while (!connection.isInvalid) delay(10)
-                    }
-                    withTimeout(5_000) {
-                        while (connection.liveDeviceCount != 0) delay(10)
-                    }
-                    assertEquals(0, connection.liveDeviceCount, "registry cleared even when Connection Close fails")
                     withTimeout(5_000) {
                         while (device.failClosedHandle?.isCompleted != true) delay(10)
                     }
+                    assertTrue(
+                        failure.suppressed.any { it.message?.contains("detach boom") == true },
+                        "suppressed carries the DetachDevice failure, got: ${failure.suppressed.toList()}",
+                    )
+                    assertEquals(1, fakeDevices.closeCalls.get(), "exactly one DetachDevice even on failure")
+                    assertEquals(0, fakeConnections.closes.get(), "no Disconnect on the fail-closed path")
+                    assertEquals(0, connection.liveDeviceCount, "registry cleared even when DetachDevice fails")
                     withTimeout(5_000) {
                         while (!device.cleanupTerminated) delay(10)
                     }
-                    val duplicate = assertFailsWith<ServiceException> { withTimeout(5_000) { device.closeAndReport() } }
+                    val duplicate = assertFailsWith<ServerException> { withTimeout(5_000) { device.detachAndReport() } }
                     assertSame(failure, duplicate, "duplicate shares the same terminal failure with suppressed cause")
                     parked.cancelAndJoin()
                 }
             } finally {
-                fakeConnections.closeError = null
+                fakeDevices.closeError = null
                 runCatching { connection.close() }
             }
         }
     }
+
+    @Test
+    fun `awaitAppVisible maps only WAIT_TIMEOUT to WaitTimeoutException`() {
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitAppVisible() }.let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.awaitAppVisible() }.let {
+            assertIs<CommandException>(it)
+            assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, it.code)
+        }
+    }
+
+    @Test
+    fun `awaitScreenStable maps only WAIT_TIMEOUT to WaitTimeoutException`() {
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitScreenStable() }.let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_TRANSPORT_LOST) { it.awaitScreenStable() }.let {
+            assertIs<CommandException>(it)
+            assertEquals(ErrorCode.ERR_TRANSPORT_LOST, it.code)
+        }
+    }
+
+    @Test
+    fun `scrollUntil maps only WAIT_TIMEOUT to WaitTimeoutException`() {
+        val scroll: suspend (Device) -> Unit = { it.element(rawRes("list")).scrollUntil(text("row 40")) }
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT, scroll).let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_INDETERMINATE, scroll).let {
+            assertIs<CommandException>(it)
+            assertEquals(ErrorCode.ERR_INDETERMINATE, it.code)
+        }
+        waitMapping(ErrorCode.ERR_NOT_FOUND, scroll).let {
+            assertIs<CommandException>(it)
+            assertEquals(ErrorCode.ERR_NOT_FOUND, it.code)
+        }
+    }
+
+    @Test
+    fun `element waits map only WAIT_TIMEOUT to WaitTimeoutException`() {
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.await(text("x")).visible() }.let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.await(text("x")).gone() }.let { assertIs<CommandException>(it) }
+    }
+
+    @Test
+    fun `every command carries the timeout and one deadline policy`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test", Timeouts(action = 3.seconds, wait = 7.seconds))
+                    device.info()
+                    device.awaitAppVisible()
+                    device.execute(timeout = 2.seconds) { deviceInfo = com.company.tap.api.v1.DeviceInfoQuery.getDefaultInstance() }
+                    assertEquals(listOf(3_000L, 7_000L, 2_000L), fakeDevices.executeRequests.map { it.command.timeoutMs })
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    /** Runs [call] against a fake whose every Execute fails with [code]; returns what it threw. */
+    private fun waitMapping(
+        code: ErrorCode,
+        call: suspend (Device) -> Unit,
+    ): Throwable =
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                if (request.command.hasDeviceInfo()) {
+                    null
+                } else {
+                    CommandResult
+                        .newBuilder()
+                        .setError(com.company.tap.api.v1.Error.newBuilder().setCode(code))
+                        .build()
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        assertFailsWith<TapException> { call(device) }
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
 
     @Test
     fun `hanging info probe preserves outer cancellation identity`() {
@@ -574,7 +627,7 @@ class TapClientTest {
             // before parking in the cancellable region, with no socket involved. The large
             // own timeout keeps ownership with the outer 200 ms timeout deterministically.
             val hanging =
-                ServiceDiscovery.DiscoveryDeps(
+                DaemonDiscovery.DiscoveryDeps(
                     channelFactory = { address ->
                         seenAddress = address
                         probeChannel
@@ -586,10 +639,10 @@ class TapClientTest {
                     probeTimeoutMs = 10_000L,
                 )
             val dir = Files.createTempDirectory("tap-probe")
-            Files.writeString(dir.resolve("service.json"), "{\"port\":1}")
+            Files.writeString(dir.resolve("daemon.json"), "{\"port\":1}")
             // The outer withTimeout owns the probe call directly, so its
             // TimeoutCancellationException is the cancellation identity under test.
-            val probing = async { withTimeout(200.milliseconds) { ServiceDiscovery.running(dir, hanging) } }
+            val probing = async { withTimeout(200.milliseconds) { DaemonDiscovery.running(dir, hanging) } }
             withTimeout(10_000) { entered.await() }
             val outer = assertFailsWith<TimeoutCancellationException> { probing.await() }
             assertTrue(
@@ -604,27 +657,27 @@ class TapClientTest {
             // Ordinary probe failure still maps to dead (null), never throws, with cleanup.
             val deadChannel = TestChannel()
             val dead =
-                ServiceDiscovery.DiscoveryDeps(
+                DaemonDiscovery.DiscoveryDeps(
                     channelFactory = { deadChannel },
                     infoProbe = { throw StatusRuntimeException(Status.UNAVAILABLE.withDescription("dead")) },
                 )
             val deadDir = Files.createTempDirectory("tap-probe-dead")
-            Files.writeString(deadDir.resolve("service.json"), "{\"port\":2}")
-            assertNull(withTimeout(10_000) { ServiceDiscovery.running(deadDir, dead) }, "probe failure maps to dead")
+            Files.writeString(deadDir.resolve("daemon.json"), "{\"port\":2}")
+            assertNull(withTimeout(10_000) { DaemonDiscovery.running(deadDir, dead) }, "probe failure maps to dead")
             assertEquals(1, deadChannel.shutdownNows.get(), "failed probe channel still shut down")
             assertEquals(1, deadChannel.awaits.get(), "failed probe channel awaited after shutdownNow")
             // Own timeout maps to dead (null): a hanging probe with a short injected bound
             // returns null without an outer timeout involved.
             val timeoutChannel = TestChannel()
             val ownTimeout =
-                ServiceDiscovery.DiscoveryDeps(
+                DaemonDiscovery.DiscoveryDeps(
                     channelFactory = { timeoutChannel },
                     infoProbe = { awaitCancellation() },
                     probeTimeoutMs = 200L,
                 )
             val timeoutDir = Files.createTempDirectory("tap-probe-timeout")
-            Files.writeString(timeoutDir.resolve("service.json"), "{\"port\":3}")
-            assertNull(withTimeout(10_000) { ServiceDiscovery.running(timeoutDir, ownTimeout) }, "own timeout maps to dead")
+            Files.writeString(timeoutDir.resolve("daemon.json"), "{\"port\":3}")
+            assertNull(withTimeout(10_000) { DaemonDiscovery.running(timeoutDir, ownTimeout) }, "own timeout maps to dead")
             assertEquals(1, timeoutChannel.shutdownNows.get(), "timed-out probe channel still shut down")
             assertEquals(1, timeoutChannel.awaits.get(), "timed-out probe channel awaited after shutdownNow")
         }
@@ -638,7 +691,7 @@ class TapClientTest {
             // Deterministic fake for this invocation only: gates `entered` synchronously
             // before parking in the cancellable region, with no socket involved.
             val hanging =
-                ServiceDiscovery.DiscoveryDeps(
+                DaemonDiscovery.DiscoveryDeps(
                     channelFactory = { probeChannel },
                     infoProbe = {
                         if (!entered.isCompleted) entered.complete(Unit)
@@ -647,12 +700,13 @@ class TapClientTest {
                     probeTimeoutMs = 10_000L,
                 )
             val dir = Files.createTempDirectory("tap-probe-known")
-            Files.writeString(dir.resolve("service.json"), "{\"port\":1}")
+            Files.writeString(dir.resolve("daemon.json"), "{\"port\":1}")
             val known = CancellationException("known-discovery-cancel")
-            val probing = async { ServiceDiscovery.running(dir, hanging) }
+            val probing = async { DaemonDiscovery.running(dir, hanging) }
             withTimeout(10_000) { entered.await() }
             probing.cancel(known)
             val thrown = assertFailsWith<CancellationException> { probing.await() }
+
             // Coroutine cancellation may wrap the cause; the known instance must still be
             // observable by identity somewhere in the chain (itself or its cause chain).
             fun chainContainsKnown(error: Throwable?): Boolean {
@@ -679,33 +733,41 @@ class TapClientTest {
     }
 
     @Test
-    fun `duplicate device closes share one Session Close including quarantine detail`() {
+    fun `duplicate device detaches share one DetachDevice including quarantine detail`() {
         runBlocking {
-            fakeSessions.quarantineNextClose = "driver would not die"
-            fakeSessions.closeRelease = CompletableDeferred()
+            fakeDevices.quarantineNextClose = "driver would not die"
+            fakeDevices.closeRelease = CompletableDeferred()
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554", "com.test")
                     val firstJoined = CompletableDeferred<Unit>()
                     val secondJoined = CompletableDeferred<Unit>()
-                    val first = async { firstJoined.complete(Unit); device.closeAndReport() }
-                    val second = async { secondJoined.complete(Unit); device.closeAndReport() }
+                    val first =
+                        async {
+                            firstJoined.complete(Unit)
+                            device.detachAndReport()
+                        }
+                    val second =
+                        async {
+                            secondJoined.complete(Unit)
+                            device.detachAndReport()
+                        }
                     withTimeout(5_000) {
                         firstJoined.await()
                         secondJoined.await()
-                        fakeSessions.closeEntered.await()
+                        fakeDevices.closeEntered.await()
                     }
-                    assertEquals(1, fakeSessions.closeCalls.get(), "single-flight session close")
-                    fakeSessions.closeRelease.complete(Unit)
+                    assertEquals(1, fakeDevices.closeCalls.get(), "single-flight session close")
+                    fakeDevices.closeRelease.complete(Unit)
                     assertEquals("driver would not die", withTimeout(5_000) { first.await() })
                     assertEquals("driver would not die", withTimeout(5_000) { second.await() })
                     // close() on a quarantined session reports the same detail as a failure.
-                    assertFailsWith<TapException> { device.close() }
-                    assertEquals(1, fakeSessions.closeCalls.get())
+                    assertFailsWith<TapException> { device.detach() }
+                    assertEquals(1, fakeDevices.closeCalls.get())
                 }
             } finally {
-                fakeSessions.closeRelease.complete(Unit)
+                fakeDevices.closeRelease.complete(Unit)
                 connection.close()
             }
         }
@@ -717,11 +779,11 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554", "com.test")
                     assertEquals(1, connection.liveDeviceCount, "open registers a live handle")
-                    device.close()
+                    device.detach()
                     assertEquals(0, connection.liveDeviceCount, "close unregisters the handle")
-                    val executeBefore = fakeSessions.executeCalls.get()
+                    val executeBefore = fakeDevices.executeCalls.get()
                     assertFailsWith<TapUsageException> { device.info() }
                     assertFailsWith<TapUsageException> { device.screenshot() }
                     assertFailsWith<TapUsageException> { device.driverLog() }
@@ -730,12 +792,12 @@ class TapClientTest {
                     }
                     assertFailsWith<TapUsageException> { device.pressBack() }
                     assertFailsWith<TapUsageException> { device.app().isRunning() }
-                    assertEquals(executeBefore, fakeSessions.executeCalls.get(), "no RPC after close")
+                    assertEquals(executeBefore, fakeDevices.executeCalls.get(), "no RPC after close")
                     assertFailsWith<TapUsageException> { device.execute { } }
                     // Many open/close cycles return the live registry to zero.
                     repeat(10) { index ->
-                        val cycled = connection.openDevice("emulator-55${50 + index}", "com.test")
-                        cycled.close()
+                        val cycled = connection.attachDevice("emulator-55${50 + index}", "com.test")
+                        cycled.detach()
                     }
                     assertEquals(0, connection.liveDeviceCount, "registry returns to zero after many cycles")
                 }
@@ -750,19 +812,19 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                fakeSessions.hangExecute.complete(Unit)
+                fakeDevices.hangExecute.complete(Unit)
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554", "com.test")
                     try {
                         val job = async { device.info() }
-                        withTimeout(2_000) { fakeSessions.enteredExecute.await() }
+                        withTimeout(2_000) { fakeDevices.enteredExecute.await() }
                         job.cancelAndJoin()
                         assertTrue(job.isCancelled, "caller cancel cancels the in-flight Execute")
-                        withTimeout(2_000) { fakeSessions.cancelledExecute.await() }
+                        withTimeout(2_000) { fakeDevices.cancelledExecute.await() }
                     } finally {
                         // Release the fake server park, then close inside the same scope.
-                        fakeSessions.hangExecuteResult.complete(CommandResult.getDefaultInstance())
-                        device.close()
+                        fakeDevices.hangExecuteResult.complete(CommandResult.getDefaultInstance())
+                        device.detach()
                     }
                 }
             } finally {
@@ -776,9 +838,9 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                fakeSessions.hangExecute.complete(Unit)
+                fakeDevices.hangExecute.complete(Unit)
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554", "com.test")
                     try {
                         val failure =
                             assertFailsWith<AssertionError> {
@@ -789,7 +851,7 @@ class TapClientTest {
                                         }
                                     val boom =
                                         async {
-                                            withTimeout(2_000) { fakeSessions.enteredExecute.await() }
+                                            withTimeout(2_000) { fakeDevices.enteredExecute.await() }
                                             throw AssertionError("sibling boom")
                                         }
                                     boom.await()
@@ -799,10 +861,10 @@ class TapClientTest {
                         assertEquals("sibling boom", failure.message)
                         // The real gRPC server observed the sibling cancellation, not just a
                         // local awaitCancellation: the in-flight Execute was interrupted.
-                        withTimeout(5_000) { fakeSessions.cancelledExecute.await() }
+                        withTimeout(5_000) { fakeDevices.cancelledExecute.await() }
                     } finally {
-                        fakeSessions.hangExecuteResult.complete(CommandResult.getDefaultInstance())
-                        device.close()
+                        fakeDevices.hangExecuteResult.complete(CommandResult.getDefaultInstance())
+                        device.detach()
                     }
                 }
             } finally {
@@ -862,7 +924,7 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.openDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
                 // No TapContext here: direct call must fail, not hang.
                 assertFailsWith<TapUsageException> { device.info() }
                 // An independently owned scope does not inherit the Tap scope either.
@@ -874,7 +936,7 @@ class TapClientTest {
                 } finally {
                     detached.cancel()
                 }
-                tapScope { device.close() }
+                tapScope { device.detach() }
             } finally {
                 connection.close()
             }
@@ -897,7 +959,7 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.openDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
                 try {
                     val started = System.nanoTime()
                     val firstPoll = CompletableDeferred<Unit>()
@@ -925,14 +987,14 @@ class TapClientTest {
                         val recursive =
                             assertFailsWith<TapUsageException> {
                                 device.awaitUntil("recursive", timeout = 5.seconds) {
-                                    device.closeAndReport()
+                                    device.detachAndReport()
                                     true
                                 }
                             }
                         assertTrue(recursive.message!!.contains("own admitted operation"), "unexpected: ${recursive.message}")
                     }
                 } finally {
-                    tapScope { device.close() }
+                    tapScope { device.detach() }
                 }
             } finally {
                 connection.close()
@@ -943,11 +1005,11 @@ class TapClientTest {
     @Test
     fun `quarantined close reports detail`() {
         runBlocking {
-            fakeSessions.quarantineNextClose = "driver would not die"
+            fakeDevices.quarantineNextClose = "driver would not die"
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.openDevice("emulator-5554", "com.test") }
-                val detail = tapScope { device.closeAndReport() }
+                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val detail = tapScope { device.detachAndReport() }
                 assertEquals("driver would not die", detail)
             } finally {
                 connection.close()
@@ -958,14 +1020,14 @@ class TapClientTest {
     @Test
     fun `session close deadline mapping is preserved`() {
         runBlocking {
-            fakeSessions.closeError =
+            fakeDevices.closeError =
                 StatusRuntimeException(Status.DEADLINE_EXCEEDED.withDescription("Timed out waiting for close"))
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.test")
-                    assertFailsWith<WaitTimeoutException> { device.closeAndReport() }
-                    assertEquals(1, fakeSessions.closeCalls.get())
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    assertFailsWith<WaitTimeoutException> { device.detachAndReport() }
+                    assertEquals(1, fakeDevices.closeCalls.get())
                 }
             } finally {
                 connection.close()
@@ -1005,17 +1067,17 @@ class TapClientTest {
     }
 
     @Test
-    fun `service process cancellation destroys a long-lived executable promptly`() {
+    fun `daemon process cancellation destroys a long-lived executable promptly`() {
         runBlocking {
             val fake = FakeProcess("started 127.0.0.1:9999\n", alive = true)
             val starterEntered = CompletableDeferred<Unit>()
-            TapServiceProcess.processStarter = {
+            TapDaemonProcess.processStarter = {
                 starterEntered.complete(Unit)
                 fake
             }
             try {
                 val started = System.nanoTime()
-                val job = async(Dispatchers.IO) { TapServiceProcess.start(binary = "fake", timeout = 30.seconds) }
+                val job = async(Dispatchers.IO) { TapDaemonProcess.start(binary = "fake", timeout = 30.seconds) }
                 // Handshake: the executable really started before cancellation is requested.
                 withTimeout(5_000) { starterEntered.await() }
                 job.cancelAndJoin()
@@ -1027,64 +1089,64 @@ class TapClientTest {
                 // never reported as the executable's own bounded-wait timeout.
                 val fake2 = FakeProcess("", alive = true)
                 val starter2Entered = CompletableDeferred<Unit>()
-                TapServiceProcess.processStarter = {
+                TapDaemonProcess.processStarter = {
                     starter2Entered.complete(Unit)
                     fake2
                 }
                 val outer =
                     assertFailsWith<TimeoutCancellationException> {
                         withTimeout(200.milliseconds) {
-                            TapServiceProcess.start(binary = "fake", timeout = 30.seconds)
+                            TapDaemonProcess.start(binary = "fake", timeout = 30.seconds)
                         }
                     }
                 assertTrue(fake2.destroyed.get(), "outer-timed-out process destroyed and reaped")
             } finally {
-                TapServiceProcess.processStarter = null
+                TapDaemonProcess.processStarter = null
             }
         }
     }
 
     @Test
-    fun `service process death returns parsed output`() {
+    fun `daemon process death returns parsed output`() {
         runBlocking {
-            TapServiceProcess.processStarter = { FakeProcess("started 127.0.0.1:1234\n", alive = false) }
+            TapDaemonProcess.processStarter = { FakeProcess("started 127.0.0.1:1234\n", alive = false) }
             try {
                 val result =
                     withTimeout(10_000) {
-                        TapServiceProcess.start(binary = "fake", timeout = 5.seconds)
+                        TapDaemonProcess.start(binary = "fake", timeout = 5.seconds)
                     }
                 assertEquals("127.0.0.1:1234", result.address)
                 assertTrue(result.started)
             } finally {
-                TapServiceProcess.processStarter = null
+                TapDaemonProcess.processStarter = null
             }
         }
     }
 
     @Test
-    fun `service process timeout destroys and reports boundedly`() {
+    fun `daemon process timeout destroys and reports boundedly`() {
         runBlocking {
             val fake = FakeProcess("", alive = true)
-            TapServiceProcess.processStarter = { fake }
+            TapDaemonProcess.processStarter = { fake }
             try {
                 val failure =
                     assertFailsWith<TapException> {
                         withTimeout(10_000) {
-                            TapServiceProcess.start(binary = "fake", timeout = 200.milliseconds)
+                            TapDaemonProcess.start(binary = "fake", timeout = 200.milliseconds)
                         }
                     }
                 assertTrue(failure.message!!.contains("did not finish"), "unexpected: ${failure.message}")
                 assertTrue(fake.destroyed.get(), "timed-out process destroyed and reaped")
             } finally {
-                TapServiceProcess.processStarter = null
+                TapDaemonProcess.processStarter = null
             }
         }
     }
 
     // --- Fakes ----------------------------------------------------------------------------------
 
-    private class FakeConnections : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
-        enum class AttachMode {
+    private class FakeConnections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
+        enum class ObserveMode {
             HELLO_THEN_PARK,
             EMPTY,
             ERROR_BEFORE_FIRST,
@@ -1093,12 +1155,12 @@ class TapClientTest {
             STUBBORN,
         }
 
-        val attaches = AtomicInteger(0)
+        val observes = AtomicInteger(0)
         val closes = AtomicInteger(0)
         val closeIds = CopyOnWriteArrayList<String>()
         val order = CopyOnWriteArrayList<String>()
-        var attachMode: AttachMode = AttachMode.HELLO_THEN_PARK
-        var attachError: Throwable = StatusRuntimeException(Status.UNAVAILABLE.withDescription("attach boom"))
+        var observeMode: ObserveMode = ObserveMode.HELLO_THEN_PARK
+        var observeError: Throwable = StatusRuntimeException(Status.UNAVAILABLE.withDescription("attach boom"))
         var closeError: Throwable? = null
         var closeEntered = CompletableDeferred<Unit>()
         var closeRelease: CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { it.complete(Unit) }
@@ -1106,87 +1168,86 @@ class TapClientTest {
 
         @Volatile var parkError: Throwable? = null
 
-        fun finishParkedAttach() {
+        fun finishParkedObserve() {
             parkCompletions.complete(Unit)
         }
 
-        /** Backwards-compatible alias for the pre-repair test shape (parked attach). */
-        val failAttachCompletions: CompletableDeferred<Unit> get() = parkCompletions
+        override suspend fun connect(request: ConnectRequest): ConnectResponse =
+            ConnectResponse.newBuilder().setClientConnectionId("conn-1").build()
 
-        override suspend fun open(request: OpenConnectionRequest): OpenConnectionResponse =
-            OpenConnectionResponse.newBuilder().setConnectionId("conn-1").build()
-
-        override fun attach(request: AttachRequest): Flow<ConnectionEvent> =
+        override fun observe(request: ObserveRequest): Flow<ObserveResponse> =
             flow {
-                attaches.incrementAndGet()
-                when (attachMode) {
-                    AttachMode.EMPTY -> {
+                observes.incrementAndGet()
+                when (observeMode) {
+                    ObserveMode.EMPTY -> {
                         // Complete without emitting: connect must fail and close the id.
                     }
 
-                    AttachMode.ERROR_BEFORE_FIRST -> {
-                        throw attachError
+                    ObserveMode.ERROR_BEFORE_FIRST -> {
+                        throw observeError
                     }
 
-                    AttachMode.HELLO_THEN_PARK -> {
-                        emit(ConnectionEvent.newBuilder().setMessage("hello").build())
+                    ObserveMode.HELLO_THEN_PARK -> {
+                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
                         try {
                             while (!parkCompletions.isCompleted) {
                                 delay(10)
                             }
                             parkError?.let { throw it }
-                            emit(ConnectionEvent.newBuilder().setMessage("bye").build())
+                            emit(ObserveResponse.newBuilder().setHeartbeat(Heartbeat.getDefaultInstance()).build())
                         } finally {
-                            order.add("attach-cancelled")
+                            order.add("observe-cancelled")
                         }
                     }
 
-                    AttachMode.HELLO_THEN_ERROR -> {
-                        emit(ConnectionEvent.newBuilder().setMessage("hello").build())
+                    ObserveMode.HELLO_THEN_ERROR -> {
+                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
                         try {
                             delay(20)
-                            throw attachError
+                            throw observeError
                         } finally {
-                            order.add("attach-cancelled")
+                            order.add("observe-cancelled")
                         }
                     }
 
-                    AttachMode.HELLO_THEN_COMPLETE -> {
-                        emit(ConnectionEvent.newBuilder().setMessage("hello").build())
+                    ObserveMode.HELLO_THEN_COMPLETE -> {
+                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
                         try {
                             delay(20)
                         } finally {
-                            order.add("attach-cancelled")
+                            order.add("observe-cancelled")
                         }
                     }
 
-                    AttachMode.STUBBORN -> {
-                        emit(ConnectionEvent.newBuilder().setMessage("hello").build())
+                    ObserveMode.STUBBORN -> {
+                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
                         try {
                             awaitCancellation()
                         } finally {
                             // Ignore cancellation for 10 s: the client's bounded teardown must win.
                             withContext(NonCancellable) { delay(10_000) }
-                            order.add("attach-cancelled")
+                            order.add("observe-cancelled")
                         }
                     }
                 }
             }
 
-        override suspend fun close(request: CloseConnectionRequest): CloseConnectionResponse {
+        override suspend fun disconnect(request: DisconnectRequest): DisconnectResponse {
             closes.incrementAndGet()
-            closeIds.add(request.connectionId)
+            closeIds.add(request.clientConnectionId)
             if (!closeEntered.isCompleted) closeEntered.complete(Unit)
             withTimeout(30_000) { closeRelease.await() }
             closeError?.let { throw it }
-            order.add("close")
-            return CloseConnectionResponse.getDefaultInstance()
+            order.add("disconnect")
+            return DisconnectResponse.getDefaultInstance()
         }
 
         override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.getDefaultInstance()
     }
 
-    private class FakeSessions : SessionServiceGrpcKt.SessionServiceCoroutineImplBase() {
+    private class FakeDevices : DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
+        override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse = ListDevicesResponse.getDefaultInstance()
+
         val enteredExecute = CompletableDeferred<Unit>()
         val cancelledExecute = CompletableDeferred<Unit>()
         val hangExecute = CompletableDeferred<Unit>()
@@ -1200,25 +1261,34 @@ class TapClientTest {
         val order = CopyOnWriteArrayList<String>()
         val executeCalls = AtomicInteger(0)
         val closeCalls = AtomicInteger(0)
-        // OpenSession gate for the invalidation/open race test: the test parks the response
-        // to prove the OpenSession RPC was admitted before the terminal invalidation lands.
+
+        // AttachDevice gate for the invalidation/open race test: the test parks the response
+        // to prove the AttachDevice RPC was admitted before the terminal invalidation lands.
         var openEntered = CompletableDeferred<Unit>()
         var openRelease: CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { it.complete(Unit) }
 
-        override suspend fun open(request: OpenSessionRequest): OpenSessionResponse {
+        override suspend fun attach(request: AttachRequest): AttachResponse {
             opens.add(request.serial)
             if (!openEntered.isCompleted) openEntered.complete(Unit)
             withTimeout(30_000) { openRelease.await() }
-            return OpenSessionResponse
+            return AttachResponse
                 .newBuilder()
-                .setSessionId("sess-${request.serial}")
+                .setAttachedDeviceId("attached-${request.serial}")
                 .setSerial(request.serial)
                 .setGeneration(1)
                 .build()
         }
 
-        override suspend fun execute(request: ExecuteRequest): CommandResult {
+        /** When set, answers Execute with its result (null falls through to the default). */
+        @Volatile var executeResponder: ((ExecuteRequest) -> CommandResult?)? = null
+        val executeRequests = CopyOnWriteArrayList<ExecuteRequest>()
+
+        override suspend fun execute(request: ExecuteRequest): ExecuteResponse = ExecuteResponse.newBuilder().setResult(result(request)).build()
+
+        private suspend fun result(request: ExecuteRequest): CommandResult {
             executeCalls.incrementAndGet()
+            executeRequests.add(request)
+            executeResponder?.invoke(request)?.let { return it }
             if (hangExecute.isCompleted) {
                 if (!enteredExecute.isCompleted) enteredExecute.complete(Unit)
                 order.add("execute-enter")
@@ -1236,15 +1306,15 @@ class TapClientTest {
             return CommandResult.getDefaultInstance()
         }
 
-        override suspend fun close(request: CloseSessionRequest): CloseSessionResponse {
+        override suspend fun detach(request: DetachRequest): DetachResponse {
             closeCalls.incrementAndGet()
-            closes.add(request.sessionId)
+            closes.add(request.attachedDeviceId)
             if (!closeEntered.isCompleted) closeEntered.complete(Unit)
             withTimeout(30_000) { closeRelease.await() }
             closeError?.let { throw it }
-            order.add("session-close")
+            order.add("device-detach")
             val detail = quarantineNextClose?.also { quarantineNextClose = null }
-            return CloseSessionResponse
+            return DetachResponse
                 .newBuilder()
                 .setClean(detail == null)
                 .apply { detail?.let { setDetail(it) } }
@@ -1260,13 +1330,9 @@ class TapClientTest {
                 .getDefaultInstance()
     }
 
-    private class FakeDevices : DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
-        override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse = ListDevicesResponse.getDefaultInstance()
-    }
-
     private class FakeApps : AppServiceGrpcKt.AppServiceCoroutineImplBase() {
-        override suspend fun isRunning(request: com.company.tap.api.v1.AppRequest): com.company.tap.api.v1.AppBool =
-            com.company.tap.api.v1.AppBool
+        override suspend fun isRunning(request: com.company.tap.api.v1.IsRunningRequest): com.company.tap.api.v1.IsRunningResponse =
+            com.company.tap.api.v1.IsRunningResponse
                 .getDefaultInstance()
     }
 

@@ -6,10 +6,10 @@ into another:
 | Kotlin | Python | Raised when |
 |---|---|---|
 | `CommandException` | `CommandError` | the driver executed (or refused) a UI command and answered with an error code |
-| `WaitTimeoutException` | `WaitTimeoutError` | an `await(...)` / `awaitUntil` condition did not hold in time |
+| `WaitTimeoutException` | `WaitTimeoutError` | an `await(...)` / `awaitUntil` condition did not hold in time (the device reported `WAIT_TIMEOUT`; any other failure during a wait — driver unhealthy, transport lost — is a `CommandException` / `CommandError`) |
 | `AppLifecycleException` | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
-| `DeviceBusyException` | `DeviceBusyError` | another session holds the device and the open did not (or could not) wait long enough |
-| `ServiceException` | `ServiceError` | the service rejected a call (unknown session, bad argument, device offline, run closed) |
+| `DeviceBusyException` | `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
+| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection) |
 
 All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of
 course, yours.
@@ -22,7 +22,7 @@ and formats all of it into one line:
 
 ```
 AMBIGUOUS during TAP text("Add") on emulator-5554 (request 14, generation 1, 62 ms): 3 matches
-NOT_FOUND/END_REACHED during SCROLL_UNTIL text("Wool socks") on 85e49002 (request 9, generation 1, 8210 ms)
+INDETERMINATE/END_REACHED during SCROLL_UNTIL text("Wool socks") on 85e49002 (request 9, generation 1, 8210 ms)
 WAIT_TIMEOUT/SCREEN_CHANGING during WAIT_SCREEN_STABLE on emulator-5554 (request 3, generation 1, 10004 ms)
 ```
 
@@ -35,7 +35,7 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `NOT_FOUND` | zero matches. `END_REACHED`, `MAX_SCROLLS` from `scrollUntil` |
+| `NOT_FOUND` | zero matches (for `scrollUntil`: before its first scroll) |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()`/`at(n)` |
 | `NOT_INTERACTABLE` | the node exists but cannot take the action (not editable, not scrollable); `FOCUS_TIMEOUT` when a text field never took focus |
 | `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
@@ -47,7 +47,7 @@ The codes, grouped by what they tell you:
 |---|---|
 | `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS`, `FOCUS_LOST` |
 | `ACTION_REJECTED` | input was issued but did not take effect: `TEXT_MISMATCH` (read-back differs), `PARTIAL_INPUT`, `DEADLINE_AFTER_FOCUS` |
-| `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance) |
+| `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance), or a command failed after it had already sent input: the detail then names why (`END_REACHED` / `MAX_SCROLLS` / `WAIT_TIMEOUT` when `scrollUntil` scrolled without finding its target) |
 
 **Waits:**
 
@@ -84,8 +84,8 @@ exception.
 
 ## Failure artifacts
 
-When a test fails, the JUnit extension and the pytest plugin capture — *before* closing the
-session, while the screen still shows the failure — for each device of the test:
+When a test fails, the JUnit extension and the pytest plugin capture — *before* detaching the
+device, while the screen still shows the failure — for each device of the test:
 
 ```
 build/tap-artifacts/com.shop.CheckoutTest/buysAnItem/      (pytest: tap-artifacts/<nodeid>/)

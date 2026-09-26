@@ -3,9 +3,9 @@
 ```
  your test process(es)                 one per machine                       per device
 ┌────────────────────────┐   gRPC     ┌───────────────────────────┐  ADB    ┌──────────────────────┐
-│ Kotlin SDK + JUnit 5   │◄──────────►│ tap service               │◄───────►│ Tap driver           │
-│ Python + pytest        │ loopback   │  sessions + device list   │ forward │  (UiAutomator, own   │
-│ (thin gRPC clients)    │            │  sessions, journals       │  TAP1   │   package)           │
+│ Kotlin SDK + JUnit 5   │◄──────────►│ tap daemon               │◄───────►│ Tap driver           │
+│ Python + pytest        │ loopback   │  client connections       │ forward │  (UiAutomator, own   │
+│ (thin gRPC clients)    │            │  attached devices         │  TAP1   │   package)           │
 └────────────────────────┘            │  ADB, driver lifecycle    │         │  ┌────────────────┐  │
                                       │  bundled driver APKs      │         │  │ app under test │  │
                                       └───────────────────────────┘         │  └────────────────┘  │
@@ -15,41 +15,41 @@
 ## Three parts
 
 **The driver** is an instrumentation package installed next to your app. It runs UiAutomator
-and serves a small framed-JSON protocol (TAP1) over a socket that the service forwards through
+and serves a small framed-JSON protocol (TAP1) over a socket that the server forwards through
 ADB. It is a *separate* package, so it survives your app being force-stopped, cleared or
 reinstalled mid-test. It keeps no element handles between commands: every command carries a
 selector, the driver resolves it against the accessibility tree right then, acts, and answers.
 
-**The service** (`tap start`) is the only process that talks to ADB. It installs the bundled
-driver, forwards ports, opens sessions, verifies the driver's identity on every handshake,
+**The server** (`tap start`) is the only process that talks to ADB. It installs the bundled
+driver, forwards ports, attaches devices, verifies the driver's identity on every handshake,
 journals what it does (so a crashed host can recover or quarantine a device instead of leaving
-it half-used) and lists the devices. One service per machine serves every test process,
+it half-used) and lists the devices. One server per machine serves every test process,
 in every language, at once. It listens on loopback and is started explicitly (`tap start`, or
 by a test runner told to manage it); clients only ever connect to a running one.
 
-**The clients** are gRPC clients of the service's `tap.v1` API. They hold no device logic:
+**The clients** are gRPC clients of the server's `tap.v1` API. They hold no device logic:
 the Kotlin `Device`/`Element` and the Python `Device`/`Element` build the same protobuf
 `Selector` and `Command` messages, so a selector that works in one works in the other.
 
-## Connections, roles, sessions
+## Client connections, roles, and attached devices
 
-- A **connection** is a test process's identity at the service. It stays attached over a
-  stream; if the process dies, the service closes the connection's sessions and frees its
-  devices.
-- A device is in use exactly while a **session** holds its per-serial lock, which the OS
-  releases if the process dies; there is no separate lease to acquire. Opening a busy device
-  fails at once, or waits if you ask it to. **Roles** (`"device"`, or `"sender"`/`"receiver"`)
-  exist only in the clients: the JUnit extension and the pytest plugin decide which serial
-  plays which role and open the sessions in sorted serial order, which is what makes
+- A **client connection** is a test process's identity at the server. It keeps an `Observe`
+  stream open; if the process dies, the server disconnects it and detaches all devices it owns.
+- A device is in use exactly while its host-core **device session** holds the per-serial lock,
+  which the OS releases if the daemon dies; there is no separate lease to acquire. Attaching a
+  busy device fails at once, or waits if you ask it to. **Roles** (`"device"`, or
+  `"sender"`/`"receiver"`) exist only in the clients: the JUnit extension and pytest plugin
+  decide which serial plays which role and attach devices in sorted serial order, which makes
   concurrent multi-device tests deadlock-free.
-- A **session** is one driver connection to one device for one app under test. The JUnit
-  extension and the pytest plugin open a session per role before each test and close it after
-  — a session never outlives a test. Sessions carry a *generation*: after any loss or restart
-  the driver is rebuilt under a new generation and requests from the old one are rejected.
+- An **attached device** is the server-facing handle for one device and app under test. The
+  JUnit extension and pytest plugin attach one per role before each test and detach it after —
+  an attachment never outlives a test. Its underlying device session carries a *generation*:
+  after any loss or restart the driver is rebuilt under a new generation and requests from the
+  old one are rejected.
 
 ## Commands
 
-Every action is one round trip: client → service → driver → back. The driver executes
+Every action is one round trip: client → server → driver → back. The driver executes
 commands strictly one at a time per device, with a bounded queue, a deadline per command and
 cooperative cancellation. The important rules:
 
@@ -71,7 +71,7 @@ when you actually want to wait for quiet.
 
 ## Failure handling
 
-When a test fails, the client captures — while the session is still live — a PNG screenshot,
+When a test fails, the client captures — while the device is still attached — a PNG screenshot,
 the accessibility hierarchy as XML, device info and the driver's own log, into a per-test
 directory. Exceptions carry the typed error code, its stable sub-reason, the rendered selector
 and the request identity, so a log line is enough to know *what* failed without re-running.
@@ -82,4 +82,4 @@ See [Errors and artifacts](errors.md).
 - Not a YAML flow runner and not a WebDriver: the test language is Kotlin or Python, on
   purpose.
 - Not a screenshot-comparison or visual-testing tool.
-- Not iOS. The driver is UiAutomator; the service API is Android-shaped (packages, ADB).
+- Not iOS. The driver is UiAutomator; the server API is Android-shaped (packages, ADB).

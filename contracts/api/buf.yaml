@@ -1,6 +1,7 @@
-# buf (https://buf.build) configuration for the tap.v1 service API. CI runs `buf lint` and
-# `buf breaking` against the base branch, so a proto edit that is not wire-compatible (removed
-# or renumbered fields, changed types) fails before anyone regenerates stubs.
+# buf (https://buf.build) configuration for the tap.v1 server API.
+# CI runs `buf lint` and `buf breaking` against the base branch, so an
+# incompatible proto edit (removed or renumbered fields, changed types) fails
+# before anyone regenerates stubs.
 version: v2
 modules:
   - path: proto
@@ -8,13 +9,10 @@ lint:
   use:
     - STANDARD
   except:
-    # The files keep short enum prefixes (ERR_, DIR_, …) mirrored by EnumMirrorTest, live flat
-    # under proto/ (see README.md), and share request/response messages (AppRequest, AppEmpty).
+    # Files keep short enum prefixes (ERR_, DIR_, …), mirrored by
+    # EnumMirrorTest, and live flat under proto/ (see README.md).
     - ENUM_VALUE_PREFIX
     - PACKAGE_DIRECTORY_MATCH
-    - RPC_REQUEST_RESPONSE_UNIQUE
-    - RPC_REQUEST_STANDARD_NAME
-    - RPC_RESPONSE_STANDARD_NAME
 breaking:
   use:
     - WIRE_JSON

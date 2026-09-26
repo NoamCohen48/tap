@@ -40,7 +40,7 @@ class SessionJournalTest {
         }
         Files.writeString(journal, "not-json")
 
-        assertFailsWith<IllegalStateException> { store.read() }
+        assertFailsWith<CorruptJournalException> { store.read() }
         val evidence = store.preserveCorrupt()
         val quarantined = record(generation = 0).copy(state = JournalState.QUARANTINED)
         store.replaceCorruptWith(quarantined)

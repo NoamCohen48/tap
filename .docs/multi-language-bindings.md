@@ -1,9 +1,9 @@
-# Multi-Language Bindings and the Host Session Service
+# Multi-Language Bindings and the Host Daemon
 
 Date: 2026-09-18
 
 Status: implemented on 2026-09-19 along the lines recommended below (option 2.3, proxy
-variant) — see `service-api.md` for the contract, `:host:service` and `clients/python/` for the
+variant) — see `server-api.md` for the contract, `:host:daemon` and `clients/python/` for the
 code, and §7 for what was decided differently from the sketch. The rest of this document is
 the analysis behind the "Python (or any second) binding" requirement, kept so the
 trade-offs stay visible. The design doc already anticipated this
@@ -176,15 +176,15 @@ Decisions taken against §6, and where the implementation departs from the sketc
 1. **Parity, not a reduced client.** The Python binding covers the full SDK surface
    (elements, waits, app lifecycle, multi-device) because the service makes that as cheap
    as a reduced client.
-2. **Proxy command path.** The service owns the `DriverClient`; Python has no wire code.
+2. **Proxy command path.** The daemon owns the `DriverClient`; Python has no wire code.
 3. **Synchronous API**, threads for multi-device, mirroring the Kotlin SDK.
-4. **Kotlin JUnit moved onto the service** (2026-09-19): `:clients:kotlin:sdk` and
+4. **Kotlin JUnit moved onto the daemon API** (2026-09-19): `:clients:kotlin:sdk` and
    `:clients:kotlin:junit5` are gRPC clients under `clients/`, `App` lifecycle lives in
    `host/core` (`AppLifecycle`), the in-JVM `DevicePool` is gone, and the layout is
    `contracts/ device/ host/ clients/` so the host never depends on a client.
 5. **gRPC + protobuf instead of JSON-RPC over a Unix socket.** The files under `contracts/api/proto/` are the
    source of truth for every binding; Kotlin stubs are generated at build time, Python stubs
-   are committed with a `--check` script. Loopback TCP with a `service.json` descriptor
+   are committed with a `--check` script. Loopback TCP with a `daemon.json` descriptor
    replaced the socket/token file (same on every OS).
 6. **The proto mirrors the protocol's selector/command model** rather than tunnelling
    opaque JSON, so bindings get typed selectors; the mirror is guarded by an enum-name test
@@ -192,9 +192,9 @@ Decisions taken against §6, and where the implementation departs from the sketc
 7. **Native image first, not jlink.** GraalVM 21 builds a single ~39 MB executable in under
    a minute with committed reachability metadata; the JVM `installDist` distribution remains
    the fallback. `adb` is still required (§4).
-8. **Service lifetime follows the ADB server model**: a started service stays up for other
+8. **Daemon lifetime follows the ADB server model**: a started daemon stays up for other
    clients; `tap stop` ends it. Starting is explicit (`tap start`, or a test runner told to
-   manage it) — clients never spawn the service (`.docs/service-startup.md`).
+   manage it) — clients never spawn the daemon (`.docs/daemon-startup.md`).
 9. **Cancellation** is expressed as gRPC call cancellation, forwarded as a protocol `CANCEL`;
    there is no separate `session.cancel` RPC.
 10. **JSON Schema (§5) was not needed**: the proto is the schema.

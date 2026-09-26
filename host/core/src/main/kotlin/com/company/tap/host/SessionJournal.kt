@@ -43,7 +43,7 @@ enum class JournalState {
 
 /** The per-serial lock was still held by another session at the deadline. */
 class DeviceBusyException(val serial: String, val waitedMs: Long) :
-    IllegalStateException(if (waitedMs > 0) "Device $serial is in use by another session (waited ${waitedMs}ms)" else "Device $serial is in use by another session")
+    TapHostException(if (waitedMs > 0) "Device $serial is in use by another session (waited ${waitedMs}ms)" else "Device $serial is in use by another session")
 
 private const val LEASE_POLL_MS = 200L
 
@@ -102,12 +102,14 @@ class SessionJournalStore(root: Path, private val serial: String) {
         true
     }
 
+    /** The current record, null when there is none; unreadable or invalid content is a
+     * [CorruptJournalException] (recovery then preserves it and quarantines). */
     fun read(): SessionJournal? {
         if (!Files.exists(journalPath)) return null
         return try {
             json.decodeFromString<SessionJournal>(Files.readString(journalPath)).also(::validate)
-        } catch (error: Throwable) {
-            throw IllegalStateException("Corrupt session journal: $journalPath", error)
+        } catch (error: Exception) {
+            throw CorruptJournalException(serial, "Corrupt session journal: $journalPath", error)
         }
     }
 

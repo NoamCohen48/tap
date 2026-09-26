@@ -116,6 +116,12 @@ object CommandValidation {
             when (node) {
                 is Node.Match -> {
                     checkLength(node.property.name, node.value)
+                    // `CONTAINS ""` (and every other non-exact empty pattern) matches every node,
+                    // so with `first()` a mutation would hit an arbitrary one. Only EXACT "" is
+                    // meaningful: it matches an empty value.
+                    if (node.value.isEmpty() && node.mode != MatchMode.EXACT) {
+                        throw EmptySelectorValueException("${node.property.name} ${node.mode} needs a non-empty value")
+                    }
                     if (node.mode == MatchMode.REGEX) compileRegex(node.value)
                     node.mode == MatchMode.REGEX
                 }

@@ -38,7 +38,7 @@ exactly one.
 | `clearText()` | focus and clear |
 | `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves |
 | `scroll(direction, distancePercent = 80)` | one scroll of a scrollable container towards `direction`'s content edge (`DOWN` reveals content below). Returns `true` while more content remains |
-| `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80)` | scroll the container until `target` is visible inside it; returns `target` as an `Element`. Fails with `NOT_FOUND`/`END_REACHED`, `NOT_FOUND`/`MAX_SCROLLS` or `WAIT_TIMEOUT` |
+| `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80)` | scroll the container until `target` is visible inside it; returns `target` as an `Element`. Once it has scrolled, fails with `INDETERMINATE` and detail `END_REACHED`, `MAX_SCROLLS` or `WAIT_TIMEOUT` (the list moved, so the failure is not side-effect free); before the first scroll, `NOT_FOUND`/`AMBIGUOUS`/`WAIT_TIMEOUT` |
 | `device.pressBack()`, `device.pressHome()`, `device.pressKey(code)` | key events |
 
 Directions are `UP`/`DOWN`/`LEFT`/`RIGHT` (`Direction.DIR_*` in the Kotlin proto types, plain
@@ -143,7 +143,8 @@ round trip per poll.
 
 ## Screenshots and dumps
 
-- `device.screenshot()` → PNG bytes.
+- `device.screenshot()` → PNG bytes, checked against the server's SHA-256. Save them yourself
+  (`Path.writeBytes`), or in Python pass `write_to="shot.png"` to have the client write the file.
 - `device.dumpHierarchy()` → the accessibility tree as XML. Diagnostic only; lookups never use it.
 - `device.driverLog()` → the driver's own log lines for the session.
 - `device.info()` → serial, API level, model, display size.

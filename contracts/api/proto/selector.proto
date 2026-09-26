@@ -1,9 +1,9 @@
 // tap.v1 — element selectors.
 //
-// Part of the Tap host service API (see README.proto for the file map). Mirrors
+// Part of the Tap host server API (see README.proto for the file map). Mirrors
 // protocol/Selector.kt one-to-one: every protocol sum type is a `oneof` here (`Node.kind`,
 // `Selector.scope`, `Selector.pick`), so each variant carries exactly its own fields. The
-// service converts between the two and `EnumMirrorTest` fails the build if an enum or a
+// server converts between the two and `EnumMirrorTest` fails the build if an enum or a
 // `oneof` case drifts.
 
 syntax = "proto3";
@@ -70,7 +70,7 @@ message Flag {
 }
 
 // A resource id. With `package_name`: the View id `package_name:id/name`. With `aut_package`:
-// the same, with the session's app under test filled in by the service (so the selector stays
+// the same, with the session's app under test filled in by the server (so the selector stays
 // session-free); mutually exclusive with `package_name`. With neither: the exact, unqualified
 // resource name, which is how a Compose testTag appears under testTagsAsResourceId.
 message ResourceId {
@@ -125,7 +125,7 @@ message At {
 }
 
 // A complete selector: the node tree, its scope and how an action picks among matches.
-// Built by the client DSLs and validated identically by the service and the driver.
+// Built by the client DSLs and validated identically by the server and the driver.
 message Selector {
   Node node = 1;
   oneof scope {

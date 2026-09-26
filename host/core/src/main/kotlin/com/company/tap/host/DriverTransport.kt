@@ -7,6 +7,7 @@ import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
+import com.company.tap.protocol.ProtocolException
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Targeted
@@ -65,6 +66,10 @@ internal class DriverTransport(
     internal var frameSink: FrameSink = FrameSink { frame -> FrameCodec.write(socket.getOutputStream(), frame) }
 
     val isPoisoned: Boolean get() = poisoned
+
+    /** What poisoned the transport first; null while healthy. */
+    @Volatile var poisonCause: Throwable? = null
+        private set
 
     suspend fun submit(
         request: Request,
@@ -178,7 +183,17 @@ internal class DriverTransport(
             while (pongs.tryReceive().isSuccess) Unit
             mutex.withLock {
                 admission()
-                check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
+                if (poisoned || closed) {
+                    throw CommandTransportException(
+                        ErrorCode.TRANSPORT_LOST,
+                        "ping",
+                        0,
+                        generation,
+                        TransmissionState.NOT_WRITTEN,
+                        IllegalStateException("Driver connection is closed or poisoned"),
+                        serial,
+                    )
+                }
                 try {
                     writeFrame(Frame(FrameType.PING, 0, byteArrayOf()), remainingTimeoutMs(timeoutMs.toInt()))
                 } catch (error: Throwable) {
@@ -195,6 +210,8 @@ internal class DriverTransport(
             (System.nanoTime() - started) / 1_000_000L
         }
 
+    /** Reads until close or poison. A frame the protocol does not allow here is a
+     * [ProtocolException] and poisons the connection like any transport failure. */
     fun readFrames() {
         try {
             while (!poisoned && !closed) {
@@ -203,34 +220,41 @@ internal class DriverTransport(
                     FrameType.RESPONSE -> {
                         val command =
                             pending.remove(frame.requestId)
-                                ?: throw IllegalStateException("Response for unknown request ${frame.requestId}")
+                                ?: throw ProtocolException("Response for unknown request ${frame.requestId}")
                         command.complete(json.decodeFromString<Response>(frame.payload.decodeToString()))
                     }
 
                     FrameType.PONG -> {
-                        check(frame.requestId == 0L) { "PONG must use request ID 0" }
+                        if (frame.requestId != 0L) throw ProtocolException("PONG must use request ID 0")
                         pongs.trySend(System.nanoTime())
                     }
 
                     FrameType.BLOB_START -> {
                         val command = pendingFor(frame)
                         val start = json.decodeFromString<BlobStart>(frame.payload.decodeToString())
-                        check(command.blob == null) { "Second BLOB_START for request ${frame.requestId}" }
+                        if (command.blob != null) throw ProtocolException("Second BLOB_START for request ${frame.requestId}")
                         command.blob = BlobReceiver(start)
                     }
 
                     FrameType.BLOB_CHUNK -> {
                         pendingFor(frame).blob?.chunk(frame.payload)
-                            ?: throw IllegalStateException("BLOB_CHUNK before BLOB_START for request ${frame.requestId}")
+                            ?: throw ProtocolException("BLOB_CHUNK before BLOB_START for request ${frame.requestId}")
                     }
 
                     FrameType.BLOB_END -> {
                         pendingFor(frame).blob?.end(json.decodeFromString<BlobEnd>(frame.payload.decodeToString()))
-                            ?: throw IllegalStateException("BLOB_END before BLOB_START for request ${frame.requestId}")
+                            ?: throw ProtocolException("BLOB_END before BLOB_START for request ${frame.requestId}")
+                    }
+
+                    FrameType.CLOSE -> {
+                        // The driver ends the connection after a protocol violation; the reason
+                        // becomes the poison cause so in-flight commands report why.
+                        val reason = frame.payload.decodeToString().ifEmpty { "no reason given" }
+                        throw ProtocolException("Driver closed the connection: $reason")
                     }
 
                     else -> {
-                        throw IllegalStateException("Unexpected ${frame.type} frame from driver")
+                        throw ProtocolException("Unexpected ${frame.type} frame from driver")
                     }
                 }
             }
@@ -240,7 +264,7 @@ internal class DriverTransport(
     }
 
     private fun pendingFor(frame: Frame): DriverClient.PendingCommand =
-        pending[frame.requestId] ?: throw IllegalStateException("${frame.type} for unknown request ${frame.requestId}")
+        pending[frame.requestId] ?: throw ProtocolException("${frame.type} for unknown request ${frame.requestId}")
 
     suspend fun close() {
         if (closed) return
@@ -264,9 +288,15 @@ internal class DriverTransport(
         poison(IllegalStateException("Disconnected for validation"))
     }
 
+    /** [poison], except on a client that was already closed deliberately. */
+    fun poisonUnlessClosed(cause: Throwable) {
+        if (!closed) poison(cause)
+    }
+
     fun poison(cause: Throwable) {
         synchronized(poisonLock) {
             if (poisoned) return
+            poisonCause = cause
             poisoned = true
             runCatching { socket.close() }
         }

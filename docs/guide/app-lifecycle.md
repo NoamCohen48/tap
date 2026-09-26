@@ -1,14 +1,14 @@
 # App lifecycle and sync
 
 `device.app()` returns an `App` bound to the app under test (`device.app("other.pkg")` for
-another package). Every lifecycle operation is executed by the service over ADB and **verified
+another package). Every lifecycle operation is executed by the server over ADB and **verified
 against a postcondition** — the method returns when the device is provably in the requested
 state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 
 | Method | Does | Verified by |
 |---|---|---|
 | `isInstalled()` | | `pm` query |
-| `install(apk)` | `adb install -r -t` | package visible afterwards |
+| `install(apk)` | uploads the local APK file (streamed in 1 MiB chunks, so the server may run on another machine), then `adb install -r -t` | package visible afterwards |
 | `uninstall()` | `pm uninstall` | package gone |
 | `launch(activity = null)` | `am start` the given or the launcher activity | the package owns the focused window |
 | `coldLaunch(activity = null)` | force-stop, launch | **a new process identity** (PID + start token) is in the foreground; returned as `ProcessIdentity` |
@@ -36,11 +36,11 @@ fun survivesAKill(device: Device) {
 
 All `App` calls are `suspend` inside `tapTest` (or `tapScope` in scripts).
 
-Because the driver is its own package, none of this disturbs the session: you can force-stop,
-clear and reinstall the app under test in the middle of a test and keep issuing commands. The
-service also owns the driver's lifecycle — if the driver dies, the next command fails with
-`DRIVER_UNHEALTHY` and the session is rebuilt under a new generation by the client's next
-`open`, never silently.
+Because the driver is its own package, none of this disturbs the attached device: you can
+force-stop, clear and reinstall the app under test in the middle of a test and keep issuing
+commands. The server also owns the driver's lifecycle — if the driver dies, the next command
+fails with `DRIVER_UNHEALTHY`; the client must detach and attach the device again to create a
+fresh device session under a new generation. It is never rebuilt silently.
 
 ## Permissions
 

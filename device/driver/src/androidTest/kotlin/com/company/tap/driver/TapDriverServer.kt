@@ -57,6 +57,8 @@ internal class TapDriverServer(
             announceReady()
             while (true) {
                 server.accept().use { socket ->
+                    // Whole frames go out in one write; don't let Nagle hold them for an ACK.
+                    socket.tcpNoDelay = true
                     socket.soTimeout = 10_000
                     val authenticated = runCatching {
                         authenticate(socket.getInputStream(), socket.getOutputStream())

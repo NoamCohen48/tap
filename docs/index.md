@@ -3,7 +3,7 @@
 <img src="assets/logo-lockup.svg" alt="Tap" width="200" height="64" style="display:block;margin:0 0 1rem">
 
 **Host-driven end-to-end testing for Android.** Your tests run on the host, in Kotlin (JUnit 5)
-or Python (pytest). A per-machine service (`tap start`) owns ADB, the devices and a small
+or Python (pytest). A per-machine server (`tap start`) owns ADB, the devices and a small
 on-device driver; the tests talk to it over gRPC. Nothing about your app changes: the driver
 is a separate package and never links into the app under test.
 
@@ -54,15 +54,15 @@ def test_buys_an_item(tap_device):
 - **Survives the app.** The driver lives outside the app under test: force-stop, clear data
   and reinstall in the middle of a test and keep going.
 - **One engine, thin clients.** ADB, sessions, journals, device locks and the driver live in the
-  service; Kotlin and Python are ~1 000-line gRPC clients of the same API, so behaviour is
+  server; Kotlin and Python are ~1 000-line gRPC clients of the same API, so behaviour is
   identical in both.
 
 ## Where to go
 
 | | |
 |---|---|
-| [Getting started](guide/getting-started.md) | install the service, run the first test in Kotlin or Python |
-| [How it works](guide/how-it-works.md) | service, driver, sessions, device list — the model behind the API |
+| [Getting started](guide/getting-started.md) | install the server, run the first test in Kotlin or Python |
+| [How it works](guide/how-it-works.md) | server, driver, sessions, device list — the model behind the API |
 | [Selectors](guide/selectors.md) | the selector DSL, scoping rules, what is deliberately not supported |
 | [Actions and waits](guide/actions-and-waits.md) | taps, text, gestures, scrolling, every kind of wait |
 | [App lifecycle and sync](guide/app-lifecycle.md) | launch/cold launch, clear data, permissions, app-owned idle |
@@ -74,6 +74,6 @@ def test_buys_an_item(tap_device):
 
 ## Status
 
-Tap is pre-1.0. The device protocol, the service API and both clients are in use against real
+Tap is pre-1.0. The device protocol, the server API and both clients are in use against real
 devices (API 29 physical, API 34 emulator) and exercised by CI on every change, but the API can
 still change between minor versions. See [Releases and versions](reference/releases.md).

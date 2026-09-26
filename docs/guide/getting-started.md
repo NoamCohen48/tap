@@ -1,17 +1,17 @@
 # Getting started
 
 You need three things: an ADB-visible Android device (API 26+, emulator or physical), the
-`tap` service on the machine, and one of the clients in your test project.
+`tap` server on the machine, and one of the clients in your test project.
 
-## 1. The service
+## 1. The server
 
-The service is a single executable that owns ADB and the devices for the whole machine. Pick
+The server is a single executable that owns ADB and the devices for the whole machine. Pick
 one:
 
 === "Native binary"
 
     Download `tap-<version>-linux-x86_64` or `tap-<version>-macos-aarch64` from the latest
-    `service/v*` [release](https://github.com/NoamCohen48/tap/releases), make it executable and
+    `daemon/v*` [release](https://github.com/NoamCohen48/tap/releases), make it executable and
     put it on your `PATH` as `tap`.
 
     ```bash
@@ -31,8 +31,8 @@ one:
 === "From source"
 
     ```bash
-    ./gradlew :host:service:installDist
-    export PATH="$PWD/host/service/build/install/tap/bin:$PATH"
+    ./gradlew :host:daemon:installDist
+    export PATH="$PWD/host/daemon/build/install/tap/bin:$PATH"
     ```
 
 Start it once; like the ADB server it stays up until `tap stop`, shared by every test process on
@@ -44,9 +44,9 @@ tap start          # prints: started 127.0.0.1:PORT pid=PID (or "running …" if
 tap status
 ```
 
-Clients never start the service themselves; if none is running they fail with *run `tap start`*.
-Test runners can do the starting and stopping for you — `tap.manageService=true` (JUnit) or
-`tap_manage_service = true` (pytest) — see [Configuration](configuration.md#how-clients-find-the-service).
+Clients never start the server themselves; if none is running they fail with *run `tap start`*.
+Test runners can do the starting and stopping for you — `tap.manageDaemon=true` (JUnit) or
+`tap_manage_daemon = true` (pytest) — see [Configuration](configuration.md#how-clients-find-the-server).
 
 ## 2. Kotlin + JUnit 5
 
@@ -99,9 +99,8 @@ class SmokeTest {
 }
 ```
 
-Use a block-bodied test method as shown: `tapTest` is generic, so an expression body can infer
-a non-`Unit` JVM return type that JUnit does not discover. Every test body runs inside
-`tapTest { ... }`, the real-time bridge onto the extension-owned per-test coroutine scope.
+Every test body runs inside `tapTest { ... }` (`fun x(device: Device) = tapTest { ... }` works
+too, since `tapTest` returns `Unit`), the real-time bridge onto the extension-owned per-test coroutine scope.
 All `Device`/`App`/`Element` calls are `suspend`; building selectors
 (`text(...)`, `res(...)`) is not. Calls outside `tapTest` — or from `GlobalScope` — fail with
 `TapUsageException`, so timeouts and failing siblings cancel in-flight RPCs.
@@ -110,8 +109,8 @@ All `Device`/`App`/`Element` calls are `suspend`; building selectors
 ./gradlew test -Ptap.serials=emulator-5554
 ```
 
-`@TapTest` opens a session on a device before each test, injects it as the `Device`
-parameter, closes the session afterwards, and on failure writes a screenshot, hierarchy dump,
+`@TapTest` attaches a device before each test, injects it as the `Device`
+parameter, detaches it afterwards, and on failure writes a screenshot, hierarchy dump,
 device info and driver log under `build/tap-artifacts/<class>/<method>/`.
 
 ## 3. Python + pytest
@@ -143,29 +142,29 @@ def test_opens_the_home_screen(tap_device):
 TAP_SERIALS=emulator-5554 pytest
 ```
 
-`tap_device` is a per-test session; `tap_devices` with `@pytest.mark.tap_devices("a", "b")`
+`tap_device` is a per-test attached device; `tap_devices` with `@pytest.mark.tap_devices("a", "b")`
 gives several. Failure artifacts land in `tap-artifacts/<nodeid>/`.
 
 ## 4. Without a test framework
 
-Both clients can be used from a script. The shape is the same: a *run* attaches to the
-service, opens a session per device.
+Both clients can be used from a script. The shape is the same: a client connects to the
+server, then attaches each device it needs.
 
 === "Kotlin"
 
     ```kotlin
     runBlocking {
-        val client = TapClient.create()              // resolves tap.service / service.json
+        val client = TapClient.create()              // resolves tap.server / daemon.json
         try {
             val connection = client.connect("smoke")
             try {
                 tapScope {
-                    val device = connection.openDevice("emulator-5554", "com.shop")
+                    val device = connection.attachDevice("emulator-5554", "com.shop")
                     try {
                         device.app().coldLaunch()
                         println(device.element(text("Welcome")).exists())
                     } finally {
-                        device.close()
+                        device.detach()
                     }
                 }
             } finally {
@@ -177,24 +176,28 @@ service, opens a session per device.
     }
     ```
 
-    Device work (open, use, close) lives inside `tapScope { ... }`; closing is `suspend`
+    Device work (attach, use, detach) lives inside `tapScope { ... }`; detaching is `suspend`
     (no `AutoCloseable`), so callers use `try`/`finally` inside the scope.
 
 === "Python"
 
     ```python
-    from tap import Service, text
+    from tap import TapServer, text
 
-    with Service().connect("smoke") as connection:
-        with connection.open_device("emulator-5554", "com.shop") as device:
+    with TapServer().connect("smoke") as connection:
+        with connection.attach_device("emulator-5554", "com.shop") as device:
             device.app().cold_launch()
             print(device.element(text("Welcome")).exists())
     ```
 
-If the process dies, the service notices the connection's stream closing and frees its devices.
+`connect` opens the connection's liveness stream before it returns (in both clients), so if the
+process dies the server notices the stream closing and frees its devices. If the stream ends
+while the process lives (the daemon restarted), the connection becomes unusable: further
+attaches and device calls fail at once, and a new `connect` is needed. The JUnit extension does
+that for you on the next test.
 
 ## Next
 
-- [How it works](how-it-works.md) explains what a session and a connection are.
+- [How it works](how-it-works.md) explains client connections and attached devices.
 - [Selectors](selectors.md) and [Actions and waits](actions-and-waits.md) cover the API you
   will use in every test.

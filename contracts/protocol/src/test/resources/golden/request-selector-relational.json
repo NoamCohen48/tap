@@ -11,11 +11,13 @@
           {
             "kind": "match",
             "property": "CLASS_NAME",
-            "value": "android.widget.Button"
+            "value": "android.widget.Button",
+            "mode": "EXACT"
           },
           {
             "kind": "flag",
-            "property": "CLICKABLE"
+            "property": "CLICKABLE",
+            "value": true
           },
           {
             "kind": "related",
@@ -37,6 +39,9 @@
             }
           }
         ]
+      },
+      "scope": {
+        "kind": "aut"
       },
       "pick": {
         "kind": "at",
