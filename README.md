@@ -8,11 +8,11 @@
 # Tap
 
 Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host
-service per machine (`host/`, `tap start`: ADB, driver lifecycle, sessions, device list; gRPC
+server per machine (`host/`, `tap start`: ADB, driver lifecycle, sessions, device list; gRPC
 over loopback, JVM or native image) and thin language clients (`clients/`: Kotlin SDK +
 JUnit 5, Python + pytest). `contracts/` holds what they agree on (the TAP1 device protocol
-and the `tap.v1` service API). Phases 0 and 1 (feasibility, contract, driver) are complete
-and the first usable cut of Phase 2 (service + clients) is in; this is not a production
+and the `tap.v1` server API). Phases 0 and 1 (feasibility, contract, driver) are complete
+and the first usable cut of Phase 2 (server + clients) is in; this is not a production
 release. What is still missing is listed in [`.docs/framework-gaps.md`](.docs/framework-gaps.md).
 
 User documentation lives in [`docs/`](docs/index.md) (guide + generated Kotlin/Python/gRPC
@@ -58,9 +58,8 @@ class CheckoutTest {
 (`awaitAll` is `kotlinx.coroutines.awaitAll`; `coroutineScope` + `async` is the same shape
 `samples/fixture-tests` compiles and runs — see `MultiDeviceTest`.)
 
-Use a block-bodied JUnit method as shown above: because `tapTest` is generic, an expression body
-can infer a non-`Unit` JVM return type and JUnit will not discover that test. Every test body runs
-inside `tapTest { ... }`: the real-time `runBlocking`-style bridge onto
+Every test body runs inside `tapTest { ... }` (block- or expression-bodied test methods both
+work: `tapTest` returns `Unit`): the real-time `runBlocking`-style bridge onto
 the extension-owned per-test coroutine scope (root job + deadline). Suspending calls outside
 it — or from a coroutine that does not inherit it (`GlobalScope`) — fail with
 `TapUsageException`, so a JUnit timeout and a failing sibling both cancel the other device's
@@ -85,20 +84,21 @@ propagation still uses the observing device's UI condition, not a barrier.
 - On failure the extension writes a screenshot, hierarchy XML, device info and the driver log
   under `tap.artifactsDir/<class>/<method>/`.
 
-The extension is a gRPC client of the `tap` service, the per-machine host service that owns ADB,
+The extension is a gRPC client of the `tap` server, the per-machine host daemon that owns ADB,
 driver lifecycle (the driver APKs are bundled in it), journals, device locks and the device list
-(`.docs/service-api.md`). The service is started explicitly — `tap start` — and shared by every
+(`.docs/server-api.md`). The server is started explicitly — `tap start` — and shared by every
 test process on the machine until `tap stop`; a test run can also be told to start and stop it
 itself. Configuration is read from system properties or environment variables:
 
 | Property | Env | Meaning |
 |---|---|---|
 | `tap.autPackage` | `TAP_AUTPACKAGE` | application under test (required) |
-| `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order (default: any device the service lists) |
+| `tap.serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, rotating the start device per test (default: any device the server lists) |
 | `tap.device.<role>` | `TAP_DEVICE_<ROLE>` | pin a role to a serial |
-| `tap.service` | `TAP_SERVICE` | `host:port` of a running service (default: the one in `<state dir>/service.json`) |
-| `tap.manageService` | `TAP_MANAGESERVICE` | `true` = `tap start` before the first test and `tap stop` after the last one if that start created the service (default `false`) |
-| `tap.bin` | `TAP_BIN` | the `tap` executable `tap.manageService` runs (default: `tap` on `PATH`) |
+| `tap.server` | `TAP_SERVER` | `host:port` of a running server (default: the one in `<state dir>/daemon.json`) |
+| `tap.token` | `TAP_TOKEN` | bearer token for an explicit `tap.server` (default: the one in `daemon.json`) |
+| `tap.manageDaemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test and `tap stop` after the last one if that start created the server (default `false`) |
+| `tap.bin` | `TAP_BIN` | the `tap` executable `tap.manageDaemon` runs (default: `tap` on `PATH`) |
 | `tap.artifactsDir` | `TAP_ARTIFACTSDIR` | failure artifacts (default `build/tap-artifacts`) |
 | `tap.acquireTimeoutSeconds` | `TAP_ACQUIRETIMEOUTSECONDS` | wait for a device another session holds (default 300) |
 
@@ -108,22 +108,22 @@ itself. Configuration is read from system properties or environment variables:
 ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554[,SERIAL]
 ```
 
-It builds the fixture app and the service distribution, starts the service (`tap.manageService`,
+It builds the fixture app and the daemon distribution, starts the server (`tap.manageDaemon`,
 which installs the driver), runs thirteen tests (including two two-device tests that are skipped with
-one serial) concurrently across the devices, and stops the service again unless one was already
-running (`-Ptap.manageService=false` to require a running one). The thirteen-device-test suite
+one serial) concurrently across the devices, and stops the server again unless one was already
+running (`-Ptap.manageDaemon=false` to require a running one). The thirteen-device-test suite
 uses the 0.2.0 coroutine client (`tapTest`) and passed on the API 29/API 34 matrix on 2026-09-21;
 a device-free discovery guard makes the Gradle report contain fourteen tests total
 (see `.docs/coroutines.md`).
 
 ## Python tests
 
-The Python client talks to the same service. Build it as a single executable (needs a
-GraalVM 21 at `GRAALVM_HOME`; the JVM distribution from `:host:service:installDist` is the
+The Python client talks to the same server. Build it as a single executable (needs a
+GraalVM 21 at `GRAALVM_HOME`; the JVM distribution from `:host:daemon:installDist` is the
 fallback):
 
 ```bash
-./gradlew :host:service:nativeCompile        # -> host/service/build/native/nativeCompile/tap
+./gradlew :host:daemon:nativeCompile        # -> host/daemon/build/native/nativeCompile/tap
 pip install -e clients/python                # the tap-e2e package
 ```
 
@@ -143,12 +143,12 @@ def test_two_devices(tap_devices): ...
 ```
 
 ```bash
-TAP_BIN=$PWD/host/service/build/native/nativeCompile/tap TAP_MANAGE_SERVICE=1 TAP_SERIALS=emulator-5554[,SERIAL] \
+TAP_BIN=$PWD/host/daemon/build/native/nativeCompile/tap TAP_MANAGE_DAEMON=1 TAP_SERIALS=emulator-5554[,SERIAL] \
   pytest clients/python/tests
 ```
 
-The plugin connects to a running service (`TAP_SERVICE`, or `~/.tap/service.json` written by
-`tap start`); with `TAP_MANAGE_SERVICE=1` it starts one from `TAP_BIN` before the run and stops
+The plugin connects to a running server (`TAP_SERVER`, or `~/.tap/daemon.json` written by
+`tap start`); with `TAP_MANAGE_DAEMON=1` it starts one from `TAP_BIN` before the run and stops
 it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid>/`. See
 `clients/python/README.md`.
 
@@ -187,12 +187,12 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
   AUT-state reset, and fresh-generation isolation verification.
 - Authenticated application-protocol version, operation-version, capability, build, and
   device-contract negotiation.
-- A per-machine host service (`tap start`, gRPC, native image) with a reusable
+- A per-machine host daemon (`tap start`, gRPC, native image) with a reusable
   `DeviceSession` state machine, `AppLifecycle`, and per-device locks shared across processes
 with constraints; a coroutine Kotlin SDK (`Device`/`App`/`Element`/waits/selectors, all `suspend`
 behind `tapTest`/`tapScope`) and JUnit 5 extension (`tapTest` bridge, per-test root job,
 `DeviceBarrier`, failure artifacts), and a Python client and pytest plugin, all gRPC clients of
-the service. Host-side validation passed the no-reboot run (`host --no-reboot` on API 29 and
+the server. Host-side validation passed the no-reboot run (`host --no-reboot` on API 29 and
 API 34, plus the native-image Python smoke flow, on 2026-09-21, including every
 `PHASE_1_*_OK` marker); the new 0.2.0 Kotlin client (`tapTest`, thirteen device fixture tests)
 also passed its API 29/API 34 matrix, including both multi-device tests
@@ -221,22 +221,22 @@ lives at `~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2` on the current works
 Modules, by component:
 
 - `contracts/` — `:contracts:protocol` (TAP1 device wire contract), `:contracts:api`
-  (`contracts/api/proto/*.proto`, the `tap.v1` service API + generated Java stubs).
+  (`contracts/api/proto/*.proto`, the `tap.v1` server API + generated Java stubs).
 - `device/` — `:device:driver` + `:device:driver:command-engine` (on-device driver),
   `:device:sync-sdk` (optional AUT library).
 - `host/` — `:host:core` (ADB, journals, sessions, `DriverClient`, `AppLifecycle`),
-  `:host:service` (gRPC host service, `tap` executable), `:host:validation` (the `host`
+  `:host:daemon` (gRPC host daemon, `tap` executable), `:host:validation` (the `host`
   validation executable). Nothing here depends on `clients/`.
 - `clients/` — `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `clients/python` (tap-e2e);
   each depends only on `contracts/api`.
 - `:fixture-app`, `:samples:fixture-tests`.
 
-Service and Python checks:
+Server and Python checks:
 
 ```bash
-./gradlew :host:service:test                      # proto mirror + golden round-trip tests
+./gradlew :host:daemon:test                      # proto mirror + golden round-trip tests
 clients/python/scripts/gen_stubs.py --check               # committed Python stubs match contracts/api/proto/*.proto
-GRAALVM_HOME=... ./gradlew :host:service:nativeCompile
+GRAALVM_HOME=... ./gradlew :host:daemon:nativeCompile
 ```
 
 ## Run the validation flow
@@ -282,11 +282,11 @@ For framework fault validation, prefix a tap step with `!ERROR_CODE:`, for examp
 
 ## Versioning, CI and releases
 
-Four independently versioned artifact families: the **engine** (`tap` service binary/JVM
+Four independently versioned artifact families: the **engine** (`tap` daemon binary/JVM
 dist with the bundled driver, plus the `com.company.tap:tap-api` stubs; `tap.version.engine`
 in `gradle.properties`), the **Kotlin client** (`tap-client`, `tap-junit5`;
 `tap.version.client.kotlin`), the **Python client** (`tap-e2e`; `clients/python/pyproject.toml`)
-and **sync-sdk** (`tap-sync-sdk`; `tap.version.sync-sdk`). Tag `service/vX.Y.Z`,
+and **sync-sdk** (`tap-sync-sdk`; `tap.version.sync-sdk`). Tag `daemon/vX.Y.Z`,
 `client-kotlin/vX.Y.Z`, `client-python/vX.Y.Z` or `sync-sdk/vX.Y.Z` on a commit whose
 version matches and `.github/workflows/release.yml` publishes to GitHub Packages (Maven) and
 GitHub Releases (binaries, wheel). `ci.yml` lints the proto, checks it for breaking changes
@@ -316,4 +316,4 @@ The normative design is in
 `.docs/android-e2e-framework-implementation-plan.md`. Current status is in
 `.docs/phase-1-progress.md`, the remaining delta to the plan in `.docs/framework-gaps.md`,
 the module layout in `.docs/project-architecture.md`, the device wire protocol in
-`.docs/protocol-contract.md` and the host service API in `.docs/service-api.md`.
+`.docs/protocol-contract.md` and the host server API in `.docs/server-api.md`.

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tapp.proto\x12\x06tap.v1\"J\n\nAppRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x14\n\x0cpackage_name\x18\x02 \x01(\t\x12\x12\n\ntimeout_ms\x18\x03 \x01(\x03\"F\n\x11\x41ppInstallRequest\x12\x1f\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x12.tap.v1.AppRequest\x12\x10\n\x08\x61pk_path\x18\x02 \x01(\t\"F\n\x0f\x41ppGrantRequest\x12\x1f\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x12.tap.v1.AppRequest\x12\x12\n\npermission\x18\x02 \x01(\t\"W\n\x10\x41ppLaunchRequest\x12\x1f\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x12.tap.v1.AppRequest\x12\x15\n\x08\x61\x63tivity\x18\x02 \x01(\tH\x00\x88\x01\x01\x42\x0b\n\t_activity\"M\n\x13\x41ppAwaitIdleRequest\x12\x1f\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x12.tap.v1.AppRequest\x12\x15\n\rstable_for_ms\x18\x02 \x01(\x03\"3\n\x0fProcessIdentity\x12\x0b\n\x03pid\x18\x01 \x01(\x05\x12\x13\n\x0bstart_token\x18\x02 \x01(\t\"\x18\n\x07\x41ppBool\x12\r\n\x05value\x18\x01 \x01(\x08\"\n\n\x08\x41ppEmpty2\xec\x04\n\nAppService\x12\x36\n\x07Install\x12\x19.tap.v1.AppInstallRequest\x1a\x10.tap.v1.AppEmpty\x12\x31\n\tUninstall\x12\x12.tap.v1.AppRequest\x1a\x10.tap.v1.AppEmpty\x12\x32\n\x0bIsInstalled\x12\x12.tap.v1.AppRequest\x1a\x0f.tap.v1.AppBool\x12\x31\n\tForceStop\x12\x12.tap.v1.AppRequest\x1a\x10.tap.v1.AppEmpty\x12\x31\n\tClearData\x12\x12.tap.v1.AppRequest\x1a\x10.tap.v1.AppEmpty\x12<\n\x0fGrantPermission\x12\x17.tap.v1.AppGrantRequest\x1a\x10.tap.v1.AppEmpty\x12\x34\n\x06Launch\x12\x18.tap.v1.AppLaunchRequest\x1a\x10.tap.v1.AppEmpty\x12?\n\nColdLaunch\x12\x18.tap.v1.AppLaunchRequest\x1a\x17.tap.v1.ProcessIdentity\x12\x36\n\x07Process\x12\x12.tap.v1.AppRequest\x1a\x17.tap.v1.ProcessIdentity\x12\x30\n\tIsRunning\x12\x12.tap.v1.AppRequest\x1a\x0f.tap.v1.AppBool\x12:\n\tAwaitIdle\x12\x1b.tap.v1.AppAwaitIdleRequest\x1a\x10.tap.v1.AppEmptyB$\n\x16\x63om.company.tap.api.v1B\x08\x41ppProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tapp.proto\x12\x06tap.v1\"[\n\tAppTarget\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x14\n\x0cpackage_name\x18\x03 \x01(\t\"3\n\x0fProcessIdentity\x12\x0b\n\x03pid\x18\x01 \x01(\x05\x12\x13\n\x0bstart_token\x18\x02 \x01(\t\"k\n\rInstallHeader\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x17\n\ntimeout_ms\x18\x02 \x01(\x03H\x00\x88\x01\x01\x12\x12\n\nsize_bytes\x18\x03 \x01(\x03\x42\r\n\x0b_timeout_ms\"R\n\x0eInstallRequest\x12\'\n\x06header\x18\x01 \x01(\x0b\x32\x15.tap.v1.InstallHeaderH\x00\x12\x0f\n\x05\x63hunk\x18\x02 \x01(\x0cH\x00\x42\x06\n\x04part\"\x11\n\x0fInstallResponse\"2\n\x10UninstallRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\"\x13\n\x11UninstallResponse\"4\n\x12IsInstalledRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\"(\n\x13IsInstalledResponse\x12\x11\n\tinstalled\x18\x01 \x01(\x08\"Z\n\x10\x46orceStopRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x17\n\ntimeout_ms\x18\x02 \x01(\x03H\x00\x88\x01\x01\x42\r\n\x0b_timeout_ms\"\x13\n\x11\x46orceStopResponse\"Z\n\x10\x43learDataRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x17\n\ntimeout_ms\x18\x02 \x01(\x03H\x00\x88\x01\x01\x42\r\n\x0b_timeout_ms\"\x13\n\x11\x43learDataResponse\"L\n\x16GrantPermissionRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x12\n\npermission\x18\x02 \x01(\t\"\x19\n\x17GrantPermissionResponse\"{\n\rLaunchRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x15\n\x08\x61\x63tivity\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x17\n\ntimeout_ms\x18\x03 \x01(\x03H\x01\x88\x01\x01\x42\x0b\n\t_activityB\r\n\x0b_timeout_ms\"\x10\n\x0eLaunchResponse\"\x7f\n\x11\x43oldLaunchRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x15\n\x08\x61\x63tivity\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x17\n\ntimeout_ms\x18\x03 \x01(\x03H\x01\x88\x01\x01\x42\x0b\n\t_activityB\r\n\x0b_timeout_ms\">\n\x12\x43oldLaunchResponse\x12(\n\x07process\x18\x01 \x01(\x0b\x32\x17.tap.v1.ProcessIdentity\"X\n\x0eProcessRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x17\n\ntimeout_ms\x18\x02 \x01(\x03H\x00\x88\x01\x01\x42\r\n\x0b_timeout_ms\";\n\x0fProcessResponse\x12(\n\x07process\x18\x01 \x01(\x0b\x32\x17.tap.v1.ProcessIdentity\"2\n\x10IsRunningRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\"$\n\x11IsRunningResponse\x12\x0f\n\x07running\x18\x01 \x01(\x08\"\x88\x01\n\x10\x41waitIdleRequest\x12\x1e\n\x03\x61pp\x18\x01 \x01(\x0b\x32\x11.tap.v1.AppTarget\x12\x17\n\ntimeout_ms\x18\x02 \x01(\x03H\x00\x88\x01\x01\x12\x1a\n\rstable_for_ms\x18\x03 \x01(\x03H\x01\x88\x01\x01\x42\r\n\x0b_timeout_msB\x10\n\x0e_stable_for_ms\"\x13\n\x11\x41waitIdleResponse2\xea\x05\n\nAppService\x12<\n\x07Install\x12\x16.tap.v1.InstallRequest\x1a\x17.tap.v1.InstallResponse(\x01\x12@\n\tUninstall\x12\x18.tap.v1.UninstallRequest\x1a\x19.tap.v1.UninstallResponse\x12\x46\n\x0bIsInstalled\x12\x1a.tap.v1.IsInstalledRequest\x1a\x1b.tap.v1.IsInstalledResponse\x12@\n\tForceStop\x12\x18.tap.v1.ForceStopRequest\x1a\x19.tap.v1.ForceStopResponse\x12@\n\tClearData\x12\x18.tap.v1.ClearDataRequest\x1a\x19.tap.v1.ClearDataResponse\x12R\n\x0fGrantPermission\x12\x1e.tap.v1.GrantPermissionRequest\x1a\x1f.tap.v1.GrantPermissionResponse\x12\x37\n\x06Launch\x12\x15.tap.v1.LaunchRequest\x1a\x16.tap.v1.LaunchResponse\x12\x43\n\nColdLaunch\x12\x19.tap.v1.ColdLaunchRequest\x1a\x1a.tap.v1.ColdLaunchResponse\x12:\n\x07Process\x12\x16.tap.v1.ProcessRequest\x1a\x17.tap.v1.ProcessResponse\x12@\n\tIsRunning\x12\x18.tap.v1.IsRunningRequest\x1a\x19.tap.v1.IsRunningResponse\x12@\n\tAwaitIdle\x12\x18.tap.v1.AwaitIdleRequest\x1a\x19.tap.v1.AwaitIdleResponseB$\n\x16\x63om.company.tap.api.v1B\x08\x41ppProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,22 +32,56 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'app_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\026com.company.tap.api.v1B\010AppProtoP\001'
-  _globals['_APPREQUEST']._serialized_start=21
-  _globals['_APPREQUEST']._serialized_end=95
-  _globals['_APPINSTALLREQUEST']._serialized_start=97
-  _globals['_APPINSTALLREQUEST']._serialized_end=167
-  _globals['_APPGRANTREQUEST']._serialized_start=169
-  _globals['_APPGRANTREQUEST']._serialized_end=239
-  _globals['_APPLAUNCHREQUEST']._serialized_start=241
-  _globals['_APPLAUNCHREQUEST']._serialized_end=328
-  _globals['_APPAWAITIDLEREQUEST']._serialized_start=330
-  _globals['_APPAWAITIDLEREQUEST']._serialized_end=407
-  _globals['_PROCESSIDENTITY']._serialized_start=409
-  _globals['_PROCESSIDENTITY']._serialized_end=460
-  _globals['_APPBOOL']._serialized_start=462
-  _globals['_APPBOOL']._serialized_end=486
-  _globals['_APPEMPTY']._serialized_start=488
-  _globals['_APPEMPTY']._serialized_end=498
-  _globals['_APPSERVICE']._serialized_start=501
-  _globals['_APPSERVICE']._serialized_end=1121
+  _globals['_APPTARGET']._serialized_start=21
+  _globals['_APPTARGET']._serialized_end=112
+  _globals['_PROCESSIDENTITY']._serialized_start=114
+  _globals['_PROCESSIDENTITY']._serialized_end=165
+  _globals['_INSTALLHEADER']._serialized_start=167
+  _globals['_INSTALLHEADER']._serialized_end=274
+  _globals['_INSTALLREQUEST']._serialized_start=276
+  _globals['_INSTALLREQUEST']._serialized_end=358
+  _globals['_INSTALLRESPONSE']._serialized_start=360
+  _globals['_INSTALLRESPONSE']._serialized_end=377
+  _globals['_UNINSTALLREQUEST']._serialized_start=379
+  _globals['_UNINSTALLREQUEST']._serialized_end=429
+  _globals['_UNINSTALLRESPONSE']._serialized_start=431
+  _globals['_UNINSTALLRESPONSE']._serialized_end=450
+  _globals['_ISINSTALLEDREQUEST']._serialized_start=452
+  _globals['_ISINSTALLEDREQUEST']._serialized_end=504
+  _globals['_ISINSTALLEDRESPONSE']._serialized_start=506
+  _globals['_ISINSTALLEDRESPONSE']._serialized_end=546
+  _globals['_FORCESTOPREQUEST']._serialized_start=548
+  _globals['_FORCESTOPREQUEST']._serialized_end=638
+  _globals['_FORCESTOPRESPONSE']._serialized_start=640
+  _globals['_FORCESTOPRESPONSE']._serialized_end=659
+  _globals['_CLEARDATAREQUEST']._serialized_start=661
+  _globals['_CLEARDATAREQUEST']._serialized_end=751
+  _globals['_CLEARDATARESPONSE']._serialized_start=753
+  _globals['_CLEARDATARESPONSE']._serialized_end=772
+  _globals['_GRANTPERMISSIONREQUEST']._serialized_start=774
+  _globals['_GRANTPERMISSIONREQUEST']._serialized_end=850
+  _globals['_GRANTPERMISSIONRESPONSE']._serialized_start=852
+  _globals['_GRANTPERMISSIONRESPONSE']._serialized_end=877
+  _globals['_LAUNCHREQUEST']._serialized_start=879
+  _globals['_LAUNCHREQUEST']._serialized_end=1002
+  _globals['_LAUNCHRESPONSE']._serialized_start=1004
+  _globals['_LAUNCHRESPONSE']._serialized_end=1020
+  _globals['_COLDLAUNCHREQUEST']._serialized_start=1022
+  _globals['_COLDLAUNCHREQUEST']._serialized_end=1149
+  _globals['_COLDLAUNCHRESPONSE']._serialized_start=1151
+  _globals['_COLDLAUNCHRESPONSE']._serialized_end=1213
+  _globals['_PROCESSREQUEST']._serialized_start=1215
+  _globals['_PROCESSREQUEST']._serialized_end=1303
+  _globals['_PROCESSRESPONSE']._serialized_start=1305
+  _globals['_PROCESSRESPONSE']._serialized_end=1364
+  _globals['_ISRUNNINGREQUEST']._serialized_start=1366
+  _globals['_ISRUNNINGREQUEST']._serialized_end=1416
+  _globals['_ISRUNNINGRESPONSE']._serialized_start=1418
+  _globals['_ISRUNNINGRESPONSE']._serialized_end=1454
+  _globals['_AWAITIDLEREQUEST']._serialized_start=1457
+  _globals['_AWAITIDLEREQUEST']._serialized_end=1593
+  _globals['_AWAITIDLERESPONSE']._serialized_start=1595
+  _globals['_AWAITIDLERESPONSE']._serialized_end=1614
+  _globals['_APPSERVICE']._serialized_start=1617
+  _globals['_APPSERVICE']._serialized_end=2363
 # @@protoc_insertion_point(module_scope)

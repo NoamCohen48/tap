@@ -1,5 +1,5 @@
 /*
- * Kotlin client for the Tap host service. A thin layer over the generated tap.v1 stubs; it
+ * Kotlin client for the Tap host daemon. A thin layer over the generated tap.v1 stubs; it
  * contains no ADB, session or driver logic (that lives in host/) and never links host modules.
  */
 plugins {
@@ -20,7 +20,10 @@ publishing {
         create<MavenPublication>("maven") {
             artifactId = "tap-client"
             from(components["java"])
-            pom { name.set("tap-client"); description.set("Kotlin client for the Tap host service") }
+            pom {
+                name.set("tap-client")
+                description.set("Kotlin client for the Tap host daemon")
+            }
         }
     }
 }
@@ -28,6 +31,8 @@ publishing {
 dependencies {
     api(project(":contracts:api"))
     implementation("io.grpc:grpc-netty-shaded:1.75.0")
+    // daemon.json parsing (port + bearer token); no serialization plugin needed.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
 
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
@@ -54,4 +59,3 @@ if (providers.gradleProperty("tap.dokkaFormat").orNull == "gfm") {
         dokkaPublications.named("html") { outputDirectory.set(layout.buildDirectory.dir("dokka/gfm")) }
     }
 }
-

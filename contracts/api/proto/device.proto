@@ -1,19 +1,26 @@
-// tap.v1 — devices: the devices on this machine and their state. There is no lease RPC: a
-// device is in use exactly while a session holds its per-serial lock
-// (`~/.tap/sessions/<serial>.lock`), which `SessionService.Open` takes (optionally waiting,
-// `lease_timeout_ms`) and `Close` or the death of the session's process releases. Clients
-// pick serials from this list.
+// tap.v1 — device inventory and attachments. There is no separate lease RPC: an attached
+// device is in use while its DeviceSession holds the per-serial lock
+// (`~/.tap/sessions/<serial>.lock`). Attach may wait up to `lease_timeout_ms`; Detach or a
+// disconnected owning client releases the device after cleanup. Every call on an attached
+// device names the owning `client_connection_id`; another connection gets PERMISSION_DENIED.
 
 syntax = "proto3";
 
 package tap.v1;
+
+import "command.proto";
 
 option java_package = "com.company.tap.api.v1";
 option java_multiple_files = true;
 option java_outer_classname = "DeviceProto";
 
 service DeviceService {
-  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse); // Every device ADB lists, with its state.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc Attach(AttachRequest) returns (AttachResponse);
+  rpc Detach(DetachRequest) returns (DetachResponse);
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
+  rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
 }
 
 // State of a listed device.
@@ -23,14 +30,15 @@ enum DeviceState {
   DEVICE_LEASED = 2;
   DEVICE_QUARANTINED = 3;
   DEVICE_OFFLINE = 4;
+  DEVICE_UNAUTHORIZED = 5;
 }
 
-// One listed device. Anything richer than the serial (API level, model, ...) comes from the
-// driver's DeviceInfo once a session is open.
+// One listed device. Anything richer than the serial comes from DeviceInfo after attachment.
 message DeviceEntry {
   string serial = 1;
   DeviceState state = 2;
-  optional string held_by_connection = 3; // set when the session holding the lock belongs to this service
+  // The holding connection when this daemon holds it (LEASED); absent for another process.
+  optional string client_connection_id = 3;
   optional string quarantine_reason = 4;
 }
 
@@ -38,4 +46,68 @@ message ListDevicesRequest {}
 
 message ListDevicesResponse {
   repeated DeviceEntry devices = 1;
+}
+
+message AttachRequest {
+  string client_connection_id = 1;
+  string serial = 2;
+  string aut_package = 3;
+  // Skip installing the daemon's driver (bundled or `tap serve --driver-apk`): the device
+  // already has the right one.
+  optional bool skip_driver_install = 4;
+  optional string sync_authority = 5;
+  repeated string allowed_system_packages = 6;
+  optional int64 default_timeout_ms = 7;
+  // How long to wait for another session's lock on the serial; absent = fail at once.
+  optional int64 lease_timeout_ms = 8;
+}
+
+message AttachResponse {
+  string attached_device_id = 1;
+  string serial = 2;
+  int64 generation = 3;
+  DeviceInfo device_info = 4;
+}
+
+message DetachRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+message DetachResponse {
+  // False when cleanup timed out or the session was quarantined; `detail` says why.
+  bool clean = 1;
+  optional string detail = 2;
+}
+
+message ExecuteRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  Command command = 3;
+}
+
+message ExecuteResponse {
+  CommandResult result = 1;
+}
+
+message ScreenshotRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  optional int64 timeout_ms = 3;
+}
+
+message ScreenshotResponse {
+  bytes png = 1;
+  string sha256 = 2;
+  optional int32 width = 3;
+  optional int32 height = 4;
+}
+
+message DriverLogRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+message DriverLogResponse {
+  repeated string lines = 1;
 }

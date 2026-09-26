@@ -1,10 +1,10 @@
 package com.company.tap.protocol
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class SelectorTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -24,19 +24,23 @@ class SelectorTest {
             """{"node":{"kind":"match","property":"TEXT","value":"Allow"},"pick":{"kind":"at","index":2}}""",
             json.encodeToString(Selector.text("Allow").at(2)),
         )
-        assertEquals("""{"node":{"kind":"flag","property":"CLICKABLE"},"pick":{"kind":"first"}}""", json.encodeToString(Selector(Node.Flag(NodeFlag.CLICKABLE)).first()))
+        assertEquals(
+            """{"node":{"kind":"flag","property":"CLICKABLE"},"pick":{"kind":"first"}}""",
+            json.encodeToString(Selector(Node.Flag(NodeFlag.CLICKABLE)).first()),
+        )
     }
 
     @Test
     fun relationalSelectorRoundTrips() {
-        val selector = Selector(
-            Node.allOf(
-                Node.className("android.widget.Button", MatchMode.ENDS_WITH),
-                Node.Flag(NodeFlag.CLICKABLE),
-                Node.ancestor(Node.Resource("card", "com.app")),
-                Node.child(Node.text("Play", MatchMode.STARTS_WITH)),
-            ),
-        )
+        val selector =
+            Selector(
+                Node.allOf(
+                    Node.className("android.widget.Button", MatchMode.ENDS_WITH),
+                    Node.Flag(NodeFlag.CLICKABLE),
+                    Node.ancestor(Node.Resource("card", "com.app")),
+                    Node.child(Node.text("Play", MatchMode.STARTS_WITH)),
+                ),
+            )
         assertEquals(selector, json.decodeFromString<Selector>(json.encodeToString(selector)))
         assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(selector))
     }
@@ -60,17 +64,23 @@ class SelectorTest {
         assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector.text("Item 1", MatchMode.CONTAINS)))
 
         assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(Node.text("Yes") or Node.text("OK"))))
-        assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(Node.child(Node.text("Yes") or Node.text("OK")))))
+        assertEquals(
+            SelectorPlanKind.TRAVERSAL,
+            CommandValidation.validateSelector(Selector(Node.child(Node.text("Yes") or Node.text("OK")))),
+        )
 
         // Two constraints on one text property, or two parents/ancestors, exceed BySelector's single slots.
         val twoTexts = Node.text("Item", MatchMode.STARTS_WITH) and Node.text("9", MatchMode.ENDS_WITH)
         assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(twoTexts)))
-        val nestedTwoTexts = Node.Flag(NodeFlag.CLICKABLE) and Node.AllOf(listOf(Node.text("a"), Node.AllOf(listOf(Node.text("b"), Node.hint("h")))))
+        val nestedTwoTexts =
+            Node.Flag(NodeFlag.CLICKABLE) and Node.AllOf(listOf(Node.text("a"), Node.AllOf(listOf(Node.text("b"), Node.hint("h")))))
         assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(nestedTwoTexts)))
         val twoAncestors = Node.ancestor(Node.Resource("list")) and Node.ancestor(Node.Resource("row"))
         assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(Selector(twoAncestors)))
         // Children and descendants are lists in BySelector, so several stay native.
-        val twoChildren = Node.child(Node.text("a")) and Node.child(Node.text("b")) and Node.descendant(Node.text("c")) and Node.descendant(Node.text("d"))
+        val twoChildren =
+            Node.child(Node.text("a")) and Node.child(Node.text("b")) and Node.descendant(Node.text("c")) and
+                Node.descendant(Node.text("d"))
         assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(Selector(twoChildren)))
         // The same text property at different levels is fine.
         val textInChild = Node.text("a") and Node.child(Node.text("b"))
@@ -91,8 +101,11 @@ class SelectorTest {
         assertDetail<SelectorTooDeepException>(ErrorDetail.SELECTOR_TOO_DEEP, Selector(deep))
 
         fun tree(depth: Int): Node =
-            if (depth == 0) Node.text("leaf")
-            else Node.AllOf(listOf(Node.child(tree(depth - 1)), Node.descendant(tree(depth - 1))))
+            if (depth == 0) {
+                Node.text("leaf")
+            } else {
+                Node.AllOf(listOf(Node.child(tree(depth - 1)), Node.descendant(tree(depth - 1))))
+            }
         val wide = tree(7) // 381 nodes, depth 15
         assertDetail<SelectorTooLargeException>(ErrorDetail.SELECTOR_TOO_LARGE, Selector(wide))
 
@@ -105,6 +118,16 @@ class SelectorTest {
             ErrorDetail.STRING_TOO_LONG,
             Selector.text("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
         )
+    }
+
+    @Test
+    fun emptyMatchValueIsOnlyValidForExactMatch() {
+        (MatchMode.entries - MatchMode.EXACT).forEach { mode ->
+            assertDetail<EmptySelectorValueException>(ErrorDetail.EMPTY_VALUE, Selector.text("", mode))
+            assertDetail<EmptySelectorValueException>(ErrorDetail.EMPTY_VALUE, Selector(Node.child(Node.contentDescription("", mode))))
+        }
+        // EXACT "" is meaningful (an empty field), so it stays valid.
+        CommandValidation.validateSelector(Selector.text(""))
     }
 
     @Test

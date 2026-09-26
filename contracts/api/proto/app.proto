@@ -1,6 +1,7 @@
-// tap.v1 — app lifecycle on a session's device: each call is executed over ADB and verified
+// tap.v1 — app lifecycle on an attached device: each call is executed over ADB and verified
 // against a postcondition (the host's AppLifecycle is the one source of truth for the rules).
-// Failures are gRPC FAILED_PRECONDITION with a message.
+// Failures are gRPC FAILED_PRECONDITION with a message. An absent `timeout_ms` means the
+// daemon's default for that operation.
 
 syntax = "proto3";
 
@@ -11,43 +12,26 @@ option java_multiple_files = true;
 option java_outer_classname = "AppProto";
 
 service AppService {
-  rpc Install(AppInstallRequest) returns (AppEmpty); // `adb install -r -t`, verified.
-  rpc Uninstall(AppRequest) returns (AppEmpty); // `pm uninstall`, verified.
-  rpc IsInstalled(AppRequest) returns (AppBool);
-  rpc ForceStop(AppRequest) returns (AppEmpty); // `am force-stop` plus proof that no process remains.
-  rpc ClearData(AppRequest) returns (AppEmpty); // `pm clear`; data, cache and runtime permissions gone, app left stopped.
-  rpc GrantPermission(AppGrantRequest) returns (AppEmpty); // `pm grant` a runtime permission.
-  rpc Launch(AppLaunchRequest) returns (AppEmpty); // Start the activity (or the launcher) and wait for the package to own the focused window.
-  rpc ColdLaunch(AppLaunchRequest) returns (ProcessIdentity); // Verified force-stop, launch, then a new process identity in the foreground.
-  rpc Process(AppRequest) returns (ProcessIdentity); // The single current process identity.
-  rpc IsRunning(AppRequest) returns (AppBool); // Whether any process of the package is alive.
-  rpc AwaitIdle(AppAwaitIdleRequest) returns (AppEmpty); // Wait until the app's sync-sdk busy count is zero and stable for `stable_for_ms`.
+  // `adb install -r -t` of the uploaded APK, verified. The client streams an InstallHeader
+  // first, then the APK bytes in chunks.
+  rpc Install(stream InstallRequest) returns (InstallResponse);
+  rpc Uninstall(UninstallRequest) returns (UninstallResponse); // `pm uninstall`, verified.
+  rpc IsInstalled(IsInstalledRequest) returns (IsInstalledResponse);
+  rpc ForceStop(ForceStopRequest) returns (ForceStopResponse); // `am force-stop` plus proof that no process remains.
+  rpc ClearData(ClearDataRequest) returns (ClearDataResponse); // `pm clear`; data, cache and runtime permissions gone, app left stopped.
+  rpc GrantPermission(GrantPermissionRequest) returns (GrantPermissionResponse); // `pm grant` a runtime permission.
+  rpc Launch(LaunchRequest) returns (LaunchResponse); // Start the activity (or the launcher) and wait for the package to own the focused window.
+  rpc ColdLaunch(ColdLaunchRequest) returns (ColdLaunchResponse); // Verified force-stop, launch, then a new process identity in the foreground.
+  rpc Process(ProcessRequest) returns (ProcessResponse); // The single current process identity.
+  rpc IsRunning(IsRunningRequest) returns (IsRunningResponse); // Whether any process of the package is alive.
+  rpc AwaitIdle(AwaitIdleRequest) returns (AwaitIdleResponse); // Wait until the app's sync-sdk busy count is zero and stable for `stable_for_ms`.
 }
 
-message AppRequest {
-  string session_id = 1;
-  string package_name = 2;
-  int64 timeout_ms = 3; // 0 = session default
-}
-
-message AppInstallRequest {
-  AppRequest app = 1;
-  string apk_path = 2; // host path
-}
-
-message AppGrantRequest {
-  AppRequest app = 1;
-  string permission = 2;
-}
-
-message AppLaunchRequest {
-  AppRequest app = 1;
-  optional string activity = 2; // omitted = launcher activity
-}
-
-message AppAwaitIdleRequest {
-  AppRequest app = 1;
-  int64 stable_for_ms = 2; // 0 = 200
+// The package an App call acts on, on a device the calling connection has attached.
+message AppTarget {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  string package_name = 3;
 }
 
 // PID plus a start token that changes on every process start.
@@ -56,8 +40,95 @@ message ProcessIdentity {
   string start_token = 2;
 }
 
-message AppBool {
-  bool value = 1;
+message InstallHeader {
+  AppTarget app = 1; // package_name: the package the APK must install as
+  optional int64 timeout_ms = 2;
+  int64 size_bytes = 3; // exact APK size; the upload is rejected on mismatch
 }
 
-message AppEmpty {}
+message InstallRequest {
+  oneof part {
+    InstallHeader header = 1; // first message only
+    bytes chunk = 2; // every later message
+  }
+}
+
+message InstallResponse {}
+
+message UninstallRequest {
+  AppTarget app = 1;
+}
+
+message UninstallResponse {}
+
+message IsInstalledRequest {
+  AppTarget app = 1;
+}
+
+message IsInstalledResponse {
+  bool installed = 1;
+}
+
+message ForceStopRequest {
+  AppTarget app = 1;
+  optional int64 timeout_ms = 2;
+}
+
+message ForceStopResponse {}
+
+message ClearDataRequest {
+  AppTarget app = 1;
+  optional int64 timeout_ms = 2;
+}
+
+message ClearDataResponse {}
+
+message GrantPermissionRequest {
+  AppTarget app = 1;
+  string permission = 2;
+}
+
+message GrantPermissionResponse {}
+
+message LaunchRequest {
+  AppTarget app = 1;
+  optional string activity = 2; // absent = launcher activity
+  optional int64 timeout_ms = 3;
+}
+
+message LaunchResponse {}
+
+message ColdLaunchRequest {
+  AppTarget app = 1;
+  optional string activity = 2; // absent = launcher activity
+  optional int64 timeout_ms = 3;
+}
+
+message ColdLaunchResponse {
+  ProcessIdentity process = 1;
+}
+
+message ProcessRequest {
+  AppTarget app = 1;
+  optional int64 timeout_ms = 2;
+}
+
+message ProcessResponse {
+  ProcessIdentity process = 1;
+}
+
+message IsRunningRequest {
+  AppTarget app = 1;
+}
+
+message IsRunningResponse {
+  bool running = 1;
+}
+
+message AwaitIdleRequest {
+  AppTarget app = 1;
+  optional int64 timeout_ms = 2;
+  optional int64 stable_for_ms = 3; // absent = 200
+}
+
+message AwaitIdleResponse {}

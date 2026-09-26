@@ -1,3 +1,4 @@
+# ruff: noqa
 from . import selector_pb2 as _selector_pb2
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -90,10 +91,6 @@ STABILITY_TREE: StabilitySignal
 STABILITY_PIXELS: StabilitySignal
 STABILITY_ALL: StabilitySignal
 
-class Health(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
 class DeviceInfoQuery(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
@@ -103,10 +100,6 @@ class PressKey(_message.Message):
     KEY_CODE_FIELD_NUMBER: _ClassVar[int]
     key_code: int
     def __init__(self, key_code: _Optional[int] = ...) -> None: ...
-
-class Screenshot(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
 
 class DumpHierarchy(_message.Message):
     __slots__ = ()
@@ -226,33 +219,11 @@ class ScrollUntil(_message.Message):
     max_scrolls: int
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., container: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[Direction, str]] = ..., distance_percent: _Optional[int] = ..., max_scrolls: _Optional[int] = ...) -> None: ...
 
-class SyncBootstrap(_message.Message):
-    __slots__ = ("observed_pid", "observed_start_token")
-    OBSERVED_PID_FIELD_NUMBER: _ClassVar[int]
-    OBSERVED_START_TOKEN_FIELD_NUMBER: _ClassVar[int]
-    observed_pid: int
-    observed_start_token: str
-    def __init__(self, observed_pid: _Optional[int] = ..., observed_start_token: _Optional[str] = ...) -> None: ...
-
-class SyncPoll(_message.Message):
-    __slots__ = ("observed_pid", "observed_start_token", "expected_process_start_uuid", "expected_session_identity")
-    OBSERVED_PID_FIELD_NUMBER: _ClassVar[int]
-    OBSERVED_START_TOKEN_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_PROCESS_START_UUID_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_SESSION_IDENTITY_FIELD_NUMBER: _ClassVar[int]
-    observed_pid: int
-    observed_start_token: str
-    expected_process_start_uuid: str
-    expected_session_identity: str
-    def __init__(self, observed_pid: _Optional[int] = ..., observed_start_token: _Optional[str] = ..., expected_process_start_uuid: _Optional[str] = ..., expected_session_identity: _Optional[str] = ...) -> None: ...
-
 class Command(_message.Message):
-    __slots__ = ("timeout_ms", "health", "device_info", "press_key", "screenshot", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until", "sync_bootstrap", "sync_poll")
+    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until")
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
-    HEALTH_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     PRESS_KEY_FIELD_NUMBER: _ClassVar[int]
-    SCREENSHOT_FIELD_NUMBER: _ClassVar[int]
     DUMP_HIERARCHY_FIELD_NUMBER: _ClassVar[int]
     EXISTS_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
@@ -269,13 +240,9 @@ class Command(_message.Message):
     SWIPE_FIELD_NUMBER: _ClassVar[int]
     SCROLL_FIELD_NUMBER: _ClassVar[int]
     SCROLL_UNTIL_FIELD_NUMBER: _ClassVar[int]
-    SYNC_BOOTSTRAP_FIELD_NUMBER: _ClassVar[int]
-    SYNC_POLL_FIELD_NUMBER: _ClassVar[int]
     timeout_ms: int
-    health: Health
     device_info: DeviceInfoQuery
     press_key: PressKey
-    screenshot: Screenshot
     dump_hierarchy: DumpHierarchy
     exists: Exists
     count: Count
@@ -292,45 +259,7 @@ class Command(_message.Message):
     swipe: Swipe
     scroll: Scroll
     scroll_until: ScrollUntil
-    sync_bootstrap: SyncBootstrap
-    sync_poll: SyncPoll
-    def __init__(self, timeout_ms: _Optional[int] = ..., health: _Optional[_Union[Health, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., screenshot: _Optional[_Union[Screenshot, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntil, _Mapping]] = ..., sync_bootstrap: _Optional[_Union[SyncBootstrap, _Mapping]] = ..., sync_poll: _Optional[_Union[SyncPoll, _Mapping]] = ...) -> None: ...
-
-class SyncState(_message.Message):
-    __slots__ = ("initialized", "process_id", "process_start_uuid", "session_identity", "generation", "busy_count", "last_transition_elapsed_ms", "error")
-    INITIALIZED_FIELD_NUMBER: _ClassVar[int]
-    PROCESS_ID_FIELD_NUMBER: _ClassVar[int]
-    PROCESS_START_UUID_FIELD_NUMBER: _ClassVar[int]
-    SESSION_IDENTITY_FIELD_NUMBER: _ClassVar[int]
-    GENERATION_FIELD_NUMBER: _ClassVar[int]
-    BUSY_COUNT_FIELD_NUMBER: _ClassVar[int]
-    LAST_TRANSITION_ELAPSED_MS_FIELD_NUMBER: _ClassVar[int]
-    ERROR_FIELD_NUMBER: _ClassVar[int]
-    initialized: bool
-    process_id: int
-    process_start_uuid: str
-    session_identity: str
-    generation: int
-    busy_count: int
-    last_transition_elapsed_ms: int
-    error: str
-    def __init__(self, initialized: _Optional[bool] = ..., process_id: _Optional[int] = ..., process_start_uuid: _Optional[str] = ..., session_identity: _Optional[str] = ..., generation: _Optional[int] = ..., busy_count: _Optional[int] = ..., last_transition_elapsed_ms: _Optional[int] = ..., error: _Optional[str] = ...) -> None: ...
-
-class ArtifactInfo(_message.Message):
-    __slots__ = ("blob_id", "media_type", "byte_count", "sha256", "width", "height")
-    BLOB_ID_FIELD_NUMBER: _ClassVar[int]
-    MEDIA_TYPE_FIELD_NUMBER: _ClassVar[int]
-    BYTE_COUNT_FIELD_NUMBER: _ClassVar[int]
-    SHA256_FIELD_NUMBER: _ClassVar[int]
-    WIDTH_FIELD_NUMBER: _ClassVar[int]
-    HEIGHT_FIELD_NUMBER: _ClassVar[int]
-    blob_id: str
-    media_type: str
-    byte_count: int
-    sha256: str
-    width: int
-    height: int
-    def __init__(self, blob_id: _Optional[str] = ..., media_type: _Optional[str] = ..., byte_count: _Optional[int] = ..., sha256: _Optional[str] = ..., width: _Optional[int] = ..., height: _Optional[int] = ...) -> None: ...
+    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntil, _Mapping]] = ...) -> None: ...
 
 class Bounds(_message.Message):
     __slots__ = ("left", "top", "right", "bottom")
@@ -417,7 +346,7 @@ class Error(_message.Message):
     def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
 
 class CommandResult(_message.Message):
-    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "moved", "count", "text", "snapshot", "device_info", "artifact", "sync", "error")
+    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "moved", "count", "text", "snapshot", "device_info", "error")
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_GENERATION_FIELD_NUMBER: _ClassVar[int]
@@ -428,8 +357,6 @@ class CommandResult(_message.Message):
     TEXT_FIELD_NUMBER: _ClassVar[int]
     SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
-    ARTIFACT_FIELD_NUMBER: _ClassVar[int]
-    SYNC_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     duration_ms: int
     request_id: int
@@ -441,7 +368,5 @@ class CommandResult(_message.Message):
     text: str
     snapshot: ElementSnapshot
     device_info: DeviceInfo
-    artifact: ArtifactInfo
-    sync: SyncState
     error: Error
-    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., moved: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., artifact: _Optional[_Union[ArtifactInfo, _Mapping]] = ..., sync: _Optional[_Union[SyncState, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ...) -> None: ...
+    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., moved: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ...) -> None: ...

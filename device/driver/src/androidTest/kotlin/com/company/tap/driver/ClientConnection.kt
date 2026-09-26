@@ -9,19 +9,24 @@ import com.company.tap.protocol.FrameCodec
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.MAX_CONTROL_PAYLOAD
 import com.company.tap.protocol.ErrorCode
-import com.company.tap.protocol.ErrorDetail
+import com.company.tap.protocol.ProtocolException
+import com.company.tap.protocol.ProtocolJson
 import com.company.tap.protocol.RequestDecoder
 import com.company.tap.protocol.Response
 import java.io.EOFException
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 /**
  * Reader lane for one authenticated connection. The calling thread only reads frames and
- * feeds the [CommandPipeline]; UI work runs on the pipeline's executor and responses leave on
- * its writer, so `CANCEL`, `PING`, and transport closure are observed while a command runs.
+ * feeds the [CommandPipeline]; UI work runs on the pipeline's executor and every outbound frame
+ * (responses, rejections, `CLOSE`) leaves on its writer, so `CANCEL`, `PING`, and transport
+ * closure are observed while a command runs and frames never interleave on the socket.
+ *
+ * A protocol violation (a reused or stale request ID, a malformed or illegal control frame)
+ * ends the connection in order: a `CLOSE` frame with the reason is queued behind the frames
+ * already on the writer, then the socket is closed.
  */
 internal class ClientConnection(
     private val socket: Socket,
@@ -33,7 +38,7 @@ internal class ClientConnection(
     private val heartbeatTimeoutMs: Long,
     private val onPoisoned: (reason: String) -> Unit,
 ) : PipelineListener {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = ProtocolJson.codec
     private val transportEnded = AtomicBoolean(false)
     private var highestRequestId = 0L
     private val pipeline = CommandPipeline(
@@ -54,6 +59,9 @@ internal class ClientConnection(
                     FrameCodec.read(socket.getInputStream())
                 } catch (_: EOFException) {
                     return
+                } catch (malformed: ProtocolException) {
+                    protocolViolation(malformed.message ?: "Malformed frame")
+                    return
                 }
                 pipeline.heartbeat()
                 if (!handle(frame)) return
@@ -71,35 +79,41 @@ internal class ClientConnection(
     private fun handle(frame: Frame): Boolean = when (frame.type) {
         FrameType.CLOSE -> false
         FrameType.REQUEST -> handleRequest(frame)
-        FrameType.CANCEL -> {
-            require(frame.requestId > 0) { "CANCEL requires a request ID" }
-            pipeline.cancel(frame.requestId)
-            true
+        FrameType.CANCEL -> when {
+            frame.requestId <= 0 -> protocolViolation("CANCEL requires a positive request ID, got ${frame.requestId}")
+            frame.payload.isNotEmpty() -> protocolViolation("CANCEL carries no payload")
+            else -> {
+                pipeline.cancel(frame.requestId)
+                true
+            }
         }
-        FrameType.PING -> {
-            require(frame.requestId == 0L) { "PING is a connection frame" }
-            pipeline.pong(0)
-            true
+        FrameType.PING -> when {
+            frame.requestId != 0L -> protocolViolation("PING is a connection frame, got request ID ${frame.requestId}")
+            frame.payload.isNotEmpty() -> protocolViolation("PING carries no payload")
+            else -> {
+                pipeline.pong(0)
+                true
+            }
         }
         FrameType.HELLO, FrameType.CHALLENGE, FrameType.AUTH, FrameType.AUTH_RESULT,
         FrameType.RESPONSE, FrameType.PONG, FrameType.BLOB_START, FrameType.BLOB_CHUNK, FrameType.BLOB_END ->
-            error("Illegal frame ${frame.type} after authentication")
+            protocolViolation("Illegal frame ${frame.type} after authentication")
     }
 
     private fun handleRequest(frame: Frame): Boolean {
         if (frame.requestId <= highestRequestId) {
-            writeResponse(
-                frame.requestId,
-                Response.failure(ErrorCode.DUPLICATE_OR_STALE, durationMs = 0),
+            // Answering with the reused ID could complete the host's real pending command with
+            // this rejection, so a duplicate or stale ID ends the connection instead.
+            return protocolViolation(
+                "${ErrorCode.DUPLICATE_OR_STALE}: request ID ${frame.requestId} is at or below the watermark $highestRequestId",
             )
-            return !transportEnded.get()
         }
         val request = when (val decoded = RequestDecoder.decode(frame.payload.decodeToString())) {
             is RequestDecoder.Outcome.Decoded -> decoded.request
             is RequestDecoder.Outcome.Rejected -> {
                 // A malformed request still consumes its ID: the watermark only ever moves forward.
                 highestRequestId = frame.requestId
-                writeResponse(frame.requestId, Response.failure(decoded.code, message = decoded.message, durationMs = 0))
+                pipeline.respond(frame.requestId, Response.failure(decoded.code, message = decoded.message, durationMs = 0))
                 return !transportEnded.get()
             }
         }
@@ -141,7 +155,19 @@ internal class ClientConnection(
                 output,
                 Frame(FrameType.BLOB_END, message.requestId, json.encodeToString(message.end).encodeToByteArray()),
             )
+            is Outbound.Close ->
+                FrameCodec.write(output, Frame(FrameType.CLOSE, 0, message.reason.take(MAX_CLOSE_REASON_CHARS).encodeToByteArray()))
         }
+    }
+
+    /**
+     * Ends the connection after a protocol violation: `CLOSE` with [reason] goes out on the
+     * writer lane (bounded wait), then [run]'s cleanup closes the socket. Always returns false
+     * so the read loop stops.
+     */
+    private fun protocolViolation(reason: String): Boolean {
+        pipeline.close(reason, CLOSE_FLUSH_TIMEOUT_MS)
+        return false
     }
 
     private fun writeResponse(requestId: Long, response: Response) {
@@ -174,5 +200,10 @@ internal class ClientConnection(
 
     private fun dropConnection() {
         runCatching { socket.setSoLinger(true, 0) }
+    }
+
+    private companion object {
+        const val CLOSE_FLUSH_TIMEOUT_MS = 2_000L
+        const val MAX_CLOSE_REASON_CHARS = 512
     }
 }

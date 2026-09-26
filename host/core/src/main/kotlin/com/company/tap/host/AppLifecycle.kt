@@ -2,12 +2,14 @@ package com.company.tap.host
 
 import com.company.tap.protocol.Command
 import com.company.tap.protocol.DeviceInfoQuery
+import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.Returning
 import com.company.tap.protocol.SyncBootstrap
 import com.company.tap.protocol.SyncPoll
 import com.company.tap.protocol.SyncResult
 import com.company.tap.protocol.SyncState
 import com.company.tap.protocol.WaitAppVisible
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.nio.file.Path
 
@@ -15,7 +17,7 @@ import java.nio.file.Path
 class AppLifecycleException(
     message: String,
     cause: Throwable? = null,
-) : RuntimeException(message, cause)
+) : TapHostException(message, cause)
 
 /** A host-side wait ran out of time. Carries the last observation so a log line is diagnosable. */
 class HostWaitTimeoutException(
@@ -24,18 +26,20 @@ class HostWaitTimeoutException(
     val elapsedMs: Long,
     val polls: Int,
     val lastObservation: String?,
-) : RuntimeException(
+    cause: Throwable? = null,
+) : TapHostException(
         buildString {
             append("Timed out after ${elapsedMs}ms waiting for $description on $serial")
             if (polls > 0) append(" ($polls polls)")
             if (lastObservation != null) append("; last observed: $lastObservation")
         },
+        cause,
     )
 
 /**
  * Lifecycle of one package on one device, executed by the host. Every operation verifies its
  * postcondition through ADB (package manager / process table) rather than assuming the
- * command worked. This is the single implementation behind the service's `AppService`;
+ * command worked. This is the single implementation behind the daemon's `AppServer`;
  * clients never run ADB themselves.
  */
 class AppLifecycle(
@@ -89,22 +93,21 @@ class AppLifecycle(
 
     /**
      * Starts [activity] (or the launcher activity) and waits until the package owns the
-     * focused window. Does not assert anything about prior process state; see [coldLaunch].
+     * focused window. [timeoutMs] bounds the whole launch: `am start -W` and the visibility wait
+     * share one deadline. Does not assert anything about prior process state; see [coldLaunch].
      */
     suspend fun launch(
         activity: String?,
         timeoutMs: Long,
     ) {
-        session.checkUsable()
-        val component = "$packageName/${activity ?: launcherActivity()}"
-        val output = session.guardAdb { adb.startActivity(serial, component, timeoutMs) }
-        if ("Error" in output || "Exception" in output) {
-            throw AppLifecycleException("am start $component failed on $serial: $output")
-        }
-        awaitAppVisible(timeoutMs)
+        launchUntil(activity, deadlineAfter(timeoutMs), timeoutMs)
     }
 
-    /** Verified force-stop, launch, then proof of a *new* process identity in the foreground. */
+    /**
+     * Verified force-stop (bounded by [stopTimeoutMs]), launch, then proof of a *new* process
+     * identity in the foreground. Launch, visibility and the process observation share the one
+     * [timeoutMs] deadline.
+     */
     suspend fun coldLaunch(
         activity: String?,
         timeoutMs: Long,
@@ -112,8 +115,25 @@ class AppLifecycle(
     ): ProcessObservation {
         session.checkUsable()
         forceStop(stopTimeoutMs)
-        launch(activity, timeoutMs)
-        return session.guardAdb { observeProcess(adb, serial, packageName, timeoutMs) }
+        val deadline = deadlineAfter(timeoutMs)
+        launchUntil(activity, deadline, timeoutMs)
+        val remaining = remainingOrTimeout(deadline, timeoutMs, "a $packageName process after launch")
+        return session.guardAdb { observeProcess(adb, serial, packageName, remaining) }
+    }
+
+    private suspend fun launchUntil(
+        activity: String?,
+        deadline: Long,
+        timeoutMs: Long,
+    ) {
+        session.checkUsable()
+        val component = "$packageName/${activity ?: launcherActivity()}"
+        val startBudget = remainingOrTimeout(deadline, timeoutMs, "am start $component")
+        val output = session.guardAdb { adb.startActivity(serial, component, startBudget) }
+        AmStartOutput.failure(output)?.let { failure ->
+            throw AppLifecycleException("am start $component failed on $serial: $failure\n$output")
+        }
+        awaitAppVisible(remainingOrTimeout(deadline, timeoutMs, "package $packageName to be in the foreground"))
     }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
@@ -121,21 +141,33 @@ class AppLifecycle(
 
     suspend fun isRunning(): Boolean = session.guardAdb { adb.processIds(serial, packageName) }.isNotEmpty()
 
-    /** Waits on the device until the package owns the focused window. */
+    /**
+     * Waits on the device until the package owns the focused window. Only the driver's
+     * `WAIT_TIMEOUT` becomes a [HostWaitTimeoutException]; every other failure (a poisoned
+     * session, a transport loss, cancellation) propagates unchanged.
+     */
     suspend fun awaitAppVisible(timeoutMs: Long) {
         session.checkUsable()
-        val response = client.send(WaitAppVisible(packageName), timeoutMs = timeoutMs)
-        if (!response.ok) {
+        try {
+            client.execute(WaitAppVisible(packageName), timeoutMs = timeoutMs)
+        } catch (timeout: RemoteCommandException) {
+            if (timeout.code != ErrorCode.WAIT_TIMEOUT) throw timeout
+            // Diagnostic only: a failed lookup must not mask the timeout, but cancellation wins.
             val current =
-                runCatching {
+                try {
                     client.execute(DeviceInfoQuery, timeoutMs = 5_000).deviceInfo.currentPackage
-                }.getOrNull()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
             throw HostWaitTimeoutException(
                 "package $packageName to be in the foreground",
                 serial,
-                response.durationMs,
+                timeout.durationMs,
                 0,
                 "currentPackage=$current",
+                timeout,
             )
         }
     }
@@ -235,5 +267,49 @@ class AppLifecycle(
 
     private fun remainingMs(deadlineNanos: Long): Long = (deadlineNanos - System.nanoTime()) / 1_000_000
 
+    private fun deadlineAfter(timeoutMs: Long): Long {
+        require(timeoutMs > 0) { "timeoutMs must be positive" }
+        return System.nanoTime() + timeoutMs * 1_000_000
+    }
+
+    /** What is left of a shared launch deadline, or a timeout naming the step that ran out. */
+    private fun remainingOrTimeout(
+        deadlineNanos: Long,
+        timeoutMs: Long,
+        description: String,
+    ): Long {
+        val remaining = remainingMs(deadlineNanos)
+        if (remaining <= 0) throw HostWaitTimeoutException(description, serial, timeoutMs, 0, null)
+        return remaining
+    }
+
     override fun toString(): String = "AppLifecycle($packageName on $serial)"
+}
+
+/**
+ * Reads `am start -W` output by line prefix. Substring matching is wrong both ways: a component
+ * such as `.ErrorActivity` or a package like `com.x.exceptions` is not a failure, while a
+ * `Status:` other than `ok` is one even without the word "Error".
+ */
+internal object AmStartOutput {
+    private val exceptionLine = Regex("""^(?:[a-z_][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error)(?::.*)?$""")
+
+    /** The line that says the start failed, or null when the output reports none. */
+    fun failure(output: String): String? {
+        for (raw in output.lineSequence()) {
+            val line = raw.trim()
+            when {
+                line.startsWith("Error:") || line.startsWith("Error type") -> return line
+                line.startsWith("Exception occurred") -> return line
+                exceptionLine.matches(line) -> return line
+                line.startsWith("Status:") -> {
+                    // `timeout` only means the first frame took longer than am waits; the
+                    // visibility wait that follows decides.
+                    val status = line.removePrefix("Status:").trim()
+                    if (status != "ok" && status != "timeout") return line
+                }
+            }
+        }
+        return null
+    }
 }

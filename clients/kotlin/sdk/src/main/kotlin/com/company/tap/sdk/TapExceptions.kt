@@ -13,8 +13,8 @@ open class TapException(
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 
-/** The host service rejected or failed a call (unknown run/session, bad argument, ...). */
-class ServiceException(
+/** The host server rejected or failed a call (unknown run/session, bad argument, ...). */
+class ServerException(
     val status: String,
     val details: String,
     cause: Throwable? = null,

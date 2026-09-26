@@ -1,13 +1,12 @@
 """Two roles acquired all-or-none; skipped when tap_serials lists fewer devices. Devices are
 independent sessions, so per-device work runs on separate threads and a failure on one does
 not disturb the other's session."""
+
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
-
-from tap import res, text
-
+import pytest  # type: ignore[import-not-found]
 from conftest import launch
+from tap import res, text
 
 
 @pytest.mark.tap_devices("left", "right")

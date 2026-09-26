@@ -9,6 +9,12 @@
         "kind": "resource",
         "name": "login",
         "packageName": "com.example.app"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     }
   }

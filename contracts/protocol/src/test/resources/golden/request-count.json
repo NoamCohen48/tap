@@ -10,6 +10,12 @@
         "property": "TEXT",
         "value": "Row",
         "mode": "STARTS_WITH"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     }
   }

@@ -1,8 +1,17 @@
-import pytest
-
-from tap import UP, CommandError, ErrorCode, WaitTimeoutError, raw_res, res, text, text_matches, text_starts_with
-
+# pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportMissingImports=false
+import pytest  # type: ignore[import-not-found]
 from conftest import launch
+from tap import (
+    UP,
+    CommandError,
+    ErrorCode,
+    WaitTimeoutError,
+    raw_res,
+    res,
+    text,
+    text_matches,
+    text_starts_with,
+)
 
 
 def test_taps_view_and_compose_buttons(tap_device):
@@ -41,7 +50,9 @@ def test_scrolls_compose_list_until_item_is_visible(tap_device):
     assert item.text() == "Item 40"
 
     # Back up: UiAutomator scroll direction names the content edge you move towards.
-    first = lst.scroll_until(raw_res("item-1"), direction=UP, max_scrolls=30, timeout=30)
+    first = lst.scroll_until(
+        raw_res("item-1"), direction=UP, max_scrolls=30, timeout=30
+    )
     assert first.text() == "Item 1"
 
 
@@ -54,7 +65,10 @@ def test_ambiguous_tap_fails_before_any_input(tap_device):
         tap_device.element(ambiguous).tap()
     assert failure.value.code == ErrorCode.AMBIGUOUS
     assert tap_device.element(ambiguous).count() == 2
-    assert tap_device.element(res("ambiguous_status")).text() == "Ambiguous taps: left=0 right=0"
+    assert (
+        tap_device.element(res("ambiguous_status")).text()
+        == "Ambiguous taps: left=0 right=0"
+    )
 
     # A disjunction is still one selector: both buttons match, so it is just as AMBIGUOUS.
     either = res("ambiguous_button_left") | res("ambiguous_button_right")
@@ -66,7 +80,9 @@ def test_ambiguous_tap_fails_before_any_input(tap_device):
     # Disambiguate by resource id (or by relation/index) instead of relaxing the invariant.
     tap_device.element(res("ambiguous_button_right").and_text("AMBIGUOUS TAP")).tap()
     tap_device.wait(text("Ambiguous taps: left=0 right=1")).visible()
-    tap_device.element((res("no_such_button") | res("ambiguous_button_left")) & text("AMBIGUOUS TAP")).tap()
+    tap_device.element(
+        (res("no_such_button") | res("ambiguous_button_left")) & text("AMBIGUOUS TAP")
+    ).tap()
     tap_device.wait(text("Ambiguous taps: left=1 right=1")).visible()
 
 

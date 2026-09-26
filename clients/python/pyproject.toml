@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tap-e2e"
 version = "0.1.0"
-description = "Python client and pytest plugin for the Tap Android E2E host service"
+description = "Python client and pytest plugin for the Tap Android E2E host daemon"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
@@ -16,7 +16,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["grpcio-tools>=1.84.0", "pytest>=8"]
+# typing_extensions: `Self` for type checkers on 3.10 (imported under TYPE_CHECKING only).
+dev = ["grpcio-tools>=1.84.0", "pytest>=8", "typing_extensions>=4.0"]
 
 [project.entry-points.pytest11]
 tap = "tap.pytest_plugin"

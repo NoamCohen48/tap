@@ -109,8 +109,14 @@ internal class DriverCommandEngine(
                     )
                 }
             }
-            is Targeted -> compiler.compile(command.selector)
-            else -> Unit
+
+            is Targeted -> {
+                compiler.compile(command.selector)
+            }
+
+            else -> {
+                Unit
+            }
         }
     }
 
@@ -120,26 +126,47 @@ internal class DriverCommandEngine(
         private val generation: Long,
     ) : CommandHandler {
         override fun health(command: Health): Done = Done
+
         override fun deviceInfo(command: DeviceInfoQuery): DeviceInfoResult = ui.deviceInfo()
+
         override fun pressKey(command: PressKey): Done = ui.pressKey(context, command)
+
         override fun screenshot(command: Screenshot): ArtifactResult = ui.screenshot(context)
+
         override fun dumpHierarchy(command: DumpHierarchy): TextResult = ui.dumpHierarchy()
+
         override fun exists(command: Exists): BoolResult = BoolResult(objects.hasObject(command.selector))
+
         override fun count(command: Count): CountResult = CountResult(objects.count(command.selector))
+
         override fun snapshot(command: Snapshot): SnapshotResult = ui.snapshot(command)
+
         override fun waitVisible(command: WaitVisible): Done = ui.waitVisible(context, command.selector, expected = true)
+
         override fun waitGone(command: WaitGone): Done = ui.waitVisible(context, command.selector, expected = false)
+
         override fun waitAppVisible(command: WaitAppVisible): Done = ui.waitAppVisible(context, command)
+
         override fun waitScreenStable(command: WaitScreenStable): Done = ui.waitScreenStable(context, command)
+
         override fun tap(command: Tap): Done = ui.tap(context, socket, command, generation)
+
         override fun longTap(command: LongTap): Done = ui.longTap(context, command)
+
         override fun setText(command: SetText): Done = ui.setText(context, command)
+
         override fun typeText(command: TypeText): Done = ui.typeText(context, command)
+
         override fun clearText(command: ClearText): Done = ui.clearText(context, command)
+
         override fun swipe(command: Swipe): Moved = ui.swipe(context, command)
+
         override fun scroll(command: Scroll): Moved = ui.scroll(context, command)
+
         override fun scrollUntil(command: ScrollUntil): Done = ui.scrollUntil(context, command)
+
         override fun syncBootstrap(command: SyncBootstrap): SyncResult = sync.bootstrap(context, command)
+
         override fun syncPoll(command: SyncPoll): SyncResult = sync.poll(context, command)
     }
 }

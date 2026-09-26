@@ -4,8 +4,8 @@ Package `tap-e2e`, importable as `tap`. Everything below is generated from the d
 type hints of `clients/python/tap`.
 
 ```python
-from tap import Service, res_id, text, desc, CONTAINS, DOWN, STABILITY_TREE
-from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServiceError
+from tap import TapServer, res_id, text, desc, CONTAINS, DOWN, STABILITY_TREE
+from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServerError
 ```
 
 ## Device
@@ -30,11 +30,11 @@ from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, Dev
 
 ::: tap.app.ProcessIdentity
 
-## Service and connection
+## Server and client connection
 
-::: tap.service.Service
+::: tap.server.TapServer
 
-::: tap.service.Connection
+::: tap.server.ClientConnection
 
 ## Errors
 
@@ -47,7 +47,7 @@ from tap import TapError, CommandError, WaitTimeoutError, AppLifecycleError, Dev
       members:
         - TapConfig
         - tap_config
-        - tap_service
-        - tap_connection
+        - tap_server
+        - tap_client_connection
         - tap_devices
         - tap_device

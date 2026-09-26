@@ -16,7 +16,10 @@ publishing {
         create<MavenPublication>("maven") {
             artifactId = "tap-junit5"
             from(components["java"])
-            pom { name.set("tap-junit5"); description.set("JUnit 5 extension for the Tap Kotlin client") }
+            pom {
+                name.set("tap-junit5")
+                description.set("JUnit 5 extension for the Tap Kotlin client")
+            }
         }
     }
 }
@@ -25,7 +28,7 @@ dependencies {
     api(project(":clients:kotlin:sdk"))
     api("org.junit.jupiter:junit-jupiter-api:5.13.4")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-    // TapLauncherSessionListener (stops a service this JVM started). The launcher is on every
+    // TapLauncherSessionListener (stops a server this JVM started). The launcher is on every
     // JUnit Platform test runtime already; it is not forced onto consumers' compile classpath.
     compileOnly("org.junit.platform:junit-platform-launcher:1.13.4")
 
@@ -54,4 +57,3 @@ if (providers.gradleProperty("tap.dokkaFormat").orNull == "gfm") {
         dokkaPublications.named("html") { outputDirectory.set(layout.buildDirectory.dir("dokka/gfm")) }
     }
 }
-

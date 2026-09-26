@@ -1,4 +1,4 @@
-# Pool, leases and the journal lock — what the service owns and why
+# Pool, leases and the journal lock — what the daemon owns and why
 
 Date: 2026-09-20. Decision record for the Phase 2 pool. It explains the pieces that existed
 after the first cut, why two of them were removed, and why the third stays. The plan
@@ -42,15 +42,15 @@ bookkeeping. Measured against it the pool lease added:
 | It added | Verdict |
 |---|---|
 | A reservation before the (slow) session open, so a busy device is refused at `Acquire` instead of mid-open | Marginal. `Open` takes the lock first and refuses the same way. |
-| Waiting for a busy device | Useful — kept, as a bounded wait **inside `Open`** on the file lock (`OpenSessionRequest.lease_timeout_ms`, `DEADLINE_EXCEEDED` when still held). No table, no run→serial state. |
+| Waiting for a busy device | Useful — kept, as a bounded wait **inside `Open`** on the file lock (`AttachDeviceRequest.lease_timeout_ms`, `DEADLINE_EXCEEDED` when still held). No table, no run→serial state. |
 | All-or-none for multi-device "so two tests each holding one of two devices cannot deadlock" | Not the only way. Clients open their devices in **sorted serial order**; with a global lock order deadlock is impossible. Cost: the first device idles for the seconds it takes to open the second. |
 | Freeing devices when the client dies | Already covered: run close tears down sessions, and the OS drops the file lock with the process. |
 
 So the pool lease was a second, softer copy of the lock plus scheduling rules the service had
 to maintain and expose (`LEASED(run)`, "acquire before open", "close before release"). It is
 gone: the device service only lists devices; the connection (then `Run`) has no leases;
-`CloseConnectionResponse.devices_released` is reserved. `ListDevices` still reports `LEASED` — derived by probing the lock (`isLeased()`),
-with `held_by_connection` set when the holder is one of this service's own sessions. The removed
+`DisconnectResponse.devices_released` is reserved. `ListDevices` still reports `LEASED` — derived by probing the lock (`isLeased()`),
+with `held_by_client_connection_id` set when the holder is one of this daemon's own sessions. The removed
 code is under `archive/pool-leases/`.
 
 ## Decision 3 — the journal lock stays
@@ -75,16 +75,16 @@ processes doing it concurrently would both read generation *n*, both write *n+1*
 driver on the same port — the corruption the journal exists to prevent. The lock is the
 cheapest guard: one `tryLock`, held for the session, released by the OS on death, nothing to
 expire or reconcile. It is also the only thing that stops `host/validation` (which uses
-`:host:core` directly, by design), a stray second `tap serve`, or a future non-service client
+`:host:core` directly, by design), a stray second `tap serve`, or a future client that bypasses the daemon
 from stepping on a live session. Removing it would mean building a worse replacement.
 
-## Decision 4 — no service-side device allow-list (September 2026)
+## Decision 4 — no daemon-side device allow-list (September 2026)
 
-`tap serve --serials a,b` (`ServiceConfig.allowedSerials`) is removed. It only filtered
-`ListDevices`; `OpenSession` never checked it, so it was an advertising knob that looked like
+`tap serve --serials a,b` (the former `ServiceConfig.allowedSerials`) is removed. It only filtered
+`ListDevices`; `AttachDevice` never checked it, so it was an advertising knob that looked like
 access control. Device choice is the client's (`tap.serials` / `tap_serials`, Decision 1), and
-isolating two groups of devices on one machine is done with two services on two `--state-dir`s.
-The service offers every device ADB lists.
+isolating two groups of devices on one machine is done with two daemons using different `--state-dir`s.
+The daemon offers every device ADB lists.
 
 ## Why the lock and the journal at all — compared with Appium and Maestro
 
@@ -92,7 +92,7 @@ Asked in September 2026: why not just kill and reinstall the driver when a conne
 like other tools? The honest answer separates the two mechanisms.
 
 **The lock is essential and cheap.** Tap's model is several independent processes (a Gradle
-test JVM and a pytest run, or two JVMs) sharing one machine's devices through one service.
+test JVM and a pytest run, or two JVMs) sharing one machine's devices through one daemon.
 Two processes driving one device is garbage — a second `am instrument` kills the first, and
 interleaved input corrupts both tests — so something must say "this serial is taken". An OS
 file lock is the smallest possible arbiter: no lease table, no expiry, no heartbeat, released
@@ -103,7 +103,7 @@ Appium and Maestro do not have this lock because they do not have this problem: 
 same device simply kills the previous UiAutomator2 server and takes over; allocation across
 processes is pushed up to Selenium Grid / DeviceFarmer / the CI's device pool. Maestro is one
 CLI process that picks a device and never coordinates with another Maestro. If Tap ever became
-"one process per machine", the lock would be redundant; as long as the shared service is the
+"one process per machine", the lock would be redundant; as long as the shared daemon is the
 model, it is the minimum.
 
 **The journal is more than the minimum.** "Reconcile by force on open" — kill any running
@@ -139,10 +139,10 @@ note here before it happens.
 
 ## Resulting model
 
-- **Service**: sessions, commands, app lifecycle, journals. `ListDevices` is a view.
-- **Exclusive use** = the per-serial file lock, held by a live session. `Open` may wait for it.
-- **Roles / device choice / ordering** = the client. Runners open in sorted serial order and
+- **Daemon**: client connections, attached devices, commands, app lifecycle, journals. `ListDevices` is a view.
+- **Exclusive use** = the per-serial file lock, held by a live device session. `Attach` may wait for it.
+- **Roles / device choice / ordering** = the client. Runners attach in sorted serial order and
   skip a test when the inventory has fewer usable devices than roles.
 - **Deadlock freedom** comes from lock ordering, not from an atomic multi-acquire.
 - `tap.acquireTimeoutSeconds` / `tap_acquire_timeout` keep their names; they now bound the wait
-  in `Open` for a device another session holds.
+  in `Attach` for a device another session holds.

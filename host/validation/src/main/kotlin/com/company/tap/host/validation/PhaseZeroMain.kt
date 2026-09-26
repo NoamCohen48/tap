@@ -607,7 +607,7 @@ private suspend fun runFixtureChecks(
                 ),
                 timeoutMs = 30_000,
             )
-        check(!composeEnd.ok && composeEnd.errorCode == ErrorCode.NOT_FOUND && composeEnd.detail == ErrorDetail.END_REACHED) {
+        check(!composeEnd.ok && composeEnd.errorCode == ErrorCode.INDETERMINATE && composeEnd.detail == ErrorDetail.END_REACHED) {
             "Compose end detection failed: $composeEnd"
         }
 
@@ -634,7 +634,7 @@ private suspend fun runFixtureChecks(
                 ScrollUntil(Selector.text("Missing View item"), container = viewList, maxScrolls = 10),
                 timeoutMs = 45_000,
             )
-        check(!viewEnd.ok && viewEnd.errorCode == ErrorCode.NOT_FOUND && viewEnd.detail == ErrorDetail.END_REACHED) {
+        check(!viewEnd.ok && viewEnd.errorCode == ErrorCode.INDETERMINATE && viewEnd.detail == ErrorDetail.END_REACHED) {
             "View end detection failed: $viewEnd"
         }
         val scrollAtEnd = client.execute(Scroll(viewList, Direction.DOWN))
@@ -894,10 +894,7 @@ private suspend fun runSessionFencingScenario(
         )
     var cleanupStarted = false
     try {
-        val duplicate = session.client.executeValidationRequest(requestId = 1)
-        check(!duplicate.ok && duplicate.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
-            "Same-generation duplicate request was not rejected: $duplicate"
-        }
+        // ID 1 was consumed by the startup Health check.
         val oldGeneration =
             session.client.executeValidationRequest(
                 requestId = 2,
@@ -905,10 +902,6 @@ private suspend fun runSessionFencingScenario(
             )
         check(!oldGeneration.ok && oldGeneration.errorCode == ErrorCode.SESSION_MISMATCH) {
             "Old-generation request was not rejected: $oldGeneration"
-        }
-        val stale = session.client.executeValidationRequest(requestId = 2)
-        check(!stale.ok && stale.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
-            "Consumed request ID was not rejected: $stale"
         }
         val unsupported =
             session.client.executeRawValidationRequest(
@@ -918,11 +911,18 @@ private suspend fun runSessionFencingScenario(
         check(!unsupported.ok && unsupported.errorCode == ErrorCode.UNSUPPORTED) {
             "Unknown operation was not rejected: $unsupported"
         }
-        val unsupportedReplay = session.client.executeValidationRequest(requestId = 3)
-        check(!unsupportedReplay.ok && unsupportedReplay.errorCode == ErrorCode.DUPLICATE_OR_STALE) {
-            "Unknown operation request ID was reusable: $unsupportedReplay"
-        }
         runCancellationChecks(serial, session.client)
+        // A reused ID (here one consumed by the rejected payload) is a protocol violation: the
+        // driver sends CLOSE with a DUPLICATE_OR_STALE reason instead of answering on that ID.
+        val duplicate =
+            try {
+                session.client.executeValidationRequest(requestId = 3)
+            } catch (closed: Exception) {
+                closed
+            }
+        check(duplicate is Exception && ErrorCode.DUPLICATE_OR_STALE.name in duplicate.message.orEmpty()) {
+            "Consumed request ID did not close the connection: $duplicate"
+        }
         cleanupStarted = true
         return cleanupFaultSession(adb, serial, bootId, session, store)
     } finally {
@@ -2231,7 +2231,7 @@ private suspend fun assertInvalidAuthenticationWithRetry(
             runCatching {
                 DriverClient.connect(hostPort, sessionId, generation, wrongSecret).close()
             }.exceptionOrNull()
-        if (failure?.message == "UNAUTHENTICATED") return
+        if (failure is DriverHandshakeException && failure.message.orEmpty().endsWith(": UNAUTHENTICATED")) return
         lastFailure = failure
         delay(25)
     }

@@ -1,5 +1,6 @@
 """Exception hierarchy. Driver failures arrive as data (CommandResult.error) and become
-CommandError; service-level failures arrive as gRPC status codes and are mapped in service.py."""
+CommandError; server-level failures arrive as gRPC status codes and are mapped in server.py."""
+
 from __future__ import annotations
 
 import enum
@@ -10,7 +11,7 @@ from . import _gen as pb
 # and the Kotlin SDK (e.g. ErrorCode.AMBIGUOUS).
 ErrorCode = enum.Enum(  # type: ignore[misc]
     "ErrorCode",
-    {name[len("ERR_"):]: value for name, value in pb.ErrorCode.items() if value != 0},
+    {name[len("ERR_") :]: value for name, value in pb.ErrorCode.items() if value != 0},
 )
 
 
@@ -18,8 +19,8 @@ class TapError(Exception):
     """Base class for everything this package raises deliberately."""
 
 
-class ServiceError(TapError):
-    """The host service rejected or failed a call (unknown connection/session, bad argument, ...)."""
+class ServerError(TapError):
+    """The host server rejected or failed a call (unknown connection/session, bad argument, ...)."""
 
     def __init__(self, code: str, details: str):
         super().__init__(f"{code}: {details}")
@@ -31,10 +32,18 @@ class CommandError(TapError):
     """A driver command's outcome was ``error``. ``code`` is an ErrorCode; ``detail`` refines it
     (e.g. NOT_FOUND/END_REACHED); TRANSPORT_LOST/INDETERMINATE carry the transmission state."""
 
-    def __init__(self, result: pb.CommandResult, operation: str, serial: str, selector: str | None):
-        self.code = ErrorCode(result.error.code)
+    def __init__(
+        self,
+        result: pb.CommandResult,
+        operation: str,
+        serial: str,
+        selector: str | None,
+    ):
+        self.code = ErrorCode(result.error.code)  # type: ignore[operator]
         self.detail = result.error.detail if result.error.HasField("detail") else None
-        self.driver_message = result.error.message if result.error.HasField("message") else None
+        self.driver_message = (
+            result.error.message if result.error.HasField("message") else None
+        )
         self.operation = operation
         self.serial = serial
         self.selector = selector
@@ -54,7 +63,14 @@ class WaitTimeoutError(TapError):
     """A condition did not hold within its timeout; the message names the device, the
     condition and the last observation so a log line alone is diagnosable."""
 
-    def __init__(self, description: str, serial: str, elapsed_ms: int, polls: int = 0, last: str | None = None):
+    def __init__(
+        self,
+        description: str,
+        serial: str,
+        elapsed_ms: int,
+        polls: int = 0,
+        last: str | None = None,
+    ):
         self.description = description
         self.serial = serial
         self.elapsed_ms = elapsed_ms
@@ -62,7 +78,9 @@ class WaitTimeoutError(TapError):
         self.last_observation = last
         suffix = f"; last observed: {last}" if last else ""
         polled = f" after {polls} polls" if polls else ""
-        super().__init__(f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{suffix}")
+        super().__init__(
+            f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{suffix}"
+        )
 
 
 class AppLifecycleError(TapError):

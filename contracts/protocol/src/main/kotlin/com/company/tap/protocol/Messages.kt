@@ -6,6 +6,20 @@ const val FRAMING_VERSION: Byte = 1
 const val MAX_CONTROL_PAYLOAD = 1024 * 1024
 const val MAX_REQUEST_TIMEOUT_MS = 120_000L
 const val MAX_TEXT_INPUT_CHARS = 256
+
+/**
+ * How long the driver lets a running command overrun its deadline before its watchdog poisons
+ * the session and answers `INDETERMINATE`/`DRIVER_UNHEALTHY` (instrumentation argument
+ * `tapUninterruptibleGraceMs` overrides it on the driver).
+ */
+const val DRIVER_UNINTERRUPTIBLE_GRACE_MS = 10_000L
+
+/**
+ * Host response budget beyond a command's own timeout. It must exceed
+ * [DRIVER_UNINTERRUPTIBLE_GRACE_MS] so the driver's own verdict on a late command (plus watchdog
+ * poll and transit) arrives before the host gives up and poisons a healthy session.
+ */
+const val HOST_RESPONSE_PADDING_MS = DRIVER_UNINTERRUPTIBLE_GRACE_MS + 5_000L
 const val HOST_BUILD_ID = ENGINE_VERSION
 const val DRIVER_APK_BUILD_ID = ENGINE_VERSION
 const val DRIVER_TEST_APK_BUILD_ID = ENGINE_VERSION

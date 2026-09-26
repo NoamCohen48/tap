@@ -13,11 +13,17 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
+/** The driver's application package (a shell APK: `versionName` = the engine version). */
 const val DRIVER_PACKAGE = "com.company.tap.driver"
-const val DRIVER_TEST_RUNNER = "$DRIVER_PACKAGE.test/androidx.test.runner.AndroidJUnitRunner"
+
+/** The driver's instrumentation package, which carries the driver code. AGP stamps no version
+ * on it (`versionName=null`, `versionCode=0`); its build is what the handshake reports. */
+const val DRIVER_TEST_PACKAGE = "$DRIVER_PACKAGE.test"
+const val DRIVER_TEST_RUNNER = "$DRIVER_TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner"
 const val DEVICE_PORT = 27183
 val DEVICE_PORT_RANGE = 27183..27187
 const val PERMISSION_CONTROLLER_PACKAGE = "com.google.android.permissioncontroller"
@@ -115,8 +121,8 @@ suspend fun startDriverWithRetry(
 ): RunningInstrumentation {
     var lastOutput = ""
     for (devicePort in DEVICE_PORT_RANGE) {
-        check(overallDeadlineNanos == null || System.nanoTime() < overallDeadlineNanos) {
-            "Driver startup exceeded its containing deadline"
+        if (overallDeadlineNanos != null && System.nanoTime() >= overallDeadlineNanos) {
+            throw DriverStartException("Driver startup on $serial exceeded its containing deadline")
         }
         onStarting(devicePort)
         lateinit var process: Process
@@ -127,42 +133,42 @@ suspend fun startDriverWithRetry(
             process =
                 withContext(Dispatchers.IO) {
                     processStarter.start(
-                        listOf(
-                            adb.executable,
-                            "-s",
-                            serial,
-                            "shell",
-                            "am",
-                            "instrument",
-                            "-w",
-                            "-r",
-                            "-e",
-                            "class",
-                            "com.company.tap.driver.TapDriverServerTest",
-                            "-e",
-                            "tapSession",
-                            sessionId,
-                            "-e",
-                            "tapGeneration",
-                            generation.toString(),
-                            "-e",
-                            "tapSecret",
-                            encodedSecret,
-                            "-e",
-                            "tapPort",
-                            devicePort.toString(),
-                            "-e",
-                            "tapAutPackage",
-                            autPackage,
-                            "-e",
-                            "tapSystemPackages",
-                            allowedSystemPackages.joinToString(","),
-                            "-e",
-                            "tapSyncAuthority",
-                            syncAuthority,
-                            *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
-                            DRIVER_TEST_RUNNER,
-                        ),
+                        listOf(adb.executable, "-s", serial, "shell") +
+                            // `adb shell` joins its arguments and the device `sh` re-parses them,
+                            // so every token is shell-quoted: a value holding `;`, `$` or a space
+                            // stays one argument instead of becoming a command.
+                            listOf(
+                                "am",
+                                "instrument",
+                                "-w",
+                                "-r",
+                                "-e",
+                                "class",
+                                "com.company.tap.driver.TapDriverServerTest",
+                                "-e",
+                                "tapSession",
+                                sessionId,
+                                "-e",
+                                "tapGeneration",
+                                generation.toString(),
+                                "-e",
+                                "tapSecret",
+                                encodedSecret,
+                                "-e",
+                                "tapPort",
+                                devicePort.toString(),
+                                "-e",
+                                "tapAutPackage",
+                                autPackage,
+                                "-e",
+                                "tapSystemPackages",
+                                allowedSystemPackages.joinToString(","),
+                                "-e",
+                                "tapSyncAuthority",
+                                syncAuthority,
+                                *driverArguments.flatMap { (key, value) -> listOf("-e", key, value) }.toTypedArray(),
+                                DRIVER_TEST_RUNNER,
+                            ).map(::shellQuote),
                     )
                 }
         }
@@ -213,17 +219,17 @@ suspend fun startDriverWithRetry(
         // driver reaches the port-occupancy diagnosis.
         attemptCleanupError?.let { throw it }
         lastOutput = synchronized(output) { output.toString() }
-        check("already registered" !in lastOutput) {
-            "Another UiAutomation instrumentation session is active on $serial"
+        if ("already registered" in lastOutput) {
+            throw DriverStartException("Another UiAutomation instrumentation session is active on $serial")
         }
-        check("BindException" in lastOutput && "EADDRINUSE" in lastOutput) {
-            "Driver failed before readiness for a reason other than port occupancy: $lastOutput"
+        if ("BindException" !in lastOutput || "EADDRINUSE" !in lastOutput) {
+            throw DriverStartException("Driver on $serial failed before readiness for a reason other than port occupancy: $lastOutput")
         }
-        check(isPortListening(adb, serial, devicePort)) {
-            "Driver reported EADDRINUSE but the port was free after verified driver death"
+        if (!isPortListening(adb, serial, devicePort)) {
+            throw DriverStartException("Driver on $serial reported EADDRINUSE but the port was free after verified driver death")
         }
     }
-    error("Driver failed to bind any reserved port: $lastOutput")
+    throw DriverStartException("Driver on $serial failed to bind any reserved port: $lastOutput")
 }
 
 /**
@@ -247,15 +253,15 @@ private suspend fun cleanupAttempt(
         }
         withContext(Dispatchers.IO) {
             cleanupStep({ failure = failure ?: it }) {
-                check(process.waitFor(3, TimeUnit.SECONDS)) {
-                    "Instrumentation child survived failed startup cleanup"
+                if (!process.waitFor(3, TimeUnit.SECONDS)) {
+                    throw DeviceQuarantinedException(serial, "Instrumentation child survived failed startup cleanup on $serial")
                 }
             }
         }
         closeProcessStreams(process) { failure = failure ?: it }
         val drainCompleted = withTimeoutOrNull(1_000) { outputDrain.join(); true } == true
         if (!drainCompleted || !outputDrain.isCompleted) {
-            failure = failure ?: IllegalStateException("Instrumentation output drain survived failed startup cleanup")
+            failure = failure ?: DeviceQuarantinedException(serial, "Instrumentation output drain survived failed startup cleanup on $serial")
         }
         drainScope.cancel()
         failure
@@ -274,15 +280,15 @@ suspend fun cleanupInstrumentation(
     }
     withContext(Dispatchers.IO) {
         cleanupStep({ driverFailure = driverFailure ?: it }) {
-            check(running.process.waitFor(3, TimeUnit.SECONDS)) {
-                "Instrumentation child survived cleanup"
+            if (!running.process.waitFor(3, TimeUnit.SECONDS)) {
+                throw DeviceQuarantinedException(serial, "Instrumentation child survived cleanup on $serial")
             }
         }
     }
     closeProcessStreams(running.process) { driverFailure = driverFailure ?: it }
     val drainCompleted = withTimeoutOrNull(1_000) { running.outputDrain.join(); true } == true
     if (!drainCompleted || !running.outputDrain.isCompleted) {
-        driverFailure = driverFailure ?: IllegalStateException("Instrumentation output drain survived cleanup")
+        driverFailure = driverFailure ?: DeviceQuarantinedException(serial, "Instrumentation output drain survived cleanup on $serial")
     }
     running.drainScope.cancel()
     driverFailure?.let { throw it }
@@ -316,12 +322,13 @@ suspend fun recoverJournal(
                     devicePort = DEVICE_PORT,
                 ),
             )
-            throw IllegalStateException("Corrupt journal quarantined; no forwards were removed", error)
+            throw CorruptJournalException(serial, "Corrupt journal on $serial quarantined; no forwards were removed", error)
         }
     if (record == null) {
         forceStopDriverAndVerify(adb, serial)
         return null
     }
+    // Both are enforced by SessionJournalStore.read's validation; a violation here is a bug.
     check(record.serial == serial) { "Journal serial does not match leased device" }
     check(record.version == 1) { "Unsupported journal version: ${record.version}" }
     if (record.state == JournalState.QUARANTINED) {
@@ -331,17 +338,21 @@ suspend fun recoverJournal(
         ) {
             return record
         }
-        error("Device is quarantined by its session journal")
+        throw DeviceQuarantinedException(
+            serial,
+            "Device $serial is quarantined by its session journal" +
+                (record.quarantineReason?.let { ": $it" } ?: ""),
+        )
     }
     if (record.devicePort !in DEVICE_PORT_RANGE) {
         store.write(record.copy(state = JournalState.QUARANTINED))
-        error("Journal device port is outside the reserved framework range")
+        throw DeviceQuarantinedException(serial, "Journal device port on $serial is outside the reserved framework range; device quarantined")
     }
 
     if (record.state != JournalState.CLOSED) {
         if (record.bootId != bootId) {
             store.write(record.copy(state = JournalState.QUARANTINED))
-            error("Active journal boot identity changed; device quarantined")
+            throw DeviceQuarantinedException(serial, "Active journal boot identity on $serial changed; device quarantined")
         }
         forceStopDriverAndVerify(adb, serial, record.driverPid, record.driverStartToken)
         if (record.hostPort != null) {
@@ -354,7 +365,7 @@ suspend fun recoverJournal(
         }
         if (adb.bootId(serial) != bootId) {
             store.write(record.copy(state = JournalState.QUARANTINED))
-            error("Boot identity changed during recovery; device quarantined")
+            throw DeviceQuarantinedException(serial, "Boot identity on $serial changed during recovery; device quarantined")
         }
         val closed =
             record.copy(
@@ -388,7 +399,7 @@ suspend fun forceStopDriverAndVerify(
         if (packageGone && oldIdentityGone) return
         delay(50)
     }
-    error("Driver process survived package force-stop")
+    throw DriverStartException("Driver process on $serial survived package force-stop")
 }
 
 private suspend fun processIdentityIsGone(
@@ -408,7 +419,7 @@ suspend fun processStartToken(
     pid: Int,
 ): String =
     when (val stat = adb.processStat(serial, pid)) {
-        Adb.ProcessStat.Gone -> error("Process $pid is not observable")
+        Adb.ProcessStat.Gone -> throw DriverStartException("Process $pid on $serial exited before its start token was read")
         is Adb.ProcessStat.Live -> stat.startToken
     }
 
@@ -419,12 +430,12 @@ suspend fun removeExactForward(
     devicePort: Int,
 ) {
     val existing = adb.forwards(serial).firstOrNull { it.hostPort == hostPort } ?: return
-    check(existing.devicePort == devicePort) {
-        "Journal forward tcp:$hostPort does not target expected tcp:$devicePort"
+    if (existing.devicePort != devicePort) {
+        throw DeviceQuarantinedException(serial, "Journal forward tcp:$hostPort on $serial does not target expected tcp:$devicePort")
     }
     adb.removeForward(serial, hostPort)
-    check(adb.forwards(serial).none { it.hostPort == hostPort }) {
-        "Forward tcp:$hostPort survived exact removal"
+    if (adb.forwards(serial).any { it.hostPort == hostPort }) {
+        throw DeviceQuarantinedException(serial, "Forward tcp:$hostPort on $serial survived exact removal")
     }
 }
 
@@ -451,10 +462,16 @@ suspend fun observeProcess(
         }
         delay(50)
     }
-    error(lastFailure)
+    throw AppLifecycleException("$lastFailure on $serial")
 }
 
-/** Connects and authenticates, retrying until the driver accepts or the deadline passes. */
+/**
+ * Connects and authenticates, retrying until the driver accepts or the deadline passes. Only
+ * transient failures are retried: a refused connect or an I/O failure before the driver's
+ * `CHALLENGE` (a forward whose driver is not listening yet accepts and then closes). A
+ * [DriverHandshakeException] (authentication, identity or version mismatch), any other failure,
+ * and cancellation propagate at once.
+ */
 suspend fun connectWithRetry(
     hostPort: Int,
     sessionId: String,
@@ -473,10 +490,10 @@ suspend fun connectWithRetry(
     while (System.nanoTime() < deadline) {
         try {
             return DriverClient.connect(hostPort, sessionId, generation, secret, overallDeadlineNanos, serial, heartbeatIntervalMs)
-        } catch (error: Throwable) {
-            lastError = error
+        } catch (transient: IOException) {
+            lastError = transient
             delay(100)
         }
     }
-    throw IllegalStateException("Driver did not become ready", lastError)
+    throw DriverStartException("Driver did not accept a connection before the deadline", lastError)
 }

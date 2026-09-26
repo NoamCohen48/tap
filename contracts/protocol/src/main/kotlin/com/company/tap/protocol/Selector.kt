@@ -78,12 +78,19 @@ sealed interface Node {
     /** A string property compared against [value] under [mode]. */
     @Serializable
     @SerialName("match")
-    data class Match(val property: TextProperty, val value: String, val mode: MatchMode = MatchMode.EXACT) : Node
+    data class Match(
+        val property: TextProperty,
+        val value: String,
+        val mode: MatchMode = MatchMode.EXACT,
+    ) : Node
 
     /** A boolean property that must equal [value]. */
     @Serializable
     @SerialName("flag")
-    data class Flag(val property: NodeFlag, val value: Boolean = true) : Node
+    data class Flag(
+        val property: NodeFlag,
+        val value: Boolean = true,
+    ) : Node
 
     /**
      * Resource identity. With [packageName] this is an Android resource ID (`package:id/name`);
@@ -92,22 +99,32 @@ sealed interface Node {
      */
     @Serializable
     @SerialName("resource")
-    data class Resource(val name: String, val packageName: String? = null) : Node
+    data class Resource(
+        val name: String,
+        val packageName: String? = null,
+    ) : Node
 
     /** The [relation] of the node must satisfy [node]. */
     @Serializable
     @SerialName("related")
-    data class Related(val relation: Relation, val node: Node) : Node
+    data class Related(
+        val relation: Relation,
+        val node: Node,
+    ) : Node
 
     /** Conjunction: every operand must hold. At least two operands. */
     @Serializable
     @SerialName("all_of")
-    data class AllOf(val nodes: List<Node>) : Node
+    data class AllOf(
+        val nodes: List<Node>,
+    ) : Node
 
     /** Disjunction: at least one operand must hold. At least two operands. */
     @Serializable
     @SerialName("any_of")
-    data class AnyOf(val nodes: List<Node>) : Node
+    data class AnyOf(
+        val nodes: List<Node>,
+    ) : Node
 
     /** The operands of this node as one conjunction: nested [AllOf]s flattened, anything else itself. */
     val conjunction: List<Node>
@@ -115,33 +132,58 @@ sealed interface Node {
 
     /** The direct sub-nodes of this node. */
     val children: List<Node>
-        get() = when (this) {
-            is Match, is Flag, is Resource -> emptyList()
-            is Related -> listOf(node)
-            is AllOf -> nodes
-            is AnyOf -> nodes
-        }
+        get() =
+            when (this) {
+                is Match, is Flag, is Resource -> emptyList()
+                is Related -> listOf(node)
+                is AllOf -> nodes
+                is AnyOf -> nodes
+            }
 
     companion object {
-        fun text(value: String, mode: MatchMode = MatchMode.EXACT): Node = Match(TextProperty.TEXT, value, mode)
-        fun contentDescription(value: String, mode: MatchMode = MatchMode.EXACT): Node =
-            Match(TextProperty.CONTENT_DESCRIPTION, value, mode)
-        fun hint(value: String, mode: MatchMode = MatchMode.EXACT): Node = Match(TextProperty.HINT, value, mode)
-        fun className(value: String, mode: MatchMode = MatchMode.EXACT): Node = Match(TextProperty.CLASS_NAME, value, mode)
+        fun text(
+            value: String,
+            mode: MatchMode = MatchMode.EXACT,
+        ): Node = Match(TextProperty.TEXT, value, mode)
+
+        fun contentDescription(
+            value: String,
+            mode: MatchMode = MatchMode.EXACT,
+        ): Node = Match(TextProperty.CONTENT_DESCRIPTION, value, mode)
+
+        fun hint(
+            value: String,
+            mode: MatchMode = MatchMode.EXACT,
+        ): Node = Match(TextProperty.HINT, value, mode)
+
+        fun className(
+            value: String,
+            mode: MatchMode = MatchMode.EXACT,
+        ): Node = Match(TextProperty.CLASS_NAME, value, mode)
+
         fun parent(node: Node): Node = Related(Relation.PARENT, node)
+
         fun ancestor(node: Node): Node = Related(Relation.ANCESTOR, node)
+
         fun child(node: Node): Node = Related(Relation.CHILD, node)
+
         fun descendant(node: Node): Node = Related(Relation.DESCENDANT, node)
 
         /** A conjunction, normalised: nested [AllOf]s are flattened and a single operand is returned as is. */
         fun allOf(nodes: List<Node>): Node = combine(nodes, ::AllOf) { it is AllOf }
+
         fun allOf(vararg nodes: Node): Node = allOf(nodes.toList())
 
         /** A disjunction, normalised: nested [AnyOf]s are flattened and a single operand is returned as is. */
         fun anyOf(nodes: List<Node>): Node = combine(nodes, ::AnyOf) { it is AnyOf }
+
         fun anyOf(vararg nodes: Node): Node = anyOf(nodes.toList())
 
-        private inline fun combine(nodes: List<Node>, build: (List<Node>) -> Node, same: (Node) -> Boolean): Node {
+        private inline fun combine(
+            nodes: List<Node>,
+            build: (List<Node>) -> Node,
+            same: (Node) -> Boolean,
+        ): Node {
             require(nodes.isNotEmpty()) { "A combinator needs at least one node" }
             val flat = nodes.flatMap { if (same(it)) it.children else listOf(it) }
             return flat.singleOrNull() ?: build(flat)
@@ -168,7 +210,9 @@ sealed interface Scope {
     /** The focused window of an allowlisted system package (permission dialogs). */
     @Serializable
     @SerialName("system")
-    data class System(val packageName: String) : Scope {
+    data class System(
+        val packageName: String,
+    ) : Scope {
         init {
             require(packageName.isNotBlank()) { "System scope needs a package name" }
         }
@@ -198,7 +242,9 @@ sealed interface Pick {
     /** The zero-based [index]-th match in accessibility order; `NOT_FOUND` when absent. */
     @Serializable
     @SerialName("at")
-    data class At(val index: Int) : Pick {
+    data class At(
+        val index: Int,
+    ) : Pick {
         init {
             require(index >= 0) { "Match index must be >= 0" }
         }
@@ -212,14 +258,22 @@ data class Selector(
     val pick: Pick = Pick.ExactlyOne,
 ) {
     companion object {
-        fun text(value: String, mode: MatchMode = MatchMode.EXACT): Selector = Selector(Node.text(value, mode))
+        fun text(
+            value: String,
+            mode: MatchMode = MatchMode.EXACT,
+        ): Selector = Selector(Node.text(value, mode))
 
-        fun contentDescription(value: String, mode: MatchMode = MatchMode.EXACT): Selector =
-            Selector(Node.contentDescription(value, mode))
+        fun contentDescription(
+            value: String,
+            mode: MatchMode = MatchMode.EXACT,
+        ): Selector = Selector(Node.contentDescription(value, mode))
 
         fun rawResource(name: String): Selector = Selector(Node.Resource(name))
 
-        fun androidResource(packageName: String, name: String): Selector = Selector(Node.Resource(name, packageName))
+        fun androidResource(
+            packageName: String,
+            name: String,
+        ): Selector = Selector(Node.Resource(name, packageName))
     }
 
     fun inSystemPackage(packageName: String): Selector = copy(scope = Scope.System(packageName))

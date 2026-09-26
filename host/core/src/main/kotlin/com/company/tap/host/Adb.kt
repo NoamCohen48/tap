@@ -45,12 +45,13 @@ class AdbReapUncertainException(
     val command: List<String>,
     val serial: String?,
     cause: Throwable? = null,
-) : IllegalStateException(message, cause)
+) : TapHostException(message, cause)
 
 /**
- * A command that never started because another serial owns this shared runner's residual
- * capacity. Temporary and non-poisoning: the caller did not mutate (no process was started),
- * so it must neither quarantine nor poison its session — it retries later or on another runner.
+ * A command that never started because its serial's lane (or, when every global slot is held
+ * by unresolved residuals, the whole runner) is gated by an unreaped residual. Temporary and
+ * non-poisoning: the caller did not mutate (no process was started), so it must neither
+ * quarantine nor poison its session — it retries later.
  * Carries the attempted serial plus the blocking residual's serial/command for diagnostics.
  * Distinct from [AdbReapUncertainException], which means THIS command started and left an
  * uncertain residual and must poison/quarantine.
@@ -60,7 +61,7 @@ class AdbRunnerGatedException(
     val attemptSerial: String?,
     val blockingSerial: String?,
     val blockingCommand: List<String>,
-) : IllegalStateException(message)
+) : TapHostException(message)
 
 /**
  * Every ADB interaction of the host, one typed method per command. All device commands are
@@ -91,13 +92,24 @@ open class Adb(
     )
 
     // Admission state, guarded by [admissionMutex]. `inFlight` holds one token per admitted
-    // operation from before process start through proven reap; a reap-uncertain operation keeps
-    // its token by moving it to `residuals` until its drain completes and its process is dead.
-    // Every token is a monotonic id released exactly once by its owner, so a stale completion can
-    // never free a newer holder (no ABA): prune/remove match by token, never by emptiness or index.
+    // operation (with its serial lane; null for serial-less commands such as `adb devices`) from
+    // before process start through proven reap; a reap-uncertain operation keeps its token by
+    // moving it to `residuals` until its drain completes and its process is dead. Every token is
+    // a monotonic id released exactly once by its owner, so a stale completion can never free a
+    // newer holder (no ABA): prune/remove match by token, never by emptiness or index.
     private var nextAdmissionId = 0L
     private val inFlight = HashMap<Long, String?>()
     private val reapResiduals = LinkedHashMap<Long, ReapResidual>()
+
+    /** Completed and replaced (under [admissionMutex]) whenever an in-flight token is released
+     * or becomes a residual, so a waiter that saw a full lane suspends instead of polling. A
+     * waiter captures it in the same critical section that saw the lane full: no lost wake-up. */
+    private var admissionChanged = CompletableDeferred<Unit>()
+
+    private fun signalAdmissionChanged() {
+        admissionChanged.complete(Unit)
+        admissionChanged = CompletableDeferred()
+    }
 
     /** Test-only probe invoked when a caller enters the admission wait for an in-flight
      * permit, so a test can prove the waiter is parked before cancelling it. Null in production. */
@@ -123,7 +135,7 @@ open class Adb(
         }
     }
 
-    /** Test visibility: whether this runner currently gates new starts on an unreaped drain. */
+    /** Test visibility: whether any lane currently holds an unreaped drain or a live operation. */
     internal suspend fun isReapGatedForTest(): Boolean =
         admissionMutex.withLock {
             pruneCompletedResiduals()
@@ -154,39 +166,52 @@ open class Adb(
 
     /**
      * Linearized admission: the gate check and the token reservation are one mutex step, so
-     * concurrent callers can never both observe an empty gate and both start. A residual-held
-     * permit rejects immediately with [AdbRunnerGatedException] (temporary, non-poisoning: the
-     * residual may live long, so waiting would hang). An in-flight-held permit waits cancellably
-     * and re-checks, so a queued caller cancelled before admission never starts a process; once
-     * the holder's reap leaves a residual, waiters observe it and reject rather than pile on.
+     * concurrent callers can never both observe a free slot and both start. Capacity is per
+     * serial lane ([ADB_PERMITS_PER_SERIAL]: one device's commands never overlap, and one
+     * device's residual never blocks another) under a global cap ([ADB_GLOBAL_PERMITS]) that
+     * counts in-flight and residual tokens alike, so abandoned processes/drains stay bounded.
+     *
+     * A residual in the caller's own lane rejects immediately with [AdbRunnerGatedException]
+     * (temporary, non-poisoning: the residual may live long, so waiting would hang), as does a
+     * global cap held entirely by residuals. A slot held by a live in-flight operation waits
+     * cancellably for its release or conversion and re-checks, so a queued caller cancelled
+     * before admission never starts a process; once the holder's reap leaves a residual,
+     * waiters in that lane observe it and reject rather than pile on.
      */
     private suspend fun admit(attemptSerial: String?): Long {
         while (true) {
-            admissionMutex.withLock {
-                pruneCompletedResiduals()
-                if (reapResiduals.isNotEmpty()) {
-                    val blocking = reapResiduals.values.first()
-                    throw AdbRunnerGatedException(
-                        "ADB runner gated by unreaped drain (${blocking.command.joinToString(" ")}" +
-                            " on ${blocking.serial ?: "no serial"}); refusing start for ${attemptSerial ?: "no serial"}",
-                        attemptSerial,
-                        blocking.serial,
-                        blocking.command,
-                    )
+            val changed =
+                admissionMutex.withLock {
+                    pruneCompletedResiduals()
+                    reapResiduals.values.firstOrNull { it.serial == attemptSerial }?.let { throw gated(attemptSerial, it) }
+                    val laneBusy = inFlight.values.count { it == attemptSerial } >= ADB_PERMITS_PER_SERIAL
+                    val globalBusy = inFlight.size + reapResiduals.size >= ADB_GLOBAL_PERMITS
+                    if (!laneBusy && !globalBusy) {
+                        val token = nextAdmissionId++
+                        inFlight[token] = attemptSerial
+                        return token
+                    }
+                    if (!laneBusy && inFlight.isEmpty()) throw gated(attemptSerial, reapResiduals.values.first())
+                    admissionChanged
                 }
-                if (inFlight.size < ADB_RUNNER_PERMITS) {
-                    val token = nextAdmissionId++
-                    inFlight[token] = attemptSerial
-                    return token
-                }
-            }
-            // Permit held by a live in-flight operation, not a residual: wait cancellably for the
-            // holder to release or convert, then re-check. Cancellation propagates before start.
+            // A slot is held by a live in-flight operation, not a residual: suspend until some
+            // holder releases or converts, then re-check. Cancellation propagates before start.
             currentCoroutineContext().ensureActive()
             admissionWaitProbeForTest?.invoke()
-            delay(10)
+            changed.await()
         }
     }
+
+    private fun gated(
+        attemptSerial: String?,
+        blocking: ReapResidual,
+    ) = AdbRunnerGatedException(
+        "ADB runner gated by unreaped drain (${blocking.command.joinToString(" ")}" +
+            " on ${blocking.serial ?: "no serial"}); refusing start for ${attemptSerial ?: "no serial"}",
+        attemptSerial,
+        blocking.serial,
+        blocking.command,
+    )
 
     /**
      * Releases one exact admission token. Runs NonCancellable: the caller is typically already
@@ -197,7 +222,10 @@ open class Adb(
     private suspend fun releaseAdmission(token: Long) {
         admissionBookkeepingProbeForTest?.invoke()
         withContext(NonCancellable) {
-            admissionMutex.withLock { inFlight.remove(token) }
+            admissionMutex.withLock {
+                inFlight.remove(token)
+                signalAdmissionChanged()
+            }
         }
     }
 
@@ -221,6 +249,7 @@ open class Adb(
             admissionMutex.withLock {
                 inFlight.remove(token)
                 reapResiduals[token] = ReapResidual(token, serial, command, process, drain, executor, scope)
+                signalAdmissionChanged()
             }
         }
     }
@@ -253,14 +282,14 @@ open class Adb(
         timeoutMs: Long = 30_000,
     ): Result = execResult(serial, *arguments, timeoutMs = timeoutMs)
 
-    /** Runs the command and returns its output; a non-zero exit is an [IllegalStateException]. */
+    /** Runs the command and returns its output; a non-zero exit is an [AdbCommandException]. */
     protected suspend fun exec(
         serial: String,
         vararg arguments: String,
         timeoutMs: Long = 30_000,
     ): String {
         val result = execResult(serial, *arguments, timeoutMs = timeoutMs)
-        check(result.exitCode == 0) { "ADB command failed: ${result.output}" }
+        if (result.exitCode != 0) throw AdbCommandException(serial, arguments.toList(), result.exitCode, result.output)
         return result.output
     }
 
@@ -278,26 +307,25 @@ open class Adb(
     }
 
     /** Serials of devices currently in the `device` state (not offline/unauthorized). */
-    open suspend fun devices(timeoutMs: Long = 10_000): List<String> {
+    open suspend fun devices(timeoutMs: Long = 10_000): List<String> =
+        deviceStates(timeoutMs).filter { it.state == AdbDeviceState.ONLINE }.map { it.serial }
+
+    /** Every device `adb devices` lists, whatever its state, so a caller can tell an unplugged
+     * device from one that waits for USB authorization or has gone offline. */
+    open suspend fun deviceStates(timeoutMs: Long = 10_000): List<AdbDevice> {
         val (exitCode, text) =
             runAdbProcess(listOf(executable, "devices"), timeoutMs) { "adb devices timed out" }
-        check(exitCode == 0) { "adb devices failed: $text" }
-        return text
-            .lineSequence()
-            .drop(1)
-            .map { it.trim().split(Regex("\\s+")) }
-            .filter { it.size >= 2 && it[1] == "device" }
-            .map { it[0] }
-            .toList()
+        if (exitCode != 0) throw AdbCommandException(null, listOf("devices"), exitCode, text)
+        return parseAdbDevices(text)
     }
 
     /**
      * Runs one process with a locally owned deadline and reaps it in all outcomes. The local
      * timeout is a null, never an exception: an outer cancellation propagates as cancellation
-     * instead of being converted into the timeout's [IllegalStateException].
+     * instead of being converted into the timeout's [AdbTimeoutException].
      *
-     * Admission holds one of [ADB_RUNNER_PERMITS] tokens from before process start through proven
-     * reap. The empty-gate check and the reservation are one mutex step, so concurrent starters
+     * Admission holds one token of its serial lane ([ADB_PERMITS_PER_SERIAL], within
+     * [ADB_GLOBAL_PERMITS]) from before process start through proven reap. The empty-gate check and the reservation are one mutex step, so concurrent starters
      * can never both observe an empty gate; a caller rejected here never started a process and
      * gets the temporary [AdbRunnerGatedException], never the uncertain [AdbReapUncertainException].
      * The output drain lives in a locally owned scope on a dedicated daemon thread, never as a
@@ -346,11 +374,11 @@ open class Adb(
                         while (process.isAlive) delay(10)
                         true
                     }
-                check(exited == true) { timeoutMessage() }
+                if (exited != true) throw AdbTimeoutException(serialOf(command), command, timeoutMessage())
                 withContext(Dispatchers.IO) { process.waitFor(5, TimeUnit.SECONDS) }
                 val text =
                     withTimeoutOrNull(5_000) { drain.await() }
-                        ?: throw IllegalStateException("ADB output drain timed out: ${command.joinToString(" ")}")
+                        ?: throw AdbTimeoutException(serialOf(command), command, "ADB output drain timed out: ${command.joinToString(" ")}")
                 outcome = process.exitValue() to text
             } catch (error: Throwable) {
                 primary = error
@@ -448,7 +476,7 @@ open class Adb(
 
     /**
      * Reads `/proc/[pid]/stat`. [ProcessStat.Gone] when the kernel says the process no longer
-     * exists; anything else unreadable or malformed is an [IllegalStateException], because a
+     * exists; anything else unreadable or malformed is an [AdbCommandException], because a
      * process whose identity cannot be read must never be mistaken for a dead one.
      */
     open suspend fun processStat(
@@ -456,26 +484,39 @@ open class Adb(
         pid: Int,
         timeoutMs: Long = 30_000,
     ): ProcessStat {
-        val result = execResult(serial, "shell", "cat", "/proc/$pid/stat", timeoutMs = timeoutMs)
+        val command = listOf("shell", "cat", "/proc/$pid/stat")
+        val result = execResult(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
         if (result.exitCode != 0) {
-            check("No such file" in result.output || "No such process" in result.output) {
-                "Unable to observe process $pid on $serial: ${result.output}"
+            if ("No such file" !in result.output && "No such process" !in result.output) {
+                throw AdbCommandException(
+                    serial,
+                    command,
+                    result.exitCode,
+                    result.output,
+                    "Unable to observe process $pid on $serial: ${result.output}",
+                )
             }
             return ProcessStat.Gone
         }
+
+        fun malformed(what: String) = AdbCommandException(serial, command, null, result.output, "$what /proc stat for PID $pid on $serial")
         // The command name is in parentheses and may itself contain spaces; fields follow it.
         val closingName = result.output.lastIndexOf(')')
-        check(closingName >= 0) { "Malformed /proc stat for PID $pid" }
+        if (closingName < 0) throw malformed("Malformed")
         val fieldsFromState =
             result.output
                 .substring(closingName + 1)
                 .trim()
                 .split(Regex("\\s+"))
-        check(fieldsFromState.size > 19) { "Incomplete /proc stat for PID $pid" }
+        if (fieldsFromState.size <= 19) throw malformed("Incomplete")
         return ProcessStat.Live(fieldsFromState[19]) // starttime: clock ticks since boot
     }
 
     // ---- packages and processes --------------------------------------------------------------
+    //
+    // `adb shell` joins its arguments into one command line that the device `sh` re-parses, so
+    // every caller-supplied value (package, component, permission) goes through [shellQuote].
+    // `install`/`uninstall` are adb client commands with a real argv and need no quoting.
 
     open suspend fun install(
         serial: String,
@@ -495,20 +536,40 @@ open class Adb(
     open suspend fun isInstalled(
         serial: String,
         packageName: String,
-    ): Boolean = exec(serial, "shell", "pm", "path", packageName).lineSequence().any { it.startsWith("package:") }
+    ): Boolean = exec(serial, "shell", "pm", "path", shellQuote(packageName)).lineSequence().any { it.startsWith("package:") }
+
+    /**
+     * The installed version of [packageName] from `dumpsys package`, or null when the package
+     * is not installed. Bounded by [timeoutMs]. A package that is listed but whose section carries
+     * no `versionCode` is an [AdbCommandException]: its build cannot be told, which must never
+     * read as "not installed".
+     */
+    open suspend fun installedPackage(
+        serial: String,
+        packageName: String,
+        timeoutMs: Long = 15_000,
+    ): InstalledPackage? {
+        val command = listOf("shell", "dumpsys", "package", shellQuote(packageName))
+        val output = exec(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
+        return try {
+            parseDumpsysPackage(output, packageName)
+        } catch (malformed: IllegalArgumentException) {
+            throw AdbCommandException(serial, command, null, output, "${malformed.message} on $serial")
+        }
+    }
 
     /** `pm clear`; returns the output, which says `Success` when it worked. */
     open suspend fun clearData(
         serial: String,
         packageName: String,
-    ): String = exec(serial, "shell", "pm", "clear", packageName)
+    ): String = exec(serial, "shell", "pm", "clear", shellQuote(packageName))
 
     open suspend fun grantPermission(
         serial: String,
         packageName: String,
         permission: String,
     ) {
-        exec(serial, "shell", "pm", "grant", packageName, permission)
+        exec(serial, "shell", "pm", "grant", shellQuote(packageName), shellQuote(permission))
     }
 
     /** `am force-stop`; proves nothing by itself — callers poll [processIds]. */
@@ -516,15 +577,15 @@ open class Adb(
         serial: String,
         packageName: String,
     ) {
-        exec(serial, "shell", "am", "force-stop", packageName)
+        exec(serial, "shell", "am", "force-stop", shellQuote(packageName))
     }
 
-    /** `am start -W -n component`; returns the output, which names `Error`/`Exception` on failure. */
+    /** `am start -W -n component`; returns the raw output (`AmStartOutput` reads its `Status:`/`Error:` lines). */
     open suspend fun startActivity(
         serial: String,
         component: String,
         timeoutMs: Long,
-    ): String = exec(serial, "shell", "am", "start", "-W", "-n", component, timeoutMs = timeoutMs)
+    ): String = exec(serial, "shell", "am", "start", "-W", "-n", shellQuote(component), timeoutMs = timeoutMs)
 
     /** The package's MAIN/LAUNCHER activity as `package/activity`, or null when it has none. */
     open suspend fun launcherActivity(
@@ -542,7 +603,7 @@ open class Adb(
             "android.intent.action.MAIN",
             "-c",
             "android.intent.category.LAUNCHER",
-            packageName,
+            shellQuote(packageName),
         ).lineSequence().map(String::trim).lastOrNull { it.startsWith("$packageName/") }
 
     // ---- forwards ----------------------------------------------------------------------------
@@ -550,7 +611,11 @@ open class Adb(
     open suspend fun forward(
         serial: String,
         devicePort: Int,
-    ): Int = exec(serial, "forward", "tcp:0", "tcp:$devicePort").toInt()
+    ): Int {
+        val output = exec(serial, "forward", "tcp:0", "tcp:$devicePort")
+        return output.toIntOrNull()
+            ?: throw AdbCommandException(serial, listOf("forward", "tcp:0", "tcp:$devicePort"), null, output, "adb forward on $serial did not report a host port: $output")
+    }
 
     open suspend fun removeForward(
         serial: String,
@@ -575,17 +640,25 @@ open class Adb(
         serial: String,
         packageName: String,
     ): List<Int> {
-        val result = execResult(serial, "shell", "pidof", packageName)
+        val command = listOf("shell", "pidof", shellQuote(packageName))
+        val result = execResult(serial, *command.toTypedArray())
         if (result.exitCode != 0) {
-            check(result.exitCode == 1 && result.output.isBlank()) {
-                "Unable to observe process IDs for $serial: ${result.output}"
+            if (result.exitCode != 1 || result.output.isNotBlank()) {
+                throw AdbCommandException(
+                    serial,
+                    command,
+                    result.exitCode,
+                    result.output,
+                    "Unable to observe process IDs for $serial: ${result.output}",
+                )
             }
             return emptyList()
         }
         val tokens = result.output.split(Regex("\\s+")).filter(String::isNotBlank)
-        check(tokens.isNotEmpty()) { "pidof succeeded without reporting a PID" }
+        if (tokens.isEmpty()) throw AdbCommandException(serial, command, null, result.output, "pidof succeeded without reporting a PID on $serial")
         return tokens.map { token ->
-            requireNotNull(token.toIntOrNull()) { "pidof returned a nonnumeric PID: $token" }
+            token.toIntOrNull()
+                ?: throw AdbCommandException(serial, command, null, result.output, "pidof returned a nonnumeric PID on $serial: $token")
         }
     }
 
@@ -632,12 +705,115 @@ val DefaultProcessStarter =
 const val ADB_REAP_TIMEOUT_MS = 2_000L
 
 /**
- * Fixed capacity of one shared [Adb] runner: a single admitted operation plus at most one
- * unresolved residual. The smallest cap consistent with the existing sequential use (one ADB
- * at a time per session; the local matrix drives two serials through one shared runner):
- * correctness first — concurrent starters can never pile up abandoned drains/processes beyond
- * one — at the cost of serializing shared-runner ADB. A caller refused here never started, so it
- * retries later; only a started command that left uncertainty quarantines. Revisit with per-serial
- * runners if the matrix outgrows single-flight throughput.
+ * Admitted operations (in flight or left as an unresolved residual) per serial lane of one
+ * shared [Adb] runner. One: a session issues its ADB work sequentially, so a device's commands
+ * never overlap and one device can pile up at most one abandoned drain/process. Serial-less
+ * commands (`adb devices`) form their own lane.
  */
-const val ADB_RUNNER_PERMITS = 1
+const val ADB_PERMITS_PER_SERIAL = 1
+
+/**
+ * Global cap on tokens (in flight plus residual) across all lanes of one runner: devices run
+ * their ADB traffic in parallel up to this many, and abandoned processes/drains stay bounded
+ * however many devices misbehave. A caller refused here never started, so it retries later;
+ * only a started command that left uncertainty quarantines.
+ */
+const val ADB_GLOBAL_PERMITS = 4
+
+/** One row of `adb devices`: [rawState] is the tool's own word (`device`, `offline`,
+ * `unauthorized`, `recovery`, `no permissions (...)`, ...), [state] its classification. */
+data class AdbDevice(
+    val serial: String,
+    val state: AdbDeviceState,
+    val rawState: String,
+)
+
+enum class AdbDeviceState {
+    /** `device`: connected, authorized and usable. */
+    ONLINE,
+
+    /** `offline`: known to adb but not responding (booting, cable, adbd restart). */
+    OFFLINE,
+
+    /** `unauthorized`: the device has not accepted this host's USB debugging key. */
+    UNAUTHORIZED,
+
+    /** Anything else (`recovery`, `sideload`, `bootloader`, `authorizing`, `no permissions`, ...). */
+    OTHER,
+}
+
+/** Parses `adb devices` output. Status lines from a starting adb server (`* daemon ...`) and the
+ * header are skipped; the state is everything after the serial, since some (`no permissions
+ * (...)`) contain spaces. */
+internal fun parseAdbDevices(text: String): List<AdbDevice> =
+    text
+        .lineSequence()
+        .map(String::trim)
+        .filter { it.isNotEmpty() && !it.startsWith("*") && !it.startsWith("List of devices") }
+        .mapNotNull { line ->
+            val fields = line.split(Regex("\\s+"), limit = 2)
+            if (fields.size < 2) return@mapNotNull null
+            val raw = fields[1].trim()
+            val state =
+                when (raw) {
+                    "device" -> AdbDeviceState.ONLINE
+                    "offline" -> AdbDeviceState.OFFLINE
+                    "unauthorized" -> AdbDeviceState.UNAUTHORIZED
+                    else -> AdbDeviceState.OTHER
+                }
+            AdbDevice(fields[0], state, raw)
+        }.toList()
+
+/** An installed package's build: `versionName` (null when the APK declares none, like an
+ * instrumentation APK AGP builds) and `versionCode` (the long version code). */
+data class InstalledPackage(
+    val packageName: String,
+    val versionName: String?,
+    val versionCode: Long,
+)
+
+/**
+ * Reads the `Package [name] (hash):` section of `dumpsys package name` (layout shared by API 26
+ * through 34+; later sections such as `Hidden system packages:` repeat the header for an updated
+ * system app, and the first — the live package — wins). Null when no section names the package
+ * (not installed; newer builds may also say `Unable to find package`). A section without a
+ * `versionCode=` line is an [IllegalArgumentException].
+ */
+internal fun parseDumpsysPackage(
+    output: String,
+    packageName: String,
+): InstalledPackage? {
+    val lines = output.lines()
+    val header = "Package [$packageName] ("
+    val start = lines.indexOfFirst { it.trimStart().startsWith(header) }
+    if (start < 0) return null
+    val indent = lines[start].indexOfFirst { !it.isWhitespace() }
+    var versionCode: Long? = null
+    var versionName: String? = null
+    for (line in lines.drop(start + 1)) {
+        if (line.isBlank()) continue
+        // The section ends at the next line indented no deeper than its own header.
+        if (line.indexOfFirst { !it.isWhitespace() } <= indent) break
+        val trimmed = line.trim()
+        if (versionCode == null) {
+            DUMPSYS_VERSION_CODE.find(trimmed)?.let { versionCode = it.groupValues[1].toLong() }
+        }
+        if (versionName == null && trimmed.startsWith("versionName=")) {
+            versionName = trimmed.removePrefix("versionName=").takeUnless { it.isEmpty() || it == "null" }
+        }
+    }
+    val code = requireNotNull(versionCode) { "dumpsys package $packageName listed the package without a versionCode" }
+    return InstalledPackage(packageName, versionName, code)
+}
+
+private val DUMPSYS_VERSION_CODE = Regex("""^versionCode=(\d+)""")
+
+private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
+
+/**
+ * Quotes one argument for the device shell that `adb shell` hands its joined command line to
+ * (POSIX `sh`, like Python's `shlex.quote`): tokens made only of safe characters pass through
+ * unchanged, anything else is single-quoted with embedded `'` spelled `'\''`.
+ */
+fun shellQuote(token: String): String =
+    if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"

@@ -8,7 +8,14 @@
       "node": {
         "kind": "match",
         "property": "TEXT",
-        "value": "Sign in"
+        "value": "Sign in",
+        "mode": "EXACT"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     }
   }

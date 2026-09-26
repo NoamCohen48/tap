@@ -8,7 +8,14 @@
       "node": {
         "kind": "match",
         "property": "TEXT",
-        "value": "Row 40"
+        "value": "Row 40",
+        "mode": "EXACT"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     },
     "container": {
@@ -16,8 +23,16 @@
         "kind": "resource",
         "name": "list",
         "packageName": "com.example.app"
+      },
+      "scope": {
+        "kind": "aut"
+      },
+      "pick": {
+        "kind": "exactly_one"
       }
     },
+    "direction": "DOWN",
+    "distancePercent": 80,
     "maxScrolls": 10
   }
 }

@@ -1,23 +1,25 @@
 package com.company.tap.junit5
 
 import com.company.tap.api.v1.AttachRequest
-import com.company.tap.api.v1.CloseConnectionRequest
-import com.company.tap.api.v1.CloseConnectionResponse
-import com.company.tap.api.v1.CloseSessionRequest
-import com.company.tap.api.v1.CloseSessionResponse
+import com.company.tap.api.v1.AttachResponse
+import com.company.tap.api.v1.Observing
+import com.company.tap.api.v1.ClientConnectionServiceGrpcKt
 import com.company.tap.api.v1.Command
 import com.company.tap.api.v1.CommandResult
-import com.company.tap.api.v1.ConnectionEvent
-import com.company.tap.api.v1.ConnectionServiceGrpcKt
+import com.company.tap.api.v1.ConnectRequest
+import com.company.tap.api.v1.ConnectResponse
+import com.company.tap.api.v1.DetachRequest
+import com.company.tap.api.v1.DetachResponse
+import com.company.tap.api.v1.DeviceServiceGrpcKt
+import com.company.tap.api.v1.DisconnectRequest
+import com.company.tap.api.v1.DisconnectResponse
 import com.company.tap.api.v1.ExecuteRequest
+import com.company.tap.api.v1.ExecuteResponse
 import com.company.tap.api.v1.InfoRequest
 import com.company.tap.api.v1.InfoResponse
-import com.company.tap.api.v1.OpenConnectionRequest
-import com.company.tap.api.v1.OpenConnectionResponse
-import com.company.tap.api.v1.OpenSessionRequest
-import com.company.tap.api.v1.OpenSessionResponse
-import com.company.tap.api.v1.SessionServiceGrpcKt
-import com.company.tap.sdk.Connection
+import com.company.tap.api.v1.ObserveRequest
+import com.company.tap.api.v1.ObserveResponse
+import com.company.tap.sdk.ClientConnection
 import com.company.tap.sdk.Device
 import com.company.tap.sdk.KEYCODE_BACK
 import com.company.tap.sdk.TapClient
@@ -62,7 +64,7 @@ import kotlin.time.Duration.Companion.seconds
 class TapTestBridgeTest {
     private lateinit var serverName: String
     private lateinit var fakeConnections: FakeConnections
-    private lateinit var fakeSessions: FakeSessions
+    private lateinit var fakeDevices: FakeDevices
     private lateinit var grpcServer: io.grpc.Server
     private lateinit var channel: ManagedChannel
 
@@ -70,14 +72,13 @@ class TapTestBridgeTest {
     fun start() {
         serverName = InProcessServerBuilder.generateName()
         fakeConnections = FakeConnections()
-        fakeSessions = FakeSessions()
+        fakeDevices = FakeDevices()
         grpcServer =
             InProcessServerBuilder
                 .forName(serverName)
                 .directExecutor()
                 .addService(fakeConnections)
-                .addService(fakeSessions)
-                .addService(FakeDevices())
+                .addService(fakeDevices)
                 .build()
                 .start()
         channel = InProcessChannelBuilder.forName(serverName).directExecutor().build()
@@ -171,7 +172,7 @@ class TapTestBridgeTest {
                     val failure =
                         assertFailsWith<AssertionError> {
                             tapTest {
-                                val device = connection.openDevice("emulator-5554", "com.test")
+                                val device = connection.attachDevice("emulator-5554", "com.test")
                                 try {
                                     // Accepted mutation before the scope: it must run exactly
                                     // once — the cancellation below must never replay it.
@@ -185,18 +186,18 @@ class TapTestBridgeTest {
                                             device.await(text("Never rendered ${System.nanoTime()}"), timeout = 20.seconds).visible()
                                         }
                                         async {
-                                            withTimeout(5_000) { fakeSessions.enteredWait.await() }
+                                            withTimeout(5_000) { fakeDevices.enteredWait.await() }
                                             throw AssertionError("sibling boom")
                                         }
                                     }
                                 } finally {
-                                    device.close()
+                                    device.detach()
                                 }
                             }
                         }
                     assertEquals("sibling boom", failure.message)
-                    withTimeout(2_000) { fakeSessions.cancelledWait.await() }
-                    assertEquals(1, fakeSessions.pressKeyExecutes.get(), "mutation executed exactly once, never replayed")
+                    withTimeout(2_000) { fakeDevices.cancelledWait.await() }
+                    assertEquals(1, fakeDevices.pressKeyExecutes.get(), "mutation executed exactly once, never replayed")
                     assertTrue(root.isCancelled, "failing tapTest cancels its root job")
                     val elapsedMs = (System.nanoTime() - started) / 1_000_000
                     assertTrue(elapsedMs < 10_000, "accepted wait cancelled promptly, took ${elapsedMs}ms")
@@ -210,11 +211,11 @@ class TapTestBridgeTest {
         }
 
     @Test
-    fun `device access outside tapTest fails clearly`(): Unit {
+    fun `device access outside tapTest fails clearly`() {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.openDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
                 try {
                     // Bound to a test method, but outside tapTest: no TapContext marker.
                     val root = Job()
@@ -239,12 +240,18 @@ class TapTestBridgeTest {
                         root.cancel()
                     }
                 } finally {
-                    tapScope { device.close() }
+                    tapScope { device.detach() }
                 }
             } finally {
                 connection.close()
             }
         }
+    }
+
+    @Test
+    fun `tapTest returns Unit so expression-bodied tests have a void JVM signature`() {
+        val method = BridgeShapes::class.java.getDeclaredMethod("expressionBodied")
+        assertEquals(Void.TYPE, method.returnType)
     }
 
     @Test
@@ -255,7 +262,8 @@ class TapTestBridgeTest {
         val root = Job()
         bind(TestState(root, emptyMap(), emptyMap(), "meta"))
         try {
-            val result = tapTest { 40 + 2 }
+            var result = 0
+            tapTest { result = 40 + 2 }
             assertEquals(42, result)
         } finally {
             TapTestBinding.current.remove()
@@ -288,12 +296,12 @@ class TapTestBridgeTest {
                         )
                     }
                 try {
-                    assertEquals(listOf("serial-aaa", "serial-zzz"), fakeSessions.opens.toList())
+                    assertEquals(listOf("serial-aaa", "serial-zzz"), fakeDevices.opens.toList())
                     assertEquals("serial-zzz", devices.getValue("z-role").serial)
                     assertEquals("serial-aaa", devices.getValue("a-role").serial)
                 } finally {
                     tapScope {
-                        devices.values.forEach { it.close() }
+                        devices.values.forEach { it.detach() }
                     }
                 }
             } finally {
@@ -306,19 +314,19 @@ class TapTestBridgeTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                fakeSessions.quarantineSerial = "serial-bbb"
+                fakeDevices.quarantineSerial = "serial-bbb"
                 val devices =
                     tapScope {
                         mapOf(
-                            "a" to connection.openDevice("serial-aaa", "com.test"),
-                            "b" to connection.openDevice("serial-bbb", "com.test"),
+                            "a" to connection.attachDevice("serial-aaa", "com.test"),
+                            "b" to connection.attachDevice("serial-bbb", "com.test"),
                         )
                     }
                 val state = TestState(Job(), devices, mapOf("a" to "serial-aaa", "b" to "serial-bbb"), "teardown")
                 val extension = TapExtension()
                 val closeErrors = extension.closeAll(state)
                 // Both sessions were asked to close, even though one quarantines.
-                assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeSessions.closes.toSet())
+                assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeDevices.closes.toSet())
                 assertEquals(1, closeErrors.size, "quarantined close surfaces exactly one error")
                 // Primary failure is preserved with cleanup suppressed into it.
                 val primary = AssertionError("primary")
@@ -362,7 +370,7 @@ class TapTestBridgeTest {
                 )
             }
         assertTrue(failure.message!!.contains("duplicate"), "pins name the offending serials: ${failure.message}")
-        assertTrue(fakeSessions.opens.isEmpty(), "no session opened before the duplicate check")
+        assertTrue(fakeDevices.opens.isEmpty(), "no session opened before the duplicate check")
     }
 
     @Test
@@ -386,7 +394,7 @@ class TapTestBridgeTest {
                         }
                     }
                 assertTrue(failure.message!!.contains("duplicate"))
-                assertTrue(fakeSessions.opens.isEmpty(), "openAll validates before the first open")
+                assertTrue(fakeDevices.opens.isEmpty(), "openAll validates before the first open")
             } finally {
                 connection.close()
             }
@@ -401,12 +409,15 @@ class TapTestBridgeTest {
         try {
             val connection = runBlocking { client().connect("test") }
             try {
-                fakeSessions.quarantineSerial = "serial-bbb"
+                fakeDevices.quarantineSerial = "serial-bbb"
                 val devices =
-                    runBlocking(com.company.tap.sdk.TapContext("test:setup")) {
+                    runBlocking(
+                        com.company.tap.sdk
+                            .TapContext("test:setup"),
+                    ) {
                         mapOf(
-                            "a" to connection.openDevice("serial-aaa", "com.test"),
-                            "b" to connection.openDevice("serial-bbb", "com.test"),
+                            "a" to connection.attachDevice("serial-aaa", "com.test"),
+                            "b" to connection.attachDevice("serial-bbb", "com.test"),
                         )
                     }
                 val state = TestState(Job(), devices, mapOf("a" to "serial-aaa", "b" to "serial-bbb"), "interrupted-teardown")
@@ -448,7 +459,7 @@ class TapTestBridgeTest {
                 assertTrue(primary is CancellationException, "interruption stays the primary failure, was $primary")
                 assertTrue(primary.cause is InterruptedException, "original interruption preserved as the cause")
                 assertTrue(primary === state.failure, "stored primary is the observed failure")
-                assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeSessions.closes.toSet(), "AfterEach closes every device")
+                assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeDevices.closes.toSet(), "AfterEach closes every device")
                 assertEquals(1, primary.suppressed.size, "quarantine error suppressed, not replacing")
                 assertTrue(primary.suppressed[0].message!!.contains("serial-bbb"))
             } finally {
@@ -472,22 +483,80 @@ class TapTestBridgeTest {
         assertEquals("85e49002", assignment.getValue("receiver"))
     }
 
+    @Test
+    fun `assignSerials rotates the unpinned devices by the start index`() {
+        val extension = TapExtension()
+        val serials = listOf("s1", "s2", "s3")
+        assertEquals(listOf("s2", "s3", "s1"), extension.rotate(serials, 1))
+        assertEquals(listOf("s1", "s2", "s3"), extension.rotate(serials, 3))
+        assertEquals(listOf("s3", "s1", "s2"), extension.rotate(serials, -1))
+        assertEquals("s3", extension.assignSerials(listOf("a"), serials, emptyMap(), start = 2).getValue("a"))
+        // Pinned serials are taken out before rotating: "b" rotates over s1/s3 only.
+        val pinned = extension.assignSerials(listOf("a", "b"), serials, mapOf("a" to "s2"), start = 1)
+        assertEquals("s2", pinned.getValue("a"))
+        assertEquals("s3", pinned.getValue("b"))
+    }
+
+    @Test
+    fun `a single role moves past a busy device and waits only when all are busy`() =
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val extension = TapExtension()
+                val config =
+                    TapConfig(
+                        serials = emptyList(),
+                        autPackage = "com.test",
+                        artifactsDir = Path.of("build/tap-test-artifacts"),
+                        acquireTimeout = 7.seconds,
+                        pinnedRoles = emptyMap(),
+                    )
+                fakeDevices.busySerials.add("serial-aaa")
+                val moved = tapScope { extension.openSingle(connection, "device", listOf("serial-aaa", "serial-bbb"), config) }
+                assertEquals("serial-bbb", moved.getValue("device").serial)
+                assertEquals(listOf("serial-aaa", "serial-bbb"), fakeDevices.opens.toList())
+                assertEquals(listOf(0L, 0L), fakeDevices.waits.toList())
+                tapScope { moved.getValue("device").detach() }
+
+                fakeDevices.opens.clear()
+                fakeDevices.waits.clear()
+                fakeDevices.busySerials.add("serial-bbb")
+                val waited = tapScope { extension.openSingle(connection, "device", listOf("serial-bbb", "serial-aaa"), config) }
+                // Every device busy: the first candidate is attached again, now with the wait.
+                assertEquals("serial-bbb", waited.getValue("device").serial)
+                assertEquals(listOf("serial-bbb", "serial-aaa", "serial-bbb"), fakeDevices.opens.toList())
+                assertEquals(listOf(0L, 0L, 7_000L), fakeDevices.waits.toList())
+                tapScope { waited.getValue("device").detach() }
+            } finally {
+                connection.close()
+            }
+        }
+
     /** Minimal `ExtensionContext.Store` over a map (only `get`/`put`/`remove` are exercised). */
     private fun stubStore(backing: HashMap<Any, Any?>): ExtensionContext.Store =
         object : ExtensionContext.Store {
             @Suppress("UNCHECKED_CAST")
-            override fun <V : Any?> get(key: Any?, requiredType: Class<V>?): V? = backing[key] as V?
+            override fun <V : Any?> get(
+                key: Any?,
+                requiredType: Class<V>?,
+            ): V? = backing[key] as V?
 
             override fun get(key: Any?): Any? = backing[key]
 
-            override fun put(key: Any?, value: Any?) {
+            override fun put(
+                key: Any?,
+                value: Any?,
+            ) {
                 backing[key as Any] = value
             }
 
             override fun remove(key: Any?): Any? = backing.remove(key)
 
             @Suppress("UNCHECKED_CAST")
-            override fun <V : Any?> remove(key: Any?, requiredType: Class<V>?): V? = backing.remove(key) as V?
+            override fun <V : Any?> remove(
+                key: Any?,
+                requiredType: Class<V>?,
+            ): V? = backing.remove(key) as V?
 
             override fun <K : Any, V : Any> getOrComputeIfAbsent(
                 key: K,
@@ -525,13 +594,13 @@ class TapTestBridgeTest {
 
     // --- Fakes ----------------------------------------------------------------------------------
 
-    private class FakeConnections : ConnectionServiceGrpcKt.ConnectionServiceCoroutineImplBase() {
-        override suspend fun open(request: OpenConnectionRequest): OpenConnectionResponse =
-            OpenConnectionResponse.newBuilder().setConnectionId("conn-1").build()
+    private class FakeConnections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
+        override suspend fun connect(request: ConnectRequest): ConnectResponse =
+            ConnectResponse.newBuilder().setClientConnectionId("conn-1").build()
 
-        override fun attach(request: AttachRequest): Flow<ConnectionEvent> =
+        override fun observe(request: ObserveRequest): Flow<ObserveResponse> =
             flow {
-                emit(ConnectionEvent.newBuilder().setMessage("hello").build())
+                emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
                 try {
                     awaitCancellation()
                 } catch (_: CancellationException) {
@@ -539,12 +608,16 @@ class TapTestBridgeTest {
                 }
             }
 
-        override suspend fun close(request: CloseConnectionRequest): CloseConnectionResponse = CloseConnectionResponse.getDefaultInstance()
+        override suspend fun disconnect(request: DisconnectRequest): DisconnectResponse = DisconnectResponse.getDefaultInstance()
 
         override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.getDefaultInstance()
     }
 
-    private class FakeSessions : SessionServiceGrpcKt.SessionServiceCoroutineImplBase() {
+    private class FakeDevices : DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
+        override suspend fun listDevices(request: com.company.tap.api.v1.ListDevicesRequest): com.company.tap.api.v1.ListDevicesResponse =
+            com.company.tap.api.v1.ListDevicesResponse
+                .getDefaultInstance()
+
         val opens = CopyOnWriteArrayList<String>()
         val closes = CopyOnWriteArrayList<String>()
         var quarantineSerial: String? = null
@@ -557,17 +630,29 @@ class TapTestBridgeTest {
             java.util.concurrent.atomic
                 .AtomicInteger(0)
 
-        override suspend fun open(request: OpenSessionRequest): OpenSessionResponse {
+        /** Serials that fail an attach with no wait as held by another session. */
+        val busySerials = CopyOnWriteArrayList<String>()
+        val waits = CopyOnWriteArrayList<Long>()
+
+        override suspend fun attach(request: AttachRequest): AttachResponse {
             opens.add(request.serial)
-            return OpenSessionResponse
+            waits.add(request.leaseTimeoutMs)
+            if (request.serial in busySerials && !request.hasLeaseTimeoutMs()) {
+                throw io.grpc.Status.UNAVAILABLE
+                    .withDescription("device ${request.serial} is in use by another session")
+                    .asException()
+            }
+            return AttachResponse
                 .newBuilder()
-                .setSessionId("sess-${request.serial}")
+                .setAttachedDeviceId("sess-${request.serial}")
                 .setSerial(request.serial)
                 .setGeneration(1)
                 .build()
         }
 
-        override suspend fun execute(request: ExecuteRequest): CommandResult {
+        override suspend fun execute(request: ExecuteRequest): ExecuteResponse = ExecuteResponse.newBuilder().setResult(result(request)).build()
+
+        private suspend fun result(request: ExecuteRequest): CommandResult {
             if (request.command.opCase == Command.OpCase.WAIT_VISIBLE) {
                 // An accepted in-flight remote wait: signal entry, then park until caller
                 // (sibling-failure) cancellation arrives; the test asserts the server saw
@@ -585,10 +670,10 @@ class TapTestBridgeTest {
             return CommandResult.getDefaultInstance()
         }
 
-        override suspend fun close(request: CloseSessionRequest): CloseSessionResponse {
-            closes.add(request.sessionId)
-            val quarantined = request.sessionId.endsWith(quarantineSerial ?: "@@none@@")
-            return CloseSessionResponse
+        override suspend fun detach(request: DetachRequest): DetachResponse {
+            closes.add(request.attachedDeviceId)
+            val quarantined = request.attachedDeviceId.endsWith(quarantineSerial ?: "@@none@@")
+            return DetachResponse
                 .newBuilder()
                 .setClean(!quarantined)
                 .apply { if (quarantined) setDetail("serial-bbb quarantined: driver would not die") }
@@ -603,10 +688,10 @@ class TapTestBridgeTest {
             com.company.tap.api.v1.DriverLogResponse
                 .getDefaultInstance()
     }
+}
 
-    private class FakeDevices : com.company.tap.api.v1.DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
-        override suspend fun listDevices(request: com.company.tap.api.v1.ListDevicesRequest): com.company.tap.api.v1.ListDevicesResponse =
-            com.company.tap.api.v1.ListDevicesResponse
-                .getDefaultInstance()
-    }
+/** An expression-bodied test shape whose last statement is non-Unit (never invoked). */
+private class BridgeShapes {
+    @Suppress("unused")
+    fun expressionBodied() = tapTest { 40 + 2 }
 }

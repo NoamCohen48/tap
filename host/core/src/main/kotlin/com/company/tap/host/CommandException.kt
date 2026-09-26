@@ -29,7 +29,7 @@ sealed class CommandException(
     val timeoutMs: Long?,
     message: String,
     cause: Throwable? = null,
-) : RuntimeException(message, cause) {
+) : TapHostException(message, cause) {
     val retryable: Boolean get() = code.retryable
     val mayHaveMutated: Boolean get() = code.mayHaveMutated
 }

@@ -1,0 +1,81 @@
+// tap.v1 — client connections: a client process's connection to the daemon and its unit of
+// ownership. Attached devices belong to a client connection, and every call on one names its
+// `client_connection_id`; when the connection's Observe stream ends (the client exited) or it
+// never opens one, the daemon detaches those devices.
+//
+// Every RPC of every service must carry `authorization: Bearer <token>`, the per-instance token
+// in `<state dir>/daemon.json`; without it the call fails UNAUTHENTICATED.
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "com.company.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "ClientConnectionProto";
+
+service ClientConnectionService {
+  rpc Connect(ConnectRequest) returns (ConnectResponse);
+  // Long-lived stream the client keeps open for the life of the connection; it must be opened
+  // shortly after Connect. Its end is the liveness signal: the stream ending (either side)
+  // disconnects the client. The first event is `observing`; a daemon-initiated disconnect sends
+  // `closing` and then completes the stream normally.
+  rpc Observe(ObserveRequest) returns (stream ObserveResponse);
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
+
+message ConnectRequest {
+  string name = 1;
+}
+
+message ConnectResponse {
+  string client_connection_id = 1;
+}
+
+message ObserveRequest {
+  string client_connection_id = 1;
+}
+
+// The stream is registered; everything the connection attaches from now on is owned by it.
+message Observing {
+  string client_connection_id = 1;
+}
+
+// Idle traffic so proxies keep the stream open; not a death detector.
+message Heartbeat {}
+
+// The daemon is disconnecting this client (Disconnect, reaping or shutdown); the stream ends next.
+message Closing {
+  string reason = 1;
+}
+
+message ObserveResponse {
+  int64 at_epoch_ms = 1;
+  oneof event {
+    Observing observing = 2;
+    Heartbeat heartbeat = 3;
+    Closing closing = 4;
+  }
+}
+
+message DisconnectRequest {
+  string client_connection_id = 1;
+}
+
+message DisconnectResponse {
+  int32 attached_devices_detached = 1;
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  string daemon_version = 1;
+  string host_build_id = 2;
+  string protocol_version = 3;
+  string adb_executable = 4;
+  string state_dir = 5;
+  // Whether attach installs a driver this daemon carries (bundled, or `tap serve --driver-apk`).
+  bool driver_available = 6;
+  int64 pid = 7;
+}

@@ -23,7 +23,7 @@ dokka {
 /*
  * Versioning. gradle.properties holds one version per artifact family; every module gets the
  * group and the version of the family it belongs to, so `maven-publish` coordinates and the
- * version strings compiled into the service/driver all come from the same place.
+ * version strings compiled into the daemon/driver all come from the same place.
  */
 val engineVersion = providers.gradleProperty("tap.version.engine").get()
 val kotlinClientVersion = providers.gradleProperty("tap.version.client.kotlin").get()
@@ -34,11 +34,12 @@ val syncSdkProjects = setOf(":device:sync-sdk")
 
 allprojects {
     group = "com.company.tap"
-    version = when (path) {
-        in clientProjects -> kotlinClientVersion
-        in syncSdkProjects -> syncSdkVersion
-        else -> engineVersion
-    }
+    version =
+        when (path) {
+            in clientProjects -> kotlinClientVersion
+            in syncSdkProjects -> syncSdkVersion
+            else -> engineVersion
+        }
 }
 
 /*

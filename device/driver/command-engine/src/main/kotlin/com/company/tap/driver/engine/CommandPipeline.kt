@@ -1,5 +1,6 @@
 package com.company.tap.driver.engine
 
+import com.company.tap.protocol.DRIVER_UNINTERRUPTIBLE_GRACE_MS
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
 import com.company.tap.protocol.Response
@@ -18,8 +19,8 @@ import kotlin.concurrent.withLock
  *                                      watchdog
  * ```
  *
- * The reader thread (owned by the caller) only calls [submit], [cancel], [pong], and
- * [shutdown]; it never blocks on UI work, so `CANCEL`, `PING`, and transport closure are
+ * The reader thread (owned by the caller) only calls [submit], [respond], [cancel], [pong],
+ * [close], and [shutdown]; it never writes to the transport and never blocks on UI work, so `CANCEL`, `PING`, and transport closure are
  * observed while a command runs. Every accepted command gets exactly one terminal response.
  * The watchdog poisons the pipeline when the executor is stuck past a command's deadline plus
  * [uninterruptibleGraceMs], or when the host has been silent for [heartbeatTimeoutMs] (the
@@ -155,6 +156,28 @@ class CommandPipeline(
         discarded.forEach { terminate(it, error(ErrorCode.CANCELLED, ErrorDetail.TRANSPORT_CLOSED)) }
     }
 
+    /**
+     * Writes [response] for a request that never entered the pipeline (a payload the decoder
+     * rejected). It goes through the writer lane like every other frame, so the reader thread
+     * never touches the transport and frames can never interleave.
+     */
+    fun respond(requestId: Long, response: Response) {
+        outbound.put(OutboundItem.Message(Outbound.TerminalResponse(requestId, response)))
+    }
+
+    /**
+     * Orderly close after a protocol violation: stops accepting commands and queues a `CLOSE`
+     * frame carrying [reason] behind whatever the writer already holds. Nothing is written after
+     * it. Returns true once the writer has handled the close (written or failed), false if it is
+     * still busy after [timeoutMs]; the caller then closes the transport regardless.
+     */
+    fun close(reason: String, timeoutMs: Long): Boolean {
+        shutdown()
+        val handled = CountDownLatch(1)
+        outbound.put(OutboundItem.Close(Outbound.Close(reason), handled))
+        return handled.await(timeoutMs, TimeUnit.MILLISECONDS)
+    }
+
     /** Answers a `PING` on the writer lane without touching the executor. */
     fun pong(requestId: Long) {
         outbound.put(OutboundItem.Message(Outbound.Pong(requestId)))
@@ -244,6 +267,9 @@ class CommandPipeline(
 
     private fun mutationGate(command: Command) {
         lock.withLock {
+            // Once open the gate stays open: a later call must never report a non-mutating
+            // CANCELLED/DEADLINE_EXCEEDED for a command that already touched the device.
+            if (command.mutationStarted) return
             if (poisoned) throw CommandInterrupted(ErrorCode.DRIVER_UNHEALTHY, ErrorDetail.WATCHDOG)
             if (command.isTerminal) throw CommandInterrupted(ErrorCode.CANCELLED)
             if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
@@ -291,7 +317,23 @@ class CommandPipeline(
                 error(ErrorCode.INTERNAL, null, error.toString(), command)
             }
         }
-        terminate(command, response)
+        terminate(command, afterGate(command, response))
+    }
+
+    /**
+     * A failure whose code claims "nothing changed" is only true before the mutation gate
+     * opened. After it, the handler may already have injected input, so the response is
+     * rewritten to `INDETERMINATE`; the original code travels in the message, and its detail is
+     * kept (or the original code name when there was none) so callers can still see why it ended.
+     */
+    private fun afterGate(command: Command, response: Response): Response {
+        if (!command.mutationStarted || response !is Response.Error || response.code.mayHaveMutated) return response
+        val original = listOfNotNull(response.code.name, response.detail).joinToString("/")
+        return response.copy(
+            code = ErrorCode.INDETERMINATE,
+            detail = response.detail ?: response.code.name,
+            message = "$original after the mutation started" + (response.message?.let { ": $it" } ?: ""),
+        )
     }
 
     private fun error(
@@ -319,6 +361,13 @@ class CommandPipeline(
                     OutboundItem.Stop -> return
                     is OutboundItem.Message -> if (!writeFailed) write(item.message)
                     is OutboundItem.Blob -> item.blob.finish(streamBlob(item.blob))
+                    is OutboundItem.Close -> try {
+                        write(item.message)
+                        // The transport is finished: later responses and blobs are dropped.
+                        writeFailed = true
+                    } finally {
+                        item.handled.countDown()
+                    }
                 }
             }
         } catch (_: InterruptedException) {
@@ -370,12 +419,13 @@ class CommandPipeline(
     private sealed interface OutboundItem {
         data class Message(val message: Outbound) : OutboundItem
         class Blob(val blob: BlobTransfer) : OutboundItem
+        class Close(val message: Outbound.Close, val handled: CountDownLatch) : OutboundItem
         data object Stop : OutboundItem
     }
 
     companion object {
         const val DEFAULT_QUEUE_CAPACITY = 16
-        const val DEFAULT_UNINTERRUPTIBLE_GRACE_MS = 10_000L
+        const val DEFAULT_UNINTERRUPTIBLE_GRACE_MS = DRIVER_UNINTERRUPTIBLE_GRACE_MS
         const val DEFAULT_WATCHDOG_POLL_MS = 100L
     }
 }

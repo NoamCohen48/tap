@@ -9,15 +9,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.CoroutineContext
 
-/** The service's wording for a held per-serial lock (`DeviceBusyException` in `:host:core`). */
+/** The server's wording for a held per-serial lock (`DeviceBusyException` in `:host:core`). */
 internal const val DEVICE_BUSY_MARKER = "is in use by another session"
 
 /**
  * Ownership marker for suspending device calls. Installed by [tapScope] (scripts) and by the
  * JUnit 5 `tapTest` bridge (which uses the same element with a `junit:<method>` owner); every
  * suspending `Device`/`App`/`Element`/`ElementWait` call requires it. `TapClient`,
- * `Connection`, `ServiceDiscovery` and `TapServiceProcess` never require it: they set up the
- * channel, the connection and the service process outside any test scope.
+ * `ClientConnection`, `DaemonDiscovery` and `TapDaemonProcess` never require it: they set up the
+ * channel, the connection and the daemon process outside any test scope.
  */
 class TapContext(
     val owner: String,
@@ -62,7 +62,7 @@ suspend fun <T> tapScope(
 
 /**
  * Converts gRPC failures into the client's exceptions. Driver outcomes never arrive this way
- * (they are `CommandResult` data); this covers service refusals and host-side failures.
+ * (they are `CommandResult` data); this covers server refusals and host-side failures.
  * Caller cancellation ([CancellationException]) is never mapped: it propagates so deadlines
  * and sibling failures cancel the RPC promptly.
  */
@@ -87,6 +87,24 @@ private fun mapStatus(
 ): TapException {
     val details = status.description.orEmpty()
     return when {
+        status.code == Status.Code.UNAUTHENTICATED -> {
+            ServerException(
+                status.code.name,
+                "wrong or missing daemon token (read from daemon.json in the state dir, or " +
+                    "tap.token / TAP_TOKEN with an explicit address): $details",
+                cause,
+            )
+        }
+
+        status.code == Status.Code.PERMISSION_DENIED -> {
+            ServerException(
+                status.code.name,
+                "device ${serial ?: "?"} is attached by another client connection; only the connection " +
+                    "that attached it may use or detach it: $details",
+                cause,
+            )
+        }
+
         status.code == Status.Code.DEADLINE_EXCEEDED && details.startsWith("Timed out") -> {
             WaitTimeoutException(details, serial ?: "?", 0, cause = cause)
         }
@@ -100,7 +118,7 @@ private fun mapStatus(
         }
 
         else -> {
-            ServiceException(status.code.name, details, cause)
+            ServerException(status.code.name, details, cause)
         }
     }
 }

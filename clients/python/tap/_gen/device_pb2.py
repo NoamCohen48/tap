@@ -22,9 +22,10 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from . import command_pb2 as command__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x64\x65vice.proto\x12\x06tap.v1\"\xaf\x01\n\x0b\x44\x65viceEntry\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\"\n\x05state\x18\x02 \x01(\x0e\x32\x13.tap.v1.DeviceState\x12\x1f\n\x12held_by_connection\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x1e\n\x11quarantine_reason\x18\x04 \x01(\tH\x01\x88\x01\x01\x42\x15\n\x13_held_by_connectionB\x14\n\x12_quarantine_reason\"\x14\n\x12ListDevicesRequest\";\n\x13ListDevicesResponse\x12$\n\x07\x64\x65vices\x18\x01 \x03(\x0b\x32\x13.tap.v1.DeviceEntry*{\n\x0b\x44\x65viceState\x12\x1c\n\x18\x44\x45VICE_STATE_UNSPECIFIED\x10\x00\x12\x0f\n\x0b\x44\x45VICE_FREE\x10\x01\x12\x11\n\rDEVICE_LEASED\x10\x02\x12\x16\n\x12\x44\x45VICE_QUARANTINED\x10\x03\x12\x12\n\x0e\x44\x45VICE_OFFLINE\x10\x04\x32W\n\rDeviceService\x12\x46\n\x0bListDevices\x12\x1a.tap.v1.ListDevicesRequest\x1a\x1b.tap.v1.ListDevicesResponseB\'\n\x16\x63om.company.tap.api.v1B\x0b\x44\x65viceProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x64\x65vice.proto\x12\x06tap.v1\x1a\rcommand.proto\"\xb3\x01\n\x0b\x44\x65viceEntry\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\"\n\x05state\x18\x02 \x01(\x0e\x32\x13.tap.v1.DeviceState\x12!\n\x14\x63lient_connection_id\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x1e\n\x11quarantine_reason\x18\x04 \x01(\tH\x01\x88\x01\x01\x42\x17\n\x15_client_connection_idB\x14\n\x12_quarantine_reason\"\x14\n\x12ListDevicesRequest\";\n\x13ListDevicesResponse\x12$\n\x07\x64\x65vices\x18\x01 \x03(\x0b\x32\x13.tap.v1.DeviceEntry\"\xc9\x02\n\rAttachRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x13\n\x0b\x61ut_package\x18\x03 \x01(\t\x12 \n\x13skip_driver_install\x18\x04 \x01(\x08H\x00\x88\x01\x01\x12\x1b\n\x0esync_authority\x18\x05 \x01(\tH\x01\x88\x01\x01\x12\x1f\n\x17\x61llowed_system_packages\x18\x06 \x03(\t\x12\x1f\n\x12\x64\x65\x66\x61ult_timeout_ms\x18\x07 \x01(\x03H\x02\x88\x01\x01\x12\x1d\n\x10lease_timeout_ms\x18\x08 \x01(\x03H\x03\x88\x01\x01\x42\x16\n\x14_skip_driver_installB\x11\n\x0f_sync_authorityB\x15\n\x13_default_timeout_msB\x13\n\x11_lease_timeout_ms\"y\n\x0e\x41ttachResponse\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x03 \x01(\x03\x12\'\n\x0b\x64\x65vice_info\x18\x04 \x01(\x0b\x32\x12.tap.v1.DeviceInfo\"I\n\rDetachRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\"?\n\x0e\x44\x65tachResponse\x12\r\n\x05\x63lean\x18\x01 \x01(\x08\x12\x13\n\x06\x64\x65tail\x18\x02 \x01(\tH\x00\x88\x01\x01\x42\t\n\x07_detail\"l\n\x0e\x45xecuteRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12 \n\x07\x63ommand\x18\x03 \x01(\x0b\x32\x0f.tap.v1.Command\"8\n\x0f\x45xecuteResponse\x12%\n\x06result\x18\x01 \x01(\x0b\x32\x15.tap.v1.CommandResult\"u\n\x11ScreenshotRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x17\n\ntimeout_ms\x18\x03 \x01(\x03H\x00\x88\x01\x01\x42\r\n\x0b_timeout_ms\"o\n\x12ScreenshotResponse\x12\x0b\n\x03png\x18\x01 \x01(\x0c\x12\x0e\n\x06sha256\x18\x02 \x01(\t\x12\x12\n\x05width\x18\x03 \x01(\x05H\x00\x88\x01\x01\x12\x13\n\x06height\x18\x04 \x01(\x05H\x01\x88\x01\x01\x42\x08\n\x06_widthB\t\n\x07_height\"L\n\x10\x44riverLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\"\"\n\x11\x44riverLogResponse\x12\r\n\x05lines\x18\x01 \x03(\t*\x94\x01\n\x0b\x44\x65viceState\x12\x1c\n\x18\x44\x45VICE_STATE_UNSPECIFIED\x10\x00\x12\x0f\n\x0b\x44\x45VICE_FREE\x10\x01\x12\x11\n\rDEVICE_LEASED\x10\x02\x12\x16\n\x12\x44\x45VICE_QUARANTINED\x10\x03\x12\x12\n\x0e\x44\x45VICE_OFFLINE\x10\x04\x12\x17\n\x13\x44\x45VICE_UNAUTHORIZED\x10\x05\x32\x8c\x03\n\rDeviceService\x12\x46\n\x0bListDevices\x12\x1a.tap.v1.ListDevicesRequest\x1a\x1b.tap.v1.ListDevicesResponse\x12\x37\n\x06\x41ttach\x12\x15.tap.v1.AttachRequest\x1a\x16.tap.v1.AttachResponse\x12\x37\n\x06\x44\x65tach\x12\x15.tap.v1.DetachRequest\x1a\x16.tap.v1.DetachResponse\x12:\n\x07\x45xecute\x12\x16.tap.v1.ExecuteRequest\x1a\x17.tap.v1.ExecuteResponse\x12\x43\n\nScreenshot\x12\x19.tap.v1.ScreenshotRequest\x1a\x1a.tap.v1.ScreenshotResponse\x12@\n\tDriverLog\x12\x18.tap.v1.DriverLogRequest\x1a\x19.tap.v1.DriverLogResponseB\'\n\x16\x63om.company.tap.api.v1B\x0b\x44\x65viceProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,14 +33,34 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'device_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\026com.company.tap.api.v1B\013DeviceProtoP\001'
-  _globals['_DEVICESTATE']._serialized_start=285
-  _globals['_DEVICESTATE']._serialized_end=408
-  _globals['_DEVICEENTRY']._serialized_start=25
-  _globals['_DEVICEENTRY']._serialized_end=200
-  _globals['_LISTDEVICESREQUEST']._serialized_start=202
-  _globals['_LISTDEVICESREQUEST']._serialized_end=222
-  _globals['_LISTDEVICESRESPONSE']._serialized_start=224
-  _globals['_LISTDEVICESRESPONSE']._serialized_end=283
-  _globals['_DEVICESERVICE']._serialized_start=410
-  _globals['_DEVICESERVICE']._serialized_end=497
+  _globals['_DEVICESTATE']._serialized_start=1414
+  _globals['_DEVICESTATE']._serialized_end=1562
+  _globals['_DEVICEENTRY']._serialized_start=40
+  _globals['_DEVICEENTRY']._serialized_end=219
+  _globals['_LISTDEVICESREQUEST']._serialized_start=221
+  _globals['_LISTDEVICESREQUEST']._serialized_end=241
+  _globals['_LISTDEVICESRESPONSE']._serialized_start=243
+  _globals['_LISTDEVICESRESPONSE']._serialized_end=302
+  _globals['_ATTACHREQUEST']._serialized_start=305
+  _globals['_ATTACHREQUEST']._serialized_end=634
+  _globals['_ATTACHRESPONSE']._serialized_start=636
+  _globals['_ATTACHRESPONSE']._serialized_end=757
+  _globals['_DETACHREQUEST']._serialized_start=759
+  _globals['_DETACHREQUEST']._serialized_end=832
+  _globals['_DETACHRESPONSE']._serialized_start=834
+  _globals['_DETACHRESPONSE']._serialized_end=897
+  _globals['_EXECUTEREQUEST']._serialized_start=899
+  _globals['_EXECUTEREQUEST']._serialized_end=1007
+  _globals['_EXECUTERESPONSE']._serialized_start=1009
+  _globals['_EXECUTERESPONSE']._serialized_end=1065
+  _globals['_SCREENSHOTREQUEST']._serialized_start=1067
+  _globals['_SCREENSHOTREQUEST']._serialized_end=1184
+  _globals['_SCREENSHOTRESPONSE']._serialized_start=1186
+  _globals['_SCREENSHOTRESPONSE']._serialized_end=1297
+  _globals['_DRIVERLOGREQUEST']._serialized_start=1299
+  _globals['_DRIVERLOGREQUEST']._serialized_end=1375
+  _globals['_DRIVERLOGRESPONSE']._serialized_start=1377
+  _globals['_DRIVERLOGRESPONSE']._serialized_end=1411
+  _globals['_DEVICESERVICE']._serialized_start=1565
+  _globals['_DEVICESERVICE']._serialized_end=1961
 # @@protoc_insertion_point(module_scope)

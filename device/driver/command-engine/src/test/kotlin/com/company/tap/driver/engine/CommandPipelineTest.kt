@@ -498,6 +498,88 @@ class CommandPipelineTest {
         }
     }
 
+    @Test
+    fun readerRejectionsLeaveOnTheWriterLaneInOrder() {
+        val release = CountDownLatch(1)
+        pipeline.submit(1, 5_000) { release.await(); ok() }
+        awaitRunning(1)
+
+        pipeline.respond(2, Response.failure(ErrorCode.UNSUPPORTED, durationMs = 0))
+        release.countDown()
+
+        val rejected = nextResponse()
+        assertEquals(2L, rejected.requestId)
+        assertEquals(ErrorCode.UNSUPPORTED, rejected.response.errorCode)
+        assertEquals(1L, nextResponse().requestId)
+    }
+
+    @Test
+    fun closeIsWrittenAfterQueuedFramesAndNothingFollowsIt() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        pipeline.submit(1, 5_000) { entered.countDown(); release.await(); ok() }
+        assertTrue(entered.await(1, TimeUnit.SECONDS))
+        pipeline.respond(2, Response.failure(ErrorCode.UNSUPPORTED, durationMs = 0))
+
+        assertTrue(pipeline.close("DUPLICATE_OR_STALE: request ID 1", 1_000))
+
+        assertEquals(2L, nextResponse().requestId)
+        assertEquals("DUPLICATE_OR_STALE: request ID 1", next<Outbound.Close>().reason)
+        assertEquals(CommandPipeline.Admission.CLOSED, pipeline.submit(3, 5_000) { ok() })
+        release.countDown()
+        pipeline.awaitTermination(1_000)
+        assertNull(written.poll(100, TimeUnit.MILLISECONDS), "nothing may follow CLOSE")
+    }
+
+    @Test
+    fun gateStaysOpenOnceMutationStarted() {
+        pipeline.submit(1, 1_000) { ctx ->
+            ctx.markMutationStarted()
+            now.addAndGet(5_000)
+            pipeline.cancel(1)
+            // A second gate (e.g. a later scroll) after deadline and cancel must not throw.
+            ctx.markMutationStarted()
+            ok()
+        }
+        val response = nextResponse().response
+        assertTrue(response.ok, "second gate reported $response")
+    }
+
+    @Test
+    fun nonMutatingFailureAfterGateIsReportedAsIndeterminate() {
+        val nonMutating = ErrorCode.entries.filter { !it.mayHaveMutated }
+        nonMutating.forEachIndexed { index, code ->
+            val requestId = index + 1L
+            pipeline.submit(requestId, 5_000) { ctx ->
+                ctx.markMutationStarted()
+                Response.failure(code, detail = "SUB", message = "why", durationMs = 0)
+            }
+            val response = nextResponse()
+            assertEquals(requestId, response.requestId)
+            assertEquals(ErrorCode.INDETERMINATE, response.response.errorCode, "$code after the gate")
+            assertEquals("SUB", response.response.detail)
+            assertTrue(response.response.message!!.startsWith("$code/SUB after the mutation started: why"))
+        }
+        pipeline.submit(100, 5_000) { ctx ->
+            ctx.markMutationStarted()
+            Response.failure(ErrorCode.WAIT_TIMEOUT, durationMs = 0)
+        }
+        assertEquals("WAIT_TIMEOUT", nextResponse().response.detail, "the code name stands in for a missing detail")
+    }
+
+    @Test
+    fun failuresBeforeGateOrAlreadyMutatingAreUnchanged() {
+        pipeline.submit(1, 5_000) { Response.failure(ErrorCode.NOT_FOUND, durationMs = 0) }
+        assertEquals(ErrorCode.NOT_FOUND, nextResponse().response.errorCode)
+        pipeline.submit(2, 5_000) { ctx ->
+            ctx.markMutationStarted()
+            Response.failure(ErrorCode.ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = 0)
+        }
+        val rejected = nextResponse().response
+        assertEquals(ErrorCode.ACTION_REJECTED, rejected.errorCode)
+        assertEquals(ErrorDetail.TEXT_MISMATCH, rejected.detail)
+    }
+
     private inline fun <reified T : Outbound> next(): T {
         val message = written.poll(2, TimeUnit.SECONDS) ?: fail("Nothing written")
         return message as? T ?: fail("Unexpected outbound $message")

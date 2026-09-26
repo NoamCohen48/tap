@@ -39,14 +39,68 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.ListDevicesRequest.SerializeToString,
                 response_deserializer=device__pb2.ListDevicesResponse.FromString,
                 _registered_method=True)
+        self.Attach = channel.unary_unary(
+                '/tap.v1.DeviceService/Attach',
+                request_serializer=device__pb2.AttachRequest.SerializeToString,
+                response_deserializer=device__pb2.AttachResponse.FromString,
+                _registered_method=True)
+        self.Detach = channel.unary_unary(
+                '/tap.v1.DeviceService/Detach',
+                request_serializer=device__pb2.DetachRequest.SerializeToString,
+                response_deserializer=device__pb2.DetachResponse.FromString,
+                _registered_method=True)
+        self.Execute = channel.unary_unary(
+                '/tap.v1.DeviceService/Execute',
+                request_serializer=device__pb2.ExecuteRequest.SerializeToString,
+                response_deserializer=device__pb2.ExecuteResponse.FromString,
+                _registered_method=True)
+        self.Screenshot = channel.unary_unary(
+                '/tap.v1.DeviceService/Screenshot',
+                request_serializer=device__pb2.ScreenshotRequest.SerializeToString,
+                response_deserializer=device__pb2.ScreenshotResponse.FromString,
+                _registered_method=True)
+        self.DriverLog = channel.unary_unary(
+                '/tap.v1.DeviceService/DriverLog',
+                request_serializer=device__pb2.DriverLogRequest.SerializeToString,
+                response_deserializer=device__pb2.DriverLogResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def ListDevices(self, request, context):
-        """Every device ADB lists, with its state.
-        """
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Attach(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Detach(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Execute(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Screenshot(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DriverLog(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -58,6 +112,31 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.ListDevices,
                     request_deserializer=device__pb2.ListDevicesRequest.FromString,
                     response_serializer=device__pb2.ListDevicesResponse.SerializeToString,
+            ),
+            'Attach': grpc.unary_unary_rpc_method_handler(
+                    servicer.Attach,
+                    request_deserializer=device__pb2.AttachRequest.FromString,
+                    response_serializer=device__pb2.AttachResponse.SerializeToString,
+            ),
+            'Detach': grpc.unary_unary_rpc_method_handler(
+                    servicer.Detach,
+                    request_deserializer=device__pb2.DetachRequest.FromString,
+                    response_serializer=device__pb2.DetachResponse.SerializeToString,
+            ),
+            'Execute': grpc.unary_unary_rpc_method_handler(
+                    servicer.Execute,
+                    request_deserializer=device__pb2.ExecuteRequest.FromString,
+                    response_serializer=device__pb2.ExecuteResponse.SerializeToString,
+            ),
+            'Screenshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.Screenshot,
+                    request_deserializer=device__pb2.ScreenshotRequest.FromString,
+                    response_serializer=device__pb2.ScreenshotResponse.SerializeToString,
+            ),
+            'DriverLog': grpc.unary_unary_rpc_method_handler(
+                    servicer.DriverLog,
+                    request_deserializer=device__pb2.DriverLogRequest.FromString,
+                    response_serializer=device__pb2.DriverLogResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -87,6 +166,141 @@ class DeviceService:
             '/tap.v1.DeviceService/ListDevices',
             device__pb2.ListDevicesRequest.SerializeToString,
             device__pb2.ListDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Attach(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/Attach',
+            device__pb2.AttachRequest.SerializeToString,
+            device__pb2.AttachResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Detach(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/Detach',
+            device__pb2.DetachRequest.SerializeToString,
+            device__pb2.DetachResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Execute(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/Execute',
+            device__pb2.ExecuteRequest.SerializeToString,
+            device__pb2.ExecuteResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Screenshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/Screenshot',
+            device__pb2.ScreenshotRequest.SerializeToString,
+            device__pb2.ScreenshotResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DriverLog(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/DriverLog',
+            device__pb2.DriverLogRequest.SerializeToString,
+            device__pb2.DriverLogResponse.FromString,
             options,
             channel_credentials,
             insecure,

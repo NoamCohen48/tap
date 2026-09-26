@@ -14,9 +14,9 @@ command and per result kind, discriminated on the wire (`op`, `kind`, `type`). 1
 negotiated any more; the driver and the host ship together, so nothing speaks it. The
 rationale is under [Design Rationale](#design-rationale).
 
-`contracts/api/proto/command.proto` (the host service API, `service-api.md`) mirrors this
+`contracts/api/proto/command.proto` (the host server API, `server-api.md`) mirrors this
 contract's enums, selector AST and command/result models as `oneof`s; `EnumMirrorTest` and
-`GoldenRoundTripTest` in `:host:service` fail when they drift. A change here therefore also
+`GoldenRoundTripTest` in `:host:daemon` fail when they drift. A change here therefore also
 updates the proto and the committed Python stubs (`clients/python/scripts/gen_stubs.py`).
 
 ## Framing
@@ -34,16 +34,28 @@ payload     length bytes
 ```
 
 Control payloads are limited to 1 MiB. Handshake payloads are canonical UTF-8 JSON. Request
-and response payloads are UTF-8 JSON. Connection frames use request ID zero; requests and
-responses use a positive monotonically increasing ID.
+and response payloads are UTF-8 JSON (`ProtocolJson`: defaults always encoded, null optionals
+omitted, unknown keys ignored). Connection frames use request ID zero; requests and responses
+use a positive monotonically increasing ID. Both ends write each frame as one buffer in a single
+`write` and set `TCP_NODELAY`, so a frame never waits on Nagle/delayed-ACK over adb forwarding.
 
 Implemented frame types are `HELLO` (1), `CHALLENGE` (2), `AUTH` (3), `AUTH_RESULT` (4),
 `REQUEST` (5), `RESPONSE` (6), `CLOSE` (7), `CANCEL` (8), `PING` (9), `PONG` (10),
 `BLOB_START` (11), `BLOB_CHUNK` (12), and `BLOB_END` (13). Unknown framing versions, frame
 types, flags, and invalid lengths fail the connection before payload decoding. After
 authentication only `REQUEST`, `CANCEL`, `PING`, and `CLOSE` are legal from the host; any other
-type (including blob frames) fails the connection. `CANCEL` carries the target request ID and
-an empty payload; `PING`/`PONG` use request ID zero and an empty payload. Blob frames are
+type (including blob frames) fails the connection. `CANCEL` carries the target request ID
+(positive) and an empty payload; `PING`/`PONG` use request ID zero and an empty payload.
+
+The host's `CLOSE` has an empty payload. The driver sends `CLOSE` (request ID zero, payload a
+UTF-8 reason of at most 512 characters) when the host violates the protocol after
+authentication: a malformed frame header, an illegal frame type, a `CANCEL` with a non-positive
+ID or a payload, a `PING` with a non-zero ID or a payload, or a duplicate/stale request ID
+(reason prefixed `DUPLICATE_OR_STALE:`). Every driver frame, including rejections and this
+`CLOSE`, leaves on the pipeline's single writer thread behind whatever it already queued, so
+frames never interleave; after `CLOSE` nothing else is written and the socket is closed. The
+host treats a driver `CLOSE` as transport loss with the reason as the cause: the client is
+poisoned, in-flight mutations fail `INDETERMINATE` and queries `TRANSPORT_LOST`. Blob frames are
 driver-to-host only and are described under [Artifacts](#artifacts).
 
 ## Canonical JSON
@@ -97,6 +109,13 @@ Driver authentication uses the independent `TAP1-DRIVER-AUTH` domain. `AUTH_RESU
 the exact selected version and enabled capabilities and carry the valid driver transcript
 HMAC. Any mismatch fails authentication.
 
+After the driver's HMAC verifies, the host also requires the challenge's `driverApkBuildId` and
+`driverTestApkBuildId` to equal its own `DRIVER_APK_BUILD_ID` / `DRIVER_TEST_APK_BUILD_ID` (all
+three are the engine version the artifacts were built from). A driver of another build fails the
+connection with `DriverBuildMismatchException` (a handshake failure, never retried) and the
+session does not open; the remedy is reinstalling the driver APKs that ship with the host. The
+check runs only after authentication, so the reported build is known to come from the driver.
+
 ## Requests
 
 A request is an envelope around one command:
@@ -108,7 +127,10 @@ A request is an envelope around one command:
 `sessionId` and `generation` are the authenticated identity; `timeoutMs` is bounded (0..120 000)
 and starts when the request is accepted; the request ID lives in the frame header. `command`
 is exactly one of the classes below, discriminated by `op`; every field that is not marked
-optional is required, defaults are filled in by the sender and always present on the wire.
+optional is required, defaults are filled in by the sender and always present on the wire
+(including a selector's default `scope`/`pick` and a match's default `mode`), so a receiver's
+own defaults never decide a value; the golden request fixtures show every default and change
+when one does.
 In Kotlin (`contracts/protocol`, `Commands.kt`) each command is a `@Serializable` class in the
 sealed `Command` hierarchy; `Mutation` marks the commands that may change device state and
 `Targeted` the ones with a primary `selector`. `Returning<R>` types the result each command
@@ -175,8 +197,10 @@ Independently, the driver bounds UiAutomator's implicit `waitForIdle` (run befor
 animating screen slows a command by at most one second rather than pushing every request past
 its deadline and poisoning the session.
 
-IDs at or below the accepted watermark return `DUPLICATE_OR_STALE` (an ID consumed by a
-rejected payload is not reusable either). A session-generation or session-ID mismatch returns
+A request ID at or below the accepted watermark (an ID consumed by a rejected payload is not
+reusable either) is a protocol violation: the driver closes the connection with a
+`DUPLICATE_OR_STALE:` `CLOSE` reason instead of answering, because a response on the reused ID
+could complete the host's real pending command. A session-generation or session-ID mismatch returns
 `SESSION_MISMATCH`. Mutating element targets and scroll containers require exactly one match.
 Zero matches return `NOT_FOUND`; multiple matches return `AMBIGUOUS` before input is injected.
 
@@ -234,7 +258,9 @@ carrying them fails to decode as `INVALID_REQUEST`).
 
 Both sides validate the same limits before allocating a request ID or touching the UI: depth
 ≤ 32, ≤ 256 nodes, ≤ 1024 chars per string, no empty resource name or package, a combinator
-needs at least two operands (`EMPTY_NODE`), and `REGEX` must compile under RE2 (linear time; no
+needs at least two operands (`EMPTY_NODE`), a `match` with an empty `value` is only valid in
+`EXACT` mode (`EMPTY_VALUE`: `CONTAINS ""` and the other modes would match every node, so a
+`first` mutation would hit an arbitrary one), and `REGEX` must compile under RE2 (linear time; no
 backreferences or lookaround). The rejection reason is returned as an `INVALID_SELECTOR`
 detail. A resource with an explicit `packageName` must match the scope package; a `system`
 scope outside the driver's allowlist is `SCOPE_DENIED`; a target and container with different
@@ -284,14 +310,21 @@ socket reader -> bounded queue (16) -> single command executor -> writer -> sock
 Commands checkpoint before selector resolution, between wait polls, and between scroll
 attempts. Immediately before the first irreversible platform call (`click`, text replacement,
 key injection, the first scroll gesture) the command passes an atomic gate that refuses on
-cancel, deadline, or a poisoned session and otherwise makes the command uncancellable. Waits
-that simply run out of time still report `WAIT_TIMEOUT`; `DEADLINE_EXCEEDED` is reserved for
-expiry outside a normal condition result.
+cancel, deadline, or a poisoned session and otherwise makes the command uncancellable. Once
+open the gate stays open: passing it again (`scroll_until` gates once, before its first gesture)
+never refuses. Waits that simply run out of time still report `WAIT_TIMEOUT`;
+`DEADLINE_EXCEEDED` is reserved for expiry outside a normal condition result.
+
+After the gate opened, a failure whose code is "may have mutated: no" would be a false promise,
+so the pipeline rewrites it to `INDETERMINATE`: the `detail` keeps the original detail (or the
+original code name when there was none) and the `message` starts with `<CODE>[/<DETAIL>] after
+the mutation started`. Codes that already say "may have mutated: yes" pass through unchanged.
 
 ### Watchdog
 
 If the running command is still executing more than the uninterruptible grace period
-(default 10 s, instrumentation argument `tapUninterruptibleGraceMs`) after its deadline, the
+(`DRIVER_UNINTERRUPTIBLE_GRACE_MS`, 10 s; instrumentation argument `tapUninterruptibleGraceMs`)
+after its deadline, the
 pipeline is poisoned: the running command terminates with `INDETERMINATE` if it had started
 mutating and `DRIVER_UNHEALTHY` otherwise, queued commands terminate with `DRIVER_UNHEALTHY`,
 later requests are refused with `DRIVER_UNHEALTHY`, and the mutation gate refuses everything.
@@ -337,8 +370,10 @@ session stays usable after a rejected artifact.
 The host writes each request ID and complete frame under one per-session transport mutex, so
 IDs are strictly increasing on the socket even with concurrent callers. A dedicated reader
 thread demultiplexes `RESPONSE`, `PONG`, and blob frames by request ID. `cancel` sends `CANCEL` only for a request in the
-`WRITTEN` state; the caller still awaits the driver's single terminal response. A missing
-terminal response, an unknown response ID, or any read failure poisons the client: in-flight
+`WRITTEN` state; the caller still awaits the driver's single terminal response. Each command's
+private response budget is its timeout plus `HOST_RESPONSE_PADDING_MS` (the driver grace plus
+5 s), so the driver's own watchdog verdict on a late command arrives before the host gives up.
+A missing terminal response, an unknown response ID, or any read failure poisons the client: in-flight
 mutating requests fail as `INDETERMINATE`, queries as `TRANSPORT_LOST`, and later submissions
 fail before writing.
 
@@ -361,7 +396,7 @@ policy; Tap itself never retries.
 | `UNSUPPORTED` | no | no | Unknown `op`. |
 | `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
 | `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
-| `DUPLICATE_OR_STALE` | no | no | Request ID at or below the watermark. |
+| `DUPLICATE_OR_STALE` | no | no | Request ID at or below the watermark. Not sent as a response: it prefixes the driver's `CLOSE` reason. |
 | `OVERLOADED` | no | yes | Command queue full; the ID is still consumed. |
 | `AUT_MISMATCH` | no | no | Observed AUT identity differs. `PROCESS_RESTARTED`, `PROCESS_MISMATCH` from synchronization. |
 | `NOT_FOUND` | no | yes | Zero matches. `END_REACHED`, `MAX_SCROLLS` for `SCROLL_UNTIL`. |
@@ -378,14 +413,16 @@ policy; Tap itself never retries.
 | `SYNC_PROVIDER_UNAVAILABLE` | no | yes | Synchronization provider unusable. `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `MALFORMED_STATE`, `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `PROVIDER_POISONED`. |
 | `DRIVER_UNHEALTHY` | no | no | Session poisoned by the watchdog (`WATCHDOG`, `HEARTBEAT_EXPIRED`); rebuild the session. |
 | `TRANSPORT_LOST` | no | no | Host-side: no response and no mutation risk. |
-| `INDETERMINATE` | yes | no | Mutation may have happened without a definitive result. `WATCHDOG`, `KEY_RELEASE_FAILED`. |
+| `INDETERMINATE` | yes | no | Mutation may have happened without a definitive result. `WATCHDOG`, `KEY_RELEASE_FAILED`; after the gate, the rewritten code's detail or name (`END_REACHED`, `MAX_SCROLLS`, `WAIT_TIMEOUT`, …). |
 | `ARTIFACT_TRANSFER_FAILED` | yes | no | Blob capture or transfer failed. Driver: `CAPTURE_FAILED`, `ARTIFACT_TOO_LARGE`, `BLOB_INCOMPLETE`. Host verification: `BLOB_UNEXPECTED`, `BLOB_OUT_OF_ORDER`, `BLOB_LENGTH_MISMATCH`, `BLOB_CHECKSUM_MISMATCH`, `BLOB_INCOMPLETE`. |
 | `PAYLOAD_TOO_LARGE` | yes | no | The command ran but its response exceeded the control payload limit. |
 | `INTERNAL` | yes | no | Unexpected driver failure. |
 
-`scroll_until` reports `NOT_FOUND`/`WAIT_TIMEOUT` after performing scroll gestures because
-re-issuing the search is safe; a container that stops resolving mid-search is
-`STALE_DURING_COMMAND`.
+`scroll_until` that scrolled and still did not find its target reports `INDETERMINATE` with
+detail `END_REACHED` / `MAX_SCROLLS` / `WAIT_TIMEOUT` (the list position changed, so the
+"nothing happened" codes would be false); one that fails before its first gesture still reports
+`NOT_FOUND`/`AMBIGUOUS`/`WAIT_TIMEOUT`. A container that stops resolving after the first gesture
+is `STALE_DURING_COMMAND` (`TARGET_GONE`/`TARGET_AMBIGUOUS`).
 
 ### Host exceptions
 
@@ -429,7 +466,7 @@ one terminal response per accepted ID) that are trivial on one socket and awkwar
 independent connections and keep-alive pools. An HTTP server inside the instrumentation is
 also a dependency, startup time, and attack surface on a port every app on the device can
 reach. The 20-byte header is roughly WebSocket framing without the upgrade. A *host-side*
-service (`multi-language-bindings.md`) should nevertheless be HTTP/JSON-RPC; the trade-offs
+server (`multi-language-bindings.md`) should nevertheless be HTTP/JSON-RPC; the trade-offs
 flip there.
 
 **JSON rather than protobuf** (*judgment call*). Payloads are tiny (a selector AST and a
@@ -453,7 +490,7 @@ so an impossible request cannot be built and a result cannot be misread. The env
 (`sessionId`, `generation`, `timeoutMs`) stays separate from the command because it is the
 session layer's, not the command's. The wire discriminators (`op`, `kind`, `type`) are the
 `@SerialName`s of the classes and nothing else; `Command.names`, the driver's dispatch and the
-proto `oneof` case names are all derived from or checked against them. The service API mirrors
+proto `oneof` case names are all derived from or checked against them. The server API mirrors
 the same structure as `oneof`s so a client in any language sees the same per-command shape.
 
 **Selectors are a sum-type expression tree, with `any_of`** (*deliberate departure from plan

@@ -1,6 +1,6 @@
 # Command-line parsing for `tap` — library options and the decision
 
-Date: 2026-09-20. Research note for `host/service/src/main/kotlin/com/company/tap/service/ServiceMain.kt`,
+Date: 2026-09-20. Research note for `host/daemon/src/main/kotlin/com/company/tap/daemon/TapDaemonMain.kt`,
 which parses the `tap` command line by hand.
 
 ## What the CLI is today
@@ -18,8 +18,8 @@ the next token is its value unless it also starts with `--`; anything else print
 exits. It has no `--help`, `--port abc` dies with a `NumberFormatException`, and unknown flags
 are accepted silently into the map.
 
-The service ships as a GraalVM native image (`:host:service:nativeCompile`) with recorded
-reachability metadata under `host/service/src/main/resources/META-INF/native-image/`. Any
+The daemon ships as a GraalVM native image (`:host:daemon:nativeCompile`) with recorded
+reachability metadata under `host/daemon/src/main/resources/META-INF/native-image/`. Any
 library added here must not need reflection config, or must generate its own.
 
 ## Candidates
@@ -41,11 +41,11 @@ help, typed options and consistent error messages stop being nice-to-have.
 When that happens, adopt **Clikt with `clikt-core`**, in the same change that adds the first
 new command:
 
-- one `CliktCommand` per verb under `com.company.tap.service.cli`, `main` = `Tap().subcommands(Start(), Serve(), Status(), Stop(), ...).main(args)`;
+- one `CliktCommand` per verb under `com.company.tap.daemon.cli`, `main` = `Tap().subcommands(Start(), Serve(), Status(), Stop(), ...).main(args)`;
 - `--adb` / `--state-dir` declared with `envvar` (`TAP_ADB`, `TAP_STATE_DIR`) instead of
   `System.getenv` at the use site; `--port` as `int()`;
 - keep the existing flag names and defaults so `README.md`, `docs/guide/configuration.md`,
-  the CI workflow and `TapServiceProcess` / `start_service` (which run `tap start --state-dir DIR`)
+  the CI workflow and `TapDaemonProcess` / `start_daemon` (which run `tap start --state-dir DIR`)
   are unchanged; `start` re-executes the binary as `serve --port N …`, so `serve` must keep
   accepting exactly the options `start` forwards;
 - run the native-image smoke (`tap start` / `status` / `stop` on the native binary) to confirm

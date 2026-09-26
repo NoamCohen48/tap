@@ -2,6 +2,7 @@ package com.company.tap.host
 
 import com.company.tap.protocol.BlobStart
 import com.company.tap.protocol.BoolResult
+import com.company.tap.protocol.DRIVER_APK_BUILD_ID
 import com.company.tap.protocol.Done
 import com.company.tap.protocol.ErrorCode
 import com.company.tap.protocol.ErrorDetail
@@ -10,6 +11,7 @@ import com.company.tap.protocol.Frame
 import com.company.tap.protocol.FrameType
 import com.company.tap.protocol.Health
 import com.company.tap.protocol.MAX_BLOB_CHUNK_BYTES
+import com.company.tap.protocol.ProtocolJson
 import com.company.tap.protocol.Request
 import com.company.tap.protocol.Response
 import com.company.tap.protocol.Screenshot
@@ -33,7 +35,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.json.Json
 import java.security.SecureRandom
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -46,7 +47,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DriverClientTest {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = ProtocolJson.codec
     private val secret = ByteArray(32).also(SecureRandom()::nextBytes)
     private val driver = FakeDriverServer("session-1", 7, secret)
     private lateinit var client: DriverClient
@@ -653,6 +654,97 @@ class DriverClientTest {
             assertEquals(1_234L, failure.timeoutMs)
             assertTrue(failure.mayHaveMutated)
             assertTrue(CommandException::class.java.isAssignableFrom(failure.javaClass))
+        }
+
+    @Test
+    fun driverCloseFailsInFlightWorkWithItsReason() =
+        runBlocking {
+            val tap = client.submit(Tap(selector))
+            driver.nextFrame()
+            driver.write(Frame(FrameType.CLOSE, 0, "DUPLICATE_OR_STALE: request ID 1".encodeToByteArray()))
+
+            val failure = assertFailsWith<CommandTransportException> { tap.await() }
+            assertEquals(ErrorCode.INDETERMINATE, failure.code)
+            assertTrue("DUPLICATE_OR_STALE" in failure.cause?.message.orEmpty(), failure.cause?.message)
+            assertTrue(client.isPoisoned)
+        }
+
+    @Test
+    fun connectDeadlineBoundsOnlyTheHandshake() =
+        runBlocking {
+            val shortDriver = FakeDriverServer("session-2", 7, secret)
+            val shortLived =
+                DriverClient.connect(
+                    shortDriver.port,
+                    "session-2",
+                    7,
+                    secret,
+                    overallDeadlineNanos = System.nanoTime() + 1_000_000_000L,
+                    heartbeatIntervalMs = 0,
+                )
+            try {
+                delay(1_200)
+                val exists = async(Dispatchers.IO) { shortLived.send(Exists(selector), timeoutMs = 2_000) }
+                val frame = shortDriver.nextFrame()
+                shortDriver.respond(frame.requestId, Response.ok(BoolResult(true), durationMs = 1))
+                assertTrue(exists.await().ok, "a command after the connect deadline must still run")
+                assertFalse(shortLived.isPoisoned)
+            } finally {
+                shortLived.close()
+                shortDriver.close()
+            }
+        }
+
+    @Test
+    fun connectWithRetryDoesNotRetryAnAuthenticationFailure() =
+        runBlocking {
+            val wrongSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val otherDriver = FakeDriverServer("session-3", 7, wrongSecret)
+            try {
+                val started = System.nanoTime()
+                val failure =
+                    assertFailsWith<DriverHandshakeException> {
+                        connectWithRetry(
+                            otherDriver.port,
+                            "session-3",
+                            7,
+                            secret,
+                            overallDeadlineNanos = System.nanoTime() + 1_500_000_000L,
+                            heartbeatIntervalMs = 0,
+                        )
+                    }
+                assertTrue(failure.message.orEmpty().startsWith("Driver handshake failed"), failure.message)
+                // One attempt, bounded by the handshake deadline; FakeDriverServer accepts once.
+                assertTrue((System.nanoTime() - started) / 1_000_000L < 5_000)
+            } finally {
+                otherDriver.close()
+            }
+        }
+
+    @Test
+    fun aDriverOfAnotherBuildFailsTheHandshake() =
+        runBlocking {
+            val stale = FakeDriverServer("session-4", 7, secret, driverTestApkBuildId = "0.0.9")
+            try {
+                val failure =
+                    assertFailsWith<DriverBuildMismatchException> {
+                        connectWithRetry(
+                            stale.port,
+                            "session-4",
+                            7,
+                            secret,
+                            overallDeadlineNanos = System.nanoTime() + 5_000_000_000L,
+                            serial = "emulator-5554",
+                            heartbeatIntervalMs = 0,
+                        )
+                    }
+                assertEquals(DRIVER_APK_BUILD_ID, failure.expected)
+                assertEquals("0.0.9", failure.driverTestApkBuildId)
+                assertTrue("reinstall" in failure.message.orEmpty(), failure.message)
+                assertTrue(failure is DriverStartException)
+            } finally {
+                stale.close()
+            }
         }
 
     @Test

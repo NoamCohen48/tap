@@ -1,11 +1,13 @@
 """Lazy elements and waits. An Element is a selector bound to a device; every method resolves it
 again on the device, so nothing goes stale between calls."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from . import _gen as pb
-from .errors import CommandError, ErrorCode, WaitTimeoutError
+from .errors import CommandError, WaitTimeoutError
 from .selectors import Selector
 
 if TYPE_CHECKING:
@@ -26,7 +28,7 @@ class Element:
     and raise ``CommandError`` (``AMBIGUOUS``/``NOT_FOUND``) before any input otherwise.
     """
 
-    def __init__(self, device: "Device", selector: Selector):
+    def __init__(self, device: Device, selector: Selector):
         self.device = device
         self.selector = selector
 
@@ -86,29 +88,56 @@ class Element:
         """Focus the one matching editable node and clear its text."""
         self._run(timeout, clear_text=pb.ClearText(selector=self._target))
 
-    def swipe(self, direction: int, distance_percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> None:
+    def swipe(
+        self,
+        direction: pb.Direction,
+        distance_percent: int = DEFAULT_GESTURE_PERCENT,
+        timeout: float | None = None,
+    ) -> None:
         """One swipe gesture across the node in the direction the finger moves (``UP``/``DOWN``/``LEFT``/``RIGHT``)."""
-        self._run(timeout, swipe=pb.Swipe(selector=self._target, direction=direction, distance_percent=distance_percent))
+        self._run(
+            timeout,
+            swipe=pb.Swipe(
+                selector=self._target,
+                direction=direction,
+                distance_percent=distance_percent,
+            ),
+        )
 
-    def scroll(self, direction: int, distance_percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> bool:
+    def scroll(
+        self,
+        direction: pb.Direction,
+        distance_percent: int = DEFAULT_GESTURE_PERCENT,
+        timeout: float | None = None,
+    ) -> bool:
         """One scroll segment towards ``direction``'s content edge (UiAutomator semantics: DOWN
         reveals content below). True while more content remains, False at the end or when no
         scroll was observed."""
-        return self._run(timeout, scroll=pb.Scroll(selector=self._target, direction=direction, distance_percent=distance_percent)).moved
+        return self._run(
+            timeout,
+            scroll=pb.Scroll(
+                selector=self._target,
+                direction=direction,
+                distance_percent=distance_percent,
+            ),
+        ).moved
 
     def scroll_until(
         self,
         target: Selector,
-        direction: int = DOWN,
+        direction: pb.Direction = DOWN,
         max_scrolls: int = 20,
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
-    ) -> "Element":
-        """Scrolls this container until ``target`` is visible inside it, or raises CommandError
-        NOT_FOUND (END_REACHED/MAX_SCROLLS) or WAIT_TIMEOUT. Returns the target as a lazy element."""
-        self.device.execute_or_raise(
+    ) -> Element:
+        """Scrolls this container until ``target`` is visible inside it and returns the target as
+        a lazy element. Once it has scrolled, a failure is ``CommandError`` INDETERMINATE whose
+        detail says why (END_REACHED, MAX_SCROLLS or WAIT_TIMEOUT): the list moved, so it is not
+        side-effect free and never a plain wait timeout. Before the first scroll it fails like
+        any command (NOT_FOUND/AMBIGUOUS for the container), and a device WAIT_TIMEOUT then raises
+        ``WaitTimeoutError``."""
+        result = self.device.execute(
             self.device.timeouts.wait if timeout is None else timeout,
-            target,
             scroll_until=pb.ScrollUntil(
                 selector=target.proto,
                 container=self._target,
@@ -117,27 +146,39 @@ class Element:
                 distance_percent=distance_percent,
             ),
         )
+        if result.HasField("error"):
+            if result.error.code == pb.ERR_WAIT_TIMEOUT:
+                raise WaitTimeoutError(
+                    f"{target.render()} to scroll into view in {self.selector.render()}",
+                    self.device.serial,
+                    result.duration_ms,
+                )
+            raise CommandError(result, "scroll_until", self.device.serial, target.render())
         return Element(self.device, target)
 
     # --- derived ----------------------------------------------------------------------------------
 
-    def wait(self, timeout: float | None = None) -> "ElementWait":
+    def wait(self, timeout: float | None = None) -> ElementWait:
         """An ``ElementWait`` on this selector (default timeout ``timeouts.wait``)."""
-        return ElementWait(self.device, self.selector, self.device.timeouts.wait if timeout is None else timeout)
+        return ElementWait(
+            self.device,
+            self.selector,
+            self.device.timeouts.wait if timeout is None else timeout,
+        )
 
-    def descendant(self, other: Selector) -> "Element":
+    def descendant(self, other: Selector) -> Element:
         """The node matching ``other`` somewhere below this one."""
         return Element(self.device, self.selector.descendant(other))
 
-    def child(self, other: Selector) -> "Element":
+    def child(self, other: Selector) -> Element:
         """The direct child of this node matching ``other``."""
         return Element(self.device, self.selector.child(other))
 
-    def first(self) -> "Element":
+    def first(self) -> Element:
         """Accept the first match in accessibility order instead of requiring exactly one."""
         return Element(self.device, self.selector.first())
 
-    def at(self, index: int) -> "Element":
+    def at(self, index: int) -> Element:
         """Accept the ``index``-th match (0-based) in accessibility order."""
         return Element(self.device, self.selector.at(index))
 
@@ -149,19 +190,25 @@ class ElementWait:
     """Returned by ``Device.wait`` / ``Element.wait``. ``visible`` and ``gone`` poll on the device
     in a single RPC; property waits poll snapshots from the host."""
 
-    def __init__(self, device: "Device", selector: Selector, timeout: float):
+    def __init__(self, device: Device, selector: Selector, timeout: float):
         self.device = device
         self.selector = selector
         self.timeout = timeout
 
     def visible(self) -> Element:
         """Wait until at least one node matches; polled on the device in one RPC."""
-        self._device_wait(f"{self.selector.render()} to be visible", wait_visible=pb.WaitVisible(selector=self.selector.proto))
+        self._device_wait(
+            f"{self.selector.render()} to be visible",
+            wait_visible=pb.WaitVisible(selector=self.selector.proto),
+        )
         return Element(self.device, self.selector)
 
     def gone(self) -> None:
         """Wait until no node matches; polled on the device in one RPC."""
-        self._device_wait(f"{self.selector.render()} to be gone", wait_gone=pb.WaitGone(selector=self.selector.proto))
+        self._device_wait(
+            f"{self.selector.render()} to be gone",
+            wait_gone=pb.WaitGone(selector=self.selector.proto),
+        )
 
     def enabled(self) -> Element:
         """Wait until the one matching node is enabled."""
@@ -185,11 +232,15 @@ class ElementWait:
 
     def text_equals(self, expected: str) -> Element:
         """Wait until the one matching node's text equals ``expected``."""
-        return self._property(f'text == "{expected}"', lambda s: s.HasField("text") and s.text == expected)
+        return self._property(
+            f'text == "{expected}"', lambda s: s.HasField("text") and s.text == expected
+        )
 
     def text_contains(self, part: str) -> Element:
         """Wait until the one matching node's text contains ``part``."""
-        return self._property(f'text containing "{part}"', lambda s: s.HasField("text") and part in s.text)
+        return self._property(
+            f'text containing "{part}"', lambda s: s.HasField("text") and part in s.text
+        )
 
     def count(self, expected: int) -> Element:
         """Wait until exactly ``expected`` nodes match."""
@@ -200,7 +251,12 @@ class ElementWait:
             last["count"] = element.count()
             return last["count"] == expected
 
-        self.device.await_until(f"{self.selector.render()} count == {expected}", check, self.timeout, observe=lambda: f"count={last['count']}")
+        self.device.await_until(
+            f"{self.selector.render()} count == {expected}",
+            check,
+            self.timeout,
+            observe=lambda: f"count={last['count']}",
+        )
         return element
 
     def _device_wait(self, description: str, **op) -> None:
@@ -212,7 +268,9 @@ class ElementWait:
         (name,) = op
         raise CommandError(result, name, self.device.serial, self.selector.render())
 
-    def _property(self, description: str, predicate: Callable[[pb.ElementSnapshot], bool]) -> Element:
+    def _property(
+        self, description: str, predicate: Callable[[pb.ElementSnapshot], bool]
+    ) -> Element:
         element = Element(self.device, self.selector)
         last: dict[str, str | None] = {"seen": None}
 
@@ -220,12 +278,19 @@ class ElementWait:
             try:
                 snapshot = element.snapshot()
             except CommandError as error:
-                if error.code == ErrorCode.NOT_FOUND:
+                if error.code.name == "NOT_FOUND":
                     last["seen"] = "not found"
                     return False
                 raise
-            last["seen"] = f"text={snapshot.text!r} enabled={snapshot.enabled} checked={snapshot.checked} focused={snapshot.focused}"
+            last["seen"] = (
+                f"text={snapshot.text!r} enabled={snapshot.enabled} checked={snapshot.checked} focused={snapshot.focused}"
+            )
             return predicate(snapshot)
 
-        self.device.await_until(f"{self.selector.render()} to be {description}", check, self.timeout, observe=lambda: last["seen"])
+        self.device.await_until(
+            f"{self.selector.render()} to be {description}",
+            check,
+            self.timeout,
+            observe=lambda: last["seen"],
+        )
         return element

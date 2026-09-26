@@ -1,0 +1,224 @@
+# Host daemon server (`tap serve`) and the `tap.v1` API
+
+Status: implemented (`:host:daemon`, `contracts/api/proto/*.proto`). Revised 2026-09-26 for the
+code-review fixes (token auth, `*Service` names, ownership checks, streamed install and
+screenshot bytes, host-internal ops removed from the API). That revision passed the JVM suites,
+the Kotlin fixture suite (13 tests) and the Python suite against the native image (49 tests),
+and `host --no-reboot`, on emulator-5554 (API 34) and 85e49002 (API 29). The device wire protocol
+is documented in `protocol-contract.md`.
+
+## 1. Purpose
+
+Every language binding needs the host session layer: the ADB control plane, driver install and
+start, port forwarding, journals, machine-wide per-device locks, orphan recovery, quarantine
+and the device list. That layer is implemented once, in Kotlin (`:host:core`), and exposed by a
+small local daemon over gRPC. Every client, including the Kotlin SDK/JUnit extension, is a
+generated client plus ergonomics. The server also owns the `DriverClient` connections, so
+bindings never touch framing, HMAC, request IDs or blobs.
+
+## 2. Process model
+
+```text
+pytest / script  --gRPC (loopback, bearer token)-->  tap serve  --ADB + TAP1-->  driver  -->  AUT
+JUnit (Kotlin)   --gRPC (loopback, bearer token)-->  (same server, same devices)
+```
+
+- `tap serve [--port N] [--state-dir DIR] [--adb PATH] [--driver-apk APK --driver-test-apk APK]`
+  - Takes an exclusive lock on `<state-dir>/daemon.lock`. If another server holds it, `serve`
+    exits 3. One server per state dir.
+  - Binds `127.0.0.1` only.
+  - Generates a random per-instance token (32 bytes, hex).
+  - Writes `<state-dir>/daemon.json` = `{"port","pid","token","daemonVersion","adb"}`
+    atomically, mode 0600.
+  - On exit it removes the descriptor only if it still carries its own token.
+  - The state dir defaults to `TAP_STATE_DIR` or `~/.tap`. Journals and device locks live in
+    `<state-dir>/sessions`, the same root the `host` validation executable uses.
+  - Options are validated per command, and unknown or repeated options are rejected. The two
+    driver APK flags go together: they replace the bundled driver with a local build.
+- `tap start [same options]` is the only thing that spawns a server; **clients never start one**
+  (`daemon-startup.md`).
+  - If a live, token-verified server is running, it prints `running 127.0.0.1:PORT pid=…` and
+    spawns nothing.
+  - Otherwise it re-executes itself as `serve --port N` detached, with output to
+    `<state-dir>/daemon.log` (0600). The re-exec forwards the JVM's own arguments.
+  - It then polls an authenticated `Info` until that answers, the child exits, or 30 s pass.
+  - If the child lost the lock race to another `start`, it waits for the winner and reports it.
+- `tap status` prints `running 127.0.0.1:PORT pid= version= adb=` and never the token, or exits 1.
+- `tap stop` signals the pid only after an `Info` authenticated with the descriptor's token
+  answered. A stale descriptor is removed and nothing is signalled, so a recycled pid is never
+  killed.
+- `tap version`.
+- Like the ADB server, a started daemon stays up until `tap stop` and every client may share
+  it. The clients expose the pair as `TapDaemonProcess.start()/stop()` (Kotlin) and
+  `tap.start_daemon()/stop_daemon()` (Python). The test runners run it around a whole run when
+  told to (`tap.manageDaemon` / `tap_manage_daemon`), and stop only a server they started.
+- **Authentication:**
+  - Every RPC must carry `authorization: Bearer <token>`. `TokenAuthInterceptor` rejects
+    anything else with `UNAUTHENTICATED`, comparing in constant time.
+  - Clients read the token from `daemon.json` in the same state dir, or from `TAP_TOKEN` /
+    `tap.token` together with an explicit endpoint.
+  - The descriptor is owner-only, so another local user cannot drive the devices. The
+    per-session driver secret never leaves the server.
+- **Driver APKs:**
+  - The driver APKs are embedded as resources and extracted once per build id to
+    `<state-dir>/driver/<DRIVER_APK_BUILD_ID>/` (`DriverApks.extractBundled`).
+  - On the first attachment per serial per process, the daemon installs them unless the client
+    passes `skip_driver_install`. If the installed driver's `versionName` is a different build
+    id, it installs again.
+  - When the driver handshake reports a build mismatch, the serial is re-installed on the next
+    attach.
+  - Clients never send host paths: there is no per-attach APK override.
+- `adb` is resolved from `--adb`, `TAP_ADB`, or `PATH`. Every ADB call is serial-specific.
+- **Builds:**
+  - `:host:daemon:installDist` produces the JVM distribution (`host/daemon/build/install/tap/bin/tap`).
+  - `:host:daemon:nativeCompile` produces the GraalVM native image
+    (`host/daemon/build/native/nativeCompile/tap`).
+  - Reachability metadata lives under `host/daemon/src/main/resources/META-INF/native-image/`.
+
+## 3. API (`contracts/api/proto/`, package `tap.v1`)
+
+The proto files are the single source of truth. Kotlin stubs are generated at build time, and
+Python stubs are generated by `clients/python/scripts/gen_stubs.py` and committed. The file map
+is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Response` messages
+(buf `STANDARD` lint; only `ENUM_VALUE_PREFIX` and `PACKAGE_DIRECTORY_MATCH` are excepted).
+
+### ClientConnectionService: client identity and liveness
+
+| RPC | Semantics |
+|---|---|
+| `Connect(name)` → `client_connection_id` | A connection is one client process. Every attached device belongs to it. |
+| `Observe(client_connection_id)` → stream `ObserveResponse` | Liveness. Events are a `oneof`: `observing` first, then `heartbeat` every 15 s (idle-proxy traffic, not a death detector). A daemon-side disconnect (Disconnect, reaping, shutdown) sends `closing{reason}` and completes the stream normally. **When the stream ends for any reason, the client is disconnected** and every owned device is detached. A second concurrent Observe is `FAILED_PRECONDITION`. |
+| `Disconnect(client_connection_id)` → `{attached_devices_detached}` | Explicit teardown. |
+| `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
+
+A connection whose Observe is not open 30 s after `Connect` is reaped. A client that crashes
+between Connect and Observe therefore cannot leak a connection.
+
+### DeviceService: inventory and attached devices
+
+There is no lease RPC. A device is in use exactly while an attached device's `DeviceSession`
+holds its per-serial file lock (`<state-dir>/sessions/<serial>.lock`, `pool-and-leases.md`).
+Roles, device choice and multi-device ordering are client concerns.
+
+Every call on an attached device names the owning `client_connection_id`. A call from another
+connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
+
+| RPC | Semantics |
+|---|---|
+| `ListDevices()` → `repeated DeviceEntry` | Every device ADB lists. Its `state` is one of: <br>• `DEVICE_FREE` <br>• `DEVICE_LEASED`, with `client_connection_id` when the holder is this daemon <br>• `DEVICE_QUARANTINED`, with `quarantine_reason`; an unreadable journal is quarantined with reason `journal unreadable: …` <br>• `DEVICE_UNAUTHORIZED` <br>• `DEVICE_OFFLINE`, which also covers any other non-`device` ADB state |
+| `Attach(client_connection_id, serial, aut_package, skip_driver_install?, sync_authority?, allowed_system_packages, default_timeout_ms?, lease_timeout_ms?)` → `{attached_device_id, serial, generation, device_info}` | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
+| `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. |
+| `Screenshot(…, timeout_ms?)` → `{png, sha256, width?, height?}` | The verified PNG bytes. Writing a file is the client's job; the server takes no host path. |
+| `DriverLog(…)` | The instrumentation's stdout ring buffer (last 2 000 lines). |
+| `Detach(…)` → `{clean, detail?}` | `clean=false` means cleanup timed out or the session was quarantined, and `detail` says why. |
+
+`Command`:
+
+- It is `optional timeout_ms` (absent = the attachment's default) plus a `oneof op` with one
+  message per **public** protocol command.
+- The host-internal ops — `health`, `screenshot`, `sync_bootstrap`, `sync_poll` — have no proto
+  form. Their field numbers are reserved, and the `artifact`/`sync` result outcomes likewise.
+  Screenshot has its own RPC, and sync is driven by `AwaitIdle`.
+- Optional fields with a protocol default take that default in the server (`max_scrolls` = 20).
+
+`CommandResult` is `duration_ms`, the echoed `request_id`/`session_generation`, and a
+`oneof outcome` of the public result kinds or `error`.
+
+`Selector`, `Node`, `ResourceId`, `ElementSnapshot`, `DeviceInfo` and the enums mirror the protocol
+models one-to-one:
+
+- The sum types are `oneof`s named after the protocol kinds.
+- Enum values carry a prefix (`ERR_`, `DIR_`, …) plus a `*_UNSPECIFIED` zero value. The server
+  rejects that zero value (`INVALID_ARGUMENT`) where the protocol has no default.
+- `ResourceId.aut_package = true` is resolved by the server to the attached device's AUT package.
+
+Three things keep the mirror honest:
+
+- `EnumMirrorTest`: every enum and `oneof` case equals its protocol counterpart, minus the
+  host-internal ops and results.
+- The exhaustive `when`s in `Conversions.kt`.
+- `GoldenRoundTripTest`: every public golden fixture survives a proto round trip, and every
+  host-internal one has no proto form.
+
+### AppService: AUT lifecycle
+
+Each request carries an `AppTarget{client_connection_id, attached_device_id, package_name}` and has
+its own response message. The RPCs are:
+
+- `Install` is client-streaming.
+  - The first message is an `InstallHeader{app, timeout_ms?, size_bytes}`; every later message
+    is a `chunk`.
+  - The server spools the upload to an owner-only file under `<state-dir>/uploads` and rejects
+    a missing or repeated header, a size outside 1 B..1 GiB, and any mismatch with `size_bytes`.
+  - It then installs the file and deletes it.
+- `Uninstall`, `IsInstalled`, `ForceStop`, `ClearData`, `GrantPermission`.
+- `Launch` and `ColdLaunch` take an optional `activity`, where absent means the launcher.
+  `ColdLaunch` returns `ProcessIdentity{pid, start_token}`, a verified new process.
+- `Process`, `IsRunning`.
+- `AwaitIdle(stable_for_ms?)`, where the default is 200 ms.
+
+All of them delegate to `AppLifecycle` in `:host:core`.
+
+### Status mapping (`server/common.kt`, `Throwable.toStatus()`)
+
+| Condition | gRPC status |
+|---|---|
+| Missing or wrong token | `UNAUTHENTICATED` |
+| Unknown client connection or attached device | `NOT_FOUND` |
+| Attached device owned by another connection | `PERMISSION_DENIED` |
+| Invalid argument (unspecified enum, bad selector, missing field, non-positive timeout, bad upload) | `INVALID_ARGUMENT` |
+| Lock still held after `lease_timeout_ms`; host wait or ADB timeout | `DEADLINE_EXCEEDED` |
+| Any of: <br>• lock held with no wait <br>• duplicate Observe <br>• daemon closing <br>• device quarantined <br>• app lifecycle failure <br>• driver build mismatch <br>• ADB reap uncertain <br>• remote command failure | `FAILED_PRECONDITION` |
+| Session unusable (poisoned driver connection) | `ABORTED` |
+| Driver start failure, ADB command failure, gated ADB runner, command transport failure | `UNAVAILABLE` |
+| Anything else | `INTERNAL`; the stack goes to the daemon log |
+
+Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
+
+## 4. Implementation notes
+
+`TapDaemon` (`host/daemon/.../daemon/`) holds all state:
+
+- client connections;
+- attached devices, each with an `ownerConnectionId`;
+- the once-per-serial driver install memo.
+
+It has no gRPC types. The three `*Service` classes in `com.company.tap.server` extend the
+grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `TapDaemon` or
+`:host:core` and wrap the reply, through `reply { … }`, which keeps cancellation intact.
+
+- **Observe:**
+  - `observeAcquire` claims the sole observer and registers a close callback that completes the
+    stream with `closing`.
+  - The stream's `finally` calls `disconnectObservedClient`, which ignores a stale token.
+  - Disconnect removes the connection and its devices under the lifecycle lock, then closes
+    those devices concurrently outside it.
+- **Detach / close:**
+  - Each device close has a bounded budget. The `DeviceSession` gets that budget minus a small
+    margin, so its own cleanup finishes before the daemon gives up on it.
+  - A session poisoned before close reports the poison as the detach `detail`.
+- **Shutdown:**
+  - One total deadline (30 s) covers `TapDaemon.close` and gRPC termination, with 10 s per
+    attached device.
+  - Once it is exhausted, the remaining cleanup is launched without being awaited. A
+    non-terminal journal is recovered by the next attachment.
+
+## 5. Client expectations
+
+A conforming client:
+
+1. Reads the endpoint and token from `daemon.json`, or is given both, and sends the token on
+   every call.
+2. Connects and starts `Observe` within 30 s, before attaching any device, and keeps the stream
+   open for the connection's life. It treats `closing` as the end of the connection.
+3. Attaches several devices in sorted serial order (a global lock order) and detaches every
+   device it attached.
+4. Treats an `error` outcome as a typed failure keyed on `error.code`, and never retries a
+   mutation on `INDETERMINATE`.
+5. Puts a client-side deadline on every call that is longer than the command's own timeout.
+
+## 6. Not implemented
+
+- No remote (non-loopback) mode.
+- No event stream beyond heartbeats and `closing`. Per-connection structured events (plan §19)
+  belong here when they are built.
