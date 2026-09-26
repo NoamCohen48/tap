@@ -14,7 +14,7 @@ kotlin {
 
 java { withSourcesJar() }
 
-// Published as com.company.tap:tap-client (Kotlin client version); depends on tap-api.
+// Published as io.github.noamcohen48.tap:tap-client (Kotlin client version); depends on tap-api.
 publishing {
     publications {
         create<MavenPublication>("maven") {

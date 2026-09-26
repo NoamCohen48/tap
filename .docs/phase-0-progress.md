@@ -9,7 +9,7 @@ Status: Phase 0 exit gates complete on the documented API 29/API 34 qualificatio
 - Gradle 9.2.1 wrapper and AGP 9.0.1 project.
 - Pure Kotlin shared protocol with bounded binary framing.
 - HMAC-SHA-256 host/driver authentication with independent domain MACs.
-- Dedicated `com.company.tap.driver` APK and AndroidJUnitRunner instrumentation APK.
+- Dedicated `io.github.noamcohen48.tap.driver` APK and AndroidJUnitRunner instrumentation APK.
 - Loopback-only device server and dynamic serial-specific host forwarding.
 - Invalid authentication rejection without terminating the server.
 - Monotonic request IDs and session/generation checks.

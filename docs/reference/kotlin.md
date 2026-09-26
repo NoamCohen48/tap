@@ -1,7 +1,7 @@
 # Kotlin client
 
-Artifacts `com.company.tap:tap-client` (the SDK: `TapClient`, `ClientConnection`, `Device`, `Element`,
-`ElementWait`, `App`, the selector DSL) and `com.company.tap:tap-junit5` (`@TapTest`,
+Artifacts `io.github.noamcohen48.tap:tap-client` (the SDK: `TapClient`, `ClientConnection`, `Device`, `Element`,
+`ElementWait`, `App`, the selector DSL) and `io.github.noamcohen48.tap:tap-junit5` (`@TapTest`,
 `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`).
 
 <div class="grid cards" markdown>
@@ -17,9 +17,9 @@ Artifacts `com.company.tap:tap-client` (the SDK: `TapClient`, `ClientConnection`
 
 | Package | Module | Contents |
 |---|---|---|
-| `com.company.tap.sdk` | tap-client | `TapClient`, `ClientConnection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
-| `com.company.tap.junit5` | tap-junit5 | `@TapTest`, `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`, `TapExtension` |
-| `com.company.tap.api.v1` | tap-api (transitive) | the generated protobuf/gRPC types (`Selector`, `Command`, `ErrorCode`, `Direction`, `StabilitySignal`, …) |
+| `io.github.noamcohen48.tap.sdk` | tap-client | `TapClient`, `ClientConnection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
+| `io.github.noamcohen48.tap.junit5` | tap-junit5 | `@TapTest`, `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`, `TapExtension` |
+| `io.github.noamcohen48.tap.api.v1` | tap-api (transitive) | the generated protobuf/gRPC types (`Selector`, `Command`, `ErrorCode`, `Direction`, `StabilitySignal`, …) |
 
 !!! tip
     If the link above 404s you are reading the raw Markdown: run `scripts/build-docs.sh`,

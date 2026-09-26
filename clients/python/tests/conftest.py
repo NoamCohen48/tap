@@ -16,7 +16,7 @@ import threading
 import pytest  # type: ignore[import-not-found]
 from tap import App, Device
 
-PACKAGE = "com.company.tap.fixture"
+PACKAGE = "io.github.noamcohen48.tap.fixture"
 REPO = pathlib.Path(__file__).resolve().parents[3]
 APK = pathlib.Path(
     os.environ.get("TAP_FIXTURE_APK")

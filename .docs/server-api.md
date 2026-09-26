@@ -183,7 +183,7 @@ Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
 - attached devices, each with an `ownerConnectionId`;
 - the once-per-serial driver install memo.
 
-It has no gRPC types. The three `*Service` classes in `com.company.tap.server` extend the
+It has no gRPC types. The three `*Service` classes in `io.github.noamcohen48.tap.server` extend the
 grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `TapDaemon` or
 `:host:core` and wrap the reply, through `reply { … }`, which keeps cancellation intact.
 

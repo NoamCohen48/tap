@@ -30,7 +30,7 @@ tasks.test {
     dependsOn(":fixture-app:assembleDebug", ":host:daemon:installDist")
     outputs.upToDateWhen { false }
     systemProperty("tap.serials", serials.getOrElse(""))
-    systemProperty("tap.autPackage", "com.company.tap.fixture")
+    systemProperty("tap.autPackage", "io.github.noamcohen48.tap.fixture")
     systemProperty("tap.bin", daemonBin.asFile.absolutePath)
     // Starts the JVM dist built here unless a server is already running; stops it again if it started it.
     systemProperty("tap.manageDaemon", providers.gradleProperty("tap.manageDaemon").getOrElse("true"))

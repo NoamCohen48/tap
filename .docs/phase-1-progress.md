@@ -109,10 +109,10 @@ Status: in progress.
   idle on a background thread. `PHASE_1_HEARTBEAT_EXPIRY_OK` on API 29/34 forces the 3 s
   timeout with host pings disabled and observes the poison marker, the terminal code, and the
   driver process exiting — the watchdog poisoning path is now device-proven without a reboot.
-- Synchronization extracted to the `:device:sync-sdk` Android library (`com.company.tap.sync`,
+- Synchronization extracted to the `:device:sync-sdk` Android library (`io.github.noamcohen48.tap.sync`,
   authority `${applicationId}.tap-sync`, signature permission declared in the library
   manifest). The fixture-only late-mutation hook moved to `FixtureFaultProvider`
-  (`com.company.tap.fixture.fault`, driver argument `tapFaultAuthority`), so the SDK contains
+  (`io.github.noamcohen48.tap.fixture.fault`, driver argument `tapFaultAuthority`), so the SDK contains
   nothing test-fixture specific. Full device flow re-passed through the extracted provider.
 - Golden wire fixtures under `protocol/src/test/resources/golden`: one request per operation
   (plus relational and system-scoped selector shapes) and one response per error code and

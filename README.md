@@ -283,7 +283,7 @@ For framework fault validation, prefix a tap step with `!ERROR_CODE:`, for examp
 ## Versioning, CI and releases
 
 Four independently versioned artifact families: the **engine** (`tap` daemon binary/JVM
-dist with the bundled driver, plus the `com.company.tap:tap-api` stubs; `tap.version.engine`
+dist with the bundled driver, plus the `io.github.noamcohen48.tap:tap-api` stubs; `tap.version.engine`
 in `gradle.properties`), the **Kotlin client** (`tap-client`, `tap-junit5`;
 `tap.version.client.kotlin`), the **Python client** (`tap-e2e`; `clients/python/pyproject.toml`)
 and **sync-sdk** (`tap-sync-sdk`; `tap.version.sync-sdk`). Tag `daemon/vX.Y.Z`,

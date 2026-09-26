@@ -8,8 +8,8 @@ on-device driver; the tests talk to it over gRPC. Nothing about your app changes
 is a separate package and never links into the app under test.
 
 ```kotlin
-import com.company.tap.junit5.TapTest
-import com.company.tap.junit5.tapTest
+import io.github.noamcohen48.tap.junit5.TapTest
+import io.github.noamcohen48.tap.junit5.tapTest
 import org.junit.jupiter.api.Test
 
 @TapTest

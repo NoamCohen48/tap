@@ -50,7 +50,7 @@ descriptor remains for what it was always for: later discovery by clients, `tap 
 
 - `tap start` re-executes *itself*: the native executable via `ProcessHandle.current().info().command()`
   (detected by `org.graalvm.nativeimage.imagecode`), the JVM dist via `java.home/bin/java -cp
-  java.class.path com.company.tap.daemon.TapDaemonMainKt`. The launcher script is not re-entered.
+  java.class.path io.github.noamcohen48.tap.daemon.TapDaemonMainKt`. The launcher script is not re-entered.
 - The child gets `/dev/null` as stdin and `daemon.log` (append) as stdout+stderr, so it survives
   the starter's exit and a closed terminal. Java children are not in a new session; on Linux the
   starter exiting does not signal them.

@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.company.tap.fixture"
+    namespace = "io.github.noamcohen48.tap.fixture"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.company.tap.fixture"
+        applicationId = "io.github.noamcohen48.tap.fixture"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

@@ -10,7 +10,7 @@ kotlin {
 
 java { withSourcesJar() }
 
-// Published as com.company.tap:tap-junit5 (Kotlin client version); depends on tap-client.
+// Published as io.github.noamcohen48.tap:tap-junit5 (Kotlin client version); depends on tap-client.
 publishing {
     publications {
         create<MavenPublication>("maven") {

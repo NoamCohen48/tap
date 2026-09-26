@@ -3,13 +3,13 @@ name: Release
 # One tag per artifact family (see .docs/release-engineering.md):
 #   daemon/v1.2.3        tap daemon: native binaries + JVM dist on a GitHub
 # Release,
-#                         com.company.tap:tap-api to GitHub Packages (same
+#                         io.github.noamcohen48.tap:tap-api to GitHub Packages (same
 # engine version)
-#   client-kotlin/v1.2.3  com.company.tap:tap-client + tap-junit5 to GitHub
+#   client-kotlin/v1.2.3  io.github.noamcohen48.tap:tap-client + tap-junit5 to GitHub
 # Packages
 #   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when
 # enabled)
-#   sync-sdk/v1.2.3       com.company.tap:tap-sync-sdk (AAR) to GitHub Packages
+#   sync-sdk/v1.2.3       io.github.noamcohen48.tap:tap-sync-sdk (AAR) to GitHub Packages
 # The tag's version must equal the one in gradle.properties / pyproject.toml.
 on:
   push:
@@ -159,7 +159,7 @@ jobs:
             - `tap-${{ needs.resolve.outputs.version }}-jvm.zip`: JVM
             distribution (`bin/tap`, needs JDK 17+)
             - Maven: >-
-                `com.company.tap:tap-api:${{ needs.resolve.outputs.version }}`
+                `io.github.noamcohen48.tap:tap-api:${{ needs.resolve.outputs.version }}`
                 (GitHub Packages)
 
   # ---- client-kotlin/v*
@@ -184,7 +184,7 @@ jobs:
         run: |
           engine=${{ needs.resolve.outputs.engine }}
           base="https://maven.pkg.github.com/${GITHUB_REPOSITORY}"
-          url="${base}/com/company/tap/tap-api/${engine}/tap-api-${engine}.pom"
+          url="${base}/io/github/noamcohen48/tap/tap-api/${engine}/tap-api-${engine}.pom"
           if ! curl -fsSL -o /dev/null -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
           "$url"; then
             echo "::error::tap-client ${{ needs.resolve.outputs.version }} \
@@ -207,7 +207,7 @@ jobs:
           name: tap Kotlin client ${{ needs.resolve.outputs.version }}
           body: |
             ```kotlin
-            testImplementation("com.company.tap:tap-junit5:${{
+            testImplementation("io.github.noamcohen48.tap:tap-junit5:${{
             needs.resolve.outputs.version }}")   // brings tap-client and
             tap-api ${{ needs.resolve.outputs.engine }}
             ```
@@ -294,7 +294,7 @@ jobs:
           name: tap sync-sdk ${{ needs.resolve.outputs.version }}
           body: |
             ```kotlin
-            implementation("com.company.tap:tap-sync-sdk:${{
+            implementation("io.github.noamcohen48.tap:tap-sync-sdk:${{
             needs.resolve.outputs.version }}")   // E2E build flavour of the
             app under test
             ```

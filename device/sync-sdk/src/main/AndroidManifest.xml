@@ -6,14 +6,14 @@
         declares it; Android requires all definers to share one signing certificate.
     -->
     <permission
-        android:name="com.company.tap.permission.SYNCHRONIZATION"
+        android:name="io.github.noamcohen48.tap.permission.SYNCHRONIZATION"
         android:protectionLevel="signature" />
 
     <application>
         <provider
-            android:name="com.company.tap.sync.TapSynchronizationProvider"
+            android:name="io.github.noamcohen48.tap.sync.TapSynchronizationProvider"
             android:authorities="${applicationId}.tap-sync"
             android:exported="true"
-            android:permission="com.company.tap.permission.SYNCHRONIZATION" />
+            android:permission="io.github.noamcohen48.tap.permission.SYNCHRONIZATION" />
     </application>
 </manifest>

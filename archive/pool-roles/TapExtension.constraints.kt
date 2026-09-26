@@ -1,4 +1,4 @@
-// Archived from clients/kotlin/junit5/src/main/kotlin/com/company/tap/junit5/TapExtension.kt (commit 3afba99): roles → DeviceConstraints.
+// Archived from clients/kotlin/junit5/src/main/kotlin/io/github/noamcohen48/tap/junit5/TapExtension.kt (commit 3afba99): roles → DeviceConstraints.
 
     /**
      * Roles are pinned explicitly (`tap.device.<role>`), then to `tap.serials` in declaration

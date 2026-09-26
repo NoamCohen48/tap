@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.company.tap.driver"
+    namespace = "io.github.noamcohen48.tap.driver"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.company.tap.driver"
+        applicationId = "io.github.noamcohen48.tap.driver"
         minSdk = 26
         targetSdk = 36
         // From gradle.properties tap.version.engine: 1.2.3 -> 10203 (pre-release suffixes ignored).

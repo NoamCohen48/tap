@@ -31,7 +31,7 @@ Host server `tap serve` (one per machine, JVM dist or GraalVM native image)
         |
         | adb forward tcp:<host> tcp:27183   (one TAP1 socket per device session; contracts/protocol)
         v
-Android driver instrumentation  (package com.company.tap.driver, own UID/process)  device/driver
+Android driver instrumentation  (package io.github.noamcohen48.tap.driver, own UID/process)  device/driver
 +-- TapDriverServer     loopback listener, session config, TAP_READY/TAP_POISONED markers
 +-- ClientConnection    handshake, framing, reader lane, heartbeat
 +-- CommandPipeline     bounded queue -> single executor -> writer, watchdog   (pure JVM, device/driver/command-engine)
@@ -88,7 +88,7 @@ tap/
 |
 +-- contracts/                   what the three components agree on
 |   +-- protocol/                :contracts:protocol — TAP1 device wire contract, pure Kotlin/JVM, shared by host and driver
-|   |   +-- src/main/kotlin/com/company/tap/protocol/
+|   |   +-- src/main/kotlin/io/github/noamcohen48/tap/protocol/
 |   |   |   +-- Messages.kt          FrameType, Direction, StabilitySignal, handshake models, ElementSnapshot, DeviceInfo, SyncState, limits, key codes
 |   |   |   +-- Commands.kt          Request envelope; sealed Command (one class per op, `op` discriminator), Mutation/Targeted, Returning<R>, CommandHandler + dispatch, RequestDecoder
 |   |   |   +-- Results.kt           sealed CommandResult (`kind`), Response.Ok/Error (`type`), CommandFailure
@@ -107,8 +107,8 @@ tap/
 |
 +-- device/                      what runs on the Android device
 |   +-- driver/                  :device:driver — Android; the on-device driver
-|   |   +-- src/main/AndroidManifest.xml   empty app shell (package com.company.tap.driver, <queries> for sync/fault providers)
-|   |   +-- src/androidTest/kotlin/com/company/tap/driver/
+|   |   +-- src/main/AndroidManifest.xml   empty app shell (package io.github.noamcohen48.tap.driver, <queries> for sync/fault providers)
+|   |   +-- src/androidTest/kotlin/io/github/noamcohen48/tap/driver/
 |   |   |   +-- TapDriverServerTest.kt   instrumentation entry point (keeps the process alive)
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers
 |   |   |   +-- ClientConnection.kt      per-connection handshake, frame reader, blob writer
@@ -119,7 +119,7 @@ tap/
 |   |   |   +-- SyncProviderClient.kt    signature-checked ContentProvider reads with timeout
 |   |   |   +-- FaultController.kt       test-only fault injection (transport loss, late work, cancel-after-mutation)
 |   |   +-- command-engine/      :device:driver:command-engine — pure Kotlin/JVM execution state machine (no Android types)
-|   |       +-- src/main/kotlin/com/company/tap/driver/engine/
+|   |       +-- src/main/kotlin/io/github/noamcohen48/tap/driver/engine/
 |   |       |   +-- CommandPipeline.kt   queue, executor, writer, watchdog, poison, heartbeat, blob streaming
 |   |       |   +-- CommandContext.kt    deadline, checkpoint/sleep, mutation gate, transferBlob
 |   |       |   +-- Command.kt           per-request state (QUEUED/RUNNING/TERMINAL) + single terminal response
@@ -129,13 +129,13 @@ tap/
 |   |       +-- src/test/kotlin/...      CommandPipelineTest (23 tests)
 |   +-- sync-sdk/                :device:sync-sdk — Android library an AUT ships in its E2E/debug build
 |       +-- src/main/AndroidManifest.xml  signature permission + provider at ${applicationId}.tap-sync
-|       +-- src/main/kotlin/com/company/tap/sync/
+|       +-- src/main/kotlin/io/github/noamcohen48/tap/sync/
 |           +-- TapSynchronization.kt          busy() handles, generation, identity snapshot
 |           +-- TapSynchronizationProvider.kt  ContentResolver.call("state") -> Bundle
 |
 +-- host/                        what runs on the host machine (no test DSL)
 |   +-- core/                    :host:core — Kotlin/JVM library: session infrastructure
-|   |   +-- src/main/kotlin/com/company/tap/host/
+|   |   +-- src/main/kotlin/io/github/noamcohen48/tap/host/
 |   |   |   +-- Adb.kt               every ADB command as a typed method (`open class Adb`, serial-specific, parsing inside); raw `run` is `@RawAdb` opt-in, allowed only in :host:validation
 |   |   |   +-- SessionJournal.kt    JournalState, SessionJournal, SessionJournalStore (lease + fsync'd atomic write)
 |   |   |   +-- DriverLifecycle.kt   start-with-retry, port range, forward, process observation, journal recovery, cleanup
@@ -148,7 +148,7 @@ tap/
 |   |   +-- src/test/kotlin/...      DriverClientTest (17), SessionJournalTest (6), FakeDriverServer
 |   +-- daemon/                  :host:daemon — gRPC host daemon server, `tap` executable (JVM dist + GraalVM native image)
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
-|   |   +-- src/main/kotlin/com/company/tap/
+|   |   +-- src/main/kotlin/io/github/noamcohen48/tap/
 |   |   |   +-- daemon/
 |   |   |   |   +-- TapDaemonMain.kt   CLI: start | serve | status | stop | version, per-command option validation
 |   |   |   |   +-- DaemonDescriptor.kt  0600 daemon.json (port, pid, token), owner-checked removal, daemon.lock
@@ -164,14 +164,14 @@ tap/
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
 |   |   +-- src/test/kotlin/...      EnumMirrorTest, GoldenRoundTripTest, AutResourceTest, TapDaemonLifecycleTest, DaemonDescriptorTest, ClientConnectionServiceTest, AppServiceTest
 |   +-- validation/              :host:validation — application `host` (exe): the destructive/fault validation flow
-|       +-- src/main/kotlin/com/company/tap/host/validation/
+|       +-- src/main/kotlin/io/github/noamcohen48/tap/host/validation/
 |           +-- PhaseZeroMain.kt     multi-device validation flow + fault scenarios, PHASE_* markers
 |           +-- ProductProbe.kt      `host --product-probe`: latency/inventory probe for arbitrary apps
 |
 +-- clients/                     test-facing APIs; every client is a gRPC client of the host daemon
 |   +-- kotlin/
-|   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package com.company.tap.sdk)
-|   |   |   +-- src/main/kotlin/com/company/tap/sdk/
+|   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package io.github.noamcohen48.tap.sdk)
+|   |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/sdk/
 |   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), ClientConnection (observe/availableSerials/attachDevice), DaemonDiscovery (descriptor lookup), TapDaemonProcess (`tap start`/`tap stop`)
 |   |   |       +-- Device.kt            Device.attach(connection, serial, …), execute/element/await/app/info/pressKey/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
@@ -179,8 +179,8 @@ tap/
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
 |   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the proto Selector
 |   |   |       +-- TapExceptions.kt     TapException, ServerException, CommandException (proto ErrorCode), WaitTimeoutException, AppLifecycleException
-|   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package com.company.tap.junit5)
-|   |       +-- src/main/kotlin/com/company/tap/junit5/
+|   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package io.github.noamcohen48.tap.junit5)
+|   |       +-- src/main/kotlin/io/github/noamcohen48/tap/junit5/
 |   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
 |   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
 |   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
@@ -197,7 +197,7 @@ tap/
 |
 +-- samples/fixture-tests/       JUnit 5 sample suite against the fixture app (real devices, through the daemon)
 |   +-- build.gradle.kts         `test` depends on the fixture APK + daemon dist, maps -Ptap.serials to system properties, disabled without serials
-|   +-- src/test/kotlin/com/company/tap/samples/
+|   +-- src/test/kotlin/io/github/noamcohen48/tap/samples/
 |       +-- Fixture.kt           fixture facts + install-once/cold-launch helper
 |       +-- MainScreenTest.kt    taps, text input, Compose list scrolling, ambiguity, app-owned sync, wait diagnostics, back key
 |       +-- LifecycleTest.kt     cold launch identity, force-stop, clear-data, DEVICE_INFO
@@ -207,7 +207,7 @@ tap/
 +-- .github/                     CI (ci.yml) and tag-driven releases (release.yml, scripts/release_version.py); see release-engineering.md
 +-- fixture-app/                 Android app used only by the validation flow and the samples
     +-- src/main/AndroidManifest.xml
-    +-- src/main/kotlin/com/company/tap/fixture/
+    +-- src/main/kotlin/io/github/noamcohen48/tap/fixture/
     |   +-- MainActivity.kt          View + Compose controls, key-event field, LazyColumn, busy() demo
     |   +-- ViewListActivity.kt      native ListView with end-of-content
     |   +-- AmbiguityActivity.kt     duplicate buttons/fields/scroll views, gesture target, prefilled field
@@ -604,7 +604,7 @@ TapSynchronization.busy().use { repository.refresh() }
 ```
 
 The library manifest declares the signature permission
-`com.company.tap.permission.SYNCHRONIZATION` and the exported provider at
+`io.github.noamcohen48.tap.permission.SYNCHRONIZATION` and the exported provider at
 `${applicationId}.tap-sync`; the app's test build must be signed with the same certificate
 as the driver. The SDK contains no test-fixture logic; the fixture's late-mutation hook is a
 separate `FixtureFaultProvider` in `fixture-app`.

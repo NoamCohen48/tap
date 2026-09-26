@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="com.company.tap.permission.SYNCHRONIZATION" />
+    <uses-permission android:name="io.github.noamcohen48.tap.permission.SYNCHRONIZATION" />
     <queries>
-        <provider android:authorities="com.company.tap.fixture.tap-sync" />
-        <provider android:authorities="com.company.tap.fixture.fault" />
+        <provider android:authorities="io.github.noamcohen48.tap.fixture.tap-sync" />
+        <provider android:authorities="io.github.noamcohen48.tap.fixture.fault" />
     </queries>
     <application
         android:allowBackup="false"

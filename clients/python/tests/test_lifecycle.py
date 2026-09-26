@@ -22,4 +22,4 @@ def test_cold_launch_produces_a_new_process_and_survives_clear_data(tap_device):
     app.launch(".MainActivity")
     assert tap_device.element(res("view_button")).exists()
 
-    assert tap_device.info().current_package == "com.company.tap.fixture"
+    assert tap_device.info().current_package == "io.github.noamcohen48.tap.fixture"

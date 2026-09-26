@@ -37,7 +37,7 @@ from tap import TapServer, text, res
 
 server = TapServer()
 with server.connect("smoke") as connection:  # observing: if this process dies, the server detaches its devices
-    with connection.attach_device("emulator-5554", "com.company.tap.fixture") as device:
+    with connection.attach_device("emulator-5554", "io.github.noamcohen48.tap.fixture") as device:
         device.app().cold_launch(".MainActivity")
         device.element(res("view_button")).tap()
         device.wait(text("View tapped")).visible()
