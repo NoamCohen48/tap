@@ -1,9 +1,11 @@
 package io.github.noamcohen48.tap.daemon
 
 import io.github.noamcohen48.tap.api.v1.Command
-import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ExecuteRequest
+import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDevice
@@ -20,9 +22,13 @@ import io.github.noamcohen48.tap.host.FakeDriverServer
 import io.github.noamcohen48.tap.host.FakeProcess
 import io.github.noamcohen48.tap.host.ProcessStarter
 import io.github.noamcohen48.tap.host.ok
-import io.github.noamcohen48.tap.protocol.Done
+import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.FrameType
-import io.github.noamcohen48.tap.protocol.Response
+import io.github.noamcohen48.tap.protocol.Nodes
+import io.github.noamcohen48.tap.protocol.Responses
+import io.github.noamcohen48.tap.protocol.stamped
+import io.github.noamcohen48.tap.protocol.toSelector
+import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.server.ClientConnectionService
 import io.github.noamcohen48.tap.server.DeviceService
 import io.grpc.Status
@@ -668,12 +674,92 @@ class TapDaemonLifecycleTest {
                         assertEquals(submitted.requestId, cancelFrame.requestId)
 
                         // A late terminal response is consumed rather than poisoning the transport.
-                        server.respond(submitted.requestId, Response.ok(Done, durationMs = 1))
+                        server.respond(submitted.requestId, Responses.done(1))
                         val secondJob = async { stub.execute(request) }
                         val secondFrame = withTimeout(2_000) { withContext(Dispatchers.IO) { server.nextFrame() } }
                         assertEquals(FrameType.REQUEST, secondFrame.type)
-                        server.respond(secondFrame.requestId, Response.ok(Done, durationMs = 1))
+                        server.respond(secondFrame.requestId, Responses.done(1))
                         withTimeout(2_000) { secondJob.await() }
+                    } finally {
+                        channel.shutdownNow()
+                        grpcServer.shutdownNow()
+                        channel.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+                        grpcServer.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+                    }
+                } finally {
+                    runCatching { client.close() }
+                }
+            }
+        }
+
+    @Test
+    fun `execute validates, forwards the command unchanged and returns the driver result unchanged`(): Unit =
+        runBlocking {
+            val sessionId = "forward-session"
+            val generation = 9L
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            FakeDriverServer(sessionId, generation, secret).use { server ->
+                val client =
+                    DriverClient.connect(server.port, sessionId, generation, secret, serial = "forward-serial", heartbeatIntervalMs = 0)
+                try {
+                    val device = FakeDevice(serial = "forward-serial", generation = generation, autPackage = "com.test", realClient = client)
+                    val opener = FakeOpener().apply { queue.add(device) }
+                    val daemon = TapDaemon(testConfig(), opener)
+                    val connection = daemon.connectClient("forward-conn")
+                    val session = daemon.attachDevice(connection.id, "forward-serial", "com.test", testOptions())
+                    val serverName = InProcessServerBuilder.generateName()
+                    val grpcServer =
+                        InProcessServerBuilder.forName(serverName).directExecutor().addService(DeviceService(daemon)).build().start()
+                    val channel = InProcessChannelBuilder.forName(serverName).directExecutor().build()
+                    val stub = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
+                    fun execute(command: Command) =
+                        ExecuteRequest
+                            .newBuilder()
+                            .setClientConnectionId(connection.id)
+                            .setAttachedDeviceId(session.id)
+                            .setCommand(command)
+                            .build()
+                    try {
+                        // aut_package and the absent optional fields reach the driver as sent.
+                        val target = Nodes.autResource("row").toSelector()
+                        val command =
+                            Commands
+                                .scrollUntil(target, container = Nodes.autResource("list").toSelector())
+                                .toBuilder()
+                                .setTimeoutMs(4_000)
+                                .build()
+                        val call = async { stub.execute(execute(command)) }
+                        val frame = withTimeout(2_000) { withContext(Dispatchers.IO) { server.nextFrame() } }
+                        val request = Request.parseFrom(frame.payload)
+                        assertEquals(command, request.command)
+                        assertEquals(4_000L, request.timeoutMs)
+                        assertTrue(request.command.scrollUntil.selector.node.resource.autPackage)
+                        assertFalse(request.command.scrollUntil.hasMaxScrolls())
+
+                        val driverResult =
+                            Responses
+                                .failure(ErrorCode.ERR_NOT_FOUND, detail = "END_REACHED", message = "no row")
+                                .stamped(durationMs = 17, requestId = frame.requestId, generation = generation)
+                        server.respond(frame.requestId, driverResult)
+                        assertEquals(driverResult.result, withTimeout(2_000) { call.await() }.result)
+
+                        // Pre-flight: a malformed command is INVALID_ARGUMENT and never reaches the driver.
+                        val invalid =
+                            listOf(
+                                Commands.tap(Selector.getDefaultInstance()),
+                                Command.getDefaultInstance(),
+                                Commands.swipe(target, io.github.noamcohen48.tap.api.v1.Direction.DIR_UNSPECIFIED),
+                            )
+                        invalid.forEach { bad ->
+                            val status = assertFailsWith<io.grpc.StatusException> { stub.execute(execute(bad)) }
+                            assertEquals(Status.Code.INVALID_ARGUMENT, status.status.code, bad.toString())
+                        }
+                        val idAfter = client.submit(Commands.deviceInfo())
+                        assertEquals(frame.requestId + 1, idAfter.requestId, "rejected commands must not consume a request ID")
+                        val next = withTimeout(2_000) { withContext(Dispatchers.IO) { server.nextFrame() } }
+                        assertEquals(idAfter.requestId, next.requestId)
+                        server.respond(next.requestId, Responses.done(1))
+                        assertTrue(idAfter.await().result.hasDone())
                     } finally {
                         channel.shutdownNow()
                         grpcServer.shutdownNow()
@@ -784,7 +870,7 @@ class TapDaemonLifecycleTest {
                 val daemon = TapDaemon(testConfig(), opener)
                 val connection = daemon.connectClient("lookup-poison-conn")
                 val opening = async(Dispatchers.IO) { daemon.attachDevice(connection.id, serial, "com.test", testOptions()) }
-                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 // Barrier, not a delay race: the lookup completes first, then the poison lands
                 // before submission — the submit must still reject through the bound gate.
@@ -797,7 +883,7 @@ class TapDaemonLifecycleTest {
                     ),
                 )
                 assertFailsWith<io.github.noamcohen48.tap.host.DeviceQuarantinedException> {
-                    captured.submit(io.github.noamcohen48.tap.protocol.Health)
+                    captured.submit(io.github.noamcohen48.tap.protocol.Requests.health())
                 }
                 // Nothing reached the driver: the next frame poll times out.
                 val noFrame =

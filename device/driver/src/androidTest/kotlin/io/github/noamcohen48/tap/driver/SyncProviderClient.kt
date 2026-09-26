@@ -4,13 +4,12 @@ import android.app.Instrumentation
 import android.content.pm.PackageManager
 import android.net.Uri
 import io.github.noamcohen48.tap.driver.engine.CommandContext
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.CommandFailure
-import io.github.noamcohen48.tap.protocol.ErrorCode
 import io.github.noamcohen48.tap.protocol.ErrorDetail
-import io.github.noamcohen48.tap.protocol.SyncBootstrap
-import io.github.noamcohen48.tap.protocol.SyncPoll
-import io.github.noamcohen48.tap.protocol.SyncResult
-import io.github.noamcohen48.tap.protocol.SyncState
+import io.github.noamcohen48.tap.wire.v1.SyncBootstrap
+import io.github.noamcohen48.tap.wire.v1.SyncPoll
+import io.github.noamcohen48.tap.wire.v1.SyncState
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -22,55 +21,54 @@ internal class SyncProviderClient(
 ) {
     private var poisoned = false
 
-    fun bootstrap(context: CommandContext, command: SyncBootstrap): SyncResult =
-        SyncResult(read(context, command.observedPid))
+    fun bootstrap(context: CommandContext, command: SyncBootstrap): SyncState = read(context, command.observedPid)
 
-    fun poll(context: CommandContext, command: SyncPoll): SyncResult {
+    fun poll(context: CommandContext, command: SyncPoll): SyncState {
         val state = read(context, command.observedPid)
         if (
             state.processStartUuid != command.expectedProcessStartUuid ||
             state.sessionIdentity != command.expectedSessionIdentity
         ) {
-            throw CommandFailure(ErrorCode.AUT_MISMATCH, detail = ErrorDetail.PROCESS_RESTARTED)
+            throw CommandFailure(ErrorCode.ERR_AUT_MISMATCH, detail = ErrorDetail.PROCESS_RESTARTED)
         }
-        return SyncResult(state)
+        return state
     }
 
     /** Reads a validated state from the AUT's provider; every failure is a [CommandFailure]. */
     private fun read(context: CommandContext, observedPid: Int): SyncState {
-        if (poisoned) throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_POISONED)
+        if (poisoned) throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_POISONED)
         if (
             instrumentation.targetContext.packageManager.checkSignatures(
                 expectedAut,
                 instrumentation.targetContext.packageName,
             ) != PackageManager.SIGNATURE_MATCH
         ) {
-            throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.CERTIFICATE_MISMATCH)
+            throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.CERTIFICATE_MISMATCH)
         }
         val provider = instrumentation.targetContext.packageManager.resolveContentProvider(syncAuthority, 0)
-        if (provider?.packageName != expectedAut) throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE)
+        if (provider?.packageName != expectedAut) throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE)
 
         val remaining = context.remainingMs()
-        if (remaining <= 0) throw CommandFailure(ErrorCode.WAIT_TIMEOUT)
+        if (remaining <= 0) throw CommandFailure(ErrorCode.ERR_WAIT_TIMEOUT)
         val state = try {
             readState(remaining)
         } catch (error: TimeoutException) {
             poisoned = true
-            throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_TIMEOUT)
+            throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_TIMEOUT)
         } catch (error: Throwable) {
-            throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, message = error.message)
+            throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, message = error.message)
         }
         if (state.processId != observedPid) {
-            throw CommandFailure(ErrorCode.AUT_MISMATCH, detail = ErrorDetail.PROCESS_MISMATCH)
+            throw CommandFailure(ErrorCode.ERR_AUT_MISMATCH, detail = ErrorDetail.PROCESS_MISMATCH)
         }
         when {
             !state.initialized || state.processStartUuid.isBlank() || state.sessionIdentity.isBlank() ->
-                throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.UNINITIALIZED)
+                throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.UNINITIALIZED)
             state.generation < 0 || state.busyCount < 0 || state.lastTransitionElapsedMs < 0 ->
-                throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.MALFORMED_STATE)
-            state.error != null ->
-                throw CommandFailure(ErrorCode.SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_ERROR, message = state.error)
-            context.isExpired() -> throw CommandFailure(ErrorCode.WAIT_TIMEOUT)
+                throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.MALFORMED_STATE)
+            state.hasError() ->
+                throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_ERROR, message = state.error)
+            context.isExpired() -> throw CommandFailure(ErrorCode.ERR_WAIT_TIMEOUT)
         }
         return state
     }
@@ -105,16 +103,16 @@ internal class SyncProviderClient(
             require(bundle["busyCount"] is Int)
             require(bundle["lastTransitionElapsedMs"] is Long)
             require(bundle["error"] == null || bundle["error"] is String)
-            SyncState(
-                initialized = bundle.getBoolean("initialized"),
-                processId = bundle.getInt("processId"),
-                processStartUuid = requireNotNull(bundle.getString("processStartUuid")),
-                sessionIdentity = requireNotNull(bundle.getString("sessionIdentity")),
-                generation = bundle.getLong("generation"),
-                busyCount = bundle.getInt("busyCount"),
-                lastTransitionElapsedMs = bundle.getLong("lastTransitionElapsedMs"),
-                error = bundle.getString("error"),
-            )
+            SyncState.newBuilder()
+                .setInitialized(bundle.getBoolean("initialized"))
+                .setProcessId(bundle.getInt("processId"))
+                .setProcessStartUuid(requireNotNull(bundle.getString("processStartUuid")))
+                .setSessionIdentity(requireNotNull(bundle.getString("sessionIdentity")))
+                .setGeneration(bundle.getLong("generation"))
+                .setBusyCount(bundle.getInt("busyCount"))
+                .setLastTransitionElapsedMs(bundle.getLong("lastTransitionElapsedMs"))
+                .apply { bundle.getString("error")?.let(::setError) }
+                .build()
         }
         Thread(task, "tap-sync-provider-call").apply { isDaemon = true }.start()
         return task.get(timeoutMs, TimeUnit.MILLISECONDS)

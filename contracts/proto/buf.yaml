@@ -1,0 +1,16 @@
+# buf (https://buf.build) configuration for tap.v1 (server API) and tap.wire.v1 (TAP1 payloads).
+# CI runs `buf lint` and `buf breaking` against the base branch, so an
+# incompatible proto edit (removed or renumbered fields, changed types) fails
+# before anyone regenerates stubs.
+version: v2
+lint:
+  use:
+    - STANDARD
+  except:
+    # Enums keep short value prefixes (ERR_, DIR_, …), and tap.v1 lives flat in this
+    # directory (tap.wire.v1 under wire/) so imports stay short (see README.md).
+    - ENUM_VALUE_PREFIX
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - WIRE_JSON

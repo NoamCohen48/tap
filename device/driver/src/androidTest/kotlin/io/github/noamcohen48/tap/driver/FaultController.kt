@@ -3,9 +3,10 @@ package io.github.noamcohen48.tap.driver
 import android.app.Instrumentation
 import android.net.Uri
 import android.os.Bundle
-import io.github.noamcohen48.tap.protocol.Command
-import io.github.noamcohen48.tap.protocol.Node
-import io.github.noamcohen48.tap.protocol.Tap
+import io.github.noamcohen48.tap.api.v1.Command
+import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.wire.v1.Request
 import java.net.Socket
 
 internal enum class FaultPoint {
@@ -24,7 +25,11 @@ internal class FaultController(
 ) {
     private var triggered = false
 
-    fun inject(point: FaultPoint, command: Command, requestId: Long, generation: Long): Boolean {
+    /** Reader-lane faults around acceptance; only a `tap` on the fault button arms one. */
+    fun inject(point: FaultPoint, request: Request, requestId: Long, generation: Long): Boolean =
+        inject(point, request.faultTap(), requestId, generation)
+
+    fun inject(point: FaultPoint, command: Tap?, requestId: Long, generation: Long): Boolean {
         if (triggered || faultPoint != point || !command.targetsFaultButton()) return false
         triggered = true
         emit("TAP_FAULT point=${point.name} request=$requestId generation=$generation")
@@ -36,7 +41,7 @@ internal class FaultController(
      * `CANCEL` while the mutation is already definitive. The command must still return its
      * real result; the pipeline ignores the cancel.
      */
-    fun holdAfterMutation(command: Command, requestId: Long, generation: Long) {
+    fun holdAfterMutation(command: Tap, requestId: Long, generation: Long) {
         if (triggered || faultPoint != FaultPoint.CANCEL_AFTER_MUTATION || !command.targetsFaultButton()) return
         triggered = true
         emit(
@@ -46,7 +51,7 @@ internal class FaultController(
         android.os.SystemClock.sleep(CANCEL_HOLD_MS)
     }
 
-    fun injectLateUninterruptible(socket: Socket, command: Command, requestId: Long, generation: Long) {
+    fun injectLateUninterruptible(socket: Socket, command: Tap, requestId: Long, generation: Long) {
         if (triggered || faultPoint != FaultPoint.LATE_UNINTERRUPTIBLE || !command.targetsFaultButton()) return
         triggered = true
         val delayMs = 15_000L
@@ -84,5 +89,9 @@ internal class InjectedTransportLoss : RuntimeException()
 
 private const val CANCEL_HOLD_MS = 3_000L
 
+private fun Request.faultTap(): Tap? =
+    if (bodyCase == Request.BodyCase.COMMAND && command.opCase == Command.OpCase.TAP) command.tap else null
+
 /** Only a `tap` on the fixture's fault button arms a fault. */
-private fun Command.targetsFaultButton(): Boolean = this is Tap && (selector.node as? Node.Resource)?.name == "fault_button"
+private fun Tap?.targetsFaultButton(): Boolean =
+    this != null && selector.node.kindCase == Node.KindCase.RESOURCE && selector.node.resource.name == "fault_button"

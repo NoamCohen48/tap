@@ -10,11 +10,11 @@ kotlin {
 
 dependencies {
     api(project(":contracts:protocol"))
+    // The session journal's JSON (SessionJournal.kt); the wire protocol is protobuf.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
     testFixturesApi(project(":contracts:protocol"))
-    testFixturesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     testFixturesImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
     testImplementation(kotlin("test"))

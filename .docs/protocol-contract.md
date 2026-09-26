@@ -1,23 +1,24 @@
 # Tap Protocol Contract
 
-Date: 2026-09-20
+Date: 2026-09-26
 
-Status: application protocol `2.0`; Phase 1 contract is additive and not yet complete.
+Status: application protocol `3.0`; Phase 1 contract is additive and not yet complete.
 
 This document describes the implemented wire contract. Planned but unimplemented features
 (events, typed element handles, multi-gesture input) remain design work in
-`android-e2e-framework-implementation-plan.md` and are not part of protocol 2.0 yet.
+`android-e2e-framework-implementation-plan.md` and are not part of protocol 3.0 yet.
 
-Protocol 2.0 replaced 1.0's flat request (one `operation` enum plus every optional field of
-every command) and flat response (`ok` plus every optional result field) with one class per
-command and per result kind, discriminated on the wire (`op`, `kind`, `type`). 1.0 is not
-negotiated any more; the driver and the host ship together, so nothing speaks it. The
-rationale is under [Design Rationale](#design-rationale).
+Protocol 3.0 encodes every control payload as protobuf. The schema is the project's one schema,
+`contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
+carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
+same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
+and results unchanged. 2.0 was canonical JSON over a Kotlin model mirrored by the proto; 1.0 a
+flat request/response. Neither is negotiated any more: the driver and the host ship together,
+so nothing speaks them. The rationale is under [Design Rationale](#design-rationale).
 
-`contracts/api/proto/command.proto` (the host server API, `server-api.md`) mirrors this
-contract's enums, selector AST and command/result models as `oneof`s; `EnumMirrorTest` and
-`GoldenRoundTripTest` in `:host:daemon` fail when they drift. A change here therefore also
-updates the proto and the committed Python stubs (`clients/python/scripts/gen_stubs.py`).
+A change to `tap.v1` therefore changes both the server API and the wire; it also updates the
+committed Python stubs (`clients/python/scripts/gen_stubs.py`) and, when encodings move, the
+golden bytes under `contracts/protocol/src/test/resources`.
 
 ## Framing
 
@@ -33,9 +34,8 @@ length      i32
 payload     length bytes
 ```
 
-Control payloads are limited to 1 MiB. Handshake payloads are canonical UTF-8 JSON. Request
-and response payloads are UTF-8 JSON (`ProtocolJson`: defaults always encoded, null optionals
-omitted, unknown keys ignored). Connection frames use request ID zero; requests and responses
+Control payloads are limited to 1 MiB and are protobuf messages of `tap.wire.v1` (see
+[Payloads](#payloads)); `BLOB_CHUNK` and the driver's `CLOSE` reason are raw bytes. Connection frames use request ID zero; requests and responses
 use a positive monotonically increasing ID. Both ends write each frame as one buffer in a single
 `write` and set `TCP_NODELAY`, so a frame never waits on Nagle/delayed-ACK over adb forwarding.
 
@@ -58,30 +58,44 @@ host treats a driver `CLOSE` as transport loss with the reason as the cause: the
 poisoned, in-flight mutations fail `INDETERMINATE` and queries `TRANSPORT_LOST`. Blob frames are
 driver-to-host only and are described under [Artifacts](#artifacts).
 
-## Canonical JSON
+## Payloads
 
-Handshake JSON recursively sorts object keys lexicographically, retains array order, has no
-insignificant whitespace, and uses standard JSON scalar representations. The receiver parses
-and re-canonicalizes every handshake payload and rejects it if the bytes differ. This rejects
-duplicate keys and noncanonical whitespace. Unknown canonical optional fields are ignored.
+| Frame | Payload |
+|---|---|
+| `HELLO` | `Hello` |
+| `CHALLENGE` | `Challenge` |
+| `AUTH` | `Authentication` |
+| `AUTH_RESULT` | `AuthenticationResult` |
+| `REQUEST` | `Request` |
+| `RESPONSE` | `Response` |
+| `BLOB_START` / `BLOB_END` | `BlobStart` / `BlobEnd` |
+| `BLOB_CHUNK` | raw (see [Artifacts](#artifacts)) |
+| `CLOSE` (driver) | UTF-8 reason |
+
+Encoding is standard proto3 binary. Unknown fields are ignored by both sides, as protobuf does.
+The handshake does not need a canonical encoding: the MAC covers the payload bytes exactly as
+they were sent, and the negotiation the host authenticates travels inside `AUTH` as the
+serialized bytes it MACed (`Authentication.negotiation`), so neither side ever re-encodes a
+message to verify it. A payload that does not parse fails the handshake; a `REQUEST` that does
+not parse is `INVALID_REQUEST` (below).
 
 ## Negotiation
 
-The host sends canonical `HELLO` with `hostBuildId`, a 32-byte Base64URL `hostNonce`,
-`sessionGeneration`, `sessionId`, and sorted `supportedVersions`. The driver validates the
+The host sends `HELLO` with `host_build_id`, a 32-byte `host_nonce`, `session_generation`,
+`session_id`, and ascending `supported_versions`. The driver validates the
 instrumentation-provided identity and nonce, rejects a connection with no common application
-version, and returns canonical `CHALLENGE` containing:
+version, and returns `CHALLENGE` containing:
 
 - Android API level;
 - sorted capability names;
 - driver APK, driver-test APK, and UiAutomator build IDs;
 - driver instance ID and nonce;
 - echoed host nonce, session, and generation;
-- sorted supported command names (`supportedOperations`: the `op` values below); and
+- sorted supported operation names (`supported_operations`: the `op` values below); and
 - sorted supported application-protocol versions.
 
 The host selects the highest exact common `major.minor` version and a sorted subset of offered
-capabilities. Protocol 2.0 currently enables:
+capabilities. Protocol 3.0 currently enables:
 
 ```text
 artifact.screenshot.v1
@@ -91,12 +105,13 @@ product.probe.v1
 synchronization.v1
 ```
 
-The canonical negotiation contains `enabledCapabilities` and `selectedVersion`.
+The `Negotiation` contains `enabled_capabilities` and `selected_version`; the host serializes it
+once and sends those bytes in `Authentication.negotiation`.
 
 ## Authentication
 
-All nonces and the per-launch secret are 32 bytes. Nonces and HMAC values use unpadded
-Base64URL. The authenticated transcript is:
+All nonces and the per-launch secret are 32 bytes; nonces and HMACs are raw `bytes` fields.
+The authenticated transcript is:
 
 ```text
 u32be(len(HELLO)) || HELLO ||
@@ -104,13 +119,15 @@ u32be(len(CHALLENGE)) || CHALLENGE ||
 u32be(len(NEGOTIATION)) || NEGOTIATION
 ```
 
+where each part is the payload bytes as sent (`NEGOTIATION` = `Authentication.negotiation`).
+
 Host authentication is HMAC-SHA-256 over `TAP1-HOST-AUTH`, one zero byte, and the transcript.
 Driver authentication uses the independent `TAP1-DRIVER-AUTH` domain. `AUTH_RESULT` must echo
 the exact selected version and enabled capabilities and carry the valid driver transcript
 HMAC. Any mismatch fails authentication.
 
-After the driver's HMAC verifies, the host also requires the challenge's `driverApkBuildId` and
-`driverTestApkBuildId` to equal its own `DRIVER_APK_BUILD_ID` / `DRIVER_TEST_APK_BUILD_ID` (all
+After the driver's HMAC verifies, the host also requires the challenge's `driver_apk_build_id`
+and `driver_test_apk_build_id` to equal its own `DRIVER_APK_BUILD_ID` / `DRIVER_TEST_APK_BUILD_ID` (all
 three are the engine version the artifacts were built from). A driver of another build fails the
 connection with `DriverBuildMismatchException` (a handshake failure, never retried) and the
 session does not open; the remedy is reinstalling the driver APKs that ship with the host. The
@@ -118,55 +135,62 @@ check runs only after authentication, so the reported build is known to come fro
 
 ## Requests
 
-A request is an envelope around one command:
+A request is an envelope around one operation:
 
-```json
-{"sessionId":"…","generation":3,"timeoutMs":10000,"command":{"op":"scroll_until","selector":{…},"container":{…},"direction":"DOWN","distancePercent":80,"maxScrolls":20}}
+```text
+Request {
+  session_id, generation     the authenticated identity
+  timeout_ms                 0..120 000, from acceptance (a Command.timeout_ms is ignored)
+  body: command (tap.v1.Command, `oneof op`) | health | screenshot | sync_bootstrap | sync_poll
+}
 ```
 
-`sessionId` and `generation` are the authenticated identity; `timeoutMs` is bounded (0..120 000)
-and starts when the request is accepted; the request ID lives in the frame header. `command`
-is exactly one of the classes below, discriminated by `op`; every field that is not marked
-optional is required, defaults are filled in by the sender and always present on the wire
-(including a selector's default `scope`/`pick` and a match's default `mode`), so a receiver's
-own defaults never decide a value; the golden request fixtures show every default and change
-when one does.
-In Kotlin (`contracts/protocol`, `Commands.kt`) each command is a `@Serializable` class in the
-sealed `Command` hierarchy; `Mutation` marks the commands that may change device state and
-`Targeted` the ones with a primary `selector`. `Returning<R>` types the result each command
-produces, so `DriverClient.execute(Exists(selector))` is a `BoolResult` and
-`execute(DeviceInfoQuery)` a `DeviceInfoResult` without a cast at the call site.
+The request ID lives in the frame header. `command` is a public command, exactly one `op` case
+below; the other `body` cases are host-internal operations clients cannot send. Optional fields
+(`optional` in the proto, and the zero `UNSPECIFIED` value of `Direction` for `scroll_until`,
+`StabilitySignal`, `MatchMode`, and an unset `scope`/`pick`) take their documented default on
+the **driver**, the one place defaults are applied; host core and the daemon forward commands
+as the client built them. `ResourceId.aut_package` is likewise resolved by the driver to the
+session's AUT package. In Kotlin, `contracts/protocol` `Operations.kt` holds the catalogue
+(`Command.op`, `isMutation`, `targetSelector`, the `Commands`/`Requests` factories) and the
+driver's exhaustive `Request.dispatch(CommandHandler)`, which gives each operation its own
+result type.
 
-| `op` | Class | Fields | Result kind |
+| `op` | Message | Fields | Result (`CommandResult.outcome`) |
 |---|---|---|---|
-| `health` | `Health` | – | `done` |
+| `health` | `Health` (host-internal) | – | `done` |
 | `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, display size and rotation, focused package |
-| `press_key` | `PressKey` (mutation) | `keyCode` ≥ 0 | `done` after one key press (`3`/`4` route through `pressHome`/`pressBack`); `ACTION_REJECTED` if the platform refused it |
+| `press_key` | `PressKey` (mutation) | `key_code` ≥ 0 | `done` after one key press (`3`/`4` route through `pressHome`/`pressBack`); `ACTION_REJECTED` if the platform refused it |
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
 | `count` | `Count` | `selector` | `count` = matches in the focused window, capped at 1 000 (ignores the match limit) |
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (hint excluded), description, hint, visible bounds, state flags, child count |
 | `wait_visible` | `WaitVisible` | `selector` | `done`, or `WAIT_TIMEOUT` |
 | `wait_gone` | `WaitGone` | `selector` | `done` once no match exists, or `WAIT_TIMEOUT` |
-| `wait_app_visible` | `WaitAppVisible` | `packageName` | `done` once that package owns the focused window, or `WAIT_TIMEOUT` |
-| `wait_screen_stable` | `WaitScreenStable` | `packageName`, `stableForMs` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stableForMs`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
+| `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window, or `WAIT_TIMEOUT` |
+| `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click |
 | `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: replaces the text; verified within 1 s |
 | `type_text` | `TypeText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: appends via key events; verified |
 | `clear_text` | `ClearText` (mutation) | `selector` | `done`: empties the field; verified |
-| `swipe` | `Swipe` (mutation) | `selector`, `direction`, `distancePercent` 1..100 | `moved` = true: finger gesture across the element |
-| `scroll` | `Scroll` (mutation) | `selector` (scrollable), `direction`, `distancePercent` | one scroll segment; `moved` = true while more content remains in that direction (UiAutomator semantics), false at the end or when no scroll event was observed |
-| `scroll_until` | `ScrollUntil` (mutation) | `selector`, `container`, `direction` (default `DOWN`), `distancePercent`, `maxScrolls` 1..100 | `done` once the target is visible inside the container |
+| `swipe` | `Swipe` (mutation) | `selector`, `direction` (required), `distance_percent` 1..100 | `moved` = true: finger gesture across the element |
+| `scroll` | `Scroll` (mutation) | `selector` (scrollable), `direction` (required), `distance_percent` | one scroll segment; `moved` = true while more content remains in that direction (UiAutomator semantics), false at the end or when no scroll event was observed |
+| `scroll_until` | `ScrollUntil` (mutation) | `selector`, `container`, `direction` (default `DOWN`), `distance_percent`, `max_scrolls` 1..100 (default 20) | `done` once the target is visible inside the container |
 | `dump_hierarchy` | `DumpHierarchy` | – | `text` = accessibility XML (diagnostic only) |
-| `screenshot` | `Screenshot` | – | PNG blob + `artifact` metadata (capability `artifact.screenshot.v1`) |
-| `sync_bootstrap` | `SyncBootstrap` | `observedPid`, `observedStartToken` | `sync` |
-| `sync_poll` | `SyncPoll` | `observedPid`, `observedStartToken`, `expectedProcessStartUuid`, `expectedSessionIdentity` | `sync` |
+| `screenshot` | `CaptureScreenshot` (host-internal) | – | `done`; PNG blob + `Response.artifact` metadata (capability `artifact.screenshot.v1`) |
+| `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token` | `done` + `Response.sync` |
+| `sync_poll` | `SyncPoll` (host-internal) | `observed_pid`, `observed_start_token`, `expected_process_start_uuid`, `expected_session_identity` | `done` + `Response.sync` |
 
 `direction` is the direction the content moves for scrolls and the finger for swipes.
-`distancePercent` (default 80) is the gesture length as a percentage of the element's size.
-Range checks live in the command constructors, so an out-of-range value cannot be built on
-the host; a payload that violates them anyway (or is otherwise malformed) is `INVALID_REQUEST`,
-and an unknown `op` is `UNSUPPORTED`, both decided on the reader lane before any UI access.
-Either way the request ID is consumed.
+`distance_percent` (default 80) is the gesture length as a percentage of the element's size.
+`CommandValidation` (`contracts/protocol`) holds the range and structure checks and runs three
+times: on the daemon as a pre-flight, in host core before a request ID is allocated, and on the
+driver, which trusts nothing on the wire. On the driver a payload that does not parse is
+`INVALID_REQUEST`; a parsed request is checked for session identity, then against the request-ID
+watermark, then validated: an out-of-range argument or an enum value this build does not know
+is `INVALID_REQUEST`, a selector problem `INVALID_SELECTOR`, and a `Request` with no `body` or a
+`Command` with no `op` (which is also what a newer host's unknown case decodes to) is
+`UNSUPPORTED`. All of this is decided on the reader lane before any UI access, and the request
+ID is consumed either way.
 
 Text observations (`SNAPSHOT.text`, and the verification behind `SET_TEXT`/`TYPE_TEXT`/
 `CLEAR_TEXT`) exclude a displayed hint: an empty `EditText` reports its hint as accessibility
@@ -179,9 +203,9 @@ timeout is a `WAIT_TIMEOUT` error response, never an exception path.
 
 `wait_screen_stable` is the only settle primitive and it is **explicit**: no other command waits
 for animations or a quiet screen, and the driver never retries a command because the screen did
-not change. Given `packageName`, `stableForMs` and `signal`, the driver samples that
+not change. Given `package_name`, `stable_for_ms` and `signal`, the driver samples that
 package's focused application window and succeeds once the chosen signal has not changed for
-`stableForMs`. `TREE` (Maestro's "app settled") is a fingerprint of the accessibility tree
+`stable_for_ms`. `TREE` (Maestro's "app settled") is a fingerprint of the accessibility tree
 (class, id, text, description, bounds, state flags; capped at 4 000 nodes, no XML dump) and
 takes no screenshots; `PIXELS` (Maestro's "animation ended") is a downscaled 48×96 grid of the
 window's pixels, changed when more than 0.5 % of cells differ after colour quantisation; `ALL`
@@ -206,55 +230,53 @@ Zero matches return `NOT_FOUND`; multiple matches return `AMBIGUOUS` before inpu
 
 ## Responses
 
-A response is one of two variants, discriminated by `type`:
+A `Response` is a `tap.v1.CommandResult` plus, for a successful host-internal operation, its
+data in the `internal` oneof:
 
-```json
-{"type":"ok","result":{"kind":"count","count":3},"durationMs":20}
-{"type":"error","code":"NOT_FOUND","detail":"END_REACHED","message":"…","durationMs":5}
+```text
+Response {
+  result: CommandResult {
+    duration_ms, request_id, session_generation     filled in by the driver
+    outcome: done | bool | moved | count | text | snapshot | device_info | error
+  }
+  internal: artifact (ArtifactInfo, screenshot) | sync (SyncState, sync_bootstrap/sync_poll)
+}
 ```
 
-`result` is one of the kinds below (`Results.kt`, sealed `CommandResult`); each command
-produces exactly one kind, fixed by its `Returning<R>` type.
-
-| `kind` | Class | Payload |
-|---|---|---|
-| `done` | `Done` | – (the command completed) |
-| `bool` | `BoolResult` | `value` |
-| `moved` | `Moved` | `moved` |
-| `count` | `CountResult` | `count` |
-| `text` | `TextResult` | `text` |
-| `snapshot` | `SnapshotResult` | `snapshot` (`ElementSnapshot`) |
-| `device_info` | `DeviceInfoResult` | `deviceInfo` |
-| `artifact` | `ArtifactResult` | `artifact` (`ArtifactInfo`, see [Artifacts](#artifacts)) |
-| `sync` | `SyncResult` | `state` (`SyncState`) |
+Each operation produces exactly one `outcome` case on success (the table above) and `error`
+(`code`, optional `detail`, optional `message`) on failure. The daemon hands `result` to the
+client as it is.
 
 ### Selectors
 
-A selector is a small versioned expression tree, never a string expression or XPath. Every
-sum type is a discriminated object (`kind`), exactly like commands are discriminated on `op`:
+A selector is a small versioned expression tree (`selector.proto`), never a string expression
+or XPath. Every sum type is a `oneof`:
 
 ```text
 Selector {
   node:  Node
-  scope: {kind: "aut"} (default) | {kind: "system", packageName}     allowlisted packages only
-  pick:  {kind: "exactly_one"} (default) | {kind: "first"} | {kind: "at", index ≥ 0}
+  scope: aut (default) | system {package_name}     allowlisted packages only
+  pick:  exactly_one (default) | first | at {index ≥ 0}
 }
-Node =
-  | {kind: "match",    property: TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME, value, mode = EXACT}
-  | {kind: "flag",     property: ENABLED | CHECKED | CHECKABLE | CLICKABLE | FOCUSED | FOCUSABLE
-                                 | LONG_CLICKABLE | SCROLLABLE | SELECTED, value = true}
-  | {kind: "resource", name, packageName?}   with packageName: `packageName:id/name`; without: the exact resource name (Compose testTag)
-  | {kind: "related",  relation: PARENT | ANCESTOR | CHILD | DESCENDANT, node: Node}
-  | {kind: "all_of",   nodes: [Node, Node, …]}   conjunction, ≥ 2 operands
-  | {kind: "any_of",   nodes: [Node, Node, …]}   disjunction, ≥ 2 operands
+Node.kind =
+  | match    {property: TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME, value, mode (default EXACT)}
+  | flag     {property: ENABLED | CHECKED | CHECKABLE | CLICKABLE | FOCUSED | FOCUSABLE
+                        | LONG_CLICKABLE | SCROLLABLE | SELECTED, value}
+  | resource {name, package_name? | aut_package}   `pkg:id/name`; aut_package: the session's AUT,
+                                                    resolved by the driver; neither: the exact
+                                                    resource name (Compose testTag)
+  | related  {relation: PARENT | ANCESTOR | CHILD | DESCENDANT, node: Node}
+  | all_of   {nodes: [Node, Node, …]}   conjunction, ≥ 2 operands
+  | any_of   {nodes: [Node, Node, …]}   disjunction, ≥ 2 operands
 mode: EXACT | CONTAINS | STARTS_WITH | ENDS_WITH | REGEX
 ```
 
-`Node.allOf` / `Node.anyOf` (and the infix `and` / `or`) normalise: nested combinators of the
+`Nodes.allOf` / `Nodes.anyOf` (and the infix `and` / `or`) normalise: nested combinators of the
 same kind are flattened and a single operand is returned as is, so a chain of refinements is
-one flat `all_of`. An unset `scope`/`pick` is the default; `at` with a negative index and
-`system` with a blank package are unconstructible (constructor `require`, so a wire payload
-carrying them fails to decode as `INVALID_REQUEST`).
+one flat `all_of`; the client DSLs do the same. An unset `scope`/`pick` is the default. The
+`UNSPECIFIED` value of `TextProperty`, `NodeFlag` and `Relation`, any unknown enum value, a
+node with no `kind`, an `at` with a negative index and a `system` scope with a blank package are
+rejected by validation.
 
 Both sides validate the same limits before allocating a request ID or touching the UI: depth
 ≤ 32, ≤ 256 nodes, ≤ 1024 chars per string, no empty resource name or package, a combinator
@@ -262,12 +284,13 @@ needs at least two operands (`EMPTY_NODE`), a `match` with an empty `value` is o
 `EXACT` mode (`EMPTY_VALUE`: `CONTAINS ""` and the other modes would match every node, so a
 `first` mutation would hit an arbitrary one), and `REGEX` must compile under RE2 (linear time; no
 backreferences or lookaround). The rejection reason is returned as an `INVALID_SELECTOR`
-detail. A resource with an explicit `packageName` must match the scope package; a `system`
+detail (`UNSPECIFIED_VALUE` for an unset or unknown enum). A resource with an explicit
+`package_name` must match the scope package; a `system`
 scope outside the driver's allowlist is `SCOPE_DENIED`; a target and container with different
 scope packages is `SCOPE_MISMATCH`.
 
-`CommandValidation.validate(command)` dispatches by command type and validates every selector
-it carries; `ScrollUntil` validates both its target and container. On the device,
+`CommandValidation.validate(command)` checks the command's arguments and every selector it
+carries; `ScrollUntil` validates both its target and container. On the device,
 `CommandValidation.validateSelector(selector)` also returns the query plan. A selector compiles
 to one window-scoped `BySelector` (`ByBuilder` plus `UiWindow.findObjects` on the focused window of
 the scope package) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
@@ -291,7 +314,7 @@ socket reader -> bounded queue (16) -> single command executor -> writer -> sock
 
 - The reader thread never runs UI work. It validates the request-ID watermark, then enqueues.
   `CANCEL`, `PING`, and connection closure are therefore observed while a command runs.
-- `timeoutMs` starts when the request is accepted. Queue residence consumes the deadline; a
+- `timeout_ms` starts when the request is accepted. Queue residence consumes the deadline; a
   command reaching the executor after expiry returns `DEADLINE_EXCEEDED` without running.
 - A full queue returns `OVERLOADED` immediately; the request ID is still consumed.
 - Every accepted request gets exactly one terminal `RESPONSE`, in whichever order commands
@@ -350,10 +373,10 @@ A command whose result is binary streams it on the writer lane *before* its term
 `RESPONSE`, using the command's request ID:
 
 ```text
-BLOB_START  JSON { blobId (UUID), mediaType, totalLength, sha256 }
-BLOB_CHUNK  16-byte blobId || u32be chunkIndex || data (1..262144 bytes)
-BLOB_END    JSON { blobId, byteCount, sha256 }
-RESPONSE    {"type":"ok","result":{"kind":"artifact","artifact":{ blobId, mediaType, byteCount, sha256, width?, height? }}}
+BLOB_START  BlobStart { blob_id (UUID), media_type, total_length, sha256 }
+BLOB_CHUNK  16-byte blob id || u32be chunk index || data (1..262144 bytes)
+BLOB_END    BlobEnd { blob_id, byte_count, sha256 }
+RESPONSE    Response { result.done, artifact: ArtifactInfo { blob_id, media_type, byte_count, sha256, width?, height? } }
 ```
 
 Chunks are contiguous from index 0. Artifacts larger than 64 MiB are refused before transfer
@@ -379,11 +402,12 @@ fail before writing.
 
 ## Errors
 
-An `error` response has exactly one `code` from the closed taxonomy below, an optional stable
+An `error` outcome has exactly one `code` from the closed taxonomy below (`tap.v1.ErrorCode`,
+`ERR_` prefix on the wire), an optional stable
 `detail` sub-reason, and an optional free-text `message` that clients must not branch on. An
-`ok` response never carries a code. A host that receives a code it does not know
-decodes it as `UNKNOWN` (treated as may-have-mutated, not retryable); a driver never sends
-`UNKNOWN`. Adding a code is a minor protocol version change.
+`ok` response never carries a code. A host that receives a code it does not know (or
+the zero value) reads it as `UNKNOWN` (`normalized()`; treated as may-have-mutated, not
+retryable); a driver never sends `UNKNOWN` or `UNSPECIFIED`. Adding a code is a minor protocol version change.
 
 Two properties are defined per code. **May have mutated** means device state may have changed;
 such a command must never be replayed blindly. **Retryable** is a hint for a caller-owned
@@ -392,8 +416,8 @@ policy; Tap itself never retries.
 | Code | May have mutated | Retryable | Meaning / details |
 |---|:-:|:-:|---|
 | `INVALID_REQUEST` | no | no | Malformed or out-of-range request. `UNSUPPORTED_CHARACTERS`: text has no key-event mapping (rejected before input). |
-| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`. |
-| `UNSUPPORTED` | no | no | Unknown `op`. |
+| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `UNSPECIFIED_VALUE`. |
+| `UNSUPPORTED` | no | no | No operation set (or one this driver does not know). |
 | `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
 | `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
 | `DUPLICATE_OR_STALE` | no | no | Request ID at or below the watermark. Not sent as a response: it prefixes the driver's `CLOSE` reason. |
@@ -430,8 +454,10 @@ is `STALE_DURING_COMMAND` (`TARGET_GONE`/`TARGET_AMBIGUOUS`).
 detail, remote message, duration) and `CommandTransportException` covers `TRANSPORT_LOST` and
 `INDETERMINATE` with the transmission state. Both carry operation, request ID, session
 generation, device serial, rendered selector, timeout, and the code's retryable/may-have-mutated
-flags. `DriverClient.send` returns the `Response` as data; `execute` returns the typed result
-and throws the typed exception; `submit` returns a `PendingCommand` for cancellation.
+flags. `DriverClient.send` returns the `Response` as data; `execute` returns the successful
+`CommandResult` (or, for a host-internal `Request`, the whole `Response`) and throws the typed
+exception; `submit` validates before allocating a request ID and returns a `PendingCommand` for
+cancellation.
 
 ## Compatibility Rules
 
@@ -439,16 +465,16 @@ and throws the typed exception; `submit` returns a `PendingCommand` for cancella
 - Negotiation chooses the highest exact common version and cannot silently downgrade.
 - Additive features require an authenticated capability.
 - Existing field meanings do not change within a major version.
-- Unknown optional handshake fields may be ignored only when the payload is canonical.
-- Unknown `op` values fail with `UNSUPPORTED`; they never fall back implicitly.
+- Unknown fields are ignored; the schema is append-only (`buf breaking`), numbers are reserved,
+  never reused.
+- Unknown operations fail with `UNSUPPORTED`; unknown enum values in a command are rejected, never
+  mapped to a default.
 - Connection loss never causes automatic mutation replay.
 
-Golden canonical payload, negotiation, transcript-binding, incompatible-version, duplicate
-key, and noncanonical JSON tests live under `contracts/protocol/src/test`. Golden request/response
-fixtures — one request per command, one response per result kind and one per error code — live under
-`contracts/protocol/src/test/resources/golden` and are checked by `GoldenMessageTest`; regenerate them
-with `./gradlew :contracts:protocol:test -Dtap.golden.update=true` in the same change as the contract
-edit that made them drift.
+Framing, negotiation, transcript-binding, incompatible-version, validation and golden-bytes
+tests live under `contracts/protocol/src/test`. The golden bytes pin the encoding of
+representative requests and responses, so an accidental wire change fails a test rather than a
+device run.
 
 ## Design Rationale
 
@@ -469,33 +495,30 @@ reach. The 20-byte header is roughly WebSocket framing without the upgrade. A *h
 server (`multi-language-bindings.md`) should nevertheless be HTTP/JSON-RPC; the trade-offs
 flip there.
 
-**JSON rather than protobuf** (*judgment call*). Payloads are tiny (a selector AST and a
-few fields) and latency is dominated by UiAutomator, not encoding; `kotlinx.serialization`
-is already shared by host and driver with no codegen in the Android build; fixtures and logs
-are readable; and the handshake needs a canonical byte form to authenticate, which is
-simple to define for JSON. The plan allowed either. What JSON lacks is a machine-readable
-schema for other languages — today the contract is Kotlin data classes plus golden
-fixtures. The cheap remedy is a JSON Schema generated from the models and checked against
-the fixtures; protobuf would give typed clients for free but would be another wire change.
+**One protobuf schema for the server API and the wire** (protocol 3.0, replacing 2.0's JSON).
+2.0 kept a Kotlin model (kotlinx.serialization, canonical JSON) and a hand-mirrored copy of it in
+`tap.v1`, with conversion code in the daemon and mirror/round-trip tests to catch drift; every
+command existed three times. Now `tap.v1.Command`/`CommandResult` *are* the wire messages
+(wrapped by `tap.wire.v1.Request`/`Response`), so the daemon forwards them, defaults live only on
+the driver, and a new command is one proto change plus its driver handler. protobuf-javalite
+runs on Android and the host alike. The canonical-JSON requirement disappears because the MAC
+covers the bytes sent rather than a re-encoding. What is lost is readable payloads in logs and
+fixtures; `Selector.render()` and the golden-bytes tests cover the two places that mattered.
 
-**One class per command, discriminated on the wire** (protocol 2.0). Protocol 1.0 had a
+**One message per command, a `oneof` on the wire** (since protocol 2.0). Protocol 1.0 had a
 single `Request` with an `operation` enum and every field of every command as an optional,
 and a single `Response` with `ok` and every result field as an optional. That shape needs a
-hand-written table of which fields each operation requires, range checks that run after
-decoding, callers that read `response.value` and hope it is the field their command fills, and
-a matching pile of optionals in the proto. 2.0 puts each command in its own class with its
-required fields and range checks in the constructor, marks mutations and targeted commands
-with interfaces instead of an enum switch, and types the result per command (`Returning<R>`),
-so an impossible request cannot be built and a result cannot be misread. The envelope
-(`sessionId`, `generation`, `timeoutMs`) stays separate from the command because it is the
-session layer's, not the command's. The wire discriminators (`op`, `kind`, `type`) are the
-`@SerialName`s of the classes and nothing else; `Command.names`, the driver's dispatch and the
-proto `oneof` case names are all derived from or checked against them. The server API mirrors
-the same structure as `oneof`s so a client in any language sees the same per-command shape.
+hand-written table of which fields each operation requires and callers that read
+`response.value` and hope it is the field their command fills. Each command is its own message
+with only its own fields, and each `op` has one `outcome` case. The envelope (`session_id`,
+`generation`, `timeout_ms`) stays separate from the command because it is the session layer's,
+not the command's. The Kotlin catalogue (`Operations.kt`) and the driver's dispatch are
+exhaustive `when`s over the generated case enums, so a new case does not compile until it is
+classified.
 
 **Selectors are a sum-type expression tree, with `any_of`** (*deliberate departure from plan
-§10, approved 2026-09-20*). The same principle as commands: `Node`, `Scope` and `Pick` are
-discriminated objects, so a `system` scope always has its package, an `at` pick always has its
+§10, approved 2026-09-20*). The same principle as commands: `Node.kind`, `scope` and `pick` are
+`oneof`s, so a `system` scope always has its package, an `at` pick always has its
 index, and the old shape-validation details (`SCOPE_PACKAGE_REQUIRED`, `INDEX_REQUIRED`,
 `ORDER_NOT_ACCEPTED`, …) are unrepresentable rather than checked. The plan listed OR among
 the deliberately absent operators; it is now `any_of`, because real screens need it (the
@@ -532,6 +555,6 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 2.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
+Protocol 3.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
 `AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

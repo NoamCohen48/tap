@@ -1,6 +1,6 @@
 package io.github.noamcohen48.tap.driver.engine
 
-import io.github.noamcohen48.tap.protocol.Response
+import io.github.noamcohen48.tap.wire.v1.Response
 import java.util.concurrent.atomic.AtomicReference
 
 internal enum class CommandPhase { QUEUED, RUNNING, TERMINAL }

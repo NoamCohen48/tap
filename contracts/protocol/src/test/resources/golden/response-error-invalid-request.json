@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "INVALID_REQUEST",
-  "detail": "UNSUPPORTED_CHARACTERS",
-  "message": "example",
-  "durationMs": 5
-}

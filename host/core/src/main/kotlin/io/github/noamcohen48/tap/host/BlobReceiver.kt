@@ -1,10 +1,10 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.BlobEnd
 import io.github.noamcohen48.tap.protocol.BlobFrames
-import io.github.noamcohen48.tap.protocol.BlobStart
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.MAX_ARTIFACT_BYTES
+import io.github.noamcohen48.tap.wire.v1.BlobEnd
+import io.github.noamcohen48.tap.wire.v1.BlobStart
 import java.io.ByteArrayOutputStream
 
 /**

@@ -3,8 +3,8 @@
 Kotlin host-driven Android E2E framework in three components, mirrored by the layout:
 `device/` (driver, sync-sdk), `host/` (`:host:core` session infrastructure, `:host:daemon` =
 `tap serve` over loopback gRPC / native image, `:host:validation`), `clients/` (Kotlin SDK +
-JUnit 5, Python + pytest — all gRPC clients of the server), with `contracts/` holding the
-TAP1 device protocol and the `tap.v1` server API. Phases 0 and 1 (contract and driver) are
+JUnit 5, Python + pytest — all gRPC clients of the server), with `contracts/proto` holding
+the one protobuf schema (`tap.v1` server API, `tap.wire.v1` device payloads). Phases 0 and 1 (contract and driver) are
 complete; Phase 2 (server + clients) has a usable first cut with `:samples:fixture-tests`.
 Nothing under `host/` may depend on `clients/`; clients depend only on `:contracts:api`.
 See `README.md` for build/run commands.
@@ -24,7 +24,7 @@ See `README.md` for build/run commands.
   implemented *and* exercised by a test or the device validation flow.
 - `.docs/framework-gaps.md` — the remaining delta to the plan, per section. Move an item out
   of it only together with the test or device check that proves it.
-- `.docs/server-api.md` — the host daemon contract (`contracts/api/proto/*.proto`, `tap.v1`): run
+- `.docs/server-api.md` — the host daemon contract (`contracts/proto/*.proto`, `tap.v1`): run
   liveness, pool, sessions, status mapping, native build. Update it with any proto change.
 - `.docs/multi-language-bindings.md` — analysis behind the server + Python binding, with
   the outcome section recording what was decided.
@@ -109,11 +109,12 @@ Rules when doing so:
 - Product code must never depend on `:host:validation`; `PhaseZeroMain` is fault-injection
   validation, not framework code.
 - `~/.tap/sessions` holds machine-wide device leases/journals; `.tap/` in the repo is ignored.
-- `contracts/api/proto/*.proto` are the single source for the server API. After editing them: run
-  `:host:daemon:test` (enum mirror + golden round trip), regenerate the committed Python stubs
+- `contracts/proto/**/*.proto` are the single schema for the server API and the device wire
+  (`wire/`). After editing them: run `:contracts:protocol:test` (wire golden bytes) and
+  `:host:daemon:test`, regenerate the committed Python stubs
   with `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools` at the version pinned in
   the script), and update `.docs/server-api.md`. CI also runs `buf lint`/`buf breaking`
-  (`contracts/api/buf.yaml`): only add fields/values; never remove, renumber or retype.
+  (`contracts/proto/buf.yaml`): only add fields/values; never remove, renumber or retype.
 - Native image: `GRAALVM_HOME=~/.local/share/graalvm/graalvm-community-openjdk-21.0.2+13.1
   ./gradlew :host:daemon:nativeCompile` (JAVA_HOME stays JDK 17). If a new dependency uses
   reflection, re-record `host/daemon/src/main/resources/META-INF/native-image` with the

@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "TRANSPORT_LOST",
-  "detail": "TRANSPORT_CLOSED",
-  "message": "example",
-  "durationMs": 5
-}

@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":contracts:api"))
     implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    // The daemon descriptor file (DaemonDescriptor.kt).
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
 
     testImplementation(kotlin("test"))
@@ -52,18 +53,12 @@ sourceSets.main {
 
 tasks.test {
     useJUnitPlatform()
-    systemProperty(
-        "tap.goldenDir",
-        rootProject.layout.projectDirectory
-            .dir("contracts/protocol/src/test/resources/golden")
-            .asFile.absolutePath,
-    )
 }
 
 /*
  * Self-contained binary. Requires a GraalVM JDK (21+) at GRAALVM_HOME; the regular Kotlin
  * compilation still uses the JDK 17 toolchain. Reflection/resource metadata for the shaded
- * Netty transport and the JSON protocol classes is committed under
+ * Netty transport (and the protobuf-lite messages) is committed under
  * src/main/resources/META-INF/native-image and was recorded with the tracing agent
  * (see README "Native image").
  */

@@ -1,4 +1,4 @@
-# Generated from contracts/api/proto/*.proto by scripts/gen_stubs.py; do not edit.
+# Generated from contracts/proto/*.proto by scripts/gen_stubs.py; do not edit.
 # The package namespace is the union of app_pb2, client_connection_pb2, command_pb2, device_pb2, selector_pb2: `from tap._gen import Selector`.
 from .app_pb2 import *  # noqa: F401,F403
 from .client_connection_pb2 import *  # noqa: F401,F403

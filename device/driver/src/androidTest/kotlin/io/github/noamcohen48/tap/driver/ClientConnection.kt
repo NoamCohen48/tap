@@ -1,22 +1,27 @@
 package io.github.noamcohen48.tap.driver
 
 import android.os.SystemClock
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.driver.engine.CommandPipeline
 import io.github.noamcohen48.tap.driver.engine.Outbound
 import io.github.noamcohen48.tap.driver.engine.PipelineListener
+import io.github.noamcohen48.tap.driver.engine.RequestScreening
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameCodec
 import io.github.noamcohen48.tap.protocol.FrameType
+import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.github.noamcohen48.tap.protocol.MAX_CONTROL_PAYLOAD
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import io.github.noamcohen48.tap.protocol.ProtocolException
-import io.github.noamcohen48.tap.protocol.ProtocolJson
-import io.github.noamcohen48.tap.protocol.RequestDecoder
-import io.github.noamcohen48.tap.protocol.Response
+import io.github.noamcohen48.tap.protocol.Responses
+import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.parseRequest
+import io.github.noamcohen48.tap.protocol.stamped
+import io.github.noamcohen48.tap.wire.v1.Request
+import io.github.noamcohen48.tap.wire.v1.Response
 import java.io.EOFException
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.serialization.encodeToString
 
 /**
  * Reader lane for one authenticated connection. The calling thread only reads frames and
@@ -38,7 +43,6 @@ internal class ClientConnection(
     private val heartbeatTimeoutMs: Long,
     private val onPoisoned: (reason: String) -> Unit,
 ) : PipelineListener {
-    private val json = ProtocolJson.codec
     private val transportEnded = AtomicBoolean(false)
     private var highestRequestId = 0L
     private val pipeline = CommandPipeline(
@@ -105,31 +109,39 @@ internal class ClientConnection(
             // Answering with the reused ID could complete the host's real pending command with
             // this rejection, so a duplicate or stale ID ends the connection instead.
             return protocolViolation(
-                "${ErrorCode.DUPLICATE_OR_STALE}: request ID ${frame.requestId} is at or below the watermark $highestRequestId",
+                "${ErrorCode.ERR_DUPLICATE_OR_STALE.label}: request ID ${frame.requestId} is at or below the watermark $highestRequestId",
             )
         }
-        val request = when (val decoded = RequestDecoder.decode(frame.payload.decodeToString())) {
-            is RequestDecoder.Outcome.Decoded -> decoded.request
-            is RequestDecoder.Outcome.Rejected -> {
+        val request: Request =
+            try {
+                parseRequest(frame.payload)
+            } catch (malformed: InvalidCommandException) {
                 // A malformed request still consumes its ID: the watermark only ever moves forward.
                 highestRequestId = frame.requestId
-                pipeline.respond(frame.requestId, Response.failure(decoded.code, message = decoded.message, durationMs = 0))
+                pipeline.respond(frame.requestId, Responses.failure(malformed.code, message = malformed.message))
                 return !transportEnded.get()
             }
-        }
-        if (faults.inject(FaultPoint.BEFORE_ACCEPTANCE, request.command, frame.requestId, generation)) {
+        if (faults.inject(FaultPoint.BEFORE_ACCEPTANCE, request, frame.requestId, generation)) {
             dropConnection()
             return false
         }
         highestRequestId = frame.requestId
-        if (faults.inject(FaultPoint.AFTER_ACCEPTANCE, request.command, frame.requestId, generation)) {
+        if (faults.inject(FaultPoint.AFTER_ACCEPTANCE, request, frame.requestId, generation)) {
             dropConnection()
             return false
         }
-        val timeoutMs = request.timeoutMs.coerceIn(0, io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS)
+        // Session identity, the timeout range and the command's structure are decided here on the
+        // reader lane, after acceptance (the ID is consumed) and before any UI access, so an
+        // invalid request is answered at once instead of queueing behind a running command.
+        // Scope policy that needs session config (the system allowlist) stays on the executor.
+        RequestScreening.screen(request, sessionId, generation)?.let { rejection ->
+            pipeline.respond(frame.requestId, rejection)
+            return !transportEnded.get()
+        }
+        val timeoutMs = request.timeoutMs.coerceIn(0, MAX_REQUEST_TIMEOUT_MS)
         pipeline.submit(frame.requestId, timeoutMs) { context ->
             try {
-                engine.execute(context, socket, request, sessionId, generation)
+                engine.execute(context, socket, request, generation)
             } catch (loss: InjectedTransportLoss) {
                 dropConnection()
                 endTransport()
@@ -147,13 +159,13 @@ internal class ClientConnection(
             is Outbound.Pong -> FrameCodec.write(output, Frame(FrameType.PONG, 0, byteArrayOf()))
             is Outbound.BlobStartFrame -> FrameCodec.write(
                 output,
-                Frame(FrameType.BLOB_START, message.requestId, json.encodeToString(message.start).encodeToByteArray()),
+                Frame(FrameType.BLOB_START, message.requestId, message.start.toByteArray()),
             )
             is Outbound.BlobChunkFrame ->
                 FrameCodec.write(output, Frame(FrameType.BLOB_CHUNK, message.requestId, message.payload))
             is Outbound.BlobEndFrame -> FrameCodec.write(
                 output,
-                Frame(FrameType.BLOB_END, message.requestId, json.encodeToString(message.end).encodeToByteArray()),
+                Frame(FrameType.BLOB_END, message.requestId, message.end.toByteArray()),
             )
             is Outbound.Close ->
                 FrameCodec.write(output, Frame(FrameType.CLOSE, 0, message.reason.take(MAX_CLOSE_REASON_CHARS).encodeToByteArray()))
@@ -170,16 +182,19 @@ internal class ClientConnection(
         return false
     }
 
+    /**
+     * Every response leaves stamped with the request identity it answers, whichever lane built
+     * it (engine, pipeline or reader rejection); the duration is the one already measured.
+     */
     private fun writeResponse(requestId: Long, response: Response) {
-        var payload = json.encodeToString(response).encodeToByteArray()
+        val durationMs = response.result.durationMs
+        var payload = response.stamped(durationMs, requestId, generation).toByteArray()
         if (payload.size > MAX_CONTROL_PAYLOAD) {
-            payload = json.encodeToString(
-                Response.failure(
-                    ErrorCode.PAYLOAD_TOO_LARGE,
-                    message = "Response exceeded $MAX_CONTROL_PAYLOAD bytes",
-                    durationMs = response.durationMs,
-                )
-            ).encodeToByteArray()
+            payload = Responses.failure(
+                ErrorCode.ERR_PAYLOAD_TOO_LARGE,
+                durationMs = durationMs,
+                message = "Response exceeded $MAX_CONTROL_PAYLOAD bytes",
+            ).stamped(durationMs, requestId, generation).toByteArray()
         }
         FrameCodec.write(socket.getOutputStream(), Frame(FrameType.RESPONSE, requestId, payload))
     }

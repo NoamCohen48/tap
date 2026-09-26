@@ -1,6 +1,0 @@
-{
-  "type": "error",
-  "code": "SESSION_MISMATCH",
-  "message": "example",
-  "durationMs": 5
-}

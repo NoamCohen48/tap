@@ -1,6 +1,6 @@
 package io.github.noamcohen48.tap.driver.engine
 
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 
 /**
  * Per-command view of the pipeline handed to command code running on the executor.
@@ -36,8 +36,8 @@ class CommandContext internal constructor(
      */
     fun checkpoint() {
         if (command.mutationStarted) return
-        if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
-        if (isExpired()) throw CommandInterrupted(ErrorCode.DEADLINE_EXCEEDED)
+        if (command.cancelRequested) throw CommandInterrupted(ErrorCode.ERR_CANCELLED)
+        if (isExpired()) throw CommandInterrupted(ErrorCode.ERR_DEADLINE_EXCEEDED)
     }
 
     /**
@@ -46,7 +46,7 @@ class CommandContext internal constructor(
      */
     fun checkCancelled() {
         if (command.mutationStarted) return
-        if (command.cancelRequested) throw CommandInterrupted(ErrorCode.CANCELLED)
+        if (command.cancelRequested) throw CommandInterrupted(ErrorCode.ERR_CANCELLED)
     }
 
     /**

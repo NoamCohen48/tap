@@ -1,10 +1,10 @@
 package io.github.noamcohen48.tap.driver.engine
 
-import io.github.noamcohen48.tap.protocol.ArtifactInfo
-import io.github.noamcohen48.tap.protocol.BlobEnd
 import io.github.noamcohen48.tap.protocol.BlobFrames
-import io.github.noamcohen48.tap.protocol.BlobStart
 import io.github.noamcohen48.tap.protocol.MAX_BLOB_CHUNK_BYTES
+import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
+import io.github.noamcohen48.tap.wire.v1.BlobEnd
+import io.github.noamcohen48.tap.wire.v1.BlobStart
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 
@@ -28,9 +28,15 @@ class BlobTransfer internal constructor(
     private val done = CountDownLatch(1)
     @Volatile private var outcome: Outcome? = null
 
-    fun start(): BlobStart = BlobStart(blobId.toString(), mediaType, byteCount, sha256)
+    fun start(): BlobStart =
+        BlobStart.newBuilder()
+            .setBlobId(blobId.toString())
+            .setMediaType(mediaType)
+            .setTotalLength(byteCount)
+            .setSha256(sha256)
+            .build()
 
-    fun end(): BlobEnd = BlobEnd(blobId.toString(), byteCount, sha256)
+    fun end(): BlobEnd = BlobEnd.newBuilder().setBlobId(blobId.toString()).setByteCount(byteCount).setSha256(sha256).build()
 
     fun chunkPayload(index: Int): ByteArray {
         val offset = index * MAX_BLOB_CHUNK_BYTES
@@ -39,7 +45,16 @@ class BlobTransfer internal constructor(
     }
 
     fun artifactInfo(width: Int? = null, height: Int? = null): ArtifactInfo =
-        ArtifactInfo(blobId.toString(), mediaType, byteCount, sha256, width, height)
+        ArtifactInfo.newBuilder()
+            .setBlobId(blobId.toString())
+            .setMediaType(mediaType)
+            .setByteCount(byteCount)
+            .setSha256(sha256)
+            .apply {
+                width?.let { setWidth(it) }
+                height?.let { setHeight(it) }
+            }
+            .build()
 
     /** Blocks the executor until the writer finished, aborted, or failed. */
     fun await(): Outcome {

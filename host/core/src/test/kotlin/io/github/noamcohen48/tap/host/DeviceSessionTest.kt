@@ -1,14 +1,12 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.Done
-import io.github.noamcohen48.tap.protocol.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Command
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameType
-import io.github.noamcohen48.tap.protocol.ProtocolJson
-import io.github.noamcohen48.tap.protocol.Request
-import io.github.noamcohen48.tap.protocol.Response
-import io.github.noamcohen48.tap.protocol.WaitAppVisible
+import io.github.noamcohen48.tap.protocol.Responses
+import io.github.noamcohen48.tap.wire.v1.Request
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -366,7 +364,7 @@ class DeviceSessionTest {
                 config.afterCancellationCleanup = { cleanupFinished.complete(Unit) }
                 val opening = async(Dispatchers.IO) { DeviceSession.open(config) }
                 val health = fake.nextFrame(5_000)
-                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(health.requestId, Responses.done(1))
                 withTimeout(5_000) { reachedTransfer.await() }
                 assertEquals(JournalState.READY, journalStore().read()?.state)
 
@@ -449,7 +447,7 @@ class DeviceSessionTest {
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
-                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 assertEquals(JournalState.READY, journalStore().read()?.state)
 
@@ -484,7 +482,7 @@ class DeviceSessionTest {
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
-                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 assertEquals(JournalState.READY, journalStore().read()?.state)
 
@@ -593,7 +591,7 @@ class DeviceSessionTest {
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
-                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 assertEquals(JournalState.READY, journalStore().read()?.state)
 
@@ -639,7 +637,7 @@ class DeviceSessionTest {
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
-                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 val captured = session.client
                 val idBefore = captured.nextRequestIdForTest()
@@ -651,7 +649,7 @@ class DeviceSessionTest {
                         serial,
                     ),
                 )
-                assertFailsWith<DeviceQuarantinedException> { captured.submit(io.github.noamcohen48.tap.protocol.Health) }
+                assertFailsWith<DeviceQuarantinedException> { captured.submit(io.github.noamcohen48.tap.protocol.Requests.health()) }
                 assertEquals(idBefore, captured.nextRequestIdForTest(), "poisoned admission must not consume an ID")
                 // No frame was emitted: the next frame poll times out instead of delivering a REQUEST.
                 val noFrame =
@@ -860,7 +858,7 @@ class DeviceSessionTest {
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
-                fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 // Barrier: the APP call is admitted inside guardAdb before close begins; its reap
                 // failure is released only after close started waiting for it.
@@ -913,7 +911,7 @@ class DeviceSessionTest {
                 val adb = openAdb(fake.port)
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
-                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 // A never-started gate rejection (another serial owns residual capacity) must not
                 // poison: the guarded block throws before any process start, with attempted and
@@ -953,7 +951,7 @@ class DeviceSessionTest {
                 val adb = openAdb(fake.port)
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
-                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 // Admit an operation and park it inside the guarded block. These three coroutines
                 // share this thread's event loop and the test never suspends between cancel, close
@@ -1036,10 +1034,10 @@ class DeviceSessionTest {
                 }
                 val launching = async(Dispatchers.IO) { session.app().launch(".Main", timeoutMs = 2_000) }
                 val wait = withTimeout(5_000) { fake.nextFrame() }
-                val request = ProtocolJson.codec.decodeFromString(Request.serializer(), wait.payload.decodeToString())
-                assertTrue(request.command is WaitAppVisible)
+                val request = Request.parseFrom(wait.payload)
+                assertEquals(Command.OpCase.WAIT_APP_VISIBLE, request.command.opCase)
                 assertTrue(request.timeoutMs <= 1_600, "visibility wait got ${request.timeoutMs}ms of a 2000ms launch")
-                fake.respond(wait.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(wait.requestId, Responses.done(1))
                 withTimeout(5_000) { launching.await() }
                 session.close(timeoutMs = 5_000)
             } finally {
@@ -1060,10 +1058,10 @@ class DeviceSessionTest {
                 val timingOut = async(Dispatchers.IO) { runCatching { app.awaitAppVisible(1_000) } }
                 fake.respond(
                     withTimeout(5_000) { fake.nextFrame() }.requestId,
-                    Response.failure(ErrorCode.WAIT_TIMEOUT, detail = ErrorDetail.APP_NOT_VISIBLE, durationMs = 1_000),
+                    Responses.failure(ErrorCode.ERR_WAIT_TIMEOUT, detail = ErrorDetail.APP_NOT_VISIBLE, durationMs = 1_000),
                 )
                 // The diagnostic device-info lookup fails; the timeout must still win.
-                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.failure(ErrorCode.INTERNAL, durationMs = 1))
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.failure(ErrorCode.ERR_INTERNAL, durationMs = 1))
                 val timeout = withTimeout(5_000) { timingOut.await() }.exceptionOrNull()
                 assertTrue(timeout is HostWaitTimeoutException, "got $timeout")
                 assertTrue("currentPackage=null" in timeout.message.orEmpty())
@@ -1071,10 +1069,10 @@ class DeviceSessionTest {
                 val unhealthy = async(Dispatchers.IO) { runCatching { app.awaitAppVisible(1_000) } }
                 fake.respond(
                     withTimeout(5_000) { fake.nextFrame() }.requestId,
-                    Response.failure(ErrorCode.DRIVER_UNHEALTHY, detail = ErrorDetail.WATCHDOG, durationMs = 1),
+                    Responses.failure(ErrorCode.ERR_DRIVER_UNHEALTHY, detail = ErrorDetail.WATCHDOG, durationMs = 1),
                 )
                 val failure = withTimeout(5_000) { unhealthy.await() }.exceptionOrNull()
-                assertTrue(failure is RemoteCommandException && failure.code == ErrorCode.DRIVER_UNHEALTHY, "got $failure")
+                assertTrue(failure is RemoteCommandException && failure.code == ErrorCode.ERR_DRIVER_UNHEALTHY, "got $failure")
                 session.close(timeoutMs = 5_000)
             } finally {
                 fake.close()
@@ -1114,7 +1112,7 @@ class DeviceSessionTest {
         coroutineScope {
             val processes = mutableListOf<FakeProcess>()
             val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
-            fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+            fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
             withTimeout(5_000) { opening.await() }
         }
 
@@ -1141,7 +1139,7 @@ class DeviceSessionTest {
                 val adb = openAdb(fake.port)
                 val processes = mutableListOf<FakeProcess>()
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
-                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Response.ok(Done, durationMs = 1))
+                fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 assertEquals("com.example", session.autPackage)
                 val app = session.app()

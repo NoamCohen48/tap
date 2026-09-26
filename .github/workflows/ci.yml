@@ -31,7 +31,7 @@ jobs:
         with:
           setup_only: true
       - name: buf lint
-        run: buf lint contracts/api
+        run: buf lint contracts/proto
       - name: buf breaking (against the base branch)
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -40,22 +40,22 @@ jobs:
           "0000000000000000000000000000000000000000" ]; then
             echo "no base commit; skipping"; exit 0
           fi
-          if ! git cat-file -e "$BASE:contracts/api/buf.yaml" 2>/dev/null; then
+          if ! git cat-file -e "$BASE:contracts/proto/buf.yaml" 2>/dev/null; then
             echo "base $BASE has no tap.v1 API; skipping"; exit 0
           fi
-          # contracts/api/BREAKING_BASELINE names the last commit of a previous,
+          # contracts/proto/BREAKING_BASELINE names the last commit of a previous,
           # deliberately
           # incompatible API line (0.x only). A base on or before it is not
           # comparable.
-          BASELINE=$(grep -v '^#' contracts/api/BREAKING_BASELINE 2>/dev/null \
+          BASELINE=$(grep -v '^#' contracts/proto/BREAKING_BASELINE 2>/dev/null \
           | head -1 || true)
           if [ -n "$BASELINE" ] && git merge-base --is-ancestor "$BASE" \
           "$BASELINE"; then
             echo "base $BASE predates the API baseline $BASELINE; skipping"; \
             exit 0
           fi
-          buf breaking contracts/api --against \
-          ".git#ref=$BASE,subdir=contracts/api/proto"
+          buf breaking contracts/proto --against \
+          ".git#ref=$BASE,subdir=contracts/proto"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -100,6 +100,7 @@ jobs:
       - name: Publish Maven artifacts to the local repository (POM sanity)
         run: >
           ./gradlew
+          :contracts:schema:publishToMavenLocal
           :contracts:api:publishToMavenLocal
           :clients:kotlin:sdk:publishToMavenLocal
           :clients:kotlin:junit5:publishToMavenLocal

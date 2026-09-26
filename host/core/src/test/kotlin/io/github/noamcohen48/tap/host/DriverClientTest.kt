@@ -1,27 +1,23 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.BlobStart
-import io.github.noamcohen48.tap.protocol.BoolResult
+import io.github.noamcohen48.tap.api.v1.CommandResult
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
-import io.github.noamcohen48.tap.protocol.Done
-import io.github.noamcohen48.tap.protocol.ErrorCode
 import io.github.noamcohen48.tap.protocol.ErrorDetail
-import io.github.noamcohen48.tap.protocol.Exists
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameType
-import io.github.noamcohen48.tap.protocol.Health
+import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.github.noamcohen48.tap.protocol.MAX_BLOB_CHUNK_BYTES
-import io.github.noamcohen48.tap.protocol.ProtocolJson
-import io.github.noamcohen48.tap.protocol.Request
-import io.github.noamcohen48.tap.protocol.Response
-import io.github.noamcohen48.tap.protocol.Screenshot
-import io.github.noamcohen48.tap.protocol.ScrollUntil
-import io.github.noamcohen48.tap.protocol.Selector
-import io.github.noamcohen48.tap.protocol.Tap
-import io.github.noamcohen48.tap.protocol.WaitVisible
+import io.github.noamcohen48.tap.protocol.Requests
+import io.github.noamcohen48.tap.protocol.Responses
+import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.detail
 import io.github.noamcohen48.tap.protocol.errorCode
-import io.github.noamcohen48.tap.protocol.result
+import io.github.noamcohen48.tap.protocol.ok
+import io.github.noamcohen48.tap.wire.v1.BlobStart
+import io.github.noamcohen48.tap.wire.v1.Request
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -41,17 +37,17 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DriverClientTest {
-    private val json = ProtocolJson.codec
     private val secret = ByteArray(32).also(SecureRandom()::nextBytes)
     private val driver = FakeDriverServer("session-1", 7, secret)
     private lateinit var client: DriverClient
-    private val selector = Selector.text("hello")
+    private val selector = Selectors.text("hello")
 
     @BeforeTest
     fun setUp() =
@@ -69,31 +65,31 @@ class DriverClientTest {
     @Test
     fun handshakeExposesNegotiatedContract() {
         assertEquals("fake-driver", client.driverInstanceId)
-        assertEquals(2, client.negotiatedVersion.major)
+        assertEquals(3, client.negotiatedVersion.major)
         assertTrue("synchronization.v1" in client.enabledCapabilities)
     }
 
     @Test
     fun responsesAreDemultiplexedByRequestIdRegardlessOfOrder() =
         runBlocking {
-            val first = client.submit(Exists(selector))
-            val second = client.submit(Exists(selector))
+            val first = client.submit(Commands.exists(selector))
+            val second = client.submit(Commands.exists(selector))
             val frames = listOf(driver.nextFrame(), driver.nextFrame())
             assertEquals(listOf(1L, 2L), frames.map { it.requestId })
             assertTrue(frames.all { it.type == FrameType.REQUEST })
 
-            driver.respond(2, Response.ok(BoolResult(false), durationMs = 1))
-            driver.respond(1, Response.ok(BoolResult(true), durationMs = 2))
+            driver.respond(2, Responses.of(CommandResult.newBuilder().setBool(false), 1))
+            driver.respond(1, Responses.of(CommandResult.newBuilder().setBool(true), 2))
 
-            assertEquals(BoolResult(true), first.await().result)
-            assertEquals(BoolResult(false), second.await().result)
+            assertEquals(true, first.await().result.bool)
+            assertEquals(false, second.await().result.bool)
             assertEquals(TransmissionState.TERMINAL_RESPONSE, first.transmissionState)
         }
 
     @Test
     fun cancelWritesCancelFrameAndReturnsDriverTerminalResponse() =
         runBlocking {
-            val wait = client.submit(WaitVisible(selector), timeoutMs = 30_000)
+            val wait = client.submit(Commands.waitVisible(selector), timeoutMs = 30_000)
             assertEquals(FrameType.REQUEST, driver.nextFrame().type)
 
             assertTrue(wait.cancel())
@@ -101,20 +97,20 @@ class DriverClientTest {
             assertEquals(FrameType.CANCEL, cancel.type)
             assertEquals(wait.requestId, cancel.requestId)
 
-            driver.respond(wait.requestId, Response.failure(ErrorCode.CANCELLED, durationMs = 40))
-            assertEquals(ErrorCode.CANCELLED, wait.await().errorCode)
+            driver.respond(wait.requestId, Responses.failure(ErrorCode.ERR_CANCELLED, durationMs = 40))
+            assertEquals(ErrorCode.ERR_CANCELLED, wait.await().errorCode)
             assertFalse(wait.cancel(), "terminal command must not be cancellable")
         }
 
     @Test
     fun cancellationAlwaysWinsOverATerminalInstalledAtTheRacePoint() =
         runBlocking {
-            val tap = client.submit(Tap(selector))
+            val tap = client.submit(Commands.tap(selector))
             assertEquals(FrameType.REQUEST, driver.nextFrame().type)
             // Installed synchronously inside await()'s cancellation path, after CANCEL is queued
             // and before the original cancellation is rethrown: the exact race the shortcut lost.
             client.afterAwaitCancel = {
-                tap.complete(Response.ok(Done, durationMs = 12))
+                tap.complete(Responses.done(12))
             }
             try {
                 val original = CancellationException("original cancellation")
@@ -129,14 +125,14 @@ class DriverClientTest {
                 // The CANCEL launch may or may not have written before the terminal install won
                 // the race; either way the transport stays ordered and reusable. A stale CANCEL
                 // is consumed here so the health REQUEST below is read deterministically.
-                val health = client.submit(Health)
+                val health = client.submit(Requests.health())
                 var frame = driver.nextFrame()
                 if (frame.type == FrameType.CANCEL) {
                     assertEquals(tap.requestId, frame.requestId)
                     frame = driver.nextFrame()
                 }
                 assertEquals(FrameType.REQUEST, frame.type)
-                driver.respond(frame.requestId, Response.ok(Done, durationMs = 1))
+                driver.respond(frame.requestId, Responses.done(1))
                 assertTrue(health.await().ok)
                 assertFalse(client.isPoisoned)
             } finally {
@@ -147,7 +143,7 @@ class DriverClientTest {
     @Test
     fun awaitingCoroutineCancelPropagatesPromptlyWhileTerminalIsStillRecorded() =
         runBlocking {
-            val tap = client.submit(Tap(selector))
+            val tap = client.submit(Commands.tap(selector))
             assertEquals(FrameType.REQUEST, driver.nextFrame().type)
 
             // Undispatched: the child is guaranteed suspended inside await() before cancel() runs.
@@ -160,20 +156,20 @@ class DriverClientTest {
             assertEquals(tap.requestId, cancel.requestId)
 
             // The abandoned entry stays registered: the reader still consumes the terminal frame.
-            driver.respond(tap.requestId, Response.ok(Done, durationMs = 12))
+            driver.respond(tap.requestId, Responses.done(12))
             withTimeout(2_000) { while (tap.responseOrNull == null) delay(10) }
             assertTrue(tap.responseOrNull?.ok == true)
             assertEquals(TransmissionState.TERMINAL_RESPONSE, tap.transmissionState)
 
-            val health = client.submit(Health)
-            driver.respond(driver.nextFrame().requestId, Response.ok(Done, durationMs = 1))
+            val health = client.submit(Requests.health())
+            driver.respond(driver.nextFrame().requestId, Responses.done(1))
             assertTrue(health.await().ok)
         }
 
     @Test
     fun enclosingDeadlineCancelsPromptlyWithoutPoisoning() =
         runBlocking {
-            val tap = client.submit(Tap(selector), timeoutMs = 30_000)
+            val tap = client.submit(Commands.tap(selector), timeoutMs = 30_000)
             assertEquals(FrameType.REQUEST, driver.nextFrame().type)
 
             // The private budget is ~35 s; an enclosing 200 ms deadline must win immediately.
@@ -188,12 +184,12 @@ class DriverClientTest {
             // Cooperative CANCEL went out and the terminal response is still recorded.
             val cancel = driver.nextFrame()
             assertEquals(FrameType.CANCEL, cancel.type)
-            driver.respond(tap.requestId, Response.ok(Done, durationMs = 12))
+            driver.respond(tap.requestId, Responses.done(12))
             withTimeout(2_000) { while (tap.responseOrNull == null) delay(10) }
             assertEquals(TransmissionState.TERMINAL_RESPONSE, tap.transmissionState)
 
-            val health = client.submit(Health)
-            driver.respond(driver.nextFrame().requestId, Response.ok(Done, durationMs = 1))
+            val health = client.submit(Requests.health())
+            driver.respond(driver.nextFrame().requestId, Responses.done(1))
             assertTrue(health.await().ok)
         }
 
@@ -212,7 +208,7 @@ class DriverClientTest {
                     responseBudgetPaddingMs = 200,
                 )
             try {
-                val tap = quick.submit(Tap(selector), timeoutMs = 0)
+                val tap = quick.submit(Commands.tap(selector), timeoutMs = 0)
                 assertEquals(FrameType.REQUEST, abandonedDriver.nextFrame().type)
 
                 // Already-cancelled waiter: runs only to its first suspension, then propagates.
@@ -225,7 +221,7 @@ class DriverClientTest {
                 // The driver never answers: the client-owned watcher enforces the 200 ms budget.
                 withTimeout(5_000) { while (!quick.isPoisoned) delay(10) }
                 assertEquals(TransmissionState.WRITTEN, tap.transmissionState)
-                val rejected = assertFailsWith<CommandTransportException> { quick.submit(Health) }
+                val rejected = assertFailsWith<CommandTransportException> { quick.submit(Requests.health()) }
                 assertEquals(TransmissionState.NOT_WRITTEN, rejected.transmissionState)
             } finally {
                 quick.close()
@@ -249,10 +245,10 @@ class DriverClientTest {
                 )
             try {
                 // No response is ever sent; the 200 ms private budget must expire on its own.
-                val exists = quick.submit(Exists(selector), timeoutMs = 0)
+                val exists = quick.submit(Commands.exists(selector), timeoutMs = 0)
                 assertEquals(FrameType.REQUEST, timeoutDriver.nextFrame().type)
                 val failure = assertFailsWith<CommandTransportException> { exists.await() }
-                assertEquals(ErrorCode.TRANSPORT_LOST, failure.code)
+                assertEquals(ErrorCode.ERR_TRANSPORT_LOST, failure.code)
                 assertTrue(quick.isPoisoned)
             } finally {
                 quick.close()
@@ -272,15 +268,15 @@ class DriverClientTest {
                 check(releaseTransition.await(5, TimeUnit.SECONDS))
             }
             try {
-                val submitted = async(Dispatchers.IO) { client.submit(Exists(selector)) }
+                val submitted = async(Dispatchers.IO) { client.submit(Commands.exists(selector)) }
                 val request = driver.nextFrame()
                 assertTrue(reachedTransition.await(2, TimeUnit.SECONDS))
-                driver.respond(request.requestId, Response.ok(BoolResult(true), durationMs = 1))
+                driver.respond(request.requestId, Responses.of(CommandResult.newBuilder().setBool(true), 1))
                 assertTrue(terminalInstalled.await(2, TimeUnit.SECONDS))
                 releaseTransition.countDown()
                 val command = submitted.await()
                 assertEquals(TransmissionState.TERMINAL_RESPONSE, command.transmissionState)
-                assertEquals(BoolResult(true), command.await().result)
+                assertEquals(true, command.await().result.bool)
             } finally {
                 releaseTransition.countDown()
                 client.beforeMarkWritten = null
@@ -291,7 +287,7 @@ class DriverClientTest {
     @Test
     fun awaitCancellationIsPromptWhileCancelWaitsForTransportMutex() =
         runBlocking {
-            val tap = client.submit(Tap(selector))
+            val tap = client.submit(Commands.tap(selector))
             assertEquals(FrameType.REQUEST, driver.nextFrame().type)
             val mutexHeld = CompletableDeferred<Unit>()
             val releaseMutex = CompletableDeferred<Unit>()
@@ -314,7 +310,7 @@ class DriverClientTest {
             val cancel = driver.nextFrame()
             assertEquals(FrameType.CANCEL, cancel.type)
             assertEquals(tap.requestId, cancel.requestId)
-            driver.respond(tap.requestId, Response.ok(Done, durationMs = 1))
+            driver.respond(tap.requestId, Responses.done(1))
             withTimeout(2_000) { while (tap.responseOrNull == null) delay(10) }
         }
 
@@ -327,17 +323,17 @@ class DriverClientTest {
                 // Undispatched: submit runs to the writer wait, still parked before the socket.
                 val submitted =
                     async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
-                        client.submit(Tap(selector))
+                        client.submit(Commands.tap(selector))
                     }
                 submitted.cancel()
                 assertFailsWith<CancellationException> { submitted.await() }
                 // No CANCEL: nothing was ever written, so there is nothing to cancel.
                 // The transport is intact: the next command flows normally once the gate opens.
                 gate.complete(Unit)
-                val health = client.submit(Health)
+                val health = client.submit(Requests.health())
                 val frame = driver.nextFrame()
                 assertEquals(FrameType.REQUEST, frame.type)
-                driver.respond(frame.requestId, Response.ok(Done, durationMs = 1))
+                driver.respond(frame.requestId, Responses.done(1))
                 assertTrue(health.await().ok)
             } finally {
                 client.beforePhysicalWrite = null
@@ -371,7 +367,7 @@ class DriverClientTest {
                 val submitted =
                     async(Dispatchers.IO) {
                         // Record, do not rethrow: a rethrown failure would fail the test's parent.
-                        runCatching { blocked.submit(Tap(selector)) }.exceptionOrNull()?.let { outcome = it }
+                        runCatching { blocked.submit(Commands.tap(selector)) }.exceptionOrNull()?.let { outcome = it }
                     }
                 // The writer is parked inside the physical write, past the started mark.
                 withTimeout(2_000) { enteredSink.await() }
@@ -379,7 +375,7 @@ class DriverClientTest {
                 submitted.join()
                 val failure = outcome as? CommandTransportException
                 assertTrue(failure != null, "write cancelled after start threw $outcome")
-                assertEquals(ErrorCode.INDETERMINATE, failure.code)
+                assertEquals(ErrorCode.ERR_INDETERMINATE, failure.code)
                 assertTrue(blocked.isPoisoned)
                 releaseSink.complete(Unit)
                 // The writer is reaped boundedly: close() must not deadlock behind it.
@@ -411,9 +407,9 @@ class DriverClientTest {
                 stuck.afterPhysicalWrite = { writerFinished = true }
                 val failure =
                     assertFailsWith<CommandTransportException> {
-                        stuck.submit(Exists(selector), timeoutMs = 0)
+                        stuck.submit(Commands.exists(selector), timeoutMs = 0)
                     }
-                assertEquals(ErrorCode.TRANSPORT_LOST, failure.code)
+                assertEquals(ErrorCode.ERR_TRANSPORT_LOST, failure.code)
                 assertTrue(stuck.isPoisoned)
                 withTimeout(5_000) { while (!writerFinished) delay(10) }
                 withTimeout(5_000) { stuck.close() }
@@ -435,18 +431,18 @@ class DriverClientTest {
                         fake.pong()
                     }
                     // A regular command is host activity too; the next PING waits for another idle interval.
-                    val health = beating.submit(Health)
+                    val health = beating.submit(Requests.health())
                     assertEquals(FrameType.REQUEST, fake.nextFrame().type)
-                    fake.respond(health.requestId, Response.ok(Done, durationMs = 1))
+                    fake.respond(health.requestId, Responses.done(1))
                     assertTrue(health.await().ok)
                     assertEquals(FrameType.PING, fake.nextFrame(1_000).type)
                     // Not answering this one poisons the client.
                     delay(300)
                     val failed =
                         assertFailsWith<CommandTransportException> {
-                            beating.execute(Health)
+                            beating.execute(Requests.health())
                         }
-                    assertEquals(ErrorCode.TRANSPORT_LOST, failed.code)
+                    assertEquals(ErrorCode.ERR_TRANSPORT_LOST, failed.code)
                 } finally {
                     beating.close()
                 }
@@ -461,7 +457,7 @@ class DriverClientTest {
             val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES * 2 + 5) { (it * 7).toByte() }
             val pending = async(Dispatchers.IO) { client.screenshot() }
             val request = driver.nextFrame()
-            assertEquals(Screenshot, json.decodeFromString<Request>(request.payload.decodeToString()).command)
+            assertEquals(Request.BodyCase.SCREENSHOT, Request.parseFrom(request.payload).bodyCase)
             val info = driver.sendArtifact(request.requestId, bytes)
             val screenshot = pending.await()
             assertTrue(bytes.contentEquals(screenshot.png))
@@ -480,45 +476,52 @@ class DriverClientTest {
                     FakeDriverServer.Corruption.NO_END to ErrorDetail.BLOB_INCOMPLETE,
                 )
             expectations.forEach { (corruption, detail) ->
-                val command = client.submit(Screenshot)
+                val command = client.submit(Requests.screenshot())
                 driver.sendArtifact(driver.nextFrame().requestId, bytes, corruption)
                 val response = command.await()
-                assertEquals(ErrorCode.ARTIFACT_TRANSFER_FAILED, response.errorCode, corruption.name)
+                assertEquals(ErrorCode.ERR_ARTIFACT_TRANSFER_FAILED, response.errorCode, corruption.name)
                 assertEquals(detail, response.detail, corruption.name)
                 assertEquals(null, command.artifact(), corruption.name)
             }
             // The session is still usable: verification failures are per request.
-            val health = client.submit(Health)
-            driver.respond(driver.nextFrame().requestId, Response.ok(Done, durationMs = 1))
+            val health = client.submit(Requests.health())
+            driver.respond(driver.nextFrame().requestId, Responses.done(1))
             assertTrue(health.await().ok)
         }
 
     @Test
     fun driverFailureAfterPartialBlobIsKept() =
         runBlocking {
-            val command = client.submit(Screenshot)
+            val command = client.submit(Requests.screenshot())
             val requestId = driver.nextFrame().requestId
             val blobId = java.util.UUID.randomUUID()
             driver.write(
                 Frame(
                     FrameType.BLOB_START,
                     requestId,
-                    json.encodeToString(BlobStart(blobId.toString(), "image/png", 10, "00")).encodeToByteArray(),
+                    BlobStart
+                        .newBuilder()
+                        .setBlobId(blobId.toString())
+                        .setMediaType("image/png")
+                        .setTotalLength(10)
+                        .setSha256("00")
+                        .build()
+                        .toByteArray(),
                 ),
             )
-            driver.respond(requestId, Response.failure(ErrorCode.CANCELLED, durationMs = 3))
-            assertEquals(ErrorCode.CANCELLED, command.await().errorCode)
+            driver.respond(requestId, Responses.failure(ErrorCode.ERR_CANCELLED, durationMs = 3))
+            assertEquals(ErrorCode.ERR_CANCELLED, command.await().errorCode)
         }
 
     @Test
     fun cancelAfterMutationYieldsDriverDefinitiveResult() =
         runBlocking {
-            val tap = client.submit(Tap(selector))
+            val tap = client.submit(Commands.tap(selector))
             driver.nextFrame()
             assertTrue(tap.cancel())
             assertEquals(FrameType.CANCEL, driver.nextFrame().type)
 
-            driver.respond(tap.requestId, Response.ok(Done, durationMs = 12))
+            driver.respond(tap.requestId, Responses.done(12))
 
             assertTrue(tap.await().ok)
         }
@@ -537,20 +540,20 @@ class DriverClientTest {
     @Test
     fun transportLossClassifiesInFlightCommandsByMutation() =
         runBlocking {
-            val tap = client.submit(Tap(selector))
-            val exists = client.submit(Exists(selector))
+            val tap = client.submit(Commands.tap(selector))
+            val exists = client.submit(Commands.exists(selector))
             driver.nextFrame()
             driver.nextFrame()
 
             driver.dropConnection()
 
             val tapFailure = assertFailsWith<CommandTransportException> { tap.await() }
-            assertEquals(ErrorCode.INDETERMINATE, tapFailure.code)
+            assertEquals(ErrorCode.ERR_INDETERMINATE, tapFailure.code)
             assertEquals(TransmissionState.WRITTEN, tapFailure.transmissionState)
             val existsFailure = assertFailsWith<CommandTransportException> { exists.await() }
-            assertEquals(ErrorCode.TRANSPORT_LOST, existsFailure.code)
+            assertEquals(ErrorCode.ERR_TRANSPORT_LOST, existsFailure.code)
 
-            val poisoned = assertFailsWith<CommandTransportException> { client.execute(Health) }
+            val poisoned = assertFailsWith<CommandTransportException> { client.execute(Requests.health()) }
             assertEquals(TransmissionState.NOT_WRITTEN, poisoned.transmissionState)
             assertEquals(-1, poisoned.requestId)
         }
@@ -558,13 +561,36 @@ class DriverClientTest {
     @Test
     fun unknownResponseIdPoisonsTheConnection() =
         runBlocking {
-            val exists = client.submit(Exists(selector))
+            val exists = client.submit(Commands.exists(selector))
             driver.nextFrame()
 
-            driver.respond(99, Response.ok(Done, durationMs = 0))
+            driver.respond(99, Responses.done(0))
 
             val failure = assertFailsWith<CommandTransportException> { exists.await() }
-            assertEquals(ErrorCode.TRANSPORT_LOST, failure.code)
+            assertEquals(ErrorCode.ERR_TRANSPORT_LOST, failure.code)
+        }
+
+    @Test
+    fun malformedCommandsAreRejectedBeforeAnyRequestId() =
+        runBlocking {
+            val idBefore = client.nextRequestIdForTest()
+            val noSelector = assertFailsWith<InvalidCommandException> { client.submit(Commands.tap(Selector.getDefaultInstance())) }
+            assertEquals(ErrorCode.ERR_INVALID_SELECTOR, noSelector.code)
+            val noOperation = assertFailsWith<InvalidCommandException> { client.submit(Request.getDefaultInstance()) }
+            assertEquals(ErrorCode.ERR_UNSUPPORTED, noOperation.code)
+            assertEquals(idBefore, client.nextRequestIdForTest())
+
+            // The next valid command takes that ID and carries the session envelope, its optional
+            // fields left absent for the driver to default.
+            val scroll = client.submit(Commands.scrollUntil(selector, container = selector), timeoutMs = 1_500)
+            val (frame, request) = driver.nextRequest()
+            assertEquals(idBefore, frame.requestId)
+            assertEquals("session-1", request.sessionId)
+            assertEquals(7L, request.generation)
+            assertEquals(1_500L, request.timeoutMs)
+            assertFalse(request.command.scrollUntil.hasMaxScrolls())
+            driver.respond(frame.requestId, Responses.done(1))
+            assertTrue(scroll.await().ok)
         }
 
     @Test
@@ -572,47 +598,49 @@ class DriverClientTest {
         runBlocking {
             val commands =
                 coroutineScope {
-                    (1..8).map { async { client.submit(Health) } }.awaitAll()
+                    (1..8).map { async { client.submit(Requests.health()) } }.awaitAll()
                 }
             val ids = List(8) { driver.nextFrame().requestId }
             assertEquals(ids.sorted(), ids)
             assertEquals((1L..8L).toList(), ids)
-            commands.forEach { driver.respond(it.requestId, Response.ok(Done, durationMs = 0)) }
+            commands.forEach { driver.respond(it.requestId, Responses.done(0)) }
             commands.forEach { assertTrue(it.await().ok) }
         }
 
     @Test
     fun validationRequestsCarryExplicitIdsAndRawPayloads() =
         runBlocking {
+            // A request with only its envelope: no operation, which the driver answers UNSUPPORTED.
+            val rawPayload = Request.newBuilder().setSessionId("session-1").setGeneration(7).setTimeoutMs(5_000).build().toByteArray()
             val response =
                 async(Dispatchers.IO) {
-                    client.executeRawValidationRequest(requestId = 3, payload = """{"command":{"op":"teleport"}}""")
+                    client.executeRawValidationRequest(requestId = 3, payload = rawPayload)
                 }
             val frame = driver.nextFrame()
             assertEquals(3L, frame.requestId)
-            assertEquals("""{"command":{"op":"teleport"}}""", frame.payload.decodeToString())
-            driver.respond(3, Response.failure(ErrorCode.UNSUPPORTED, durationMs = 0))
-            assertEquals(ErrorCode.UNSUPPORTED, response.await().errorCode)
+            assertContentEquals(rawPayload, frame.payload)
+            driver.respond(3, Responses.failure(ErrorCode.ERR_UNSUPPORTED, durationMs = 0))
+            assertEquals(ErrorCode.ERR_UNSUPPORTED, response.await().errorCode)
 
             // Automatic allocation continues above the explicit ID the driver has already consumed.
-            val next = client.submit(Health)
+            val next = client.submit(Requests.health())
             assertEquals(4L, driver.nextFrame().requestId)
-            driver.respond(4, Response.ok(Done, durationMs = 0))
+            driver.respond(4, Responses.done(0))
             assertTrue(next.await().ok)
         }
 
     @Test
     fun awaitOrThrowRaisesTypedRemoteException() =
         runBlocking {
-            val tap = client.submit(Tap(selector), timeoutMs = 7_000)
+            val tap = client.submit(Commands.tap(selector), timeoutMs = 7_000)
             driver.nextFrame()
             driver.respond(
                 tap.requestId,
-                Response.failure(ErrorCode.AMBIGUOUS, durationMs = 9, message = "3 matches"),
+                Responses.failure(ErrorCode.ERR_AMBIGUOUS, durationMs = 9, message = "3 matches"),
             )
 
             val failure = assertFailsWith<RemoteCommandException> { tap.awaitOrThrow() }
-            assertEquals(ErrorCode.AMBIGUOUS, failure.code)
+            assertEquals(ErrorCode.ERR_AMBIGUOUS, failure.code)
             assertEquals("tap", failure.operation)
             assertEquals(tap.requestId, failure.requestId)
             assertEquals(7L, failure.sessionGeneration)
@@ -630,13 +658,13 @@ class DriverClientTest {
         runBlocking {
             val pending =
                 async(Dispatchers.IO) {
-                    runCatching { client.execute(ScrollUntil(selector, container = selector)) }
+                    runCatching { client.execute(Commands.scrollUntil(selector, container = selector)) }
                 }
             val frame = driver.nextFrame()
-            driver.respond(frame.requestId, Response.failure(ErrorCode.NOT_FOUND, detail = "END_REACHED", durationMs = 1))
+            driver.respond(frame.requestId, Responses.failure(ErrorCode.ERR_NOT_FOUND, detail = "END_REACHED", durationMs = 1))
 
             val failure = pending.await().exceptionOrNull() as RemoteCommandException
-            assertEquals(ErrorCode.NOT_FOUND, failure.code)
+            assertEquals(ErrorCode.ERR_NOT_FOUND, failure.code)
             assertEquals("END_REACHED", failure.detail)
             assertTrue(failure.retryable)
             assertTrue("NOT_FOUND/END_REACHED" in failure.message.orEmpty())
@@ -645,7 +673,7 @@ class DriverClientTest {
     @Test
     fun transportExceptionsCarrySelectorAndTimeout() =
         runBlocking {
-            val tap = client.submit(Tap(selector), timeoutMs = 1_234)
+            val tap = client.submit(Commands.tap(selector), timeoutMs = 1_234)
             driver.nextFrame()
             driver.dropConnection()
 
@@ -659,12 +687,12 @@ class DriverClientTest {
     @Test
     fun driverCloseFailsInFlightWorkWithItsReason() =
         runBlocking {
-            val tap = client.submit(Tap(selector))
+            val tap = client.submit(Commands.tap(selector))
             driver.nextFrame()
             driver.write(Frame(FrameType.CLOSE, 0, "DUPLICATE_OR_STALE: request ID 1".encodeToByteArray()))
 
             val failure = assertFailsWith<CommandTransportException> { tap.await() }
-            assertEquals(ErrorCode.INDETERMINATE, failure.code)
+            assertEquals(ErrorCode.ERR_INDETERMINATE, failure.code)
             assertTrue("DUPLICATE_OR_STALE" in failure.cause?.message.orEmpty(), failure.cause?.message)
             assertTrue(client.isPoisoned)
         }
@@ -684,9 +712,9 @@ class DriverClientTest {
                 )
             try {
                 delay(1_200)
-                val exists = async(Dispatchers.IO) { shortLived.send(Exists(selector), timeoutMs = 2_000) }
+                val exists = async(Dispatchers.IO) { shortLived.send(Commands.exists(selector), timeoutMs = 2_000) }
                 val frame = shortDriver.nextFrame()
-                shortDriver.respond(frame.requestId, Response.ok(BoolResult(true), durationMs = 1))
+                shortDriver.respond(frame.requestId, Responses.of(CommandResult.newBuilder().setBool(true), 1))
                 assertTrue(exists.await().ok, "a command after the connect deadline must still run")
                 assertFalse(shortLived.isPoisoned)
             } finally {

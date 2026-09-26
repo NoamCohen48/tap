@@ -1,37 +1,40 @@
 package io.github.noamcohen48.tap.host
 
-import io.github.noamcohen48.tap.protocol.ArtifactInfo
-import io.github.noamcohen48.tap.protocol.ArtifactResult
-import io.github.noamcohen48.tap.protocol.Authentication
-import io.github.noamcohen48.tap.protocol.AuthenticationResult
-import io.github.noamcohen48.tap.protocol.CanonicalJson
-import io.github.noamcohen48.tap.protocol.Challenge
-import io.github.noamcohen48.tap.protocol.Command
-import io.github.noamcohen48.tap.protocol.CommandResult
+import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.Command
+import io.github.noamcohen48.tap.api.v1.CommandResult
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import io.github.noamcohen48.tap.protocol.DRIVER_TEST_APK_BUILD_ID
-import io.github.noamcohen48.tap.protocol.ErrorCode
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameCodec
 import io.github.noamcohen48.tap.protocol.FrameType
 import io.github.noamcohen48.tap.protocol.HOST_BUILD_ID
 import io.github.noamcohen48.tap.protocol.HOST_RESPONSE_PADDING_MS
-import io.github.noamcohen48.tap.protocol.Health
-import io.github.noamcohen48.tap.protocol.Hello
 import io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS
-import io.github.noamcohen48.tap.protocol.Mutation
 import io.github.noamcohen48.tap.protocol.ProtocolAuthentication
-import io.github.noamcohen48.tap.protocol.ProtocolJson
 import io.github.noamcohen48.tap.protocol.ProtocolNegotiation
-import io.github.noamcohen48.tap.protocol.ProtocolVersion
-import io.github.noamcohen48.tap.protocol.Request
-import io.github.noamcohen48.tap.protocol.Response
-import io.github.noamcohen48.tap.protocol.Returning
+import io.github.noamcohen48.tap.protocol.Requests
+import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
-import io.github.noamcohen48.tap.protocol.Targeted
-import io.github.noamcohen48.tap.protocol.result
+import io.github.noamcohen48.tap.protocol.isMutation
+import io.github.noamcohen48.tap.protocol.ok
+import io.github.noamcohen48.tap.protocol.op
+import io.github.noamcohen48.tap.protocol.parsePayload
+import io.github.noamcohen48.tap.protocol.render
+import io.github.noamcohen48.tap.protocol.stamped
+import io.github.noamcohen48.tap.protocol.targetSelector
+import io.github.noamcohen48.tap.protocol.withEnvelope
+import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
+import io.github.noamcohen48.tap.wire.v1.Authentication
+import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
+import io.github.noamcohen48.tap.wire.v1.Challenge
+import io.github.noamcohen48.tap.wire.v1.Hello
+import io.github.noamcohen48.tap.wire.v1.ProtocolVersion
+import io.github.noamcohen48.tap.wire.v1.Request
+import io.github.noamcohen48.tap.wire.v1.Response
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -49,11 +52,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
-import java.security.SecureRandom
-import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import io.github.noamcohen48.tap.protocol.Screenshot as ScreenshotCommand
 
 class DriverClient private constructor(
     private val hostPort: Int,
@@ -67,7 +67,6 @@ class DriverClient private constructor(
      * default; tests inject a small value so budget expiry is deterministic without long sleeps. */
     private val responseBudgetPaddingMs: Long = DEFAULT_RESPONSE_BUDGET_PADDING_MS,
 ) {
-    private val json = ProtocolJson.codec
     private val socket = Socket()
 
     /** Bounds connect + handshake only; cleared once authenticated so no later frame write,
@@ -88,8 +87,8 @@ class DriverClient private constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val transport =
-        DriverTransport(socket, scope, json, generation, serial, ::remainingTimeoutMs) { requestId, command, timeoutMs ->
-            PendingCommand(requestId, command, timeoutMs)
+        DriverTransport(socket, scope, generation, serial, ::remainingTimeoutMs) { requestId, request, timeoutMs ->
+            PendingCommand(requestId, request, timeoutMs)
         }
 
     internal var beforePhysicalWrite: (suspend () -> Unit)?
@@ -194,10 +193,11 @@ class DriverClient private constructor(
      */
     inner class PendingCommand internal constructor(
         val requestId: Long,
-        val command: Command,
+        /** The transmitted request, session envelope included. */
+        val request: Request,
         private val timeoutMs: Long,
     ) {
-        private val selector: String? get() = (command as? Targeted)?.selector?.render()
+        private val selector: String? get() = request.targetSelector?.render()
 
         private val result = CompletableDeferred<Response>()
 
@@ -226,10 +226,10 @@ class DriverClient private constructor(
          */
         internal fun complete(response: Response) {
             val receiver = blob
-            val artifact = (response.result as? ArtifactResult)?.artifact
+            val artifact = if (response.internalCase == Response.InternalCase.ARTIFACT) response.artifact else null
             val terminalResponse =
                 when {
-                    response !is Response.Ok -> {
+                    !response.ok -> {
                         response
                     }
 
@@ -268,12 +268,12 @@ class DriverClient private constructor(
             response: Response,
             detail: String,
         ): Response =
-            Response.failure(
-                ErrorCode.ARTIFACT_TRANSFER_FAILED,
-                detail = detail,
-                message = "Artifact ${(response.result as? ArtifactResult)?.artifact?.blobId} was not received intact",
-                durationMs = response.durationMs,
-            )
+            Responses
+                .failure(
+                    ErrorCode.ERR_ARTIFACT_TRANSFER_FAILED,
+                    detail = detail,
+                    message = "Artifact ${response.artifact.blobId.ifEmpty { "(none)" }} was not received intact",
+                ).stamped(response.result.durationMs, response.result.requestId, response.result.sessionGeneration)
 
         /** Verified artifact bytes of a successful artifact response; null otherwise. */
         fun artifact(): ByteArray? = artifactBytes?.copyOf()
@@ -383,27 +383,24 @@ class DriverClient private constructor(
         }
 
         /** Like [await] but converts a driver error response into [RemoteCommandException]. */
-        suspend fun awaitOrThrow(): Response.Ok =
-            when (val response = await()) {
-                is Response.Ok -> {
-                    response
-                }
-
-                is Response.Error -> {
-                    throw RemoteCommandException.from(response, command.op, requestId, generation, serial, selector, timeoutMs)
-                }
+        suspend fun awaitOrThrow(): Response {
+            val response = await()
+            if (!response.ok) {
+                throw RemoteCommandException.from(response, request.op, requestId, generation, serial, selector, timeoutMs)
             }
+            return response
+        }
 
         internal fun transportFailure(cause: Throwable): CommandTransportException {
             val code =
-                if (command is Mutation && transmissionState != TransmissionState.NOT_WRITTEN) {
-                    ErrorCode.INDETERMINATE
+                if (request.isMutation && transmissionState != TransmissionState.NOT_WRITTEN) {
+                    ErrorCode.ERR_INDETERMINATE
                 } else {
-                    ErrorCode.TRANSPORT_LOST
+                    ErrorCode.ERR_TRANSPORT_LOST
                 }
             return CommandTransportException(
                 code,
-                command.op,
+                request.op,
                 requestId,
                 generation,
                 transmissionState,
@@ -416,15 +413,20 @@ class DriverClient private constructor(
     }
 
     /**
-     * Runs [command] and returns its typed result; a driver error response becomes
-     * [RemoteCommandException] and a lost response [CommandTransportException]. The cast is
-     * safe by construction: the driver's `CommandHandler` returns the type [Returning] names.
+     * Runs [command] and returns its successful result; a driver error response becomes
+     * [RemoteCommandException] and a lost response [CommandTransportException]. The outcome case
+     * is the one the operation produces (the driver's `CommandHandler` returns it).
      */
-    @Suppress("UNCHECKED_CAST")
-    suspend fun <R : CommandResult, C> execute(
-        command: C,
+    suspend fun execute(
+        command: Command,
         timeoutMs: Long = 5_000,
-    ): R where C : Command, C : Returning<R> = submit(command, timeoutMs).awaitOrThrow().result as R
+    ): CommandResult = execute(Requests.of(command), timeoutMs).result
+
+    /** Runs [request] (a body from [Requests]) and returns its successful response, internal data included. */
+    suspend fun execute(
+        request: Request,
+        timeoutMs: Long = 5_000,
+    ): Response = submit(request, timeoutMs).awaitOrThrow()
 
     /** Runs [command] and returns the raw [Response], error or not. */
     suspend fun send(
@@ -432,17 +434,34 @@ class DriverClient private constructor(
         timeoutMs: Long = 5_000,
     ): Response = submit(command, timeoutMs).await()
 
-    /** Allocates and transmits one request under [DriverTransport]'s ordered admission lock. */
+    /** Runs [request] (a body from [Requests]) and returns the raw [Response], error or not. */
+    suspend fun send(
+        request: Request,
+        timeoutMs: Long = 5_000,
+    ): Response = submit(request, timeoutMs).await()
+
     suspend fun submit(
         command: Command,
+        timeoutMs: Long = 5_000,
+    ): PendingCommand = submit(Requests.of(command), timeoutMs)
+
+    /**
+     * Validates [request], stamps the session envelope with [timeoutMs] and transmits it under
+     * [DriverTransport]'s ordered admission lock. Optional command fields are sent as given; the
+     * driver applies their defaults.
+     *
+     * @throws io.github.noamcohen48.tap.protocol.InvalidCommandException before any request ID is
+     *   allocated when the request is malformed.
+     */
+    suspend fun submit(
+        request: Request,
         timeoutMs: Long = 5_000,
     ): PendingCommand {
         require(timeoutMs in 0..MAX_REQUEST_TIMEOUT_MS) {
             "timeoutMs must be between 0 and $MAX_REQUEST_TIMEOUT_MS"
         }
-        CommandValidation.validate(command)
-        val request = Request(sessionId = sessionId, generation = generation, timeoutMs = timeoutMs, command = command)
-        return transport.submit(request) { sessionGate?.invoke() }
+        CommandValidation.validate(request)
+        return transport.submit(request.withEnvelope(sessionId, generation, timeoutMs)) { sessionGate?.invoke() }
     }
 
     /** Test seam for deterministic cancellation while another operation owns the transport. */
@@ -453,9 +472,9 @@ class DriverClient private constructor(
 
     /** PNG screenshot: the verified bytes plus the driver's artifact metadata. */
     suspend fun screenshot(timeoutMs: Long = 30_000): Screenshot {
-        val command = submit(ScreenshotCommand, timeoutMs = timeoutMs)
+        val command = submit(Requests.screenshot(), timeoutMs = timeoutMs)
         val response = command.awaitOrThrow()
-        return Screenshot(requireNotNull(command.artifact()), (response.result as ArtifactResult).artifact)
+        return Screenshot(requireNotNull(command.artifact()), response.artifact)
     }
 
     /** Round-trips a connection-level `PING` on the writer/reader lanes. Returns the latency in ms. */
@@ -507,22 +526,23 @@ class DriverClient private constructor(
         requestSessionId: String = sessionId,
         requestGeneration: Long = generation,
     ): Response {
-        val request = Request(sessionId = requestSessionId, generation = requestGeneration, timeoutMs = 5_000, command = Health)
+        val request = Requests.health().withEnvelope(requestSessionId, requestGeneration, 5_000)
         return awaitValidation(
             transport.submitValidation(requestId, request) { sessionGate?.invoke() },
         )
     }
 
     /**
-     * Validation flow only: sends an arbitrary JSON payload as a `REQUEST` frame, for probing how
-     * the driver answers what this build cannot express (an unknown `op`, a malformed command).
+     * Validation flow only: sends arbitrary bytes as a `REQUEST` payload, for probing how the
+     * driver answers what [submit] refuses to send (malformed protobuf, an unset body, invalid
+     * arguments). The pending entry is classified as a non-mutating `health`.
      */
     suspend fun executeRawValidationRequest(
         requestId: Long,
-        payload: String,
+        payload: ByteArray,
     ): Response =
         awaitValidation(
-            transport.submitRawValidation(requestId, Health, 5_000, payload.encodeToByteArray()) {
+            transport.submitRawValidation(requestId, Requests.health(), 5_000, payload) {
                 sessionGate?.invoke()
             },
         )
@@ -544,19 +564,17 @@ class DriverClient private constructor(
         }
 
     private suspend fun authenticate() {
-        val hostNonce =
-            ByteArray(32).also(SecureRandom()::nextBytes).let {
-                Base64.getUrlEncoder().withoutPadding().encodeToString(it)
-            }
         val hello =
-            Hello(
-                hostBuildId = HOST_BUILD_ID,
-                hostNonce = hostNonce,
-                sessionGeneration = generation,
-                sessionId = sessionId,
-                supportedVersions = SUPPORTED_PROTOCOL_VERSIONS,
-            )
-        val helloPayload = CanonicalJson.encode(hello)
+            Hello
+                .newBuilder()
+                .setHostBuildId(HOST_BUILD_ID)
+                .setHostNonce(ProtocolAuthentication.nonce())
+                .setSessionGeneration(generation)
+                .setSessionId(sessionId)
+                .addAllSupportedVersions(SUPPORTED_PROTOCOL_VERSIONS)
+                .build()
+        // The transcript MACs exactly these bytes, never a re-encoding.
+        val helloPayload = hello.toByteArray()
         transport.writeFrame(
             Frame(FrameType.HELLO, 0, helloPayload),
             remainingTimeoutMs(10_000),
@@ -565,7 +583,7 @@ class DriverClient private constructor(
         socket.soTimeout = remainingTimeoutMs(10_000)
         val challengeFrame = withContext(Dispatchers.IO) { FrameCodec.read(socket.getInputStream()) }
         try {
-            completeHandshake(hello, helloPayload, hostNonce, challengeFrame)
+            completeHandshake(hello, helloPayload, challengeFrame)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (typed: DriverStartException) {
@@ -580,48 +598,44 @@ class DriverClient private constructor(
     private suspend fun completeHandshake(
         hello: Hello,
         helloPayload: ByteArray,
-        hostNonce: String,
         challengeFrame: Frame,
     ) {
         check(challengeFrame.type == FrameType.CHALLENGE)
-        val challenge = CanonicalJson.decodeCanonical<Challenge>(challengeFrame.payload)
+        val challenge = parsePayload("CHALLENGE", challengeFrame.payload, Challenge::parseFrom)
         check(ProtocolNegotiation.isValidChallenge(challenge)) { "Driver contract is invalid" }
         driverInstanceId = challenge.driverInstanceId
         check(challenge.sessionId == sessionId && challenge.sessionGeneration == generation)
-        check(challenge.hostNonce == hostNonce)
+        check(ProtocolAuthentication.constantTimeEquals(hello.hostNonce, challenge.hostNonce))
         check(ProtocolNegotiation.isValidNonce(challenge.driverNonce))
         val negotiation =
             requireNotNull(ProtocolNegotiation.negotiate(hello, challenge)) {
                 "Driver does not support a compatible application protocol version"
             }
-        val transcript =
-            ProtocolAuthentication.transcript(
-                helloPayload,
-                challengeFrame.payload,
-                CanonicalJson.encode(negotiation),
-            )
+        val negotiationPayload = negotiation.toByteArray()
+        val transcript = ProtocolAuthentication.transcript(helloPayload, challengeFrame.payload, negotiationPayload)
 
         val authentication =
-            Authentication(
-                negotiation = negotiation,
-                transcriptHmac = ProtocolAuthentication.hostMac(secret, transcript),
-            )
+            Authentication
+                .newBuilder()
+                .setNegotiation(ByteString.copyFrom(negotiationPayload))
+                .setTranscriptHmac(ProtocolAuthentication.hostMac(secret, transcript))
+                .build()
         transport.writeFrame(
-            Frame(FrameType.AUTH, 0, CanonicalJson.encode(authentication)),
+            Frame(FrameType.AUTH, 0, authentication.toByteArray()),
             remainingTimeoutMs(10_000),
         )
 
         socket.soTimeout = remainingTimeoutMs(10_000)
         val resultFrame = withContext(Dispatchers.IO) { FrameCodec.read(socket.getInputStream()) }
         check(resultFrame.type == FrameType.AUTH_RESULT)
-        val result = CanonicalJson.decodeCanonical<AuthenticationResult>(resultFrame.payload)
-        check(result.ok) { result.error ?: "Authentication failed" }
+        val result = parsePayload("AUTH_RESULT", resultFrame.payload, AuthenticationResult::parseFrom)
+        check(result.ok) { if (result.hasError()) result.error else "Authentication failed" }
         check(result.selectedVersion == negotiation.selectedVersion)
-        check(result.enabledCapabilities == negotiation.enabledCapabilities)
+        check(result.enabledCapabilitiesList == negotiation.enabledCapabilitiesList)
         check(
             ProtocolAuthentication.constantTimeEquals(
                 ProtocolAuthentication.driverMac(secret, transcript),
-                requireNotNull(result.transcriptHmac),
+                result.transcriptHmac,
             ),
         ) { "Driver authentication failed" }
         // Checked only once the transcript MAC proved the challenge came from our driver. The
@@ -636,7 +650,7 @@ class DriverClient private constructor(
             )
         }
         negotiatedVersion = negotiation.selectedVersion
-        enabledCapabilities = negotiation.enabledCapabilities.toSet()
+        enabledCapabilities = negotiation.enabledCapabilitiesList.toSet()
         driverContract = challenge
     }
 

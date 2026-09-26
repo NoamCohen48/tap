@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "ARTIFACT_TRANSFER_FAILED",
-  "detail": "BLOB_CHECKSUM_MISMATCH",
-  "message": "example",
-  "durationMs": 5
-}

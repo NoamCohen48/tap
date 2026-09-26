@@ -220,8 +220,9 @@ lives at `~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2` on the current works
 
 Modules, by component:
 
-- `contracts/` — `:contracts:protocol` (TAP1 device wire contract), `:contracts:api`
-  (`contracts/api/proto/*.proto`, the `tap.v1` server API + generated Java stubs).
+- `contracts/` — `contracts/proto` is the one protobuf schema (`tap.v1` server API +
+  `tap.wire.v1` device payloads): `:contracts:schema` (generated lite messages),
+  `:contracts:api` (gRPC stubs), `:contracts:protocol` (TAP1 framing, handshake, validation).
 - `device/` — `:device:driver` + `:device:driver:command-engine` (on-device driver),
   `:device:sync-sdk` (optional AUT library).
 - `host/` — `:host:core` (ADB, journals, sessions, `DriverClient`, `AppLifecycle`),
@@ -234,8 +235,8 @@ Modules, by component:
 Server and Python checks:
 
 ```bash
-./gradlew :host:daemon:test                      # proto mirror + golden round-trip tests
-clients/python/scripts/gen_stubs.py --check               # committed Python stubs match contracts/api/proto/*.proto
+./gradlew :contracts:protocol:test :host:daemon:test  # wire golden bytes + server tests
+clients/python/scripts/gen_stubs.py --check               # committed Python stubs match contracts/proto/*.proto
 GRAALVM_HOME=... ./gradlew :host:daemon:nativeCompile
 ```
 
@@ -299,7 +300,7 @@ package): [`.docs/release-engineering.md`](.docs/release-engineering.md).
 `docs/` is the public documentation (MkDocs Material, `mkdocs.yml`): a hand-written guide and
 three generated references — Kotlin (Dokka, `./gradlew :dokkaGenerate`), Python (mkdocstrings
 from the docstrings of `clients/python/tap`) and the `tap.v1` gRPC API (protoc-gen-doc from
-`contracts/api/proto`). `scripts/build-docs.sh` runs the generators and `mkdocs build --strict` into
+`contracts/proto`). `scripts/build-docs.sh` runs the generators and `mkdocs build --strict` into
 `build/site`, and also assembles `build/docs-md/` (+ `build/tap-docs-md.zip`): the same guide
 and references as plain Markdown (Dokka GFM and lazydocs instead of Dokka HTML and
 mkdocstrings). It needs JDK 17, `buf`, `protoc-gen-doc` and

@@ -1,7 +1,0 @@
-{
-  "type": "error",
-  "code": "AUT_CRASHED",
-  "detail": "PROCESS_RESTARTED",
-  "message": "example",
-  "durationMs": 5
-}

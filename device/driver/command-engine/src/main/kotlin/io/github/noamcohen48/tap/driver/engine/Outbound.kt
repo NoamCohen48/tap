@@ -1,8 +1,8 @@
 package io.github.noamcohen48.tap.driver.engine
 
-import io.github.noamcohen48.tap.protocol.BlobEnd
-import io.github.noamcohen48.tap.protocol.BlobStart
-import io.github.noamcohen48.tap.protocol.Response
+import io.github.noamcohen48.tap.wire.v1.BlobEnd
+import io.github.noamcohen48.tap.wire.v1.BlobStart
+import io.github.noamcohen48.tap.wire.v1.Response
 
 /** Messages the writer lane delivers to the transport, in order, on a single thread. */
 sealed interface Outbound {
