@@ -44,6 +44,9 @@ See `README.md` for build/run commands.
   Python / gRPC references; `scripts/build-docs.sh`). Update the guide with any user-visible
   client change; public client API needs KDoc/docstrings because the references are generated
   from them. `.docs/` stays internal.
+- `.docs/code-review.md` + `.docs/code-review-status.md` — the harsh review and its per-item fix
+  status (open/partial gaps by area, decisions such as "the driver assumes nothing about the
+  app"). Update the status row in the same change as the fix.
 - `.docs/release-engineering.md` — artifact families, version lines (`gradle.properties`
   `tap.version.*`, `pyproject.toml`), CI jobs and tag-driven releases. Versions are bumped
   there, never in code (`ENGINE_VERSION` is generated).

@@ -67,6 +67,8 @@ All of the driver except the pure-JVM command engine sits in the `androidTest` s
 
 ## Findings
 
+Fix status per item: [`code-review-status.md`](code-review-status.md).
+
 Severity: **C**ritical · **H**igh · **M**edium · **L**ow · **N**it. ✔ = re-checked against source by the lead reviewer. "(unverified)" = reasoned, not reproduced.
 
 ### Cross-cutting
