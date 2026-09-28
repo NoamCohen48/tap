@@ -15,7 +15,7 @@ one:
     put it on your `PATH` as `tap`.
 
     ```bash
-    chmod +x tap-0.1.0-linux-x86_64 && sudo mv tap-0.1.0-linux-x86_64 /usr/local/bin/tap
+    chmod +x tap-0.0.1-linux-x86_64 && sudo mv tap-0.0.1-linux-x86_64 /usr/local/bin/tap
     tap version
     ```
 
@@ -24,7 +24,7 @@ one:
     `tap-<version>-jvm.zip` from the same release; needs a JDK 17+.
 
     ```bash
-    unzip tap-0.1.0-jvm.zip && export PATH="$PWD/tap-0.1.0/bin:$PATH"
+    unzip tap-0.0.1-jvm.zip && export PATH="$PWD/tap-0.0.1/bin:$PATH"
     tap version
     ```
 
@@ -64,7 +64,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")   // brings tap-client
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.1")   // brings tap-client
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 
@@ -116,7 +116,7 @@ device info and driver log under `build/tap-artifacts/<class>/<method>/`.
 ## 3. Python + pytest
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl
 ```
 
 The package registers a pytest plugin. Configure the app under test in `pytest.ini` or the
@@ -193,3 +193,5 @@ that for you on the next test.
 - [How it works](how-it-works.md) explains client connections and attached devices.
 - [Selectors](selectors.md) and [Actions and waits](actions-and-waits.md) cover the API you
   will use in every test.
+- [Coding agents](agents.md) sets up `tap-agent`, which lets Claude Code or another agent drive
+  a device through the same server.

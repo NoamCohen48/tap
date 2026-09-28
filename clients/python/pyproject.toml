@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tap-e2e"
-version = "0.2.0"
+version = "0.0.1"
 description = "Python client and pytest plugin for the Tap Android E2E host daemon"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
+classifiers = ["Development Status :: 3 - Alpha", "Framework :: Pytest"]
 # Lower bounds follow the versions the committed stubs were generated with (scripts/gen_stubs.py).
 dependencies = [
     "grpcio>=1.84.0",

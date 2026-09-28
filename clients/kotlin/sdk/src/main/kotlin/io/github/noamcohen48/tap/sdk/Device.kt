@@ -88,7 +88,8 @@ data class Timeouts(
 data class DeviceOptions(
     /** Skip installing the daemon's driver: the device already has the right one. */
     val skipDriverInstall: Boolean = false,
-    /** Content-provider authority of the AUT's `sync-sdk`, when it is not the default. */
+    /** Content-provider authority of the AUT's `sync-sdk`, when it is not the default. Experimental. */
+    @property:ExperimentalTapApi
     val syncAuthority: String? = null,
     /** How long to wait for a device another session holds before failing; zero fails at once. */
     val waitForDevice: Duration = Duration.ZERO,
@@ -668,6 +669,7 @@ class Device internal constructor(
         }
 
     companion object {
+        @OptIn(ExperimentalTapApi::class) // passes DeviceOptions.syncAuthority through
         internal suspend fun attachDevice(
             connection: TapConnection,
             serial: String,

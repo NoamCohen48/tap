@@ -70,10 +70,13 @@ def test_buys_an_item(tap_device):
 | [Configuration](guide/configuration.md) | properties, environment, the `tap` CLI |
 | [Errors and artifacts](guide/errors.md) | the error codes, what they mean, what to look at |
 | [Coming from Maestro or Appium](guide/coming-from.md) | mapping table |
+| [Coding agents](guide/agents.md) | `tap-agent`: a CLI and MCP server so an agent can drive a device and export what it did (experimental) |
 | [API reference](reference/index.md) | generated Kotlin, Python and gRPC references |
 
 ## Status
 
-Tap is pre-1.0. The device protocol, the server API and both clients are in use against real
-devices (API 29 physical, API 34 emulator) and exercised by CI on every change, but the API can
-still change between minor versions. See [Releases and versions](reference/releases.md).
+Tap is in **alpha** (0.0.x). The server, the on-device driver and both clients run against
+real devices (API 29 physical, API 34 emulator) and an emulator lane in CI, but any 0.x release
+may change the API. Parts that are explicitly experimental even by that standard: app
+synchronization (`sync-sdk`, `awaitIdle`) and the agent surface (`tap-agent`, held connections,
+snapshots, the event log). See [Releases and versions](reference/releases.md).

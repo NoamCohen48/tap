@@ -510,11 +510,14 @@ internal fun quarantineEarlyOpen(
     )
 }
 
+private val REPLACEABLE_INSTALL_FAILURES = listOf("INSTALL_FAILED_UPDATE_INCOMPATIBLE", "INSTALL_FAILED_VERSION_DOWNGRADE")
+
 /**
  * Installs one of Tap's own driver packages. A copy signed by another build (another machine's
- * debug key) cannot be updated in place (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`); the driver keeps
- * no state worth preserving, so that copy is uninstalled and the install retried once. Never
- * used for the app under test.
+ * debug key) cannot be updated in place (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), nor can a newer
+ * engine's copy be replaced by an older one (`INSTALL_FAILED_VERSION_DOWNGRADE`); the driver
+ * keeps no state worth preserving, so that copy is uninstalled and the install retried once.
+ * Never used for the app under test.
  */
 internal suspend fun installDriverPackage(
     adb: Adb,
@@ -525,7 +528,7 @@ internal suspend fun installDriverPackage(
     try {
         adb.install(serial, apk)
     } catch (incompatible: AdbCommandException) {
-        if ("INSTALL_FAILED_UPDATE_INCOMPATIBLE" !in incompatible.output) throw incompatible
+        if (REPLACEABLE_INSTALL_FAILURES.none { it in incompatible.output }) throw incompatible
         adb.uninstall(serial, packageName)
         try {
             adb.install(serial, apk)

@@ -1,13 +1,14 @@
 # Versioning, CI and releases
 
 Status: implemented 2026-09-19 (`.github/workflows/ci.yml`, `.github/workflows/release.yml`).
-The first tagged release has not been cut yet; CI has not run on GitHub yet either, so
-expect the first runs to need small runner-specific fixes (emulator boot flags, macOS native
-image).
+The first release is **0.0.1 (alpha)** for every family (2026-09-28); the earlier 0.1.0–0.3.0
+numbers were never published and were reset to it. `sync-sdk` is experimental and is not
+tagged yet. Stability promises and the experimental list are public in
+`docs/reference/releases.md`; `CHANGELOG.md` records each release.
 
 ## What is an artifact, and why
 
-The repository builds six things people install, each on its own version line:
+The repository builds five artifact families, each on its own version line:
 
 | Family | Tag | Artifacts | Version source |
 |---|---|---|---|
@@ -28,7 +29,7 @@ per device) and they share one version with it:
   nobody needs: no user ever picks a driver version, `tap serve` installs the one it was built
   with, and the handshake's `HOST_BUILD_ID`/`DRIVER_APK_BUILD_ID` (both = `ENGINE_VERSION`)
   already refuse a mismatch.
-- The TAP1 protocol version (`3.0`) remains the *wire* compatibility statement inside the
+- The TAP1 protocol version (`4.0`) remains the *wire* compatibility statement inside the
   handshake; the engine version is the *release* identifier. They move independently: many
   engine releases per protocol version.
 - `contracts/protocol` is therefore not published to Maven either; it is compiled into the
@@ -64,7 +65,8 @@ Because `tap-client` depends on `tap-api:<engine>`, a `client-kotlin/v*` release
 the `tap-api` of the current engine version is already in GitHub Packages and fails with a
 pointer to tag `daemon/v<engine>` first.
 
-Client 0.2.0 (2026-09-21) is the breaking coroutine release: every `Device`/`App`/`Element`
+History from before the reset to 0.0.1 (none of these versions were published): client 0.2.0
+(2026-09-21) was the breaking coroutine release: every `Device`/`App`/`Element`
 call is `suspend` behind `tapTest`/`tapScope`, `TapConnection` owns its attach scope, and
 `TapClient`/`TapConnection`/`Device` close via `suspend` (no `AutoCloseable`). The wire is
 unchanged (`tap.v1` only gains no fields here), so the break is source-only: 0.1.x callers
@@ -84,7 +86,7 @@ From the engine version:
   minor*100 + patch`.
 - The JVM distribution is `tap-<engine>.zip`.
 
-The Python package reports `tap.__version__` from its installed distribution metadata.
+The Python packages report `tap_e2e.__version__` / `tap_agent.__version__` from its installed distribution metadata.
 
 Bumping: edit the property (or `pyproject.toml`), commit, then tag `<family>/v<version>` on
 that commit. `.github/scripts/release_version.py` refuses a tag whose version differs from
@@ -129,19 +131,27 @@ Consuming:
 
 ```kotlin
 repositories { maven("https://maven.pkg.github.com/NoamCohen48/tap") { credentials { … } } }
-testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")
+testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.1")
 ```
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.1.0/tap_agent-0.1.0-py3-none-any.whl
-curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.1.0/tap-0.1.0-linux-x86_64 && chmod +x tap
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.1/tap_agent-0.0.1-py3-none-any.whl
+curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.0.1/tap-0.0.1-linux-x86_64 && chmod +x tap
 ```
 
 ## Open points
 
-- Group id `io.github.noamcohen48.tap` is the placeholder used by the source packages; rename both
-  together before anything external depends on it.
+- Group id and packages are `io.github.noamcohen48.tap` (decided in the 2026-09-26 review, X-4);
+  changing it after a release breaks every consumer.
+- License: none chosen yet (`pyproject.toml` says Proprietary, there is no `LICENSE` file).
+  Decide before the repository or the artifacts go public.
+- A published version is never replaced (GitHub Packages refuses a republish, PyPI never
+  allows one, and a replaced GitHub Release asset breaks caches and `SHA256SUMS`): a fix is
+  a new patch release. Test the pipeline with a pre-release (`X.Y.Z-rc.N`) when in doubt.
+- Downgrading the engine on a device that has a newer driver is handled: the driver is
+  uninstalled and reinstalled on `INSTALL_FAILED_VERSION_DOWNGRADE` (as on a signature
+  mismatch).
 - Maven Central / PyPI instead of GitHub Packages / Release assets once the repository is
   public: Central needs a verified namespace and signing; PyPI needs the trusted-publisher
   registration mentioned above. The workflows are structured so only the publish steps change.

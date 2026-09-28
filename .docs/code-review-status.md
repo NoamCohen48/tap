@@ -182,7 +182,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| B-4 | H | Fixed | A driver package signed by another build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) is uninstalled and reinstalled once; the AUT never is (`AdbTest`). Installed `versionName` is checked against the bundled build. Release signing with a project key stays a release-engineering option | S–M |
+| B-4 | H | Fixed | A driver package signed by another build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), or one from a newer engine (`INSTALL_FAILED_VERSION_DOWNGRADE`), is uninstalled and reinstalled once; the AUT never is (`AdbTest`). Installed `versionName` is checked against the bundled build. Release signing with a project key stays a release-engineering option | S–M |
 | H-5 | M | Fixed | `BlobReceiver` copies each chunk once into a buffer of the announced size, hashes incrementally and hands the array on uncopied (`BlobReceiverTest`) | S |
 | H-15 | M | Deferred | `awaitIdle` runs `process()` before and after every poll (`AppLifecycle.kt:221-229`). Synchronization is WIP | S |
 | H-19 | M | Backlog | `DeviceSession.open` ≈190 lines with a `suspendCancellableCoroutine` handoff | L |

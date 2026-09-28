@@ -189,8 +189,10 @@ class App internal constructor(
 
     /**
      * Waits until the app's `TapSynchronization` reports no busy work for [stableFor]. Requires
-     * the app's E2E build to ship `sync-sdk` and be signed like the driver.
+     * the app's E2E build to ship `sync-sdk` and be signed like the driver. Experimental:
+     * synchronization is still being designed ([ExperimentalTapApi]).
      */
+    @ExperimentalTapApi
     suspend fun awaitIdle(
         timeout: Duration = device.timeouts.wait,
         stableFor: Duration = Timeouts.IDLE_STABLE_FOR,

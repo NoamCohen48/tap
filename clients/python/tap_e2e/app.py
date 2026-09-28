@@ -134,7 +134,9 @@ class App:
         return self._call(self._apps.IsRunning, request, None).running
 
     def await_idle(self, timeout: float | None = None, stable_for: float = 0.2) -> None:
-        """Waits until the app's own sync contract reports idle for ``stable_for`` seconds."""
+        """Waits until the app's own sync contract reports idle for ``stable_for`` seconds.
+
+        Experimental: synchronization is still being designed; this may change in any release."""
         timeout = self._or(timeout, self.device.timeouts.wait)
         request = pb.AwaitIdleRequest(
             app=self._target(),
