@@ -42,13 +42,13 @@ from .errors import (
     TapError,
     WaitTimeoutError,
 )
-from .models import DeviceEntry, DeviceState, FailureReason, ServerInfo
+from .models import ConnectionEntry, DeviceEntry, DeviceState, FailureReason, ServerInfo
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
     from typing_extensions import Self
 
-    from .device import Device
+    from .device import Device, Timeouts
 
 
 def state_dir() -> pathlib.Path:
@@ -346,25 +346,60 @@ class TapClient:
             ]
 
     def connect(
-        self, name: str, first_event_timeout: float = FIRST_EVENT_TIMEOUT
+        self,
+        name: str,
+        first_event_timeout: float = FIRST_EVENT_TIMEOUT,
+        *,
+        hold: float | None = None,
     ) -> TapConnection:
-        """Open a ``TapConnection`` named ``name`` and start its liveness stream.
+        """Open a ``TapConnection`` named ``name``.
 
-        The stream is established before this returns (the server's first event,
-        ``observing``, is awaited for up to ``first_event_timeout`` seconds, else ``TapError``
-        and the new id is disconnected), so every later ``attach_device`` belongs to a live
-        connection: if this process dies, the server detaches every device the connection owns.
-        A later ``closing`` event (the daemon reaped the connection or is shutting down) makes
-        it unusable with the daemon's reason. Use the result as a context manager, or call
-        ``close`` when done.
+        By default the connection is *observed*: its liveness stream is established before this
+        returns (the server's first event, ``observing``, is awaited for up to
+        ``first_event_timeout`` seconds, else ``TapError`` and the new id is disconnected), so
+        every later ``attach_device`` belongs to a live connection: if this process dies, the
+        server detaches every device the connection owns. A later ``closing`` event (the daemon
+        reaped the connection or is shutting down) makes it unusable with the daemon's reason.
+
+        With ``hold`` (seconds, 1 to 86400) the connection is *held* instead: it has no liveness
+        stream and outlives this process, so a later process can pick it up with :meth:`resume`.
+        Every call naming it restarts its idle clock; it ends after ``hold`` seconds without one,
+        on ``close`` from any process, or when the daemon stops. Its name must be unique among
+        held connections (else ``ServerError``, reason ``DAEMON_PRECONDITION``). Tests should
+        keep the default: a crashed test run would otherwise hold its devices until the timeout.
+
+        Use the result as a context manager, or call ``close`` when done.
         """
+        request = pb.ConnectRequest(name=name)
+        if hold is not None:
+            request.hold.idle_timeout_ms = int(hold * 1000)
         with mapped_errors():
             client_connection_id = self.client_connections.Connect(
-                pb.ConnectRequest(name=name), timeout=10
+                request, timeout=10
             ).client_connection_id
-        connection = TapConnection(self, client_connection_id)
-        connection._observe(first_event_timeout)
+        connection = TapConnection(self, client_connection_id, name=name, hold=hold)
+        if hold is None:
+            connection._observe(first_event_timeout)
         return connection
+
+    def connections(self) -> list[ConnectionEntry]:
+        """Every live client connection, held or observed, with the devices attached to it."""
+        with mapped_errors():
+            return [
+                _proto.connection_entry(entry)
+                for entry in self.client_connections.ListConnections(
+                    pb.ListConnectionsRequest(), timeout=10
+                ).connections
+            ]
+
+    def resume(self, name: str) -> TapConnection:
+        """The held connection named ``name`` (see ``connect(..., hold=...)``), for this process
+        to use; ``attached_devices()`` returns its devices. Raises ``TapError`` when no held
+        connection has that name (it was closed, or it expired)."""
+        entry = next((c for c in self.connections() if c.hold is not None and c.name == name), None)
+        if entry is None:
+            raise TapError(f"no held connection named {name!r} (closed, or idle past its timeout)")
+        return TapConnection(self, entry.id, name=entry.name, hold=entry.hold)
 
     def close(self) -> None:
         """Closes the channel. Close every ``TapConnection`` first."""
@@ -378,16 +413,29 @@ class TapClient:
 
 
 class TapConnection:
-    """This process's identity at the server, returned by ``TapClient.connect`` with its
-    liveness stream already running on a background thread. If this process dies, the server
-    detaches every device owned by the connection. If the stream ends unexpectedly (server
-    restart, network loss) or the daemon sends ``closing``, the connection becomes unusable:
-    ``attach_device`` and every call on its devices raise ``TapError`` (``broken`` holds the
-    cause)."""
+    """An identity at the server that owns attached devices, returned by ``TapClient.connect``.
 
-    def __init__(self, client: TapClient, client_connection_id: str):
+    An observed connection (the default) has its liveness stream already running on a
+    background thread. If this process dies, the server detaches every device owned by the
+    connection. If the stream ends unexpectedly (server restart, network loss) or the daemon
+    sends ``closing``, the connection becomes unusable: ``attach_device`` and every call on its
+    devices raise ``TapError`` (``broken`` holds the cause).
+
+    A held connection (``hold`` is its idle timeout in seconds) has no stream: it lives in the
+    daemon until ``close``, its idle timeout, or daemon shutdown, and other processes reach it
+    with ``TapClient.resume``. Dropping the object without ``close`` leaves it for them."""
+
+    def __init__(
+        self,
+        client: TapClient,
+        client_connection_id: str,
+        name: str | None = None,
+        hold: float | None = None,
+    ):
         self.client = client
         self.id = client_connection_id
+        self.name = name
+        self.hold = hold
         self._stream = None
         self._events: collections.deque[str] = collections.deque(maxlen=MAX_EVENTS)
         self._closing = False
@@ -485,9 +533,23 @@ class TapConnection:
         self.ensure_usable("attach_device")
         return Device._attach_device(self, serial, aut_package, **options)
 
+    def attached_devices(self, timeouts: Timeouts | None = None) -> list[Device]:
+        """The devices attached to this connection now, as ``Device`` objects — including ones
+        another process attached to a held connection. Nothing is re-attached: each keeps its
+        session and generation. ``timeouts`` are this process's defaults for them. Raises
+        ``TapError`` when the connection no longer exists at the server."""
+        from .device import Device, Timeouts  # circular import at module load
+
+        self.ensure_usable("attached_devices")
+        entry = next((c for c in self.client.connections() if c.id == self.id), None)
+        if entry is None:
+            raise TapError(f"connection {self.id} no longer exists at the server")
+        return [Device._resume(self, d, timeouts or Timeouts()) for d in entry.attached_devices]
+
     def close(self) -> None:
         """Disconnects (the server detaches this connection's devices), then drops the liveness
-        stream. Idempotent: later calls do nothing."""
+        stream. For a held connection this ends it for every process. Idempotent: later calls
+        do nothing."""
         if self._closed:
             return
         self._closing = True

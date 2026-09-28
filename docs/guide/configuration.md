@@ -146,6 +146,47 @@ it where it needs it (`coldLaunch()`, `clearData()`). Before each test a reused 
 (`info()`, a few milliseconds); one that stopped working — quarantined, driver lost, detached by
 the test — is detached and a fresh one attached. Failure artifacts are still captured per test.
 
+## Held connections and screen snapshots (Python)
+
+These are for scripts and tools that drive a device over several processes, such as a coding
+agent exploring an app one command at a time. Tests should not use them. For now they are in
+the Python client only.
+
+A normal connection lasts as long as the process that opened it. A *held* connection stays
+alive in the daemon after the process exits. It ends when some process closes it, when no call
+has named it for `hold` seconds, or when the daemon stops. A later process finds it by name, and
+gets back the devices attached to it without attaching them again:
+
+```python
+from tap_e2e import TapClient
+
+# first process
+client = TapClient.create()
+connection = client.connect("explore", hold=15 * 60)
+connection.attach_device("emulator-5554", "com.example.app")
+
+# any later process
+connection = TapClient.create().resume("explore")
+(device,) = connection.attached_devices()
+snapshot = device.screen_snapshot()
+for node in snapshot.nodes:
+    print(node.ref, node.class_name, node.text, node.selector)
+device.element(device.resolve_ref("e7")).tap()
+connection.close()  # ends it for everyone; leave it open for the next process
+```
+
+Only one held connection can have a given name at a time. The idle clock restarts with every
+call on the connection or its devices. A crashed process leaves the devices attached until the
+connection's hold time runs out, which is why tests keep the default.
+
+`screen_snapshot()` returns the visible screen, taken from the diagnostic hierarchy dump. Each
+node has a ref (`e7`) and, when one exists, a selector that matched only that node at snapshot
+time. It also has a `change` value saying whether it was added since the previous snapshot of
+that device; nodes that disappeared are listed in `removed`. A ref keeps pointing at the same
+node from one snapshot to the next, and is never given to a different node. A ref only names a
+selector, so acting on it still goes through the normal rule: the device must find exactly one
+match at the moment of the action.
+
 ## Session options
 
 Both `connection.attachDevice(...)` / `connection.attach_device(...)` accept (`suspend` in Kotlin):

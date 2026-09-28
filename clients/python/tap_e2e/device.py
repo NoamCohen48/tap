@@ -15,7 +15,16 @@ from . import _proto
 from .app import App
 from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
-from .models import Capture, DeviceInfo, DriverLog, Hierarchy, Screenshot, StabilitySignal
+from .models import (
+    AttachedDeviceEntry,
+    Capture,
+    DeviceInfo,
+    DriverLog,
+    Hierarchy,
+    ScreenSnapshot,
+    Screenshot,
+    StabilitySignal,
+)
 from .selectors import Selector
 from .client import TapConnection, mapped_errors
 
@@ -103,6 +112,18 @@ class Device:
                 request, timeout=180 + wait_for_device
             )
         return cls(owner_connection, response, aut_package, timeouts)
+
+    @classmethod
+    def _resume(
+        cls, owner_connection: TapConnection, entry: AttachedDeviceEntry, timeouts: Timeouts
+    ) -> Device:
+        """A device ``owner_connection`` already has attached (``TapConnection.attached_devices``)."""
+        response = pb.AttachResponse(
+            attached_device_id=entry.attached_device_id,
+            serial=entry.serial,
+            generation=entry.generation,
+        )
+        return cls(owner_connection, response, entry.aut_package, timeouts)
 
     # --- protocol commands (private: the public API is the typed methods) ------------------------
 
@@ -215,6 +236,44 @@ class Device:
                 _or(timeout, self.timeouts.lifecycle), dump_hierarchy=pb.DumpHierarchy()
             ).text
         )
+
+    def screen_snapshot(self, timeout: float | None = None) -> ScreenSnapshot:
+        """The visible screen as ref-addressed ``ScreenNode``s, each with a selector the daemon
+        found to match only that node — for exploring an app, not for tests (it is built from
+        the diagnostic hierarchy dump). Refs stay stable across snapshots of this attached
+        device, and each node says whether it was added since the previous snapshot; nodes
+        that are gone are in ``removed``. Act on a node through its selector
+        (``device.element(node.selector)``) or ``resolve_ref``: the device still requires
+        exactly one match at action time."""
+        self._ensure_usable("screen_snapshot")
+        request = pb.ScreenSnapshotRequest(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            timeout_ms=int(_or(timeout, self.timeouts.lifecycle) * 1000),
+        )
+        with mapped_errors(self.serial):
+            return _proto.screen_snapshot(
+                self.client.device_stub.ScreenSnapshot(
+                    request, timeout=request.timeout_ms / 1000 + RPC_DEADLINE_SLACK
+                )
+            )
+
+    def resolve_ref(self, ref: str) -> Selector:
+        """The selector behind a ``ScreenNode.ref`` (``e7`` or ``@e7``) of any snapshot of this
+        attached device. Raises ``ServerError`` with reason ``UNKNOWN_REF`` for a ref the daemon
+        never issued or whose node has gone, and ``REF_NOT_ADDRESSABLE`` for a node without a
+        selector."""
+        self._ensure_usable("resolve_ref")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.ResolveRef(
+                pb.ResolveRefRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                    ref=ref,
+                ),
+                timeout=30,
+            )
+        return Selector(response.selector)
 
     def driver_log(self) -> DriverLog:
         """The driver instrumentation's recent output."""

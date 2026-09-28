@@ -10,6 +10,10 @@ import json
 import os
 import pathlib
 from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .selectors import Selector
 
 # --- enums ----------------------------------------------------------------------------------------
 
@@ -135,6 +139,30 @@ class DeviceState(enum.Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class NodeFlag(enum.Enum):
+    """A boolean property of a node; ``ScreenNode.flags`` holds the ones that are true."""
+
+    ENABLED = "ENABLED"
+    CHECKED = "CHECKED"
+    CHECKABLE = "CHECKABLE"
+    CLICKABLE = "CLICKABLE"
+    FOCUSED = "FOCUSED"
+    FOCUSABLE = "FOCUSABLE"
+    LONG_CLICKABLE = "LONG_CLICKABLE"
+    SCROLLABLE = "SCROLLABLE"
+    SELECTED = "SELECTED"
+
+
+class NodeChange(enum.Enum):
+    """A ``ScreenNode`` against the previous snapshot of the same attached device. ``NONE``:
+    there was no previous snapshot."""
+
+    NONE = "NONE"
+    ADDED = "ADDED"
+    UNCHANGED = "UNCHANGED"
+    REMOVED = "REMOVED"
+
+
 # --- values ---------------------------------------------------------------------------------------
 
 
@@ -230,6 +258,74 @@ class ServerInfo:
     driver_available: bool
     pid: int
     defaults: ServerDefaults
+
+
+@dataclass(frozen=True)
+class AttachedDeviceEntry:
+    """A device attached to a connection (``ConnectionEntry.attached_devices``)."""
+
+    attached_device_id: str
+    serial: str
+    aut_package: str
+    generation: int
+
+
+@dataclass(frozen=True)
+class ConnectionEntry:
+    """A live client connection (``TapClient.connections()``). ``hold`` is the idle timeout in
+    seconds of a held connection, None for an observed one; ``idle`` is how long, in seconds,
+    no call has named it (0 while one is running)."""
+
+    id: str
+    name: str
+    hold: float | None
+    idle: float
+    attached_devices: tuple[AttachedDeviceEntry, ...]
+
+
+@dataclass(frozen=True)
+class ScreenNode:
+    """One visible node of a ``ScreenSnapshot``, in dump (pre-order) order.
+
+    ``ref`` (``e<N>``) stays the same across snapshots while the node is unchanged and is never
+    reused for another node. ``selector`` is one the daemon found to match only this node in the
+    dump (None when there is none); ``by_index`` marks one that ends in an index pick, which is
+    right for this dump but fragile if the screen reorders. ``window_package`` is the package of
+    the window the node is in. ``interactive``: clickable, long-clickable, checkable, scrollable
+    or editable."""
+
+    ref: str
+    depth: int
+    window_package: str
+    class_name: str | None
+    resource_name: str | None
+    text: str | None
+    content_description: str | None
+    hint: str | None
+    bounds: Bounds
+    flags: frozenset[NodeFlag]
+    password: bool
+    interactive: bool
+    selector: Selector | None
+    by_index: bool
+    change: NodeChange
+
+
+@dataclass(frozen=True)
+class ScreenSnapshot:
+    """The visible screen as ref-addressed nodes (``Device.screen_snapshot()``). ``removed``
+    lists the previous snapshot's nodes that are gone; their refs no longer resolve.
+    ``snapshot_id`` increases per attached device."""
+
+    snapshot_id: int
+    nodes: tuple[ScreenNode, ...]
+    removed: tuple[ScreenNode, ...]
+    rotation: int
+
+    def node(self, ref: str) -> ScreenNode | None:
+        """The node with ``ref`` (with or without the leading ``@``), or None."""
+        ref = ref.removeprefix("@")
+        return next((n for n in self.nodes if n.ref == ref), None)
 
 
 # --- artifacts ------------------------------------------------------------------------------------
