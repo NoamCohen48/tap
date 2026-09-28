@@ -154,30 +154,22 @@ server, then attaches each device it needs.
 
     ```kotlin
     runBlocking {
-        val client = TapClient.create()              // resolves tap.server / daemon.json
-        try {
-            val connection = client.connect("smoke")
-            try {
-                tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.shop")
-                    try {
-                        device.app().coldLaunch()
-                        println(device.element(text("Welcome")).exists())
-                    } finally {
-                        device.detach()
-                    }
+        TapClient.create().use { client ->           // resolves tap.server / daemon.json
+            client.connect("smoke").use { connection ->
+                connection.attach("emulator-5554", "com.shop") { device ->
+                    device.app().coldLaunch()
+                    println(device.element(text("Welcome")).exists())
                 }
-            } finally {
-                connection.close()
             }
-        } finally {
-            client.close()
         }
     }
     ```
 
-    Device work (attach, use, detach) lives inside `tapScope { ... }`; detaching is `suspend`
-    (no `AutoCloseable`), so callers use `try`/`finally` inside the scope.
+    `use { }` closes the client and the connection after the block; `attach(serial, aut) { }`
+    attaches, runs the block and always detaches. A failure in the block wins, and a close or
+    detach failure after it is added as suppressed. `attach` provides the `tapScope` device
+    calls need. For handles that outlive one block, `connection.attachDevice(...)` inside
+    `tapScope { ... }` with `device.detach()` in a `finally` does the same by hand.
 
 === "Python"
 

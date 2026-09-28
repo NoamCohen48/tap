@@ -81,7 +81,7 @@ def test_connect_observes_before_returning(fake):
         assert connection.events == ["observing"]
         assert connection.usable
         connection.close()
-        assert connection.close() is None, "close is idempotent"
+        connection.close()  # idempotent
         assert fake.connections.disconnects == [connection.id]
     finally:
         server.close()

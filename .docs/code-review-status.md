@@ -6,10 +6,10 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 140 |
+| Fixed | 141 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
 | Partial | 1 |
-| Open | 2 |
+| Open | 1 |
 | Won't fix (accepted risk, see decisions) | 2 |
 | Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
 | Deferred (synchronization is WIP, see below) | 7 |
@@ -212,7 +212,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | K-15 | L→bug | Fixed | `DeviceAdmission` carries every admitted device of the enclosing operations, so detaching A inside B's operation nested in A's fails fast (`TapClientTest`) | M |
 | J-5 | L→bug | Fixed | `DeviceBarrier` uses a plain monitor; withdrawal can no longer be cancelled | S |
 | K-4 | M | Fixed | Both SDKs return their own types (`Models.kt`/`Artifacts.kt`, `models.py`) through internal mappers; `execute`, `Selector.proto` and `tap-api` are internal (`ModelsTest`, `test_models.py` prove every schema value maps). Kotlin client 0.3.0, Python 0.2.0 | L |
-| K-9 | M | Open | `tapScope`/`ensureTapBound` mandatory; no `use {}`/`attach {}` helpers | M |
+| K-9 | M | Fixed | `TapClient.use {}` / `TapConnection.use {}` and `connection.attach(serial, pkg) { device -> }` (joins the caller's `TapContext` or installs one, always detaches; body failure wins, close/detach failure suppressed; `closing()` in `TapClient.kt`). `tapScope` / `attachDevice` / `ensureTapBound` stay. Python already had `with`; its `TapConnection.close()` no longer returns the proto `DisconnectResponse`. Tests: `TapClientTest` attach/use cases | — |
 | K-1 | M | Backlog | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
 | K-17 | M | Fixed | `App` unit test: targets, timeouts, activity, chunked APK upload, process identity and a refused grant (`TapClientTest`) | S |
 | K-11 | L | Fixed | The internal node combinators are private `conjunction`/`disjunction`; `allOf`/`anyOf` are only the public selector entry points | S |

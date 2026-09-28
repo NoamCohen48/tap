@@ -485,17 +485,17 @@ class TapConnection:
         self.ensure_usable("attach_device")
         return Device._attach_device(self, serial, aut_package, **options)
 
-    def close(self) -> pb.DisconnectResponse | None:
+    def close(self) -> None:
         """Disconnects (the server detaches this connection's devices), then drops the liveness
-        stream. Idempotent: later calls return None."""
+        stream. Idempotent: later calls do nothing."""
         if self._closed:
-            return None
+            return
         self._closing = True
         # Close explicitly before dropping the liveness stream, so the server records a client
         # request rather than a dropped stream.
         try:
             with mapped_errors():
-                return self.client.client_connections.Disconnect(
+                self.client.client_connections.Disconnect(
                     pb.DisconnectRequest(client_connection_id=self.id),
                     timeout=60,
                 )

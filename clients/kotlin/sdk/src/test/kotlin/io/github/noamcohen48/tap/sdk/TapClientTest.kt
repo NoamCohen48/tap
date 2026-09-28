@@ -45,6 +45,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -564,6 +565,66 @@ class TapClientTest {
     fun `element waits map only WAIT_TIMEOUT to WaitTimeoutException`() {
         waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.await(text("x")).visible() }.let { assertIs<WaitTimeoutException>(it) }
         waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.await(text("x")).gone() }.let { assertIs<CommandException>(it) }
+    }
+
+    @Test
+    fun `attach block needs no tapScope and always detaches`() {
+        runBlocking {
+            client().connect("test").use { connection ->
+                assertEquals("done", connection.attach("emulator-5554", "com.test") { "done" })
+                assertEquals(listOf("attached-emulator-5554"), fakeDevices.closes.toList())
+
+                // Inside an existing scope it reuses the caller's TapContext instead of nesting.
+                tapScope("outer") {
+                    connection.attach("emulator-5554", "com.test") { assertEquals("outer", currentCoroutineContext()[TapContext]?.owner) }
+                }
+                assertEquals(2, fakeDevices.closes.size)
+            }
+        }
+    }
+
+    @Test
+    fun `attach block failure wins over a detach failure, which is suppressed`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                fakeDevices.closeError = io.grpc.StatusException(Status.INTERNAL.withDescription("detach broke"))
+                val failure =
+                    assertFailsWith<IllegalStateException> {
+                        connection.attach("emulator-5554", "com.test") { error("body broke") }
+                    }
+                assertEquals("body broke", failure.message)
+                // Stack-trace recovery (debug mode) may hand back a copy whose cause is the original.
+                val suppressed = generateSequence<Throwable>(failure) { it.cause }.flatMap { it.suppressed.asSequence() }.toList()
+                assertEquals(listOf("INTERNAL: detach broke"), suppressed.map { it.message })
+                assertEquals(1, fakeDevices.closeCalls.get())
+
+                fakeDevices.closeError = null
+                fakeDevices.quarantineNextClose = "reboot needed"
+                val quarantined = assertFailsWith<TapException> { connection.attach("emulator-5554", "com.test") { } }
+                assertTrue(quarantined.message!!.contains("reboot needed"))
+            } finally {
+                fakeDevices.closeError = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `use closes the connection after the block, also when it fails`() {
+        runBlocking {
+            val kept = client().connect("test")
+            assertEquals(kept, kept.use { it })
+            assertTrue(kept.isClosed)
+            lateinit var failed: TapConnection
+            assertFailsWith<IllegalStateException> {
+                client().connect("test").use {
+                    failed = it
+                    error("body broke")
+                }
+            }
+            assertTrue(failed.isClosed)
+        }
     }
 
     @Test

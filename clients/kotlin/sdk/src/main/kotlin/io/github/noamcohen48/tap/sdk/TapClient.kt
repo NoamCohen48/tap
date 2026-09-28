@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
@@ -148,6 +149,12 @@ class TapClient public constructor(
             }
         }
     }
+
+    /**
+     * Runs [block] with this client, then [close]s it. A [block] failure wins; a close failure
+     * after it is added as suppressed.
+     */
+    suspend fun <R> use(block: suspend (TapClient) -> R): R = closing({ close() }) { block(this) }
 
     companion object {
         /**
@@ -374,6 +381,33 @@ class TapConnection internal constructor(
         }
         return device
     }
+
+    /**
+     * Attaches [serial] for [autPackage] ([attachDevice]), runs [block] with the device and
+     * always detaches it afterwards. Runs inside the caller's `tapTest` / `tapScope`, or installs
+     * a [TapContext] of its own when there is none, so a script needs no `tapScope`. A [block]
+     * failure wins and a detach failure after it is added as suppressed; when [block] succeeds,
+     * a detach failure (including quarantine) is thrown.
+     */
+    suspend fun <R> attach(
+        serial: String,
+        autPackage: String,
+        timeouts: Timeouts = Timeouts(),
+        options: DeviceOptions = DeviceOptions(),
+        block: suspend (Device) -> R,
+    ): R {
+        suspend fun run(): R {
+            val device = attachDevice(serial, autPackage, timeouts, options)
+            return closing({ withContext(NonCancellable) { device.detach() } }) { block(device) }
+        }
+        return if (currentCoroutineContext()[TapContext] != null) run() else withContext(TapContext("attach:$serial")) { run() }
+    }
+
+    /**
+     * Runs [block] with this connection, then [close]s it. A [block] failure wins; a close
+     * failure after it is added as suppressed.
+     */
+    suspend fun <R> use(block: suspend (TapConnection) -> R): R = closing({ close() }) { block(this) }
 
     /**
      * Closes explicitly (recorded as a client request), then drops the liveness stream.
@@ -824,4 +858,24 @@ object TapDaemonProcess {
                 throw cancelled
             }
         }
+}
+
+/** `use` for suspend-closed resources: a [block] failure wins, a [close] failure after it is suppressed. */
+internal suspend fun <R> closing(
+    close: suspend () -> Unit,
+    block: suspend () -> R,
+): R {
+    val result =
+        try {
+            block()
+        } catch (primary: Throwable) {
+            try {
+                close()
+            } catch (closeFailure: Throwable) {
+                if (closeFailure !== primary) primary.addSuppressed(closeFailure)
+            }
+            throw primary
+        }
+    close()
+    return result
 }
