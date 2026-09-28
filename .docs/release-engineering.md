@@ -64,8 +64,8 @@ the `tap-api` of the current engine version is already in GitHub Packages and fa
 pointer to tag `daemon/v<engine>` first.
 
 Client 0.2.0 (2026-09-21) is the breaking coroutine release: every `Device`/`App`/`Element`
-call is `suspend` behind `tapTest`/`tapScope`, `ClientConnection` owns its attach scope, and
-`TapClient`/`ClientConnection`/`Device` close via `suspend` (no `AutoCloseable`). The wire is
+call is `suspend` behind `tapTest`/`tapScope`, `TapConnection` owns its attach scope, and
+`TapClient`/`TapConnection`/`Device` close via `suspend` (no `AutoCloseable`). The wire is
 unchanged (`tap.v1` only gains no fields here), so the break is source-only: 0.1.x callers
 recompile against `tapTest`/`tapScope`. Engine and Python/sync lines did not move.
 

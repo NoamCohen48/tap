@@ -1,6 +1,6 @@
 # Kotlin client
 
-Artifacts `io.github.noamcohen48.tap:tap-client` (the SDK: `TapClient`, `ClientConnection`, `Device`, `Element`,
+Artifacts `io.github.noamcohen48.tap:tap-client` (the SDK: `TapClient`, `TapConnection`, `Device`, `Element`,
 `ElementWait`, `App`, the selector DSL) and `io.github.noamcohen48.tap:tap-junit5` (`@TapTest`,
 `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`).
 
@@ -17,7 +17,7 @@ Artifacts `io.github.noamcohen48.tap:tap-client` (the SDK: `TapClient`, `ClientC
 
 | Package | Module | Contents |
 |---|---|---|
-| `io.github.noamcohen48.tap.sdk` | tap-client | `TapClient`, `ClientConnection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
+| `io.github.noamcohen48.tap.sdk` | tap-client | `TapClient`, `TapConnection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
 | `io.github.noamcohen48.tap.junit5` | tap-junit5 | `@TapTest`, `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`, `TapExtension` |
 | `io.github.noamcohen48.tap.api.v1` | tap-api (transitive) | the generated protobuf/gRPC types (`Selector`, `Command`, `ErrorCode`, `Direction`, `StabilitySignal`, …) |
 

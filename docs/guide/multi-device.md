@@ -122,7 +122,7 @@ call away in either client:
 === "Python"
 
     ```python
-    for d in TapServer().devices():
+    for d in TapClient.create().devices():
         print(d.serial, pb.DeviceState.Name(d.state), d.client_connection_id, d.quarantine_reason)
     ```
 

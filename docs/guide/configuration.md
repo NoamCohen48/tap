@@ -110,7 +110,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | — | `TAP_STATE_DIR` | state dir shared with the daemon | `~/.tap` |
 
 Fixtures: `tap_device` (the default role), `tap_devices` (dict role → `Device`), plus
-`tap_client_connection`, `tap_server` and `tap_config` for scripts that want the lower layers. Marker:
+`tap_connection`, `tap_client` and `tap_config` for scripts that want the lower layers. Marker:
 `@pytest.mark.tap_devices("a", "b")`.
 
 ## Session options

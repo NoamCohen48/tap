@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.server
+package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason

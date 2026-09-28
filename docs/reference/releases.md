@@ -37,5 +37,5 @@ tap version                      # tap daemon 0.1.0
 python -c "import tap_e2e; print(tap_e2e.__version__)"
 ```
 
-In Kotlin, `TapClient().info()` (Python `TapServer().info()`) returns the server version, the
+`TapClient.create().info()` (Kotlin and Python) returns the server version, the
 protocol version and whether a driver is bundled.

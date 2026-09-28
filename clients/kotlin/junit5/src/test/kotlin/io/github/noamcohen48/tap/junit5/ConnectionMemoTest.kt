@@ -1,6 +1,5 @@
 package io.github.noamcohen48.tap.junit5
 
-import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
@@ -8,6 +7,7 @@ import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
+import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.sdk.TapClient
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
@@ -35,7 +35,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /** [ConnectionMemo] behaviour over an in-process fake server: reuse, re-validation, close. */
-class TapClientConnectionTest {
+class ConnectionMemoTest {
     private lateinit var serverName: String
     private lateinit var fake: FakeConnections
     private lateinit var grpcServer: io.grpc.Server

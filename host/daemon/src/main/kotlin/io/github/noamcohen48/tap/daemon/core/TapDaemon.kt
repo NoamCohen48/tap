@@ -1,12 +1,12 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.core
 
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_SESSION_CLOSE_TIMEOUT_MS
+import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
-import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
@@ -37,7 +37,7 @@ class DaemonConfig(
 
 class UnknownClientConnectionException(
     id: String,
-) : NoSuchElementException("Unknown ClientConnection $id")
+) : NoSuchElementException("Unknown client connection $id")
 
 class UnknownAttachedDeviceException(
     id: String,
@@ -47,7 +47,7 @@ class UnknownAttachedDeviceException(
 class NotOwnerException(
     attachedDeviceId: String,
     clientConnectionId: String,
-) : RuntimeException("AttachedDevice $attachedDeviceId is not owned by ClientConnection $clientConnectionId")
+) : RuntimeException("AttachedDevice $attachedDeviceId is not owned by client connection $clientConnectionId")
 
 /** A request the daemon cannot serve in its current state; maps to FAILED_PRECONDITION. */
 open class DaemonPreconditionException(
@@ -57,7 +57,7 @@ open class DaemonPreconditionException(
 /** A second Observe stream for a connection that already has one. */
 class DuplicateClientObserveException(
     id: String,
-) : DaemonPreconditionException("ClientConnection $id already has an Observe stream")
+) : DaemonPreconditionException("Client connection $id already has an Observe stream")
 
 /** A new connection attempted after daemon shutdown began. */
 class DaemonClosingException : DaemonPreconditionException("Daemon is shutting down")
@@ -94,7 +94,7 @@ data class DeviceEntry(
  * All mutable state is guarded by the owning [TapDaemon]'s lifecycle lock; transitions are
  * short non-suspending synchronized blocks, never held across suspension.
  */
-class ClientConnection internal constructor(
+class ConnectedClient internal constructor(
     val id: String,
     val name: String,
 ) {
@@ -230,7 +230,7 @@ class TapDaemon internal constructor(
     private val shutdownAttachedDeviceMs get() = deps.shutdownAttachedDeviceMs
     private val observeGraceMs get() = deps.observeGraceMs
     private val lifecycleLock = Any()
-    private val clientConnectionsById = HashMap<String, ClientConnection>()
+    private val clientConnectionsById = HashMap<String, ConnectedClient>()
     private val attachedDevicesById = HashMap<String, AttachedDevice>()
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var closing = false
@@ -240,8 +240,8 @@ class TapDaemon internal constructor(
 
     // ---- connections -------------------------------------------------------------------------
 
-    fun connectClient(name: String): ClientConnection {
-        val connection = ClientConnection(UUID.randomUUID().toString(), name)
+    fun connectClient(name: String): ConnectedClient {
+        val connection = ConnectedClient(UUID.randomUUID().toString(), name)
         synchronized(lifecycleLock) {
             if (closing) throw DaemonClosingException()
             clientConnectionsById[connection.id] = connection
@@ -259,7 +259,7 @@ class TapDaemon internal constructor(
         return connection
     }
 
-    fun clientConnection(id: String): ClientConnection =
+    fun clientConnection(id: String): ConnectedClient =
         synchronized(lifecycleLock) {
             clientConnectionsById[id]?.takeUnless { it.closed } ?: throw UnknownClientConnectionException(id)
         }
@@ -274,7 +274,7 @@ class TapDaemon internal constructor(
         id: String,
         token: Any,
         closer: (String) -> Unit,
-    ): ClientConnection =
+    ): ConnectedClient =
         synchronized(lifecycleLock) {
             val connection =
                 clientConnectionsById[id]?.takeUnless { it.closed }

@@ -5,7 +5,7 @@ Decision record. Supersedes the auto-start behaviour the clients had until Septe
 ## Decision
 
 1. **Starting the daemon is explicit.** `tap start` is the only code path that spawns a daemon.
-   Clients (`TapClient`, `TapServer()`) discover a running one — `TAP_SERVER`, then a live
+   Clients (`TapClient`, `TapClient.create()` (Python)) discover a running one — `TAP_SERVER`, then a live
    `<state-dir>/daemon.json` — and otherwise fail with *no running tap daemon; run `tap start`*.
    Convenience lives one layer up: `TapDaemonProcess.start()/stop()` and
    `tap.start_daemon()/stop_daemon()` shell out to `tap start` / `tap stop`, and the test
@@ -58,7 +58,7 @@ descriptor remains for what it was always for: later discovery by clients, `tap 
   explicit port because that is what it polls.
 - `--adb` is forwarded from `start` to `serve`; `--state-dir` always is.
 - JUnit: `TapLauncherSessionListener` (registered in `META-INF/servers`) calls
-  `TapClientConnection.shutdown()` when the launcher session closes, so `tap stop` runs after the last
+  `SharedConnection.shutdown()` when the launcher session closes, so `tap stop` runs after the last
   test rather than in a JVM shutdown hook; the hook remains as a fallback and the shutdown is
   idempotent. The listener needs `junit-platform-launcher` on the test runtime, which Gradle's
   and every IDE's JUnit Platform runner already provides (`compileOnly` in `tap-junit5`).

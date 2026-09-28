@@ -21,7 +21,7 @@ internal val FAILURE_TRAILER: Metadata.Key<Failure> =
  * Ownership marker for suspending device calls. Installed by [tapScope] (scripts) and by the
  * JUnit 5 `tapTest` bridge (which uses the same element with a `junit:<method>` owner); every
  * suspending `Device`/`App`/`Element`/`ElementWait` call requires it. `TapClient`,
- * `ClientConnection`, `DaemonDiscovery` and `TapDaemonProcess` never require it: they set up the
+ * `TapConnection`, `DaemonDiscovery` and `TapDaemonProcess` never require it: they set up the
  * channel, the connection and the daemon process outside any test scope.
  */
 class TapContext(

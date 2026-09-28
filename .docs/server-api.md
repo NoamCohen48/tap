@@ -165,7 +165,7 @@ its own response message. The RPCs are:
 
 All of them delegate to `AppLifecycle` in `:host:core`.
 
-### Failures (`failure.proto`, `server/common.kt` `Throwable.toStatus()`)
+### Failures (`failure.proto`, `daemon/grpc/common.kt` `Throwable.toStatus()`)
 
 Every non-OK status carries a serialized `tap.v1.Failure` in the binary trailer
 `tap-failure-bin`: a `FailureReason`, the `serial` when the failure is about one device,
@@ -198,7 +198,7 @@ failure, a client-side deadline).
 
 `Info` returns `defaults` (`action_timeout_ms` 10 s, `wait_timeout_ms` 10 s,
 `lifecycle_timeout_ms` 30 s, `idle_stable_ms` 200 ms, `acquire_timeout_ms` 300 s), the values
-the daemon applies to an omitted timeout (`server/common.kt` `Defaults`). The clients' own
+the daemon applies to an omitted timeout (`daemon/grpc/common.kt` `Defaults`). The clients' own
 defaults are pinned to the same numbers by `contracts/conformance/client-conformance.json`,
 which the daemon, Kotlin and Python unit suites all load.
 
@@ -212,7 +212,7 @@ Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
 - attached devices, each with an `ownerConnectionId`;
 - the once-per-serial driver install memo.
 
-It has no gRPC types. The three `*Service` classes in `io.github.noamcohen48.tap.server` extend the
+It has no gRPC types. The three `*Service` classes in `io.github.noamcohen48.tap.daemon.grpc` extend the
 grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `TapDaemon` or
 `:host:core` and wrap the reply, through `reply { … }`, which keeps cancellation intact.
 

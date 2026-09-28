@@ -43,7 +43,7 @@ import pytest  # type: ignore[import-not-found]
 
 from .device import Device
 from .errors import DeviceBusyError, DeviceQuarantinedError
-from .server import ClientConnection, TapServer, start_daemon, stop_daemon
+from .client import TapConnection, TapClient, start_daemon, stop_daemon
 
 DEFAULT_ROLE = "device"
 
@@ -141,29 +141,29 @@ def tap_config(pytestconfig: pytest.Config) -> TapConfig:
 
 
 @pytest.fixture(scope="session")
-def tap_server(tap_config: TapConfig) -> Generator[TapServer, None, None]:
+def tap_client(tap_config: TapConfig) -> Generator[TapClient, None, None]:
     """The server channel. With ``tap_manage_daemon`` the daemon is started here and, if
     that start created it, stopped after the session; one already running is left alone."""
     started = False
     if tap_config.server:
-        server = TapServer(tap_config.server)
+        client = TapClient.create(tap_config.server)
     else:
         if tap_config.manage_daemon:
             started = start_daemon().started
-        server = TapServer()
-    yield server
-    server.close()
+        client = TapClient.create()
+    yield client
+    client.close()
     if started:
         stop_daemon()
 
 
 @pytest.fixture(scope="session")
-def tap_client_connection(
-    tap_server: TapServer, request: pytest.FixtureRequest
-) -> Generator[ClientConnection, None, None]:
-    """One ``ClientConnection`` per pytest session (observing from the start); the server tears
+def tap_connection(
+    tap_client: TapClient, request: pytest.FixtureRequest
+) -> Generator[TapConnection, None, None]:
+    """One ``TapConnection`` per pytest session (observing from the start); the server tears
     everything down if this process dies."""
-    connection = tap_server.connect(
+    connection = tap_client.connect(
         f"pytest {os.getpid()} {request.config.rootpath.name}"
     )
     yield connection
@@ -190,7 +190,7 @@ def _assign(roles: list[str], available: list[str], start: int) -> dict[str, str
 
 
 def _attach_single(
-    connection: ClientConnection, config: TapConfig, candidates: list[str]
+    connection: TapConnection, config: TapConfig, candidates: list[str]
 ) -> Device:
     """Attaches the first of ``candidates`` that is free right now, trying the next on
     ``DeviceBusyError``; when all are busy, waits for the first (up to ``tap_acquire_timeout``)."""
@@ -206,7 +206,7 @@ def _attach_single(
 
 
 def _attach_all(
-    connection: ClientConnection, config: TapConfig, assignment: dict[str, str]
+    connection: TapConnection, config: TapConfig, assignment: dict[str, str]
 ) -> dict[str, Device]:
     """Attaches devices one at a time in sorted serial order. Every process takes device locks
     in the same order, so two tests wanting the same two devices cannot deadlock; the second
@@ -228,13 +228,13 @@ def _attach_all(
 @pytest.fixture
 def tap_devices(
     request: pytest.FixtureRequest,
-    tap_client_connection: ClientConnection,
+    tap_connection: TapConnection,
     tap_config: TapConfig,
 ) -> Generator[dict[str, Device], None, None]:
     roles = _declared_roles(request.node)
     # Roles → serials is decided here (declaration order over a rotated device list); the
     # server only knows serials.
-    available = tap_config.serials or tap_client_connection.available_serials()
+    available = tap_config.serials or tap_connection.available_serials()
     if len(roles) > len(available):
         where = (
             f"tap_serials lists {tap_config.serials}"
@@ -245,12 +245,12 @@ def tap_devices(
     start = next(_ROTATION)
     if len(roles) == 1:
         device = _attach_single(
-            tap_client_connection, tap_config, _rotate(available, start)
+            tap_connection, tap_config, _rotate(available, start)
         )
         devices = {roles[0]: device}
     else:
         devices = _attach_all(
-            tap_client_connection, tap_config, _assign(roles, available, start)
+            tap_connection, tap_config, _assign(roles, available, start)
         )
     state = TestDevices(devices, [device.serial for device in devices.values()])
     request.node.stash[_STATE] = state

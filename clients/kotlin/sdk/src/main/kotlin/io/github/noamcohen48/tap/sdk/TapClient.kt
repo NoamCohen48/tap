@@ -115,7 +115,7 @@ class TapClient public constructor(
         }
 
     /**
-     * Opens a [ClientConnection] and starts its liveness observation: if this process dies, the server
+     * Opens a [TapConnection] and starts its liveness observation: if this process dies, the server
      * detaches every device the connection owns. The observe stream is established before this
      * returns (the first `Observe` event, `observing`, is awaited), so every later `attachDevice`
      * belongs to a live connection. An empty stream, a `closing` first event or any failure
@@ -123,7 +123,7 @@ class TapClient public constructor(
      * non-cancellable context. A later `closing` event (the daemon reaped this connection or is
      * shutting down) makes the connection unusable with the daemon's reason.
      */
-    suspend fun connect(name: String): ClientConnection {
+    suspend fun connect(name: String): TapConnection {
         val id =
             mapped {
                 clientConnections
@@ -132,14 +132,14 @@ class TapClient public constructor(
                     .clientConnectionId
             }
         // observe() closes the new id itself when it fails before the first event.
-        return ClientConnection(this, id).also { it.observe() }
+        return TapConnection(this, id).also { it.observe() }
     }
 
     /**
      * Shuts the channel down. Runs under [NonCancellable] with bounded waits so teardown
      * completes even when the caller is cancelled: `shutdown`, a bounded await, then
      * `shutdownNow` plus a second bounded await for forced termination.
-     * Close every [ClientConnection] first.
+     * Close every [TapConnection] first.
      */
     suspend fun close() {
         withContext(NonCancellable + Dispatchers.IO) {
@@ -176,11 +176,11 @@ class TapClient public constructor(
 
 /**
  * Immutable per-connection bounds. Injected at construction; tests create isolated
- * [ClientConnection] instances with short bounds instead of mutating shared state, so parallel
+ * [TapConnection] instances with short bounds instead of mutating shared state, so parallel
  * test runs stay deterministic. Defaults cover production (60 s Close deadline + margin,
  * bounded attach teardown).
  */
-internal data class ClientConnectionBounds(
+internal data class TapConnectionBounds(
     val closeOuterMs: Long = 65_000L,
     val teardownMs: Long = 5_000L,
 )
@@ -208,10 +208,10 @@ internal data class ClientConnectionBounds(
  * cancels and joins the collector even for a stubborn (cancellation-ignoring) collector,
  * preserving the primary `Disconnect` failure and suppressing cleanup failures.
  */
-class ClientConnection internal constructor(
+class TapConnection internal constructor(
     val client: TapClient,
     val id: String,
-    private val bounds: ClientConnectionBounds = ClientConnectionBounds(),
+    private val bounds: TapConnectionBounds = TapConnectionBounds(),
     private val deviceBounds: DeviceBounds = DeviceBounds(),
 ) {
     private val events = CopyOnWriteArrayList<String>()
@@ -244,7 +244,7 @@ class ClientConnection internal constructor(
 
     internal suspend fun observe() {
         if (!observeStarted.compareAndSet(false, true)) {
-            throw TapUsageException("ClientConnection($id).observe must run exactly once")
+            throw TapUsageException("TapConnection($id).observe must run exactly once")
         }
         val flow: Flow<ObserveResponse>
         try {
@@ -371,8 +371,8 @@ class ClientConnection internal constructor(
         // attachment is already covered by the connection Disconnect (or best-effort detached here).
         if (closeStarted.get()) {
             stateMutex.withLock { attachedDevices.remove(device) }
-            runCatching { device.markConnectionInvalid(TapUsageException("ClientConnection($id) is closed")) }
-            throw TapUsageException("ClientConnection($id) is closed; Device.attachDevice rejected")
+            runCatching { device.markConnectionInvalid(TapUsageException("TapConnection($id) is closed")) }
+            throw TapUsageException("TapConnection($id) is closed; Device.attachDevice rejected")
         }
         return device
     }
@@ -486,7 +486,7 @@ class ClientConnection internal constructor(
     /** Throws when this connection can no longer admit work. */
     internal fun ensureUsable(operation: String) {
         if (closeStarted.get()) {
-            throw TapUsageException("ClientConnection($id) is closed; $operation rejected")
+            throw TapUsageException("TapConnection($id) is closed; $operation rejected")
         }
         unusableCause.get()?.let { cause ->
             throw ServerException(

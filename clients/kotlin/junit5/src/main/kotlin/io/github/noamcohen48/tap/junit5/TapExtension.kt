@@ -7,9 +7,9 @@ import io.github.noamcohen48.tap.sdk.TapContext
 import io.github.noamcohen48.tap.sdk.TapException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -60,7 +60,7 @@ class TapExtension :
                     val roles = declaredRoles(context)
                     val available =
                         config.serials.ifEmpty {
-                            TapClientConnection.connection().availableSerials()
+                            SharedConnection.connection().availableSerials()
                         }
                     // Fewer devices than roles is an environment precondition, not a test failure.
                     assumeTrue(roles.size <= available.size) {
@@ -69,7 +69,7 @@ class TapExtension :
                     }
                     val start = ROTATION.getAndIncrement()
                     val assignment = assignSerials(roles, available, config.pinnedRoles, start)
-                    val connection = TapClientConnection.connection()
+                    val connection = SharedConnection.connection()
                     val single = roles.singleOrNull()?.takeIf { it !in config.pinnedRoles }
                     val devices =
                         if (single != null) {
@@ -233,7 +233,7 @@ class TapExtension :
      * first one, bounded by `tap.acquireTimeoutSeconds`, as a multi-role test does.
      */
     internal suspend fun openSingle(
-        connection: io.github.noamcohen48.tap.sdk.ClientConnection,
+        connection: io.github.noamcohen48.tap.sdk.TapConnection,
         role: String,
         candidates: List<String>,
         config: TapConfig,
@@ -261,7 +261,7 @@ class TapExtension :
      * suppressed into the opener before rethrow.
      */
     internal suspend fun openAll(
-        connection: io.github.noamcohen48.tap.sdk.ClientConnection,
+        connection: io.github.noamcohen48.tap.sdk.TapConnection,
         assignment: Map<String, String>,
         config: TapConfig,
     ): Map<String, Device> {

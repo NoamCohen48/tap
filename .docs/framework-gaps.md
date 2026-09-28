@@ -16,7 +16,7 @@ A product team can write and run real tests today:
 
 - `:host:daemon` (`tap serve`) — the one host process: ADB, journals, per-device locks, driver
   lifecycle, `AppLifecycle`, device list; JVM dist or native image.
-- `:clients:kotlin:sdk` — `TapClient`/`ClientConnection` (owned attach scope), `Device`, `App`,
+- `:clients:kotlin:sdk` — `TapClient`/`TapConnection` (owned attach scope), `Device`, `App`,
   `Element`, `ElementWait` (all `suspend` over grpc-kotlin stubs), `tapScope` for scripts,
   selector DSL, typed exceptions; a gRPC client of the server.
 - `:clients:kotlin:junit5` — `@TapTest`, mandatory `tapTest { ... }` bridge with per-test root
@@ -59,7 +59,7 @@ the CI pilot.
 ## Host SDK (plan §12–13) — Phase 2 deviations
 
 Delivered 2026-09-21 (client 0.2.0, breaking): the Kotlin SDK is `suspend` throughout
-(`TapClient`/`ClientConnection`/`Device`/`App`/`Element`/`ElementWait` over grpc-kotlin
+(`TapClient`/`TapConnection`/`Device`/`App`/`Element`/`ElementWait` over grpc-kotlin
 `CoroutineStub`s, `delay`-based polling, `tapScope` for scripts) and multi-device fan-out is
 structured (`tapTest` + `coroutineScope`/`async`, `DeviceBarrier` for simultaneous phases).
 Proving tests: `TapClientTest` (in-process attach lifetime/close ordering, Execute
@@ -67,7 +67,7 @@ cancellation, sibling-cancellation shape, scope enforcement), `DeviceBarrierTest
 (release/reuse/one-shot with waiting reset/cancellation), `TapTestBridgeTest`
 (binding/nesting incl. child coroutines, root cancellation, accepted-`Execute` sibling
 cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation
-incl. interrupted-`tapTest` → `AfterEach` closing every device), `TapClientConnectionTest`
+incl. interrupted-`tapTest` → `AfterEach` closing every device), `ConnectionMemoTest`
 (generations, reopen, shutdown-vs-connection race), and the
 device fixture `MultiDeviceTest.siblingFailureCancelsWaitWithoutReplay` (failing sibling
 cancels the other's in-flight wait without replaying the pre-scope mutation; the accepted-

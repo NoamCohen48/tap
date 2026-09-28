@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.core
 
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import java.nio.file.Files

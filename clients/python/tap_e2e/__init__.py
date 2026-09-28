@@ -1,9 +1,8 @@
 """Tap Python client: drives Android devices through the Tap host server.
 
-from tap_e2e import TapServer, text, res
+from tap_e2e import TapClient, text, res
 
-server = TapServer()                                  # a running server (`tap start`)
-with server.connect("smoke") as connection:
+with TapClient.create() as client, client.connect("smoke") as connection:  # `tap start` first
     with connection.attach_device("emulator-5554", "com.example.app") as device:
         device.app().cold_launch()
         device.element(res("login")).tap()
@@ -50,10 +49,11 @@ from .selectors import (
     text_matches,
     text_starts_with,
 )
-from .server import (
-    ClientConnection,
+from .client import (
     DaemonStartResult,
-    TapServer,
+    Endpoint,
+    TapClient,
+    TapConnection,
     resolve_address,
     running_server,
     start_daemon,
@@ -78,7 +78,6 @@ __all__ = [
     "UP",
     "App",
     "AppLifecycleError",
-    "ClientConnection",
     "CommandError",
     "DaemonStartResult",
     "Device",
@@ -86,12 +85,14 @@ __all__ = [
     "DeviceQuarantinedError",
     "Element",
     "ElementWait",
+    "Endpoint",
     "ErrorCode",
     "ProcessIdentity",
     "Selector",
     "ServerError",
     "TapError",
-    "TapServer",
+    "TapClient",
+    "TapConnection",
     "Timeouts",
     "WaitTimeoutError",
     "all_of",

@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * ends the connection in order: a `CLOSE` frame with the reason is queued behind the frames
  * already on the writer, then the socket is closed.
  */
-internal class ClientConnection(
+internal class DriverConnection(
     private val socket: Socket,
     private val engine: DriverCommandEngine,
     private val faults: FaultHooks,

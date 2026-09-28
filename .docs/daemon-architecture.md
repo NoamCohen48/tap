@@ -15,20 +15,20 @@ Kotlin / Python SDK client
           v
 +----------------------------- TapDaemon -----------------------------+
 |                                                                    |
-|  TapServer                                                         |
+|  gRPC services                                                     |
 |      |                                                             |
 |      v                                                             |
-|  ClientConnection      AttachedDevice registry                     |
+|  ConnectedClient      AttachedDevice registry                      |
 |                               |                                    |
-|                               | owns cleanup of                     |
+|                               | owns cleanup of                    |
 |                               v                                    |
-|                          DeviceSession                              |
-|                               |                                    |
-|                               v                                    |
-|                          DriverClient                               |
+|                          DeviceSession                             |
 |                               |                                    |
 |                               v                                    |
-|                          DriverTransport                            |
+|                          DriverClient                              |
+|                               |                                    |
+|                               v                                    |
+|                          DriverTransport                           |
 +-------------------------------|------------------------------------+
                                 | TAP1 over an ADB-forwarded socket
                                 v
@@ -53,15 +53,15 @@ The long-running host process started by `tap start`.
 
 It owns:
 
-- the `TapServer` lifecycle;
-- the `ClientConnection` registry;
+- the `gRPC services` lifecycle;
+- the `ConnectedClient` registry;
 - the `AttachedDevice` registry;
 - daemon-wide device discovery and bundled-driver installation state;
 - shutdown coordination and detached cleanup work.
 
 The daemon creates both client connections and attached devices. It is the only object that resolves their public IDs.
 
-### `TapServer`
+### gRPC services (`daemon.grpc`)
 
 The client-facing gRPC listener and request adapters inside `TapDaemon`.
 
@@ -75,7 +75,7 @@ It:
 
 Its public RPC areas are client connections, devices, and apps. It does not own ADB, driver instrumentation, or TAP1 transport state.
 
-### `ClientConnection`
+### `ConnectedClient`
 
 One logical connection from one SDK process to the daemon.
 
@@ -88,7 +88,7 @@ It contains:
 
 The long-lived Observe stream is the liveness signal for the SDK process. Disconnecting it detaches every device whose `ownerConnectionId` matches the connection.
 
-A `ClientConnection` does not contain attached-device objects or IDs. The authoritative ownership relationship exists only on `AttachedDevice.ownerConnectionId`.
+A `ConnectedClient` does not contain attached-device objects or IDs. The authoritative ownership relationship exists only on `AttachedDevice.ownerConnectionId`.
 
 ### `DeviceEntry`
 
@@ -133,7 +133,7 @@ Attaching a device acquires the lease, recovers prior state, starts the driver, 
 
 A device session is never transferred between clients. Another client can attach the serial only after the old device session releases its lease, and receives a fresh session ID, secret, driver run, and generation.
 
-A `DeviceSession` knows nothing about `TapDaemon`, `TapServer`, `ClientConnection`, `AttachedDevice`, gRPC, or SDK clients. Host validation can use it without running the daemon.
+A `DeviceSession` knows nothing about `TapDaemon`, the gRPC services, `ConnectedClient`, `AttachedDevice`, gRPC, or SDK clients. Host validation can use it without running the daemon.
 
 ### `DriverClient`
 
@@ -184,7 +184,7 @@ The vocabulary distinguishes process connectivity, device ownership, and UI stat
 The daemon owns two independent registries. The only ownership edge is an ID on the attached device.
 
 ```kotlin
-class ClientConnection(
+class ConnectedClient(
     val id: String,
     val name: String,
 )
@@ -198,7 +198,7 @@ class AttachedDevice(
 )
 
 class TapDaemon {
-    val clientConnectionsById: MutableMap<String, ClientConnection>
+    val clientConnectionsById: MutableMap<String, ConnectedClient>
     val attachedDevicesById: MutableMap<String, AttachedDevice>
 }
 ```
@@ -209,7 +209,7 @@ The ownership direction is:
 
 ```text
 TapDaemon
-├── registry owns ClientConnection
+├── registry owns ConnectedClient
 └── registry owns AttachedDevice
         └── owns cleanup responsibility for DeviceSession
                 └── owns DriverClient
@@ -220,8 +220,8 @@ TapDaemon
 
 ```text
 SDK client sends Connect
-→ TapServer validates the request
-→ TapDaemon creates ClientConnection
+→ gRPC services validates the request
+→ TapDaemon creates ConnectedClient
 → register it under the lifecycle lock
 → return client_connection_id
 → SDK starts Observe stream
@@ -233,7 +233,7 @@ If Observe ends unexpectedly, the daemon disconnects the client connection and d
 
 ```text
 SDK client sends AttachDevice
-→ TapServer validates serial and AUT package
+→ gRPC services validates serial and AUT package
 → TapDaemon verifies ownerConnectionId
 → open DeviceSession outside the lifecycle lock
 → create AttachedDevice
@@ -258,7 +258,7 @@ Disconnecting a client:
 
 ```text
 under lifecycle lock:
-  remove and mark ClientConnection closed
+  remove and mark ConnectedClient closed
   scan attachedDevicesById for matching ownerConnectionId
   remove all matching AttachedDevices
 outside lifecycle lock:
@@ -305,7 +305,10 @@ The SDK-facing `Device` class is the client proxy for an `AttachedDevice`. The d
 | Tap host service/process | Tap daemon |
 | `TapService` | `TapDaemon` |
 | `ServiceConfig` | `DaemonConfig` |
-| daemon `Connection` | `ClientConnection` |
+| daemon `Connection` / `ClientConnection` | `ConnectedClient` (the proto keeps `ClientConnectionService` and `client_connection_id`) |
+| `TapServer` (daemon gRPC layer) | the services in `…daemon.grpc` |
+| driver `ClientConnection` | `DriverConnection` |
+| SDK `ClientConnection`, Python `TapServer` / `ClientConnection` | `TapConnection`, Python `TapClient` / `TapConnection` |
 | daemon `Session` / `ClientSession` | `AttachedDevice` |
 | `client_session_id` | `attached_device_id` |
 | `OpenClientSession` | `AttachDevice` |

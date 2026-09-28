@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pathlib
 
-from tap_e2e import TapServer
+from tap_e2e import TapClient
 from tap_e2e.pytest_plugin import TapConfig, _assign, _attach_single, _rotate
 
 from .conftest import TOKEN
@@ -28,7 +28,7 @@ def test_single_role_moves_past_a_busy_device_and_waits_only_when_all_are(fake):
         acquire_timeout=7,
         manage_daemon=False,
     )
-    server = TapServer(fake.address, TOKEN)
+    server = TapClient.create(fake.address, TOKEN)
     connection = server.connect("test")
     try:
         fake.devices.busy.add("serial-aaa")

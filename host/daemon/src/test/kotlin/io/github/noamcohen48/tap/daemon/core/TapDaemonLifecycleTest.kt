@@ -1,13 +1,15 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.core
 
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
-import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
-import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
+import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
+import io.github.noamcohen48.tap.daemon.grpc.DeviceService
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDevice
 import io.github.noamcohen48.tap.host.AdbDeviceState
@@ -30,8 +32,6 @@ import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.stamped
 import io.github.noamcohen48.tap.protocol.toSelector
 import io.github.noamcohen48.tap.wire.v1.Request
-import io.github.noamcohen48.tap.server.ClientConnectionService
-import io.github.noamcohen48.tap.server.DeviceService
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import io.grpc.inprocess.InProcessChannelBuilder
@@ -217,7 +217,7 @@ class TapDaemonLifecycleTest {
             System.gc()
             Thread.sleep(10)
         }
-        assertNull(connection.get(), "the daemon still references the disconnected ClientConnection")
+        assertNull(connection.get(), "the daemon still references the disconnected ConnectedClient")
         assertNull(attached.get(), "the daemon still references the detached AttachedDevice")
     }
 
@@ -500,7 +500,7 @@ class TapDaemonLifecycleTest {
                     daemon.disconnectClientWithin(connection.id, "exhausted test", perSessionMs, totalTimeoutMs = 0)
                 }
             assertEquals(sessionCount, closed)
-            // ClientConnection-specific branch, not the daemon-level one.
+            // ConnectedClient-specific branch, not the daemon-level one.
             assertTrue(
                 logs.any {
                     it.contains("connection ${connection.id} shutdown budget exhausted") &&

@@ -22,7 +22,7 @@ from tap_e2e import _gen as pb
 from tap_e2e.app import App
 from tap_e2e.device import Timeouts
 from tap_e2e.pytest_plugin import DEFAULT_ACQUIRE_TIMEOUT
-from tap_e2e.server import _map_rpc_error
+from tap_e2e.client import _map_rpc_error
 
 TABLE = json.loads(
     (

@@ -16,7 +16,7 @@ from .app import App
 from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
 from .selectors import Selector
-from .server import ClientConnection, mapped_errors
+from .client import TapConnection, mapped_errors
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -54,13 +54,13 @@ class Device:
 
     def __init__(
         self,
-        owner_connection: ClientConnection,
+        owner_connection: TapConnection,
         response: pb.AttachResponse,
         aut_package: str,
         timeouts: Timeouts,
     ):
         self.owner_connection = owner_connection
-        self.server = owner_connection.server
+        self.client = owner_connection.client
         self.attached_device_id = response.attached_device_id
         self.serial = response.serial
         self.generation = response.generation
@@ -71,7 +71,7 @@ class Device:
     @classmethod
     def _attach_device(
         cls,
-        owner_connection: ClientConnection,
+        owner_connection: TapConnection,
         serial: str,
         aut_package: str,
         timeouts: Timeouts | None = None,
@@ -79,7 +79,7 @@ class Device:
         sync_authority: str | None = None,
         wait_for_device: float = 0,
     ) -> Device:
-        """Attach ``serial`` for ``aut_package`` (used by ``ClientConnection.attach_device``).
+        """Attach ``serial`` for ``aut_package`` (used by ``TapConnection.attach_device``).
         The attachment holds the device's per-serial lock until ``detach``; if another device session holds
         it, attachment raises ``DeviceBusyError`` — at once, or after ``wait_for_device`` seconds.
         The driver is always the daemon's (bundled, or ``tap serve --driver-apk X
@@ -98,7 +98,7 @@ class Device:
         if sync_authority:
             request.sync_authority = sync_authority
         with mapped_errors(serial):
-            response = owner_connection.server.device_stub.Attach(
+            response = owner_connection.client.device_stub.Attach(
                 request, timeout=180 + wait_for_device
             )
         return cls(owner_connection, response, aut_package, timeouts)
@@ -113,7 +113,7 @@ class Device:
         command = pb.Command(timeout_ms=int(_or(timeout, self.timeouts.action) * 1000))
         getattr(command, name).CopyFrom(message)
         with mapped_errors(self.serial):
-            return self.server.device_stub.Execute(
+            return self.client.device_stub.Execute(
                 pb.ExecuteRequest(
                     client_connection_id=self.owner_connection.id,
                     attached_device_id=self.attached_device_id,
@@ -197,7 +197,7 @@ class Device:
             timeout_ms=int(_or(timeout, self.timeouts.lifecycle) * 1000),
         )
         with mapped_errors(self.serial):
-            response = self.server.device_stub.Screenshot(
+            response = self.client.device_stub.Screenshot(
                 request, timeout=request.timeout_ms / 1000 + RPC_DEADLINE_SLACK
             )
         png = response.png
@@ -225,7 +225,7 @@ class Device:
         self._ensure_usable("driver_log")
         with mapped_errors(self.serial):
             return list(
-                self.server.device_stub.DriverLog(
+                self.client.device_stub.DriverLog(
                     pb.DriverLogRequest(
                         client_connection_id=self.owner_connection.id,
                         attached_device_id=self.attached_device_id,
@@ -365,7 +365,7 @@ class Device:
         if self._detached:
             return None
         with mapped_errors(self.serial):
-            response = self.server.device_stub.Detach(
+            response = self.client.device_stub.Detach(
                 pb.DetachRequest(
                     client_connection_id=self.owner_connection.id,
                     attached_device_id=self.attached_device_id,

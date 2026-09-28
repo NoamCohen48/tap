@@ -182,9 +182,9 @@ server, then attaches each device it needs.
 === "Python"
 
     ```python
-    from tap_e2e import TapServer, text
+    from tap_e2e import TapClient, text
 
-    with TapServer().connect("smoke") as connection:
+    with TapClient.create().connect("smoke") as connection:
         with connection.attach_device("emulator-5554", "com.shop") as device:
             device.app().cold_launch()
             print(device.element(text("Welcome")).exists())

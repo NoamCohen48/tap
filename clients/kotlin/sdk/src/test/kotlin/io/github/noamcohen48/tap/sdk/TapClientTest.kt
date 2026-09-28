@@ -4,30 +4,30 @@ import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.Heartbeat
-import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
-import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.Done
-import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.api.v1.Heartbeat
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
+import io.github.noamcohen48.tap.api.v1.Observing
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
 import io.grpc.MethodDescriptor
@@ -60,9 +60,9 @@ import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertContentEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -354,7 +354,7 @@ class TapClientTest {
         runBlocking {
             fakeConnections.observeMode = FakeConnections.ObserveMode.STUBBORN
             // Isolated per-instance bound (no shared mutation): safe under parallel tests.
-            val connection = ClientConnection(client(), "conn-stubborn", ClientConnectionBounds(teardownMs = 300))
+            val connection = TapConnection(client(), "conn-stubborn", TapConnectionBounds(teardownMs = 300))
             connection.observe()
             try {
                 val started = System.nanoTime()
@@ -433,7 +433,7 @@ class TapClientTest {
     @Test
     fun `device drain timeout detaches only that device and keeps the connection`() {
         runBlocking {
-            val connection = ClientConnection(client(), "conn-failclosed", ClientConnectionBounds(), DeviceBounds(drainMs = 300))
+            val connection = TapConnection(client(), "conn-failclosed", TapConnectionBounds(), DeviceBounds(drainMs = 300))
             connection.observe()
             try {
                 tapScope {
@@ -493,7 +493,7 @@ class TapClientTest {
     fun `fail-closed DetachDevice failure is suppressed without stranding`() {
         runBlocking {
             fakeDevices.closeError = StatusRuntimeException(Status.UNAVAILABLE.withDescription("detach boom"))
-            val connection = ClientConnection(client(), "conn-failclosed-err", ClientConnectionBounds(), DeviceBounds(drainMs = 300))
+            val connection = TapConnection(client(), "conn-failclosed-err", TapConnectionBounds(), DeviceBounds(drainMs = 300))
             connection.observe()
             try {
                 tapScope {

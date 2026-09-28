@@ -2,7 +2,6 @@ package io.github.noamcohen48.tap.junit5
 
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
-import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
@@ -19,17 +18,18 @@ import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
-import io.github.noamcohen48.tap.sdk.ClientConnection
+import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.KEYCODE_BACK
 import io.github.noamcohen48.tap.sdk.TapClient
+import io.github.noamcohen48.tap.sdk.TapConnection
 import io.github.noamcohen48.tap.sdk.TapUsageException
 import io.github.noamcohen48.tap.sdk.tapScope
 import io.github.noamcohen48.tap.sdk.text
 import io.grpc.ManagedChannel
-import io.grpc.protobuf.lite.ProtoLiteUtils
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
+import io.grpc.protobuf.lite.ProtoLiteUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

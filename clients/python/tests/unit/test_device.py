@@ -6,7 +6,7 @@ from __future__ import annotations
 import grpc
 import pytest  # type: ignore[import-not-found]
 
-from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapServer, WaitTimeoutError
+from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapClient, WaitTimeoutError
 from tap_e2e import _gen as pb
 from tap_e2e import raw_res, res, text
 
@@ -15,7 +15,7 @@ from .conftest import TOKEN
 
 @pytest.fixture
 def device(fake):
-    server = TapServer(fake.address, TOKEN)
+    server = TapClient.create(fake.address, TOKEN)
     connection = server.connect("test")
     device = connection.attach_device("emulator-5554", "com.test")
     yield device

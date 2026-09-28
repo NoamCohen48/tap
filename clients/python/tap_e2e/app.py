@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
-from .server import mapped_errors
+from .client import mapped_errors
 
 # Size of each streamed ``InstallRequest.chunk``.
 INSTALL_CHUNK_BYTES = 1 << 20
@@ -39,7 +39,7 @@ class App:
     def __init__(self, device: Device, package_name: str):
         self.device = device
         self.package_name = package_name
-        self._apps = device.server.apps
+        self._apps = device.client.apps
 
     def _target(self) -> pb.AppTarget:
         return pb.AppTarget(

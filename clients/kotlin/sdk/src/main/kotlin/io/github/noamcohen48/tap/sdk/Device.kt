@@ -7,14 +7,14 @@ import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
 import io.github.noamcohen48.tap.api.v1.Direction
-import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.PressKey
-import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CancellationException
@@ -56,7 +56,7 @@ internal const val RPC_DEADLINE_SLACK_MS = 60_000L
 
 /**
  * Immutable per-device close bounds. Injected at construction; tests create isolated [Device]
- * instances (via an isolated [ClientConnection] carrying these bounds) with short bounds instead of
+ * instances (via an isolated [TapConnection] carrying these bounds) with short bounds instead of
  * mutating shared state, so parallel test runs stay deterministic. Defaults cover production
  * (admitted-operation drain + 120 s DetachDevice deadline + margin).
  */
@@ -123,7 +123,7 @@ data class DeviceOptions(
  * detail.
  */
 class Device internal constructor(
-    val ownerConnection: ClientConnection,
+    val ownerConnection: TapConnection,
     val attachedDeviceId: String,
     val serial: String,
     val generation: Long,
@@ -441,7 +441,7 @@ class Device internal constructor(
      * explicitly owned per-Device [cleanupScope] (never `GlobalScope`). That job sends one
      * best-effort, bounded `Detach` for this device — the server tears the session down
      * even with the stuck command in flight — then unregisters the handle and publishes the
-     * shared terminal failure. The owner [ClientConnection] and every other device attached
+     * shared terminal failure. The owner [TapConnection] and every other device attached
      * through it are left untouched: one wedged command must not tear down unrelated devices
      * (in JUnit, the connection is shared by every later test). A `Detach` failure or
      * quarantine detail is suppressed into that failure (observable via `suppressed`) without
@@ -677,7 +677,7 @@ class Device internal constructor(
 
     companion object {
         internal suspend fun attachDevice(
-            connection: ClientConnection,
+            connection: TapConnection,
             serial: String,
             autPackage: String,
             timeouts: Timeouts,

@@ -389,7 +389,7 @@ device matrix is emulator-5554 (API 34) + 85e49002 (Samsung SM-J810G, API 29).
 - **Step-4 residual risks.** Host `--no-reboot` validation, the native image build, Python
   smoke, and the new-client `tapTest` matrix (13 device tests incl. sibling cancellation without
   replay) have passed.
-  Watch for: attach-scope behavior under parallel JUnit classes sharing one `TapClientConnection`
+  Watch for: attach-scope behavior under parallel JUnit classes sharing one `SharedConnection`
   (JVM-wide connection, per-test roots); `Dispatchers.IO` pressure from many concurrent
   attaches; and the known Compose `scrollUntil`→`exists` race noted in `framework-gaps.md`.
 - **Validation executable.** `:host:validation` already uses coroutines for fan-out; it must
