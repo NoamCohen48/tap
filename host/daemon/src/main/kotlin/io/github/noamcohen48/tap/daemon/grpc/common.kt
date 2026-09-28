@@ -1,11 +1,11 @@
-package io.github.noamcohen48.tap.server
+package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason
-import io.github.noamcohen48.tap.daemon.DaemonPreconditionException
-import io.github.noamcohen48.tap.daemon.NotOwnerException
-import io.github.noamcohen48.tap.daemon.UnknownAttachedDeviceException
-import io.github.noamcohen48.tap.daemon.UnknownClientConnectionException
+import io.github.noamcohen48.tap.daemon.core.DaemonPreconditionException
+import io.github.noamcohen48.tap.daemon.core.NotOwnerException
+import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
+import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
 import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
@@ -23,8 +23,8 @@ import io.github.noamcohen48.tap.protocol.ENGINE_VERSION
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.grpc.Metadata
 import io.grpc.Status
-import io.grpc.protobuf.lite.ProtoLiteUtils
 import io.grpc.StatusRuntimeException
+import io.grpc.protobuf.lite.ProtoLiteUtils
 import kotlinx.coroutines.CancellationException
 
 const val DAEMON_VERSION = ENGINE_VERSION

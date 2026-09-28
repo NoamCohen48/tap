@@ -1,6 +1,7 @@
-"""Selector builders. A Selector wraps the protocol's own AST (tap.v1.Selector), a small
-expression tree, so what a test builds is validated identically by the server and the driver
-and rendered in errors. Building one does no I/O; every action resolves it again on the device."""
+"""Selector builders. A Selector builds the protocol's AST (tap.v1.Selector), a small expression
+tree the server forwards to the driver unchanged, so what a test builds is validated identically
+by the server and the driver; ``render()`` shows it and errors quote it. Building one does no
+I/O; every action resolves it again on the device."""
 
 # Generated protobuf enum constants are runtime integers even though their stubs use enum types.
 # pyright: reportArgumentType=false, reportCallIssue=false
@@ -11,19 +12,22 @@ from dataclasses import dataclass
 from google.protobuf import text_format
 
 from . import _gen as pb
+from ._proto import match_mode
+from .models import MatchMode
 
-EXACT = pb.MATCH_EXACT
-CONTAINS = pb.MATCH_CONTAINS
-STARTS_WITH = pb.MATCH_STARTS_WITH
-ENDS_WITH = pb.MATCH_ENDS_WITH
-REGEX = pb.MATCH_REGEX
+# Module-level shorthands for the match modes: ``text("Sav", STARTS_WITH)``.
+EXACT = MatchMode.EXACT
+CONTAINS = MatchMode.CONTAINS
+STARTS_WITH = MatchMode.STARTS_WITH
+ENDS_WITH = MatchMode.ENDS_WITH
+REGEX = MatchMode.REGEX
 
 
 # --- node constructors (the proto tree, normalised) -------------------------------------------
 
 
-def _match(prop: int, value: str, mode: int) -> pb.Node:
-    return pb.Node(match=pb.Match(property=prop, value=value, mode=mode))
+def _match(prop: int, value: str, mode: MatchMode) -> pb.Node:
+    return pb.Node(match=pb.Match(property=prop, value=value, mode=match_mode(mode)))
 
 
 def _flag(prop: int, value: bool) -> pb.Node:
@@ -81,26 +85,26 @@ class Selector:
     anything else raises ``ValueError``.
     """
 
-    proto: pb.Selector
+    _proto: pb.Selector
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Selector) and self.proto == other.proto
+        return isinstance(other, Selector) and self._proto == other._proto
 
     def __hash__(self) -> int:
-        return hash(self.proto.SerializeToString(deterministic=True))
+        return hash(self._proto.SerializeToString(deterministic=True))
 
     # --- composition rules ----------------------------------------------------------------
 
     @property
     def _has_pick(self) -> bool:
-        return self.proto.WhichOneof("pick") in ("first", "at")
+        return self._proto.WhichOneof("pick") in ("first", "at")
 
     @property
     def _scope_key(self) -> str | None:
         """None for the app under test (the default), else the package or any window."""
-        scope = self.proto.WhichOneof("scope")
+        scope = self._proto.WhichOneof("scope")
         if scope == "system":
-            return f"package {self.proto.system.package_name}"
+            return f"package {self._proto.system.package_name}"
         if scope == "any_window":
             return "any window"
         return None
@@ -122,33 +126,33 @@ class Selector:
                 "selector instead"
             )
         self._require_same_scope(operation, other)
-        return other.proto.node
+        return other._proto.node
 
     def _with_node(self, node: pb.Node) -> Selector:
         copy = pb.Selector()
-        copy.CopyFrom(self.proto)
+        copy.CopyFrom(self._proto)
         copy.node.CopyFrom(node)
         return Selector(copy)
 
     def _also(self, node: pb.Node) -> Selector:
         """This selector's node, further constrained by ``node``."""
-        return self._with_node(_all_of(self.proto.node, node))
+        return self._with_node(_all_of(self._proto.node, node))
 
     # --- property refinements on this node -----------------------------------------------
 
-    def and_text(self, value: str, mode: int = EXACT) -> Selector:
+    def and_text(self, value: str, mode: MatchMode = EXACT) -> Selector:
         """Also require this text (``mode``: ``EXACT``, ``CONTAINS``, ``STARTS_WITH``, ``ENDS_WITH``, ``REGEX``)."""
         return self._also(_match(pb.PROPERTY_TEXT, value, mode))
 
-    def and_desc(self, value: str, mode: int = EXACT) -> Selector:
+    def and_desc(self, value: str, mode: MatchMode = EXACT) -> Selector:
         """Also require this content description."""
         return self._also(_match(pb.PROPERTY_CONTENT_DESCRIPTION, value, mode))
 
-    def and_class_name(self, value: str, mode: int = EXACT) -> Selector:
+    def and_class_name(self, value: str, mode: MatchMode = EXACT) -> Selector:
         """Also require this widget class name."""
         return self._also(_match(pb.PROPERTY_CLASS_NAME, value, mode))
 
-    def and_hint(self, value: str, mode: int = EXACT) -> Selector:
+    def and_hint(self, value: str, mode: MatchMode = EXACT) -> Selector:
         """Also require this hint (empty text fields)."""
         return self._also(_match(pb.PROPERTY_HINT, value, mode))
 
@@ -211,7 +215,7 @@ class Selector:
         """Either may hold: ``text("Allow") | text("Allow only while using the app")``. Same
         operand rules as ``&``. Disjunctions are evaluated by the driver's tree walk rather
         than a native UiAutomator lookup."""
-        return self._with_node(_any_of(self.proto.node, self._operand("|", other)))
+        return self._with_node(_any_of(self._proto.node, self._operand("|", other)))
 
     # --- relations ------------------------------------------------------------------------
 
@@ -251,11 +255,11 @@ class Selector:
             )
         self._require_same_scope(operation, other)
         copy = pb.Selector()
-        copy.CopyFrom(other.proto)
-        copy.node.CopyFrom(_all_of(other.proto.node, _related(back, self.proto.node)))
-        scope = self.proto.WhichOneof("scope")
+        copy.CopyFrom(other._proto)
+        copy.node.CopyFrom(_all_of(other._proto.node, _related(back, self._proto.node)))
+        scope = self._proto.WhichOneof("scope")
         if scope == "system":
-            copy.system.CopyFrom(self.proto.system)
+            copy.system.CopyFrom(self._proto.system)
         elif scope == "any_window":
             copy.any_window.SetInParent()
         else:
@@ -268,7 +272,7 @@ class Selector:
         """Search the focused window of ``package_name`` instead of the app under test's: any
         package, such as the permission controller's dialog or another app."""
         copy = pb.Selector()
-        copy.CopyFrom(self.proto)
+        copy.CopyFrom(self._proto)
         copy.system.package_name = package_name
         return Selector(copy)
 
@@ -276,27 +280,27 @@ class Selector:
         """Search every window on screen, of any package (dialogs, popups, the system UI, other
         apps), instead of only the app under test's focused window."""
         copy = pb.Selector()
-        copy.CopyFrom(self.proto)
+        copy.CopyFrom(self._proto)
         copy.any_window.SetInParent()
         return Selector(copy)
 
     def first(self) -> Selector:
         """Accept the first match in accessibility order instead of requiring exactly one."""
         copy = pb.Selector()
-        copy.CopyFrom(self.proto)
+        copy.CopyFrom(self._proto)
         copy.first.SetInParent()
         return Selector(copy)
 
     def at(self, index: int) -> Selector:
         """Accept the ``index``-th match (0-based) in accessibility order instead of requiring exactly one."""
         copy = pb.Selector()
-        copy.CopyFrom(self.proto)
+        copy.CopyFrom(self._proto)
         copy.at.index = index
         return Selector(copy)
 
     def render(self) -> str:
         """The selector as protobuf text, exactly as the device will see it."""
-        return text_format.MessageToString(self.proto, as_one_line=True)
+        return text_format.MessageToString(self._proto, as_one_line=True)
 
     def __str__(self) -> str:
         return self.render()
@@ -306,7 +310,7 @@ def _selector(node: pb.Node) -> Selector:
     return Selector(pb.Selector(node=node))
 
 
-def text(value: str, mode: int = EXACT) -> Selector:
+def text(value: str, mode: MatchMode = EXACT) -> Selector:
     """Visible text; Compose ``Text`` and View ``TextView``/``Button`` both expose it."""
     return _selector(_match(pb.PROPERTY_TEXT, value, mode))
 
@@ -326,7 +330,7 @@ def text_matches(re2: str) -> Selector:
     return text(re2, REGEX)
 
 
-def desc(value: str, mode: int = EXACT) -> Selector:
+def desc(value: str, mode: MatchMode = EXACT) -> Selector:
     """``contentDescription`` (View) / ``contentDescription`` semantics (Compose)."""
     return _selector(_match(pb.PROPERTY_CONTENT_DESCRIPTION, value, mode))
 
@@ -348,12 +352,12 @@ def res(name: str) -> Selector:
     return _selector(_aut_resource(name))
 
 
-def class_name(value: str, mode: int = EXACT) -> Selector:
+def class_name(value: str, mode: MatchMode = EXACT) -> Selector:
     """Widget class name, e.g. ``android.widget.EditText``."""
     return _selector(_match(pb.PROPERTY_CLASS_NAME, value, mode))
 
 
-def hint(value: str, mode: int = EXACT) -> Selector:
+def hint(value: str, mode: MatchMode = EXACT) -> Selector:
     """Hint of an empty text field (an empty ``EditText`` shows its hint as its text)."""
     return _selector(_match(pb.PROPERTY_HINT, value, mode))
 

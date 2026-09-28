@@ -1,18 +1,15 @@
 """Exception hierarchy. Driver failures arrive as data (CommandResult.error) and become
-CommandError; server-level failures arrive as gRPC status codes and are mapped in server.py."""
+CommandError; server-level failures arrive as gRPC status codes and are mapped in client.py."""
 
 from __future__ import annotations
 
-import enum
+from typing import TYPE_CHECKING
 
-from . import _gen as pb
+from . import _proto
+from .models import ErrorCode, FailureReason, WaitReason
 
-# The error code enum is the proto's, minus the ERR_ prefix, so names match the wire protocol
-# and the Kotlin SDK (e.g. ErrorCode.AMBIGUOUS).
-ErrorCode = enum.Enum(  # type: ignore[misc]
-    "ErrorCode",
-    {name[len("ERR_") :]: value for name, value in pb.ErrorCode.items() if value != 0},
-)
+if TYPE_CHECKING:
+    from . import _gen as pb
 
 
 class TapError(Exception):
@@ -22,11 +19,11 @@ class TapError(Exception):
 class ServerError(TapError):
     """The host server rejected or failed a call (unknown connection or device, bad argument,
     driver start failure, ...). ``code`` is the gRPC status code name; ``reason`` is the server's
-    structured ``tap.v1.FailureReason`` value, ``FAILURE_REASON_UNSPECIFIED`` (0) when the
-    failure did not come from the daemon."""
+    structured ``FailureReason``, ``FailureReason.UNSPECIFIED`` when the failure did not come
+    from the daemon."""
 
     def __init__(
-        self, code: str, details: str, reason: int = pb.FAILURE_REASON_UNSPECIFIED
+        self, code: str, details: str, reason: FailureReason = FailureReason.UNSPECIFIED
     ):
         super().__init__(f"{code}: {details}")
         self.code = code
@@ -40,22 +37,25 @@ class CommandError(TapError):
 
     def __init__(
         self,
-        result: pb.CommandResult,
+        code: ErrorCode,
+        detail: str | None,
+        driver_message: str | None,
         operation: str,
         serial: str,
         selector: str | None,
+        request_id: int,
+        generation: int,
+        duration_ms: int,
     ):
-        self.code = ErrorCode(result.error.code)  # type: ignore[operator]
-        self.detail = result.error.detail if result.error.HasField("detail") else None
-        self.driver_message = (
-            result.error.message if result.error.HasField("message") else None
-        )
+        self.code = code
+        self.detail = detail
+        self.driver_message = driver_message
         self.operation = operation
         self.serial = serial
         self.selector = selector
-        self.request_id = result.request_id
-        self.generation = result.session_generation
-        self.duration_ms = result.duration_ms
+        self.request_id = request_id
+        self.generation = generation
+        self.duration_ms = duration_ms
         where = f" {selector}" if selector else ""
         detail = f"/{self.detail}" if self.detail else ""
         message = f": {self.driver_message}" if self.driver_message else ""
@@ -65,9 +65,34 @@ class CommandError(TapError):
         )
 
 
+    @classmethod
+    def _from_result(
+        cls,
+        result: pb.CommandResult,
+        operation: str,
+        serial: str,
+        selector: str | None,
+    ) -> CommandError:
+        error = result.error
+        return cls(
+            _proto.error_code(error.code),
+            error.detail if error.HasField("detail") else None,
+            error.message if error.HasField("message") else None,
+            operation,
+            serial,
+            selector,
+            result.request_id,
+            result.session_generation,
+            result.duration_ms,
+        )
+
+
 class WaitTimeoutError(TapError):
     """A condition did not hold within its timeout; the message names the device, the
-    condition and the last observation so a log line alone is diagnosable."""
+    condition and what was observed so a log line alone is diagnosable: ``reason`` and
+    ``match_count`` for the waits the device runs (``visible``, ``one``, ``gone``,
+    ``await_app_visible``, ``await_screen_stable``), ``last_observation`` and ``polls`` for the
+    ones the client polls."""
 
     def __init__(
         self,
@@ -76,16 +101,41 @@ class WaitTimeoutError(TapError):
         elapsed_ms: int,
         polls: int = 0,
         last: str | None = None,
+        reason: WaitReason | None = None,
+        match_count: int | None = None,
     ):
         self.description = description
         self.serial = serial
         self.elapsed_ms = elapsed_ms
         self.polls = polls
         self.last_observation = last
+        self.reason = reason
+        """Why the device-side condition was still unmet at its last poll; None for client-polled
+        waits."""
+        self.match_count = match_count
+        """Matches at the last poll of ``visible`` / ``one`` / ``gone`` (capped at 1000)."""
+        why = ""
+        if reason is not None:
+            why = f"; {reason.value}" + (f" ({match_count} matches)" if match_count is not None else "")
         suffix = f"; last observed: {last}" if last else ""
         polled = f" after {polls} polls" if polls else ""
         super().__init__(
-            f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{suffix}"
+            f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{why}{suffix}"
+        )
+
+    @classmethod
+    def _from_result(
+        cls, result: pb.CommandResult, description: str, serial: str, last: str | None = None
+    ) -> WaitTimeoutError:
+        """From a device ``WAIT_TIMEOUT`` result: its ``detail`` and ``match_count``."""
+        error = result.error
+        return cls(
+            description,
+            serial,
+            result.duration_ms,
+            last=last,
+            reason=_proto.wait_reason(error.detail) if error.HasField("detail") else None,
+            match_count=error.match_count if error.HasField("match_count") else None,
         )
 
 

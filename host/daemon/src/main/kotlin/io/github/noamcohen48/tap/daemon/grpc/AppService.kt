@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.server
+package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AppTarget
@@ -26,8 +26,8 @@ import io.github.noamcohen48.tap.api.v1.ProcessRequest
 import io.github.noamcohen48.tap.api.v1.ProcessResponse
 import io.github.noamcohen48.tap.api.v1.UninstallRequest
 import io.github.noamcohen48.tap.api.v1.UninstallResponse
-import io.github.noamcohen48.tap.daemon.TapDaemon
-import io.github.noamcohen48.tap.daemon.restrictToOwner
+import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
+import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.ProcessObservation
 import kotlinx.coroutines.Dispatchers

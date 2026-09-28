@@ -3,12 +3,9 @@ package io.github.noamcohen48.tap.sdk
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
-import io.github.noamcohen48.tap.api.v1.DeviceEntry
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.InfoRequest
-import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
@@ -28,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
@@ -97,10 +95,10 @@ class TapClient public constructor(
     internal val apps = AppServiceGrpcKt.AppServiceCoroutineStub(callChannel)
 
     /** Daemon version and pid, protocol version, ADB executable, state dir, whether a driver is available. */
-    suspend fun info(): InfoResponse =
+    suspend fun info(): ServerInfo =
         mapped {
             clientConnections.withDeadlineAfter(10, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance())
-        }
+        }.toModel()
 
     /**
      * Every device ADB lists, with its state (`FREE`, `LEASED`, `QUARANTINED`, `OFFLINE`,
@@ -112,10 +110,11 @@ class TapClient public constructor(
                 .withDeadlineAfter(30, TimeUnit.SECONDS)
                 .listDevices(ListDevicesRequest.getDefaultInstance())
                 .devicesList
+                .map { it.toModel() }
         }
 
     /**
-     * Opens a [ClientConnection] and starts its liveness observation: if this process dies, the server
+     * Opens a [TapConnection] and starts its liveness observation: if this process dies, the server
      * detaches every device the connection owns. The observe stream is established before this
      * returns (the first `Observe` event, `observing`, is awaited), so every later `attachDevice`
      * belongs to a live connection. An empty stream, a `closing` first event or any failure
@@ -123,7 +122,7 @@ class TapClient public constructor(
      * non-cancellable context. A later `closing` event (the daemon reaped this connection or is
      * shutting down) makes the connection unusable with the daemon's reason.
      */
-    suspend fun connect(name: String): ClientConnection {
+    suspend fun connect(name: String): TapConnection {
         val id =
             mapped {
                 clientConnections
@@ -132,14 +131,14 @@ class TapClient public constructor(
                     .clientConnectionId
             }
         // observe() closes the new id itself when it fails before the first event.
-        return ClientConnection(this, id).also { it.observe() }
+        return TapConnection(this, id).also { it.observe() }
     }
 
     /**
      * Shuts the channel down. Runs under [NonCancellable] with bounded waits so teardown
      * completes even when the caller is cancelled: `shutdown`, a bounded await, then
      * `shutdownNow` plus a second bounded await for forced termination.
-     * Close every [ClientConnection] first.
+     * Close every [TapConnection] first.
      */
     suspend fun close() {
         withContext(NonCancellable + Dispatchers.IO) {
@@ -150,6 +149,12 @@ class TapClient public constructor(
             }
         }
     }
+
+    /**
+     * Runs [block] with this client, then [close]s it. A [block] failure wins; a close failure
+     * after it is added as suppressed.
+     */
+    suspend fun <R> use(block: suspend (TapClient) -> R): R = closing({ close() }) { block(this) }
 
     companion object {
         /**
@@ -176,11 +181,11 @@ class TapClient public constructor(
 
 /**
  * Immutable per-connection bounds. Injected at construction; tests create isolated
- * [ClientConnection] instances with short bounds instead of mutating shared state, so parallel
+ * [TapConnection] instances with short bounds instead of mutating shared state, so parallel
  * test runs stay deterministic. Defaults cover production (60 s Close deadline + margin,
  * bounded attach teardown).
  */
-internal data class ClientConnectionBounds(
+internal data class TapConnectionBounds(
     val closeOuterMs: Long = 65_000L,
     val teardownMs: Long = 5_000L,
 )
@@ -208,10 +213,10 @@ internal data class ClientConnectionBounds(
  * cancels and joins the collector even for a stubborn (cancellation-ignoring) collector,
  * preserving the primary `Disconnect` failure and suppressing cleanup failures.
  */
-class ClientConnection internal constructor(
+class TapConnection internal constructor(
     val client: TapClient,
     val id: String,
-    private val bounds: ClientConnectionBounds = ClientConnectionBounds(),
+    private val bounds: TapConnectionBounds = TapConnectionBounds(),
     private val deviceBounds: DeviceBounds = DeviceBounds(),
 ) {
     private val events = CopyOnWriteArrayList<String>()
@@ -244,7 +249,7 @@ class ClientConnection internal constructor(
 
     internal suspend fun observe() {
         if (!observeStarted.compareAndSet(false, true)) {
-            throw TapUsageException("ClientConnection($id).observe must run exactly once")
+            throw TapUsageException("TapConnection($id).observe must run exactly once")
         }
         val flow: Flow<ObserveResponse>
         try {
@@ -340,8 +345,8 @@ class ClientConnection internal constructor(
     suspend fun availableSerials(): List<String> =
         client
             .devices()
-            .filter { it.state == DeviceState.DEVICE_FREE || it.state == DeviceState.DEVICE_LEASED }
-            .sortedBy { it.state != DeviceState.DEVICE_FREE }
+            .filter { it.state == DeviceState.FREE || it.state == DeviceState.LEASED }
+            .sortedBy { it.state != DeviceState.FREE }
             .map { it.serial }
 
     /**
@@ -371,11 +376,38 @@ class ClientConnection internal constructor(
         // attachment is already covered by the connection Disconnect (or best-effort detached here).
         if (closeStarted.get()) {
             stateMutex.withLock { attachedDevices.remove(device) }
-            runCatching { device.markConnectionInvalid(TapUsageException("ClientConnection($id) is closed")) }
-            throw TapUsageException("ClientConnection($id) is closed; Device.attachDevice rejected")
+            runCatching { device.markConnectionInvalid(TapUsageException("TapConnection($id) is closed")) }
+            throw TapUsageException("TapConnection($id) is closed; Device.attachDevice rejected")
         }
         return device
     }
+
+    /**
+     * Attaches [serial] for [autPackage] ([attachDevice]), runs [block] with the device and
+     * always detaches it afterwards. Runs inside the caller's `tapTest` / `tapScope`, or installs
+     * a [TapContext] of its own when there is none, so a script needs no `tapScope`. A [block]
+     * failure wins and a detach failure after it is added as suppressed; when [block] succeeds,
+     * a detach failure (including quarantine) is thrown.
+     */
+    suspend fun <R> attach(
+        serial: String,
+        autPackage: String,
+        timeouts: Timeouts = Timeouts(),
+        options: DeviceOptions = DeviceOptions(),
+        block: suspend (Device) -> R,
+    ): R {
+        suspend fun run(): R {
+            val device = attachDevice(serial, autPackage, timeouts, options)
+            return closing({ withContext(NonCancellable) { device.detach() } }) { block(device) }
+        }
+        return if (currentCoroutineContext()[TapContext] != null) run() else withContext(TapContext("attach:$serial")) { run() }
+    }
+
+    /**
+     * Runs [block] with this connection, then [close]s it. A [block] failure wins; a close
+     * failure after it is added as suppressed.
+     */
+    suspend fun <R> use(block: suspend (TapConnection) -> R): R = closing({ close() }) { block(this) }
 
     /**
      * Closes explicitly (recorded as a client request), then drops the liveness stream.
@@ -486,7 +518,7 @@ class ClientConnection internal constructor(
     /** Throws when this connection can no longer admit work. */
     internal fun ensureUsable(operation: String) {
         if (closeStarted.get()) {
-            throw TapUsageException("ClientConnection($id) is closed; $operation rejected")
+            throw TapUsageException("TapConnection($id) is closed; $operation rejected")
         }
         unusableCause.get()?.let { cause ->
             throw ServerException(
@@ -826,4 +858,24 @@ object TapDaemonProcess {
                 throw cancelled
             }
         }
+}
+
+/** `use` for suspend-closed resources: a [block] failure wins, a [close] failure after it is suppressed. */
+internal suspend fun <R> closing(
+    close: suspend () -> Unit,
+    block: suspend () -> R,
+): R {
+    val result =
+        try {
+            block()
+        } catch (primary: Throwable) {
+            try {
+                close()
+            } catch (closeFailure: Throwable) {
+                if (closeFailure !== primary) primary.addSuppressed(closeFailure)
+            }
+            throw primary
+        }
+    close()
+    return result
 }

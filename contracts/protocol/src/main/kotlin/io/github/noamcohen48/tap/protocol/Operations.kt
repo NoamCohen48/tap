@@ -258,6 +258,7 @@ object Responses {
         durationMs: Long = 0,
         detail: String? = null,
         message: String? = null,
+        matchCount: Int? = null,
     ): Response {
         require(code != ErrorCode.UNRECOGNIZED && code != ErrorCode.ERR_UNSPECIFIED && code != ErrorCode.ERR_UNKNOWN) {
             "$code is a decode fallback and is never sent"
@@ -266,6 +267,7 @@ object Responses {
             CommandError.newBuilder().setCode(code).apply {
                 detail?.let { setDetail(it) }
                 message?.let { setMessage(it) }
+                matchCount?.let { setMatchCount(it) }
             }
         return of(CommandResult.newBuilder().setError(error), durationMs)
     }

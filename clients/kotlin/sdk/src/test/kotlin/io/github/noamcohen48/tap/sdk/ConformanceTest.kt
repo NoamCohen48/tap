@@ -70,7 +70,7 @@ class ConformanceTest {
                 "server" -> {
                     val server = assertIs<ServerException>(error, label)
                     assertEquals(case.string("status"), server.status, label)
-                    assertEquals(reason, server.reason, label)
+                    assertEquals(reason.toModel(), server.reason, label)
                 }
                 else -> error("unknown raises in $label")
             }

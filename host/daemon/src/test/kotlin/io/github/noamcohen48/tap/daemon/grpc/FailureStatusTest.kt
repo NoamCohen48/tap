@@ -1,8 +1,12 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.daemon.core.DaemonClosingException
+import io.github.noamcohen48.tap.daemon.core.NotOwnerException
+import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
+import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
 import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AppLifecycleException
 import io.github.noamcohen48.tap.host.DeviceBusyException
@@ -12,10 +16,6 @@ import io.github.noamcohen48.tap.host.DriverStartException
 import io.github.noamcohen48.tap.host.HostWaitTimeoutException
 import io.github.noamcohen48.tap.host.SessionClosingException
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
-import io.github.noamcohen48.tap.server.Defaults
-import io.github.noamcohen48.tap.server.FAILURE_TRAILER
-import io.github.noamcohen48.tap.server.InvalidArgumentException
-import io.github.noamcohen48.tap.server.toStatus
 import io.grpc.Status
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject

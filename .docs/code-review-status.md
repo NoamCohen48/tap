@@ -6,12 +6,12 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 136 |
+| Fixed | 143 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 5 |
-| Open | 4 |
+| Partial | 0 |
+| Open | 0 |
 | Won't fix (accepted risk, see decisions) | 2 |
-| Backlog (hygiene, not pursued now; see decisions) | 9 |
+| Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
 | Deferred (synchronization is WIP, see below) | 7 |
 
 The counts cover all 171 findings; Open, Partial, Deferred, Won't fix and Backlog are exactly the rows below.
@@ -84,6 +84,53 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     client. Neither SDK exposes the flags.
   - H-9, H-19, H-22, K-1, B-3: refactors with no behaviour change. H-23: remaining unit
     coverage for deadline splitting that the device suite already exercises.
+- **Client API batch (2026-09-28, user; to implement, one client version bump).**
+  - K-4: both SDKs return SDK-owned types with internal proto→model mappers (`AppProcess`
+    replaces `App.ProcessIdentity`). Not a return to X-1's two schemas: X-1 was the internal
+    wire; this is the public API surface.
+  - X-3: driver `ClientConnection` → `DriverConnection`; daemon `ClientConnection` →
+    `ConnectedClient`; SDK `ClientConnection` → `TapConnection`; JUnit `TapClientConnection` →
+    `ConnectionMemo`; Python `TapServer` → `TapClient`, `ClientConnection` → `TapConnection`;
+    `:host:daemon` packages → `…daemon.core` / `.grpc` / `.cli`. The proto
+    `ClientConnectionService` and the user-facing word "server" stay.
+  - K-9: suspend `use {}` on client and connection, `connection.attach(serial, pkg) { device -> }`
+    (installs the scope marker, always detaches; body failure wins). `tapScope`,
+    `attachDevice`, `ensureTapBound` stay.
+  - K-13: device-side waits report why they timed out, from the driver up. The code stays
+    `WAIT_TIMEOUT`; `Error.detail` is `NO_MATCH`, `AMBIGUOUS`, `STILL_PRESENT` or
+    `SCREEN_CHANGING`, plus an additive `Error.match_count`; both SDKs expose `reason` and
+    `matchCount`. `visible()` keeps "one or more"; exactly one is the explicit
+    `await(sel).one()` (additive `WaitVisible.exactly_one`).
+  - J-7 (instead of an `ArtifactSink`): typed low-level results sharing an `Artifact`
+    shape (`bytes`, `mediaType`, `save`): `Screenshot` (format, width, height), `Hierarchy`
+    (`xml` + bytes), `DeviceInfo`, `DriverLog`. `device.capture()` bundles them (parallel,
+    bounded, never throws) with `saveTo(dir, prefix)`. The JUnit/pytest adapters only call it
+    and write `failure.txt`; `tap.capture = onFailure | off` (named `capture`, not `artifacts`:
+    Python's `tap_artifacts` / `TAP_ARTIFACTS` is already the directory).
+  - J-9: opt-in device reuse (`@TapTest(deviceLifetime = PER_CLASS)`, Python
+    `tap_device_scope`); no automatic app reset; an unusable session is re-attached at the
+    next test; measure attach cost first.
+  - PY-12: `TapClient.create()` discovers and probes; `TapClient(endpoint)` does no I/O.
+- **DR-5 is a performance TODO (2026-09-28, user).** Too large for now and performance only.
+  Plan when picked up:
+  1. Read `UiObject2` / `ByMatcher` at the pinned AndroidX uiautomator version: does each
+     `getAccessibilityNodeInfo()` / `getChildren()` refresh the node or wait for idle?
+  2. Add a device timing test: one element found through the native path and through a
+     traversal selector (regex, and a relation), on the fixture's long list and its animating
+     screen, on both matrix devices.
+  3. Only if traversal is clearly slower: walk raw `AccessibilityNodeInfo` roots and create a
+     `UiObject2` only for the final match; selector semantics unchanged, proven by the existing
+     selector tests and the device suite. Otherwise record the numbers and close DR-5.
+- **SY-3 is a fixture TODO (2026-09-28, user).** One fixture screen per case plus a device
+  test on both matrix devices; fix or document what each finds (driver behaviour changes go
+  to the user first). Best done after the client API batch (it can use `one()` and the wait
+  reasons):
+  - Password field: does typing work, and what do `text()` and selectors see (`""`, bullets)?
+  - Popup / spinner dropdown: its items live in a separate window; can they be found and
+    tapped with the default scope, or is `inAnyWindow` needed (document it)?
+  - Text that changes after an action ("Save" → "Saved"): the action reports success and a
+    follow-up wait sees the new text, per "the driver assumes nothing".
+  - WebView (local page, no network): find and tap an HTML button by text once loaded.
 - **P-9 was wrongly marked "leave"** (now Backlog, see above). CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
@@ -98,7 +145,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 |---|---|---|---|---|
 | DR-12 | H | Deferred | Driver `<queries>` names only the fixture's sync provider; a real AUT's provider is invisible, so idle sync cannot work outside the fixture | S |
 | DR-3 | H | Fixed | Text verification re-resolves the selector after the edit → false `TEXT_MISMATCH`/`FOCUS_TIMEOUT`. Resolved by the decision above | M |
-| DR-5 | H | Partial | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost; measure first) | M–L |
+| DR-5 | H | Backlog | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost). TODO plan in decisions above | M–L |
 | DR-4 | M | Fixed | Password fields can never match expected text. Resolved by the decision above | S |
 | DR-6 | M | Fixed | Verification removed; key-up events carry the press's `downTime` (`KeyInputTest`) | S |
 | DR-10 | M | Fixed | Snapshot text is raw like the selectors, plus `showing_hint` (`InputTest`, `MainScreenTest`) | S |
@@ -111,10 +158,10 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |
 | SY-1 | L | Deferred | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
 | SY-2 | N | Deferred | `require(method == "state")` throws IAE across binder | S |
-| SY-3 | M | Partial | No password, WebView, popup/spinner or text-changing-selector fixtures | M |
+| SY-3 | M | Backlog | No password, WebView, popup/spinner or text-changing-selector fixtures. TODO plan in decisions above | M |
 | SY-4 | L | Deferred | `FixtureFaultProvider` reuses the sync signature permission | S |
 | SY-5 | N | Fixed | Every fixture activity's KDoc names the scenarios it serves (documented rather than renamed: tests and docs launch them by name) | S |
-| X-3 | M | Partial | Driver `internal class ClientConnection` collides with the daemon/SDK name; Python `TapServer` vs Kotlin `TapClient` | S |
+| X-3 | M | Fixed | One name per role: driver `DriverConnection`, daemon `ConnectedClient` (packages `daemon.core`/`.grpc`/`.cli`), SDK `TapConnection`, JUnit `ConnectionMemo`, Python `TapClient`/`TapConnection` (`11a1115`) | S |
 
 ### Protocol and command engine (contracts/protocol, device/driver/command-engine)
 
@@ -164,17 +211,17 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 |---|---|---|---|---|
 | K-15 | L→bug | Fixed | `DeviceAdmission` carries every admitted device of the enclosing operations, so detaching A inside B's operation nested in A's fails fast (`TapClientTest`) | M |
 | J-5 | L→bug | Fixed | `DeviceBarrier` uses a plain monitor; withdrawal can no longer be cancelled | S |
-| K-4 | M | Open | Proto types in the public API (`Device.info(): DeviceInfo`, `execute: CommandResult`); `App.ProcessIdentity` clashes with the proto name. Breaking — ask first | L |
-| K-9 | M | Open | `tapScope`/`ensureTapBound` mandatory; no `use {}`/`attach {}` helpers | M |
+| K-4 | M | Fixed | Both SDKs return their own types (`Models.kt`/`Artifacts.kt`, `models.py`) through internal mappers; `execute`, `Selector.proto` and `tap-api` are internal (`ModelsTest`, `test_models.py` prove every schema value maps). Kotlin client 0.3.0, Python 0.2.0 | L |
+| K-9 | M | Fixed | `TapClient.use {}` / `TapConnection.use {}` and `connection.attach(serial, pkg) { device -> }` (joins the caller's `TapContext` or installs one, always detaches; body failure wins, close/detach failure suppressed; `closing()` in `TapClient.kt`). `tapScope` / `attachDevice` / `ensureTapBound` stay. Python already had `with`; its `TapConnection.close()` no longer returns the proto `DisconnectResponse`. Tests: `TapClientTest` attach/use cases | — |
 | K-1 | M | Backlog | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
 | K-17 | M | Fixed | `App` unit test: targets, timeouts, activity, chunked APK upload, process identity and a refused grant (`TapClientTest`) | S |
 | K-11 | L | Fixed | The internal node combinators are private `conjunction`/`disjunction`; `allOf`/`anyOf` are only the public selector entry points | S |
-| K-13 | L | Partial | Device-side waits carry no last observation | S |
+| K-13 | L | Fixed | Driver `WaitCommands` report the last poll: `WAIT_TIMEOUT` detail `NO_MATCH` / `AMBIGUOUS` / `STILL_PRESENT` / `APP_NOT_VISIBLE` plus additive `Error.match_count`; additive `WaitVisible.exactly_one` behind `await(sel).one()` in both SDKs; `WaitTimeoutException.reason` / `matchCount` (`WaitReason`), Python `reason` / `match_count`. Host passes results through unchanged. Tests: `TapClientTest`, `test_device.py`, fixture `waitTimeoutIsDiagnosable` (Kotlin + Python) on the API 29/34 matrix; `deviceTest` 45/45 | — |
 | K-14 | L | Fixed | The process starter is injected per call; `tap start`/`stop` wait on `process.onExit()` instead of polling | S |
 | K-16 | N | Fixed | The rethrow-only catch in `connect` is gone | S |
 | J-6 | L | Fixed | The primary failure is JUnit's `executionException` only; the recording interceptors, the exception handler and `TestState.failure` are gone | S |
-| J-7 | L | Partial | Devices are captured concurrently, each within its own 60 s budget. No `ArtifactSink` hook yet (new public API: needs a decision) | S–M |
-| J-9 | L | Open | No opt-in class-level device reuse | M |
+| J-7 | L | Fixed | Typed artifacts (K-4) plus `Device.capture()` / `device.capture()` in both SDKs (`Capture.kt`, `models.Capture`): the four parts in parallel, each bounded, failures recorded per part, never throws; `saveTo` / `save_to`. JUnit extension and pytest plugin only call it and write `failure.txt`; `tap.capture` / `tap_capture` = `onFailure` \| `off`. Tests: `TapClientTest` / `test_device.py` capture cases, `TapConfigTest`, `test_plugin.py` | — |
+| J-9 | L | Fixed | Measured first (2026-09-28, native daemon): attach 1.2 s (emulator-5554) / 3.8 s (85e49002) per test, almost all driver start; detach 0.2 s. Opt-in reuse: `@TapTest(deviceLifetime = PER_CLASS)` (class store, `info()` probe before reuse, re-attach when it fails or the device was detached, `afterAll` detaches) and pytest `tap_device_scope = function\|class\|module\|session` (`pytest_runtest_teardown` ends the scope). No app reset; artifacts still per test. Tests: fixture `DeviceReuseTest` on the matrix, `test_plugin.py` scope/probe cases; Python device suite passes with `TAP_DEVICE_SCOPE=module` (5 attaches for the run, all detached by scope end) | — |
 | S-2 | L | Fixed | `runCatching` + one assertion instead of `fail()` inside `catch (AssertionError)` | S |
 | S-3 | L | Fixed | `MultiDeviceTest` asserts its two roles hold distinct serials | S |
 
@@ -183,7 +230,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | PY-9 | L | Fixed | Failure artifacts are captured per device on their own thread within a 60 s per-device budget; a straggler is abandoned, not joined | S |
-| PY-12 | N | Open | `TapServer.__init__` probes `Info` when discovering from `daemon.json` | S |
+| PY-12 | N | Fixed | `TapClient(endpoint)` does no I/O; `TapClient.create()` discovers and probes (`11a1115`) | S |
 
 ### Build
 

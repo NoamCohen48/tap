@@ -31,12 +31,6 @@ import kotlin.time.Duration.Companion.seconds
 /** Size of each `InstallRequest.chunk` streamed by [App.install]. */
 internal const val INSTALL_CHUNK_BYTES = 1 shl 20
 
-/** Process identity as observed by the host (PID plus `/proc` start token). */
-data class ProcessIdentity(
-    val pid: Int,
-    val startToken: String,
-)
-
 /**
  * Lifecycle of one package on one device, executed by the host server (ADB plus verified
  * postconditions). The client only names the package and the timeouts; [install] uploads the
@@ -172,7 +166,7 @@ class App internal constructor(
     suspend fun coldLaunch(
         activity: String? = null,
         timeout: Duration = device.timeouts.lifecycle,
-    ): ProcessIdentity =
+    ): AppProcess =
         call(timeout) {
             it.coldLaunch(
                 ColdLaunchRequest
@@ -182,13 +176,13 @@ class App internal constructor(
                     .apply { activity?.let { name -> setActivity(name) } }
                     .build(),
             )
-        }.process.let { ProcessIdentity(it.pid, it.startToken) }
+        }.process.toModel()
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
-    suspend fun process(timeout: Duration = device.timeouts.action): ProcessIdentity =
+    suspend fun process(timeout: Duration = device.timeouts.action): AppProcess =
         call(timeout) {
             it.process(ProcessRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
-        }.process.let { ProcessIdentity(it.pid, it.startToken) }
+        }.process.toModel()
 
     /** Whether any process of the package is alive. */
     suspend fun isRunning(): Boolean = call(null) { it.isRunning(IsRunningRequest.newBuilder().setApp(target).build()) }.running

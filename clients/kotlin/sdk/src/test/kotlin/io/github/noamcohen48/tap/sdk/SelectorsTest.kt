@@ -1,6 +1,5 @@
 package io.github.noamcohen48.tap.sdk
 
-import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector.PickCase
 import io.github.noamcohen48.tap.api.v1.Selector.ScopeCase
@@ -131,7 +130,7 @@ class SelectorsTest {
                 "nodes { related { relation: RELATION_PARENT node { any_of { " +
                 "nodes { match { property: PROPERTY_CLASS_NAME value: \"List\" mode: MATCH_CONTAINS } } " +
                 "nodes { flag { property: FLAG_SCROLLABLE value: true } } } } } } } } at { index: 2 }",
-            text("a").hasParent(className("List", MatchMode.MATCH_CONTAINS) or scrollable()).at(2).render(),
+            text("a").hasParent(className("List", MatchMode.CONTAINS) or scrollable()).at(2).render(),
         )
         assertEquals(text("x").render(), text("x").toString())
     }

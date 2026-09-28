@@ -22,7 +22,7 @@ from tap_e2e import _gen as pb
 from tap_e2e.app import App
 from tap_e2e.device import Timeouts
 from tap_e2e.pytest_plugin import DEFAULT_ACQUIRE_TIMEOUT
-from tap_e2e.server import _map_rpc_error
+from tap_e2e.client import _map_rpc_error
 
 TABLE = json.loads(
     (
@@ -82,8 +82,8 @@ def test_failures_map_by_reason(case):
     assert type(error) is RAISES[case["raises"]]
     if isinstance(error, ServerError):
         assert error.code == case["status"]
-        assert error.reason == pb.FailureReason.Value(
-            case.get("reason", "FAILURE_REASON_UNSPECIFIED")
+        assert error.reason.name == case.get("reason", "FAILURE_REASON_UNSPECIFIED").removeprefix(
+            "FAILURE_REASON_"
         )
     if isinstance(error, WaitTimeoutError):
         assert error.serial == case["serial"]

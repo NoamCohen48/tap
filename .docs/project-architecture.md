@@ -33,7 +33,7 @@ Host server `tap serve` (one per machine, JVM dist or GraalVM native image)
         v
 Android driver instrumentation  (package io.github.noamcohen48.tap.driver, own UID/process)  device/driver
 +-- TapDriverServer     loopback listener, session config, TAP_READY/TAP_POISONED markers
-+-- ClientConnection    handshake, framing, reader lane, heartbeat
++-- DriverConnection    handshake, framing, reader lane, heartbeat
 +-- CommandPipeline     bounded queue -> single executor -> writer, watchdog   (pure JVM, device/driver/command-engine)
 +-- DriverCommandEngine request/selector validation, dispatch
 +-- SelectorCompiler    AST -> window-scoped BySelector | traversal predicate
@@ -60,7 +60,7 @@ These are the invariants the code is organized around (see `CLAUDE.md` for the s
 | No persistent `UiObject2` handles across commands | every command resolves and recycles inside `UiAutomationCommands.gesture/editText` |
 | Mutations require exactly one match; `AMBIGUOUS`/`NOT_FOUND` before input | `UiObjectAccess.resolve(EXACTLY_ONE)` fetches two matches; checked before the mutation gate |
 | Never replay a transmitted mutation; transport loss after acceptance is `INDETERMINATE` | `PendingCommand` transmission state + `DriverTransport` failure routing; `CommandTransportException` |
-| Request IDs strictly increasing per generation; old generations rejected | `DriverTransport` admission mutex; `ClientConnection` watermark; `SESSION_MISMATCH` |
+| Request IDs strictly increasing per generation; old generations rejected | `DriverTransport` admission mutex; `DriverConnection` watermark; `SESSION_MISMATCH` |
 | Every ADB call is serial-specific; never `forward --remove-all` | `Adb` API takes `serial` on every method; `removeExactForward` |
 | Elements are lazy selectors; creating one performs no I/O | client `Element` holds a proto `Selector`; every terminal call is one `Execute` that resolves again on the driver |
 | One device is never assigned to two tests | the per-serial file lock (`SessionJournalStore.acquireLease`) held by every live `DeviceSession`, across processes; `Attach` waits for it or fails; nothing else to acquire (`pool-and-leases.md`) |
@@ -114,7 +114,7 @@ tap/
 |   |   +-- src/androidTest/kotlin/io/github/noamcohen48/tap/driver/
 |   |   |   +-- TapDriverServerTest.kt   instrumentation entry point (keeps the process alive)
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers
-|   |   |   +-- ClientConnection.kt      per-connection handshake, frame reader, blob writer
+|   |   |   +-- DriverConnection.kt      per-connection handshake, frame reader, blob writer
 |   |   |   +-- DriverCommandEngine.kt   CommandHandler: scope policy compile + Request.dispatch; defaults applied here
 |   |   |   +-- SelectorCompiler.kt      AST -> CompiledSelector.Native | .Traversal, with a SearchScope (FocusedWindow(pkg) | AllWindows)
 |   |   |   +-- UiObjectAccess.kt        resolve/hasObject/count/containerHasObject per MatchLimit
@@ -154,19 +154,20 @@ tap/
 |   +-- daemon/                  :host:daemon — gRPC host daemon server, `tap` executable (JVM dist + GraalVM native image)
 |   |   +-- build.gradle.kts         bundles the driver APKs as resources, native-image config
 |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/
-|   |   |   +-- daemon/
+|   |   |   +-- daemon/cli/
 |   |   |   |   +-- TapDaemonMain.kt   CLI: start | serve | status | stop | version, per-command option validation
 |   |   |   |   +-- DaemonDescriptor.kt  0600 daemon.json (port, pid, token), owner-checked removal, daemon.lock
-|   |   |   |   +-- TapDaemon.kt       client-connection/attached-device registries, device list, bounded teardown
+|   |   |   +-- daemon/core/
+|   |   |   |   +-- TapDaemon.kt       ConnectedClient/attached-device registries, device list, bounded teardown
 |   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted per build id, or a `--driver-apk` override
-|   |   |   +-- server/
+|   |   |   +-- daemon/grpc/
 |   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info + exactly-one Observe (observing/heartbeat/closing)
 |   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
 |   |   |       +-- common.kt                  Defaults (echoed in Info), suspend reply wrapper, exception → status + `tap-failure-bin` Failure trailer
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
-|   |   +-- src/test/kotlin/...      TapDaemonLifecycleTest, DaemonDescriptorTest, ClientConnectionServiceTest, AppServiceTest, FailureStatusTest
+|   |   +-- src/test/kotlin/...      core: TapDaemonLifecycleTest; cli: CliTest, DaemonDescriptorTest; grpc: ClientConnectionServiceTest, AppServiceTest, FailureStatusTest
 |   +-- validation/              :host:validation — device validation suite + `tap-product-probe` (exe)
 |       +-- src/main/kotlin/io/github/noamcohen48/tap/host/validation/
 |       |   +-- ProductProbe.kt, ProductProbeMain.kt   latency/inventory probe for arbitrary apps
@@ -180,27 +181,32 @@ tap/
 |   +-- kotlin/
 |   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package io.github.noamcohen48.tap.sdk)
 |   |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/sdk/
-|   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), ClientConnection (observe/availableSerials/attachDevice), DaemonDiscovery (descriptor lookup), TapDaemonProcess (`tap start`/`tap stop`)
-|   |   |       +-- Device.kt            Device.attach(connection, serial, …), execute/element/await/app/info/pressKey/typeText/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
+|   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), TapConnection (observe/availableSerials/attachDevice), DaemonDiscovery (descriptor lookup), TapDaemonProcess (`tap start`/`tap stop`)
+|   |   |       +-- Device.kt            Device.attach(connection, serial, …), element/await/app/info/pressKey/typeText/screenshot/dumpHierarchy/driverLog/awaitUntil (internal execute), Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/clearText/swipe/scroll, typeText (tap + await focused + Device.typeText) and scrollUntil (exists + scroll loop) client-side, first/at/descendant/child
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
-|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the proto Selector
-|   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (proto ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
+|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the (internal) proto Selector
+|   |   |       +-- Models.kt            SDK-owned value types: MatchMode, Direction, StabilitySignal, ErrorCode, FailureReason, DeviceState, Bounds, ElementSnapshot, AppProcess, DeviceEntry, ServerInfo/ServerDefaults
+|   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, Hierarchy, DeviceInfo, DriverLog
+|   |   |       +-- Capture.kt           Device.capture(): the four artifacts in parallel, bounded, never throws; Capture.saveTo
+|   |   |       +-- ProtoMapping.kt      internal proto <-> model mappers (enums by name after the proto prefix)
+|   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package io.github.noamcohen48.tap.junit5)
 |   |       +-- src/main/kotlin/io/github/noamcohen48/tap/junit5/
-|   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
+|   |           +-- Annotations.kt       @TapTest(deviceLifetime), DeviceLifetime, @TapDevice(role), @TapDevices(roles), Devices
 |   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
 |   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
-|   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles
-|   |           +-- TapClientConnection.kt     one TapClient + ClientConnection per JVM generation (managed sequential generations: teardown gate with cancelled-shutdown NonCancellable re-await of captured flights, single-flight shares, transactional hook install before publish with close+stop rollback, creation rollback with suppressed cleanup, NonCancellable ownership with original cancellation rethrown), closed by launcher listener/shutdown hook
+|   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles, capture mode (tap.capture)
+|   |           +-- ConnectionMemo.kt    ConnectionMemo + the JVM-wide SharedConnection: one TapClient + TapConnection per JVM generation (managed sequential generations: teardown gate with cancelled-shutdown NonCancellable re-await of captured flights, single-flight shares, transactional hook install before publish with close+stop rollback, creation rollback with suppressed cleanup, NonCancellable ownership with original cancellation rethrown), closed by launcher listener/shutdown hook
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the daemon)
 |       +-- pyproject.toml, README.md
 |       +-- scripts/gen_stubs.py     regenerates tap_e2e/_gen from contracts/proto/*.proto; --check for CI
-|       +-- tap_e2e/_gen/            committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); the package re-exports them all
-|       +-- tap_e2e/{server,device,element,app,selectors,errors}.py   TapServer/ClientConnection, Device, Element/ElementWait, App, selector DSL, typed errors (mapped by failure reason)
-|       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, failure artifacts
+|       +-- tap_e2e/_gen/            committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); private: the public API is models.py
+|       +-- tap_e2e/{client,device,element,app,selectors,errors}.py   TapClient/TapConnection, Device, Element/ElementWait, App, selector DSL, typed errors (mapped by failure reason)
+|       +-- tap_e2e/models.py        client-owned value types and artifacts (mirrors Models.kt + Artifacts.kt); _proto.py maps proto <-> models
+|       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, tap_device_scope reuse, failure capture
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
 |
 +-- samples/fixture-tests/       JUnit 5 sample suite against the fixture app (real devices, through the daemon)
@@ -211,6 +217,7 @@ tap/
 |       +-- LifecycleTest.kt     cold launch identity, force-stop, clear-data, DEVICE_INFO
 |       +-- MultiDeviceTest.kt   @TapDevices("left","right") concurrent two-device journey
 |       +-- MotionTest.kt        awaitAnimationEnd / awaitAppSettled: wait out an animation, time out on a ticking screen
+|       +-- DeviceReuseTest.kt   @TapTest(deviceLifetime = PER_CLASS): one device across the class, replaced once detached
 |
 +-- .github/                     CI (ci.yml) and tag-driven releases (release.yml, scripts/release_version.py); see release-engineering.md
 +-- fixture-app/                 Android app used only by the validation flow and the samples
@@ -331,7 +338,7 @@ authenticated connection at a time. Instrumentation arguments (`tapSessionId`,
 ### Command lifecycle
 
 ```text
-socket -> ClientConnection.reader ---enqueue---> CommandPipeline.queue(16)
+socket -> DriverConnection.reader ---enqueue---> CommandPipeline.queue(16)
               |  (watermark, CANCEL, PING,           |
               |   heartbeat())                        v
               |                             single executor thread
@@ -529,7 +536,7 @@ construction (`text(...)`, `res(...)`) is the only non-suspend part.
 
 - The client is a thin gRPC layer over `contracts/api`: no ADB, journals, leases or driver
   lifecycle. `TapClient` owns the channel and the coroutine stubs (`TapClient.create` resolves
-  the daemon); `ClientConnection` is this process's identity at the server (owned Observe scope,
+  the daemon); `TapConnection` is this process's identity at the server (owned Observe scope,
   `availableSerials`, `attachDevice`); `Device` wraps one attached device and
   `Timeouts(action 10 s, wait 10 s, lifecycle 30 s, poll 100 ms)`, overridable per call.
   Every I/O method is `suspend` with per-call `withDeadlineAfter` plus caller-cancellation;
@@ -575,7 +582,7 @@ bounded non-cancellable teardown, `ParameterResolver`, `TestExecutionExceptionHa
 `@TapDevice` parameters, and bare `Device` parameters; maps roles to serials itself (pinned
 by `tap.device.<role>`, then the `tap.serials` order, otherwise the server's device list, free
 devices first); skips the test (assumption) when fewer devices exist than roles; attaches devices one at
-a time in sorted serial order through the JVM-wide `TapClientConnection` (one `TapClient` + `ClientConnection`
+a time in sorted serial order through the JVM-wide `SharedConnection` (one `TapClient` + `TapConnection`
 per sequential generation — teardown-gated start/connect with single-flight shares, creation
 rollback with suppressed cleanup, and cancellation-safe ownership under `NonCancellable`
 with the original cancellation rethrown — closed by the launcher listener/shutdown hook), each
@@ -596,7 +603,7 @@ pytest run) respect each other because the lock is a file under the shared state
 
 ### Python binding (`clients/python/`)
 
-`tap-e2e` is a generated gRPC client plus a thin mirror of the Kotlin SDK: `TapServer`/`ClientConnection`,
+`tap-e2e` is a generated gRPC client plus a thin mirror of the Kotlin SDK: `TapClient`/`TapConnection`,
 `Device`, `Element`/`ElementWait`, `App`, selector builders over the proto `Selector`, and
 typed errors (`CommandError` with `ErrorCode`, `WaitTimeoutError`, `AppLifecycleError`,
 `ServerError`). The pytest plugin mirrors `TapExtension`: per-test attached devices, all-or-none
@@ -640,7 +647,7 @@ long-press-aware gesture target, a prefilled field), and the delayed-mutation fa
 | Driver core | `:device:driver:core:testDebugUnitTest` | 38 in 9 classes | selector compiler/pick, text matching and verification, key input, screen stability, session config, bounded output |
 | Host core | `host/core/src/test` | 90 (`DriverClientTest` 33, `AdbTest` 27, `DeviceSessionTest` 24, `SessionJournalTest` 6) | typed/fake ADB process ownership and parsing; session open/cleanup/quarantine; real handshake against `FakeDriverServer` for demux, cancellation, heartbeat, transport-loss and blobs; journal atomicity |
 | Kotlin client | `:clients:kotlin:sdk:test` | 60 (`TapClientTest` 37, `SelectorsTest` 10, `WireContractTest` 7, `DaemonTokenTest` 4, `ConformanceTest` 2) | in-process grpc-kotlin fakes: Observe ownership/lifetime, Disconnect-before-drop ordering, Execute cancellation, sibling-cancellation shape, scope enforcement, quarantine report, fail-closed drain-timeout teardown |
-| JUnit extension | `:clients:kotlin:junit5:test` | 32 (`TapTestBridgeTest` 17, `DeviceBarrierTest` 7, `TapClientConnectionTest` 6, `TapConfigTest` 2) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen, cancellation-safe ownership with NonCancellable state/rollback/gate transitions and original cancellation rethrown, explicit teardown-park hook with no timing, handshake cancellation for create/connect/shutdown with no leaks, create/connect suppression contents/order with exact-once resources, cancelled-shutdown NonCancellable re-await of captured flights before reclaim/gate completion, transactional hook install before publish with close+stop rollback and safe retry), shutdown-vs-connection race, concurrent shares |
+| JUnit extension | `:clients:kotlin:junit5:test` | 32 (`TapTestBridgeTest` 17, `DeviceBarrierTest` 7, `ConnectionMemoTest` 6, `TapConfigTest` 2) | binding/nesting (incl. child coroutines), root cancellation (failure + thread interruption with AfterEach teardown), accepted-Execute sibling cancellation without replay, duplicate-role rejection, sorted opens, teardown preservation; barrier release/reuse/one-shot (waiting resets)/cancellation; managed connection generations (teardown-gated start/connect, creation rollback with suppressed cleanup, sequential reopen, cancellation-safe ownership with NonCancellable state/rollback/gate transitions and original cancellation rethrown, explicit teardown-park hook with no timing, handshake cancellation for create/connect/shutdown with no leaks, create/connect suppression contents/order with exact-once resources, cancelled-shutdown NonCancellable re-await of captured flights before reclaim/gate completion, transactional hook install before publish with close+stop rollback and safe retry), shutdown-vs-connection race, concurrent shares |
 | Device | `:host:validation:deviceTest -Ptap.serials=…` | 45 on two serials (22 per serial + isolation) | the fault/recovery suite above on API 29 (Samsung SM-J810G) and API 34 (emulator), reboot tag excluded |
 | Device, Kotlin client | `:samples:fixture-tests:test -Ptap.serials=…` | 13 device | Kotlin API + JUnit extension through a runner-managed server (`tap.manageDaemon`), structured two-device concurrency incl. sibling cancellation without replay; passed on API 29 + API 34 on 2026-09-21 |
 | Device, Python client | `TAP_BIN=… TAP_MANAGE_DAEMON=1 TAP_SERIALS=… pytest clients/python/tests` | 12 | the same suite through the pytest plugin |

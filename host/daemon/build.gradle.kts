@@ -20,7 +20,7 @@ dependencies {
 
 application {
     applicationName = "tap"
-    mainClass.set("io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
+    mainClass.set("io.github.noamcohen48.tap.daemon.cli.TapDaemonMainKt")
 }
 
 /*
@@ -59,7 +59,7 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("tap")
-            mainClass.set("io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
+            mainClass.set("io.github.noamcohen48.tap.daemon.cli.TapDaemonMainKt")
             buildArgs.addAll(
                 "--no-fallback",
                 "-H:+ReportExceptionStackTraces",

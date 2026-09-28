@@ -124,10 +124,12 @@ class Snapshot(_message.Message):
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ...) -> None: ...
 
 class WaitVisible(_message.Message):
-    __slots__ = ("selector",)
+    __slots__ = ("selector", "exactly_one")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    EXACTLY_ONE_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ...) -> None: ...
+    exactly_one: bool
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., exactly_one: _Optional[bool] = ...) -> None: ...
 
 class WaitGone(_message.Message):
     __slots__ = ("selector",)
@@ -320,14 +322,16 @@ class Done(_message.Message):
     def __init__(self) -> None: ...
 
 class Error(_message.Message):
-    __slots__ = ("code", "detail", "message")
+    __slots__ = ("code", "detail", "message", "match_count")
     CODE_FIELD_NUMBER: _ClassVar[int]
     DETAIL_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    MATCH_COUNT_FIELD_NUMBER: _ClassVar[int]
     code: ErrorCode
     detail: str
     message: str
-    def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
+    match_count: int
+    def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., match_count: _Optional[int] = ...) -> None: ...
 
 class CommandResult(_message.Message):
     __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error")

@@ -4,30 +4,30 @@ import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.Heartbeat
-import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
-import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.Done
-import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.api.v1.Heartbeat
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
+import io.github.noamcohen48.tap.api.v1.Observing
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
 import io.grpc.MethodDescriptor
@@ -45,6 +45,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -60,9 +61,9 @@ import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertContentEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -354,7 +355,7 @@ class TapClientTest {
         runBlocking {
             fakeConnections.observeMode = FakeConnections.ObserveMode.STUBBORN
             // Isolated per-instance bound (no shared mutation): safe under parallel tests.
-            val connection = ClientConnection(client(), "conn-stubborn", ClientConnectionBounds(teardownMs = 300))
+            val connection = TapConnection(client(), "conn-stubborn", TapConnectionBounds(teardownMs = 300))
             connection.observe()
             try {
                 val started = System.nanoTime()
@@ -433,7 +434,7 @@ class TapClientTest {
     @Test
     fun `device drain timeout detaches only that device and keeps the connection`() {
         runBlocking {
-            val connection = ClientConnection(client(), "conn-failclosed", ClientConnectionBounds(), DeviceBounds(drainMs = 300))
+            val connection = TapConnection(client(), "conn-failclosed", TapConnectionBounds(), DeviceBounds(drainMs = 300))
             connection.observe()
             try {
                 tapScope {
@@ -493,7 +494,7 @@ class TapClientTest {
     fun `fail-closed DetachDevice failure is suppressed without stranding`() {
         runBlocking {
             fakeDevices.closeError = StatusRuntimeException(Status.UNAVAILABLE.withDescription("detach boom"))
-            val connection = ClientConnection(client(), "conn-failclosed-err", ClientConnectionBounds(), DeviceBounds(drainMs = 300))
+            val connection = TapConnection(client(), "conn-failclosed-err", TapConnectionBounds(), DeviceBounds(drainMs = 300))
             connection.observe()
             try {
                 tapScope {
@@ -538,7 +539,7 @@ class TapClientTest {
         waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitAppVisible() }.let { assertIs<WaitTimeoutException>(it) }
         waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.awaitAppVisible() }.let {
             assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, it.code)
+            assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), it.code)
         }
     }
 
@@ -547,7 +548,7 @@ class TapClientTest {
         waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitScreenStable() }.let { assertIs<WaitTimeoutException>(it) }
         waitMapping(ErrorCode.ERR_TRANSPORT_LOST) { it.awaitScreenStable() }.let {
             assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_TRANSPORT_LOST, it.code)
+            assertEquals(ErrorCode.ERR_TRANSPORT_LOST.toModel(), it.code)
         }
     }
 
@@ -556,7 +557,7 @@ class TapClientTest {
         val scroll: suspend (Device) -> Unit = { it.element(rawRes("list")).scrollUntil(text("row 40")) }
         waitMapping(ErrorCode.ERR_NOT_FOUND, scroll).let {
             assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_NOT_FOUND, it.code)
+            assertEquals(ErrorCode.ERR_NOT_FOUND.toModel(), it.code)
         }
     }
 
@@ -564,6 +565,139 @@ class TapClientTest {
     fun `element waits map only WAIT_TIMEOUT to WaitTimeoutException`() {
         waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.await(text("x")).visible() }.let { assertIs<WaitTimeoutException>(it) }
         waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.await(text("x")).gone() }.let { assertIs<CommandException>(it) }
+    }
+
+    @Test
+    fun `attach block needs no tapScope and always detaches`() {
+        runBlocking {
+            client().connect("test").use { connection ->
+                assertEquals("done", connection.attach("emulator-5554", "com.test") { "done" })
+                assertEquals(listOf("attached-emulator-5554"), fakeDevices.closes.toList())
+
+                // Inside an existing scope it reuses the caller's TapContext instead of nesting.
+                tapScope("outer") {
+                    connection.attach("emulator-5554", "com.test") { assertEquals("outer", currentCoroutineContext()[TapContext]?.owner) }
+                }
+                assertEquals(2, fakeDevices.closes.size)
+            }
+        }
+    }
+
+    @Test
+    fun `attach block failure wins over a detach failure, which is suppressed`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                fakeDevices.closeError = io.grpc.StatusException(Status.INTERNAL.withDescription("detach broke"))
+                val failure =
+                    assertFailsWith<IllegalStateException> {
+                        connection.attach("emulator-5554", "com.test") { error("body broke") }
+                    }
+                assertEquals("body broke", failure.message)
+                // Stack-trace recovery (debug mode) may hand back a copy whose cause is the original.
+                val suppressed = generateSequence<Throwable>(failure) { it.cause }.flatMap { it.suppressed.asSequence() }.toList()
+                assertEquals(listOf("INTERNAL: detach broke"), suppressed.map { it.message })
+                assertEquals(1, fakeDevices.closeCalls.get())
+
+                fakeDevices.closeError = null
+                fakeDevices.quarantineNextClose = "reboot needed"
+                val quarantined = assertFailsWith<TapException> { connection.attach("emulator-5554", "com.test") { } }
+                assertTrue(quarantined.message!!.contains("reboot needed"))
+            } finally {
+                fakeDevices.closeError = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `use closes the connection after the block, also when it fails`() {
+        runBlocking {
+            val kept = client().connect("test")
+            assertEquals(kept, kept.use { it })
+            assertTrue(kept.isClosed)
+            lateinit var failed: TapConnection
+            assertFailsWith<IllegalStateException> {
+                client().connect("test").use {
+                    failed = it
+                    error("body broke")
+                }
+            }
+            assertTrue(failed.isClosed)
+        }
+    }
+
+    @Test
+    fun `capture keeps the parts it got and records why the others are missing`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                when {
+                    request.command.hasDeviceInfo() ->
+                        CommandResult
+                            .newBuilder()
+                            .setDeviceInfo(
+                                io.github.noamcohen48.tap.api.v1.DeviceInfo
+                                    .newBuilder()
+                                    .setApiLevel(34),
+                            ).build()
+                    request.command.hasDumpHierarchy() ->
+                        CommandResult
+                            .newBuilder()
+                            .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(ErrorCode.ERR_DRIVER_UNHEALTHY))
+                            .build()
+                    else -> null
+                }
+            }
+            val dir = Files.createTempDirectory("tap-capture-test")
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        val capture = device.capture()
+                        assertEquals(34, capture.info?.apiLevel)
+                        assertEquals(null, capture.hierarchy)
+                        assertEquals(listOf(Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG), capture.artifacts.keys.toList())
+                        assertEquals(setOf(Capture.HIERARCHY), capture.failures.keys)
+                        assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), assertIs<CommandException>(capture.failures[Capture.HIERARCHY]).code)
+                        val saved = capture.saveTo(dir, "main-emulator-5554").map { it.fileName.toString() }
+                        assertEquals(
+                            listOf("main-emulator-5554.screenshot.png", "main-emulator-5554.device-info.json", "main-emulator-5554.driver-log.txt"),
+                            saved,
+                        )
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `device wait timeouts carry the reason and match count, and one asks for exactly one`() {
+        val ambiguous =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("AMBIGUOUS")
+                .setMatchCount(3)
+        fakeDevices.executeRequests.clear()
+        val failure =
+            waitMappingWith({ CommandResult.newBuilder().setError(ambiguous).build() }) { it.await(text("Row")).one() }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.AMBIGUOUS, failure.reason)
+        assertEquals(3, failure.matchCount)
+        assertTrue(failure.message!!.contains("AMBIGUOUS (3 matches)"), failure.message)
+        assertTrue(fakeDevices.executeRequests.any { it.command.waitVisible.exactlyOne })
+
+        val unknown = ambiguous.clone().setDetail("SOMETHING_NEW").clearMatchCount()
+        val later = waitMappingWith({ CommandResult.newBuilder().setError(unknown).build() }) { it.await(text("Row")).gone() }
+        assertIs<WaitTimeoutException>(later)
+        assertEquals(null, later.reason)
+        assertEquals(null, later.matchCount)
     }
 
     @Test
@@ -685,17 +819,19 @@ class TapClientTest {
         code: ErrorCode,
         call: suspend (Device) -> Unit,
     ): Throwable =
+        waitMappingWith({
+            CommandResult
+                .newBuilder()
+                .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(code))
+                .build()
+        }, call)
+
+    private fun waitMappingWith(
+        failure: () -> CommandResult,
+        call: suspend (Device) -> Unit,
+    ): Throwable =
         runBlocking {
-            fakeDevices.executeResponder = { request ->
-                if (request.command.hasDeviceInfo()) {
-                    null
-                } else {
-                    CommandResult
-                        .newBuilder()
-                        .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(code))
-                        .build()
-                }
-            }
+            fakeDevices.executeResponder = { request -> if (request.command.hasDeviceInfo()) null else failure() }
             val connection = client().connect("test")
             try {
                 tapScope {
@@ -1151,7 +1287,7 @@ class TapClientTest {
                         app.grantPermission("android.permission.CAMERA")
                         app.launch(".Main", timeout = 7.seconds)
                         app.launch()
-                        assertEquals(ProcessIdentity(4242, "token"), app.coldLaunch(timeout = 9.seconds))
+                        assertEquals(AppProcess(4242, "token"), app.coldLaunch(timeout = 9.seconds))
                         val refused = assertFailsWith<ServerException> { app.grantPermission("android.permission.NOPE") }
                         assertEquals("FAILED_PRECONDITION", refused.status)
                     }

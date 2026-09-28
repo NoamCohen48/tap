@@ -10,7 +10,8 @@ This document describes the implemented wire contract. Planned but unimplemented
 
 Protocol 4.0 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
 `scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added the `any_window` scope
-and `ElementSnapshot.showing_hint`). The schema is the project's one schema,
+and `ElementSnapshot.showing_hint`; later additive, since driver and host ship together:
+`WaitVisible.exactly_one`, `Error.match_count` and the wait-timeout details). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
 same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
@@ -168,9 +169,9 @@ result type.
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
 | `count` | `Count` | `selector` | `count` = matches in the selector's scope, capped at 1 000 (ignores the match limit) |
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count |
-| `wait_visible` | `WaitVisible` | `selector` | `done`, or `WAIT_TIMEOUT` |
-| `wait_gone` | `WaitGone` | `selector` | `done` once no match exists, or `WAIT_TIMEOUT` |
-| `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window, or `WAIT_TIMEOUT` |
+| `wait_visible` | `WaitVisible` | `selector`, `exactly_one` (default false) | `done` once one or more nodes match (exactly one with `exactly_one`); `WAIT_TIMEOUT` with detail `NO_MATCH`, or `AMBIGUOUS` (only with `exactly_one`), and `match_count` from the last non-stale poll (no detail when every poll was stale) |
+| `wait_gone` | `WaitGone` | `selector` | `done` once no match exists; `WAIT_TIMEOUT` with detail `STILL_PRESENT` and `match_count` counted once after the deadline (absent if that count was stale or zero) |
+| `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window; `WAIT_TIMEOUT` with detail `APP_NOT_VISIBLE` |
 | `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click; no enabled pre-check |
 | `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: `ACTION_SET_TEXT` accepted by the node (not read back) |
@@ -247,7 +248,8 @@ Response {
 ```
 
 Each operation produces exactly one `outcome` case on success (the table above) and `error`
-(`code`, optional `detail`, optional `message`) on failure. The daemon hands `result` to the
+(`code`, optional `detail`, optional `message`, optional `match_count` for the element waits)
+on failure. The daemon hands `result` to the
 client as it is.
 
 ### Selectors
@@ -431,7 +433,7 @@ policy; Tap itself never retries.
 | `NOT_INTERACTABLE` | no | yes | Reserved; no longer emitted (4.0: the driver does not pre-check enabled/scrollable). |
 | `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
 | `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `PARTIAL_INPUT` (deadline mid-typing). Effects are never read back. |
-| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
+| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `APP_NOT_VISIBLE` (`wait_app_visible`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
 | `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |

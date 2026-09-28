@@ -5,8 +5,22 @@ from __future__ import annotations
 
 import pathlib
 
-from tap_e2e import TapServer
-from tap_e2e.pytest_plugin import TapConfig, _assign, _attach_single, _rotate
+from tap_e2e import TapClient
+import pytest  # type: ignore[import-not-found]
+
+from tap_e2e import _gen as pb
+from tap_e2e.pytest_plugin import (
+    _HELD,
+    TapConfig,
+    _assign,
+    _attach_single,
+    _capture_mode,
+    _device_scope,
+    _Held,
+    _reusable,
+    _rotate,
+    _scope_key,
+)
 
 from .conftest import TOKEN
 
@@ -19,6 +33,13 @@ def test_rotation_wraps_and_assigns_in_declaration_order():
     assert _assign(["a", "b"], serials, 2) == {"a": "s3", "b": "s1"}
 
 
+def test_capture_mode_parses_on_failure_and_off_only():
+    assert _capture_mode("onFailure") is True
+    assert _capture_mode(" OFF ") is False
+    with pytest.raises(pytest.UsageError, match="tap_capture"):
+        _capture_mode("always")
+
+
 def test_single_role_moves_past_a_busy_device_and_waits_only_when_all_are(fake):
     config = TapConfig(
         aut="com.test",
@@ -28,7 +49,7 @@ def test_single_role_moves_past_a_busy_device_and_waits_only_when_all_are(fake):
         acquire_timeout=7,
         manage_daemon=False,
     )
-    server = TapServer(fake.address, TOKEN)
+    server = TapClient.create(fake.address, TOKEN)
     connection = server.connect("test")
     try:
         fake.devices.busy.add("serial-aaa")
@@ -49,5 +70,56 @@ def test_single_role_moves_past_a_busy_device_and_waits_only_when_all_are(fake):
         ]
         device.detach()
     finally:
+        connection.close()
+        server.close()
+
+
+def test_device_scope_parses_the_four_scopes_only():
+    assert [_device_scope(s) for s in ("function", "Class", " module ", "SESSION")] == [
+        "function",
+        "class",
+        "module",
+        "session",
+    ]
+    with pytest.raises(pytest.UsageError, match="tap_device_scope"):
+        _device_scope("package")
+
+
+def test_scope_key_groups_tests_by_class_module_or_session():
+    class InClass:
+        path = pathlib.Path("tests/test_a.py")
+        cls = type("TestCheckout", (), {})
+
+    class ModuleLevel:
+        path = pathlib.Path("tests/test_a.py")
+        cls = None
+
+    in_class, module_level = InClass(), ModuleLevel()
+    assert _scope_key(in_class, "function") is None  # type: ignore[arg-type]
+    assert _scope_key(in_class, "class") == "tests/test_a.py::TestCheckout"  # type: ignore[arg-type]
+    assert _scope_key(module_level, "class") is None  # type: ignore[arg-type]
+    assert _scope_key(module_level, "module") == _scope_key(in_class, "module") == "tests/test_a.py"  # type: ignore[arg-type]
+    assert _scope_key(module_level, "session") == "session"  # type: ignore[arg-type]
+
+
+def test_held_devices_are_reused_only_while_they_answer(fake, pytestconfig):
+    server = TapClient.create(fake.address, TOKEN)
+    connection = server.connect("test")
+    try:
+        device = connection.attach_device("serial-aaa", "com.test")
+        pytestconfig.stash[_HELD] = _Held("module", "tests/test_a.py", ["device"], {"device": device})
+        assert _reusable(pytestconfig, "tests/test_a.py", ["device"]) == {"device": device}
+        # Another scope or other roles: the held device is detached, nothing is reused.
+        assert _reusable(pytestconfig, "tests/test_b.py", ["device"]) is None
+        assert device.detached and pytestconfig.stash[_HELD] is None
+
+        again = connection.attach_device("serial-aaa", "com.test")
+        pytestconfig.stash[_HELD] = _Held("module", "tests/test_a.py", ["device"], {"device": again})
+        fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_DRIVER_UNHEALTHY))
+        assert _reusable(pytestconfig, "tests/test_a.py", ["device"]) is None
+        assert again.detached
+    finally:
+        fake.devices.responder = None
+        pytestconfig.stash[_HELD] = None
         connection.close()
         server.close()

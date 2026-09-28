@@ -1,12 +1,12 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.cli
 
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
-import io.github.noamcohen48.tap.server.FAILURE_TRAILER
-import io.github.noamcohen48.tap.server.TokenAuthInterceptor
+import io.github.noamcohen48.tap.daemon.grpc.FAILURE_TRAILER
+import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
 import io.grpc.Metadata
 import io.grpc.ServerInterceptors
 import io.grpc.Status

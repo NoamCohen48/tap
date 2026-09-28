@@ -5,6 +5,7 @@ from tap_e2e import (
     UP,
     CommandError,
     ErrorCode,
+    WaitReason,
     WaitTimeoutError,
     raw_res,
     res,
@@ -102,6 +103,18 @@ def test_wait_timeout_is_diagnosable(tap_device):
     with pytest.raises(WaitTimeoutError) as timeout:
         tap_device.wait(text_starts_with("Never rendered"), timeout=1).visible()
     assert tap_device.serial in str(timeout.value)
+    assert (timeout.value.reason, timeout.value.match_count) == (WaitReason.NO_MATCH, 0)
+
+    # visible() is "one or more"; one() is the explicit exactly-one wait and says how many matched.
+    ambiguous = text_matches("(?i)ambiguous tap")
+    tap_device.wait(ambiguous).visible()
+    with pytest.raises(WaitTimeoutError) as not_one:
+        tap_device.wait(ambiguous, timeout=1).one()
+    assert (not_one.value.reason, not_one.value.match_count) == (WaitReason.AMBIGUOUS, 2)
+    with pytest.raises(WaitTimeoutError) as present:
+        tap_device.wait(ambiguous, timeout=1).gone()
+    assert (present.value.reason, present.value.match_count) == (WaitReason.STILL_PRESENT, 2)
+    tap_device.wait(res("ambiguous_button_left")).one().tap()
 
 
 def test_back_key(tap_device):

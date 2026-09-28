@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.core
 
 import com.google.protobuf.GeneratedMessageLite
 import io.github.noamcohen48.tap.api.v1.Failure

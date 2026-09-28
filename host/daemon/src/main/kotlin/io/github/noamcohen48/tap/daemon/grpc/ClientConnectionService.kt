@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.server
+package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Closing
@@ -12,7 +12,7 @@ import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
-import io.github.noamcohen48.tap.daemon.TapDaemon
+import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.protocol.HOST_BUILD_ID
 import io.github.noamcohen48.tap.protocol.PROTOCOL_VERSION_ORDER
 import io.github.noamcohen48.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS

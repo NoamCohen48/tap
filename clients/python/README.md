@@ -17,10 +17,11 @@ Runtime requirements: a `tap` daemon binary (`./gradlew :host:daemon:nativeCompi
 
 ## Server discovery and lifecycle
 
-`TapServer()` uses, in order: `TAP_SERVER=host:port`; a live `daemon.json` in the state dir
+`TapClient.create()` uses, in order: `TAP_SERVER=host:port`; a live `daemon.json` in the state dir
 (`TAP_STATE_DIR`, default `~/.tap`), written by `tap start`. Every call carries the daemon's
 bearer token: from `daemon.json`, or from `TAP_TOKEN` with an explicit `TAP_SERVER` (or
-`TapServer(address, token)`); a wrong or missing one raises `ServerError` `UNAUTHENTICATED`. It never starts the daemon; without
+`TapClient.create(address, token)`; `TapClient(Endpoint(address, token))` skips discovery and does
+no I/O); a wrong or missing one raises `ServerError` `UNAUTHENTICATED`. It never starts the daemon; without
 one it raises `TapError: no running tap daemon … run `tap start``. A started daemon stays
 running like the ADB server (`tap stop`), so concurrent test processes on one machine share it
 and respect each other's device locks.
@@ -33,10 +34,9 @@ when `tap_manage_daemon = true` / `TAP_MANAGE_DAEMON=1`, stopping only a daemon 
 ## Script usage
 
 ```python
-from tap_e2e import TapServer, text, res
+from tap_e2e import TapClient, text, res
 
-server = TapServer()
-with server.connect("smoke") as connection:  # observing: if this process dies, the server detaches its devices
+with TapClient.create() as client, client.connect("smoke") as connection:  # observing: if this process dies, the server detaches its devices
     with connection.attach_device("emulator-5554", "io.github.noamcohen48.tap.fixture") as device:
         device.app().cold_launch(".MainActivity")
         device.element(res("view_button")).tap()

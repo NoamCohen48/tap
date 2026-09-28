@@ -1,7 +1,7 @@
 package io.github.noamcohen48.tap.junit5
 
-import io.github.noamcohen48.tap.sdk.ClientConnection
 import io.github.noamcohen48.tap.sdk.TapClient
+import io.github.noamcohen48.tap.sdk.TapConnection
 import io.github.noamcohen48.tap.sdk.TapDaemonProcess
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
@@ -13,7 +13,7 @@ import org.junit.platform.launcher.LauncherSessionListener
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The test JVM's one [TapClient] + [ClientConnection], created on first use and shared by every
+ * The test JVM's one [TapClient] + [TapConnection], created on first use and shared by every
  * test. Every [connection] call re-validates the cached connection under the [Mutex]: a closed
  * one, or one whose liveness stream ended (daemon restart, network loss), is dropped together
  * with its client and a fresh pair is created, so one dead connection never fails every later
@@ -31,22 +31,22 @@ internal class ConnectionMemo(
     private val startDaemon: suspend () -> Boolean = { TapDaemonProcess.start().started },
     private val stopDaemon: suspend () -> Unit = { TapDaemonProcess.stop() },
     private val createClient: suspend () -> TapClient = { TapClient.create() },
-    private val connect: suspend (TapClient) -> ClientConnection = { client ->
+    private val connect: suspend (TapClient) -> TapConnection = { client ->
         client.connect("junit ${ProcessHandle.current().pid()} ${System.getProperty("user.dir")}")
     },
-    private val isUsable: (ClientConnection) -> Boolean = { it.isUsable },
-    private val closeConnection: suspend (ClientConnection) -> Unit = { it.close() },
+    private val isUsable: (TapConnection) -> Boolean = { it.isUsable },
+    private val closeConnection: suspend (TapConnection) -> Unit = { it.close() },
     private val closeClient: suspend (TapClient) -> Unit = { it.close() },
     private val onFirstCreate: () -> Unit = {},
 ) {
     private val mutex = Mutex()
     private var client: TapClient? = null
-    private var connection: ClientConnection? = null
+    private var connection: TapConnection? = null
     private var startedDaemon = false
     private val created = AtomicBoolean(false)
 
     /** The cached connection if it is still usable, else a newly created one. */
-    suspend fun connection(): ClientConnection =
+    suspend fun connection(): TapConnection =
         mutex.withLock {
             connection?.let { if (isUsable(it)) return@withLock it }
             withContext(NonCancellable) { discard() }
@@ -99,13 +99,13 @@ internal class ConnectionMemo(
 }
 
 /** The JVM-wide memo with production factories. */
-internal object TapClientConnection {
+internal object SharedConnection {
     private val memo =
         ConnectionMemo(
             onFirstCreate = { Runtime.getRuntime().addShutdownHook(Thread({ shutdownBlocking() }, "tap-shutdown")) },
         )
 
-    suspend fun connection(): ClientConnection = memo.connection()
+    suspend fun connection(): TapConnection = memo.connection()
 
     suspend fun shutdown(): Unit = memo.shutdown()
 
@@ -113,9 +113,9 @@ internal object TapClientConnection {
     fun shutdownBlocking(): Unit = runBlocking { shutdown() }
 }
 
-/** Registered through `META-INF/services`; closes [TapClientConnection] once all tests have run. */
+/** Registered through `META-INF/services`; closes [SharedConnection] once all tests have run. */
 class TapLauncherSessionListener : LauncherSessionListener {
     override fun launcherSessionClosed(session: LauncherSession) {
-        TapClientConnection.shutdownBlocking()
+        SharedConnection.shutdownBlocking()
     }
 }

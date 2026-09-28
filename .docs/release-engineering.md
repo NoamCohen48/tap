@@ -64,8 +64,8 @@ the `tap-api` of the current engine version is already in GitHub Packages and fa
 pointer to tag `daemon/v<engine>` first.
 
 Client 0.2.0 (2026-09-21) is the breaking coroutine release: every `Device`/`App`/`Element`
-call is `suspend` behind `tapTest`/`tapScope`, `ClientConnection` owns its attach scope, and
-`TapClient`/`ClientConnection`/`Device` close via `suspend` (no `AutoCloseable`). The wire is
+call is `suspend` behind `tapTest`/`tapScope`, `TapConnection` owns its attach scope, and
+`TapClient`/`TapConnection`/`Device` close via `suspend` (no `AutoCloseable`). The wire is
 unchanged (`tap.v1` only gains no fields here), so the break is source-only: 0.1.x callers
 recompile against `tapTest`/`tapScope`. Engine and Python/sync lines did not move.
 
@@ -126,11 +126,11 @@ Consuming:
 
 ```kotlin
 repositories { maven("https://maven.pkg.github.com/NoamCohen48/tap") { credentials { … } } }
-testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")
+testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")
 ```
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
 curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.1.0/tap-0.1.0-linux-x86_64 && chmod +x tap
 ```
 

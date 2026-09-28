@@ -6,7 +6,7 @@ from __future__ import annotations
 import grpc
 import pytest  # type: ignore[import-not-found]
 
-from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapServer, WaitTimeoutError
+from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapClient, WaitTimeoutError
 from tap_e2e import _gen as pb
 from tap_e2e import raw_res, res, text
 
@@ -15,7 +15,7 @@ from .conftest import TOKEN
 
 @pytest.fixture
 def device(fake):
-    server = TapServer(fake.address, TOKEN)
+    server = TapClient.create(fake.address, TOKEN)
     connection = server.connect("test")
     device = connection.attach_device("emulator-5554", "com.test")
     yield device
@@ -38,6 +38,7 @@ WAITS = {
     "await_app_visible": lambda d: d.await_app_visible(),
     "await_screen_stable": lambda d: d.await_screen_stable(),
     "wait_visible": lambda d: d.wait(text("x")).visible(),
+    "wait_one": lambda d: d.wait(text("x")).one(),
     "wait_gone": lambda d: d.wait(text("x")).gone(),
 }
 
@@ -51,13 +52,40 @@ def test_only_wait_timeout_becomes_wait_timeout_error(fake, device, wait):
         _fail_with(fake, code)
         with pytest.raises(CommandError) as info:
             wait(device)
-        assert info.value.code == ErrorCode(code)
+        assert info.value.code.name == pb.ErrorCode.Name(code).removeprefix("ERR_")
+
+
+def test_device_wait_timeouts_carry_the_reason_and_match_count(fake, device):
+    from tap_e2e import WaitReason
+
+    sent: list[pb.Command] = []
+    detail = {"detail": "AMBIGUOUS", "match_count": 3}
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.HasField("device_info"):
+            return None
+        sent.append(command)
+        return pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, **detail))
+
+    fake.devices.responder = respond
+    with pytest.raises(WaitTimeoutError) as info:
+        device.wait(text("Row")).one()
+    assert info.value.reason is WaitReason.AMBIGUOUS
+    assert info.value.match_count == 3
+    assert "AMBIGUOUS (3 matches)" in str(info.value)
+    assert sent[-1].wait_visible.exactly_one
+
+    detail = {"detail": "SOMETHING_NEW"}
+    with pytest.raises(WaitTimeoutError) as info:
+        device.wait(text("Row")).visible()
+    assert info.value.reason is None and info.value.match_count is None
+    assert not sent[-1].wait_visible.exactly_one
 
 
 def test_zero_timeout_is_not_replaced_by_the_default(fake, device):
-    device.execute(0, device_info=pb.DeviceInfoQuery())
+    device._execute(0, device_info=pb.DeviceInfoQuery())
     device.dump_hierarchy(timeout=0)
-    device.execute(None, device_info=pb.DeviceInfoQuery())
+    device._execute(None, device_info=pb.DeviceInfoQuery())
     assert [c.timeout_ms for c in fake.devices.commands] == [0, 0, 10_000]
 
 
@@ -112,13 +140,44 @@ def test_permission_denied_names_the_foreign_connection(fake, device):
         fake.devices.deny = False
 
 
-def test_screenshot_is_checked_and_written_client_side(fake, device, tmp_path):
+def test_screenshot_is_checked_client_side_and_saves(fake, device, tmp_path):
     target = tmp_path / "shots" / "a.png"
-    assert device.screenshot(write_to=target) == fake.devices.png
-    assert target.read_bytes() == fake.devices.png
+    shot = device.screenshot()
+    assert shot.bytes == fake.devices.png
+    assert shot.media_type == "image/png"
+    assert shot.save(target).read_bytes() == fake.devices.png
     fake.devices.corrupt_png = True
     with pytest.raises(TapError, match="checksum"):
         device.screenshot()
+
+
+def test_capture_keeps_the_parts_it_got_and_records_why_the_others_are_missing(fake, device, tmp_path):
+    from tap_e2e import Capture
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.HasField("device_info"):
+            return pb.CommandResult(device_info=pb.DeviceInfo(api_level=34))
+        if command.HasField("dump_hierarchy"):
+            return pb.CommandResult(error=pb.Error(code=pb.ERR_DRIVER_UNHEALTHY))
+        return None
+
+    fake.devices.responder = respond
+    capture = device.capture()
+    assert capture.screenshot is not None and capture.screenshot.bytes == fake.devices.png
+    assert capture.info is not None and capture.info.api_level == 34
+    assert capture.driver_log is not None and capture.driver_log.lines == ["line"]
+    assert capture.hierarchy is None
+    assert list(capture.artifacts) == [Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG]
+    assert list(capture.failures) == [Capture.HIERARCHY]
+    failure = capture.failures[Capture.HIERARCHY]
+    assert isinstance(failure, CommandError) and failure.code is ErrorCode.DRIVER_UNHEALTHY
+    saved = capture.save_to(tmp_path / "out", "main-emulator-5554")
+    assert [p.name for p in saved] == [
+        "main-emulator-5554.screenshot.png",
+        "main-emulator-5554.device-info.json",
+        "main-emulator-5554.driver-log.txt",
+    ]
+    assert saved[0].read_bytes() == fake.devices.png
 
 
 def test_install_streams_a_header_then_1_mib_chunks(fake, device, tmp_path):
@@ -162,7 +221,7 @@ def test_scroll_until_scrolls_until_the_target_exists_in_the_container(fake, dev
     in_list = raw_res("list").descendant(text("row 40"))
     assert lst.scroll_until(text("row 40")).selector == in_list
     assert [op.WhichOneof("op") for op in ops] == ["exists", "scroll"] * 3 + ["exists"]
-    assert all(op.exists.selector == in_list.proto for op in ops if op.HasField("exists"))
+    assert all(op.exists.selector == in_list._proto for op in ops if op.HasField("exists"))
     assert all(op.scroll.direction == pb.DIR_DOWN for op in ops if op.HasField("scroll"))
     # A picked container cannot be carried into a relation: the bare target is used.
     assert lst.first().scroll_until(text("row 40")).selector == text("row 40")
@@ -212,4 +271,4 @@ def test_scroll_until_propagates_a_failing_step(fake, device):
     _fail_with(fake, pb.ERR_NOT_FOUND)
     with pytest.raises(CommandError) as info:
         device.element(raw_res("list")).scroll_until(text("row 40"))
-    assert info.value.code == ErrorCode(pb.ERR_NOT_FOUND)
+    assert info.value.code is ErrorCode.NOT_FOUND

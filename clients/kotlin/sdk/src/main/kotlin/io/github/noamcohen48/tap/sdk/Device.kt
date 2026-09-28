@@ -4,17 +4,14 @@ import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
-import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
-import io.github.noamcohen48.tap.api.v1.Direction
-import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
+import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.PressKey
-import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
-import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CancellationException
@@ -56,7 +53,7 @@ internal const val RPC_DEADLINE_SLACK_MS = 60_000L
 
 /**
  * Immutable per-device close bounds. Injected at construction; tests create isolated [Device]
- * instances (via an isolated [ClientConnection] carrying these bounds) with short bounds instead of
+ * instances (via an isolated [TapConnection] carrying these bounds) with short bounds instead of
  * mutating shared state, so parallel test runs stay deterministic. Defaults cover production
  * (admitted-operation drain + 120 s DetachDevice deadline + margin).
  */
@@ -123,7 +120,7 @@ data class DeviceOptions(
  * detail.
  */
 class Device internal constructor(
-    val ownerConnection: ClientConnection,
+    val ownerConnection: TapConnection,
     val attachedDeviceId: String,
     val serial: String,
     val generation: Long,
@@ -160,13 +157,13 @@ class Device internal constructor(
     /** True once [detachAndReport] started (new operations are rejected locally). */
     val isDetached: Boolean get() = detachStarted.get()
 
-    // --- Raw protocol escape hatch ----------------------------------------------------------------
+    // --- Protocol commands (internal: the public API is the typed methods) ------------------------
 
     /**
      * Runs one protocol command and returns the result as data (the outcome may be `error`).
      * [build] sets exactly one `op` case on the builder; [timeout] defaults to [Timeouts.action].
      */
-    suspend fun execute(
+    internal suspend fun execute(
         timeout: Duration? = null,
         build: Command.Builder.() -> Unit,
     ): CommandResult {
@@ -177,7 +174,7 @@ class Device internal constructor(
     }
 
     /** [execute] that throws [CommandException] instead of returning a failed result. */
-    suspend fun executeOrThrow(
+    internal suspend fun executeOrThrow(
         timeout: Duration? = null,
         selector: Selector? = null,
         build: Command.Builder.() -> Unit,
@@ -204,8 +201,8 @@ class Device internal constructor(
     /** The [App] for [packageName] (default: the app under test). Performs no I/O, so it is not suspend. */
     fun app(packageName: String = autPackage): App = App(this, packageName)
 
-    /** Serial, API level, model and display size. */
-    suspend fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo
+    /** API level, model, display size and the package owning the focused window. */
+    suspend fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo.toModel()
 
     /** Send `KEYCODE_BACK`. */
     suspend fun pressBack() = pressKey(KEYCODE_BACK)
@@ -232,11 +229,12 @@ class Device internal constructor(
     }
 
     /**
-     * PNG bytes of the screen. The server verifies them against the driver's checksum and the
-     * client checks the returned `sha256` again, so a corrupted transfer fails instead of
-     * producing a broken file. Write them wherever you like (for example `Path.writeBytes`).
+     * A PNG [Screenshot] of the screen, with its size. The server verifies the bytes against the
+     * driver's checksum and the client checks the returned `sha256` again, so a corrupted
+     * transfer fails instead of producing a broken file. Keep it with [Screenshot.save] or use
+     * [Screenshot.bytes] directly.
      */
-    suspend fun screenshot(timeout: Duration = timeouts.lifecycle): ByteArray {
+    suspend fun screenshot(timeout: Duration = timeouts.lifecycle): Screenshot {
         ensureTapBound("Device.screenshot")
         return admitted("Device.screenshot") {
             val response =
@@ -259,16 +257,16 @@ class Device internal constructor(
                     throw TapException("screenshot of $serial failed its checksum: sha256 $actual, server said ${response.sha256}")
                 }
             }
-            png
+            Screenshot.png(png)
         }
     }
 
-    /** Diagnostic accessibility XML. Never used by selectors; keep it out of assertions. */
-    suspend fun dumpHierarchy(timeout: Duration = timeouts.lifecycle): String =
-        executeOrThrow(timeout) { dumpHierarchy = DumpHierarchy.getDefaultInstance() }.text
+    /** The diagnostic accessibility [Hierarchy]. Never used by selectors; keep it out of assertions. */
+    suspend fun dumpHierarchy(timeout: Duration = timeouts.lifecycle): Hierarchy =
+        Hierarchy(executeOrThrow(timeout) { dumpHierarchy = DumpHierarchy.getDefaultInstance() }.text)
 
-    /** The driver instrumentation's recent output lines. */
-    suspend fun driverLog(): List<String> {
+    /** The driver instrumentation's recent output. */
+    suspend fun driverLog(): DriverLog {
         ensureTapBound("Device.driverLog")
         return admitted("Device.driverLog") {
             mapped(serial) {
@@ -282,6 +280,7 @@ class Device internal constructor(
                             .build(),
                     )
                     .linesList
+                    .let(::DriverLog)
             }
         }
     }
@@ -302,14 +301,13 @@ class Device internal constructor(
                     waitAppVisible = WaitAppVisible.newBuilder().setPackageName(packageName).build()
                 }
             if (result.hasError()) {
-                if (result.error.code != ErrorCode.ERR_WAIT_TIMEOUT) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) {
                     throw CommandException(result, "wait_app_visible", serial, null)
                 }
-                throw WaitTimeoutException(
+                throw WaitTimeoutException.of(
+                    result,
                     "package $packageName to be in the foreground",
                     serial,
-                    result.durationMs,
-                    0,
                     "currentPackage=${observeOrNull { infoInner() }?.currentPackage}",
                 )
             }
@@ -318,8 +316,8 @@ class Device internal constructor(
 
     /**
      * Waits on the device until the AUT's focused window has stopped changing for [stableFor]
-     * according to [signal]: the accessibility tree ([StabilitySignal.STABILITY_TREE]), the
-     * window pixels ([StabilitySignal.STABILITY_PIXELS], 0.5 % tolerance) or both (default).
+     * according to [signal]: the accessibility tree ([StabilitySignal.TREE]), the
+     * window pixels ([StabilitySignal.PIXELS], 0.5 % tolerance) or both (default).
      * Content-changed events restart the quiet period. Use it explicitly after an action that
      * starts an animation or a transition; no command waits for this implicitly. A screen that
      * keeps changing (indeterminate spinner, ticker, video) times out with `SCREEN_CHANGING`.
@@ -330,7 +328,7 @@ class Device internal constructor(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
-        signal: StabilitySignal = StabilitySignal.STABILITY_ALL,
+        signal: StabilitySignal = StabilitySignal.ALL,
     ) {
         ensureTapBound("Device.awaitScreenStable")
         admitted("Device.awaitScreenStable") {
@@ -341,26 +339,20 @@ class Device internal constructor(
                             .newBuilder()
                             .setPackageName(packageName)
                             .setStableForMs(stableFor.inWholeMilliseconds)
-                            .setSignal(signal)
+                            .setSignal(signal.toProto())
                             .build()
                 }
             if (result.hasError()) {
-                if (result.error.code != ErrorCode.ERR_WAIT_TIMEOUT) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) {
                     throw CommandException(result, "wait_screen_stable", serial, null)
                 }
                 val what =
                     when (signal) {
-                        StabilitySignal.STABILITY_TREE -> "hierarchy"
-                        StabilitySignal.STABILITY_PIXELS -> "pixels"
-                        else -> "screen"
+                        StabilitySignal.TREE -> "hierarchy"
+                        StabilitySignal.PIXELS -> "pixels"
+                        StabilitySignal.ALL -> "screen"
                     }
-                throw WaitTimeoutException(
-                    "the $packageName $what to stay unchanged for $stableFor",
-                    serial,
-                    result.durationMs,
-                    0,
-                    if (result.error.hasDetail()) result.error.detail else null,
-                )
+                throw WaitTimeoutException.of(result, "the $packageName $what to stay unchanged for $stableFor", serial)
             }
         }
     }
@@ -374,7 +366,7 @@ class Device internal constructor(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
-    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.STABILITY_TREE)
+    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.TREE)
 
     /**
      * Maestro's `waitForAnimationToEnd`, on request only: the AUT's window pixels have not
@@ -384,7 +376,7 @@ class Device internal constructor(
         stableFor: Duration = 500.milliseconds,
         timeout: Duration = timeouts.wait,
         packageName: String = autPackage,
-    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.STABILITY_PIXELS)
+    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.PIXELS)
 
     /**
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,
@@ -441,7 +433,7 @@ class Device internal constructor(
      * explicitly owned per-Device [cleanupScope] (never `GlobalScope`). That job sends one
      * best-effort, bounded `Detach` for this device — the server tears the session down
      * even with the stuck command in flight — then unregisters the handle and publishes the
-     * shared terminal failure. The owner [ClientConnection] and every other device attached
+     * shared terminal failure. The owner [TapConnection] and every other device attached
      * through it are left untouched: one wedged command must not tear down unrelated devices
      * (in JUnit, the connection is shared by every later test). A `Detach` failure or
      * quarantine detail is suppressed into that failure (observable via `suppressed`) without
@@ -633,7 +625,7 @@ class Device internal constructor(
     private suspend fun infoInner(): DeviceInfo {
         val result = rpcExecute(timeouts.action) { deviceInfo = DeviceInfoQuery.getDefaultInstance() }
         if (result.hasError()) throw CommandException(result, "info", serial, null)
-        return result.deviceInfo
+        return result.deviceInfo.toModel()
     }
 
     /**
@@ -677,7 +669,7 @@ class Device internal constructor(
 
     companion object {
         internal suspend fun attachDevice(
-            connection: ClientConnection,
+            connection: TapConnection,
             serial: String,
             autPackage: String,
             timeouts: Timeouts,
@@ -715,14 +707,6 @@ internal fun sha256Hex(bytes: ByteArray): String =
     java.util.HexFormat
         .of()
         .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
-
-/** Direction aliases without the proto prefix. */
-object Directions {
-    val UP: Direction = Direction.DIR_UP
-    val DOWN: Direction = Direction.DIR_DOWN
-    val LEFT: Direction = Direction.DIR_LEFT
-    val RIGHT: Direction = Direction.DIR_RIGHT
-}
 
 /**
  * Coroutine-context token marking the body of admitted [Device] operations: every device whose

@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
-from .server import mapped_errors
+from . import _proto
+from .client import mapped_errors
+from .models import AppProcess
 
 # Size of each streamed ``InstallRequest.chunk``.
 INSTALL_CHUNK_BYTES = 1 << 20
@@ -19,14 +20,6 @@ RPC_DEADLINE_SLACK = 60.0
 
 if TYPE_CHECKING:
     from .device import Device
-
-
-@dataclass(frozen=True)
-class ProcessIdentity:
-    """PID plus a start token that changes on every process start."""
-
-    pid: int
-    start_token: str
 
 
 class App:
@@ -39,7 +32,7 @@ class App:
     def __init__(self, device: Device, package_name: str):
         self.device = device
         self.package_name = package_name
-        self._apps = device.server.apps
+        self._apps = device.client.apps
 
     def _target(self) -> pb.AppTarget:
         return pb.AppTarget(
@@ -121,21 +114,19 @@ class App:
 
     def cold_launch(
         self, activity: str | None = None, timeout: float | None = None
-    ) -> ProcessIdentity:
+    ) -> AppProcess:
         """Force-stops, launches and returns the verified new process identity."""
         timeout = self._or(timeout, self.device.timeouts.lifecycle)
         request = pb.ColdLaunchRequest(app=self._target(), timeout_ms=self._ms(timeout))
         if activity:
             request.activity = activity
-        identity = self._call(self._apps.ColdLaunch, request, timeout).process
-        return ProcessIdentity(identity.pid, identity.start_token)
+        return _proto.app_process(self._call(self._apps.ColdLaunch, request, timeout).process)
 
-    def process(self, timeout: float | None = None) -> ProcessIdentity:
+    def process(self, timeout: float | None = None) -> AppProcess:
         """The single current process identity; waits briefly for it to exist."""
         timeout = self._or(timeout, self.device.timeouts.action)
         request = pb.ProcessRequest(app=self._target(), timeout_ms=self._ms(timeout))
-        identity = self._call(self._apps.Process, request, timeout).process
-        return ProcessIdentity(identity.pid, identity.start_token)
+        return _proto.app_process(self._call(self._apps.Process, request, timeout).process)
 
     def is_running(self) -> bool:
         """Whether any process of the package is alive."""

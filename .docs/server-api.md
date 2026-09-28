@@ -107,7 +107,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 |---|---|
 | `ListDevices()` → `repeated DeviceEntry` | Every device ADB lists. Its `state` is one of: <br>• `DEVICE_FREE` <br>• `DEVICE_LEASED`, with `client_connection_id` when the holder is this daemon <br>• `DEVICE_QUARANTINED`, with `quarantine_reason`; an unreadable journal is quarantined with reason `journal unreadable: …` <br>• `DEVICE_UNAUTHORIZED` <br>• `DEVICE_OFFLINE`, which also covers any other non-`device` ADB state |
 | `Attach(client_connection_id, serial, aut_package, skip_driver_install?, sync_authority?, default_timeout_ms?, lease_timeout_ms?)` → `{attached_device_id, serial, generation, device_info}` | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
-| `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. |
+| `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?, match_count?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. |
 | `Screenshot(…, timeout_ms?)` → `{png, sha256, width?, height?}` | The verified PNG bytes. Writing a file is the client's job; the server takes no host path. |
 | `DriverLog(…)` | The instrumentation's stdout ring buffer (last 2 000 lines). |
 | `Detach(…)` → `{clean, detail?}` | `clean=false` means cleanup timed out or the session was quarantined, and `detail` says why. |
@@ -165,7 +165,7 @@ its own response message. The RPCs are:
 
 All of them delegate to `AppLifecycle` in `:host:core`.
 
-### Failures (`failure.proto`, `server/common.kt` `Throwable.toStatus()`)
+### Failures (`failure.proto`, `daemon/grpc/common.kt` `Throwable.toStatus()`)
 
 Every non-OK status carries a serialized `tap.v1.Failure` in the binary trailer
 `tap-failure-bin`: a `FailureReason`, the `serial` when the failure is about one device,
@@ -198,7 +198,7 @@ failure, a client-side deadline).
 
 `Info` returns `defaults` (`action_timeout_ms` 10 s, `wait_timeout_ms` 10 s,
 `lifecycle_timeout_ms` 30 s, `idle_stable_ms` 200 ms, `acquire_timeout_ms` 300 s), the values
-the daemon applies to an omitted timeout (`server/common.kt` `Defaults`). The clients' own
+the daemon applies to an omitted timeout (`daemon/grpc/common.kt` `Defaults`). The clients' own
 defaults are pinned to the same numbers by `contracts/conformance/client-conformance.json`,
 which the daemon, Kotlin and Python unit suites all load.
 
@@ -212,7 +212,7 @@ Driver-level outcomes never become gRPC errors; they are `CommandResult` values.
 - attached devices, each with an `ownerConnectionId`;
 - the once-per-serial driver install memo.
 
-It has no gRPC types. The three `*Service` classes in `io.github.noamcohen48.tap.server` extend the
+It has no gRPC types. The three `*Service` classes in `io.github.noamcohen48.tap.daemon.grpc` extend the
 grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `TapDaemon` or
 `:host:core` and wrap the reply, through `reply { … }`, which keeps cancellation intact.
 

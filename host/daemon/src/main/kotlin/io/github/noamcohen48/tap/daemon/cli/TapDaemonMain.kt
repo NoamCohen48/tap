@@ -1,22 +1,27 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.cli
 
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
 import io.github.noamcohen48.tap.api.v1.InfoRequest
+import io.github.noamcohen48.tap.daemon.core.DAEMON_SHUTDOWN_TOTAL_MS
+import io.github.noamcohen48.tap.daemon.core.DaemonConfig
+import io.github.noamcohen48.tap.daemon.core.DriverApks
+import io.github.noamcohen48.tap.daemon.core.TapDaemon
+import io.github.noamcohen48.tap.daemon.grpc.AppService
+import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
+import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
+import io.github.noamcohen48.tap.daemon.grpc.DeviceService
+import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
 import io.github.noamcohen48.tap.host.Adb
-import io.github.noamcohen48.tap.server.AppService
-import io.github.noamcohen48.tap.server.ClientConnectionService
-import io.github.noamcohen48.tap.server.DAEMON_VERSION
-import io.github.noamcohen48.tap.server.DeviceService
-import io.github.noamcohen48.tap.server.TokenAuthInterceptor
 import io.grpc.ManagedChannelBuilder
 import io.grpc.Metadata
 import io.grpc.Server
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
-import io.grpc.stub.MetadataUtils
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
+import io.grpc.stub.MetadataUtils
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.lang.invoke.MethodHandles
 import java.lang.management.ManagementFactory
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -315,7 +320,9 @@ private fun relaunchCommand(): List<String> {
     val java = Path.of(System.getProperty("java.home"), "bin", if (File.separatorChar == '\\') "java.exe" else "java")
     // Keep the launcher's JVM flags (heap, JAVA_OPTS such as the native-image tracing agent).
     val jvmFlags = ManagementFactory.getRuntimeMXBean().inputArguments
-    return listOf(java.toString()) + jvmFlags + listOf("-cp", System.getProperty("java.class.path"), "io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
+    // This file's own class, so a package move cannot leave the relaunch pointing at nothing.
+    val mainClass = MethodHandles.lookup().lookupClass().name
+    return listOf(java.toString()) + jvmFlags + listOf("-cp", System.getProperty("java.class.path"), mainClass)
 }
 
 /** Prints the live daemon (never its token); the exit status is 1 when none answers. */

@@ -53,8 +53,8 @@ email.setText("user@example.com")
 email.waitUntil.textEquals("user@example.com")
 ```
 
-Directions are `UP`/`DOWN`/`LEFT`/`RIGHT` (`Direction.DIR_*` in the Kotlin proto types, plain
-constants exported by both SDKs).
+Directions are the `Direction` enum, `UP`/`DOWN`/`LEFT`/`RIGHT`, in both SDKs (Python also
+exports them as plain constants).
 
 ```kotlin
 val list = device.element(res("results"))
@@ -81,16 +81,21 @@ device.await(res("spinner"), timeout = 30.seconds).gone()
 | Method | Condition |
 |---|---|
 | `visible()` | at least one match |
+| `one()` | exactly one match (what `tap()` and other actions need) |
 | `gone()` | zero matches |
 | `enabled()`, `disabled()` | exactly one match with that state |
 | `checked()`, `unchecked()`, `focused()` | likewise |
 | `textEquals(s)`, `textContains(s)` | text of the single match |
 | `count(n)` | exactly `n` matches |
 
-`visible()` and `gone()` poll **on the device** in a single round trip; the property waits
-take a snapshot from the host every `pollInterval` (100 ms). A miss raises
-`WaitTimeoutException` / `WaitTimeoutError` with the elapsed time, the number of polls and the
-last observation (e.g. `text='Placing order…' enabled=False …`). Note that `visible()` means
+`visible()`, `one()` and `gone()` poll **on the device** in a single round trip; the property
+waits take a snapshot from the host every `pollInterval` (100 ms). A miss raises
+`WaitTimeoutException` / `WaitTimeoutError`. For the device waits it carries `reason`
+(`WaitReason.NO_MATCH`, `AMBIGUOUS` for `one()`, `STILL_PRESENT` for `gone()`) and
+`matchCount` / `match_count` from the last poll; for the property waits, the number of polls and
+the last observation (e.g. `text='Placing order…' enabled=False …`). `visible()` passes with
+several matches, so when the next step is an action, `one()` is the wait that proves it can
+run. Note that `visible()` means
 *present in the accessibility tree*, which is what UiAutomator can see; an element scrolled
 off-screen in a `RecyclerView` is usually absent from the tree, an element hidden by another
 window usually is not.
@@ -154,11 +159,57 @@ round trip per poll.
 
 ## Screenshots and dumps
 
-- `device.screenshot()` → PNG bytes, checked against the server's SHA-256. Save them yourself
-  (`Path.writeBytes`), or in Python pass `write_to="shot.png"` to have the client write the file.
-- `device.dumpHierarchy()` → the accessibility tree as XML. Diagnostic only; lookups never use it.
-- `device.driverLog()` → the driver's own log lines for the session.
-- `device.info()` → serial, API level, model, display size.
+Each returns a typed value, not a file: keep it in memory, assert on it, attach it to a report
+or write it where you like. All four share one artifact shape: `bytes` (the serialized form),
+`mediaType` / `media_type`, `extension` and `save(path)` (creates parent directories).
 
-All four are captured automatically into the failure artifacts by the JUnit extension and the
-pytest plugin.
+- `device.screenshot()` → `Screenshot`: the PNG `bytes` (checked against the server's
+  SHA-256), its `format` and its `width` / `height`.
+- `device.dumpHierarchy()` → `Hierarchy`: the accessibility tree as `xml` (a string) and as
+  UTF-8 `bytes`. Diagnostic only; lookups never use it.
+- `device.driverLog()` → `DriverLog`: the driver's recent `lines` for the session, `text`
+  joined with newlines.
+- `device.info()` → `DeviceInfo`: API level, manufacturer, model, display size and rotation,
+  and the package owning the focused window; `bytes` is JSON.
+
+=== "Kotlin"
+
+    ```kotlin
+    val shot = device.screenshot()
+    println("${shot.width}x${shot.height}")
+    shot.save(Path.of("build/shots/login.png"))
+    ```
+
+=== "Python"
+
+    ```python
+    shot = device.screenshot()
+    print(shot.width, shot.height)
+    shot.save("build/shots/login.png")
+    ```
+
+`device.capture()` takes all four at once, in parallel, each within a timeout (default 30 s),
+and returns a `Capture`: the `screenshot`, `hierarchy`, `info` and `driverLog` / `driver_log`
+parts, `artifacts` (the produced ones by name) and `failures` (why a missing part is missing).
+It never throws for the device, so it is safe in a `catch` / `except`. `saveTo(dir)` /
+`save_to(dir)` writes `<prefix>.<part>.<ext>` files (prefix defaults to the serial).
+
+=== "Kotlin"
+
+    ```kotlin
+    val capture = device.capture()
+    capture.saveTo(Path.of("build/evidence/after-login"))
+    capture.failures.forEach { (part, why) -> println("no $part: ${why.message}") }
+    ```
+
+=== "Python"
+
+    ```python
+    capture = device.capture()
+    capture.save_to("build/evidence/after-login")
+    for part, why in capture.failures.items():
+        print(f"no {part}: {why}")
+    ```
+
+The JUnit extension and the pytest plugin call `capture()` for every device of a failed test
+([Failure artifacts](errors.md#failure-artifacts)).

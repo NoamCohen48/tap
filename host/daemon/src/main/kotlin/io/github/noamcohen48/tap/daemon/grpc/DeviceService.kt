@@ -1,5 +1,6 @@
-package io.github.noamcohen48.tap.server
+package io.github.noamcohen48.tap.daemon.grpc
 
+import com.google.protobuf.ByteString
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
 import io.github.noamcohen48.tap.api.v1.CommandResult
@@ -9,23 +10,22 @@ import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogResponse
+import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotResponse
-import io.github.noamcohen48.tap.daemon.DeviceEntry
-import io.github.noamcohen48.tap.daemon.DeviceStatus
-import io.github.noamcohen48.tap.daemon.TapDaemon
+import io.github.noamcohen48.tap.daemon.core.DeviceEntry
+import io.github.noamcohen48.tap.daemon.core.DeviceStatus
+import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
-import com.google.protobuf.ByteString
-import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 class DeviceService(
     private val daemon: TapDaemon,

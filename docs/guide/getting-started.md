@@ -64,7 +64,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")   // brings tap-client and tap-api
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")   // brings tap-client
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 
@@ -116,7 +116,7 @@ device info and driver log under `build/tap-artifacts/<class>/<method>/`.
 ## 3. Python + pytest
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
 ```
 
 The package registers a pytest plugin. Configure the app under test in `pytest.ini` or the
@@ -154,37 +154,29 @@ server, then attaches each device it needs.
 
     ```kotlin
     runBlocking {
-        val client = TapClient.create()              // resolves tap.server / daemon.json
-        try {
-            val connection = client.connect("smoke")
-            try {
-                tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.shop")
-                    try {
-                        device.app().coldLaunch()
-                        println(device.element(text("Welcome")).exists())
-                    } finally {
-                        device.detach()
-                    }
+        TapClient.create().use { client ->           // resolves tap.server / daemon.json
+            client.connect("smoke").use { connection ->
+                connection.attach("emulator-5554", "com.shop") { device ->
+                    device.app().coldLaunch()
+                    println(device.element(text("Welcome")).exists())
                 }
-            } finally {
-                connection.close()
             }
-        } finally {
-            client.close()
         }
     }
     ```
 
-    Device work (attach, use, detach) lives inside `tapScope { ... }`; detaching is `suspend`
-    (no `AutoCloseable`), so callers use `try`/`finally` inside the scope.
+    `use { }` closes the client and the connection after the block; `attach(serial, aut) { }`
+    attaches, runs the block and always detaches. A failure in the block wins, and a close or
+    detach failure after it is added as suppressed. `attach` provides the `tapScope` device
+    calls need. For handles that outlive one block, `connection.attachDevice(...)` inside
+    `tapScope { ... }` with `device.detach()` in a `finally` does the same by hand.
 
 === "Python"
 
     ```python
-    from tap_e2e import TapServer, text
+    from tap_e2e import TapClient, text
 
-    with TapServer().connect("smoke") as connection:
+    with TapClient.create().connect("smoke") as connection:
         with connection.attach_device("emulator-5554", "com.shop") as device:
             device.app().cold_launch()
             print(device.element(text("Welcome")).exists())

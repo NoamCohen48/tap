@@ -79,7 +79,7 @@ class TapDriverServer(
 
                     socket.soTimeout = 0
                     val connection =
-                        ClientConnection(
+                        DriverConnection(
                             socket,
                             engine,
                             faults,

@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.cli
 
 import java.net.ServerSocket
 import java.nio.file.Files

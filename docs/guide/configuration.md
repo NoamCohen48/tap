@@ -67,6 +67,7 @@ name with camelCase and dots turned into underscores, upper-cased (`tap.autPacka
 | `tap.serials` | comma-separated serials to use; roles map to them in order, starting one device further on per test ([details](multi-device.md#which-serial-plays-which-role)) | any device the server lists |
 | `tap.device.<role>` | pin one role to a serial (must be in `tap.serials` when that is set) | — |
 | `tap.artifactsDir` | failure artifacts root | `build/tap-artifacts` |
+| `tap.capture` | `onFailure` = `device.capture()` every device of a failed test into the artifacts root; `off` = capture nothing | `onFailure` |
 | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds | `300` |
 | `tap.server` | `host:port` of a running server | the one in `daemon.json` |
 | `tap.token` | bearer token for an explicit `tap.server` | the one in `daemon.json` |
@@ -89,7 +90,8 @@ tasks.test {
 Timeouts are per device, not global: `Timeouts(action = 10.seconds, wait = 10.seconds,
 lifecycle = 30.seconds, pollInterval = 100.milliseconds)` is the default, and every method also
 takes an explicit `timeout`. With the SDK directly, pass `Timeouts` and `DeviceOptions` to
-`connection.attachDevice(...)` (a `suspend` call; device open/use/close live inside `tapScope`,
+`connection.attach(serial, aut, timeouts, options) { device -> ... }` or
+`connection.attachDevice(...)` (both `suspend`; `attachDevice` handles live inside `tapScope`,
 `tapTest` in JUnit).
 
 ## Python + pytest
@@ -102,6 +104,8 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | `tap_aut` | `TAP_AUT` | the application under test | **required** |
 | `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, starting one device further on per test | any device the server lists |
 | `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
+| `tap_device_scope` | `TAP_DEVICE_SCOPE` | `function` = attach before each test, detach after it; `class` / `module` / `session` = keep the devices for the next test of the same class / module / run ([Reusing devices](#reusing-devices)) | `function` |
+| `tap_capture` | `TAP_CAPTURE` | `onFailure` = `device.capture()` every device of a failed test into that directory; `off` = capture nothing | `onFailure` |
 | `tap_server` | `TAP_SERVER` | `host:port` of a running server | the one in `daemon.json` |
 | — | `TAP_TOKEN` | bearer token for an explicit `TAP_SERVER` | the one in `daemon.json` |
 | `tap_manage_daemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test, `tap stop` after the last one if that start created the daemon | `false` |
@@ -110,8 +114,37 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | — | `TAP_STATE_DIR` | state dir shared with the daemon | `~/.tap` |
 
 Fixtures: `tap_device` (the default role), `tap_devices` (dict role → `Device`), plus
-`tap_client_connection`, `tap_server` and `tap_config` for scripts that want the lower layers. Marker:
+`tap_connection`, `tap_client` and `tap_config` for scripts that want the lower layers. Marker:
 `@pytest.mark.tap_devices("a", "b")`.
+
+## Reusing devices
+
+By default every test attaches its devices and detaches them afterwards, so each test starts
+with a fresh driver session. Starting the driver is most of an attach's cost: about 1.2 s on an
+emulator and 3.8 s on a mid-range phone (measured on the local API 34 emulator and an API 29
+Samsung), per test. A suite can opt out of that:
+
+=== "Kotlin"
+
+    ```kotlin
+    @TapTest(deviceLifetime = DeviceLifetime.PER_CLASS)
+    class CheckoutTest { ... }
+    ```
+
+=== "Python"
+
+    ```ini
+    # pytest.ini — or TAP_DEVICE_SCOPE=class
+    [pytest]
+    tap_device_scope = class
+    ```
+
+Consecutive tests of the class (Python: of the class, module or whole run) that declare the same
+roles then share the attached devices, which are detached after the last of them. Nothing is
+reset between tests: the app keeps whatever state the previous test left, so each test brings
+it where it needs it (`coldLaunch()`, `clearData()`). Before each test a reused device is probed
+(`info()`, a few milliseconds); one that stopped working — quarantined, driver lost, detached by
+the test — is detached and a fresh one attached. Failure artifacts are still captured per test.
 
 ## Session options
 

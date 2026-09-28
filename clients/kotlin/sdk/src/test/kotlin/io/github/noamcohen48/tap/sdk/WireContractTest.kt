@@ -205,7 +205,7 @@ class WireContractTest {
             try {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554", "com.test")
-                    assertTrue(byteArrayOf(1, 2, 3).contentEquals(device.screenshot()))
+                    assertTrue(byteArrayOf(1, 2, 3).contentEquals(device.screenshot().bytes))
                     devices.corruptScreenshot = true
                     val failure = assertFailsWith<TapException> { device.screenshot() }
                     assertTrue(failure.message!!.contains("checksum"), failure.message)

@@ -1,21 +1,17 @@
 """Tap Python client: drives Android devices through the Tap host server.
 
-from tap_e2e import TapServer, text, res
+from tap_e2e import TapClient, text, res
 
-server = TapServer()                                  # a running server (`tap start`)
-with server.connect("smoke") as connection:
+with TapClient.create() as client, client.connect("smoke") as connection:  # `tap start` first
     with connection.attach_device("emulator-5554", "com.example.app") as device:
         device.app().cold_launch()
         device.element(res("login")).tap()
         device.wait(text("Welcome")).visible()
 """
-# pyright: reportAttributeAccessIssue=false
-
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 
-from . import _gen as pb
-from .app import App, ProcessIdentity
+from .app import App
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .errors import (
@@ -23,10 +19,31 @@ from .errors import (
     CommandError,
     DeviceBusyError,
     DeviceQuarantinedError,
-    ErrorCode,
     ServerError,
     TapError,
     WaitTimeoutError,
+)
+from .models import (
+    AppProcess,
+    Artifact,
+    Bounds,
+    Capture,
+    DeviceEntry,
+    DeviceInfo,
+    DeviceState,
+    Direction,
+    DriverLog,
+    ElementSnapshot,
+    ErrorCode,
+    FailureReason,
+    Hierarchy,
+    ImageFormat,
+    MatchMode,
+    Screenshot,
+    ServerDefaults,
+    ServerInfo,
+    StabilitySignal,
+    WaitReason,
 )
 from .selectors import (
     CONTAINS,
@@ -50,19 +67,16 @@ from .selectors import (
     text_matches,
     text_starts_with,
 )
-from .server import (
-    ClientConnection,
+from .client import (
     DaemonStartResult,
-    TapServer,
+    Endpoint,
+    TapClient,
+    TapConnection,
     resolve_address,
     running_server,
     start_daemon,
     stop_daemon,
 )
-
-STABILITY_TREE = pb.STABILITY_TREE
-STABILITY_PIXELS = pb.STABILITY_PIXELS
-STABILITY_ALL = pb.STABILITY_ALL
 
 __all__ = [
     "CONTAINS",
@@ -78,21 +92,40 @@ __all__ = [
     "UP",
     "App",
     "AppLifecycleError",
-    "ClientConnection",
+    "AppProcess",
+    "Artifact",
+    "Bounds",
     "CommandError",
     "DaemonStartResult",
     "Device",
     "DeviceBusyError",
+    "DeviceEntry",
+    "DeviceInfo",
     "DeviceQuarantinedError",
+    "DeviceState",
+    "Direction",
+    "Capture",
+    "DriverLog",
     "Element",
+    "ElementSnapshot",
     "ElementWait",
+    "Endpoint",
     "ErrorCode",
-    "ProcessIdentity",
+    "FailureReason",
+    "Hierarchy",
+    "ImageFormat",
+    "MatchMode",
+    "Screenshot",
     "Selector",
+    "ServerDefaults",
     "ServerError",
+    "ServerInfo",
+    "StabilitySignal",
+    "TapClient",
+    "TapConnection",
     "TapError",
-    "TapServer",
     "Timeouts",
+    "WaitReason",
     "WaitTimeoutError",
     "all_of",
     "any_of",
@@ -100,7 +133,6 @@ __all__ = [
     "clickable",
     "desc",
     "hint",
-    "pb",
     "raw_res",
     "res",
     "res_id",

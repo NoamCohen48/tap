@@ -1,11 +1,12 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
+import io.github.noamcohen48.tap.daemon.core.DaemonConfig
+import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.host.Adb
-import io.github.noamcohen48.tap.server.ClientConnectionService
 import io.grpc.ManagedChannel
 import io.grpc.Server
 import io.grpc.Status

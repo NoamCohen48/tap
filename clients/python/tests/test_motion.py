@@ -3,7 +3,7 @@ import time
 
 import pytest  # type: ignore[import-not-found]
 from conftest import launch
-from tap_e2e import WaitTimeoutError, res
+from tap_e2e import WaitReason, WaitTimeoutError, res
 
 
 def test_waits_for_animation_to_end(tap_device):
@@ -41,7 +41,7 @@ def test_screen_that_keeps_changing_times_out(tap_device):
     try:
         with pytest.raises(WaitTimeoutError) as failure:
             tap_device.await_app_settled(stable_for=0.5, timeout=3)
-        assert failure.value.last_observation == "SCREEN_CHANGING"
+        assert failure.value.reason is WaitReason.SCREEN_CHANGING
         assert failure.value.elapsed_ms >= 3000
     finally:
         ticker.tap()

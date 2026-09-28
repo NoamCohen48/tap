@@ -1,4 +1,4 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.cli
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

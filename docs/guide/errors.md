@@ -10,7 +10,7 @@ into another:
 | `AppLifecycleException` | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
 | `DeviceBusyException` | `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
 | `DeviceQuarantinedException` | `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
-| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FAILURE_REASON_DRIVER_START_FAILED`); branch on it, not on the message |
+| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FailureReason.DRIVER_START_FAILED`); branch on it, not on the message |
 
 All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of
 course, yours.
@@ -53,7 +53,7 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `WAIT_TIMEOUT` | the condition stayed false. `SCREEN_CHANGING` / `APP_NOT_VISIBLE` for the stability waits |
+| `WAIT_TIMEOUT` | the condition stayed false. The detail is the wait's `reason`: `NO_MATCH`, `AMBIGUOUS`, `STILL_PRESENT`, `SCREEN_CHANGING` or `APP_NOT_VISIBLE` |
 | `DEADLINE_EXCEEDED` | the command's deadline passed outside a normal wait (`EXPIRED_IN_QUEUE`) |
 | `CANCELLED` | stopped before mutation (`CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`) |
 
@@ -77,35 +77,42 @@ repeat a mutation after them blindly.
 ## Wait timeouts
 
 ```
-Timed out after 10012 ms after 98 polls waiting for text("Order placed") visible on emulator-5554; last observed: 0 matches
-Timed out after 5003 ms after 48 polls waiting for resId(com.shop:id/pay) enabled on emulator-5554; last observed: enabled=false
+Timed out after 10012ms waiting for text("Order placed") to be visible on emulator-5554; NO_MATCH (0 matches)
+Timed out after 10008ms waiting for text("Buy") to match exactly one node on emulator-5554; AMBIGUOUS (3 matches)
+Timed out after 5003ms waiting for resId(com.shop:id/pay) to be enabled on emulator-5554 (48 polls); last observed: text=Pay enabled=false …
 ```
 
-`description`, `serial`, `elapsedMs`, `polls` and `lastObservation` are fields on the
-exception.
+`description`, `serial`, `elapsedMs`, `reason`, `matchCount`, `polls` and `lastObservation`
+are fields on the exception (Python: `elapsed_ms`, `match_count`, `last_observation`).
+`reason` is a `WaitReason` for the waits the device runs (`visible()`, `one()`, `gone()`,
+`awaitAppVisible`, `awaitScreenStable`) and null / None for the ones the client polls.
 
 ## Failure artifacts
 
-When a test fails, the JUnit extension and the pytest plugin capture — *before* detaching the
-device, while the screen still shows the failure — for each device of the test:
+When a test fails, the JUnit extension and the pytest plugin call `device.capture()` for each
+device of the test — *before* detaching it, while the screen still shows the failure — and save
+the result:
 
 ```
 build/tap-artifacts/com.shop.CheckoutTest/buysAnItem/      (pytest: tap-artifacts/<nodeid>/)
-├── failure.txt                          the exception and stack trace
-├── device-emulator-5554.png             screenshot
-├── device-emulator-5554.xml             accessibility hierarchy
-├── device-emulator-5554.device-info.txt serial, API, model, display
-└── device-emulator-5554.driver.log      the driver's log for the session
+├── failure.txt                                 the exception and stack trace
+├── device-emulator-5554.screenshot.png         screenshot
+├── device-emulator-5554.hierarchy.xml          accessibility hierarchy
+├── device-emulator-5554.device-info.json       API, model, display, focused package
+└── device-emulator-5554.driver-log.txt         the driver's log for the session
 ```
 
-The file prefix is the role name, so a two-device test yields `sender-…` and `receiver-…`.
-Devices are captured in parallel, each within its own 60 s budget, so one slow or hung device
-does not cost the others their artifacts. Capture never masks the original failure: a file that
-cannot be produced (the device went away, the budget ran out) is simply missing, and the test
-still fails with its real error.
+The file prefix is `<role>-<serial>`, so a two-device test yields `sender-…` and `receiver-…`.
+Devices are captured in parallel, and so are the four parts of each device, each within 30 s, so
+one slow or hung device or part does not cost the others their artifacts. Capture never masks
+the original failure: a file that cannot be produced (the device went away, the time ran out) is
+simply missing, and the test still fails with its real error. `tap.capture=off` (pytest:
+`tap_capture = off` / `TAP_CAPTURE=off`) turns this off; see
+[Configuration](configuration.md).
 
-The same data is available on demand: `device.screenshot()`, `device.dumpHierarchy()`,
-`device.driverLog()`, `device.info()`.
+`device.capture()` is an ordinary call, so a test can take the same evidence whenever it wants
+(after a step, in a `catch`), and each part is also available on its own as a typed value; see
+[Screenshots and dumps](actions-and-waits.md#screenshots-and-dumps).
 
 ## Reading the hierarchy dump
 

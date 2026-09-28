@@ -3,20 +3,21 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
-import os
-import pathlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
+from . import _proto
 from .app import App
 from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
+from .models import Capture, DeviceInfo, DriverLog, Hierarchy, Screenshot, StabilitySignal
 from .selectors import Selector
-from .server import ClientConnection, mapped_errors
+from .client import TapConnection, mapped_errors
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -54,13 +55,13 @@ class Device:
 
     def __init__(
         self,
-        owner_connection: ClientConnection,
+        owner_connection: TapConnection,
         response: pb.AttachResponse,
         aut_package: str,
         timeouts: Timeouts,
     ):
         self.owner_connection = owner_connection
-        self.server = owner_connection.server
+        self.client = owner_connection.client
         self.attached_device_id = response.attached_device_id
         self.serial = response.serial
         self.generation = response.generation
@@ -71,7 +72,7 @@ class Device:
     @classmethod
     def _attach_device(
         cls,
-        owner_connection: ClientConnection,
+        owner_connection: TapConnection,
         serial: str,
         aut_package: str,
         timeouts: Timeouts | None = None,
@@ -79,7 +80,7 @@ class Device:
         sync_authority: str | None = None,
         wait_for_device: float = 0,
     ) -> Device:
-        """Attach ``serial`` for ``aut_package`` (used by ``ClientConnection.attach_device``).
+        """Attach ``serial`` for ``aut_package`` (used by ``TapConnection.attach_device``).
         The attachment holds the device's per-serial lock until ``detach``; if another device session holds
         it, attachment raises ``DeviceBusyError`` — at once, or after ``wait_for_device`` seconds.
         The driver is always the daemon's (bundled, or ``tap serve --driver-apk X
@@ -98,22 +99,22 @@ class Device:
         if sync_authority:
             request.sync_authority = sync_authority
         with mapped_errors(serial):
-            response = owner_connection.server.device_stub.Attach(
+            response = owner_connection.client.device_stub.Attach(
                 request, timeout=180 + wait_for_device
             )
         return cls(owner_connection, response, aut_package, timeouts)
 
-    # --- raw protocol escape hatch --------------------------------------------------------------
+    # --- protocol commands (private: the public API is the typed methods) ------------------------
 
-    def execute(self, timeout: float | None = None, **op) -> pb.CommandResult:
+    def _execute(self, timeout: float | None = None, **op) -> pb.CommandResult:
         """Runs one protocol command and returns the result as data (the outcome may be ``error``).
-        ``op`` is exactly one ``Command`` case: ``execute(tap=pb.Tap(selector=...))``."""
+        ``op`` is exactly one ``Command`` case: ``_execute(tap=pb.Tap(selector=...))``."""
         ((name, message),) = op.items()
         self._ensure_usable(f"execute {name}")
         command = pb.Command(timeout_ms=int(_or(timeout, self.timeouts.action) * 1000))
         getattr(command, name).CopyFrom(message)
         with mapped_errors(self.serial):
-            return self.server.device_stub.Execute(
+            return self.client.device_stub.Execute(
                 pb.ExecuteRequest(
                     client_connection_id=self.owner_connection.id,
                     attached_device_id=self.attached_device_id,
@@ -128,14 +129,14 @@ class Device:
             raise TapError(f"Device({self.serial}) is detached; {operation} rejected")
         self.owner_connection.ensure_usable(f"{operation} on {self.serial}")
 
-    def execute_or_raise(
+    def _execute_or_raise(
         self, timeout: float | None = None, selector: Selector | None = None, **op
     ) -> pb.CommandResult:
-        """``execute`` that raises ``CommandError`` (naming ``selector``) instead of returning an error outcome."""
-        result = self.execute(timeout, **op)
+        """``_execute`` that raises ``CommandError`` (naming ``selector``) instead of returning an error outcome."""
+        result = self._execute(timeout, **op)
         if result.HasField("error"):
             (name,) = op
-            raise CommandError(
+            raise CommandError._from_result(
                 result, name, self.serial, selector.render() if selector else None
             )
         return result
@@ -156,9 +157,9 @@ class Device:
         """The ``App`` for ``package_name`` (default: the app under test)."""
         return App(self, package_name or self.aut_package)
 
-    def info(self) -> pb.DeviceInfo:
-        """Serial, API level, model and display size."""
-        return self.execute_or_raise(device_info=pb.DeviceInfoQuery()).device_info
+    def info(self) -> DeviceInfo:
+        """API level, model, display size and the package owning the focused window."""
+        return _proto.device_info(self._execute_or_raise(device_info=pb.DeviceInfoQuery()).device_info)
 
     def press_back(self) -> None:
         """Send ``KEYCODE_BACK``."""
@@ -170,7 +171,7 @@ class Device:
 
     def press_key(self, key_code: int) -> None:
         """Injects one Android key code (a mutation: never replayed on transport loss)."""
-        self.execute_or_raise(press_key=pb.PressKey(key_code=key_code))
+        self._execute_or_raise(press_key=pb.PressKey(key_code=key_code))
 
     def type_text(self, value: str, timeout: float | None = None) -> None:
         """Type ``value`` as real key events into whatever has input focus now.
@@ -180,16 +181,12 @@ class Device:
         it reports whether every key event was accepted. Where the characters landed is for the
         test to assert.
         """
-        self.execute_or_raise(timeout, type_text=pb.TypeText(text=value))
+        self._execute_or_raise(timeout, type_text=pb.TypeText(text=value))
 
-    def screenshot(
-        self,
-        timeout: float | None = None,
-        write_to: str | os.PathLike[str] | None = None,
-    ) -> bytes:
-        """PNG bytes of the screen. The server verifies them against the driver's checksum and
-        the client checks the returned sha256 again. With ``write_to`` the bytes are also
-        written to that file on this machine (parent directories are created)."""
+    def screenshot(self, timeout: float | None = None) -> Screenshot:
+        """A PNG ``Screenshot`` of the screen, with its size. The server verifies the bytes
+        against the driver's checksum and the client checks the returned sha256 again. Keep it
+        with ``Screenshot.save(path)`` or use ``Screenshot.bytes`` directly."""
         self._ensure_usable("screenshot")
         request = pb.ScreenshotRequest(
             client_connection_id=self.owner_connection.id,
@@ -197,7 +194,7 @@ class Device:
             timeout_ms=int(_or(timeout, self.timeouts.lifecycle) * 1000),
         )
         with mapped_errors(self.serial):
-            response = self.server.device_stub.Screenshot(
+            response = self.client.device_stub.Screenshot(
                 request, timeout=request.timeout_ms / 1000 + RPC_DEADLINE_SLACK
             )
         png = response.png
@@ -208,24 +205,23 @@ class Device:
                     f"screenshot of {self.serial} failed its checksum: sha256 {actual}, "
                     f"server said {response.sha256}"
                 )
-        if write_to is not None:
-            path = pathlib.Path(write_to)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(png)
-        return png
+        return Screenshot._png(png)
 
-    def dump_hierarchy(self, timeout: float | None = None) -> str:
-        """Diagnostic accessibility XML. Never used by selectors; keep it out of assertions."""
-        return self.execute_or_raise(
-            _or(timeout, self.timeouts.lifecycle), dump_hierarchy=pb.DumpHierarchy()
-        ).text
+    def dump_hierarchy(self, timeout: float | None = None) -> Hierarchy:
+        """The diagnostic accessibility ``Hierarchy``. Never used by selectors; keep it out of
+        assertions."""
+        return Hierarchy(
+            self._execute_or_raise(
+                _or(timeout, self.timeouts.lifecycle), dump_hierarchy=pb.DumpHierarchy()
+            ).text
+        )
 
-    def driver_log(self) -> list[str]:
-        """The attached device's recent driver log lines."""
+    def driver_log(self) -> DriverLog:
+        """The driver instrumentation's recent output."""
         self._ensure_usable("driver_log")
         with mapped_errors(self.serial):
-            return list(
-                self.server.device_stub.DriverLog(
+            return DriverLog(
+                self.client.device_stub.DriverLog(
                     pb.DriverLogRequest(
                         client_connection_id=self.owner_connection.id,
                         attached_device_id=self.attached_device_id,
@@ -233,6 +229,43 @@ class Device:
                     timeout=30,
                 ).lines
             )
+
+    def capture(self, timeout: float = 30.0) -> Capture:
+        """Takes a screenshot, the hierarchy, the device info and the driver log at once, each
+        within ``timeout`` seconds, and returns them as one ``Capture``. Never raises for the
+        device: a part that fails or runs out of time is None in the result, with its cause in
+        ``Capture.failures``. Use it wherever a test wants evidence (after a step, in an
+        ``except``); the pytest plugin calls it for every failed test."""
+        parts: dict[str, Callable[[], object]] = {
+            Capture.SCREENSHOT: lambda: self.screenshot(timeout),
+            Capture.HIERARCHY: lambda: self.dump_hierarchy(timeout),
+            Capture.DEVICE_INFO: self.info,
+            Capture.DRIVER_LOG: self.driver_log,
+        }
+        produced: dict[str, object] = {}
+        failures: dict[str, BaseException] = {}
+        # A straggler is abandoned, not joined: its own gRPC deadline ends it later.
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(parts), thread_name_prefix="tap-capture")
+        try:
+            futures = {name: pool.submit(produce) for name, produce in parts.items()}
+            concurrent.futures.wait(futures.values(), timeout=timeout)
+            for name, future in futures.items():
+                if not future.done():
+                    failures[name] = TimeoutError(f"{name} of {self.serial} not produced within {timeout}s")
+                elif (error := future.exception()) is not None:
+                    failures[name] = error
+                else:
+                    produced[name] = future.result()
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        return Capture(
+            self.serial,
+            produced.get(Capture.SCREENSHOT),  # type: ignore[arg-type]
+            produced.get(Capture.HIERARCHY),  # type: ignore[arg-type]
+            produced.get(Capture.DEVICE_INFO),  # type: ignore[arg-type]
+            produced.get(Capture.DRIVER_LOG),  # type: ignore[arg-type]
+            failures,
+        )
 
     def await_app_visible(
         self, package_name: str | None = None, timeout: float | None = None
@@ -242,22 +275,18 @@ class Device:
         (driver unhealthy, transport lost, ...) is a ``CommandError``."""
         package_name = package_name or self.aut_package
         timeout = self.timeouts.wait if timeout is None else timeout
-        result = self.execute(
+        result = self._execute(
             timeout, wait_app_visible=pb.WaitAppVisible(package_name=package_name)
         )
         if result.HasField("error"):
             if result.error.code != pb.ERR_WAIT_TIMEOUT:
-                raise CommandError(result, "wait_app_visible", self.serial, None)
+                raise CommandError._from_result(result, "wait_app_visible", self.serial, None)
             try:
                 last = f"currentPackage={self.info().current_package}"
             except Exception:  # noqa: BLE001 - diagnostics only
                 last = None
-            raise WaitTimeoutError(
-                f"package {package_name} to be in the foreground",
-                self.serial,
-                result.duration_ms,
-                0,
-                last,
+            raise WaitTimeoutError._from_result(
+                result, f"package {package_name} to be in the foreground", self.serial, last
             )
 
     def await_screen_stable(
@@ -265,11 +294,11 @@ class Device:
         stable_for: float = 0.5,
         timeout: float | None = None,
         package_name: str | None = None,
-        signal: int = pb.STABILITY_ALL,
+        signal: StabilitySignal = StabilitySignal.ALL,
     ) -> None:
         """Waits on the device until the AUT's focused window has stopped changing for
         ``stable_for`` seconds according to ``signal``: the accessibility tree
-        (``STABILITY_TREE``), the window pixels (``STABILITY_PIXELS``, 0.5 % tolerance) or both
+        (``StabilitySignal.TREE``), the window pixels (``StabilitySignal.PIXELS``, 0.5 % tolerance) or both
         (default). Call it explicitly after an action that starts an animation or transition;
         nothing waits for this implicitly. A screen that keeps changing times out with detail
         ``SCREEN_CHANGING``. ``await_app_settled`` / ``await_animation_end`` are the shorthands.
@@ -277,26 +306,22 @@ class Device:
         ``CommandError``."""
         package_name = package_name or self.aut_package
         timeout = self.timeouts.wait if timeout is None else timeout
-        result = self.execute(
+        result = self._execute(
             timeout,
             wait_screen_stable=pb.WaitScreenStable(
                 package_name=package_name,
                 stable_for_ms=int(stable_for * 1000),
-                signal=signal,
+                signal=_proto.stability_signal(signal),
             ),
         )
         if result.HasField("error"):
             if result.error.code != pb.ERR_WAIT_TIMEOUT:
-                raise CommandError(result, "wait_screen_stable", self.serial, None)
-            what = {pb.STABILITY_TREE: "hierarchy", pb.STABILITY_PIXELS: "pixels"}.get(
+                raise CommandError._from_result(result, "wait_screen_stable", self.serial, None)
+            what = {StabilitySignal.TREE: "hierarchy", StabilitySignal.PIXELS: "pixels"}.get(
                 signal, "screen"
             )
-            raise WaitTimeoutError(
-                f"the {package_name} {what} to stay unchanged for {stable_for:g}s",
-                self.serial,
-                result.duration_ms,
-                0,
-                result.error.detail or None,
+            raise WaitTimeoutError._from_result(
+                result, f"the {package_name} {what} to stay unchanged for {stable_for:g}s", self.serial
             )
 
     def await_app_settled(
@@ -307,7 +332,7 @@ class Device:
     ) -> None:
         """Maestro's ``waitForAppToSettle``, on request only: the accessibility hierarchy has
         not changed for ``stable_for`` seconds. Cheap (no screenshots); misses pure drawing."""
-        self.await_screen_stable(stable_for, timeout, package_name, pb.STABILITY_TREE)
+        self.await_screen_stable(stable_for, timeout, package_name, StabilitySignal.TREE)
 
     def await_animation_end(
         self,
@@ -317,7 +342,7 @@ class Device:
     ) -> None:
         """Maestro's ``waitForAnimationToEnd``, on request only: the window pixels have not
         changed (beyond 0.5 %) for ``stable_for`` seconds. One screenshot per 100 ms."""
-        self.await_screen_stable(stable_for, timeout, package_name, pb.STABILITY_PIXELS)
+        self.await_screen_stable(stable_for, timeout, package_name, StabilitySignal.PIXELS)
 
     def await_until(
         self,
@@ -358,6 +383,11 @@ class Device:
 
     # --- lifecycle --------------------------------------------------------------------------------
 
+    @property
+    def detached(self) -> bool:
+        """True once ``detach()`` ran; every later call on this device is rejected."""
+        return self._detached
+
     def detach(self) -> str | None:
         """Detaches the device. Returns the quarantine detail when the device could not be left
         clean (the server keeps it out of circulation), else None. Idempotent once it
@@ -365,7 +395,7 @@ class Device:
         if self._detached:
             return None
         with mapped_errors(self.serial):
-            response = self.server.device_stub.Detach(
+            response = self.client.device_stub.Detach(
                 pb.DetachRequest(
                     client_connection_id=self.owner_connection.id,
                     attached_device_id=self.attached_device_id,

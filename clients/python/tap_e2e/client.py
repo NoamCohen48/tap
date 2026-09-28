@@ -1,4 +1,5 @@
-"""The Tap host server: discovery, the gRPC channel and this process's ``ClientConnection``.
+"""Talking to the Tap host server: discovery, the ``TapClient`` channel and this process's
+``TapConnection``.
 
 Discovery order: ``TAP_SERVER=host:port`` → ``<state dir>/daemon.json`` written by a running
 daemon (state dir = ``TAP_STATE_DIR`` or ``~/.tap``). Every RPC carries the daemon's bearer
@@ -27,6 +28,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import grpc
 
 from . import _gen as pb
+from . import _proto
 from ._gen import (
     app_pb2_grpc,
     client_connection_pb2_grpc,
@@ -40,6 +42,7 @@ from .errors import (
     TapError,
     WaitTimeoutError,
 )
+from .models import DeviceEntry, DeviceState, FailureReason, ServerInfo
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -257,29 +260,29 @@ def _map_rpc_error(error: grpc.RpcError, serial: str | None = None) -> TapError:
     code = error.code()
     details = error.details() or ""
     failure = _failure(error)
-    reason = failure.reason
+    reason = _proto.failure_reason(failure.reason)
     failed_serial = failure.serial or serial or "?"
-    if reason == pb.FAILURE_REASON_UNAUTHENTICATED:
+    if reason is FailureReason.UNAUTHENTICATED:
         return ServerError(
             code.name,
             "wrong or missing daemon token (read from daemon.json in the state dir, or "
             f"TAP_TOKEN with an explicit TAP_SERVER): {details}",
             reason,
         )
-    if reason == pb.FAILURE_REASON_NOT_OWNER:
+    if reason is FailureReason.NOT_OWNER:
         return ServerError(
             code.name,
             f"device {failed_serial} is attached by another client connection; only the "
             f"connection that attached it may use or detach it: {details}",
             reason,
         )
-    if reason == pb.FAILURE_REASON_HOST_WAIT_TIMEOUT:
+    if reason is FailureReason.HOST_WAIT_TIMEOUT:
         return WaitTimeoutError(details, failed_serial, failure.waited_ms)
-    if reason == pb.FAILURE_REASON_DEVICE_BUSY:
+    if reason is FailureReason.DEVICE_BUSY:
         return DeviceBusyError(details)
-    if reason == pb.FAILURE_REASON_DEVICE_QUARANTINED:
+    if reason is FailureReason.DEVICE_QUARANTINED:
         return DeviceQuarantinedError(failed_serial, details)
-    if reason == pb.FAILURE_REASON_APP_LIFECYCLE:
+    if reason is FailureReason.APP_LIFECYCLE:
         return AppLifecycleError(details)
     return ServerError(code.name, details, reason)
 
@@ -299,16 +302,17 @@ FIRST_EVENT_TIMEOUT = 30.0
 MAX_EVENTS = 200
 
 
-class TapServer:
+class TapClient:
     """One gRPC channel to a host server. Cheap to create; share one per process.
 
-    ``address`` and ``token`` default to discovery (see :func:`resolve_endpoint`): with an
-    explicit address the token is ``token`` or ``TAP_TOKEN``; otherwise both come from the live
-    ``daemon.json``. Resolving from ``daemon.json`` probes the server with ``Info``.
+    :meth:`create` is the usual entry point: it resolves the endpoint (see
+    :func:`resolve_endpoint`) and, when discovering from ``daemon.json``, checks that the
+    server answers ``Info``. The constructor takes an already-resolved :class:`Endpoint` and
+    does no I/O. Use it as a context manager, or call :meth:`close` when done.
     """
 
-    def __init__(self, address: str | None = None, token: str | None = None):
-        endpoint = resolve_endpoint(address, token)
+    def __init__(self, endpoint: Endpoint):
+        self.endpoint = endpoint
         self.address = endpoint.address
         self.channel = _channel(
             endpoint, options=[("grpc.max_receive_message_length", 64 * 1024 * 1024)]
@@ -319,26 +323,32 @@ class TapServer:
         self.device_stub = device_pb2_grpc.DeviceServiceStub(self.channel)
         self.apps = app_pb2_grpc.AppServiceStub(self.channel)
 
-    def info(self) -> pb.InfoResponse:
-        """Daemon version and pid, protocol version, ADB executable, state dir, and whether the
-        daemon carries a driver to install (``driver_available``)."""
-        with mapped_errors():
-            return self.client_connections.Info(pb.InfoRequest(), timeout=10)
+    @classmethod
+    def create(cls, address: str | None = None, token: str | None = None) -> TapClient:
+        """A client for ``address`` (token: ``token`` or ``TAP_TOKEN``), or for ``TAP_SERVER``,
+        or for the live server ``daemon.json`` records. Raises ``TapError`` telling you to run
+        ``tap start`` when none is running. Never starts a server."""
+        return cls(resolve_endpoint(address, token))
 
-    def devices(self) -> list[pb.DeviceEntry]:
+    def info(self) -> ServerInfo:
+        """Daemon version and pid, protocol version, ADB executable, state dir, whether the
+        daemon carries a driver to install (``driver_available``) and its default timeouts."""
+        with mapped_errors():
+            return _proto.server_info(self.client_connections.Info(pb.InfoRequest(), timeout=10))
+
+    def devices(self) -> list[DeviceEntry]:
         """Every device ADB lists, with its state (``FREE``, ``LEASED``, ``QUARANTINED``,
         ``OFFLINE``, ``UNAUTHORIZED``); only ``FREE`` and ``LEASED`` devices can be attached."""
         with mapped_errors():
-            return list(
-                self.device_stub.ListDevices(
-                    pb.ListDevicesRequest(), timeout=30
-                ).devices
-            )
+            return [
+                _proto.device_entry(entry)
+                for entry in self.device_stub.ListDevices(pb.ListDevicesRequest(), timeout=30).devices
+            ]
 
     def connect(
         self, name: str, first_event_timeout: float = FIRST_EVENT_TIMEOUT
-    ) -> ClientConnection:
-        """Open a ``ClientConnection`` named ``name`` and start its liveness stream.
+    ) -> TapConnection:
+        """Open a ``TapConnection`` named ``name`` and start its liveness stream.
 
         The stream is established before this returns (the server's first event,
         ``observing``, is awaited for up to ``first_event_timeout`` seconds, else ``TapError``
@@ -352,25 +362,31 @@ class TapServer:
             client_connection_id = self.client_connections.Connect(
                 pb.ConnectRequest(name=name), timeout=10
             ).client_connection_id
-        connection = ClientConnection(self, client_connection_id)
+        connection = TapConnection(self, client_connection_id)
         connection._observe(first_event_timeout)
         return connection
 
     def close(self) -> None:
-        """Closes the channel. Close every ``ClientConnection`` first."""
+        """Closes the channel. Close every ``TapConnection`` first."""
         self.channel.close()
 
+    def __enter__(self) -> Self:
+        return self
 
-class ClientConnection:
-    """This process's identity at the server, returned by ``TapServer.connect`` with its
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
+class TapConnection:
+    """This process's identity at the server, returned by ``TapClient.connect`` with its
     liveness stream already running on a background thread. If this process dies, the server
     detaches every device owned by the connection. If the stream ends unexpectedly (server
     restart, network loss) or the daemon sends ``closing``, the connection becomes unusable:
     ``attach_device`` and every call on its devices raise ``TapError`` (``broken`` holds the
     cause)."""
 
-    def __init__(self, server: TapServer, client_connection_id: str):
-        self.server = server
+    def __init__(self, client: TapClient, client_connection_id: str):
+        self.client = client
         self.id = client_connection_id
         self._stream = None
         self._events: collections.deque[str] = collections.deque(maxlen=MAX_EVENTS)
@@ -380,7 +396,7 @@ class ClientConnection:
         self.on_event: Callable[[str], None] | None = None
 
     def _observe(self, first_event_timeout: float) -> None:
-        stream = self.server.client_connections.Observe(
+        stream = self.client.client_connections.Observe(
             pb.ObserveRequest(client_connection_id=self.id)
         )
         self._stream = stream
@@ -449,16 +465,16 @@ class ClientConnection:
             raise TapError(f"{broken}; {operation} rejected") from broken
 
     def available_serials(self) -> list[str]:
-        """Serials a test can use, from ``TapServer.devices``: online and not quarantined, free
+        """Serials a test can use, from ``TapClient.devices``: online and not quarantined, free
         ones first, then ones another session holds (``attach_device`` then waits for them when
         ``wait_for_device`` is set). Exclusive use is enforced by the session itself, so there is
         nothing to acquire beforehand."""
         devices = [
             d
-            for d in self.server.devices()
-            if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)
+            for d in self.client.devices()
+            if d.state in (DeviceState.FREE, DeviceState.LEASED)
         ]
-        devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
+        devices.sort(key=lambda d: d.state is not DeviceState.FREE)
         return [d.serial for d in devices]
 
     def attach_device(self, serial: str, aut_package: str, **options) -> Device:
@@ -469,17 +485,17 @@ class ClientConnection:
         self.ensure_usable("attach_device")
         return Device._attach_device(self, serial, aut_package, **options)
 
-    def close(self) -> pb.DisconnectResponse | None:
+    def close(self) -> None:
         """Disconnects (the server detaches this connection's devices), then drops the liveness
-        stream. Idempotent: later calls return None."""
+        stream. Idempotent: later calls do nothing."""
         if self._closed:
-            return None
+            return
         self._closing = True
         # Close explicitly before dropping the liveness stream, so the server records a client
         # request rather than a dropped stream.
         try:
             with mapped_errors():
-                return self.server.client_connections.Disconnect(
+                self.client.client_connections.Disconnect(
                     pb.DisconnectRequest(client_connection_id=self.id),
                     timeout=60,
                 )

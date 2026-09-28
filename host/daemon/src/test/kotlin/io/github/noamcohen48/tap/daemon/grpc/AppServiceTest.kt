@@ -1,12 +1,13 @@
-package io.github.noamcohen48.tap.daemon
+package io.github.noamcohen48.tap.daemon.grpc
 
+import com.google.protobuf.ByteString
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AppTarget
 import io.github.noamcohen48.tap.api.v1.InstallHeader
 import io.github.noamcohen48.tap.api.v1.InstallRequest
+import io.github.noamcohen48.tap.daemon.core.DaemonConfig
+import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.host.Adb
-import io.github.noamcohen48.tap.server.AppService
-import com.google.protobuf.ByteString
 import io.grpc.Status
 import io.grpc.StatusException
 import io.grpc.inprocess.InProcessChannelBuilder
