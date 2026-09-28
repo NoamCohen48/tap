@@ -127,18 +127,6 @@ object CommandValidation {
                 if (command.scroll.hasDistancePercent()) checkPercent(command.scroll.distancePercent)
             }
 
-            OpCase.SCROLL_UNTIL -> {
-                val scroll = command.scrollUntil
-                // UNSPECIFIED means the default (DOWN) here; only an unknown value is rejected.
-                if (scroll.direction == Direction.UNRECOGNIZED) invalidRequest("Unknown direction")
-                if (scroll.hasDistancePercent()) checkPercent(scroll.distancePercent)
-                if (scroll.hasMaxScrolls() && scroll.maxScrolls !in 1..MAX_SCROLLS) {
-                    invalidRequest("max_scrolls must be in 1..$MAX_SCROLLS")
-                }
-                if (scroll.hasSelector() && scroll.hasContainer() && scroll.selector.effectiveScope != scroll.container.effectiveScope) {
-                    invalidSelector(ErrorDetail.SCOPE_MISMATCH, "scroll_until target and container must share one scope")
-                }
-            }
 
             OpCase.OP_NOT_SET, null -> {
                 throw InvalidCommandException(ErrorCode.ERR_UNSUPPORTED, null, "No command op is set")

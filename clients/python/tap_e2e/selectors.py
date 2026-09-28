@@ -97,14 +97,20 @@ class Selector:
 
     @property
     def _scope_key(self) -> str | None:
-        """None for the app under test (the default), else the system package."""
-        return self.proto.system.package_name if self.proto.HasField("system") else None
+        """None for the app under test (the default), else the package or any window."""
+        scope = self.proto.WhichOneof("scope")
+        if scope == "system":
+            return f"package {self.proto.system.package_name}"
+        if scope == "any_window":
+            return "any window"
+        return None
 
     def _require_same_scope(self, operation: str, other: Selector) -> None:
-        if other.proto.HasField("system") and other._scope_key != self._scope_key:
+        if other._scope_key is not None and other._scope_key != self._scope_key:
             raise ValueError(
                 f"{operation}: the operand {other.render()} has a different scope than "
-                f"{self.render()}; set in_system_package(...) on the combined selector instead"
+                f"{self.render()}; set in_package(...)/in_any_window() on the combined "
+                "selector instead"
             )
 
     def _operand(self, operation: str, other: Selector) -> pb.Node:
@@ -247,21 +253,31 @@ class Selector:
         copy = pb.Selector()
         copy.CopyFrom(other.proto)
         copy.node.CopyFrom(_all_of(other.proto.node, _related(back, self.proto.node)))
-        if self.proto.HasField("system"):
+        scope = self.proto.WhichOneof("scope")
+        if scope == "system":
             copy.system.CopyFrom(self.proto.system)
+        elif scope == "any_window":
+            copy.any_window.SetInParent()
         else:
             copy.ClearField("scope")
         return Selector(copy)
 
     # --- scope and match choice -----------------------------------------------------------
 
-    def in_system_package(self, package_name: str) -> Selector:
-        """Allow this selector to match inside the allowlisted system package ``package_name``
-        (by default only ``com.google.android.permissioncontroller``) instead of the app under test.
-        """
+    def in_package(self, package_name: str) -> Selector:
+        """Search the focused window of ``package_name`` instead of the app under test's: any
+        package, such as the permission controller's dialog or another app."""
         copy = pb.Selector()
         copy.CopyFrom(self.proto)
         copy.system.package_name = package_name
+        return Selector(copy)
+
+    def in_any_window(self) -> Selector:
+        """Search every window on screen, of any package (dialogs, popups, the system UI, other
+        apps), instead of only the app under test's focused window."""
+        copy = pb.Selector()
+        copy.CopyFrom(self.proto)
+        copy.any_window.SetInParent()
         return Selector(copy)
 
     def first(self) -> Selector:
@@ -328,7 +344,7 @@ def res_id(package_name: str, name: str) -> Selector:
 def res(name: str) -> Selector:
     """View resource id ``name`` of the **app under test**: ``<aut>:id/name``, with the package
     filled in by the server from the session, so the same selector works on every device and
-    role. Use ``res_id`` for another package (a system dialog with ``in_system_package``)."""
+    role. Use ``res_id`` for another package (a system dialog with ``in_package`` or ``in_any_window``)."""
     return _selector(_aut_resource(name))
 
 

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eselector.proto\x12\x06tap.v1\"_\n\x05Match\x12&\n\x08property\x18\x01 \x01(\x0e\x32\x14.tap.v1.TextProperty\x12\r\n\x05value\x18\x02 \x01(\t\x12\x1f\n\x04mode\x18\x03 \x01(\x0e\x32\x11.tap.v1.MatchMode\"9\n\x04\x46lag\x12\"\n\x08property\x18\x01 \x01(\x0e\x32\x10.tap.v1.NodeFlag\x12\r\n\x05value\x18\x02 \x01(\x08\"[\n\nResourceId\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x19\n\x0cpackage_name\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x13\n\x0b\x61ut_package\x18\x03 \x01(\x08\x42\x0f\n\r_package_name\"I\n\x07Related\x12\"\n\x08relation\x18\x01 \x01(\x0e\x32\x10.tap.v1.Relation\x12\x1a\n\x04node\x18\x02 \x01(\x0b\x32\x0c.tap.v1.Node\"$\n\x05\x41llOf\x12\x1b\n\x05nodes\x18\x01 \x03(\x0b\x32\x0c.tap.v1.Node\"$\n\x05\x41nyOf\x12\x1b\n\x05nodes\x18\x01 \x03(\x0b\x32\x0c.tap.v1.Node\"\xda\x01\n\x04Node\x12\x1e\n\x05match\x18\x01 \x01(\x0b\x32\r.tap.v1.MatchH\x00\x12\x1c\n\x04\x66lag\x18\x02 \x01(\x0b\x32\x0c.tap.v1.FlagH\x00\x12&\n\x08resource\x18\x03 \x01(\x0b\x32\x12.tap.v1.ResourceIdH\x00\x12\"\n\x07related\x18\x04 \x01(\x0b\x32\x0f.tap.v1.RelatedH\x00\x12\x1f\n\x06\x61ll_of\x18\x05 \x01(\x0b\x32\r.tap.v1.AllOfH\x00\x12\x1f\n\x06\x61ny_of\x18\x06 \x01(\x0b\x32\r.tap.v1.AnyOfH\x00\x42\x06\n\x04kind\"\n\n\x08\x41utScope\"#\n\x0bSystemScope\x12\x14\n\x0cpackage_name\x18\x01 \x01(\t\"\x0c\n\nExactlyOne\"\x07\n\x05\x46irst\"\x13\n\x02\x41t\x12\r\n\x05index\x18\x01 \x01(\x05\"\xe4\x01\n\x08Selector\x12\x1a\n\x04node\x18\x01 \x01(\x0b\x32\x0c.tap.v1.Node\x12\x1f\n\x03\x61ut\x18\x02 \x01(\x0b\x32\x10.tap.v1.AutScopeH\x00\x12%\n\x06system\x18\x03 \x01(\x0b\x32\x13.tap.v1.SystemScopeH\x00\x12)\n\x0b\x65xactly_one\x18\x04 \x01(\x0b\x32\x12.tap.v1.ExactlyOneH\x01\x12\x1e\n\x05\x66irst\x18\x05 \x01(\x0b\x32\r.tap.v1.FirstH\x01\x12\x18\n\x02\x61t\x18\x06 \x01(\x0b\x32\n.tap.v1.AtH\x01\x42\x07\n\x05scopeB\x06\n\x04pick*\x84\x01\n\tMatchMode\x12\x15\n\x11MATCH_UNSPECIFIED\x10\x00\x12\x0f\n\x0bMATCH_EXACT\x10\x01\x12\x12\n\x0eMATCH_CONTAINS\x10\x02\x12\x15\n\x11MATCH_STARTS_WITH\x10\x03\x12\x13\n\x0fMATCH_ENDS_WITH\x10\x04\x12\x0f\n\x0bMATCH_REGEX\x10\x05*\x89\x01\n\x0cTextProperty\x12\x18\n\x14PROPERTY_UNSPECIFIED\x10\x00\x12\x11\n\rPROPERTY_TEXT\x10\x01\x12 \n\x1cPROPERTY_CONTENT_DESCRIPTION\x10\x02\x12\x11\n\rPROPERTY_HINT\x10\x03\x12\x17\n\x13PROPERTY_CLASS_NAME\x10\x04*\xd3\x01\n\x08NodeFlag\x12\x14\n\x10\x46LAG_UNSPECIFIED\x10\x00\x12\x10\n\x0c\x46LAG_ENABLED\x10\x01\x12\x10\n\x0c\x46LAG_CHECKED\x10\x02\x12\x12\n\x0e\x46LAG_CHECKABLE\x10\x03\x12\x12\n\x0e\x46LAG_CLICKABLE\x10\x04\x12\x10\n\x0c\x46LAG_FOCUSED\x10\x05\x12\x12\n\x0e\x46LAG_FOCUSABLE\x10\x06\x12\x17\n\x13\x46LAG_LONG_CLICKABLE\x10\x07\x12\x13\n\x0f\x46LAG_SCROLLABLE\x10\x08\x12\x11\n\rFLAG_SELECTED\x10\t*}\n\x08Relation\x12\x18\n\x14RELATION_UNSPECIFIED\x10\x00\x12\x13\n\x0fRELATION_PARENT\x10\x01\x12\x15\n\x11RELATION_ANCESTOR\x10\x02\x12\x12\n\x0eRELATION_CHILD\x10\x03\x12\x17\n\x13RELATION_DESCENDANT\x10\x04\x42\x33\n io.github.noamcohen48.tap.api.v1B\rSelectorProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eselector.proto\x12\x06tap.v1\"_\n\x05Match\x12&\n\x08property\x18\x01 \x01(\x0e\x32\x14.tap.v1.TextProperty\x12\r\n\x05value\x18\x02 \x01(\t\x12\x1f\n\x04mode\x18\x03 \x01(\x0e\x32\x11.tap.v1.MatchMode\"9\n\x04\x46lag\x12\"\n\x08property\x18\x01 \x01(\x0e\x32\x10.tap.v1.NodeFlag\x12\r\n\x05value\x18\x02 \x01(\x08\"[\n\nResourceId\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x19\n\x0cpackage_name\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x13\n\x0b\x61ut_package\x18\x03 \x01(\x08\x42\x0f\n\r_package_name\"I\n\x07Related\x12\"\n\x08relation\x18\x01 \x01(\x0e\x32\x10.tap.v1.Relation\x12\x1a\n\x04node\x18\x02 \x01(\x0b\x32\x0c.tap.v1.Node\"$\n\x05\x41llOf\x12\x1b\n\x05nodes\x18\x01 \x03(\x0b\x32\x0c.tap.v1.Node\"$\n\x05\x41nyOf\x12\x1b\n\x05nodes\x18\x01 \x03(\x0b\x32\x0c.tap.v1.Node\"\xda\x01\n\x04Node\x12\x1e\n\x05match\x18\x01 \x01(\x0b\x32\r.tap.v1.MatchH\x00\x12\x1c\n\x04\x66lag\x18\x02 \x01(\x0b\x32\x0c.tap.v1.FlagH\x00\x12&\n\x08resource\x18\x03 \x01(\x0b\x32\x12.tap.v1.ResourceIdH\x00\x12\"\n\x07related\x18\x04 \x01(\x0b\x32\x0f.tap.v1.RelatedH\x00\x12\x1f\n\x06\x61ll_of\x18\x05 \x01(\x0b\x32\r.tap.v1.AllOfH\x00\x12\x1f\n\x06\x61ny_of\x18\x06 \x01(\x0b\x32\r.tap.v1.AnyOfH\x00\x42\x06\n\x04kind\"\n\n\x08\x41utScope\"#\n\x0bSystemScope\x12\x14\n\x0cpackage_name\x18\x01 \x01(\t\"\x10\n\x0e\x41nyWindowScope\"\x0c\n\nExactlyOne\"\x07\n\x05\x46irst\"\x13\n\x02\x41t\x12\r\n\x05index\x18\x01 \x01(\x05\"\x92\x02\n\x08Selector\x12\x1a\n\x04node\x18\x01 \x01(\x0b\x32\x0c.tap.v1.Node\x12\x1f\n\x03\x61ut\x18\x02 \x01(\x0b\x32\x10.tap.v1.AutScopeH\x00\x12%\n\x06system\x18\x03 \x01(\x0b\x32\x13.tap.v1.SystemScopeH\x00\x12,\n\nany_window\x18\x07 \x01(\x0b\x32\x16.tap.v1.AnyWindowScopeH\x00\x12)\n\x0b\x65xactly_one\x18\x04 \x01(\x0b\x32\x12.tap.v1.ExactlyOneH\x01\x12\x1e\n\x05\x66irst\x18\x05 \x01(\x0b\x32\r.tap.v1.FirstH\x01\x12\x18\n\x02\x61t\x18\x06 \x01(\x0b\x32\n.tap.v1.AtH\x01\x42\x07\n\x05scopeB\x06\n\x04pick*\x84\x01\n\tMatchMode\x12\x15\n\x11MATCH_UNSPECIFIED\x10\x00\x12\x0f\n\x0bMATCH_EXACT\x10\x01\x12\x12\n\x0eMATCH_CONTAINS\x10\x02\x12\x15\n\x11MATCH_STARTS_WITH\x10\x03\x12\x13\n\x0fMATCH_ENDS_WITH\x10\x04\x12\x0f\n\x0bMATCH_REGEX\x10\x05*\x89\x01\n\x0cTextProperty\x12\x18\n\x14PROPERTY_UNSPECIFIED\x10\x00\x12\x11\n\rPROPERTY_TEXT\x10\x01\x12 \n\x1cPROPERTY_CONTENT_DESCRIPTION\x10\x02\x12\x11\n\rPROPERTY_HINT\x10\x03\x12\x17\n\x13PROPERTY_CLASS_NAME\x10\x04*\xd3\x01\n\x08NodeFlag\x12\x14\n\x10\x46LAG_UNSPECIFIED\x10\x00\x12\x10\n\x0c\x46LAG_ENABLED\x10\x01\x12\x10\n\x0c\x46LAG_CHECKED\x10\x02\x12\x12\n\x0e\x46LAG_CHECKABLE\x10\x03\x12\x12\n\x0e\x46LAG_CLICKABLE\x10\x04\x12\x10\n\x0c\x46LAG_FOCUSED\x10\x05\x12\x12\n\x0e\x46LAG_FOCUSABLE\x10\x06\x12\x17\n\x13\x46LAG_LONG_CLICKABLE\x10\x07\x12\x13\n\x0f\x46LAG_SCROLLABLE\x10\x08\x12\x11\n\rFLAG_SELECTED\x10\t*}\n\x08Relation\x12\x18\n\x14RELATION_UNSPECIFIED\x10\x00\x12\x13\n\x0fRELATION_PARENT\x10\x01\x12\x15\n\x11RELATION_ANCESTOR\x10\x02\x12\x12\n\x0eRELATION_CHILD\x10\x03\x12\x17\n\x13RELATION_DESCENDANT\x10\x04\x42\x33\n io.github.noamcohen48.tap.api.v1B\rSelectorProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,14 +32,14 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'selector_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n io.github.noamcohen48.tap.api.v1B\rSelectorProtoP\001'
-  _globals['_MATCHMODE']._serialized_start=972
-  _globals['_MATCHMODE']._serialized_end=1104
-  _globals['_TEXTPROPERTY']._serialized_start=1107
-  _globals['_TEXTPROPERTY']._serialized_end=1244
-  _globals['_NODEFLAG']._serialized_start=1247
-  _globals['_NODEFLAG']._serialized_end=1458
-  _globals['_RELATION']._serialized_start=1460
-  _globals['_RELATION']._serialized_end=1585
+  _globals['_MATCHMODE']._serialized_start=1036
+  _globals['_MATCHMODE']._serialized_end=1168
+  _globals['_TEXTPROPERTY']._serialized_start=1171
+  _globals['_TEXTPROPERTY']._serialized_end=1308
+  _globals['_NODEFLAG']._serialized_start=1311
+  _globals['_NODEFLAG']._serialized_end=1522
+  _globals['_RELATION']._serialized_start=1524
+  _globals['_RELATION']._serialized_end=1649
   _globals['_MATCH']._serialized_start=26
   _globals['_MATCH']._serialized_end=121
   _globals['_FLAG']._serialized_start=123
@@ -58,12 +58,14 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_AUTSCOPE']._serialized_end=657
   _globals['_SYSTEMSCOPE']._serialized_start=659
   _globals['_SYSTEMSCOPE']._serialized_end=694
-  _globals['_EXACTLYONE']._serialized_start=696
-  _globals['_EXACTLYONE']._serialized_end=708
-  _globals['_FIRST']._serialized_start=710
-  _globals['_FIRST']._serialized_end=717
-  _globals['_AT']._serialized_start=719
-  _globals['_AT']._serialized_end=738
-  _globals['_SELECTOR']._serialized_start=741
-  _globals['_SELECTOR']._serialized_end=969
+  _globals['_ANYWINDOWSCOPE']._serialized_start=696
+  _globals['_ANYWINDOWSCOPE']._serialized_end=712
+  _globals['_EXACTLYONE']._serialized_start=714
+  _globals['_EXACTLYONE']._serialized_end=726
+  _globals['_FIRST']._serialized_start=728
+  _globals['_FIRST']._serialized_end=735
+  _globals['_AT']._serialized_start=737
+  _globals['_AT']._serialized_end=756
+  _globals['_SELECTOR']._serialized_start=759
+  _globals['_SELECTOR']._serialized_end=1033
 # @@protoc_insertion_point(module_scope)

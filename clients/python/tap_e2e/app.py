@@ -110,7 +110,9 @@ class App:
         self._call(self._apps.GrantPermission, request, None)
 
     def launch(self, activity: str | None = None, timeout: float | None = None) -> None:
-        """Starts the activity and waits until the package owns the focused window."""
+        """Starts the activity with ``am start -W`` and returns when Android reports the launch
+        complete. Nothing about the UI is assumed: wait for what the test needs
+        (``Device.await_app_visible``, ``Device.await_screen_stable``, an element wait)."""
         timeout = self._or(timeout, self.device.timeouts.lifecycle)
         request = pb.LaunchRequest(app=self._target(), timeout_ms=self._ms(timeout))
         if activity:

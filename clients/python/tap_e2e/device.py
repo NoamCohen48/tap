@@ -77,7 +77,6 @@ class Device:
         timeouts: Timeouts | None = None,
         skip_driver_install: bool = False,
         sync_authority: str | None = None,
-        allowed_system_packages: list[str] | None = None,
         wait_for_device: float = 0,
     ) -> Device:
         """Attach ``serial`` for ``aut_package`` (used by ``ClientConnection.attach_device``).
@@ -91,7 +90,6 @@ class Device:
             serial=serial,
             aut_package=aut_package,
             default_timeout_ms=int(timeouts.action * 1000),
-            allowed_system_packages=allowed_system_packages or [],
         )
         if wait_for_device > 0:  # absent = fail at once when another session holds it
             request.lease_timeout_ms = int(wait_for_device * 1000)

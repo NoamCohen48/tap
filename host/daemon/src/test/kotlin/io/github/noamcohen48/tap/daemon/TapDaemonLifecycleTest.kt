@@ -2,6 +2,7 @@ package io.github.noamcohen48.tap.daemon
 
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
@@ -68,7 +69,6 @@ private fun testOptions() =
     TapDaemon.AttachDeviceOptions(
         skipDriverInstall = true,
         syncAuthority = null,
-        allowedSystemPackages = emptySet(),
         defaultTimeoutMs = 5_000,
         leaseTimeoutMs = 0,
     )
@@ -730,10 +730,9 @@ class TapDaemonLifecycleTest {
                             .build()
                     try {
                         // aut_package and the absent optional fields reach the driver as sent.
-                        val target = Nodes.autResource("row").toSelector()
                         val command =
                             Commands
-                                .scrollUntil(target, container = Nodes.autResource("list").toSelector())
+                                .scroll(Nodes.autResource("list").toSelector(), Direction.DIR_DOWN)
                                 .toBuilder()
                                 .setTimeoutMs(4_000)
                                 .build()
@@ -742,12 +741,12 @@ class TapDaemonLifecycleTest {
                         val request = Request.parseFrom(frame.payload)
                         assertEquals(command, request.command)
                         assertEquals(4_000L, request.timeoutMs)
-                        assertTrue(request.command.scrollUntil.selector.node.resource.autPackage)
-                        assertFalse(request.command.scrollUntil.hasMaxScrolls())
+                        assertTrue(request.command.scroll.selector.node.resource.autPackage)
+                        assertFalse(request.command.scroll.hasDistancePercent())
 
                         val driverResult =
                             Responses
-                                .failure(ErrorCode.ERR_NOT_FOUND, detail = "END_REACHED", message = "no row")
+                                .failure(ErrorCode.ERR_NOT_FOUND, detail = "SOME_DETAIL", message = "no row")
                                 .stamped(durationMs = 17, requestId = frame.requestId, generation = generation)
                         server.respond(frame.requestId, driverResult)
                         assertEquals(driverResult.result, withTimeout(2_000) { call.await() }.result)
@@ -757,7 +756,7 @@ class TapDaemonLifecycleTest {
                             listOf(
                                 Commands.tap(Selector.getDefaultInstance()),
                                 Command.getDefaultInstance(),
-                                Commands.swipe(target, io.github.noamcohen48.tap.api.v1.Direction.DIR_UNSPECIFIED),
+                                Commands.swipe(Nodes.autResource("row").toSelector(), Direction.DIR_UNSPECIFIED),
                             )
                         invalid.forEach { bad ->
                             val status = assertFailsWith<io.grpc.StatusException> { stub.execute(execute(bad)) }

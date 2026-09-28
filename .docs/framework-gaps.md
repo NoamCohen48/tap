@@ -42,9 +42,8 @@ describes.
 | `device.wake` / screen state | Tests assume the screen is on and unlocked. | `UiDevice.wakeUp()` + keyguard dismissal; validation on a device with a lock screen. |
 | `inspector.snapshot` | No JSON hierarchy with selector suggestions; `DUMP_HIERARCHY` returns raw UiAutomator XML only. | Phase 5 inspector UI depends on it; failure artifacts use the XML for now. |
 | `AUT_CRASHED` / `AUT_ANR` / `AUT_NOT_INSTALLED` emission | Crashes surface as `NOT_FOUND`/`WAIT_TIMEOUT` plus a process-identity change, not as a first-class code. | Requires driver-side process observation (`am`/`dumpsys activity` or `ActivityManager` crash/ANR detection) and a fixture that crashes/ANRs on demand. |
-| Text selectors vs hints | `SNAPSHOT.text` and the `SET_TEXT`/`TYPE_TEXT`/`CLEAR_TEXT` verification exclude a displayed hint, but `By.text` (and therefore `text(...)` selectors and `textEquals`) still see the hint as text on API 26+. `text("")` never matches an empty hinted field. | Either compile `text` selectors that could hit editable fields through the traversal plan with the same `displayedText` rule, or document `hint(...)` as the way to target empty fields. |
 | Multi-touch / pinch, drag, fling | Not exposed. | Plan lists them as demand-driven. |
-| Permission dialogs | `App.grantPermission` pre-grants via `pm`; there is no helper to accept/deny a runtime permission dialog that appears mid-test. The driver's `SYSTEM` scope allow-list already includes the permission controller package. | Adopt the Appium UiAutomator2 approach (locate the controller's allow/deny buttons by resource id per API family) behind a fixture (`PermissionActivity` exists). |
+| Permission dialogs | `App.grantPermission` pre-grants via `pm`; there is no helper to accept/deny a runtime permission dialog that appears mid-test. Selectors can reach the dialog with `inAnyWindow()` or `inPackage(controller)` (`PermissionTest`). | Adopt the Appium UiAutomator2 approach (locate the controller's allow/deny buttons by resource id per API family) behind a fixture (`PermissionActivity` exists). |
 
 ## Sync SDK visibility (plan §16)
 
@@ -139,8 +138,8 @@ Missing:
 ## AUT lifecycle (plan §14)
 
 Implemented: install, uninstall, `isInstalled`, `forceStop` (verified), `clearData`
-(verified), `grantPermission`, `launch` (launcher resolution + `am start -W` +
-`WAIT_APP_VISIBLE`), `coldLaunch` returning a new process identity, `process()`,
+(verified), `grantPermission`, `launch` (launcher resolution + `am start -W`; the window wait is the
+client's explicit `awaitAppVisible` / `awaitScreenStable`), `coldLaunch` returning a new process identity, `process()`,
 `isRunning()`, `awaitIdle` with process-identity guards.
 
 Missing: crash/ANR detection as codes (above), backgrounding/foregrounding helpers
@@ -151,12 +150,12 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 
 - Compose: supported only through `testTagsAsResourceId` → `rawRes(tag)` and standard
   semantics text/description. No semantics-tree access, no `useUnmergedTree`, no Compose
-  lazy-list item scrolling by key (only by visible selector via `SCROLL_UNTIL`).
+  lazy-list item scrolling by key (only by visible selector via the clients' `scrollUntil` loop).
 - Observed once on emulator-5554 (2026-09-20): `MainScreenTest.scrollsComposeListUntilItemIsVisible`
   failed on `item.exists()` immediately after `scrollUntil` returned, with the item visible in
   the failure screenshot — a Compose semantics-update race between the scroll's match and the
-  next resolve. Passed on rerun. If it recurs, `SCROLL_UNTIL` should re-verify its match after
-  a short tree-stable wait before returning, not the test retry.
+  next resolve. Passed on rerun. Since protocol 4.0 `scrollUntil` is a client loop whose
+  exit condition is that same `exists`, so the race no longer applies in that form.
 - WebView: nothing. The plan's boundary (no WebDriver surface; accessibility-only within
   WebViews, explicit "not supported" for the rest) is not yet enforced or documented in the
   SDK.

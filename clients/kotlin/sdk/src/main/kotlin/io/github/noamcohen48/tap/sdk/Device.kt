@@ -92,8 +92,6 @@ data class DeviceOptions(
     val skipDriverInstall: Boolean = false,
     /** Content-provider authority of the AUT's `sync-sdk`, when it is not the default. */
     val syncAuthority: String? = null,
-    /** System packages (permission controller, ...) that system-scoped selectors may match. */
-    val allowedSystemPackages: List<String> = emptyList(),
     /** How long to wait for a device another session holds before failing; zero fails at once. */
     val waitForDevice: Duration = Duration.ZERO,
 )
@@ -681,7 +679,6 @@ class Device internal constructor(
                     .setSerial(serial)
                     .setAutPackage(autPackage)
                     .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
-                    .addAllAllowedSystemPackages(options.allowedSystemPackages)
                     .apply {
                         // Absent = fail at once when another session holds the device.
                         if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)

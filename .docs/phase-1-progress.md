@@ -11,6 +11,14 @@ Status: in progress.
   one schema in `contracts/proto`); 2.0 replaced 1.0's flat operation/optional-field model with
   per-command and per-result shapes. Full API 29/API 34 `--no-reboot` flow, Kotlin fixture tests
   and Python suite (JVM and native daemon) re-passed after the 3.0 migration.
+- Protocol `4.0` (2026-09-28, "the driver assumes nothing about the app"): `SCROLL_UNTIL` and
+  the `moved` result removed (swipe/scroll return `done`; the clients' `scrollUntil` loops
+  `exists` + `scroll`), no enabled/scrollable pre-checks (`NOT_INTERACTABLE` no longer emitted),
+  key-up events carry their press's `downTime`, `SNAPSHOT.text` is Android's raw text plus
+  `showing_hint`, launch returns after `am start -W`, and selector scope is any package
+  (`system`, no allowlist) or every window (`any_window`). Proven by the validation `deviceTest`
+  suite (`ScrollTest`, `PermissionTest`, `InputTest`), the Kotlin fixture tests and the Python
+  suite on emulator-5554 (API 34); entries below describe the behaviour of their time.
 - The handshake MACs the payload bytes as sent (negotiation carried as serialized bytes), so no
   canonical encoding is needed; a payload that does not parse fails the handshake.
 - Authenticated HELLO/CHALLENGE/NEGOTIATION transcript with separate HMAC domains.
@@ -93,7 +101,8 @@ Status: in progress.
   `any_of` and repeated-text conjunctions agreeing with native counts and tapping through a
   relation, host-side rejection of an empty conjunction, foreign resource package →
   `SCOPE_DENIED`.
-- `LONG_TAP`, `CLEAR_TEXT`, `SWIPE`, and single-segment `SCROLL` (value = more content remains), and
+- (Superseded in part by 4.0: no interactable check, no scroll value, no `SCROLL_UNTIL`.)
+  `LONG_TAP`, `CLEAR_TEXT`, `SWIPE`, and single-segment `SCROLL` (value = more content remains), and
   `SCROLL_UNTIL` takes a `direction`/`distancePercent`; all share one gesture shape
   (checkpoint → exactly-one resolve → interactable check → mutation gate → act). Fixture
   `AmbiguityActivity` gained a long-press-aware gesture target and a prefilled field; the device
@@ -132,7 +141,7 @@ Status: in progress.
   `AMBIGUOUS` snapshot of duplicates, `DEVICE_INFO` API level and focused package,
   `WAIT_APP_VISIBLE`, `PRESS_KEY -1` → `INVALID_REQUEST`, back key → `WAIT_GONE` of the
   ambiguity screen.
-- Hint-aware text observation: an empty `EditText` reports its hint as accessibility text on
+- (Superseded by 4.0: raw text + `showing_hint`.) Hint-aware text observation: an empty `EditText` reports its hint as accessibility text on
   API 26+, which made `CLEAR_TEXT` on a hinted field fail as `TEXT_MISMATCH` and leaked hints
   into `SNAPSHOT.text` (found by the SDK sample suite). One `displayedText()` helper now backs
   `SNAPSHOT`, the text-verification loop, and key-event input; the validation flow clears the

@@ -16,7 +16,6 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
-import io.github.noamcohen48.tap.api.v1.ScrollUntil
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
@@ -62,7 +61,7 @@ object Operations {
 private val OpCase.wireName: String get() = name.lowercase()
 private val BodyCase.wireName: String get() = name.lowercase()
 
-/** Protocol name of this command (`tap`, `scroll_until`, …); `unset` when no op is set. */
+/** Protocol name of this command (`tap`, `set_text`, …); `unset` when no op is set. */
 val Command.op: String get() = if (opCase == OpCase.OP_NOT_SET) "unset" else opCase.wireName
 
 /** Protocol name of this request's operation: the command's op or the internal operation's name. */
@@ -79,7 +78,7 @@ val Command.isMutation: Boolean
     get() =
         when (opCase) {
             OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
-            OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL, OpCase.SCROLL_UNTIL,
+            OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL,
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
@@ -91,7 +90,7 @@ val Command.isMutation: Boolean
 /** Host-internal operations never mutate the AUT. */
 val Request.isMutation: Boolean get() = bodyCase == BodyCase.COMMAND && command.isMutation
 
-/** The selector the command acts on (for `scroll_until`, the target, not the container). */
+/** The selector the command acts on. */
 val Command.targetSelector: Selector?
     get() =
         when (opCase) {
@@ -107,7 +106,6 @@ val Command.targetSelector: Selector?
             OpCase.CLEAR_TEXT -> clearText.selector
             OpCase.SWIPE -> swipe.selector
             OpCase.SCROLL -> scroll.selector
-            OpCase.SCROLL_UNTIL -> scrollUntil.selector
             OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
             OpCase.WAIT_SCREEN_STABLE, OpCase.OP_NOT_SET, null,
             -> null
@@ -115,14 +113,8 @@ val Command.targetSelector: Selector?
 
 val Request.targetSelector: Selector? get() = if (bodyCase == BodyCase.COMMAND) command.targetSelector else null
 
-/** Every selector the command carries, target first. */
-val Command.selectors: List<Selector>
-    get() =
-        if (opCase == OpCase.SCROLL_UNTIL) {
-            listOf(scrollUntil.selector, scrollUntil.container)
-        } else {
-            listOfNotNull(targetSelector)
-        }
+/** Every selector the command carries (at most the target). */
+val Command.selectors: List<Selector> get() = listOfNotNull(targetSelector)
 
 /** Public commands. Optional arguments left `null` are absent on the wire (the driver's default). */
 object Commands {
@@ -196,20 +188,6 @@ object Commands {
             },
         ).build()
 
-    fun scrollUntil(
-        selector: Selector,
-        container: Selector,
-        direction: Direction? = null,
-        distancePercent: Int? = null,
-        maxScrolls: Int? = null,
-    ): Command =
-        Command.newBuilder().setScrollUntil(
-            ScrollUntil.newBuilder().setSelector(selector).setContainer(container).apply {
-                direction?.let { setDirection(it) }
-                distancePercent?.let { setDistancePercent(it) }
-                maxScrolls?.let { setMaxScrolls(it) }
-            },
-        ).build()
 }
 
 /**
@@ -352,12 +330,9 @@ interface CommandHandler {
 
     fun clearText(command: ClearText)
 
-    /** Whether the content moved at all (false at the end of a list). */
-    fun swipe(command: Swipe): Boolean
+    fun swipe(command: Swipe)
 
-    fun scroll(command: Scroll): Boolean
-
-    fun scrollUntil(command: ScrollUntil)
+    fun scroll(command: Scroll)
 }
 
 /**
@@ -417,9 +392,8 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.SET_TEXT -> result.setDone(done).also { handler.setText(setText) }
         OpCase.TYPE_TEXT -> result.setDone(done).also { handler.typeText(typeText) }
         OpCase.CLEAR_TEXT -> result.setDone(done).also { handler.clearText(clearText) }
-        OpCase.SWIPE -> result.setMoved(handler.swipe(swipe))
-        OpCase.SCROLL -> result.setMoved(handler.scroll(scroll))
-        OpCase.SCROLL_UNTIL -> result.setDone(done).also { handler.scrollUntil(scrollUntil) }
+        OpCase.SWIPE -> result.setDone(done).also { handler.swipe(swipe) }
+        OpCase.SCROLL -> result.setDone(done).also { handler.scroll(scroll) }
         OpCase.OP_NOT_SET, null -> throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "No command op this driver knows is set")
     }
     return result

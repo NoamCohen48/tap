@@ -46,9 +46,10 @@ Regexes are RE2: linear-time, no backreferences or lookaround, and an invalid pa
 rejected before it reaches the device.
 
 !!! note "Text vs hint"
-    An empty `EditText` reports its hint as its accessibility text. Tap's text *observations*
-    (`element.text()`, `snapshot()`) treat that as empty text, but text
-    *selectors* match what UiAutomator sees. Use `hint(...)` to find an empty field.
+    An empty `EditText` reports its hint as its accessibility text. Tap passes that through
+    unchanged: text selectors match it and `element.text()` returns it, while
+    `snapshot().showingHint` (`showing_hint`) says the text is the hint. Use `hint(...)` to
+    find an empty field by its hint.
 
 ## Refinements
 
@@ -75,7 +76,7 @@ action apply to it as a whole.
     ```kotlin
     // the permission button, whichever wording this Android version uses
     val allow = text("Allow") or text("Allow only while using the app") or text("While using the app")
-    device.element(allow.inSystemPackage("com.google.android.permissioncontroller")).tap()
+    device.element(allow.inAnyWindow()).tap()
 
     // both on the same node
     device.element(text("Add") and clickable()).tap()          // same as text("Add").clickable()
@@ -85,7 +86,7 @@ action apply to it as a whole.
 
     ```python
     allow = text("Allow") | text("Allow only while using the app") | text("While using the app")
-    device.element(allow.in_system_package("com.google.android.permissioncontroller")).tap()
+    device.element(allow.in_any_window()).tap()
 
     device.element(text("Add") & clickable()).tap()
     ```
@@ -93,7 +94,7 @@ action apply to it as a whole.
 Combinators nest freely (`(a or b) and clickable()`), including inside relations
 (`hasChild(a or b)`). The result keeps the left-hand operand's scope and `first()`/`at(n)`.
 Nothing is dropped silently: a right-hand operand (of `and`/`or` or a `has*` relation) that
-carries its own `first()`/`at(n)`, or a different `inSystemPackage(...)`, is rejected
+carries its own `first()`/`at(n)`, or a different `inPackage(...)` / `inAnyWindow()`, is rejected
 (`IllegalArgumentException` / `ValueError`) — apply them to the combined selector instead.
 A selector with an `or` is evaluated by walking the window's node tree rather than by a
 native UiAutomator lookup; it returns exactly the same matches and never dumps the
@@ -149,21 +150,27 @@ prefer a distinguishing relation (`hasDescendant(text(...))`) when there is one.
 
 ## Scope
 
-Selectors are scoped to the **app under test**: they match only inside the focused window of
-that package. A system dialog, the launcher, or a notification shade cannot be hit by
-accident, and a selector that names another package's resource is rejected
+By default a selector is scoped to the **app under test**: it matches only inside the focused
+window of that package, so a system dialog, the launcher or a notification shade cannot be hit
+by accident. An AUT-scoped selector that names another package's resource is rejected
 (`SCOPE_DENIED`).
 
-The one sanctioned exception is the runtime-permission dialog. The driver keeps an allowlist
-of system packages (by default `com.google.android.permissioncontroller`); a selector opts in
-per use:
+A selector widens its scope explicitly, per use:
+
+- `inPackage(pkg)` / `in_package(pkg)`: the focused window of any other package, such as the
+  permission controller or another app. It may name that package's resources.
+- `inAnyWindow()` / `in_any_window()`: every window on screen, of any package (dialogs,
+  popups, the system UI). Useful when you do not know, or do not care, which package owns
+  the dialog.
+
+A permission dialog, for instance:
 
 === "Kotlin"
 
     ```kotlin
     device.element(
         resId("com.android.permissioncontroller", "permission_allow_button")
-            .inSystemPackage("com.google.android.permissioncontroller"),
+            .inPackage("com.google.android.permissioncontroller"),
     ).tap()
     ```
 
@@ -172,12 +179,12 @@ per use:
     ```python
     device.element(
         res_id("com.android.permissioncontroller", "permission_allow_button")
-        .in_system_package("com.google.android.permissioncontroller")
+        .in_package("com.google.android.permissioncontroller")
     ).tap()
     ```
 
-Any other package is `SCOPE_DENIED`. (For tests that just need the permission, prefer
-`app.grantPermission(...)`, which needs no dialog at all.)
+For tests that just need the permission, prefer `app.grantPermission(...)`, which needs no
+dialog at all.
 
 ## Limits and what is not supported
 

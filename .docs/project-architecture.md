@@ -96,7 +96,7 @@ tap/
 |   +-- api/                     :contracts:api — gRPC lite Java + grpc-kotlin coroutine stubs for tap.v1 only (messages from :contracts:schema); published as tap-api
 |   +-- protocol/                :contracts:protocol — TAP1 framing, handshake, validation and dispatch over the schema; pure Kotlin/JVM, shared by host and driver
 |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/protocol/
-|   |   |   +-- Protocol.kt          limits, build ids, protocol version 3.0, capabilities, FrameType/Frame, driver-side defaults, key codes
+|   |   |   +-- Protocol.kt          limits, build ids, protocol version 4.0, capabilities, FrameType/Frame, driver-side defaults, key codes
 |   |   |   +-- Operations.kt        operation catalogue (public + host-internal), isMutation/targetSelector, Commands/Requests/Responses factories, CommandHandler + exhaustive Request.dispatch
 |   |   |   +-- Selectors.kt         Nodes/Selectors builders, and/or, children/conjunction, scope/pick helpers, aut_package resolution, render()
 |   |   |   +-- CommandValidation.kt shared argument + selector validation (InvalidCommandException) -> NATIVE | TRAVERSAL plan kind
@@ -116,9 +116,10 @@ tap/
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers
 |   |   |   +-- ClientConnection.kt      per-connection handshake, frame reader, blob writer
 |   |   |   +-- DriverCommandEngine.kt   CommandHandler: scope policy compile + Request.dispatch; defaults applied here
-|   |   |   +-- SelectorCompiler.kt      AST -> CompiledSelector.Native | .Traversal
+|   |   |   +-- SelectorCompiler.kt      AST -> CompiledSelector.Native | .Traversal, with a SearchScope (FocusedWindow(pkg) | AllWindows)
 |   |   |   +-- UiObjectAccess.kt        resolve/hasObject/count/containerHasObject per MatchLimit
-|   |   |   +-- UiAutomationCommands.kt  tap, longTap, pressKey, swipe, scroll, scrollUntil, waitVisible/Gone/AppVisible, set/type/clearText, snapshot, deviceInfo, screenshot, dumpHierarchy
+|   |   |   +-- GestureCommands.kt, TextInputCommands.kt, KeyInput.kt, QueryCommands.kt, WaitCommands.kt, ScreenStability.kt, ArtifactCommands.kt
+|   |   |   |                        tap, longTap, swipe, scroll / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
 |   |   |   +-- SyncProviderClient.kt    signature-checked ContentProvider reads with timeout
 |   |   |   +-- FaultController.kt       test-only fault injection (transport loss, late work, cancel-after-mutation)
 |   |   +-- command-engine/      :device:driver:command-engine — pure Kotlin/JVM execution state machine (no Android types)
@@ -146,7 +147,7 @@ tap/
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
 |   |   |   +-- DriverClient.kt      authenticated client API, PendingCommand outcome/cancellation semantics, heartbeat policy, screenshot()
 |   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
-|   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits)
+|   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits; launch returns after `am start -W`)
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
 |   |   |   +-- CommandException.kt  RemoteCommandException / CommandTransportException, selector rendering
 |   |   +-- src/test/kotlin/...      DriverClientTest (17), SessionJournalTest (6), FakeDriverServer
@@ -182,7 +183,7 @@ tap/
 |   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), ClientConnection (observe/availableSerials/attachDevice), DaemonDiscovery (descriptor lookup), TapDaemonProcess (`tap start`/`tap stop`)
 |   |   |       +-- Device.kt            Device.attach(connection, serial, …), execute/element/await/app/info/pressKey/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
-|   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll/scrollUntil, first/at/descendant/child
+|   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll, scrollUntil (client-side exists + scroll loop), first/at/descendant/child
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
 |   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the proto Selector
 |   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (proto ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
@@ -292,7 +293,7 @@ Key types (generated unless noted):
 | `api.v1.Command` | `oneof op`, one message per public command with only its own fields; optional fields defaulted on the driver |
 | `CommandHandler` (Kotlin) | one typed method per operation; `Request.dispatch(handler)` is the exhaustive switch the driver implements |
 | `wire.v1.Response` | `CommandResult` + `oneof internal` (`artifact`, `sync`) |
-| `api.v1.CommandResult` | `duration_ms`, `request_id`, `session_generation`, `oneof outcome` (`done`, `bool`, `moved`, `count`, `text`, `snapshot`, `device_info`, `error`) |
+| `api.v1.CommandResult` | `duration_ms`, `request_id`, `session_generation`, `oneof outcome` (`done`, `bool`, `count`, `text`, `snapshot`, `device_info`, `error`) |
 | `Selector` / `Node` | the AST (below) |
 | `ErrorCode` | closed taxonomy; `mayHaveMutated` / `retryable` extensions in `ErrorCode.kt` |
 | `BlobStart` / `BlobEnd` / `ArtifactInfo` | binary transfer envelope and checksum |
@@ -308,11 +309,10 @@ Node.kind = match{property, value, mode (default EXACT)} | flag{property, value}
 ```
 
 Builders (`Selectors.kt`): `Selectors.text(v, mode)`, `.contentDescription(v)`, `.rawResource(name)`,
-`.androidResource(pkg, name)`, `Selector.inSystemPackage(pkg)`, `.pickFirst()`, `.pickAt(i)`;
+`.androidResource(pkg, name)`, `Selector.inPackage(pkg)`, `Selector.inAnyWindow()`, `.pickFirst()`, `.pickAt(i)`;
 `Nodes.text/…/child/descendant/autResource`, `Nodes.allOf`/`anyOf` and infix `and`/`or`
 (flattening, single operand returned as is). `CommandValidation.validate(command)` checks the
-arguments and every selector a command carries (`ScrollUntil`: target and container, same
-scope). The device uses `CommandValidation.validateSelector(selector)` to get `NATIVE`
+arguments and the selector a command carries. The device uses `CommandValidation.validateSelector(selector)` to get `NATIVE`
 (everything expressible in one `BySelector`) or `TRAVERSAL` (any `REGEX`, any `any_of`, or a
 conjunction repeating a single-valued `BySelector` slot); failures are
 `InvalidCommandException(code, detail)`.
@@ -325,7 +325,7 @@ The driver is an instrumentation test (`TapDriverServerTest`) that never finishe
 loopback socket, prints `TAP_READY` with session/generation/port/instance, and serves one
 authenticated connection at a time. Instrumentation arguments (`tapSessionId`,
 `tapGeneration`, `tapSecret`, `tapExpectedAut`, `tapSyncAuthority`, `tapFaultAuthority`,
-`tapAllowedSystemPackages`, `tapUninterruptibleGraceMs`, `tapHeartbeatTimeoutMs`,
+`tapUninterruptibleGraceMs`, `tapHeartbeatTimeoutMs`,
 `tapFaultPoint`) become an immutable `SessionConfig`.
 
 ### Command lifecycle
@@ -368,9 +368,10 @@ UiObjectAccess.resolve(pick):
   At(n)      -> nth or NOT_FOUND
 ```
 
-Scope rules: `Aut` selectors resolve in the expected AUT package; `System` selectors must name
-an allowlisted package (`SCOPE_DENIED` otherwise); a resource with an explicit package must
-match the scope; target and container must share a scope.
+Scope rules: `aut` selectors resolve in the AUT's focused window and may name only AUT
+resources (`SCOPE_DENIED` otherwise); `system` selectors resolve in the focused window of the
+package they name, any package; `any_window` selectors search every window
+(`UiDevice.findObjects`, or the roots of `findObjects(By.depth(0))` for the traversal plan).
 
 ### Synchronization
 
@@ -471,7 +472,8 @@ to measure lookup latency and accessibility inventory; it is not a test DSL.
 
 `AppLifecycle(session, packageName)` is the one implementation of AUT lifecycle for every
 client: ADB-side `pm`/`am`/`cmd package resolve-activity` for install, uninstall, launch,
-force-stop, clear-data and permission grants, `WAIT_APP_VISIBLE` on the driver after launch,
+force-stop, clear-data and permission grants (launch returns once `am start -W` does; it does
+not wait for the window),
 process observation (`coldLaunch` returns the new `ProcessObservation`; `forceStop`/
 `clearData` verify the process is gone), and `awaitIdle` over the sync provider
 (`SyncBootstrap` once, then `SyncPoll` until stable; any process identity change is an

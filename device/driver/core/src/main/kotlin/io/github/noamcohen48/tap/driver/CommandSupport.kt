@@ -56,12 +56,3 @@ internal fun uiDirection(direction: Direction): androidx.test.uiautomator.Direct
 
 /** A wire `distance_percent` (0–100) as the fraction UiAutomator takes. */
 internal fun fraction(distancePercent: Int): Float = distancePercent / 100f
-
-/**
- * The node's text without a displayed hint (see [HintText.displayedText]). The object is
- * refreshed by the read.
- */
-internal fun UiObject2.displayedText(): String? {
-    val node = accessibilityNodeInfo
-    return HintText.displayedText(node.text, node.isShowingHintText)
-}

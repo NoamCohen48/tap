@@ -7,6 +7,9 @@ JUnit 5, Python + pytest — all gRPC clients of the server), with `contracts/pr
 the one protobuf schema (`tap.v1` server API, `tap.wire.v1` device payloads). Phases 0 and 1 (contract and driver) are
 complete; Phase 2 (server + clients) has a usable first cut with `:samples:fixture-tests`.
 Nothing under `host/` may depend on `clients/`; clients depend only on `:contracts:api`.
+Synchronization (`device/sync-sdk`, the sync provider path, `awaitIdle`) is work in progress:
+ignore it for now — do not fix, extend or redesign it unless asked (its review items are
+Deferred in `.docs/code-review-status.md`).
 See `README.md` for build/run commands.
 
 ## Documents

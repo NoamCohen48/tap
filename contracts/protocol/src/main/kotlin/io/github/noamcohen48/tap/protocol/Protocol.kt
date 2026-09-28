@@ -25,8 +25,11 @@ const val DRIVER_APK_BUILD_ID = ENGINE_VERSION
 const val DRIVER_TEST_APK_BUILD_ID = ENGINE_VERSION
 const val UIAUTOMATOR_BUILD_ID = "2.4.0"
 
-/** 3.0: payloads are protobuf (`tap.wire.v1`); 2.0 was canonical JSON. */
-val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(3, 0)
+/**
+ * 4.0: no `scroll_until`, `swipe`/`scroll` report `done`, any-package and any-window selector
+ * scopes. 3.0: payloads are protobuf (`tap.wire.v1`); 2.0 was canonical JSON.
+ */
+val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(4, 0)
 val SUPPORTED_PROTOCOL_VERSIONS: List<ProtocolVersion> = listOf(PROTOCOL_VERSION)
 val SUPPORTED_CAPABILITIES = listOf(
     "artifact.screenshot.v1",
@@ -73,12 +76,8 @@ enum class FrameType(val wireValue: Byte) {
 
 // Defaults of optional command fields. The driver is the one place they are applied.
 
-/** `Swipe`/`Scroll`/`ScrollUntil.distance_percent`. */
+/** `Swipe`/`Scroll.distance_percent`. */
 const val DEFAULT_GESTURE_PERCENT = 80
-
-/** `ScrollUntil.max_scrolls`. */
-const val DEFAULT_MAX_SCROLLS = 20
-const val MAX_SCROLLS = 100
 
 /** `WaitScreenStable.stable_for_ms`: how long the AUT window must stay unchanged. */
 const val DEFAULT_STABLE_FOR_MS = 500L

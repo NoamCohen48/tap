@@ -17,75 +17,89 @@ import io.github.noamcohen48.tap.protocol.SelectorPlanKind
 import io.github.noamcohen48.tap.protocol.children
 import io.github.noamcohen48.tap.protocol.conjunction
 import io.github.noamcohen48.tap.protocol.qualifyingPackage
-import io.github.noamcohen48.tap.protocol.systemPackage
+
+/** Where a compiled selector searches. */
+internal sealed interface SearchScope {
+    /** The focused window of [packageName]; nothing outside it is ever matched. */
+    data class FocusedWindow(val packageName: String) : SearchScope
+
+    /** Every window on screen, of any package. */
+    data object AllWindows : SearchScope
+}
 
 /**
  * A selector compiled for one command, once per request and reused by every poll of it.
- * [scopePackage] is the single package whose focused window is searched; nothing outside it
- * is ever matched. [pick] says which match an action targets.
+ * [scope] says which windows are searched; [pick] says which match an action targets.
  */
 internal sealed interface CompiledSelector {
-    val scopePackage: String
+    val scope: SearchScope
     val pick: SelectorPick
 
     /** Every predicate maps onto `BySelector`; UiAutomator evaluates it natively. */
     class Native(
-        override val scopePackage: String,
+        override val scope: SearchScope,
         override val pick: SelectorPick,
         val by: BySelector,
     ) : CompiledSelector
 
     /**
-     * Evaluated by walking the focused window's node tree. Only used for predicates
+     * Evaluated by walking the searched windows' node trees. Only used for predicates
      * `BySelector` cannot express safely: RE2 regex matching, `any_of`, and conjunctions that
      * repeat one of its single-valued constraints.
      */
     class Traversal(
-        override val scopePackage: String,
+        override val scope: SearchScope,
         override val pick: SelectorPick,
         val predicate: NodePredicate,
     ) : CompiledSelector
 }
 
 /**
- * Turns a wire [Selector] into a [CompiledSelector], enforcing scope policy on top of the
- * structural validation shared with the host. Compilation never weakens a selector: anything
- * not representable by the chosen plan is an `INVALID_SELECTOR` [InvalidCommandException].
+ * Turns a wire [Selector] into a [CompiledSelector] on top of the structural validation shared
+ * with the host. Compilation never weakens a selector: anything not representable by the
+ * chosen plan is an `INVALID_SELECTOR` [InvalidCommandException].
  *
  * The selector defaults are applied here, the one place they exist: an unset scope is the AUT,
  * `MATCH_UNSPECIFIED` is exact, and a `ResourceId.aut_package` resolves to [expectedAut].
  */
 internal class SelectorCompiler(
     private val expectedAut: String,
-    private val allowedSystemPackages: Set<String>,
 ) {
     fun compile(selector: Selector): CompiledSelector {
         val plan = CommandValidation.validateSelector(selector)
-        val scopePackage = scopePackage(selector)
-        if (selector.systemPackage == null) requireAutResources(selector.node)
+        val scope = scope(selector)
         val pick = SelectorPick.of(selector)
         return when (plan) {
             SelectorPlanKind.NATIVE -> {
+                val by = nativeSelector(selector.node)
                 CompiledSelector.Native(
-                    scopePackage,
+                    scope,
                     pick,
-                    nativeSelector(selector.node).pkg(scopePackage),
+                    if (scope is SearchScope.FocusedWindow) by.pkg(scope.packageName) else by,
                 )
             }
 
             SelectorPlanKind.TRAVERSAL -> {
-                CompiledSelector.Traversal(scopePackage, pick, NodePredicate(selector.node, expectedAut))
+                CompiledSelector.Traversal(scope, pick, NodePredicate(selector.node, expectedAut))
             }
         }
     }
 
-    fun scopePackage(selector: Selector): String {
-        val packageName = selector.systemPackage ?: return expectedAut
-        if (packageName !in allowedSystemPackages) {
-            throw scopeDenied("System package $packageName is not on the driver allowlist")
+    fun scope(selector: Selector): SearchScope =
+        when (selector.scopeCase) {
+            Selector.ScopeCase.SYSTEM -> {
+                SearchScope.FocusedWindow(selector.system.packageName)
+            }
+
+            Selector.ScopeCase.ANY_WINDOW -> {
+                SearchScope.AllWindows
+            }
+
+            Selector.ScopeCase.AUT, Selector.ScopeCase.SCOPE_NOT_SET, null -> {
+                requireAutResources(selector.node)
+                SearchScope.FocusedWindow(expectedAut)
+            }
         }
-        return packageName
-    }
 
     /** An AUT-scoped selector may only name resources of the AUT, at any nesting level. */
     private fun requireAutResources(node: Node) {

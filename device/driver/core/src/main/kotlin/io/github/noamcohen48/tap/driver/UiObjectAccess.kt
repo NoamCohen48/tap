@@ -9,7 +9,7 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.MAX_MATCH_COUNT
 
 /**
- * Selector evaluation against the focused window of the scope package. Selectors arrive
+ * Selector evaluation against the windows of the selector's [SearchScope]. Selectors arrive
  * compiled (once per request); objects are resolved per call and recycled by the caller, so
  * nothing here outlives one command.
  */
@@ -32,21 +32,27 @@ internal class UiObjectAccess(
     }
 
     /**
-     * Presence query: at least one match in the focused window, ignoring the match limit. Null
+     * Presence query: at least one match in the searched windows, ignoring the match limit. Null
      * when the tree changed under the search (a stale object): the answer is unknown, never
      * "absent", so callers poll again instead of reporting a re-render as gone.
      */
     fun presence(target: CompiledSelector): Boolean? =
         try {
             when (target) {
-                is CompiledSelector.Native -> focusedWindow(target)?.hasObject(target.by) == true
+                is CompiledSelector.Native -> {
+                    when (val scope = target.scope) {
+                        is SearchScope.FocusedWindow -> focusedWindow(scope)?.hasObject(target.by) == true
+                        SearchScope.AllWindows -> device.hasObject(target.by)
+                    }
+                }
+
                 is CompiledSelector.Traversal -> findObjects(target, 1).onEach(UiObject2::recycle).isNotEmpty()
             }
         } catch (_: StaleObjectException) {
             null
         }
 
-    /** Number of matches in the focused window, capped at [MAX_MATCH_COUNT]; null when stale (see [presence]). */
+    /** Number of matches in the searched windows, capped at [MAX_MATCH_COUNT]; null when stale (see [presence]). */
     fun count(target: CompiledSelector): Int? =
         try {
             findObjects(target, MAX_MATCH_COUNT).onEach(UiObject2::recycle).size
@@ -86,27 +92,48 @@ internal class UiObjectAccess(
         compiled: CompiledSelector,
         limit: Int,
     ): List<UiObject2> {
-        val window = focusedWindow(compiled) ?: return emptyList()
         return when (compiled) {
             is CompiledSelector.Native -> {
-                val all = window.findObjects(compiled.by)
+                val all =
+                    when (val scope = compiled.scope) {
+                        is SearchScope.FocusedWindow -> focusedWindow(scope)?.findObjects(compiled.by) ?: return emptyList()
+                        SearchScope.AllWindows -> device.findObjects(compiled.by)
+                    }
                 all.drop(limit).forEach(UiObject2::recycle)
                 all.take(limit)
             }
 
             is CompiledSelector.Traversal -> {
-                val root = window.rootObject ?: return emptyList()
+                val roots =
+                    when (val scope = compiled.scope) {
+                        is SearchScope.FocusedWindow -> listOfNotNull(focusedWindow(scope)?.rootObject)
+                        // Depth 0 is each window's root, in the order the accessibility service reports windows.
+                        SearchScope.AllWindows -> device.findObjects(By.depth(0))
+                    }
                 val matches = mutableListOf<UiObject2>()
+                val pending = ArrayDeque(roots)
                 try {
-                    val rootMatched = compiled.predicate.matches(root)
-                    if (rootMatched) matches += root
-                    if (matches.size < limit) collectMatches(root, compiled.predicate, matches, limit)
-                    if (!rootMatched) root.recycle()
+                    while (pending.isNotEmpty()) {
+                        val root = pending.removeFirst()
+                        if (matches.size >= limit) {
+                            root.recycle()
+                            continue
+                        }
+                        try {
+                            val rootMatched = compiled.predicate.matches(root)
+                            if (rootMatched) matches += root
+                            if (matches.size < limit) collectMatches(root, compiled.predicate, matches, limit)
+                            if (!rootMatched) root.recycle()
+                        } catch (error: Throwable) {
+                            if (root !in matches) recycleQuietly(root)
+                            throw error
+                        }
+                    }
                     matches
                 } catch (error: Throwable) {
                     // Cleanup only; the error itself is rethrown unchanged.
                     matches.forEach { recycleQuietly(it) }
-                    recycleQuietly(root)
+                    pending.forEach { recycleQuietly(it) }
                     throw error
                 }
             }
@@ -132,8 +159,8 @@ internal class UiObjectAccess(
         }
     }
 
-    private fun focusedWindow(compiled: CompiledSelector): UiWindow? =
-        device.findWindow(By.Window.pkg(compiled.scopePackage).focused(true))
+    private fun focusedWindow(scope: SearchScope.FocusedWindow): UiWindow? =
+        device.findWindow(By.Window.pkg(scope.packageName).focused(true))
 }
 
 /** Recycles [element], ignoring an already recycled or stale object. */

@@ -373,10 +373,6 @@
     "allDeclaredFields": true
   },
   {
-    "name": "io.github.noamcohen48.tap.api.v1.ScrollUntil",
-    "allDeclaredFields": true
-  },
-  {
     "name": "io.github.noamcohen48.tap.api.v1.Selector",
     "allDeclaredFields": true
   },
@@ -394,6 +390,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.SystemScope",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.AnyWindowScope",
     "allDeclaredFields": true
   },
   {

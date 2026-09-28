@@ -61,9 +61,6 @@ class CommandValidationTest {
                 "swipe percent" to Commands.swipe(button, Direction.DIR_UP, distancePercent = 0),
                 "scroll direction" to Commands.scroll(list, Direction.DIR_UNSPECIFIED),
                 "scroll percent" to Commands.scroll(list, Direction.DIR_DOWN, distancePercent = 101),
-                "scroll_until percent" to Commands.scrollUntil(button, list, distancePercent = 0),
-                "scroll_until max_scrolls" to Commands.scrollUntil(button, list, maxScrolls = 0),
-                "scroll_until max_scrolls high" to Commands.scrollUntil(button, list, maxScrolls = MAX_SCROLLS + 1),
                 "at index" to Commands.tap(button.pickAt(-1)),
             )
         invalid.forEach { (name, command) ->
@@ -83,8 +80,6 @@ class CommandValidationTest {
             Commands.setText(button, ""),
             Commands.swipe(button, Direction.DIR_LEFT, distancePercent = 1),
             Commands.scroll(list, Direction.DIR_RIGHT, distancePercent = 100),
-            Commands.scrollUntil(button, list, maxScrolls = 1),
-            Commands.scrollUntil(button, list, direction = Direction.DIR_UNSPECIFIED, maxScrolls = MAX_SCROLLS),
             Commands.tap(button.pickAt(0)),
         ).forEach { CommandValidation.validate(it) }
     }
@@ -95,9 +90,6 @@ class CommandValidationTest {
         swipe.setSwipe(Swipe.newBuilder(swipe.swipe).setDirectionValue(99))
         assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(swipe.build()) }
 
-        val scrollUntil = Commands.scrollUntil(button, list).toBuilder()
-        scrollUntil.setScrollUntil(scrollUntil.scrollUntil.toBuilder().setDirectionValue(42))
-        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(scrollUntil.build()) }
 
         val stable = Commands.waitScreenStable(AUT).toBuilder()
         stable.setWaitScreenStable(stable.waitScreenStable.toBuilder().setSignalValue(7))
@@ -129,27 +121,11 @@ class CommandValidationTest {
             Commands.clearText(missing),
             Commands.swipe(missing, Direction.DIR_UP),
             Commands.scroll(missing, Direction.DIR_UP),
-            Commands.scrollUntil(missing, list),
-            Commands.scrollUntil(button, missing),
         ).forEach { command ->
             assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_NODE, command.op) { CommandValidation.validate(command) }
         }
     }
 
-    @Test
-    fun scrollUntilTargetAndContainerMustShareAScope() {
-        val system = "com.android.permissioncontroller"
-        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.SCOPE_MISMATCH) {
-            CommandValidation.validate(Commands.scrollUntil(button.inSystemPackage(system), list))
-        }
-        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.SCOPE_MISMATCH) {
-            CommandValidation.validate(Commands.scrollUntil(button.inSystemPackage(system), list.inSystemPackage("other")))
-        }
-        // An explicit AUT scope and the default one are the same scope.
-        val explicitAut = list.toBuilder().setAut(AutScope.getDefaultInstance()).build()
-        CommandValidation.validate(Commands.scrollUntil(button, explicitAut))
-        CommandValidation.validate(Commands.scrollUntil(button.inSystemPackage(system), list.inSystemPackage(system)))
-    }
 
     @Test
     fun validatesSyncArguments() {
@@ -168,8 +144,8 @@ class CommandValidationTest {
             listOf(
                 Triple("no node", ErrorDetail.EMPTY_NODE, Selector.newBuilder().setAut(AutScope.getDefaultInstance()).build()),
                 Triple("empty kind", ErrorDetail.EMPTY_NODE, Selectors.of(Node.getDefaultInstance())),
-                Triple("blank system package", ErrorDetail.EMPTY_VALUE, button.inSystemPackage(" ")),
-                Triple("long system package", ErrorDetail.STRING_TOO_LONG, button.inSystemPackage(longString)),
+                Triple("blank package", ErrorDetail.EMPTY_VALUE, button.inPackage(" ")),
+                Triple("long package", ErrorDetail.STRING_TOO_LONG, button.inPackage(longString)),
                 Triple("long value", ErrorDetail.STRING_TOO_LONG, Selectors.text(longString)),
                 Triple("long resource", ErrorDetail.STRING_TOO_LONG, Selectors.rawResource(longString)),
                 Triple("long resource package", ErrorDetail.STRING_TOO_LONG, Selectors.androidResource(longString, "id")),

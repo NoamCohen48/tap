@@ -2,6 +2,7 @@ package io.github.noamcohen48.tap.host.validation
 
 import io.github.noamcohen48.tap.host.*
 
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
@@ -164,12 +165,9 @@ private suspend fun executeProbeAction(
         val resource = action.substringAfter('@')
         client.send(Commands.setText(Selectors.androidResource(autPackage, resource), "must-not-write"), timeoutMs = 10_000)
     }
-    action.startsWith("SCROLL_UNTIL@") -> {
+    action.startsWith("SCROLL@") -> {
         val resource = action.substringAfter('@')
-        client.send(
-            Commands.scrollUntil(Selectors.text("Missing target"), container = Selectors.androidResource(autPackage, resource)),
-            timeoutMs = 10_000,
-        )
+        client.send(Commands.scroll(Selectors.androidResource(autPackage, resource), Direction.DIR_DOWN), timeoutMs = 10_000)
     }
     else -> client.send(Commands.tap(Selectors.text(action)), timeoutMs = 10_000)
 }

@@ -37,7 +37,6 @@ def _fail_with(fake, code: int) -> None:
 WAITS = {
     "await_app_visible": lambda d: d.await_app_visible(),
     "await_screen_stable": lambda d: d.await_screen_stable(),
-    "scroll_until": lambda d: d.element(raw_res("list")).scroll_until(text("row 40")),
     "wait_visible": lambda d: d.wait(text("x")).visible(),
     "wait_gone": lambda d: d.wait(text("x")).gone(),
 }
@@ -145,10 +144,49 @@ def test_install_of_a_missing_file_fails_before_any_rpc(fake, device, tmp_path):
     assert fake.apps.install_parts == []
 
 
-def test_scroll_until_returns_the_target_scoped_to_the_container(device):
+def test_scroll_until_scrolls_until_the_target_exists_in_the_container(fake, device):
+    ops: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.HasField("scroll"):
+            ops.append(command)
+            return pb.CommandResult(done=pb.Done())
+        if command.HasField("exists"):
+            ops.append(command)
+            scrolls = sum(1 for op in ops if op.HasField("scroll"))
+            return pb.CommandResult(bool=scrolls == 3)
+        return None
+
+    fake.devices.responder = respond
     lst = device.element(raw_res("list"))
-    assert lst.scroll_until(text("row 40")).selector == raw_res("list").descendant(
-        text("row 40")
-    )
-    # A picked container cannot be carried into a relation: the bare target comes back.
+    in_list = raw_res("list").descendant(text("row 40"))
+    assert lst.scroll_until(text("row 40")).selector == in_list
+    assert [op.WhichOneof("op") for op in ops] == ["exists", "scroll"] * 3 + ["exists"]
+    assert all(op.exists.selector == in_list.proto for op in ops if op.HasField("exists"))
+    assert all(op.scroll.direction == pb.DIR_DOWN for op in ops if op.HasField("scroll"))
+    # A picked container cannot be carried into a relation: the bare target is used.
     assert lst.first().scroll_until(text("row 40")).selector == text("row 40")
+
+
+def test_scroll_until_gives_up_after_max_scrolls(fake, device):
+    ops: list[str] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        op = command.WhichOneof("op")
+        if op in ("exists", "scroll"):
+            ops.append(op)
+            return pb.CommandResult(bool=False) if op == "exists" else pb.CommandResult(done=pb.Done())
+        return None
+
+    fake.devices.responder = respond
+    with pytest.raises(WaitTimeoutError) as info:
+        device.element(raw_res("list")).scroll_until(text("row 40"), max_scrolls=2)
+    assert info.value.polls == 2
+    assert ops == ["exists", "scroll", "exists", "scroll", "exists"]
+
+
+def test_scroll_until_propagates_a_failing_step(fake, device):
+    _fail_with(fake, pb.ERR_NOT_FOUND)
+    with pytest.raises(CommandError) as info:
+        device.element(raw_res("list")).scroll_until(text("row 40"))
+    assert info.value.code == ErrorCode(pb.ERR_NOT_FOUND)

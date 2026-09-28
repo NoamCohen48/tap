@@ -1,7 +1,5 @@
 package io.github.noamcohen48.tap.protocol
 
-import io.github.noamcohen48.tap.api.v1.AutScope
-import io.github.noamcohen48.tap.api.v1.ExactlyOne
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
@@ -26,13 +24,11 @@ class SelectorsTest {
     }
 
     @Test
-    fun defaultsAreMadeExplicitForComparison() {
+    fun scopedPackageIsSetOnlyForAPackageScope() {
         val selector = Selectors.text("OK")
-        assertEquals(AutScope.getDefaultInstance(), selector.effectiveScope)
-        assertEquals(ExactlyOne.getDefaultInstance(), selector.effectivePick)
-        assertEquals(selector.toBuilder().setAut(AutScope.getDefaultInstance()).build().effectiveScope, selector.effectiveScope)
-        assertNull(selector.systemPackage)
-        assertEquals("android", selector.inSystemPackage("android").systemPackage)
+        assertNull(selector.scopedPackage)
+        assertEquals("android", selector.inPackage("android").scopedPackage)
+        assertNull(selector.inAnyWindow().scopedPackage)
     }
 
     @Test
@@ -51,8 +47,9 @@ class SelectorsTest {
                 Nodes.className("android.", MatchMode.MATCH_STARTS_WITH) and
                     Nodes.flag(NodeFlag.FLAG_ENABLED, false) and
                     Nodes.parent(Nodes.autResource("row")),
-            ).inSystemPackage("android").pickAt(2).render(),
+            ).inPackage("android").pickAt(2).render(),
         )
+        assertEquals("text=\"OK\" in any window", Selectors.text("OK").inAnyWindow().render())
         assertEquals(
             "(text~=\"a.*\" | desc*=\"b\") & id=\"tag\" [first]",
             Selectors.of((Nodes.text("a.*", MatchMode.MATCH_REGEX) or Nodes.contentDescription("b", MatchMode.MATCH_CONTAINS)) and Nodes.rawResource("tag"))

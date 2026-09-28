@@ -205,22 +205,8 @@ class Scroll(_message.Message):
     distance_percent: int
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[Direction, str]] = ..., distance_percent: _Optional[int] = ...) -> None: ...
 
-class ScrollUntil(_message.Message):
-    __slots__ = ("selector", "container", "direction", "distance_percent", "max_scrolls")
-    SELECTOR_FIELD_NUMBER: _ClassVar[int]
-    CONTAINER_FIELD_NUMBER: _ClassVar[int]
-    DIRECTION_FIELD_NUMBER: _ClassVar[int]
-    DISTANCE_PERCENT_FIELD_NUMBER: _ClassVar[int]
-    MAX_SCROLLS_FIELD_NUMBER: _ClassVar[int]
-    selector: _selector_pb2.Selector
-    container: _selector_pb2.Selector
-    direction: Direction
-    distance_percent: int
-    max_scrolls: int
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., container: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[Direction, str]] = ..., distance_percent: _Optional[int] = ..., max_scrolls: _Optional[int] = ...) -> None: ...
-
 class Command(_message.Message):
-    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until")
+    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll")
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     PRESS_KEY_FIELD_NUMBER: _ClassVar[int]
@@ -239,7 +225,6 @@ class Command(_message.Message):
     CLEAR_TEXT_FIELD_NUMBER: _ClassVar[int]
     SWIPE_FIELD_NUMBER: _ClassVar[int]
     SCROLL_FIELD_NUMBER: _ClassVar[int]
-    SCROLL_UNTIL_FIELD_NUMBER: _ClassVar[int]
     timeout_ms: int
     device_info: DeviceInfoQuery
     press_key: PressKey
@@ -258,8 +243,7 @@ class Command(_message.Message):
     clear_text: ClearText
     swipe: Swipe
     scroll: Scroll
-    scroll_until: ScrollUntil
-    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntil, _Mapping]] = ...) -> None: ...
+    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ...) -> None: ...
 
 class Bounds(_message.Message):
     __slots__ = ("left", "top", "right", "bottom")
@@ -274,7 +258,7 @@ class Bounds(_message.Message):
     def __init__(self, left: _Optional[int] = ..., top: _Optional[int] = ..., right: _Optional[int] = ..., bottom: _Optional[int] = ...) -> None: ...
 
 class ElementSnapshot(_message.Message):
-    __slots__ = ("class_name", "package_name", "resource_name", "text", "content_description", "hint", "bounds", "checkable", "checked", "clickable", "enabled", "focusable", "focused", "long_clickable", "scrollable", "selected", "child_count")
+    __slots__ = ("class_name", "package_name", "resource_name", "text", "content_description", "hint", "bounds", "checkable", "checked", "clickable", "enabled", "focusable", "focused", "long_clickable", "scrollable", "selected", "child_count", "showing_hint")
     CLASS_NAME_FIELD_NUMBER: _ClassVar[int]
     PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
     RESOURCE_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -292,6 +276,7 @@ class ElementSnapshot(_message.Message):
     SCROLLABLE_FIELD_NUMBER: _ClassVar[int]
     SELECTED_FIELD_NUMBER: _ClassVar[int]
     CHILD_COUNT_FIELD_NUMBER: _ClassVar[int]
+    SHOWING_HINT_FIELD_NUMBER: _ClassVar[int]
     class_name: str
     package_name: str
     resource_name: str
@@ -309,7 +294,8 @@ class ElementSnapshot(_message.Message):
     scrollable: bool
     selected: bool
     child_count: int
-    def __init__(self, class_name: _Optional[str] = ..., package_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[Bounds, _Mapping]] = ..., checkable: _Optional[bool] = ..., checked: _Optional[bool] = ..., clickable: _Optional[bool] = ..., enabled: _Optional[bool] = ..., focusable: _Optional[bool] = ..., focused: _Optional[bool] = ..., long_clickable: _Optional[bool] = ..., scrollable: _Optional[bool] = ..., selected: _Optional[bool] = ..., child_count: _Optional[int] = ...) -> None: ...
+    showing_hint: bool
+    def __init__(self, class_name: _Optional[str] = ..., package_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[Bounds, _Mapping]] = ..., checkable: _Optional[bool] = ..., checked: _Optional[bool] = ..., clickable: _Optional[bool] = ..., enabled: _Optional[bool] = ..., focusable: _Optional[bool] = ..., focused: _Optional[bool] = ..., long_clickable: _Optional[bool] = ..., scrollable: _Optional[bool] = ..., selected: _Optional[bool] = ..., child_count: _Optional[int] = ..., showing_hint: _Optional[bool] = ...) -> None: ...
 
 class DeviceInfo(_message.Message):
     __slots__ = ("api_level", "manufacturer", "model", "product", "display_width", "display_height", "display_rotation", "current_package")
@@ -346,13 +332,12 @@ class Error(_message.Message):
     def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
 
 class CommandResult(_message.Message):
-    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "moved", "count", "text", "snapshot", "device_info", "error")
+    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error")
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_GENERATION_FIELD_NUMBER: _ClassVar[int]
     DONE_FIELD_NUMBER: _ClassVar[int]
     BOOL_FIELD_NUMBER: _ClassVar[int]
-    MOVED_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
@@ -363,10 +348,9 @@ class CommandResult(_message.Message):
     session_generation: int
     done: Done
     bool: bool
-    moved: bool
     count: int
     text: str
     snapshot: ElementSnapshot
     device_info: DeviceInfo
     error: Error
-    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., moved: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ...) -> None: ...
+    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ...) -> None: ...

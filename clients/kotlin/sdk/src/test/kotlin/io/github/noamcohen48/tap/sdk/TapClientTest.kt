@@ -11,9 +11,11 @@ import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
+import io.github.noamcohen48.tap.api.v1.Done
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
@@ -547,13 +549,8 @@ class TapClientTest {
     }
 
     @Test
-    fun `scrollUntil maps only WAIT_TIMEOUT to WaitTimeoutException`() {
+    fun `scrollUntil propagates a failing step unchanged`() {
         val scroll: suspend (Device) -> Unit = { it.element(rawRes("list")).scrollUntil(text("row 40")) }
-        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT, scroll).let { assertIs<WaitTimeoutException>(it) }
-        waitMapping(ErrorCode.ERR_INDETERMINATE, scroll).let {
-            assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_INDETERMINATE, it.code)
-        }
         waitMapping(ErrorCode.ERR_NOT_FOUND, scroll).let {
             assertIs<CommandException>(it)
             assertEquals(ErrorCode.ERR_NOT_FOUND, it.code)
@@ -587,17 +584,53 @@ class TapClientTest {
 
     /** Runs [call] against a fake whose every Execute fails with [code]; returns what it threw. */
     @Test
-    fun `scrollUntil returns the target scoped to the container`() {
+    fun `scrollUntil scrolls until the target exists inside the container`() {
         runBlocking {
+            var scrolls = 0
+            fakeDevices.executeResponder = { request ->
+                when {
+                    request.command.hasScroll() -> CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build().also { scrolls++ }
+                    request.command.hasExists() -> CommandResult.newBuilder().setBool(scrolls == 3).build()
+                    else -> null
+                }
+            }
             val connection = client().connect("test")
             try {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554", "com.test")
                     try {
                         val list = device.element(rawRes("list"))
-                        assertEquals(rawRes("list").descendant(text("row 40")), list.scrollUntil(text("row 40")).selector)
-                        // A picked container cannot be carried into a relation: the bare target comes back.
+                        val inList = rawRes("list").descendant(text("row 40"))
+                        assertEquals(inList, list.scrollUntil(text("row 40")).selector)
+                        val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() || it.hasScroll() }
+                        assertEquals(List(3) { listOf("exists", "scroll") }.flatten() + "exists", ops.map { if (it.hasExists()) "exists" else "scroll" })
+                        assertTrue(ops.filter { it.hasExists() }.all { it.exists.selector == inList.proto })
+                        assertTrue(ops.filter { it.hasScroll() }.all { it.scroll.selector == rawRes("list").proto && it.scroll.direction == Direction.DIR_DOWN })
+                        // A picked container cannot be carried into a relation: the bare target is used.
                         assertEquals(text("row 40"), list.first().scrollUntil(text("row 40")).selector)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `scrollUntil gives up after maxScrolls with WaitTimeoutException`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        val timeout = assertFailsWith<WaitTimeoutException> { device.element(rawRes("list")).scrollUntil(text("row 40"), maxScrolls = 2) }
+                        assertEquals(2, timeout.polls)
+                        val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() || it.hasScroll() }
+                        assertEquals(listOf(true, false, true, false, true), ops.map { it.hasExists() })
                     } finally {
                         device.detach()
                     }

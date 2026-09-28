@@ -37,12 +37,13 @@ class InputTest {
                         unsupportedInput.detail == ErrorDetail.UNSUPPORTED_CHARACTERS,
                 ) { "Untypeable characters were not refused: $unsupportedInput" }
                 check(client.execute(Commands.exists(Selectors.text("keys 42"))).bool)
-                // A hinted field reports its hint as `text` once empty; the snapshot must not show it.
+                // A hinted field reports its hint as `text` once empty; the snapshot passes Android's
+                // raw text through and says so with `showing_hint`.
                 val clearedHinted = client.send(Commands.clearText(keyboardInput))
                 check(clearedHinted.ok) { "CLEAR_TEXT on a hinted field failed: $clearedHinted" }
                 val clearedSnapshot = client.execute(Commands.snapshot(keyboardInput)).snapshot
-                check(clearedSnapshot.text.isNullOrEmpty() && clearedSnapshot.hint == "Keyboard input") {
-                    "Cleared hinted field should snapshot as empty text with hint: $clearedSnapshot"
+                check(clearedSnapshot.showingHint && clearedSnapshot.hint == "Keyboard input") {
+                    "Cleared hinted field should snapshot as showing its hint: $clearedSnapshot"
                 }
                 device.shell("input", "keyevent", "KEYCODE_BACK")
             }

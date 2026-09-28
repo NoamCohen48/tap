@@ -113,9 +113,10 @@ internal class TextInputCommands(
                     deadlineExpired = true
                     break
                 }
-                val timedEvent = KeyEvent.changeTimeRepeat(event, SystemClock.uptimeMillis(), event.repeatCount)
-                val injected = instrumentation.uiAutomation.injectInputEvent(timedEvent, false)
-                pressedKeys.record(event.action, event.keyCode, injected)
+                val now = SystemClock.uptimeMillis()
+                val downTime = pressedKeys.downTimeFor(event.action, event.keyCode, now)
+                val injected = instrumentation.uiAutomation.injectInputEvent(event.at(downTime, now), false)
+                pressedKeys.record(event.action, event.keyCode, downTime, injected)
                 if (!injected) {
                     rejected = true
                     break
@@ -123,14 +124,21 @@ internal class TextInputCommands(
             }
         } finally {
             released =
-                pressedKeys.releaseAll { keyCode ->
-                    instrumentation.uiAutomation.injectInputEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode), false)
+                pressedKeys.releaseAll { keyCode, downTime ->
+                    val release = KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, keyCode, 0)
+                    instrumentation.uiAutomation.injectInputEvent(release, false)
                 }
         }
         if (!released) throw CommandFailure(ErrorCode.ERR_INDETERMINATE, detail = ErrorDetail.KEY_RELEASE_FAILED)
         if (deadlineExpired) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.PARTIAL_INPUT)
         if (rejected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED)
     }
+
+    /** This event re-stamped for injection now: [downTime] of its press, [eventTime] now. */
+    private fun KeyEvent.at(
+        downTime: Long,
+        eventTime: Long,
+    ): KeyEvent = KeyEvent(downTime, eventTime, action, keyCode, repeatCount, metaState, deviceId, scanCode, flags, source)
 
     private companion object {
         /** Bound for letting the UI settle between the click and the first key event. */

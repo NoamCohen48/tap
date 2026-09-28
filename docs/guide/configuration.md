@@ -121,7 +121,6 @@ Both `connection.attachDevice(...)` / `connection.attach_device(...)` accept (`s
 |---|---|
 | `skipDriverInstall` | assume the daemon's driver is already installed (CI images with a pre-provisioned driver) |
 | `syncAuthority` | the app's sync provider authority when it is not `<package>.tap-sync` |
-| `allowedSystemPackages` | extra system packages selectors may opt into (default: the permission controller) |
 
 The JUnit extension and the pytest plugin use the defaults; override them only from a script or
 a custom fixture. The driver itself is the daemon's: the one bundled in the executable, or a

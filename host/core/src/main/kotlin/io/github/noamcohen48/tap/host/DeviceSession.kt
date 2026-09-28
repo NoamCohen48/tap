@@ -33,7 +33,6 @@ data class DeviceSessionConfig(
     val driverApk: Path? = null,
     val driverTestApk: Path? = null,
     val syncAuthority: String = "$autPackage.tap-sync",
-    val allowedSystemPackages: Set<String> = setOf(PERMISSION_CONTROLLER_PACKAGE),
     val journalRoot: Path = Path.of(System.getProperty("user.home"), ".tap", "sessions"),
     val heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
     /** Extra instrumentation arguments (fault points, heartbeat overrides). */
@@ -337,7 +336,6 @@ class DeviceSession private constructor(
                             encodedSecret = encodedSecret,
                             autPackage = config.autPackage,
                             syncAuthority = config.syncAuthority,
-                            allowedSystemPackages = config.allowedSystemPackages,
                             driverArguments = config.driverArguments,
                             logSink = config.driverLog,
                             processStarter = config.processStarter,

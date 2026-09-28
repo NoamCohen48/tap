@@ -89,7 +89,6 @@ val ErrorCode.label: String get() = normalized().name.removePrefix("ERR_")
 object ErrorDetail {
     // INVALID_SELECTOR
     const val SCOPE_DENIED = "SCOPE_DENIED"
-    const val SCOPE_MISMATCH = "SCOPE_MISMATCH"
     const val SELECTOR_TOO_DEEP = "SELECTOR_TOO_DEEP"
     const val SELECTOR_TOO_LARGE = "SELECTOR_TOO_LARGE"
     const val STRING_TOO_LONG = "STRING_TOO_LONG"
@@ -100,10 +99,6 @@ object ErrorDetail {
 
     // INVALID_REQUEST
     const val UNSUPPORTED_CHARACTERS = "UNSUPPORTED_CHARACTERS"
-
-    // INDETERMINATE (scrolling after at least one scroll)
-    const val END_REACHED = "END_REACHED"
-    const val MAX_SCROLLS = "MAX_SCROLLS"
 
     // WAIT_TIMEOUT (screen stability)
     const val SCREEN_CHANGING = "SCREEN_CHANGING"

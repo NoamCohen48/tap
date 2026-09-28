@@ -6,13 +6,14 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 100 |
-| Obsolete (code removed or redesigned: one schema, driver split) | 7 |
-| Partial | 27 |
-| Open | 28 |
+| Fixed | 104 |
+| Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
+| Partial | 24 |
+| Open | 20 |
+| Deferred (synchronization is WIP, see below) | 6 |
 
 Fixed/obsolete items are not repeated below except where a remark matters. Obsolete: B-5,
-P-1, P-2, P-10, DM-12 (not a bug: always under `lifecycleLock`), DM-14, and P-12's claim is
+P-1, P-2, P-10, DR-11 (`scroll_until` left the driver in protocol 4.0), DM-12 (not a bug: always under `lifecycleLock`), DM-14, and P-12's claim is
 moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandValidation`).
 
 ## Decisions taken while reviewing the gaps
@@ -30,6 +31,23 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     affect the result. Tests assert outcomes with a selector that survives the edit
     (`element(resourceId("email")).waitUntil.textEquals(…)`).
   - Any other driver behaviour change is proposed to the user first.
+- **Driver-assumption pass (2026-09-28, user; protocol 4.0).** Ten proposals reviewed one by
+  one:
+  - Selector scope: `system` accepts any package (no allowlist, `allowed_system_packages`
+    removed from attach), plus a new `any_window` scope over every window.
+  - `tap` / `long_tap`: no `isEnabled` pre-check. `scroll`: no `isScrollable` pre-check.
+    `swipe` / `scroll` return `done` (`moved` removed). `NOT_INTERACTABLE` is no longer emitted.
+  - `scroll_until` removed from the driver; `scrollUntil` / `scroll_until` are client loops of
+    `exists` + `scroll` in both SDKs (resolves DR-11, DM-15, P-15).
+  - Key-up events carry their press's `downTime` (DR-6).
+  - Snapshots and selectors use Android's raw text; `showing_hint` flags a displayed hint
+    (DR-10: observations and selectors now agree).
+  - Launch returns after `am start -W`; waiting for the window is the client's explicit
+    `awaitAppVisible` / `awaitScreenStable`.
+  - Open: `type_text` still clicks and then settles (`waitForIdle` ≤ 3 s) before injecting; the
+    user has not yet decided whether to drop the settle.
+- **Synchronization is WIP (2026-09-28, user).** The sync SDK/provider path is ignored for
+  now; its findings (DR-12, DR-13, DR-14, SY-1, SY-2, SY-4) are Deferred, not Open.
 - **P-9 was wrongly marked "leave".** CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
@@ -42,24 +60,23 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| DR-12 | H | Open | Driver `<queries>` names only the fixture's sync provider; a real AUT's provider is invisible, so idle sync cannot work outside the fixture | S |
+| DR-12 | H | Deferred | Driver `<queries>` names only the fixture's sync provider; a real AUT's provider is invisible, so idle sync cannot work outside the fixture | S |
 | DR-3 | H | Fixed | Text verification re-resolves the selector after the edit → false `TEXT_MISMATCH`/`FOCUS_TIMEOUT`. Resolved by the decision above | M |
 | DR-5 | H | Partial | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost; measure first) | M–L |
 | DR-4 | M | Fixed | Password fields can never match expected text. Resolved by the decision above | S |
-| DR-6 | M | Partial | Verification removed (decision above); key-up events still built with `downTime=0` | S |
-| DR-10 | M | Open | Text predicate (`NodePredicate.kt:51`, native `By.text`) matches the shown hint; snapshots strip it | S |
-| DR-11 | M | Partial | scrollUntil fingerprint still walks `UiObject2` (`ScrollUntilCommand.kt:93-113`) | S |
-| DR-13 | M | Open | Signature permission defined only in sync-sdk; install order can drop the grant (unverified) | S |
-| DR-14 | M | Open | One provider timeout poisons sync for the session; call thread leaks; `SecurityException` in the generic catch | S |
+| DR-6 | M | Fixed | Verification removed; key-up events carry the press's `downTime` (`KeyInputTest`) | S |
+| DR-10 | M | Fixed | Snapshot text is raw like the selectors, plus `showing_hint` (`InputTest`, `MainScreenTest`) | S |
+| DR-13 | M | Deferred | Signature permission defined only in sync-sdk; install order can drop the grant (unverified) | S |
+| DR-14 | M | Deferred | One provider timeout poisons sync for the session; call thread leaks; `SecurityException` in the generic catch | S |
 | DR-15 | M | Open | `ServerSocket(port, 1)`, serialized accept, 10 s handshake timeout: any app can hold the accept loop | S–M |
 | DR-16 | M | Open | Session secret passed as `-e tapSecret` in `am instrument` argv | M |
 | DR-21 | L | Partial | Version mismatch returns false with no `AUTH_RESULT` reason | S |
 | DR-22 | L | Open | `dumpHierarchy` → `PAYLOAD_TOO_LARGE`, a may-have-mutated code (see P-9) | S |
-| P-15 | L | Open | `swipe` always returns `true` (`GestureCommands.kt:39-48`) | S |
-| SY-1 | L | Open | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
-| SY-2 | N | Open | `require(method == "state")` throws IAE across binder | S |
+| P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |
+| SY-1 | L | Deferred | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
+| SY-2 | N | Deferred | `require(method == "state")` throws IAE across binder | S |
 | SY-3 | M | Partial | No password, WebView, popup/spinner or text-changing-selector fixtures | M |
-| SY-4 | L | Open | `FixtureFaultProvider` reuses the sync signature permission | S |
+| SY-4 | L | Deferred | `FixtureFaultProvider` reuses the sync signature permission | S |
 | SY-5 | N | Partial | Fixture screens' purposes undocumented | S |
 | X-3 | M | Partial | Driver `internal class ClientConnection` collides with the daemon/SDK name; Python `TapServer` vs Kotlin `TapClient` | S |
 
@@ -101,7 +118,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | DM-18 | M | Partial | No CLI tests (option parsing, start/stop/status) | M |
-| DM-15 | L | Partial | `DIR_UNSPECIFIED` rejected for swipe/scroll, DOWN for scroll_until (documented, not unified) | S |
+| DM-15 | L | Fixed | `scroll_until` removed; `DIR_UNSPECIFIED` is rejected uniformly for swipe/scroll | S |
 | DM-17 | N | Partial | `await(pending)` result shaping still inside `TapDaemon` (`:624`) | S |
 | API-7 | L | Fixed* | `stop` never compares `Info.pid` with the descriptor pid | S |
 

@@ -43,7 +43,7 @@ def test_buys_an_item(tap_device):
   `awaitAppSettled()`, `awaitAnimationEnd()`. No command sleeps or settles on its own, so
   actions stay fast on busy screens and the wait you wrote is the wait you get.
 - **Honest failures.** A closed error taxonomy with stable sub-reasons (`WAIT_TIMEOUT` /
-  `SCREEN_CHANGING`, `NOT_INTERACTABLE` / `FOCUS_TIMEOUT`, …), and an explicit
+  `SCREEN_CHANGING`, `STALE_DURING_COMMAND` / `TARGET_GONE`, …), and an explicit
   `INDETERMINATE` when the transport dropped after a mutation was accepted. Tap never replays a
   mutation to guess its way out.
 - **Failure artifacts for free.** Screenshot, accessibility hierarchy, device info and the

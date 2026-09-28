@@ -108,12 +108,17 @@ message Node {
   }
 }
 
-// Scope variants: the focused window of the app under test (default), or of an allowlisted
-// system package (permission dialogs).
+// Scope variants: where a selector searches.
+// - aut (default): the focused window of the app under test.
+// - system: the focused window of `package_name`, any package (a system dialog, another app).
+//   The name is historical; there is no allowlist.
+// - any_window: every window on screen, of any package, in the order the accessibility
+//   service reports them.
 message AutScope {}
 message SystemScope {
   string package_name = 1;
 }
+message AnyWindowScope {}
 
 // Pick variants: exactly one match (default; more is AMBIGUOUS), the first in accessibility
 // order, or the zero-based `index`-th in accessibility order (NOT_FOUND when absent).
@@ -130,6 +135,7 @@ message Selector {
   oneof scope {
     AutScope aut = 2;
     SystemScope system = 3;
+    AnyWindowScope any_window = 7;
   }
   oneof pick {
     ExactlyOne exactly_one = 4;

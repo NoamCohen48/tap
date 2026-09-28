@@ -12,7 +12,6 @@ import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
-import io.github.noamcohen48.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import kotlinx.coroutines.CoroutineScope
@@ -493,7 +492,6 @@ class TapDaemon internal constructor(
     data class AttachDeviceOptions(
         val skipDriverInstall: Boolean,
         val syncAuthority: String?,
-        val allowedSystemPackages: Set<String>,
         val defaultTimeoutMs: Long,
         /** How long [attachDevice] may wait for another DeviceSession's lock on the serial. */
         val leaseTimeoutMs: Long,
@@ -536,7 +534,6 @@ class TapDaemon internal constructor(
                     }
                 },
                 syncAuthority = options.syncAuthority ?: "$autPackage.tap-sync",
-                allowedSystemPackages = options.allowedSystemPackages.ifEmpty { setOf(PERMISSION_CONTROLLER_PACKAGE) },
                 journalRoot = config.journalRoot,
                 adb = config.adb,
                 driverLog = log::append,

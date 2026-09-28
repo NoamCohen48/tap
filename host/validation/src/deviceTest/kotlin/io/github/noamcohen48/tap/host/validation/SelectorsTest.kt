@@ -55,7 +55,6 @@ class SelectorsTest {
                 expectAmbiguous(Commands.clearText(duplicateInput))
                 expectAmbiguous(Commands.swipe(duplicateScroll, Direction.DIR_UP))
                 expectAmbiguous(Commands.scroll(duplicateScroll, Direction.DIR_DOWN))
-                expectAmbiguous(Commands.scrollUntil(Selectors.text("never"), container = duplicateScroll), timeoutMs = 10_000)
                 check(client.execute(Commands.exists(Selectors.text("Duplicate taps: 0"))).bool) {
                     "An AMBIGUOUS tap changed the fixture"
                 }

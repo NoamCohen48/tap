@@ -47,7 +47,8 @@ class MainScreenTest {
             assertEquals("abc", keyboard.text())
 
             keyboard.clearText()
-            assertEquals("", keyboard.text().orEmpty())
+            // Android reports an empty field's hint as its text; the snapshot says so.
+            assertTrue(keyboard.snapshot().showingHint)
         }
     }
 
@@ -57,7 +58,7 @@ class MainScreenTest {
             Fixture.launch(device)
 
             val list = device.element(rawRes("composeList"))
-            // Up to 30 gestures in one command: give it more than the 10 s action default (slow CI emulators).
+            // Up to 30 scrolls: a budget above the 10 s wait default (slow CI emulators).
             val item = list.scrollUntil(rawRes("item-40"), maxScrolls = 30, timeout = 30.seconds)
             assertTrue(item.exists())
             assertEquals("Item 40", item.text())

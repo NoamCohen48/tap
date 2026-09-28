@@ -55,7 +55,6 @@ class TapDriverServer(
             instrumentation,
             device,
             config.expectedAut,
-            config.allowedSystemPackages,
             faults,
             SyncProviderClient(instrumentation, config.expectedAut, config.syncAuthority),
         )

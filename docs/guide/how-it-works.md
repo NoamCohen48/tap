@@ -58,7 +58,7 @@ cooperative cancellation. The important rules:
 | Mutations (`tap`, `setText`, `swipe`, …) need **exactly one** match; `AMBIGUOUS`/`NOT_FOUND` are returned before any input. | A test that "happens to hit the first button" is not a test. |
 | **No implicit waits.** Actions do not wait for animations, idleness or "the screen to settle". | Those waits cost time on every step and never converge on live screens (tickers, spinners). Ask for the wait you mean: [Actions and waits](actions-and-waits.md). |
 | **No retries, ever.** | A retried tap is a double tap. If the transport drops after a mutation was accepted, you get `INDETERMINATE`, not a guess. |
-| Selectors are **scoped to the app under test**. | A stray system dialog cannot be tapped by accident; you opt in per selector for allowlisted system packages (permission dialogs). |
+| Selectors are **scoped to the app under test** by default. | A stray system dialog cannot be tapped by accident; a selector opts in to another package (`inPackage`) or to every window (`inAnyWindow`) explicitly. |
 | No hierarchy dump on the hot path. | Dumps are diagnostic (`dumpHierarchy()`, failure artifacts); matching runs on the device with window-scoped UiAutomator lookups. |
 
 ## What the driver bounds for you

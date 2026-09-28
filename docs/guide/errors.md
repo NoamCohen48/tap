@@ -23,11 +23,11 @@ and formats all of it into one line:
 
 ```
 AMBIGUOUS during TAP text("Add") on emulator-5554 (request 14, generation 1, 62 ms): 3 matches
-INDETERMINATE/END_REACHED during SCROLL_UNTIL text("Wool socks") on 85e49002 (request 9, generation 1, 8210 ms)
+STALE_DURING_COMMAND/TARGET_GONE during TYPE_TEXT resId(com.shop:id/email) on 85e49002 (request 9, generation 1, 820 ms)
 WAIT_TIMEOUT/SCREEN_CHANGING during WAIT_SCREEN_STABLE on emulator-5554 (request 3, generation 1, 10004 ms)
 ```
 
-Branch on `code` (`ErrorCode.AMBIGUOUS`) and `detail` (`"END_REACHED"`); the free-text message
+Branch on `code` (`ErrorCode.AMBIGUOUS`) and `detail` (`"TARGET_GONE"`); the free-text message
 is for humans and may change.
 
 The codes, grouped by what they tell you:
@@ -36,10 +36,9 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `NOT_FOUND` | zero matches (for `scrollUntil`: before its first scroll) |
+| `NOT_FOUND` | zero matches |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()`/`at(n)` |
-| `NOT_INTERACTABLE` | the node exists but cannot take the action (disabled for a tap, not scrollable for a scroll); nothing was sent |
-| `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
+| `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
 | `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `typeText` has no key mapping for a character |
 
 **The action, after input started** — device state may have changed:
@@ -48,7 +47,7 @@ The codes, grouped by what they tell you:
 |---|---|
 | `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS` |
 | `ACTION_REJECTED` | Android refused the input: the node refused set-text, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing), `DEADLINE_AFTER_FOCUS` |
-| `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance), or a command failed after it had already sent input: the detail then names why (`END_REACHED` / `MAX_SCROLLS` / `WAIT_TIMEOUT` when `scrollUntil` scrolled without finding its target) |
+| `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance)) |
 
 **Waits:**
 
