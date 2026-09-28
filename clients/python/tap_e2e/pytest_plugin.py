@@ -7,6 +7,8 @@ Configuration (ini option, or environment variable):
                                    order, starting one device further on for each test
                                    (wrapping). Unset = whatever the server's device list offers.
     tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
+    tap_capture   / TAP_CAPTURE    onFailure (default) = Device.capture() every device of a
+                                   failed test into that directory; off = capture nothing
     tap_server     / TAP_SERVER      host:port of a running server (default: the one `tap start` recorded)
                    TAP_TOKEN       bearer token for an explicit TAP_SERVER (default: read from
                                    daemon.json in the state dir)
@@ -21,9 +23,9 @@ Markers: ``@pytest.mark.tap_devices("left", "right")`` declares roles. A test ne
 than available devices is skipped. The starting device rotates from test to test, and a
 single-role test moves on to the next device when one is held by another session (waiting only
 when all are). Before each test one device per role is attached in sorted
-serial order so concurrent multi-device tests cannot deadlock; after it, failure artifacts
-(screenshot, hierarchy, device info, driver log) are captured while devices remain attached,
-then they are detached. Attachments never outlive a test.
+serial order so concurrent multi-device tests cannot deadlock; after it, a failed test's
+devices are captured (``Device.capture()``: screenshot, hierarchy, device info, driver log)
+while they remain attached, then they are detached. Attachments never outlive a test.
 """
 
 from __future__ import annotations
@@ -34,7 +36,6 @@ import itertools
 import os
 import pathlib
 import re
-import time
 import traceback
 from collections.abc import Generator
 from dataclasses import dataclass, field
@@ -59,6 +60,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("tap_serials", "comma-separated device serials")
     parser.addini(
         "tap_artifacts", "failure artifact directory", default="tap-artifacts"
+    )
+    parser.addini(
+        "tap_capture", "onFailure or off: capture failed tests' devices", default="onFailure"
     )
     parser.addini("tap_server", "host:port of a running tap server")
     parser.addini(
@@ -88,6 +92,7 @@ class TapConfig:
     server: str | None
     acquire_timeout: float
     manage_daemon: bool
+    capture_on_failure: bool = True
 
     @classmethod
     def from_pytest(cls, config: pytest.Config) -> TapConfig:
@@ -117,7 +122,17 @@ class TapConfig:
                 "tap_manage_daemon", "TAP_MANAGE_DAEMON", "false"
             ).lower()
             in ("1", "true", "yes"),
+            capture_on_failure=_capture_mode(option("tap_capture", "TAP_CAPTURE", "onFailure")),
         )
+
+
+def _capture_mode(value: str) -> bool:
+    """``tap_capture``: True for ``onFailure``, False for ``off`` (case-insensitive)."""
+    modes = {"onfailure": True, "off": False}
+    try:
+        return modes[value.strip().lower()]
+    except KeyError:
+        raise pytest.UsageError(f"tap_capture must be one of ['onFailure', 'off'], was {value!r}") from None
 
 
 @dataclass
@@ -257,7 +272,7 @@ def tap_devices(
     yield devices
     failed = any(report.failed for report in state.reports.values())
     try:
-        if failed:
+        if failed and tap_config.capture_on_failure:
             _capture_artifacts(request.node, tap_config, state)
     finally:
         close_errors = []
@@ -298,15 +313,12 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
             state.failure = call.excinfo.value
 
 
-#: Failure-artifact budget per device, in seconds; devices are captured concurrently.
-ARTIFACT_BUDGET_S = 60.0
-#: Upper bound for one device-side artifact call inside that budget.
-_ARTIFACT_CALL_S = 30.0
-
-
 def _capture_artifacts(
     item: pytest.Item, config: TapConfig, state: TestDevices
 ) -> None:
+    """``failure.txt`` with the traceback, then ``Device.capture()`` of every device in parallel,
+    saved as ``<role>-<serial>.<part>.<ext>``. Never masks the test failure: a part or file that
+    cannot be produced is simply missing."""
     directory = config.artifacts / re.sub(r"[^A-Za-z0-9._-]", "_", item.nodeid)
     directory.mkdir(parents=True, exist_ok=True)
     if state.failure is not None:
@@ -316,39 +328,16 @@ def _capture_artifacts(
         )
     if not state.devices:
         return
-    # One thread per device, each within its own budget, so a slow device neither starves
-    # the others nor holds teardown past the budget (a straggler is abandoned, not joined).
-    pool = concurrent.futures.ThreadPoolExecutor(
+    with concurrent.futures.ThreadPoolExecutor(
         max_workers=len(state.devices), thread_name_prefix="tap-artifacts"
-    )
-    try:
-        futures = [
+    ) as pool:
+        for role, device in state.devices.items():
             pool.submit(_capture_device, directory, role, device)
-            for role, device in state.devices.items()
-        ]
-        concurrent.futures.wait(futures, timeout=ARTIFACT_BUDGET_S + 5)
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def _capture_device(directory: pathlib.Path, role: str, device: Device) -> None:
-    deadline = time.monotonic() + ARTIFACT_BUDGET_S
-    prefix = f"{role}-{device.serial}"
-
-    def budget() -> float:
-        return min(_ARTIFACT_CALL_S, deadline - time.monotonic())
-
-    steps = [
-        (f"{prefix}.png", lambda t: device.screenshot(timeout=t).bytes),
-        (f"{prefix}.xml", lambda t: device.dump_hierarchy(timeout=t).bytes),
-        (f"{prefix}.device-info.json", lambda t: device.info().bytes),
-        (f"{prefix}.driver.log", lambda t: device.driver_log().bytes),
-    ]
-    for name, produce in steps:
-        remaining = budget()
-        if remaining <= 0:
-            return
-        _capture(directory / name, lambda p=produce, t=remaining: p(t))
+    with contextlib.suppress(Exception):
+        device.capture().save_to(directory, f"{role}-{device.serial}")
 
 
 def _capture(path: pathlib.Path, produce) -> None:

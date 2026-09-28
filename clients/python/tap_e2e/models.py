@@ -371,3 +371,55 @@ class DriverLog(Artifact):
 
     def __repr__(self) -> str:
         return f"DriverLog({len(self.lines)} lines)"
+
+
+class Capture:
+    """The diagnostics of one device at one moment (``Device.capture()``): a ``Screenshot``, the
+    ``Hierarchy``, the ``DeviceInfo`` and the ``DriverLog``. A part is None when it could not be
+    produced; ``failures`` says why, by part name."""
+
+    SCREENSHOT = "screenshot"
+    HIERARCHY = "hierarchy"
+    DEVICE_INFO = "device-info"
+    DRIVER_LOG = "driver-log"
+
+    def __init__(
+        self,
+        serial: str,
+        screenshot: Screenshot | None,
+        hierarchy: Hierarchy | None,
+        info: DeviceInfo | None,
+        driver_log: DriverLog | None,
+        failures: dict[str, BaseException],
+    ):
+        self.serial = serial
+        self.screenshot = screenshot
+        self.hierarchy = hierarchy
+        self.info = info
+        self.driver_log = driver_log
+        self.failures = dict(failures)
+        """Why each missing part is missing, keyed like ``artifacts``."""
+
+    @property
+    def artifacts(self) -> dict[str, Artifact]:
+        """The parts that were produced, by name: ``screenshot``, ``hierarchy``,
+        ``device-info``, ``driver-log``, in that order."""
+        parts: list[tuple[str, Artifact | None]] = [
+            (self.SCREENSHOT, self.screenshot),
+            (self.HIERARCHY, self.hierarchy),
+            (self.DEVICE_INFO, self.info),
+            (self.DRIVER_LOG, self.driver_log),
+        ]
+        return {name: part for name, part in parts if part is not None}
+
+    def save_to(self, directory: str | os.PathLike[str], prefix: str | None = None) -> list[pathlib.Path]:
+        """Writes every produced part to ``directory`` as ``<prefix>.<name>.<extension>`` (for
+        example ``emulator-5554.screenshot.png``; ``prefix`` defaults to the serial), creating
+        ``directory``, and returns the written paths."""
+        root = pathlib.Path(directory)
+        stem = self.serial if prefix is None else prefix
+        return [a.save(root / f"{stem}.{name}.{a.extension}") for name, a in self.artifacts.items()]
+
+    def __repr__(self) -> str:
+        missing = f", missing {list(self.failures)}" if self.failures else ""
+        return f"Capture({self.serial}: {list(self.artifacts)}{missing})"

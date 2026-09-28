@@ -19,6 +19,8 @@ data class TapConfig(
     val pinnedRoles: Map<String, String>,
     /** `tap.manageDaemon`: start the daemon before the first session and stop it after the run if this process started it. */
     val manageDaemon: Boolean = false,
+    /** `tap.capture`: `onFailure` (default) captures every device of a failed test into [artifactsDir]; `off` captures nothing. */
+    val capture: CaptureMode = CaptureMode.ON_FAILURE,
 ) {
     companion object {
         val current: TapConfig by lazy { load() }
@@ -62,7 +64,26 @@ data class TapConfig(
                 acquireTimeout = property("tap.acquireTimeoutSeconds")?.toLong()?.seconds ?: Timeouts.ACQUIRE,
                 pinnedRoles = pinned,
                 manageDaemon = property("tap.manageDaemon")?.toBoolean() ?: false,
+                capture = property("tap.capture")?.let(CaptureMode::parse) ?: CaptureMode.ON_FAILURE,
             )
         }
+    }
+}
+
+/** When the JUnit extension captures device artifacts (`tap.capture`). */
+enum class CaptureMode(
+    val value: String,
+) {
+    /** Capture every device of a failed test (the default). */
+    ON_FAILURE("onFailure"),
+
+    /** Never capture; tests can still call `Device.capture()` themselves. */
+    OFF("off"),
+    ;
+
+    companion object {
+        internal fun parse(value: String): CaptureMode =
+            entries.firstOrNull { it.value.equals(value.trim(), ignoreCase = true) }
+                ?: throw IllegalArgumentException("tap.capture must be one of ${entries.map { it.value }}, was '$value'")
     }
 }

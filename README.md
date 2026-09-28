@@ -81,8 +81,9 @@ propagation still uses the observing device's UI condition, not a barrier.
   quiet screen implicitly, so actions stay fast on busy screens.
 - `device.app(pkg)` handles install/launch/coldLaunch/forceStop/clearData/grantPermission and
   `awaitIdle()` for apps that ship `sync-sdk`.
-- On failure the extension writes a screenshot, hierarchy XML, device info and the driver log
-  under `tap.artifactsDir/<class>/<method>/`.
+- `device.capture()` takes a screenshot, the hierarchy XML, device info and the driver log at
+  once; on failure the extension saves it for every device under
+  `tap.artifactsDir/<class>/<method>/` (`tap.capture=off` turns that off).
 
 The extension is a gRPC client of the `tap` server, the per-machine host daemon that owns ADB,
 driver lifecycle (the driver APKs are bundled in it), journals, device locks and the device list
@@ -100,6 +101,7 @@ itself. Configuration is read from system properties or environment variables:
 | `tap.manageDaemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test and `tap stop` after the last one if that start created the server (default `false`) |
 | `tap.bin` | `TAP_BIN` | the `tap` executable `tap.manageDaemon` runs (default: `tap` on `PATH`) |
 | `tap.artifactsDir` | `TAP_ARTIFACTS_DIR` | failure artifacts (default `build/tap-artifacts`) |
+| `tap.capture` | `TAP_CAPTURE` | `onFailure` (default) captures every device of a failed test; `off` captures nothing |
 | `tap.acquireTimeoutSeconds` | `TAP_ACQUIRE_TIMEOUT_SECONDS` | wait for a device another session holds (default 300) |
 
 `samples/fixture-tests` is a complete example wired through Gradle; run it with

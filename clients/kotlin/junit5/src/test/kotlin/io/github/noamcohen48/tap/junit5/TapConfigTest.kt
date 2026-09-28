@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.junit5
 import io.github.noamcohen48.tap.sdk.Timeouts
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.time.Duration.Companion.seconds
 
 class TapConfigTest {
@@ -21,6 +22,7 @@ class TapConfigTest {
         assertEquals("com.shop", defaults.autPackage)
         assertEquals(Timeouts.ACQUIRE, defaults.acquireTimeout)
         assertEquals(false, defaults.manageDaemon)
+        assertEquals(CaptureMode.ON_FAILURE, defaults.capture)
 
         val set =
             mapOf(
@@ -28,6 +30,7 @@ class TapConfigTest {
                 "tap.serials" to "a,b",
                 "tap.acquireTimeoutSeconds" to "7",
                 "tap.manageDaemon" to "true",
+                "tap.capture" to "off",
             )
         val config = TapConfig.load(property = set::get, allProperties = { mapOf("tap.device.sender" to "b") })
         assertEquals("com.other", config.autPackage)
@@ -35,5 +38,9 @@ class TapConfigTest {
         assertEquals(7.seconds, config.acquireTimeout)
         assertEquals(true, config.manageDaemon)
         assertEquals(mapOf("sender" to "b"), config.pinnedRoles)
+        assertEquals(CaptureMode.OFF, config.capture)
+        assertFailsWith<IllegalArgumentException> {
+            TapConfig.load(property = mapOf("tap.aut" to "a", "tap.capture" to "always")::get, allProperties = { emptyMap() })
+        }
     }
 }

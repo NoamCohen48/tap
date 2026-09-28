@@ -567,6 +567,55 @@ class TapClientTest {
     }
 
     @Test
+    fun `capture keeps the parts it got and records why the others are missing`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                when {
+                    request.command.hasDeviceInfo() ->
+                        CommandResult
+                            .newBuilder()
+                            .setDeviceInfo(
+                                io.github.noamcohen48.tap.api.v1.DeviceInfo
+                                    .newBuilder()
+                                    .setApiLevel(34),
+                            ).build()
+                    request.command.hasDumpHierarchy() ->
+                        CommandResult
+                            .newBuilder()
+                            .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(ErrorCode.ERR_DRIVER_UNHEALTHY))
+                            .build()
+                    else -> null
+                }
+            }
+            val dir = Files.createTempDirectory("tap-capture-test")
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        val capture = device.capture()
+                        assertEquals(34, capture.info?.apiLevel)
+                        assertEquals(null, capture.hierarchy)
+                        assertEquals(listOf(Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG), capture.artifacts.keys.toList())
+                        assertEquals(setOf(Capture.HIERARCHY), capture.failures.keys)
+                        assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), assertIs<CommandException>(capture.failures[Capture.HIERARCHY]).code)
+                        val saved = capture.saveTo(dir, "main-emulator-5554").map { it.fileName.toString() }
+                        assertEquals(
+                            listOf("main-emulator-5554.screenshot.png", "main-emulator-5554.device-info.json", "main-emulator-5554.driver-log.txt"),
+                            saved,
+                        )
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `every command carries the timeout and one deadline policy`() {
         runBlocking {
             val connection = client().connect("test")

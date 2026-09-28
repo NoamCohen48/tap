@@ -183,5 +183,28 @@ or write it where you like. All four share one artifact shape: `bytes` (the seri
     shot.save("build/shots/login.png")
     ```
 
-All four are captured automatically into the failure artifacts by the JUnit extension and the
-pytest plugin.
+`device.capture()` takes all four at once, in parallel, each within a timeout (default 30 s),
+and returns a `Capture`: the `screenshot`, `hierarchy`, `info` and `driverLog` / `driver_log`
+parts, `artifacts` (the produced ones by name) and `failures` (why a missing part is missing).
+It never throws for the device, so it is safe in a `catch` / `except`. `saveTo(dir)` /
+`save_to(dir)` writes `<prefix>.<part>.<ext>` files (prefix defaults to the serial).
+
+=== "Kotlin"
+
+    ```kotlin
+    val capture = device.capture()
+    capture.saveTo(Path.of("build/evidence/after-login"))
+    capture.failures.forEach { (part, why) -> println("no $part: ${why.message}") }
+    ```
+
+=== "Python"
+
+    ```python
+    capture = device.capture()
+    capture.save_to("build/evidence/after-login")
+    for part, why in capture.failures.items():
+        print(f"no {part}: {why}")
+    ```
+
+The JUnit extension and the pytest plugin call `capture()` for every device of a failed test
+([Failure artifacts](errors.md#failure-artifacts)).

@@ -189,6 +189,7 @@ tap/
 |   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the (internal) proto Selector
 |   |   |       +-- Models.kt            SDK-owned value types: MatchMode, Direction, StabilitySignal, ErrorCode, FailureReason, DeviceState, Bounds, ElementSnapshot, AppProcess, DeviceEntry, ServerInfo/ServerDefaults
 |   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, Hierarchy, DeviceInfo, DriverLog
+|   |   |       +-- Capture.kt           Device.capture(): the four artifacts in parallel, bounded, never throws; Capture.saveTo
 |   |   |       +-- ProtoMapping.kt      internal proto <-> model mappers (enums by name after the proto prefix)
 |   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package io.github.noamcohen48.tap.junit5)
@@ -196,7 +197,7 @@ tap/
 |   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
 |   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
 |   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
-|   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles
+|   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles, capture mode (tap.capture)
 |   |           +-- ConnectionMemo.kt    ConnectionMemo + the JVM-wide SharedConnection: one TapClient + TapConnection per JVM generation (managed sequential generations: teardown gate with cancelled-shutdown NonCancellable re-await of captured flights, single-flight shares, transactional hook install before publish with close+stop rollback, creation rollback with suppressed cleanup, NonCancellable ownership with original cancellation rethrown), closed by launcher listener/shutdown hook
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the daemon)

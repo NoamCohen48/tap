@@ -6,7 +6,9 @@ from __future__ import annotations
 import pathlib
 
 from tap_e2e import TapClient
-from tap_e2e.pytest_plugin import TapConfig, _assign, _attach_single, _rotate
+import pytest  # type: ignore[import-not-found]
+
+from tap_e2e.pytest_plugin import TapConfig, _assign, _attach_single, _capture_mode, _rotate
 
 from .conftest import TOKEN
 
@@ -17,6 +19,13 @@ def test_rotation_wraps_and_assigns_in_declaration_order():
     assert _rotate(serials, 3) == serials
     assert _rotate([], 5) == []
     assert _assign(["a", "b"], serials, 2) == {"a": "s3", "b": "s1"}
+
+
+def test_capture_mode_parses_on_failure_and_off_only():
+    assert _capture_mode("onFailure") is True
+    assert _capture_mode(" OFF ") is False
+    with pytest.raises(pytest.UsageError, match="tap_capture"):
+        _capture_mode("always")
 
 
 def test_single_role_moves_past_a_busy_device_and_waits_only_when_all_are(fake):

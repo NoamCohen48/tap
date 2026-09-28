@@ -123,6 +123,35 @@ def test_screenshot_is_checked_client_side_and_saves(fake, device, tmp_path):
         device.screenshot()
 
 
+def test_capture_keeps_the_parts_it_got_and_records_why_the_others_are_missing(fake, device, tmp_path):
+    from tap_e2e import Capture
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.HasField("device_info"):
+            return pb.CommandResult(device_info=pb.DeviceInfo(api_level=34))
+        if command.HasField("dump_hierarchy"):
+            return pb.CommandResult(error=pb.Error(code=pb.ERR_DRIVER_UNHEALTHY))
+        return None
+
+    fake.devices.responder = respond
+    capture = device.capture()
+    assert capture.screenshot is not None and capture.screenshot.bytes == fake.devices.png
+    assert capture.info is not None and capture.info.api_level == 34
+    assert capture.driver_log is not None and capture.driver_log.lines == ["line"]
+    assert capture.hierarchy is None
+    assert list(capture.artifacts) == [Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG]
+    assert list(capture.failures) == [Capture.HIERARCHY]
+    failure = capture.failures[Capture.HIERARCHY]
+    assert isinstance(failure, CommandError) and failure.code is ErrorCode.DRIVER_UNHEALTHY
+    saved = capture.save_to(tmp_path / "out", "main-emulator-5554")
+    assert [p.name for p in saved] == [
+        "main-emulator-5554.screenshot.png",
+        "main-emulator-5554.device-info.json",
+        "main-emulator-5554.driver-log.txt",
+    ]
+    assert saved[0].read_bytes() == fake.devices.png
+
+
 def test_install_streams_a_header_then_1_mib_chunks(fake, device, tmp_path):
     from tap_e2e.app import INSTALL_CHUNK_BYTES
 

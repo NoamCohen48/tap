@@ -86,27 +86,30 @@ exception.
 
 ## Failure artifacts
 
-When a test fails, the JUnit extension and the pytest plugin capture — *before* detaching the
-device, while the screen still shows the failure — for each device of the test:
+When a test fails, the JUnit extension and the pytest plugin call `device.capture()` for each
+device of the test — *before* detaching it, while the screen still shows the failure — and save
+the result:
 
 ```
 build/tap-artifacts/com.shop.CheckoutTest/buysAnItem/      (pytest: tap-artifacts/<nodeid>/)
-├── failure.txt                          the exception and stack trace
-├── device-emulator-5554.png             screenshot
-├── device-emulator-5554.xml             accessibility hierarchy
-├── device-emulator-5554.device-info.txt serial, API, model, display
-└── device-emulator-5554.driver.log      the driver's log for the session
+├── failure.txt                                 the exception and stack trace
+├── device-emulator-5554.screenshot.png         screenshot
+├── device-emulator-5554.hierarchy.xml          accessibility hierarchy
+├── device-emulator-5554.device-info.json       API, model, display, focused package
+└── device-emulator-5554.driver-log.txt         the driver's log for the session
 ```
 
-The file prefix is the role name, so a two-device test yields `sender-…` and `receiver-…`.
-Devices are captured in parallel, each within its own 60 s budget, so one slow or hung device
-does not cost the others their artifacts. Capture never masks the original failure: a file that
-cannot be produced (the device went away, the budget ran out) is simply missing, and the test
-still fails with its real error.
+The file prefix is `<role>-<serial>`, so a two-device test yields `sender-…` and `receiver-…`.
+Devices are captured in parallel, and so are the four parts of each device, each within 30 s, so
+one slow or hung device or part does not cost the others their artifacts. Capture never masks
+the original failure: a file that cannot be produced (the device went away, the time ran out) is
+simply missing, and the test still fails with its real error. `tap.capture=off` (pytest:
+`tap_capture = off` / `TAP_CAPTURE=off`) turns this off; see
+[Configuration](configuration.md).
 
-The same data is available on demand as typed values: `device.screenshot()` (`Screenshot`),
-`device.dumpHierarchy()` (`Hierarchy`), `device.driverLog()` (`DriverLog`) and `device.info()`
-(`DeviceInfo`); see [Screenshots and dumps](actions-and-waits.md#screenshots-and-dumps).
+`device.capture()` is an ordinary call, so a test can take the same evidence whenever it wants
+(after a step, in a `catch`), and each part is also available on its own as a typed value; see
+[Screenshots and dumps](actions-and-waits.md#screenshots-and-dumps).
 
 ## Reading the hierarchy dump
 

@@ -6,9 +6,9 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 139 |
+| Fixed | 140 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 2 |
+| Partial | 1 |
 | Open | 2 |
 | Won't fix (accepted risk, see decisions) | 2 |
 | Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
@@ -105,7 +105,8 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     shape (`bytes`, `mediaType`, `save`): `Screenshot` (format, width, height), `Hierarchy`
     (`xml` + bytes), `DeviceInfo`, `DriverLog`. `device.capture()` bundles them (parallel,
     bounded, never throws) with `saveTo(dir, prefix)`. The JUnit/pytest adapters only call it
-    and write `failure.txt`; `tap.artifacts = onFailure | off`.
+    and write `failure.txt`; `tap.capture = onFailure | off` (named `capture`, not `artifacts`:
+    Python's `tap_artifacts` / `TAP_ARTIFACTS` is already the directory).
   - J-9: opt-in device reuse (`@TapTest(deviceLifetime = PER_CLASS)`, Python
     `tap_device_scope`); no automatic app reset; an unusable session is re-attached at the
     next test; measure attach cost first.
@@ -219,7 +220,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | K-14 | L | Fixed | The process starter is injected per call; `tap start`/`stop` wait on `process.onExit()` instead of polling | S |
 | K-16 | N | Fixed | The rethrow-only catch in `connect` is gone | S |
 | J-6 | L | Fixed | The primary failure is JUnit's `executionException` only; the recording interceptors, the exception handler and `TestState.failure` are gone | S |
-| J-7 | L | Partial | Devices are captured concurrently, each within its own 60 s budget. No `ArtifactSink` hook yet (new public API: needs a decision) | S–M |
+| J-7 | L | Fixed | Typed artifacts (K-4) plus `Device.capture()` / `device.capture()` in both SDKs (`Capture.kt`, `models.Capture`): the four parts in parallel, each bounded, failures recorded per part, never throws; `saveTo` / `save_to`. JUnit extension and pytest plugin only call it and write `failure.txt`; `tap.capture` / `tap_capture` = `onFailure` \| `off`. Tests: `TapClientTest` / `test_device.py` capture cases, `TapConfigTest`, `test_plugin.py` | — |
 | J-9 | L | Open | No opt-in class-level device reuse | M |
 | S-2 | L | Fixed | `runCatching` + one assertion instead of `fail()` inside `catch (AssertionError)` | S |
 | S-3 | L | Fixed | `MultiDeviceTest` asserts its two roles hold distinct serials | S |

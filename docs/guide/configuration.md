@@ -67,6 +67,7 @@ name with camelCase and dots turned into underscores, upper-cased (`tap.autPacka
 | `tap.serials` | comma-separated serials to use; roles map to them in order, starting one device further on per test ([details](multi-device.md#which-serial-plays-which-role)) | any device the server lists |
 | `tap.device.<role>` | pin one role to a serial (must be in `tap.serials` when that is set) | — |
 | `tap.artifactsDir` | failure artifacts root | `build/tap-artifacts` |
+| `tap.capture` | `onFailure` = `device.capture()` every device of a failed test into the artifacts root; `off` = capture nothing | `onFailure` |
 | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds | `300` |
 | `tap.server` | `host:port` of a running server | the one in `daemon.json` |
 | `tap.token` | bearer token for an explicit `tap.server` | the one in `daemon.json` |
@@ -102,6 +103,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | `tap_aut` | `TAP_AUT` | the application under test | **required** |
 | `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, starting one device further on per test | any device the server lists |
 | `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
+| `tap_capture` | `TAP_CAPTURE` | `onFailure` = `device.capture()` every device of a failed test into that directory; `off` = capture nothing | `onFailure` |
 | `tap_server` | `TAP_SERVER` | `host:port` of a running server | the one in `daemon.json` |
 | — | `TAP_TOKEN` | bearer token for an explicit `TAP_SERVER` | the one in `daemon.json` |
 | `tap_manage_daemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test, `tap stop` after the last one if that start created the daemon | `false` |

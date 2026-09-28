@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import time
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from . import _proto
 from .app import App
 from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
-from .models import DeviceInfo, DriverLog, Hierarchy, Screenshot, StabilitySignal
+from .models import Capture, DeviceInfo, DriverLog, Hierarchy, Screenshot, StabilitySignal
 from .selectors import Selector
 from .client import TapConnection, mapped_errors
 
@@ -228,6 +229,43 @@ class Device:
                     timeout=30,
                 ).lines
             )
+
+    def capture(self, timeout: float = 30.0) -> Capture:
+        """Takes a screenshot, the hierarchy, the device info and the driver log at once, each
+        within ``timeout`` seconds, and returns them as one ``Capture``. Never raises for the
+        device: a part that fails or runs out of time is None in the result, with its cause in
+        ``Capture.failures``. Use it wherever a test wants evidence (after a step, in an
+        ``except``); the pytest plugin calls it for every failed test."""
+        parts: dict[str, Callable[[], object]] = {
+            Capture.SCREENSHOT: lambda: self.screenshot(timeout),
+            Capture.HIERARCHY: lambda: self.dump_hierarchy(timeout),
+            Capture.DEVICE_INFO: self.info,
+            Capture.DRIVER_LOG: self.driver_log,
+        }
+        produced: dict[str, object] = {}
+        failures: dict[str, BaseException] = {}
+        # A straggler is abandoned, not joined: its own gRPC deadline ends it later.
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(parts), thread_name_prefix="tap-capture")
+        try:
+            futures = {name: pool.submit(produce) for name, produce in parts.items()}
+            concurrent.futures.wait(futures.values(), timeout=timeout)
+            for name, future in futures.items():
+                if not future.done():
+                    failures[name] = TimeoutError(f"{name} of {self.serial} not produced within {timeout}s")
+                elif (error := future.exception()) is not None:
+                    failures[name] = error
+                else:
+                    produced[name] = future.result()
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        return Capture(
+            self.serial,
+            produced.get(Capture.SCREENSHOT),  # type: ignore[arg-type]
+            produced.get(Capture.HIERARCHY),  # type: ignore[arg-type]
+            produced.get(Capture.DEVICE_INFO),  # type: ignore[arg-type]
+            produced.get(Capture.DRIVER_LOG),  # type: ignore[arg-type]
+            failures,
+        )
 
     def await_app_visible(
         self, package_name: str | None = None, timeout: float | None = None

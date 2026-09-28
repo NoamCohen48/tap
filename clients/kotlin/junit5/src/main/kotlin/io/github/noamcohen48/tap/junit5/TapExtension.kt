@@ -5,7 +5,9 @@ import io.github.noamcohen48.tap.sdk.DeviceBusyException
 import io.github.noamcohen48.tap.sdk.DeviceOptions
 import io.github.noamcohen48.tap.sdk.TapContext
 import io.github.noamcohen48.tap.sdk.TapException
+import io.github.noamcohen48.tap.sdk.capture
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
@@ -24,7 +26,6 @@ import org.junit.jupiter.api.extension.ParameterResolver
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext
 import java.lang.reflect.Method
 import java.nio.file.Files
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -112,7 +113,7 @@ class TapExtension :
         // Stop test coroutines promptly; sessions stay usable for artifact capture below.
         state.rootJob.cancel(CancellationException("test finished"))
         try {
-            if (failure != null) {
+            if (failure != null && TapConfig.current.capture == CaptureMode.ON_FAILURE) {
                 runBlocking(TapContext("junit:${state.method}:artifacts")) {
                     withContext(NonCancellable) { captureArtifacts(context, state, failure) }
                 }
@@ -309,8 +310,9 @@ class TapExtension :
     }
 
     /**
-     * Failure artifacts per device, captured concurrently, each device within its own
-     * [ARTIFACT_BUDGET_MS] so one slow device cannot starve the others.
+     * Failure artifacts: `failure.txt` with the stack trace, then [capture] of every device in
+     * parallel, saved as `<role>-<serial>.<part>.<ext>`. Never masks the test failure: a part or
+     * file that cannot be produced is simply missing.
      */
     private suspend fun captureArtifacts(
         context: ExtensionContext,
@@ -321,35 +323,18 @@ class TapExtension :
             TapConfig.current.artifactsDir
                 .resolve(context.requiredTestClass.name)
                 .resolve(context.requiredTestMethod.name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-        withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { Files.createDirectories(dir) }
+        withContext(Dispatchers.IO) {
+            runCatching {
+                Files.createDirectories(dir)
+                Files.writeString(dir.resolve("failure.txt"), failure.stackTraceToString())
+            }
         }
-        capture(dir.resolve("failure.txt")) { failure.stackTraceToString().toByteArray() }
         coroutineScope {
             state.devices.forEach { (role, device) ->
                 launch {
-                    withTimeoutOrNull(ARTIFACT_BUDGET_MS) {
-                        val prefix = "$role-${device.serial}"
-                        capture(dir.resolve("$prefix.png")) { device.screenshot().bytes }
-                        capture(dir.resolve("$prefix.xml")) { device.dumpHierarchy().bytes }
-                        capture(dir.resolve("$prefix.device-info.json")) { device.info().bytes }
-                        capture(dir.resolve("$prefix.driver.log")) { device.driverLog().bytes }
-                    }
+                    val captured = runCatching { device.capture() }.getOrNull() ?: return@launch
+                    withContext(Dispatchers.IO) { runCatching { captured.saveTo(dir, "$role-${device.serial}") } }
                 }
-            }
-        }
-    }
-
-    private suspend fun capture(
-        path: Path,
-        produce: suspend () -> ByteArray,
-    ) {
-        // Artifact capture must never mask the test failure or block cleanup.
-        runCatching {
-            val bytes =
-                withTimeoutOrNull(30_000) { produce() } ?: return
-            withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { Files.write(path, bytes) }
             }
         }
     }
@@ -359,9 +344,6 @@ class TapExtension :
 
     private companion object {
         const val KEY = "tap.devices"
-
-        /** Failure-artifact budget per device. */
-        const val ARTIFACT_BUDGET_MS = 60_000L
 
         /** JVM-wide start index for [assignSerials]; advanced once per test. */
         val ROTATION = AtomicInteger(0)
