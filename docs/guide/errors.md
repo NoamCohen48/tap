@@ -68,9 +68,11 @@ The codes, grouped by what they tell you:
 | `OVERLOADED`, `SESSION_MISMATCH`, `DUPLICATE_OR_STALE`, `UNAUTHENTICATED`, `UNSUPPORTED` | protocol-level; you should not see them from the clients |
 | `PAYLOAD_TOO_LARGE`, `ARTIFACT_TRANSFER_FAILED`, `INTERNAL` | the command ran, its result could not be delivered / an unexpected driver failure |
 
-Each code has two fixed properties in the [protocol contract](../reference/grpc.md): whether
-the device **may have mutated** and whether a retry is **safe**. Tap itself never retries; a
-test that wants to may consult those flags.
+Tap itself never retries. A code that says nothing ran (`NOT_FOUND`, `AMBIGUOUS`, `CANCELLED`,
+`TRANSPORT_LOST`, …) is only ever sent before any input reached the device: once a mutation
+has started, such a failure is reported as `INDETERMINATE` instead. `INDETERMINATE`,
+`ACTION_REJECTED`, `AUT_CRASHED` and `AUT_ANR` mean the screen may have changed, so do not
+repeat a mutation after them blindly.
 
 ## Wait timeouts
 

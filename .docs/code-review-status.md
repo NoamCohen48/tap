@@ -8,12 +8,13 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 |---|---:|
 | Fixed | 136 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 8 |
-| Open | 10 |
+| Partial | 5 |
+| Open | 4 |
 | Won't fix (accepted risk, see decisions) | 2 |
+| Backlog (hygiene, not pursued now; see decisions) | 9 |
 | Deferred (synchronization is WIP, see below) | 7 |
 
-The counts cover all 171 findings; Open, Partial, Deferred and Won't fix are exactly the rows below.
+The counts cover all 171 findings; Open, Partial, Deferred, Won't fix and Backlog are exactly the rows below.
 
 Fixed/obsolete items are not repeated below except where a remark matters. Obsolete: B-5,
 P-1, P-2, P-10, DR-11 (`scroll_until` left the driver in protocol 4.0), DM-12 (not a bug: always under `lifecycleLock`), DM-14, and P-12's claim is
@@ -71,7 +72,19 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     needed, the stronger fix is a `localabstract:` socket whose accept checks the peer UID
     (adbd is shell 2000, or root) and closes anything else before reading, making each
     rejection immediate; concurrent handshakes with a short timeout only raise the bar.
-- **P-9 was wrongly marked "leave".** CANCELLED before acceptance is safe to retry, but the
+- **Focus on logic, API and functionality (2026-09-28, user).** Findings that are hygiene,
+  internal refactors or theoretical hardening are parked as **Backlog**: kept on record, not
+  worked on unless they block a functional change. Security hardening beyond the trusted-host
+  model is Won't fix (above).
+  - P-9 / DR-22 / P-7: the per-code `mayHaveMutated` / `retryable` flags and the negotiated
+    capabilities are consumed by nothing outside the driver. The only functional use,
+    `CommandPipeline.afterGate` rewriting a "nothing changed" code to `INDETERMINATE` once the
+    mutation gate opened, is correct; the remaining inaccuracies (`PAYLOAD_TOO_LARGE` on the
+    read-only hierarchy dump, `CANCELLED` flagged retryable) err on the safe side and reach no
+    client. Neither SDK exposes the flags.
+  - H-9, H-19, H-22, K-1, B-3: refactors with no behaviour change. H-23: remaining unit
+    coverage for deadline splitting that the device suite already exercises.
+- **P-9 was wrongly marked "leave"** (now Backlog, see above). CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
 
@@ -94,7 +107,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | DR-15 | M | Won't fix | `ServerSocket(port, 1)`, serialized accept, 10 s handshake timeout: an app on the device can hold the accept loop. Accepted under the trusted-host threat model (decisions above) | — |
 | DR-16 | M | Won't fix | Session secret passed as `-e tapSecret` in `am instrument` argv. Accepted under the trusted-host threat model (decisions above) | — |
 | DR-21 | L | Fixed | No common version: the driver answers HELLO with `AUTH_RESULT{ok=false, UNSUPPORTED}` before closing; the host reports it (`DriverClientTest`, `FencingTest`) | S |
-| DR-22 | L | Open | `dumpHierarchy` → `PAYLOAD_TOO_LARGE`, a may-have-mutated code (see P-9) | S |
+| DR-22 | L | Backlog | `dumpHierarchy` → `PAYLOAD_TOO_LARGE`, a may-have-mutated code (see P-9) | S |
 | P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |
 | SY-1 | L | Deferred | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
 | SY-2 | N | Deferred | `require(method == "state")` throws IAE across binder | S |
@@ -107,8 +120,8 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| P-9 | M | Open | Error flags per code (`ErrorCode.kt:51-74`); need per-response `may_have_mutated` | M |
-| P-7 | M | Open | `enabledCapabilities` negotiated, MAC'd, stored, never read: gate on it or delete it | S |
+| P-9 | M | Backlog | Error flags per code (`ErrorCode.kt:51-74`); need per-response `may_have_mutated` | M |
+| P-7 | M | Backlog | `enabledCapabilities` negotiated, MAC'd, stored, never read: gate on it or delete it | S |
 | P-8 | M | Fixed | `UIAUTOMATOR_VERSION` is generated from the catalog (`libs.versions.uiautomator`) next to `ENGINE_VERSION` | S |
 | P-14 | L | Fixed | The `ok` factory is gone (`Response.ok` is only the property). `CommandFailure` stays in the contract on purpose: contract validation (`CommandValidation.kt`, `Operations.kt`) throws it, so it is not driver-internal | S |
 | E-4 | M | Fixed | PONGs go through a pending-pong queue the writer drains before every blob chunk, so a ping is answered mid-blob | M |
@@ -125,13 +138,13 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | B-4 | H | Fixed | A driver package signed by another build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) is uninstalled and reinstalled once; the AUT never is (`AdbTest`). Installed `versionName` is checked against the bundled build. Release signing with a project key stays a release-engineering option | S–M |
 | H-5 | M | Fixed | `BlobReceiver` copies each chunk once into a buffer of the announced size, hashes incrementally and hands the array on uncopied (`BlobReceiverTest`) | S |
 | H-15 | M | Deferred | `awaitIdle` runs `process()` before and after every poll (`AppLifecycle.kt:221-229`). Synchronization is WIP | S |
-| H-19 | M | Open | `DeviceSession.open` ≈190 lines with a `suspendCancellableCoroutine` handoff | L |
+| H-19 | M | Backlog | `DeviceSession.open` ≈190 lines with a `suspendCancellableCoroutine` handoff | L |
 | H-20 | M | Fixed | The lock holder records its PID in the lock file; `isLeased` reads it (advisory, no lock taken; a dead PID reads as free) (`SessionJournalTest`) | S |
-| H-22 | M | Partial | Primitives shared; HELLO/CHALLENGE/AUTH state machine still hand-written in driver, client and fake | M |
-| H-23 | M | Partial | `BlobReceiverTest`, lease timeout/probe tests and every `recoverJournal` branch (`RecoverJournalTest`) added; AppLifecycle deadline splitting is still only covered on devices | M |
+| H-22 | M | Backlog | Primitives shared; HELLO/CHALLENGE/AUTH state machine still hand-written in driver, client and fake | M |
+| H-23 | M | Backlog | `BlobReceiverTest`, lease timeout/probe tests and every `recoverJournal` branch (`RecoverJournalTest`) added; AppLifecycle deadline splitting is still only covered on devices | M |
 | H-3 | L | Fixed | One shared whitespace `Regex` in `Adb.kt` | S |
 | H-4 | L | Fixed | `isPortListening` tolerates a missing `tcp6` when the other table was read, and still fails on a failed read (`AdbTest`) | S |
-| H-9 | L | Partial | `lastWriteNanos` is set after a completed write and the ping budget is clamped, not truncated. Still one `async` per write: it is how a cancelled caller tells "not started" from "started" (`INDETERMINATE`); a channel writer needs the same handshake | S |
+| H-9 | L | Backlog | `lastWriteNanos` is set after a completed write and the ping budget is clamped, not truncated. Still one `async` per write: it is how a cancelled caller tells "not started" from "started" (`INDETERMINATE`); a channel writer needs the same handshake | S |
 | H-12 | L | Fixed | The real device port is journaled via `onStarting` (`DEVICE_PORT` is only the placeholder where none is known); the output drain spots the readiness marker line by line instead of rescans. The instrumentation child stays outside `Adb`: its serial lane admits one command at a time, and the attempt reaps its own child (`cleanupAttempt`) | S |
 | H-16 | L | Fixed | `grantPermission` verifies the grant through `dumpsys package`; the constructor is internal (only `DeviceSession.app` creates one). The `syncIdentity` part is Deferred with synchronization | S |
 | H-24 | L | Fixed | Selector values are JSON-escaped when rendered; an undecodable chunk is `BLOB_MALFORMED` | S |
@@ -153,7 +166,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | J-5 | L→bug | Fixed | `DeviceBarrier` uses a plain monitor; withdrawal can no longer be cancelled | S |
 | K-4 | M | Open | Proto types in the public API (`Device.info(): DeviceInfo`, `execute: CommandResult`); `App.ProcessIdentity` clashes with the proto name. Breaking — ask first | L |
 | K-9 | M | Open | `tapScope`/`ensureTapBound` mandatory; no `use {}`/`attach {}` helpers | M |
-| K-1 | M | Open | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
+| K-1 | M | Backlog | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
 | K-17 | M | Fixed | `App` unit test: targets, timeouts, activity, chunked APK upload, process identity and a refused grant (`TapClientTest`) | S |
 | K-11 | L | Fixed | The internal node combinators are private `conjunction`/`disjunction`; `allOf`/`anyOf` are only the public selector entry points | S |
 | K-13 | L | Partial | Device-side waits carry no last observation | S |
@@ -176,4 +189,4 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| B-3 | M | Open | bundleDriver, fixture-tests and validation deviceTest wire APKs by `dependsOn` + hardcoded path; no consumable configuration | M |
+| B-3 | M | Backlog | bundleDriver, fixture-tests and validation deviceTest wire APKs by `dependsOn` + hardcoded path; no consumable configuration | M |
