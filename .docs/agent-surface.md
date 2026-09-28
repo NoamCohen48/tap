@@ -1,7 +1,8 @@
-# Agent surface — `tap` CLI verbs and `tap-mcp` for coding agents
+# Agent surface — `tap-agent` CLI and MCP server for coding agents
 
 Date: 2026-09-28. Decision record, approved by the owner. It adds an agent-facing surface:
-CLI verbs in the `tap` binary and a Python MCP server over them, and makes the daemon changes that surface needs. The
+`tap-agent`, a Python CLI and MCP server built on the `tap-e2e` client library, and makes the
+daemon changes that surface needs. The
 upstream reference is callstack/agent-device (`upstream-reference-audit.md`, rows "Agent-facing
 surface" and "Ref-addressed elements").
 
@@ -73,55 +74,57 @@ device at a time) and ignore the per-serial lock.
    renders it as a Kotlin or Python test. This also starts the §19 event model the
    JUnit/HTML reports need.
 
-4. **Agent verbs in the `tap` binary** (CLI). They are clients of the daemon over the
-   `:contracts:api` stubs, like `start`/`status`/`stop` already are — they never use the SDKs
-   (`host/` never depends on `clients/`). Per `cli-parsing.md`, this second tier of commands
-   is when the CLI moves to **Clikt (`clikt-core`)**.
-
-5. **`tap-mcp`** (MCP, Python, stdio; owner's call: "use python for the mcp, it would be
-   simpler"). A small Python package, `clients/mcp` (`tap-mcp`), on the official `mcp` SDK
-   (FastMCP). Each tool runs the matching `tap` CLI verb and returns its output (screenshots as
-   image content read from the file the CLI wrote), so the CLI stays the single implementation
-   of selector parsing, rendering and diffs, and the two can never disagree. Sessions are the
-   CLI's held connections by name (default `default`), so an agent can mix the two and a
-   restarted MCP server finds its device again. It needs the `tap` binary on `PATH` (or
-   `TAP_BIN`), which the daemon needs anyway. It depends on neither gRPC nor `tap-e2e`.
-   A Kotlin MCP inside the daemon binary was rejected: the official Kotlin SDK (0.15.0) pulls
-   Ktor server, kotlin-logging, Kotlin stdlib 2.4 and coroutines/serialization 1.11 into the
-   native binary, and hand-writing the protocol is more code to own than a Python wrapper.
+4. **`tap-agent`: the CLI and the MCP server, in Python on `tap-e2e`** (owner's call: both
+   agent front ends use the Python library). One package, `clients/agent` (`tap-agent`), with
+   one core — sessions, targets, rendering, diffs, evidence — and two thin front ends over it:
+   `tap-agent <verb>` (argparse, stdlib) and `tap-agent mcp` (the official `mcp` SDK, stdio),
+   whose tools call the core in-process. The core is a client of the daemon through `tap-e2e`
+   only, which gains what the agent needs and any Python user can use: held connections
+   (`TapClient.connect(name, hold=…)`, `connections()`, `resume(name)`), devices already attached
+   to a resumed connection, and `Device.screen_snapshot()` / `resolve_ref()`.
+   A Kotlin CLI inside the native `tap` binary was considered first (one binary, ~ms startup)
+   and dropped: it could not use the Kotlin SDK (`host/` never depends on `clients/`), so it
+   would have re-implemented selectors, error mapping, streamed installs and capture on raw
+   stubs, and the MCP server would have had to shell out to it. The cost accepted: agent tools
+   need Python (`pipx`/`uvx`), and each CLI call pays Python start-up (a few hundred ms, small
+   next to a device action). A Kotlin MCP inside the daemon was also rejected: the official
+   Kotlin SDK (0.15.0) pulls Ktor server, kotlin-logging, Kotlin stdlib 2.4 and
+   coroutines/serialization 1.11 into the native binary.
 
 Deliberately not done: cheaper attach by keeping the driver instrumentation alive (a separate
-performance TODO), SDK APIs for held connections and snapshots (follow-up; the proto is
+performance TODO), Kotlin SDK APIs for held connections and snapshots (follow-up; the proto is
 there), recording evidence video, coordinate taps.
 
 ## CLI shape
 
 ```
-tap attach <serial> <package> [--session S] [--idle 15m] [--launch|--cold] [--wait-for-device D]
-tap sessions                              held connections and their devices
-tap release [--session S]                 Disconnect: detach everything, end the session
-tap devices                               ListDevices
+tap-agent attach <serial> <package> [--session S] [--idle 15m] [--launch|--cold] [--wait-for-device D]
+tap-agent sessions                              held connections and their devices
+tap-agent release [--session S]                 Disconnect: detach everything, end the session
+tap-agent devices                               ListDevices
 
 # device verbs take [--session S] [--device SERIAL] (needed only with several devices)
-tap snapshot [-i | --all] [--json]        compact outline; refs @eN
-tap tap <target> [--long] [--settle]
-tap fill <target> <text> [--settle]       SetText
-tap type <text> [--settle]                TypeText into the focused node
-tap clear <target>
-tap scroll <target> <up|down|left|right> [--settle]
-tap swipe <up|down|left|right> [--settle]
-tap key <back|home|enter|...> [--settle]
-tap wait <target> [--gone|--one] [--timeout 10s]
-tap settle                                WaitScreenStable, then the snapshot diff
-tap screenshot [-o FILE]                  prints the path
-tap capture [-o DIR]                      screenshot, hierarchy, device info, driver log
-tap app <launch|cold-launch|stop|clear|install APK|grant PERM>
-tap export --kotlin|--python [-o FILE]
+tap-agent snapshot [-i | --all]                compact outline; refs @eN
+tap-agent tap <target> [--long] [--settle]
+tap-agent fill <target> <text> [--settle]       SetText
+tap-agent type <text> [--settle]                TypeText into the focused node
+tap-agent clear <target>
+tap-agent scroll <target> <up|down|left|right> [--settle]
+tap-agent swipe <target> <up|down|left|right> [--settle]
+tap-agent key <back|home|enter|...> [--settle]
+tap-agent wait <target> [--gone|--one] [--timeout 10s]
+tap-agent settle                                WaitScreenStable, then the snapshot diff
+tap-agent screenshot [-o FILE]                  prints the path
+tap-agent capture [-o DIR]                      screenshot, hierarchy, device info, driver log
+tap-agent app <launch|cold-launch|stop|clear|install APK|grant PERM>
+tap-agent export --kotlin|--python [-o FILE]
+tap-agent mcp                            the MCP server (stdio)
 ```
 
 `<target>` is a ref (`@e7`) or a selector: `id=login`, `text=Log in`, `desc=Close`,
 `class=android.widget.Button`, several joined with commas meaning "all of". Outputs are short
-text on stdout; `--json` gives the structured form; files (screenshots, captures) are written
+text on stdout, errors on stderr; exit 0 ok, 1 the operation failed, 2 usage, 3 no daemon
+(`tap start`). Files (screenshots, captures) are written
 under `.tap/agent/` in the working directory by default and their paths printed.
 
 Snapshot line format:
@@ -137,22 +140,21 @@ Snapshot line format:
 
 Status: 1–2 done.
 
-
 1. Contract: this record, proto for phases 2–3 (the event-log proto comes with phase 6), docs.
 2. Held connections: daemon core + `ClientConnectionService` + unit tests.
 3. Snapshots: parser, selector synthesis, ref alignment, `ScreenSnapshot`/`ResolveRef` + unit tests.
-4. CLI on Clikt: existing verbs migrated unchanged, agent verbs, `SKILL.md`; device run on the
-   local matrix (fixture app), native-image smoke.
-5. `tap-mcp` (Python): tools over the CLI; unit tests with a fake `tap`; smoke with a real MCP client.
-6. Event log + `tap export`; the exported Python/Kotlin tests run against the fixture app.
+4. `tap-e2e`: held connections, resume, screen snapshots, resolve ref; unit tests on the fake server.
+5. `tap-agent` core + CLI + `SKILL.md`; device run on the local matrix (fixture app).
+6. `tap-agent mcp` over the same core; unit tests; smoke with a real MCP client.
+7. Event log + `tap-agent export`; the exported Python/Kotlin tests run against the fixture app.
 
 ## Verification
 
 - Unit: daemon core (idle expiry, renewal, name uniqueness, observe rejection, grace-reaper
   skip), snapshot (parser on recorded dumps from both devices, synthesis uniqueness, ref
-  alignment), `tap-mcp` (tool schemas, argument mapping, error results, against a fake `tap`), CLI parsing.
+  alignment), `tap-agent` (target parsing, rendering, diff, CLI argument mapping, MCP tool schemas and error results, against the fake server).
 - Device (emulator-5554 + 85e49002, never rebooted): an agent-style CLI session on the fixture
   app — attach, snapshot, tap by ref, fill, settle diff, wait, capture, release — and an
   MCP session doing the same; every ref action checked against the driver's exact-one answer.
-- Native image: `tap` built with `nativeCompile`, the same CLI session on the native binary;
-  re-record reachability metadata if the XML parser or Clikt needs it.
+- Native image: the daemon built with `nativeCompile` serves the same session; re-record
+  reachability metadata if the XML parser needs it.
