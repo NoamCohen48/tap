@@ -175,9 +175,11 @@ class DeviceSessionTest {
                     ),
                 )
             val processStarted = CompletableDeferred<FakeProcess>()
+            // Stdout stays open until the child is destroyed: with an empty one the attempt could
+            // see the output end and fail on its own before the cancel below (seen on CI).
             val starter =
                 ProcessStarter { _ ->
-                    FakeProcess(stdout = "", exitDelayMs = FakeProcess.NEVER)
+                    FakeProcess(exitDelayMs = FakeProcess.NEVER, blockingStdout = true, stdoutEndsOnDestroy = true)
                         .also { processStarted.complete(it) }
                 }
             val starting =

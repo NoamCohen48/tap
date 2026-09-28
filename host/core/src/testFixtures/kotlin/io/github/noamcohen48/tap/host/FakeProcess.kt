@@ -22,6 +22,8 @@ class FakeProcess(
     exitDelayMs: Long = 0,
     private val survivesDestroy: Boolean = false,
     blockingStdout: Boolean = false,
+    /** With [blockingStdout]: stdout ends when the process is destroyed, as a real child's does. */
+    private val stdoutEndsOnDestroy: Boolean = false,
     private val timedWaitAlwaysFalse: Boolean = false,
     /**
      * When true with [timedWaitAlwaysFalse], the timed wait actually consumes the supplied
@@ -94,6 +96,11 @@ class FakeProcess(
 
     fun releaseStdout() = stdoutRelease.countDown()
 
+    private fun endOnDestroy() {
+        exited.countDown()
+        if (stdoutEndsOnDestroy) stdoutRelease.countDown()
+    }
+
     fun forceExit() = exited.countDown()
 
     override fun getInputStream(): InputStream = input
@@ -131,12 +138,12 @@ class FakeProcess(
 
     override fun destroy() {
         destroyed.set(true)
-        if (!survivesDestroy) exited.countDown()
+        if (!survivesDestroy) endOnDestroy()
     }
 
     override fun destroyForcibly(): Process {
         destroyedForcibly.set(true)
-        if (!survivesDestroy) exited.countDown()
+        if (!survivesDestroy) endOnDestroy()
         return this
     }
 
