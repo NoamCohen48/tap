@@ -52,14 +52,17 @@ class CommandPipeline(
 
     private val lock = ReentrantLock()
     private val queueChanged = lock.newCondition()
-    private val queue = ArrayDeque<Command>()
-    private var running: Command? = null
+    private val queue = ArrayDeque<PendingCommand>()
+    private var running: PendingCommand? = null
     private var accepting = true
     private var poisoned = false
     private var poisonReason: String? = null
     @Volatile private var lastInboundMs = clock.nowMs()
 
     private val outbound = LinkedBlockingQueue<OutboundItem>()
+
+    /** PING answers, a priority lane: the writer drains it between blob chunks too (E-4). */
+    private val pendingPongs = LinkedBlockingQueue<Long>()
     private val executorDone = CountDownLatch(1)
     private val writerDone = CountDownLatch(1)
     @Volatile private var writeFailed = false
@@ -95,7 +98,7 @@ class CommandPipeline(
      */
     fun submit(requestId: Long, timeoutMs: Long, work: (CommandContext) -> Response): Admission {
         require(timeoutMs >= 0) { "timeoutMs must not be negative" }
-        val command = Command(requestId, timeoutMs, clock.nowMs(), work)
+        val command = PendingCommand(requestId, timeoutMs, clock.nowMs(), work)
         val admission = lock.withLock {
             when {
                 !accepting -> Admission.CLOSED
@@ -115,7 +118,7 @@ class CommandPipeline(
             )
             Admission.OVERLOADED -> terminate(
                 command,
-                error(ErrorCode.ERR_OVERLOADED, null, "Command queue holds $queueCapacity requests"),
+                error(ErrorCode.ERR_OVERLOADED, null, "PendingCommand queue holds $queueCapacity requests"),
             )
             Admission.QUEUED, Admission.CLOSED -> Unit
         }
@@ -133,12 +136,11 @@ class CommandPipeline(
             val queued = queue.firstOrNull { it.requestId == requestId }
             if (queued != null) {
                 queue.remove(queued)
-                queued.phase = CommandPhase.TERMINAL
                 queued
             } else {
                 val current = running
                 if (current != null && current.requestId == requestId && !current.mutationStarted) {
-                    current.cancelRequested = true
+                    current.requestCancel()
                 }
                 null
             }
@@ -154,7 +156,6 @@ class CommandPipeline(
         val discarded = lock.withLock {
             val queued = queue.toList()
             queue.clear()
-            queued.forEach { it.phase = CommandPhase.TERMINAL }
             queued
         }
         discarded.forEach { terminate(it, error(ErrorCode.ERR_CANCELLED, ErrorDetail.TRANSPORT_CLOSED)) }
@@ -182,9 +183,13 @@ class CommandPipeline(
         return handled.await(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
-    /** Answers a `PING` on the writer lane without touching the executor. */
+    /**
+     * Answers a `PING` on the writer lane without touching the executor. A `PONG` never waits
+     * behind a whole blob: the writer also sends pending ones between chunks.
+     */
     fun pong(requestId: Long) {
-        outbound.put(OutboundItem.Message(Outbound.Pong(requestId)))
+        pendingPongs.put(requestId)
+        outbound.put(OutboundItem.PongsPending)
     }
 
     /** Queues a blob for the writer lane; called by [CommandContext.transferBlob] on the executor. */
@@ -205,15 +210,16 @@ class CommandPipeline(
     }
 
     /**
-     * Waits for the executor to drain and the writer to flush. Returns false if the executor
-     * is still busy after [timeoutMs]; the caller then decides whether the process must die.
+     * Waits for the executor to drain and the writer to flush, both within [timeoutMs]. Returns
+     * false if either is still busy (a writer blocked on a stalled transport included); the
+     * caller then closes the transport and decides whether the process must die.
      */
     fun awaitTermination(timeoutMs: Long): Boolean {
         shutdown()
+        val deadline = clock.nowMs() + timeoutMs
         if (!executorDone.await(timeoutMs, TimeUnit.MILLISECONDS)) return false
         outbound.put(OutboundItem.Stop)
-        writerDone.await()
-        return true
+        return writerDone.await((deadline - clock.nowMs()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
     }
 
     /** Runs one watchdog check. Exposed so tests can drive it with a manual clock. */
@@ -243,14 +249,13 @@ class CommandPipeline(
      * later mutation attempts are refused at the gate.
      */
     fun poison(reason: String, detail: String = ErrorDetail.WATCHDOG) {
-        val doomed = mutableListOf<Pair<Command, Response>>()
+        val doomed = mutableListOf<Pair<PendingCommand, Response>>()
         val firstPoison = lock.withLock {
             if (poisoned) return@withLock false
             poisoned = true
             poisonReason = reason
             while (queue.isNotEmpty()) {
                 val queued = queue.removeFirst()
-                queued.phase = CommandPhase.TERMINAL
                 doomed += queued to error(ErrorCode.ERR_DRIVER_UNHEALTHY, detail, reason)
             }
             running?.let { current ->
@@ -266,10 +271,10 @@ class CommandPipeline(
     }
 
     fun snapshot(): Snapshot = lock.withLock {
-        Snapshot(queue.map(Command::requestId), running?.requestId, poisoned, accepting)
+        Snapshot(queue.map(PendingCommand::requestId), running?.requestId, poisoned, accepting)
     }
 
-    private fun mutationGate(command: Command) {
+    private fun mutationGate(command: PendingCommand) {
         lock.withLock {
             // Once open the gate stays open: a later call must never report a non-mutating
             // CANCELLED/DEADLINE_EXCEEDED for a command that already touched the device.
@@ -288,18 +293,12 @@ class CommandPipeline(
                 val command = lock.withLock {
                     while (queue.isEmpty() && accepting && !poisoned) queueChanged.await()
                     if (queue.isEmpty() || poisoned) return
-                    queue.removeFirst().also {
-                        it.phase = CommandPhase.RUNNING
-                        running = it
-                    }
+                    queue.removeFirst().also { running = it }
                 }
                 try {
                     execute(command)
                 } finally {
-                    lock.withLock {
-                        running = null
-                        command.phase = CommandPhase.TERMINAL
-                    }
+                    lock.withLock { running = null }
                 }
             }
         } catch (_: InterruptedException) {
@@ -309,7 +308,7 @@ class CommandPipeline(
         }
     }
 
-    private fun execute(command: Command) {
+    private fun execute(command: PendingCommand) {
         val response = when {
             command.cancelRequested -> error(ErrorCode.ERR_CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE)
             clock.nowMs() >= command.deadlineMs -> error(ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorDetail.EXPIRED_IN_QUEUE)
@@ -330,7 +329,7 @@ class CommandPipeline(
      * rewritten to `INDETERMINATE`; the original code travels in the message, and its detail is
      * kept (or the original code name when there was none) so callers can still see why it ended.
      */
-    private fun afterGate(command: Command, response: Response): Response {
+    private fun afterGate(command: PendingCommand, response: Response): Response {
         val error = response.errorOrNull
         if (!command.mutationStarted || error == null || error.code.mayHaveMutated) return response
         val detail = error.takeIf { it.hasDetail() }?.detail
@@ -348,7 +347,7 @@ class CommandPipeline(
         code: ErrorCode,
         detail: String?,
         message: String? = null,
-        command: Command? = null,
+        command: PendingCommand? = null,
     ): Response = Responses.failure(
         code,
         detail = detail,
@@ -356,7 +355,7 @@ class CommandPipeline(
         durationMs = command?.let { clock.nowMs() - it.acceptedAtMs } ?: 0,
     )
 
-    private fun terminate(command: Command, response: Response) {
+    private fun terminate(command: PendingCommand, response: Response) {
         if (command.complete(response)) {
             outbound.put(OutboundItem.Message(Outbound.TerminalResponse(command.requestId, response)))
         }
@@ -368,6 +367,7 @@ class CommandPipeline(
                 when (val item = outbound.take()) {
                     OutboundItem.Stop -> return
                     is OutboundItem.Message -> if (!writeFailed) write(item.message)
+                    OutboundItem.PongsPending -> writePendingPongs()
                     is OutboundItem.Blob -> item.blob.finish(streamBlob(item.blob))
                     is OutboundItem.Close -> try {
                         write(item.message)
@@ -408,7 +408,18 @@ class CommandPipeline(
         }
     }
 
-    /** Streams one blob, stopping at a chunk boundary on cancel, deadline, or write failure. */
+    /** Writes every queued `PONG`; one already sent between blob chunks is not sent again. */
+    private fun writePendingPongs(): Boolean {
+        while (true) {
+            val requestId = pendingPongs.poll() ?: return true
+            if (!write(Outbound.Pong(requestId))) return false
+        }
+    }
+
+    /**
+     * Streams one blob, stopping at a chunk boundary on cancel, deadline, or write failure.
+     * Pending `PONG`s go out between chunks so a large transfer cannot starve the heartbeat.
+     */
     private fun streamBlob(blob: BlobTransfer): BlobTransfer.Outcome {
         val command = blob.command
         val requestId = command.requestId
@@ -416,6 +427,7 @@ class CommandPipeline(
         for (index in 0 until blob.chunkCount) {
             if (command.cancelRequested) return BlobTransfer.Outcome.CANCELLED
             if (clock.nowMs() >= command.deadlineMs) return BlobTransfer.Outcome.DEADLINE_EXCEEDED
+            if (!writePendingPongs()) return BlobTransfer.Outcome.WRITE_FAILED
             if (!write(Outbound.BlobChunkFrame(requestId, blob.chunkPayload(index)))) {
                 return BlobTransfer.Outcome.WRITE_FAILED
             }
@@ -428,6 +440,7 @@ class CommandPipeline(
         data class Message(val message: Outbound) : OutboundItem
         class Blob(val blob: BlobTransfer) : OutboundItem
         class Close(val message: Outbound.Close, val handled: CountDownLatch) : OutboundItem
+        data object PongsPending : OutboundItem
         data object Stop : OutboundItem
     }
 

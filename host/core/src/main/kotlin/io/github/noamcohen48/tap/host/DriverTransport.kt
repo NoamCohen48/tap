@@ -55,6 +55,7 @@ internal class DriverTransport(
 
     @Volatile private var closed = false
 
+    /** When the last frame finished writing; the heartbeat pings only after an idle interval. */
     @Volatile var lastWriteNanos: Long = System.nanoTime()
         private set
 
@@ -164,6 +165,7 @@ internal class DriverTransport(
     ): Long =
         pingMutex.withLock {
             val started = System.nanoTime()
+            val pingBudgetMs = timeoutMs.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
             while (pongs.tryReceive().isSuccess) Unit
             mutex.withLock {
                 admission()
@@ -179,13 +181,13 @@ internal class DriverTransport(
                     )
                 }
                 try {
-                    writeFrame(Frame(FrameType.PING, 0, byteArrayOf()), remainingTimeoutMs(timeoutMs.toInt()))
+                    writeFrame(Frame(FrameType.PING, 0, byteArrayOf()), remainingTimeoutMs(pingBudgetMs))
                 } catch (error: Throwable) {
                     poison(error)
                     throw error
                 }
             }
-            val pong = withTimeoutOrNull(remainingTimeoutMs(timeoutMs.toInt()).toLong()) { pongs.receive() }
+            val pong = withTimeoutOrNull(remainingTimeoutMs(pingBudgetMs).toLong()) { pongs.receive() }
             if (pong == null) {
                 val timeout = SocketTimeoutException("No PONG within $timeoutMs ms")
                 poison(timeout)
@@ -303,7 +305,6 @@ internal class DriverTransport(
         timeoutMs: Int,
         markStarted: () -> Unit = {},
     ) {
-        lastWriteNanos = System.nanoTime()
         val started = AtomicBoolean(false)
         val writer =
             scope.async(Dispatchers.IO) {
@@ -326,6 +327,7 @@ internal class DriverTransport(
                 unblockAndReap(writer)
                 throw SocketTimeoutException("Socket write exceeded $timeoutMs ms")
             }
+            lastWriteNanos = System.nanoTime()
         } catch (cancelled: CancellationException) {
             if (!started.get()) {
                 writer.cancel()

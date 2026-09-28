@@ -41,6 +41,7 @@ class CommandPipelineTest {
     private val writeFailures = LinkedBlockingQueue<Throwable>()
     private val failWrites = AtomicBoolean(false)
     private val cancelOnFirstChunk = AtomicBoolean(false)
+    private val pingOnFirstChunk = AtomicBoolean(false)
     private val listener = object : PipelineListener {
         override fun onPoisoned(reason: String) { poisonReasons.put(reason) }
         override fun onWriteFailed(error: Throwable) { writeFailures.put(error) }
@@ -53,6 +54,7 @@ class CommandPipelineTest {
             if (message is Outbound.BlobChunkFrame && cancelOnFirstChunk.compareAndSet(true, false)) {
                 pipeline.cancel(message.requestId)
             }
+            if (message is Outbound.BlobChunkFrame && pingOnFirstChunk.compareAndSet(true, false)) pipeline.pong(77)
         },
         listener = listener,
         queueCapacity = 2,
@@ -459,6 +461,48 @@ class CommandPipelineTest {
         next<Outbound.BlobChunkFrame>()
         assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
         assertTrue(written.isEmpty())
+    }
+
+    @Test
+    fun aPongIsNotQueuedBehindTheRestOfABlob() {
+        val bytes = ByteArray(MAX_BLOB_CHUNK_BYTES * 4)
+        pingOnFirstChunk.set(true)
+        pipeline.submit(1, 5_000) { ctx ->
+            assertEquals(BlobTransfer.Outcome.COMPLETED, ctx.transferBlob("image/png", bytes).outcome)
+            Responses.done()
+        }
+        next<Outbound.BlobStartFrame>()
+        next<Outbound.BlobChunkFrame>()
+        // The PING arrived while chunk 0 was written: it is answered before chunk 1, exactly once.
+        assertEquals(77L, next<Outbound.Pong>().requestId)
+        repeat(3) { next<Outbound.BlobChunkFrame>() }
+        next<Outbound.BlobEndFrame>()
+        assertEquals(1L, nextResponse().requestId)
+        assertTrue(written.isEmpty())
+    }
+
+    @Test
+    fun sleepFollowsTheInjectedClockAndEndsOnCancel() {
+        val sleeping = CountDownLatch(1)
+        pipeline.submit(1, 60_000) { ctx ->
+            sleeping.countDown()
+            ctx.sleep(30_000)
+            Responses.done()
+        }
+        assertTrue(sleeping.await(1, TimeUnit.SECONDS))
+        now.addAndGet(30_000)
+        assertTrue(nextResponse().response.ok, "a manual clock advance ends the sleep")
+
+        val started = System.nanoTime()
+        pipeline.submit(2, 60_000) { ctx ->
+            ctx.sleep(30_000)
+            ctx.checkCancelled()
+            fail("slept through a cancel")
+        }
+        while (pipeline.snapshot().running != 2L) Thread.sleep(1)
+        pipeline.cancel(2)
+        assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
+        assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(5))
     }
 
     @Test

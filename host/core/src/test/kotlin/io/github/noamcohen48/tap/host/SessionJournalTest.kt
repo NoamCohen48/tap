@@ -1,9 +1,13 @@
 package io.github.noamcohen48.tap.host
 
 import java.nio.file.Files
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 class SessionJournalTest {
     @Test
@@ -79,6 +83,34 @@ class SessionJournalTest {
         assertFailsWith<IllegalArgumentException> {
             store.write(resetRecord().copy(resetStartedBootId = "other-boot"))
         }
+    }
+
+    @Test
+    fun leaseIsExclusiveAndTheProbeDoesNotTakeIt() = runBlocking {
+        val root = Files.createTempDirectory("tap-lease-test")
+        val store = SessionJournalStore(root, "serial")
+        assertFalse(store.isLeased())
+
+        val lease = store.acquireLease()
+        assertTrue(store.isLeased())
+        // The probe only reads the holder record: probing never makes an acquirer fail.
+        val other = SessionJournalStore(root, "serial")
+        assertTrue(other.isLeased())
+        val busy = assertFailsWith<DeviceBusyException> { other.acquireLease(timeoutMs = 300) }
+        assertEquals(300, busy.waitedMs)
+
+        lease.close()
+        assertFalse(store.isLeased())
+        other.acquireLease().close()
+    }
+
+    @Test
+    fun aHolderThatDiedReadsAsFree() {
+        val root = Files.createTempDirectory("tap-lease-dead-holder-test")
+        val store = SessionJournalStore(root, "serial")
+        val dead = ProcessBuilder("true").start().apply { waitFor() }.pid()
+        Files.writeString(root.resolve(Base64.getUrlEncoder().withoutPadding().encodeToString("serial".encodeToByteArray()) + ".lock"), "$dead")
+        assertFalse(store.isLeased())
     }
 
     private fun resetRecord() = record(generation = 3).copy(

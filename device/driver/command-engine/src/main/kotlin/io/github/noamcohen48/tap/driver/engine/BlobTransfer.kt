@@ -14,7 +14,7 @@ import java.util.concurrent.CountDownLatch
  * so a `CANCEL` stops an active blob at the next chunk boundary (plan §"Blob transfer").
  */
 class BlobTransfer internal constructor(
-    internal val command: Command,
+    internal val command: PendingCommand,
     val mediaType: String,
     private val bytes: ByteArray,
 ) {

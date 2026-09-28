@@ -143,6 +143,12 @@ class TapDriverServer(
         require(hello.sessionId == config.sessionId && hello.sessionGeneration == config.generation)
         require(ProtocolNegotiation.isValidHello(hello))
         if (ProtocolNegotiation.selectVersion(hello.supportedVersionsList, SUPPORTED_PROTOCOL_VERSIONS) == null) {
+            // Say why instead of a bare EOF: the host reports it as a version mismatch.
+            val unsupported = AuthenticationResult.newBuilder()
+                .setOk(false)
+                .setError(ErrorCode.ERR_UNSUPPORTED.label)
+                .build()
+            FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, unsupported.toByteArray()))
             return false
         }
 

@@ -23,6 +23,7 @@ import io.github.noamcohen48.tap.wire.v1.BlobStart
 import io.github.noamcohen48.tap.wire.v1.Challenge
 import io.github.noamcohen48.tap.wire.v1.Hello
 import io.github.noamcohen48.tap.wire.v1.Negotiation
+import io.github.noamcohen48.tap.wire.v1.ProtocolVersion
 import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.wire.v1.Response
 import java.io.EOFException
@@ -49,6 +50,8 @@ class FakeDriverServer(
      * host rejects a driver of another build. */
     private val driverApkBuildId: String = DRIVER_APK_BUILD_ID,
     private val driverTestApkBuildId: String = DRIVER_TEST_APK_BUILD_ID,
+    /** Protocol versions the fake driver speaks; with none in common it refuses the HELLO. */
+    private val supportedVersions: List<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS,
 ) : AutoCloseable {
     /** The session secret the handshake HMACs with; tests update it when the code under test
      * generates the secret itself (it travels in the instrumentation command). */
@@ -189,6 +192,12 @@ class FakeDriverServer(
         // Session-open tests generate the id inside the code under test; echo it back so the
         // client's challenge check (sessionId/sessionGeneration equality) can succeed. Fixed-id
         // tests keep the constructor values, preserving the fencing check they exercise.
+        if (ProtocolNegotiation.selectVersion(hello.supportedVersionsList, supportedVersions) == null) {
+            val unsupported = AuthenticationResult.newBuilder().setOk(false).setError("UNSUPPORTED").build()
+            FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, unsupported.toByteArray()))
+            socket.close()
+            return
+        }
         val challengeSessionId = if (acceptAnySession) hello.sessionId else sessionId
         val challengeGeneration = if (acceptAnySession) hello.sessionGeneration else generation
         val challenge =
@@ -204,7 +213,7 @@ class FakeDriverServer(
                 .setSessionGeneration(challengeGeneration)
                 .setSessionId(challengeSessionId)
                 .addAllSupportedOperations(Operations.ALL)
-                .addAllSupportedVersions(SUPPORTED_PROTOCOL_VERSIONS)
+                .addAllSupportedVersions(supportedVersions)
                 .setUiAutomatorBuildId(UIAUTOMATOR_BUILD_ID)
                 .build()
         val challengePayload = challenge.toByteArray()

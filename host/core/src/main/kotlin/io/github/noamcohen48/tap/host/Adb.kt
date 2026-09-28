@@ -439,9 +439,16 @@ open class Adb internal constructor(
         port: Int,
     ): Boolean {
         val expectedPort = port.toString(16).uppercase().padStart(4, '0')
-        return exec(serial, "shell", "cat", "/proc/net/tcp", "/proc/net/tcp6")
-            .lineSequence()
-            .map { it.trim().split(Regex("\\s+")) }
+        val command = listOf("shell", "cat", "/proc/net/tcp", "/proc/net/tcp6")
+        val result = execResult(serial, *command.toTypedArray())
+        val tables = result.output.lineSequence().map(String::trim)
+        // A kernel without IPv6 has no tcp6: `cat` still prints tcp and exits non-zero. Only
+        // output with no socket table at all is a failure.
+        if (result.exitCode != 0 && tables.none { it.startsWith("sl ") }) {
+            throw AdbCommandException(serial, command, result.exitCode, result.output)
+        }
+        return tables
+            .map { it.split(WHITESPACE) }
             .any { fields -> fields.size > 3 && fields[1].endsWith(":$expectedPort") && fields[3] == "0A" }
     }
 
@@ -478,7 +485,7 @@ open class Adb internal constructor(
             result.output
                 .substring(closingName + 1)
                 .trim()
-                .split(Regex("\\s+"))
+                .split(WHITESPACE)
         if (fieldsFromState.size <= 19) throw malformed("Incomplete")
         return ProcessStat.Live(fieldsFromState[19]) // starttime: clock ticks since boot
     }
@@ -543,6 +550,16 @@ open class Adb internal constructor(
         exec(serial, "shell", "pm", "grant", shellQuote(packageName), shellQuote(permission))
     }
 
+    /** Whether `dumpsys package` lists [permission] as `granted=true` for [packageName]. */
+    open suspend fun isPermissionGranted(
+        serial: String,
+        packageName: String,
+        permission: String,
+    ): Boolean =
+        exec(serial, "shell", "dumpsys", "package", shellQuote(packageName))
+            .lineSequence()
+            .any { it.trim().startsWith("$permission: granted=true") }
+
     /** `am force-stop`; proves nothing by itself — callers poll [processIds]. */
     open suspend fun forceStop(
         serial: String,
@@ -600,7 +617,7 @@ open class Adb internal constructor(
             .lineSequence()
             .filter(String::isNotBlank)
             .mapNotNull { line ->
-                val fields = line.trim().split(Regex("\\s+"))
+                val fields = line.trim().split(WHITESPACE)
                 if (fields.size != 3 || fields[0] != serial) return@mapNotNull null
                 val hostPort = fields[1].removePrefix("tcp:").toIntOrNull() ?: return@mapNotNull null
                 val devicePort = fields[2].removePrefix("tcp:").toIntOrNull() ?: return@mapNotNull null
@@ -625,7 +642,7 @@ open class Adb internal constructor(
             }
             return emptyList()
         }
-        val tokens = result.output.split(Regex("\\s+")).filter(String::isNotBlank)
+        val tokens = result.output.split(WHITESPACE).filter(String::isNotBlank)
         if (tokens.isEmpty()) throw AdbCommandException(serial, command, null, result.output, "pidof succeeded without reporting a PID on $serial")
         return tokens.map { token ->
             token.toIntOrNull()
@@ -722,7 +739,7 @@ internal fun parseAdbDevices(text: String): List<AdbDevice> =
         .map(String::trim)
         .filter { it.isNotEmpty() && !it.startsWith("*") && !it.startsWith("List of devices") }
         .mapNotNull { line ->
-            val fields = line.split(Regex("\\s+"), limit = 2)
+            val fields = line.split(WHITESPACE, limit = 2)
             if (fields.size < 2) return@mapNotNull null
             val raw = fields[1].trim()
             val state =
@@ -776,6 +793,8 @@ internal fun parseDumpsysPackage(
     val code = requireNotNull(versionCode) { "dumpsys package $packageName listed the package without a versionCode" }
     return InstalledPackage(packageName, versionName, code)
 }
+
+private val WHITESPACE = Regex("\\s+")
 
 private val DUMPSYS_VERSION_CODE = Regex("""^versionCode=(\d+)""")
 

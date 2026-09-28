@@ -85,8 +85,11 @@ not parse is `INVALID_REQUEST` (below).
 
 The host sends `HELLO` with `host_build_id`, a 32-byte `host_nonce`, `session_generation`,
 `session_id`, and ascending `supported_versions`. The driver validates the
-instrumentation-provided identity and nonce, rejects a connection with no common application
-version, and returns `CHALLENGE` containing:
+instrumentation-provided identity and nonce, and returns `CHALLENGE` containing the items
+below. With no common application version it instead answers
+`AUTH_RESULT{ok=false, error="UNSUPPORTED"}` and closes, so the host can say why.
+
+`CHALLENGE` contains:
 
 - Android API level;
 - sorted capability names;
@@ -320,7 +323,8 @@ socket reader -> bounded queue (16) -> single command executor -> writer -> sock
 - A full queue returns `OVERLOADED` immediately; the request ID is still consumed.
 - Every accepted request gets exactly one terminal `RESPONSE`, in whichever order commands
   terminate. Hosts must demultiplex by request ID.
-- `PONG` is produced on the writer lane and does not wait for the executor.
+- `PONG` is produced on the writer lane and does not wait for the executor; the writer also
+  sends pending `PONG`s between blob chunks, so a ping is answered during a long artifact.
 
 ### Cancellation
 
@@ -383,7 +387,7 @@ Chunks are contiguous from index 0. Artifacts larger than 64 MiB are refused bef
 Cancel and deadline are checked at chunk boundaries: an aborted transfer ends with
 `CANCELLED` or `DEADLINE_EXCEEDED` and no `BLOB_END`, never a partial artifact. The host
 verifies order, length, and SHA-256 and reports `ARTIFACT_TRANSFER_FAILED` with
-`BLOB_UNEXPECTED`, `BLOB_OUT_OF_ORDER`, `BLOB_LENGTH_MISMATCH`, `BLOB_CHECKSUM_MISMATCH`, or
+`BLOB_UNEXPECTED`, `BLOB_MALFORMED` (an undecodable chunk), `BLOB_OUT_OF_ORDER`, `BLOB_LENGTH_MISMATCH`, `BLOB_CHECKSUM_MISMATCH`, or
 `BLOB_INCOMPLETE`; a driver failure response after a partial blob is returned unchanged. The
 session stays usable after a rejected artifact.
 
@@ -437,7 +441,7 @@ policy; Tap itself never retries.
 | `DRIVER_UNHEALTHY` | no | no | Session poisoned by the watchdog (`WATCHDOG`, `HEARTBEAT_EXPIRED`); rebuild the session. |
 | `TRANSPORT_LOST` | no | no | Host-side: no response and no mutation risk. |
 | `INDETERMINATE` | yes | no | Mutation may have happened without a definitive result. `WATCHDOG`, `KEY_RELEASE_FAILED`; after the gate, the rewritten code's detail or name. |
-| `ARTIFACT_TRANSFER_FAILED` | yes | no | Blob capture or transfer failed. Driver: `CAPTURE_FAILED`, `ARTIFACT_TOO_LARGE`, `BLOB_INCOMPLETE`. Host verification: `BLOB_UNEXPECTED`, `BLOB_OUT_OF_ORDER`, `BLOB_LENGTH_MISMATCH`, `BLOB_CHECKSUM_MISMATCH`, `BLOB_INCOMPLETE`. |
+| `ARTIFACT_TRANSFER_FAILED` | yes | no | Blob capture or transfer failed. Driver: `CAPTURE_FAILED`, `ARTIFACT_TOO_LARGE`, `BLOB_INCOMPLETE`. Host verification: `BLOB_UNEXPECTED`, `BLOB_MALFORMED`, `BLOB_OUT_OF_ORDER`, `BLOB_LENGTH_MISMATCH`, `BLOB_CHECKSUM_MISMATCH`, `BLOB_INCOMPLETE`. |
 | `PAYLOAD_TOO_LARGE` | yes | no | The command ran but its response exceeded the control payload limit. |
 | `INTERNAL` | yes | no | Unexpected driver failure. |
 

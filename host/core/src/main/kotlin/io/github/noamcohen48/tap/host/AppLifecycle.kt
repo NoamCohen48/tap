@@ -38,7 +38,7 @@ class HostWaitTimeoutException(
  * command worked. This is the single implementation behind the daemon's `AppServer`;
  * clients never run ADB themselves.
  */
-class AppLifecycle(
+class AppLifecycle internal constructor(
     val session: DeviceSession,
     val packageName: String,
     private val pollIntervalMs: Long = 100,
@@ -83,8 +83,12 @@ class AppLifecycle(
         syncIdentity = null
     }
 
+    /** `pm grant`, then proof from `dumpsys package` that the permission reads as granted. */
     suspend fun grantPermission(permission: String) {
         session.guardAdb { adb.grantPermission(serial, packageName, permission) }
+        if (!session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }) {
+            throw AppLifecycleException("$permission is not granted to $packageName on $serial after pm grant")
+        }
     }
 
     /**

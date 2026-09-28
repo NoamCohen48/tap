@@ -78,10 +78,12 @@ class SessionJournalStore(root: Path, private val serial: String) {
                 null // another thread of this JVM holds it
             }
             if (lock != null) {
+                recordHolder(channel, ProcessHandle.current().pid().toString())
                 var closed = false
                 return AutoCloseable {
                     if (!closed) {
                         closed = true
+                        runCatching { recordHolder(channel, "") }
                         lock.release()
                         channel.close()
                     }
@@ -94,12 +96,20 @@ class SessionJournalStore(root: Path, private val serial: String) {
         }
     }
 
-    /** Whether some process currently holds this serial's lock (probe: take and release). */
-    suspend fun isLeased(): Boolean = try {
-        acquireLease().close()
-        false
-    } catch (busy: DeviceBusyException) {
-        true
+    /**
+     * Advisory: whether a live process recorded itself as this serial's lock holder. It reads the
+     * holder PID the lock file carries instead of taking the lock, so it never makes a concurrent
+     * [acquireLease] fail; the answer can be stale by the time the caller acts on it. A holder that
+     * died without releasing left a PID that is no longer alive, which reads as free.
+     */
+    fun isLeased(): Boolean {
+        val pid = runCatching { Files.readString(lockPath).trim().toLongOrNull() }.getOrNull() ?: return false
+        return ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
+    }
+
+    private fun recordHolder(channel: FileChannel, holder: String) {
+        channel.truncate(0)
+        channel.write(java.nio.ByteBuffer.wrap(holder.encodeToByteArray()), 0)
     }
 
     /** The current record, null when there is none; unreadable or invalid content is a

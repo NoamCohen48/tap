@@ -13,6 +13,7 @@ import io.github.noamcohen48.tap.protocol.errorCode
 import io.github.noamcohen48.tap.protocol.label
 import io.github.noamcohen48.tap.protocol.ok
 import io.github.noamcohen48.tap.protocol.protocolVersion
+import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
 import io.github.noamcohen48.tap.wire.v1.Hello
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlinx.coroutines.delay
@@ -113,8 +114,16 @@ class FencingTest {
             socket.connect(InetSocketAddress("127.0.0.1", hostPort), 10_000)
             socket.soTimeout = 10_000
             FrameCodec.write(socket.getOutputStream(), Frame(FrameType.HELLO, 0, hello.toByteArray()))
-            val result = runCatching { FrameCodec.read(socket.getInputStream()) }
-            check(result.isFailure) { "Driver accepted an incompatible application protocol version" }
+            // The driver says why before it closes: AUTH_RESULT{ok=false, UNSUPPORTED}, then EOF.
+            val refusal = FrameCodec.read(socket.getInputStream())
+            check(refusal.type == FrameType.AUTH_RESULT) { "Driver answered an incompatible protocol version with ${refusal.type}" }
+            val result = AuthenticationResult.parseFrom(refusal.payload)
+            check(!result.ok && result.error == ErrorCode.ERR_UNSUPPORTED.label) {
+                "Driver accepted an incompatible application protocol version: $result"
+            }
+            check(runCatching { FrameCodec.read(socket.getInputStream()) }.isFailure) {
+                "Driver kept the connection open after refusing the protocol version"
+            }
         }
     }
 

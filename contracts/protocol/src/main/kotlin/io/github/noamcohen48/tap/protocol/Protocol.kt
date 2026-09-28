@@ -23,7 +23,7 @@ const val HOST_RESPONSE_PADDING_MS = DRIVER_UNINTERRUPTIBLE_GRACE_MS + 5_000L
 const val HOST_BUILD_ID = ENGINE_VERSION
 const val DRIVER_APK_BUILD_ID = ENGINE_VERSION
 const val DRIVER_TEST_APK_BUILD_ID = ENGINE_VERSION
-const val UIAUTOMATOR_BUILD_ID = "2.4.0"
+const val UIAUTOMATOR_BUILD_ID = UIAUTOMATOR_VERSION
 
 /**
  * 4.0: no `scroll_until`, `swipe`/`scroll` report `done`, any-package and any-window selector

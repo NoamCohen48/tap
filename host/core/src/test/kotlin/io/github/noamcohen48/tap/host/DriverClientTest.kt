@@ -17,6 +17,7 @@ import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.detail
 import io.github.noamcohen48.tap.protocol.errorCode
 import io.github.noamcohen48.tap.protocol.ok
+import io.github.noamcohen48.tap.wire.v1.ProtocolVersion
 import io.github.noamcohen48.tap.wire.v1.BlobStart
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlinx.coroutines.CancellationException
@@ -766,6 +767,30 @@ class DriverClientTest {
                 assertTrue((System.nanoTime() - started) / 1_000_000L < 5_000)
             } finally {
                 otherDriver.close()
+            }
+        }
+
+    @Test
+    fun aDriverWithNoCommonProtocolVersionSaysSo() =
+        runBlocking {
+            val future = ProtocolVersion.newBuilder().setMajor(99).setMinor(0).build()
+            val newer = FakeDriverServer("session-5", 7, secret, supportedVersions = listOf(future))
+            try {
+                val failure =
+                    assertFailsWith<DriverHandshakeException> {
+                        connectWithRetry(
+                            newer.port,
+                            "session-5",
+                            7,
+                            secret,
+                            overallDeadlineNanos = System.nanoTime() + 5_000_000_000L,
+                            heartbeatIntervalMs = 0,
+                        )
+                    }
+                assertTrue(failure.message.orEmpty().contains("UNSUPPORTED"), failure.message)
+                assertTrue(failure.message.orEmpty().contains("no common protocol version"), failure.message)
+            } finally {
+                newer.close()
             }
         }
 

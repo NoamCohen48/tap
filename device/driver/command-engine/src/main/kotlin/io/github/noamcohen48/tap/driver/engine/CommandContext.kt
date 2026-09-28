@@ -12,9 +12,9 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode
  * command; it must produce its own definitive result.
  */
 class CommandContext internal constructor(
-    private val command: Command,
+    private val command: PendingCommand,
     private val clock: Clock,
-    private val mutationGate: (Command) -> Unit,
+    private val mutationGate: (PendingCommand) -> Unit,
     private val transfer: (BlobTransfer) -> Unit,
 ) {
     val requestId: Long get() = command.requestId
@@ -63,23 +63,31 @@ class CommandContext internal constructor(
      * blocks until the writer is done. Must be called before [markMutationStarted] for pure
      * artifact commands so an aborted transfer can still report `CANCELLED`.
      */
-    fun transferBlob(mediaType: String, bytes: ByteArray): Pair<BlobTransfer, BlobTransfer.Outcome> {
+    fun transferBlob(mediaType: String, bytes: ByteArray): BlobResult {
         val blob = BlobTransfer(command, mediaType, bytes)
         transfer(blob)
-        return blob to blob.await()
+        return BlobResult(blob, blob.await())
     }
 
+    /** What [transferBlob] sent ([blob], for the response metadata) and how it ended. */
+    data class BlobResult(val blob: BlobTransfer, val outcome: BlobTransfer.Outcome)
+
     /**
-     * Bounded sleep that returns early when the command is cancelled. Returns normally on both
-     * timeout and cancellation; the caller decides via [checkpoint].
+     * Bounded sleep on the injected [Clock] that returns as soon as the command is cancelled
+     * (signalled, not polled). Returns normally on both timeout and cancellation; the caller
+     * decides via [checkpoint]. It re-reads the clock at least every [SLEEP_SLICE_MS], so a
+     * manual test clock advanced from another thread ends it too.
      */
     fun sleep(maxMs: Long) {
-        val budget = minOf(maxMs, remainingMs()).coerceAtLeast(0)
-        val untilNanos = System.nanoTime() + budget * 1_000_000L
+        val until = clock.nowMs() + minOf(maxMs, remainingMs()).coerceAtLeast(0)
         while (!command.cancelRequested) {
-            val remaining = (untilNanos - System.nanoTime()) / 1_000_000L
+            val remaining = until - clock.nowMs()
             if (remaining <= 0) return
-            Thread.sleep(minOf(10L, remaining))
+            command.awaitCancel(minOf(SLEEP_SLICE_MS, remaining))
         }
+    }
+
+    private companion object {
+        const val SLEEP_SLICE_MS = 50L
     }
 }

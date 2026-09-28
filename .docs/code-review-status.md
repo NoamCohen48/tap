@@ -6,11 +6,11 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 104 |
+| Fixed | 120 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 24 |
-| Open | 20 |
-| Deferred (synchronization is WIP, see below) | 6 |
+| Partial | 17 |
+| Open | 10 |
+| Deferred (synchronization is WIP, see below) | 7 |
 
 Fixed/obsolete items are not repeated below except where a remark matters. Obsolete: B-5,
 P-1, P-2, P-10, DR-11 (`scroll_until` left the driver in protocol 4.0), DM-12 (not a bug: always under `lifecycleLock`), DM-14, and P-12's claim is
@@ -49,7 +49,7 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     `typeText` in both SDKs is `tap` → `await().focused()` (opt out with `awaitFocus = false`)
     → `device.typeText`. `set_text` stays the accessibility action; both are kept.
 - **Synchronization is WIP (2026-09-28, user).** The sync SDK/provider path is ignored for
-  now; its findings (DR-12, DR-13, DR-14, SY-1, SY-2, SY-4) are Deferred, not Open.
+  now; its findings (DR-12, DR-13, DR-14, SY-1, SY-2, SY-4, H-15) are Deferred, not Open.
 - **P-9 was wrongly marked "leave".** CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
@@ -72,7 +72,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | DR-14 | M | Deferred | One provider timeout poisons sync for the session; call thread leaks; `SecurityException` in the generic catch | S |
 | DR-15 | M | Open | `ServerSocket(port, 1)`, serialized accept, 10 s handshake timeout: any app can hold the accept loop | S–M |
 | DR-16 | M | Open | Session secret passed as `-e tapSecret` in `am instrument` argv | M |
-| DR-21 | L | Partial | Version mismatch returns false with no `AUTH_RESULT` reason | S |
+| DR-21 | L | Fixed | No common version: the driver answers HELLO with `AUTH_RESULT{ok=false, UNSUPPORTED}` before closing; the host reports it (`DriverClientTest`, `FencingTest`) | S |
 | DR-22 | L | Open | `dumpHierarchy` → `PAYLOAD_TOO_LARGE`, a may-have-mutated code (see P-9) | S |
 | P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |
 | SY-1 | L | Deferred | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
@@ -88,32 +88,32 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 |---|---|---|---|---|
 | P-9 | M | Open | Error flags per code (`ErrorCode.kt:51-74`); need per-response `may_have_mutated` | M |
 | P-7 | M | Open | `enabledCapabilities` negotiated, MAC'd, stored, never read: gate on it or delete it | S |
-| P-8 | M | Partial | `UIAUTOMATOR_BUILD_ID = "2.4.0"` hand-copied (`Protocol.kt:26`), not generated from the catalog | S |
-| P-14 | L | Partial | `CommandFailure` lives in the contract (`ErrorCode.kt:155`) | S |
-| E-4 | M | Open | PONG queues behind a whole blob on the single writer; no priority lane | M |
-| E-8 | M | Partial | No test for E-4 | S |
-| E-3 | L | Open | `CommandPhase` written, never read | S |
-| E-5 | L | Open | `CommandContext.sleep` uses `System.nanoTime` + `Thread.sleep(10)`, bypassing the clock | S |
-| E-6 | L | Open | `writerDone.await()` has no timeout (`CommandPipeline.kt:215`) | S |
-| E-7 | N | Open | Engine `Command` clashes with the proto name; `transferBlob` returns a `Pair` | S |
+| P-8 | M | Fixed | `UIAUTOMATOR_VERSION` is generated from the catalog (`libs.versions.uiautomator`) next to `ENGINE_VERSION` | S |
+| P-14 | L | Fixed | The `ok` factory is gone (`Response.ok` is only the property). `CommandFailure` stays in the contract on purpose: contract validation (`CommandValidation.kt`, `Operations.kt`) throws it, so it is not driver-internal | S |
+| E-4 | M | Fixed | PONGs go through a pending-pong queue the writer drains before every blob chunk, so a ping is answered mid-blob | M |
+| E-8 | M | Fixed | `aPongIsNotQueuedBehindTheRestOfABlob` (`CommandPipelineTest`) | S |
+| E-3 | L | Fixed | `CommandPhase` removed | S |
+| E-5 | L | Fixed | `sleep` follows the injected clock and waits on the command's cancel signal (`sleepFollowsTheInjectedClockAndEndsOnCancel`) | S |
+| E-6 | L | Fixed | `awaitTermination` bounds the writer join by the remaining time | S |
+| E-7 | N | Fixed | Engine type renamed `PendingCommand`; `transferBlob` returns `BlobResult` | S |
 
 ### Host core (host/core)
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | B-4 | H | Partial | Bundled driver is debug-signed; no uninstall+reinstall on `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | S–M |
-| H-5 | M | Open | `BlobReceiver` copies the buffer for the hash and on every `bytes` access; no incremental digest | S |
-| H-15 | M | Open | `awaitIdle` runs `process()` before and after every poll (`AppLifecycle.kt:221-229`) | S |
+| H-5 | M | Fixed | `BlobReceiver` copies each chunk once into a buffer of the announced size, hashes incrementally and hands the array on uncopied (`BlobReceiverTest`) | S |
+| H-15 | M | Deferred | `awaitIdle` runs `process()` before and after every poll (`AppLifecycle.kt:221-229`). Synchronization is WIP | S |
 | H-19 | M | Open | `DeviceSession.open` ≈190 lines with a `suspendCancellableCoroutine` handoff | L |
-| H-20 | M | Open | `isLeased` acquires the lock to test it (`SessionJournal.kt:98-103`) | S |
+| H-20 | M | Fixed | The lock holder records its PID in the lock file; `isLeased` reads it (advisory, no lock taken; a dead PID reads as free) (`SessionJournalTest`) | S |
 | H-22 | M | Partial | Primitives shared; HELLO/CHALLENGE/AUTH state machine still hand-written in driver, client and fake | M |
-| H-23 | M | Partial | Thin: lease timeout, `recoverJournal` branches, AppLifecycle timeouts | M |
-| H-3 | L | Partial | `Regex("\\s+")` compiled per call (`Adb.kt:444,481,603,628,725`) | S |
-| H-4 | L | Partial | `cat /proc/net/tcp /proc/net/tcp6` via throwing `exec` fails without IPv6 (`Adb.kt:442`) | S |
-| H-9 | L | Open | `lastWriteNanos` set before the write; `timeoutMs.toInt()`; one `async` per write (`DriverTransport.kt`) | S |
-| H-12 | L | Partial | Instrumentation child started outside Adb reaping; output rescanned | S |
-| H-16 | L | Open | `grantPermission` documented as verified but isn't; `launch()` keeps `syncIdentity`; public constructor bypasses the cache | S |
-| H-24 | L | Partial | Blob decode failure reported as `BLOB_OUT_OF_ORDER` | S |
+| H-23 | M | Partial | `BlobReceiverTest` and lease timeout/probe tests added; still thin: `recoverJournal` branches, AppLifecycle timeouts | M |
+| H-3 | L | Fixed | One shared whitespace `Regex` in `Adb.kt` | S |
+| H-4 | L | Fixed | `isPortListening` tolerates a missing `tcp6` when the other table was read, and still fails on a failed read (`AdbTest`) | S |
+| H-9 | L | Partial | `lastWriteNanos` is set after a completed write and the ping budget is clamped, not truncated. Still one `async` per write: it is how a cancelled caller tells "not started" from "started" (`INDETERMINATE`); a channel writer needs the same handshake | S |
+| H-12 | L | Fixed | The real device port is journaled via `onStarting` (`DEVICE_PORT` is only the placeholder where none is known); the output drain spots the readiness marker line by line instead of rescans. The instrumentation child stays outside `Adb`: its serial lane admits one command at a time, and the attempt reaps its own child (`cleanupAttempt`) | S |
+| H-16 | L | Fixed | `grantPermission` verifies the grant through `dumpsys package`; the constructor is internal (only `DeviceSession.app` creates one). The `syncIdentity` part is Deferred with synchronization | S |
+| H-24 | L | Fixed | Selector values are JSON-escaped when rendered; an undecodable chunk is `BLOB_MALFORMED` | S |
 
 ### Daemon and CLI (host/daemon)
 
