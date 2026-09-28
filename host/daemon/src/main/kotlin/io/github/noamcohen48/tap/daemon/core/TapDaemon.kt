@@ -191,7 +191,10 @@ class AttachedDevice internal constructor(
     internal val deviceSession: DaemonDeviceSession,
     val defaultTimeoutMs: Long,
     val driverLog: DriverLogBuffer,
-)
+) {
+    /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
+    internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
+}
 
 /** The last [capacity] lines of an attached device's driver output, kept for artifacts. */
 class DriverLogBuffer(

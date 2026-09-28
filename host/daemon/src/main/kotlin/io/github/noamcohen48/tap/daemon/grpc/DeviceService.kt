@@ -15,17 +15,24 @@ import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
+import io.github.noamcohen48.tap.api.v1.ResolveRefRequest
+import io.github.noamcohen48.tap.api.v1.ResolveRefResponse
+import io.github.noamcohen48.tap.api.v1.ScreenSnapshotRequest
+import io.github.noamcohen48.tap.api.v1.ScreenSnapshotResponse
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotResponse
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
 import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
+import io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshots
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class DeviceService(
     private val daemon: TapDaemon,
@@ -134,6 +141,26 @@ class DeviceService(
                     if (shot.info.hasWidth()) width = shot.info.width
                     if (shot.info.hasHeight()) height = shot.info.height
                 }.build()
+        }
+
+    /**
+     * Runs the diagnostic hierarchy dump and turns it into ref-addressed nodes with synthesised
+     * selectors, aligned with the device's previous snapshot. Nothing on the action path reads
+     * it: a ref only names a selector, which the driver resolves afresh (`.docs/agent-surface.md`).
+     */
+    override suspend fun screenSnapshot(request: ScreenSnapshotRequest): ScreenSnapshotResponse =
+        reply {
+            val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val timeoutMs = if (request.hasTimeoutMs()) positive(request.timeoutMs, "timeout_ms") else attachedDevice.defaultTimeoutMs
+            val xml = attachedDevice.deviceSession.client.execute(Commands.dumpHierarchy(), timeoutMs).text
+            val screen = withContext(Dispatchers.Default) { ScreenSnapshots.screen(xml, attachedDevice.deviceSession.autPackage) }
+            attachedDevice.screen.record(screen)
+        }
+
+    override suspend fun resolveRef(request: ResolveRefRequest): ResolveRefResponse =
+        reply {
+            argument(request.ref.removePrefix("@").isNotBlank()) { "ref is required" }
+            daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId).screen.resolve(request.ref)
         }
 
     override suspend fun driverLog(request: DriverLogRequest): DriverLogResponse =

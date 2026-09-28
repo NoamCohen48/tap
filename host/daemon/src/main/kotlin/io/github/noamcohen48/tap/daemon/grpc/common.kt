@@ -6,6 +6,8 @@ import io.github.noamcohen48.tap.daemon.core.DaemonPreconditionException
 import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
 import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
+import io.github.noamcohen48.tap.daemon.snapshot.RefNotAddressableException
+import io.github.noamcohen48.tap.daemon.snapshot.UnknownRefException
 import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
@@ -154,6 +156,9 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
             }
             is DaemonPreconditionException ->
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            is UnknownRefException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_REF }
+            is RefNotAddressableException ->
+                Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE }
             // The session is unusable: detach and attach again.
             is SessionUnusableException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_SESSION_UNUSABLE).setSerial(serial)

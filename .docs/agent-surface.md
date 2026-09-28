@@ -148,6 +148,25 @@ Status: 1, 2 and 4 done; 3 in progress.
 6. `tap-agent mcp` over the same core; unit tests; smoke with a real MCP client.
 7. Event log + `tap-agent export`; the exported Python/Kotlin tests run against the fixture app.
 
+## Status
+
+- Phase 3 (snapshots) is implemented in `host/daemon/.../daemon/snapshot/` and wired into
+  `DeviceService`; unit-tested on six recorded fixture dumps (both local devices × three
+  activities), with the device check pending in phase 4. Details the record did not fix:
+  - Uniqueness emulates the driver's *native* plan, which every synthesised selector compiles
+    to: the scope's `pkg` filter applies to the node itself (a node whose package differs from
+    its window's gets no selector), and because the dump does not say which window is focused,
+    matches are counted over every window of the scope's package (never fewer than the
+    driver's). An `At` index is counted within the node's own window.
+  - In `aut` scope a resource id of another package (`android:id/content`) is not used: the
+    driver denies it (`SCOPE_DENIED`).
+  - The ancestor round also tries the class alone with the ancestor ("a Button under X"); the
+    ancestor must be at most 32 levels up (the driver's traversal walk bound).
+  - `system{package}` searches only that package's *focused* window, so a ref into a window
+    that is never focused (the status bar) resolves but the driver answers `NOT_FOUND`.
+  - The dump is parsed by a small hand parser (DTDs rejected, only predefined entities and
+    character references), so the native image needs no extra metadata for it.
+
 ## Verification
 
 - Unit: daemon core (idle expiry, renewal, name uniqueness, observe rejection, grace-reaper
