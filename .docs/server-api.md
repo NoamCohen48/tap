@@ -91,6 +91,7 @@ is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Resp
 | `Disconnect(client_connection_id)` → `{attached_devices_detached}` | Explicit teardown. |
 | `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
 | `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, AUT package, generation). How a later process (`tap` CLI) finds a held connection by name. |
+| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent), and install / uninstall / force-stop / clear-data / grant / launch / cold launch (`AppCall{operation, package_name, activity?, permission?, timeout_ms?}`), each with serial, AUT, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
 
 A connection whose Observe is not open 30 s after `Connect` is reaped. A client that crashes
 between Connect and Observe therefore cannot leak a connection.

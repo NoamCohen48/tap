@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
+import io.github.noamcohen48.tap.api.v1.AppCall
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AppTarget
 import io.github.noamcohen48.tap.api.v1.AwaitIdleRequest
@@ -50,6 +51,23 @@ class AppService(
     }
 
     /**
+     * Runs a call that changes the device on the target package and records it in the owning
+     * connection's event log as [operation]; [call] adds the call's arguments.
+     */
+    private suspend fun <T> logged(
+        target: AppTarget,
+        operation: String,
+        call: AppCall.Builder.() -> Unit = {},
+        block: suspend (AppLifecycle) -> T,
+    ): T {
+        argument(target.packageName.isNotBlank()) { "package_name is required" }
+        val device = daemon.attachedDevice(target.attachedDeviceId, target.clientConnectionId)
+        val app = device.deviceSession.app(target.packageName)
+        val logged = AppCall.newBuilder().setOperation(operation).setPackageName(target.packageName).apply(call).build()
+        return device.recorded({ setApp(logged) }) { block(app) }
+    }
+
+    /**
      * Spools the upload (header first, then chunks) to an owner-only file under the state dir,
      * checks its size against the header, installs it and deletes it.
      */
@@ -90,7 +108,7 @@ class AppService(
                 val h = argumentNotNull(header) { "InstallHeader is required" }
                 argument(received == h.sizeBytes) { "upload ended after $received of ${h.sizeBytes} bytes" }
                 val timeout = if (h.hasTimeoutMs()) positive(h.timeoutMs, "timeout_ms") else Defaults.LIFECYCLE_TIMEOUT_MS
-                app(h.app).install(apk, timeout)
+                logged(h.app, "install", { if (h.hasTimeoutMs()) timeoutMs = timeout }) { it.install(apk, timeout) }
                 InstallResponse.getDefaultInstance()
             } finally {
                 withContext(Dispatchers.IO) { Files.deleteIfExists(apk) }
@@ -99,7 +117,7 @@ class AppService(
 
     override suspend fun uninstall(request: UninstallRequest) =
         reply {
-            app(request.app).uninstall()
+            logged(request.app, "uninstall") { it.uninstall() }
             UninstallResponse.getDefaultInstance()
         }
 
@@ -110,39 +128,41 @@ class AppService(
 
     override suspend fun forceStop(request: ForceStopRequest) =
         reply {
-            app(request.app).forceStop(timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS))
+            val timeout = timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS)
+            logged(request.app, "force_stop", { if (request.hasTimeoutMs()) timeoutMs = timeout }) { it.forceStop(timeout) }
             ForceStopResponse.getDefaultInstance()
         }
 
     override suspend fun clearData(request: ClearDataRequest) =
         reply {
-            app(request.app).clearData(timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS))
+            val timeout = timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.ACTION_TIMEOUT_MS)
+            logged(request.app, "clear_data", { if (request.hasTimeoutMs()) timeoutMs = timeout }) { it.clearData(timeout) }
             ClearDataResponse.getDefaultInstance()
         }
 
     override suspend fun grantPermission(request: GrantPermissionRequest) =
         reply {
             argument(request.permission.isNotBlank()) { "permission is required" }
-            app(request.app).grantPermission(request.permission)
+            logged(request.app, "grant_permission", { permission = request.permission }) { it.grantPermission(request.permission) }
             GrantPermissionResponse.getDefaultInstance()
         }
 
     override suspend fun launch(request: LaunchRequest) =
         reply {
-            app(request.app).launch(
-                request.takeIf { it.hasActivity() }?.activity,
-                timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.LIFECYCLE_TIMEOUT_MS),
-            )
+            val activity = request.takeIf { it.hasActivity() }?.activity
+            val timeout = timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.LIFECYCLE_TIMEOUT_MS)
+            logged(request.app, "launch", { launchArguments(activity, request.hasTimeoutMs(), timeout) }) { it.launch(activity, timeout) }
             LaunchResponse.getDefaultInstance()
         }
 
     override suspend fun coldLaunch(request: ColdLaunchRequest) =
         reply {
+            val activity = request.takeIf { it.hasActivity() }?.activity
+            val timeout = timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.LIFECYCLE_TIMEOUT_MS)
             val process =
-                app(request.app).coldLaunch(
-                    request.takeIf { it.hasActivity() }?.activity,
-                    timeout(request.hasTimeoutMs(), request.timeoutMs, Defaults.LIFECYCLE_TIMEOUT_MS),
-                )
+                logged(request.app, "cold_launch", { launchArguments(activity, request.hasTimeoutMs(), timeout) }) {
+                    it.coldLaunch(activity, timeout)
+                }
             ColdLaunchResponse.newBuilder().setProcess(process.toProto()).build()
         }
 
@@ -169,6 +189,15 @@ class AppService(
         value: Long,
         default: Long,
     ): Long = if (present) positive(value, "timeout_ms") else default
+
+    private fun AppCall.Builder.launchArguments(
+        activity: String?,
+        explicitTimeout: Boolean,
+        timeout: Long,
+    ) {
+        activity?.let { this.activity = it }
+        if (explicitTimeout) timeoutMs = timeout
+    }
 
     private fun ProcessObservation.toProto(): ProcessIdentity =
         ProcessIdentity

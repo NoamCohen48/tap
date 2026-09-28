@@ -152,3 +152,33 @@ def test_every_node_enum_value_maps_to_a_model_constant():
             assert _proto.node_change(number).name == name.removeprefix("NODE_")
     assert _proto.node_change(0) is NodeChange.NONE
     assert _proto.node_flag(0) is None
+
+
+def test_event_log_is_the_calls_as_proto_json(fake, client):
+    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as device:
+        device.element(res("login")).tap()
+        device.info()  # a diagnostic query: not logged
+        fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_FOUND, detail="0 matches"))
+        with pytest.raises(TapError):
+            device.element(res("gone")).tap()
+        log = connection.event_log()
+        assert log.dropped == 0 and [e.seq for e in log.events] == [1, 2]
+        first, second = log.events
+        assert first.ok and first.serial == "emulator-5554" and first.app is None
+        # Proto3 JSON: .proto field names, enums by name, int64 as a string.
+        assert first.command == {
+            "timeout_ms": "10000",
+            "tap": {"selector": {"node": {"resource": {"name": "login", "aut_package": True}}}},
+        }
+        assert not second.ok and second.error == {"code": "ERR_NOT_FOUND", "detail": "0 matches"}
+        assert second.to_dict() == {
+            "seq": 2,
+            "at": "2026-09-21T14:13:20.001Z",
+            "duration_ms": 5,
+            "serial": "emulator-5554",
+            "aut_package": "com.example",
+            "ok": False,
+            "command": second.command,
+            "error": second.error,
+        }
+        assert [e.seq for e in connection.event_log(after_seq=1).events] == [2]

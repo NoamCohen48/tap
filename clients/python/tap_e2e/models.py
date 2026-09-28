@@ -284,6 +284,61 @@ class ConnectionEntry:
 
 
 @dataclass(frozen=True)
+class LoggedEvent:
+    """One device call from a connection's event log (``TapConnection.event_log()``).
+
+    The call and its outcome are the server API's own messages in proto3 JSON form with the
+    ``.proto`` field names, so any language's protobuf library can parse them: ``command`` is a
+    ``tap.v1.Command`` (for Execute) and ``app`` a ``tap.v1.AppCall`` (for an app lifecycle call);
+    exactly one is set. ``error`` is the ``tap.v1.Error`` the driver returned and ``failure`` the
+    ``tap.v1.Failure`` of a call that failed as an RPC; both are None when the call succeeded.
+    ``at`` is when the call started (Unix seconds); ``duration`` is in seconds."""
+
+    seq: int
+    at: float
+    duration: float
+    serial: str
+    aut_package: str
+    command: dict | None
+    app: dict | None
+    error: dict | None
+    failure: dict | None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and self.failure is None
+
+    def to_dict(self) -> dict:
+        """A JSON-ready dict: the fields above with ``at`` as an ISO 8601 UTC timestamp and
+        ``duration_ms``; None fields are left out."""
+        import datetime
+
+        at = datetime.datetime.fromtimestamp(self.at, datetime.timezone.utc)
+        out: dict = {
+            "seq": self.seq,
+            "at": at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "duration_ms": round(self.duration * 1000),
+            "serial": self.serial,
+            "aut_package": self.aut_package,
+            "ok": self.ok,
+        }
+        for key in ("command", "app", "error", "failure"):
+            value = getattr(self, key)
+            if value is not None:
+                out[key] = value
+        return out
+
+
+@dataclass(frozen=True)
+class EventLog:
+    """``TapConnection.event_log()``: the kept events, oldest first, and how many older ones the
+    server evicted (it keeps each connection's last 2000)."""
+
+    events: tuple[LoggedEvent, ...]
+    dropped: int
+
+
+@dataclass(frozen=True)
 class ScreenNode:
     """One visible node of a ``ScreenSnapshot``, in dump (pre-order) order.
 

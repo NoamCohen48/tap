@@ -8,6 +8,8 @@ import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
+import io.github.noamcohen48.tap.api.v1.EventsRequest
+import io.github.noamcohen48.tap.api.v1.EventsResponse
 import io.github.noamcohen48.tap.api.v1.Heartbeat
 import io.github.noamcohen48.tap.api.v1.Hold
 import io.github.noamcohen48.tap.api.v1.InfoRequest
@@ -76,6 +78,13 @@ class ClientConnectionService(
                             ).build()
                     },
                 ).build()
+        }
+
+    override suspend fun events(request: EventsRequest): EventsResponse =
+        reply {
+            argument(request.afterSeq >= 0) { "after_seq must be >= 0" }
+            val (events, dropped) = daemon.eventLog(request.clientConnectionId).after(request.afterSeq)
+            EventsResponse.newBuilder().addAllEvents(events).setDropped(dropped).build()
         }
 
     /**

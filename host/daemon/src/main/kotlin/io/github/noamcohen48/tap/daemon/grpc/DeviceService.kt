@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.daemon.grpc
 import com.google.protobuf.ByteString
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
@@ -33,6 +34,9 @@ import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** Diagnostic queries left out of the event log: they read the device, they do not test it. */
+private val UNLOGGED_OPS = setOf(Command.OpCase.DEVICE_INFO, Command.OpCase.DUMP_HIERARCHY)
 
 class DeviceService(
     private val daemon: TapDaemon,
@@ -100,8 +104,15 @@ class DeviceService(
             CommandValidation.validate(command)
             val timeoutMs =
                 if (command.hasTimeoutMs()) positive(command.timeoutMs, "command.timeout_ms") else attachedDevice.defaultTimeoutMs
-            val pending = attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)
-            ExecuteResponse.newBuilder().setResult(resultOf(pending)).build()
+            val result =
+                if (command.opCase in UNLOGGED_OPS) {
+                    resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
+                } else {
+                    attachedDevice.recorded({ setCommand(command) }, { it.takeIf { it.hasError() }?.error }) {
+                        resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
+                    }
+                }
+            ExecuteResponse.newBuilder().setResult(result).build()
         }
 
     /**

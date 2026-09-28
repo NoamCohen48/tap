@@ -175,11 +175,32 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     assert capsys.readouterr().out.startswith("---\nname: tap-android")
 
 
+def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
+    import json
+
+    agent.attach("emulator-5554", "com.example", launch="cold")
+    fake.devices.refs["e3"] = res("login")._proto
+    agent.tap("@e3")
+    fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_FOUND))
+    with pytest.raises(AgentError):
+        agent.tap("text=Nope")
+    document = json.loads(agent.export())
+    assert document["format"] == "tap-events/1" and document["session"] == "agent" and document["dropped"] == 0
+    cold, tapped, missing = document["events"]
+    assert cold["app"] == {"operation": "cold_launch", "package_name": "com.example"} and cold["ok"]
+    # The ref is logged as the selector it named.
+    assert tapped["command"]["tap"]["selector"] == {"node": {"resource": {"name": "login", "aut_package": True}}}
+    assert missing["error"] == {"code": "ERR_NOT_FOUND"} and not missing["ok"]
+    out = tmp_path / "log" / "session.json"
+    assert agent.export(out) == f"wrote 3 events (1 failed) to {out}"
+    assert json.loads(out.read_text())["events"] == document["events"]
+
+
 # --- MCP ---------------------------------------------------------------------------------------
 
 EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
-    "scroll", "swipe", "press_key", "wait_for", "settle", "screenshot", "capture", "app",
+    "scroll", "swipe", "press_key", "wait_for", "settle", "screenshot", "capture", "app", "export",
 }
 
 
@@ -224,3 +245,5 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert result.is_error and "run `snapshot`" in result.content[0].text
         result = await client.call_tool("screenshot", {})
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
+        result = await client.call_tool("export", {})
+        assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text

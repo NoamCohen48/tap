@@ -68,11 +68,17 @@ device at a time) and ignore the per-serial lock.
    - The response marks each node `ADDED`/`UNCHANGED` against the previous snapshot and lists
      the removed ones, which is the `--settle` diff.
 
-3. **Per-connection event log** (daemon, plan §19). Every `Execute` and app lifecycle call is
-   recorded with its command, resolved selector, result code and timing, in a bounded
-   in-memory log per connection, read by `ClientConnectionService.Events`. `tap export`
-   renders it as a Kotlin or Python test. This also starts the §19 event model the
-   JUnit/HTML reports need.
+3. **Per-connection event log** (daemon, plan §19; `event_log.proto`). Every `Execute` except
+   the diagnostic `device_info` / `dump_hierarchy`, and every app call that changes the device
+   (install, uninstall, force-stop, clear-data, grant, launch, cold launch), is recorded with
+   its command (selector as sent, so a ref appears as the selector it named), serial, AUT,
+   start time, duration and outcome (the driver `Error`, or the RPC `Failure`), in a bounded
+   in-memory log per connection (last 2000; evictions counted), read by
+   `ClientConnectionService.Events`. Snapshots, screenshots, ref resolution and app queries are
+   not logged. `tap-agent export` writes it as **JSON** (`tap-events/1`, the calls as `tap.v1`
+   messages in proto3 JSON): it renders no Kotlin or Python (owner's call, 2026-09-28 — the
+   export is language-agnostic, and converting it into a test is the user's job). This also
+   starts the §19 event model the JUnit/HTML reports need.
 
 4. **`tap-agent`: the CLI and the MCP server, in Python on `tap-e2e`** (owner's call: both
    agent front ends use the Python library). One package, `clients/agent` (`tap-agent`), with
@@ -117,7 +123,7 @@ tap-agent settle                                WaitScreenStable, then the snaps
 tap-agent screenshot [-o FILE]                  prints the path
 tap-agent capture [-o DIR]                      screenshot, hierarchy, device info, driver log
 tap-agent app <launch|cold-launch|stop|clear|install APK|grant PERM>
-tap-agent export --kotlin|--python [-o FILE]
+tap-agent export [-o FILE]               the event log as JSON (tap-events/1)
 tap-agent mcp                            the MCP server (stdio)
 ```
 
@@ -138,7 +144,7 @@ Snapshot line format:
 
 ## Phases (one commit each)
 
-Status: 1–6 done; 7 (event log + export) open.
+Status: 1–7 done.
 
 1. Contract: this record, proto for phases 2–3 (the event-log proto comes with phase 6), docs.
 2. Held connections: daemon core + `ClientConnectionService` + unit tests.
@@ -146,7 +152,7 @@ Status: 1–6 done; 7 (event log + export) open.
 4. `tap-e2e`: held connections, resume, screen snapshots, resolve ref; unit tests on the fake server.
 5. `tap-agent` core + CLI + `SKILL.md`; device run on the local matrix (fixture app).
 6. `tap-agent mcp` over the same core; unit tests; smoke with a real MCP client.
-7. Event log + `tap-agent export`; the exported Python/Kotlin tests run against the fixture app.
+7. Event log + `tap-agent export` (JSON); a device session's export checked against what it did.
 
 ## Status
 
@@ -179,6 +185,20 @@ Status: 1–6 done; 7 (event log + export) open.
   Python device suite (130) and `:samples:fixture-tests` (17) passed on both devices after it.
   A changed text shows as `+` new ref / `-` old ref (the ref signature includes the text); a
   diff that removes a whole screen lists 10 removed nodes and counts the rest.
+
+- Phase 7 (2026-09-28): the event log and JSON export. `event_log.proto` (`LoggedEvent`,
+  `AppCall`) and `ClientConnectionService.Events`; the daemon's per-connection `EventLog`
+  (last 2000, evictions counted), recorded by `EventRecording.kt` around Execute and the
+  mutating AppService calls (a call rejected before it runs is not logged; a cancelled one is
+  not either). `TapConnection.event_log()` in `tap-e2e` (calls and outcomes as proto3 JSON);
+  `tap-agent export [-o FILE]` and the MCP `export` tool write `tap-events/1`. Device check on
+  the native daemon: a CLI session on emulator-5554 (cold launch, tap and fill by ref with
+  settle, an ambiguous tap, wait, key back, launch) exported 9 events in order, the refs as
+  their `view_button` / `view_input` selectors and the ambiguous tap `ok: false` with
+  `ERR_AMBIGUOUS`; the MCP `export` on 85e49002 returned cold launch, tap, settle, and failed
+  after `release` (the log ends with the session). The Python device suite (92) and
+  `:samples:fixture-tests` (17) passed on both devices on that daemon. Typed text is logged
+  verbatim (`.docs/framework-gaps.md`, observability).
 
 ## Verification
 

@@ -250,6 +250,16 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         uninstall, grant a runtime permission, or ask whether it is running."""
         return await call(session, lambda a: a.app(action, argument or None, device or None, package or None))
 
+    @mcp.tool(name="export", annotations=READ_ONLY)
+    async def export(
+        path: Annotated[str, Field(description="Write the JSON to this file and return a summary instead.")] = "",
+        session: Session = "",
+    ) -> CallToolResult:
+        """The session's event log as JSON: every device call it made (commands and app changes),
+        in order, with outcomes and the selectors refs stood for. Export before `release`: the
+        log ends with the session. Converting it into a test is up to the user."""
+        return await call(session, lambda a: a.export(path or None))
+
     return mcp
 
 

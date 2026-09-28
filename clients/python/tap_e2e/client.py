@@ -42,7 +42,7 @@ from .errors import (
     TapError,
     WaitTimeoutError,
 )
-from .models import ConnectionEntry, DeviceEntry, DeviceState, FailureReason, ServerInfo
+from .models import ConnectionEntry, DeviceEntry, DeviceState, EventLog, FailureReason, ServerInfo
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -566,6 +566,20 @@ class TapConnection:
             if self._stream is not None:
                 self._stream.cancel()
                 self._stream = None
+
+    def event_log(self, after_seq: int = 0) -> EventLog:
+        """The device calls this connection made, as the server logged them: every command
+        except the diagnostic ``device_info`` / ``dump_hierarchy``, and the app calls that change
+        the device (install, uninstall, force-stop, clear-data, grant, launch, cold launch).
+        Only events with ``seq > after_seq``. A selector appears as sent, so a snapshot ref shows
+        as the selector it named. The log is data, for turning a session into a test in any
+        language; nothing renders code from it."""
+        with mapped_errors():
+            return _proto.event_log(
+                self.client.client_connections.Events(
+                    pb.EventsRequest(client_connection_id=self.id, after_seq=after_seq), timeout=10
+                )
+            )
 
     @property
     def events(self) -> list[str]:

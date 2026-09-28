@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import os
 import pathlib
 from collections.abc import Callable, Iterator
@@ -34,6 +35,8 @@ from . import render
 from .targets import Target, UsageError, format_duration, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
+# `export`'s document format; bumped only for a change a reader must know about.
+EXPORT_FORMAT = "tap-events/1"
 DEFAULT_IDLE = 15 * 60.0
 DEFAULT_WAIT = 10.0
 SETTLE_STABLE_FOR = 0.5
@@ -321,6 +324,33 @@ class Agent:
             lines = [str(p) for p in captured.save_to(directory)]
             lines += [f"{name} failed: {error}" for name, error in captured.failures.items()]
             return "\n".join(lines)
+
+        return self._run(step)
+
+    def export(self, out: str | os.PathLike[str] | None = None) -> str:
+        """The session's event log as JSON (``EXPORT_FORMAT``): every device call it made, in
+        order, with its outcome. Turning it into a test, in whatever language, is the user's job.
+        With ``out``, writes the file and says so; otherwise returns the JSON."""
+
+        def step() -> str:
+            log = self._connection().event_log()
+            document = {
+                "format": EXPORT_FORMAT,
+                "session": self.session,
+                "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "dropped": log.dropped,
+                "events": [event.to_dict() for event in log.events],
+            }
+            text = json.dumps(document, indent=2, ensure_ascii=False)
+            if out is None:
+                return text
+            path = pathlib.Path(out)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text + "\n", encoding="utf-8")
+            failed = sum(1 for e in log.events if not e.ok)
+            note = f" ({failed} failed)" if failed else ""
+            dropped = f"; {log.dropped} older events were dropped" if log.dropped else ""
+            return f"wrote {len(log.events)} events{note} to {path}{dropped}"
 
         return self._run(step)
 

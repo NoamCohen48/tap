@@ -117,6 +117,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("argument", nargs="?", help="activity (launch), APK path (install) or permission (grant)")
     p.add_argument("--package", help="another package than the session's app")
 
+    p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
+    p.add_argument("-o", "--out", help="write it to this file instead")
+
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
     verb("skill", "print the agent skill (SKILL.md)")
     return root
@@ -159,6 +162,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return str(agent.screenshot(device, args.out))
     if v == "capture":
         return agent.capture(device, args.out)
+    if v == "export":
+        return agent.export(args.out)
     if v == "app":
         return agent.app(args.action, args.argument, device, args.package)
     raise AssertionError(v)

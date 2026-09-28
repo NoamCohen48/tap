@@ -68,6 +68,14 @@ new `snapshot`. `settle` alone does the same without acting.
 `capture` saves screenshot, hierarchy, device info and driver log together. Files go under
 `.tap/agent/` unless `-o` says otherwise.
 
+## Exporting the session
+
+`export` prints the session's event log as JSON (`-o FILE` writes it): every device call the
+session made, in order, with its outcome — commands with the selector they used (a ref appears
+as the selector it stood for) and app changes such as launch or clear. Snapshots, screenshots
+and `devices` are not in it. Export before `release`: the log ends with the session. The JSON
+is language-neutral; turn it into a test yourself if asked to.
+
 ## Several devices or sessions
 
 `attach` another serial to the same session and pass `--device <serial>` to device steps.

@@ -85,6 +85,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.AppCall",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.AppTarget",
     "allDeclaredFields": true
   },
@@ -225,6 +229,14 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.EventsRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.EventsResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.ExactlyOne",
     "allDeclaredFields": true
   },
@@ -334,6 +346,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.ListDevicesResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.LoggedEvent",
     "allDeclaredFields": true
   },
   {

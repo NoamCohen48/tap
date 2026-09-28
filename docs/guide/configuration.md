@@ -187,6 +187,21 @@ node from one snapshot to the next, and is never given to a different node. A re
 selector, so acting on it still goes through the normal rule: the device must find exactly one
 match at the moment of the action.
 
+`connection.event_log()` returns what the connection did on its devices, in order: every
+command except the diagnostic device-info and hierarchy queries, and every app call that
+changes the device (install, uninstall, force-stop, clear data, grant, launch, cold launch).
+Each `LoggedEvent` has the call (`command` or `app`) and its outcome (`error` or `failure`) as
+the server API's messages in proto3 JSON, so any language can read it; `to_dict()` gives a
+JSON-ready form. A command appears with the selector it sent, so a tap on a ref shows the
+selector the ref stood for. The daemon keeps each connection's last 2000 events, until the
+connection ends. `tap-agent export` writes this log as a JSON file.
+
+```python
+log = connection.event_log()
+for event in log.events:
+    print(event.seq, event.command or event.app, "ok" if event.ok else event.error or event.failure)
+```
+
 ## Session options
 
 Both `connection.attachDevice(...)` / `connection.attach_device(...)` accept (`suspend` in Kotlin):
