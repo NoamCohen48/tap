@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resolves a release tag to its artifact family and checks the version in the build files.
 
-Tags are `<family>/v<version>`: daemon, client-kotlin, client-python, sync-sdk. Prints
+Tags are `<family>/v<version>`: daemon, client-kotlin, client-python, client-agent, sync-sdk. Prints
 `family=<family>` and `version=<version>` (GitHub Actions output format) or fails when the
 tag's version does not match the one committed in gradle.properties / pyproject.toml, so a
 release always ships the version its artifacts claim.
@@ -18,6 +18,7 @@ FAMILIES = {
     "client-kotlin": ("gradle.properties", r"^tap\.version\.client\.kotlin=(.+)$"),
     "sync-sdk": ("gradle.properties", r"^tap\.version\.sync-sdk=(.+)$"),
     "client-python": ("clients/python/pyproject.toml", r'^version = "(.+)"$'),
+    "client-agent": ("clients/agent/pyproject.toml", r'^version = "(.+)"$'),
 }
 
 
@@ -31,7 +32,7 @@ def committed_version(family: str) -> str:
 
 
 def main(tag: str) -> int:
-    match = re.fullmatch(r"(daemon|client-kotlin|client-python|sync-sdk)/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)", tag)
+    match = re.fullmatch(r"(daemon|client-kotlin|client-python|client-agent|sync-sdk)/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)", tag)
     if not match:
         sys.exit(f"unrecognised release tag {tag!r}; expected <family>/v<semver>")
     family, version = match.groups()

@@ -9,6 +9,8 @@ name: Release
 # Packages
 #   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when
 # enabled)
+#   client-agent/v1.2.3   tap-agent (agent CLI + MCP server) wheel + sdist on a
+# GitHub Release (PyPI when enabled)
 #   sync-sdk/v1.2.3       io.github.noamcohen48.tap:tap-sync-sdk (AAR) to GitHub Packages
 # The tag's version must equal the one in gradle.properties / pyproject.toml.
 on:
@@ -17,6 +19,7 @@ on:
       - "daemon/v*"
       - "client-kotlin/v*"
       - "client-python/v*"
+      - "client-agent/v*"
       - "sync-sdk/v*"
 
 permissions:
@@ -159,9 +162,9 @@ jobs:
             binaries (`chmod +x`, put on `PATH` as `tap`)
             - `tap-${{ needs.resolve.outputs.version }}-jvm.zip`: JVM
             distribution (`bin/tap`, needs JDK 17+)
-            - Maven: >-
-                `io.github.noamcohen48.tap:tap-api:${{ needs.resolve.outputs.version }}`
-                (GitHub Packages)
+            - Maven:
+            `io.github.noamcohen48.tap:tap-api:${{ needs.resolve.outputs.version }}`
+            (GitHub Packages)
 
   # ---- client-kotlin/v*
   # -----------------------------------------------------------------------
@@ -208,9 +211,8 @@ jobs:
           name: tap Kotlin client ${{ needs.resolve.outputs.version }}
           body: |
             ```kotlin
-            testImplementation("io.github.noamcohen48.tap:tap-junit5:${{
-            needs.resolve.outputs.version }}")   // brings tap-client and
-            tap-api ${{ needs.resolve.outputs.engine }}
+            // brings tap-client and tap-api ${{ needs.resolve.outputs.engine }}
+            testImplementation("io.github.noamcohen48.tap:tap-junit5:${{ needs.resolve.outputs.version }}")
             ```
             Published to this repository's GitHub Packages Maven registry
             (`https://maven.pkg.github.com/${{ github.repository }}`, read
@@ -265,6 +267,56 @@ jobs:
         with:
           packages-dir: dist
 
+  # ---- client-agent/v*
+  # ------------------------------------------------------------------------
+  client-agent:
+    name: tap-agent
+    needs: resolve
+    if: needs.resolve.outputs.family == 'client-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test and build
+        run: |
+          python -m pip install --quiet build "clients/python[dev]" \
+          "clients/agent[dev]"
+          python -m pytest -q clients/agent/tests
+          python -m build --outdir dist clients/agent
+          version="${{ needs.resolve.outputs.version }}"
+          python -m pip install --quiet --force-reinstall --no-deps \
+          "dist/tap_agent-${version}-py3-none-any.whl"
+          python -c "import tap_agent, sys; sys.exit(tap_agent.__version__ != '${version}')"
+          tap-agent --help > /dev/null
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: tap-agent ${{ needs.resolve.outputs.version }}
+          files: dist/*
+          body: |
+            CLI and MCP server for coding agents driving Android devices
+            through a running `tap` daemon (`tap-agent skill`,
+            `tap-agent mcp`). It depends on `tap-e2e`, which is not on PyPI
+            yet: install the `tap-e2e` wheel from its `client-python/v*`
+            release first, then
+
+            ```bash
+            pip install https://github.com/${{ github.repository
+            }}/releases/download/${{ github.ref_name }}/tap_agent-${{
+            needs.resolve.outputs.version }}-py3-none-any.whl
+            ```
+            Requires a `tap` daemon of engine version ${{
+            needs.resolve.outputs.engine }} or later (tag `daemon/v${{
+            needs.resolve.outputs.engine }}`).
+      # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
+      - name: Publish to PyPI
+        if: vars.PUBLISH_TO_PYPI == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
   # ---- sync-sdk/v*
   # ----------------------------------------------------------------------------
   sync-sdk:
@@ -295,8 +347,7 @@ jobs:
           name: tap sync-sdk ${{ needs.resolve.outputs.version }}
           body: |
             ```kotlin
-            implementation("io.github.noamcohen48.tap:tap-sync-sdk:${{
-            needs.resolve.outputs.version }}")   // E2E build flavour of the
-            app under test
+            // in the E2E build flavour of the app under test
+            implementation("io.github.noamcohen48.tap:tap-sync-sdk:${{ needs.resolve.outputs.version }}")
             ```
             Published to this repository's GitHub Packages Maven registry.

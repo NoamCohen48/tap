@@ -7,14 +7,14 @@ image).
 
 ## What is an artifact, and why
 
-The repository builds five things people install, each on its own version line:
+The repository builds six things people install, each on its own version line:
 
 | Family | Tag | Artifacts | Version source |
 |---|---|---|---|
 | **engine** (`server`) | `daemon/vX.Y.Z` | `tap` native binary (linux-x86_64, macos-aarch64) and JVM dist on a GitHub Release; Maven `io.github.noamcohen48.tap:tap-schema` (generated protobuf-lite messages of `contracts/proto`) and `tap-api` (the `tap.v1` gRPC stubs, depending on `tap-schema`) to GitHub Packages | `gradle.properties` `tap.version.engine` |
 | **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | `gradle.properties` `tap.version.client.kotlin` |
 | **Python client** | `client-python/vX.Y.Z` | `tap-e2e` wheel + sdist on a GitHub Release (PyPI opt-in) | `clients/python/pyproject.toml` |
-| **Agent tools** | `client-agent/vX.Y.Z` (release job not wired yet; CI builds the wheel) | `tap-agent` wheel + sdist (CLI + MCP server, depends on `tap-e2e`) | `clients/agent/pyproject.toml` |
+| **Agent tools** | `client-agent/vX.Y.Z` | `tap-agent` wheel + sdist (CLI + MCP server, depends on `tap-e2e`) on a GitHub Release (PyPI opt-in, after `tap-e2e`) | `clients/agent/pyproject.toml` |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
 
 ### The host daemon and the driver are one artifact (the engine)
@@ -96,12 +96,13 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 |---|---|
 | `api-contract` | `buf lint` on `contracts/proto` (STANDARD minus the naming rules the file deliberately breaks, see `contracts/proto/buf.yaml`); `buf breaking` (`WIRE_JSON`) against the PR base / previous push, so removing, renumbering or retyping a field fails; `gen_stubs.py --check` with the pinned `grpcio-tools`, so the committed Python stubs match the proto. |
 | `jvm` | Unit tests (`:contracts:protocol`, `:host:core`, `:host:daemon`, `:device:driver:command-engine`, both Kotlin client modules); assembles driver APKs, fixture, daemon dist/zip and validation executable; `publishToMavenLocal` for the five Maven artifacts (POMs resolve); `tap version` equals `tap.version.engine`. Uploads the JVM dist. |
-| `python` | Install + wheel build on 3.10 and 3.13, `tap.__version__`, pytest collection of the sample suite. Uploads the wheel. |
-| `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64: `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`) (one serial, so two-device tests are skipped). Failure artifacts are uploaded. |
-| `native-image` | (push to `main` only) GraalVM 21 `nativeCompile` + `tap version` smoke; catches missing reflection metadata before a release. |
+| `python` | On 3.10 and 3.13: installs `tap-e2e` and `tap-agent`, runs their unit tests over the in-process fake daemon (`clients/python/tests/unit`, `clients/agent/tests`), builds both wheels, `tap-agent --help`. Uploads the wheels (`python-dists`). |
+| `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64 running `.github/scripts/device-tests.sh` (the action runs each `script` line as its own `sh -c`, so the lane is one script): `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`), then `.github/scripts/agent-smoke.sh` — a `tap-agent` session (attach, install, cold launch, snapshot, tap by ref with `--settle`, wait, export) whose JSON export is checked (install and cold launch first, the ref logged as its `view_button` selector, every call ok). One serial, so two-device tests are skipped. Failure artifacts (incl. `build/agent-smoke`) are uploaded. |
+| `native-image` | (push to `main` only) GraalVM 21 `nativeCompile`, then `tap start` and `.github/scripts/daemon_smoke.py`: every RPC that needs no device (Info, ListDevices, held Connect, ListConnections, Events, Disconnect, an observed connection) on the native binary, which catches missing reflection metadata before a release. |
 
 Not in CI, still local: `:host:validation:deviceTest` (needs the two-device local matrix; the
-`reboot`-tagged scenario reboots), the Samsung API 29 lane.
+`reboot`-tagged scenario reboots), the Samsung API 29 lane, and a native-image run against a
+device (the emulator lane uses the JVM dist).
 
 ## Docs (`docs.yml`)
 
@@ -121,7 +122,8 @@ the table above). Maven goes to this repository's GitHub Packages registry
 even for public repositories). Binaries and wheels go to a GitHub Release named after the
 tag, with `SHA256SUMS` for the server. PyPI publishing is wired (trusted publishing) but off
 until the repository variable `PUBLISH_TO_PYPI=true` is set and the project is registered on
-PyPI.
+PyPI. `tap-agent` depends on `tap-e2e`, so until both are on PyPI its release notes say to
+install the `tap-e2e` wheel first.
 
 Consuming:
 
@@ -132,6 +134,7 @@ testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")
 
 ```bash
 pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.1.0/tap_agent-0.1.0-py3-none-any.whl
 curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.1.0/tap-0.1.0-linux-x86_64 && chmod +x tap
 ```
 

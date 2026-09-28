@@ -15,11 +15,8 @@ env:
 
 jobs:
   # The tap.v1 API: the proto must lint, must stay wire-compatible with the base
-  # branch, must
-  # round-trip the golden TAP1 fixtures (:host:daemon:test) and the committed
-  # Python stubs must
-  # match it. This is the cheap job that fails first when a contract change is
-  # wrong.
+  # branch, and the committed Python stubs must match it. This is the cheap job
+  # that fails first when a contract change is wrong.
   api-contract:
     name: API contract
     runs-on: ubuntu-latest
@@ -44,9 +41,8 @@ jobs:
             echo "base $BASE has no tap.v1 API; skipping"; exit 0
           fi
           # contracts/proto/BREAKING_BASELINE names the last commit of a previous,
-          # deliberately
-          # incompatible API line (0.x only). A base on or before it is not
-          # comparable.
+          # deliberately incompatible API line (0.x only). A base on or before it
+          # is not comparable.
           BASELINE=$(grep -v '^#' contracts/proto/BREAKING_BASELINE 2>/dev/null \
           | head -1 || true)
           if [ -n "$BASELINE" ] && git merge-base --is-ancestor "$BASE" \
@@ -67,9 +63,8 @@ jobs:
           python clients/python/scripts/gen_stubs.py --check
 
   # Everything that compiles and tests on the JVM without a device, plus the
-  # artifacts every
-  # release is made of (driver APKs, daemon distribution, Maven POMs,
-  # validation executable).
+  # artifacts every release is made of (driver APKs, daemon distribution, Maven
+  # POMs, validation executable).
   jvm:
     name: JVM build and unit tests
     runs-on: ubuntu-latest
@@ -123,8 +118,10 @@ jobs:
           path: "**/build/reports/tests"
           if-no-files-found: ignore
 
+  # tap-e2e (the Python client) and tap-agent (the agent CLI + MCP server on
+  # it): unit tests over the in-process fake daemon, wheels for both.
   python:
-    name: Python client (${{ matrix.python }})
+    name: Python client and tap-agent (${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -139,6 +136,8 @@ jobs:
           python -m pip install --quiet build "clients/python[dev]" \
             "clients/agent[dev]"
           python -c "import tap_e2e; print('tap-e2e', tap_e2e.__version__)"
+          python -c "import tap_agent; print('tap-agent', tap_agent.__version__)"
+          tap-agent --help > /dev/null
           python -m build --outdir dist clients/python
           python -m build --outdir dist clients/agent
       - name: Unit tests (fake daemon, no device)
@@ -152,24 +151,22 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: matrix.python == '3.13'
         with:
-          name: tap-e2e-python
+          name: python-dists
           path: dist/*
 
-  # Real-device proof: the fixture-test sample suites (Kotlin + Python) against
-  # an API 34
-  # emulator through an auto-started daemon. One serial, so the two-device
-  # tests are skipped.
+  # Real-device proof on an API 34 emulator: the fixture-test sample suites
+  # (Kotlin + Python) through an auto-started daemon, then a tap-agent session
+  # (attach, snapshot, tap by ref, export) checked against its JSON export.
+  # One serial, so the two-device tests are skipped.
   device-tests:
     name: Device tests (API 34 emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [api-contract, jvm]
+    needs: [api-contract, jvm, python]
     steps:
       # ubuntu-latest ships ~14 GB of toolchains we never use; the API 34 image
-      # plus the AVD's
-      # userdata partition do not fit next to them (the emulator aborts with
-      # "Not enough space
-      # to create userdata partition").
+      # plus the AVD's userdata partition do not fit next to them (the emulator
+      # aborts with "Not enough space to create userdata partition").
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
@@ -200,9 +197,9 @@ jobs:
           python-version: "3.12"
       - name: Build what the device run needs
         run: ./gradlew :fixture-app:assembleDebug :host:daemon:installDist
-      - name: Install the Python client
-        run: python -m pip install --quiet "clients/python[dev]"
-      - name: Run the sample suites on the emulator
+      - name: Install the Python client and tap-agent
+        run: python -m pip install --quiet "clients/python[dev]" "clients/agent"
+      - name: Run the device lane on the emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -215,29 +212,8 @@ jobs:
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
             -camera-back none
           disable-animations: false
-          script: |
-            adb -s emulator-5554 wait-for-device
-            # A 2-vCPU swiftshader emulator throws "Process system isn't
-            # responding" ANR dialogs
-            # (package android) over the AUT, which then never owns the focused
-            # window.
-            adb -s emulator-5554 shell settings put global hide_error_dialogs 1
-            adb -s emulator-5554 shell settings put global \
-              window_animation_scale 0
-            adb -s emulator-5554 shell settings put global \
-              transition_animation_scale 0
-            adb -s emulator-5554 shell settings put global \
-              animator_duration_scale 0
-            adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
-            adb -s emulator-5554 shell wm dismiss-keyguard
-            adb -s emulator-5554 shell dumpsys window | grep -E \
-              'mCurrentFocus|mFocusedApp' || true
-            # Each suite starts the daemon (tap.manageDaemon /
-            # TAP_MANAGE_DAEMON) and stops it after its last test.
-            ./gradlew :samples:fixture-tests:test -Ptap.serials=emulator-5554
-            export TAP_BIN="$PWD/host/daemon/build/install/tap/bin/tap"
-            export TAP_MANAGE_DAEMON=1 TAP_SERIALS=emulator-5554
-            python -m pytest -q clients/python/tests
+          # Each line of `script` runs as its own `sh -c`: keep it one command.
+          script: .github/scripts/device-tests.sh
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -245,12 +221,13 @@ jobs:
           path: |
             samples/fixture-tests/build/tap-artifacts
             tap-artifacts
+            build/agent-smoke
             samples/fixture-tests/build/reports/tests
           if-no-files-found: ignore
 
   # The native image is what `daemon/v*` releases ship; build it on main so a
-  # new reflective
-  # dependency (missing native-image metadata) is caught before a release.
+  # new reflective dependency (missing native-image metadata) is caught before
+  # a release.
   native-image:
     name: Native image (linux-x86_64)
     runs-on: ubuntu-latest
@@ -274,10 +251,18 @@ jobs:
           packages: platforms;android-36 build-tools;36.0.0 platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :host:daemon:nativeCompile
-      - name: Smoke
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Smoke (every RPC that needs no device, on the native daemon)
         run: |
-          host/daemon/build/native/nativeCompile/tap version
-          host/daemon/build/native/nativeCompile/tap status || true
+          tap=host/daemon/build/native/nativeCompile/tap
+          "$tap" version
+          python -m pip install --quiet clients/python
+          "$tap" start
+          trap '"$tap" stop' EXIT
+          "$tap" status
+          python .github/scripts/daemon_smoke.py
       - uses: actions/upload-artifact@v4
         with:
           name: tap-daemon-linux-x86_64
