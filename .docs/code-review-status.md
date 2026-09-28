@@ -6,11 +6,13 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 120 |
+| Fixed | 136 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 17 |
-| Open | 10 |
+| Partial | 8 |
+| Open | 12 |
 | Deferred (synchronization is WIP, see below) | 7 |
+
+The counts cover all 171 findings; Open, Partial and Deferred are exactly the rows below.
 
 Fixed/obsolete items are not repeated below except where a remark matters. Obsolete: B-5,
 P-1, P-2, P-10, DR-11 (`scroll_until` left the driver in protocol 4.0), DM-12 (not a bug: always under `lifecycleLock`), DM-14, and P-12's claim is
@@ -79,7 +81,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | SY-2 | N | Deferred | `require(method == "state")` throws IAE across binder | S |
 | SY-3 | M | Partial | No password, WebView, popup/spinner or text-changing-selector fixtures | M |
 | SY-4 | L | Deferred | `FixtureFaultProvider` reuses the sync signature permission | S |
-| SY-5 | N | Partial | Fixture screens' purposes undocumented | S |
+| SY-5 | N | Fixed | Every fixture activity's KDoc names the scenarios it serves (documented rather than renamed: tests and docs launch them by name) | S |
 | X-3 | M | Partial | Driver `internal class ClientConnection` collides with the daemon/SDK name; Python `TapServer` vs Kotlin `TapClient` | S |
 
 ### Protocol and command engine (contracts/protocol, device/driver/command-engine)
@@ -101,7 +103,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| B-4 | H | Partial | Bundled driver is debug-signed; no uninstall+reinstall on `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | S–M |
+| B-4 | H | Fixed | A driver package signed by another build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) is uninstalled and reinstalled once; the AUT never is (`AdbTest`). Installed `versionName` is checked against the bundled build. Release signing with a project key stays a release-engineering option | S–M |
 | H-5 | M | Fixed | `BlobReceiver` copies each chunk once into a buffer of the announced size, hashes incrementally and hands the array on uncopied (`BlobReceiverTest`) | S |
 | H-15 | M | Deferred | `awaitIdle` runs `process()` before and after every poll (`AppLifecycle.kt:221-229`). Synchronization is WIP | S |
 | H-19 | M | Open | `DeviceSession.open` ≈190 lines with a `suspendCancellableCoroutine` handoff | L |
@@ -119,36 +121,36 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| DM-18 | M | Partial | No CLI tests (option parsing, start/stop/status) | M |
+| DM-18 | M | Fixed | `CliTest`: per-command option validation, `status`/`stop` without a daemon and with a stale descriptor (`parseCommandLine`, `status` and `stop` no longer exit the process). `start`/`serve` run in every fixture and Python suite | M |
 | DM-15 | L | Fixed | `scroll_until` removed; `DIR_UNSPECIFIED` is rejected uniformly for swipe/scroll | S |
-| DM-17 | N | Partial | `await(pending)` result shaping still inside `TapDaemon` (`:624`) | S |
+| DM-17 | N | Fixed | Result shaping moved out of `TapDaemon` into `DeviceService` (its only caller) | S |
 | API-7 | L | Fixed* | `stop` never compares `Info.pid` with the descriptor pid | S |
 
 ### Kotlin client (clients/kotlin)
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| K-15 | L→bug | Open | `DeviceAdmission` holds one device; detaching A inside B's admitted block waits on its own drain | M |
+| K-15 | L→bug | Fixed | `DeviceAdmission` carries every admitted device of the enclosing operations, so detaching A inside B's operation nested in A's fails fast (`TapClientTest`) | M |
 | J-5 | L→bug | Fixed | `DeviceBarrier` uses a plain monitor; withdrawal can no longer be cancelled | S |
 | K-4 | M | Open | Proto types in the public API (`Device.info(): DeviceInfo`, `execute: CommandResult`); `App.ProcessIdentity` clashes with the proto name. Breaking — ask first | L |
 | K-9 | M | Open | `tapScope`/`ensureTapBound` mandatory; no `use {}`/`attach {}` helpers | M |
 | K-1 | M | Open | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
-| K-17 | M | Partial | No `App` unit tests | S |
-| K-11 | L | Partial | Internal `allOf(vararg Node)` shares the public name | S |
+| K-17 | M | Fixed | `App` unit test: targets, timeouts, activity, chunked APK upload, process identity and a refused grant (`TapClientTest`) | S |
+| K-11 | L | Fixed | The internal node combinators are private `conjunction`/`disjunction`; `allOf`/`anyOf` are only the public selector entry points | S |
 | K-13 | L | Partial | Device-side waits carry no last observation | S |
-| K-14 | L | Partial | Polls `process.isAlive` instead of `onExit()` (`TapClient.kt:802,809,828`) | S |
-| K-16 | N | Partial | `connect` has a catch that only rethrows (`TapClient.kt:135-139`) | S |
-| J-6 | L | Open | Failure recorded in three interceptors + handler + fallback (`TapExtension.kt:103-150`) | S |
-| J-7 | L | Open | One 60 s artifact budget for all devices; no sink hook | S–M |
+| K-14 | L | Fixed | The process starter is injected per call; `tap start`/`stop` wait on `process.onExit()` instead of polling | S |
+| K-16 | N | Fixed | The rethrow-only catch in `connect` is gone | S |
+| J-6 | L | Fixed | The primary failure is JUnit's `executionException` only; the recording interceptors, the exception handler and `TestState.failure` are gone | S |
+| J-7 | L | Partial | Devices are captured concurrently, each within its own 60 s budget. No `ArtifactSink` hook yet (new public API: needs a decision) | S–M |
 | J-9 | L | Open | No opt-in class-level device reuse | M |
-| S-2 | L | Open | `fail()` inside `try … catch (AssertionError)` (`MultiDeviceTest.kt:92-94`) | S |
-| S-3 | L | Partial | No test asserts distinct serials are used | S |
+| S-2 | L | Fixed | `runCatching` + one assertion instead of `fail()` inside `catch (AssertionError)` | S |
+| S-3 | L | Fixed | `MultiDeviceTest` asserts its two roles hold distinct serials | S |
 
 ### Python client (clients/python)
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| PY-9 | L | Partial | `_capture_artifacts` has no overall time bound | S |
+| PY-9 | L | Fixed | Failure artifacts are captured per device on their own thread within a 60 s per-device budget; a straggler is abandoned, not joined | S |
 | PY-12 | N | Open | `TapServer.__init__` probes `Info` when discovering from `daemon.json` | S |
 
 ### Build

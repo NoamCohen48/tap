@@ -41,7 +41,7 @@ class Selector internal constructor(
     private fun withNode(node: Node): Selector = Selector(proto.toBuilder().setNode(node).build())
 
     /** This selector's node, further constrained by [other]. */
-    private fun also(other: Node): Selector = withNode(allOf(node, other))
+    private fun also(other: Node): Selector = withNode(conjunction(node, other))
 
     // --- Property refinements ---------------------------------------------------------------
 
@@ -124,7 +124,7 @@ class Selector internal constructor(
      *
      * @throws IllegalArgumentException when [other] has a match choice or a different scope.
      */
-    infix fun or(other: Selector): Selector = withNode(anyOf(node, operand("or", other)))
+    infix fun or(other: Selector): Selector = withNode(disjunction(node, operand("or", other)))
 
     // --- Relations ----------------------------------------------------------------------------
     // A related node is a bare predicate (`tap.v1.Related.node`), so the operand of every
@@ -191,7 +191,7 @@ class Selector internal constructor(
         return Selector(
             other.proto
                 .toBuilder()
-                .setNode(allOf(other.node, related(relation, node)))
+                .setNode(conjunction(other.node, related(relation, node)))
                 .also(::copyScope)
                 .build(),
         )
@@ -314,13 +314,13 @@ private fun related(
 ): Node = Node.newBuilder().setRelated(Related.newBuilder().setRelation(relation).setNode(node)).build()
 
 /** A conjunction with nested `all_of`s flattened, so refinements chain into one flat node. */
-internal fun allOf(vararg nodes: Node): Node {
+private fun conjunction(vararg nodes: Node): Node {
     val flat = nodes.flatMap { if (it.hasAllOf()) it.allOf.nodesList else listOf(it) }
     return flat.singleOrNull() ?: Node.newBuilder().setAllOf(AllOf.newBuilder().addAllNodes(flat)).build()
 }
 
 /** A disjunction with nested `any_of`s flattened. */
-internal fun anyOf(vararg nodes: Node): Node {
+private fun disjunction(vararg nodes: Node): Node {
     val flat = nodes.flatMap { if (it.hasAnyOf()) it.anyOf.nodesList else listOf(it) }
     return flat.singleOrNull() ?: Node.newBuilder().setAnyOf(AnyOf.newBuilder().addAllNodes(flat)).build()
 }

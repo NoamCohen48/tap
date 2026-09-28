@@ -14,8 +14,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -29,6 +29,8 @@ class MultiDeviceTest {
     @TapDevices("left", "right")
     fun drivesTwoDevicesConcurrently(devices: Devices): Unit {
         tapTest {
+            // Each role holds its own device: two sessions on one serial would serialize.
+            assertNotEquals(devices["left"].serial, devices["right"].serial)
             coroutineScope {
                 listOf("left", "right")
                     .map { role ->
@@ -74,25 +76,24 @@ class MultiDeviceTest {
 
             val barrier = DeviceBarrier(2)
             val started = System.nanoTime()
-            try {
-                coroutineScope {
-                    val waiting =
-                        async(start = CoroutineStart.UNDISPATCHED) {
-                            barrier.await()
-                            left.await(text("Never rendered ${System.nanoTime()}"), timeout = 20.seconds).visible()
-                        }
-                    val failing =
-                        async {
-                            barrier.await()
-                            delay(300)
-                            throw AssertionError("sibling boom")
-                        }
-                    awaitAll(waiting, failing)
-                }
-                fail("the failing sibling should have cancelled the scope")
-            } catch (expected: AssertionError) {
-                assertEquals("sibling boom", expected.message)
-            }
+            val sibling =
+                runCatching {
+                    coroutineScope {
+                        val waiting =
+                            async(start = CoroutineStart.UNDISPATCHED) {
+                                barrier.await()
+                                left.await(text("Never rendered ${System.nanoTime()}"), timeout = 20.seconds).visible()
+                            }
+                        val failing =
+                            async {
+                                barrier.await()
+                                delay(300)
+                                throw AssertionError("sibling boom")
+                            }
+                        awaitAll(waiting, failing)
+                    }
+                }.exceptionOrNull()
+            assertTrue(sibling is AssertionError && sibling.message == "sibling boom", "the failing sibling should have cancelled the scope: $sibling")
             val elapsedMs = (System.nanoTime() - started) / 1_000_000
             assertTrue(elapsedMs < 15_000, "in-flight wait cancelled promptly, took ${elapsedMs}ms")
 

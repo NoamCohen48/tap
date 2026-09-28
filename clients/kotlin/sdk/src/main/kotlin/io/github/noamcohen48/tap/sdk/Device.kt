@@ -451,7 +451,7 @@ class Device internal constructor(
      */
     suspend fun detachAndReport(): String? {
         ensureTapBound("Device.detach")
-        if (currentCoroutineContext()[DeviceAdmission]?.device === this) {
+        if (DeviceAdmission.holds(this)) {
             throw TapUsageException("Device($serial).detach invoked from its own admitted operation; refusing to self-wait")
         }
         val deferred: CompletableDeferred<String?>
@@ -527,7 +527,7 @@ class Device internal constructor(
         operation: String,
         block: suspend () -> T,
     ): T {
-        if (currentCoroutineContext()[DeviceAdmission]?.device === this) {
+        if (DeviceAdmission.holds(this)) {
             return block()
         }
         stateMutex.withLock {
@@ -556,7 +556,7 @@ class Device internal constructor(
             activeOps++
         }
         try {
-            return withContext(DeviceAdmission(this)) { block() }
+            return withContext(DeviceAdmission.including(this)) { block() }
         } finally {
             withContext(NonCancellable) {
                 stateMutex.withLock {
@@ -725,14 +725,21 @@ object Directions {
 }
 
 /**
- * Coroutine-context token marking the body of one admitted [Device] operation. Nested helpers
- * for the same device observe it and run inline (no double count, no deadlock); [Device]
- * close observes it and fails immediately instead of waiting for itself.
+ * Coroutine-context token marking the body of admitted [Device] operations: every device whose
+ * operation encloses the current coroutine, so an operation on B nested inside one on A keeps
+ * A admitted. Nested helpers for an admitted device observe it and run inline (no double
+ * count, no deadlock); [Device] close observes it and fails immediately instead of waiting
+ * for itself.
  */
-internal class DeviceAdmission(
-    val device: Device,
+internal class DeviceAdmission private constructor(
+    val devices: Set<Device>,
 ) : CoroutineContext.Element {
-    companion object Key : CoroutineContext.Key<DeviceAdmission>
+    companion object Key : CoroutineContext.Key<DeviceAdmission> {
+        suspend fun holds(device: Device): Boolean = currentCoroutineContext()[Key]?.devices?.contains(device) == true
+
+        suspend fun including(device: Device): DeviceAdmission =
+            DeviceAdmission(currentCoroutineContext()[Key]?.devices.orEmpty() + device)
+    }
 
     override val key: CoroutineContext.Key<*> get() = Key
 }

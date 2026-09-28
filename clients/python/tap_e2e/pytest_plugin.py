@@ -28,11 +28,13 @@ then they are detached. Attachments never outlive a test.
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import itertools
 import os
 import pathlib
 import re
+import time
 import traceback
 from collections.abc import Generator
 from dataclasses import dataclass, field
@@ -296,30 +298,57 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
             state.failure = call.excinfo.value
 
 
+#: Failure-artifact budget per device, in seconds; devices are captured concurrently.
+ARTIFACT_BUDGET_S = 60.0
+#: Upper bound for one device-side artifact call inside that budget.
+_ARTIFACT_CALL_S = 30.0
+
+
 def _capture_artifacts(
     item: pytest.Item, config: TapConfig, state: TestDevices
 ) -> None:
     directory = config.artifacts / re.sub(r"[^A-Za-z0-9._-]", "_", item.nodeid)
     directory.mkdir(parents=True, exist_ok=True)
-    for role, device in state.devices.items():
-        prefix = f"{role}-{device.serial}"
-        _capture(directory / f"{prefix}.png", lambda d=device: d.screenshot())
-        _capture(
-            directory / f"{prefix}.xml", lambda d=device: d.dump_hierarchy().encode()
-        )
-        _capture(
-            directory / f"{prefix}.device-info.txt",
-            lambda d=device: str(d.info()).encode(),
-        )
-        _capture(
-            directory / f"{prefix}.driver.log",
-            lambda d=device: "\n".join(d.driver_log()).encode(),
-        )
     if state.failure is not None:
         _capture(
             directory / "failure.txt",
             lambda: "".join(traceback.format_exception(state.failure)).encode(),
         )
+    if not state.devices:
+        return
+    # One thread per device, each within its own budget, so a slow device neither starves
+    # the others nor holds teardown past the budget (a straggler is abandoned, not joined).
+    pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=len(state.devices), thread_name_prefix="tap-artifacts"
+    )
+    try:
+        futures = [
+            pool.submit(_capture_device, directory, role, device)
+            for role, device in state.devices.items()
+        ]
+        concurrent.futures.wait(futures, timeout=ARTIFACT_BUDGET_S + 5)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _capture_device(directory: pathlib.Path, role: str, device: Device) -> None:
+    deadline = time.monotonic() + ARTIFACT_BUDGET_S
+    prefix = f"{role}-{device.serial}"
+
+    def budget() -> float:
+        return min(_ARTIFACT_CALL_S, deadline - time.monotonic())
+
+    steps = [
+        (f"{prefix}.png", lambda t: device.screenshot(timeout=t)),
+        (f"{prefix}.xml", lambda t: device.dump_hierarchy(timeout=t).encode()),
+        (f"{prefix}.device-info.txt", lambda t: str(device.info()).encode()),
+        (f"{prefix}.driver.log", lambda t: "\n".join(device.driver_log()).encode()),
+    ]
+    for name, produce in steps:
+        remaining = budget()
+        if remaining <= 0:
+            return
+        _capture(directory / name, lambda p=produce, t=remaining: p(t))
 
 
 def _capture(path: pathlib.Path, produce) -> None:

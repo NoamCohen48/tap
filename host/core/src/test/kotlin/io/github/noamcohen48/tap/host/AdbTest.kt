@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -106,6 +107,47 @@ class AdbTest {
                 ),
                 commands.map { it.drop(3) },
             )
+        }
+
+    @Test
+    fun `a driver signed by another build is uninstalled and reinstalled, anything else fails`() =
+        runBlocking {
+            val apk = Files.createTempFile("tap-driver", ".apk")
+            fun adbWith(
+                commands: MutableList<List<String>>,
+                firstInstall: String,
+            ): Adb {
+                var installs = 0
+                return testAdb(
+                    ProcessStarter { command ->
+                        commands += command
+                        if ("install" in command && installs++ == 0) {
+                            FakeProcess(stdout = firstInstall, exitCode = 1)
+                        } else {
+                            FakeProcess(stdout = "Success", exitCode = 0)
+                        }
+                    },
+                )
+            }
+
+            val commands = mutableListOf<List<String>>()
+            installDriverPackage(
+                adbWith(commands, "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package $DRIVER_PACKAGE signatures do not match]"),
+                serial,
+                DRIVER_PACKAGE,
+                apk,
+            )
+            assertEquals(
+                listOf("install", "uninstall", "install"),
+                commands.map { it[3] },
+            )
+            assertEquals(listOf("uninstall", DRIVER_PACKAGE), commands[1].drop(3))
+
+            val other = mutableListOf<List<String>>()
+            assertFailsWith<AdbCommandException> {
+                installDriverPackage(adbWith(other, "Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]"), serial, DRIVER_PACKAGE, apk)
+            }
+            assertEquals(listOf("install"), other.map { it[3] })
         }
 
     @Test

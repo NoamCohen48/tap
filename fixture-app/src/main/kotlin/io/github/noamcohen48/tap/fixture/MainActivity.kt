@@ -26,6 +26,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.platform.testTag
 
+/**
+ * The mixed View + Compose home screen most scenarios start from: View and Compose taps with
+ * visible status text, two identical buttons for `AMBIGUOUS`, a process-wide fault-tap counter
+ * (proves a mutation was not replayed), text fields (one hinted) for text input, a long Compose
+ * list for scrolling and a button that holds the sync SDK busy for the synchronization checks.
+ */
 class MainActivity : ComponentActivity() {
     private var composeStatus by mutableStateOf("Compose idle")
 

@@ -48,31 +48,52 @@ private const val STOP_SLACK_MS = 5_000L
  * the descriptor names before trusting its pid.
  */
 fun main(args: Array<String>) {
-    val command = args.firstOrNull() ?: usage()
-    val allowed = COMMAND_OPTIONS[command] ?: usage()
+    val (command, options) =
+        try {
+            parseCommandLine(args.toList())
+        } catch (invalid: UsageException) {
+            invalid.message?.let(System.err::println)
+            usage()
+        }
+    val stateDir = Path.of(options["--state-dir"] ?: defaultStateDir()).toAbsolutePath()
+    val exitCode =
+        when (command) {
+            "start" -> start(options, stateDir).let { 0 }
+            "serve" -> serve(options, stateDir).let { 0 }
+            "status" -> status(stateDir)
+            "stop" -> stop(stateDir)
+            else -> println("tap daemon ${DAEMON_VERSION}").let { 0 }
+        }
+    if (exitCode != 0) exitProcess(exitCode)
+}
+
+/** A command line `tap` refuses; the message (if any) is printed above the usage text. */
+internal class UsageException(
+    message: String? = null,
+) : IllegalArgumentException(message)
+
+internal data class CommandLine(
+    val command: String,
+    val options: Map<String, String>,
+)
+
+/** `tap <command> [--option value]...`, validated against [COMMAND_OPTIONS]; never exits. */
+internal fun parseCommandLine(args: List<String>): CommandLine {
+    val command = args.firstOrNull() ?: throw UsageException()
+    val allowed = COMMAND_OPTIONS[command] ?: throw UsageException("unknown command '$command'")
     val options = parseOptions(args.drop(1))
     (options.keys - allowed).firstOrNull()?.let { unknown ->
-        System.err.println("option $unknown is not valid for `tap $command`")
-        usage()
+        throw UsageException("option $unknown is not valid for `tap $command`")
     }
     options["--port"]?.let { value ->
         if (value.toIntOrNull()?.takeIf { it in 0..65535 } == null) {
-            System.err.println("--port must be an integer in 0..65535, got '$value'")
-            usage()
+            throw UsageException("--port must be an integer in 0..65535, got '$value'")
         }
     }
     if (("--driver-apk" in options) != ("--driver-test-apk" in options)) {
-        System.err.println("--driver-apk and --driver-test-apk go together")
-        usage()
+        throw UsageException("--driver-apk and --driver-test-apk go together")
     }
-    val stateDir = Path.of(options["--state-dir"] ?: defaultStateDir()).toAbsolutePath()
-    when (command) {
-        "start" -> start(options, stateDir)
-        "serve" -> serve(options, stateDir)
-        "status" -> status(stateDir)
-        "stop" -> stop(stateDir)
-        "version" -> println("tap daemon ${DAEMON_VERSION}")
-    }
+    return CommandLine(command, options)
 }
 
 private fun usage(): Nothing {
@@ -111,13 +132,9 @@ private fun parseOptions(args: List<String>): Map<String, String> {
     var i = 0
     while (i < args.size) {
         val key = args[i]
-        if (!key.startsWith("--")) usage()
-        val value = args.getOrNull(i + 1)?.takeUnless { it.startsWith("--") }
-        if (value == null) usage()
-        if (options.put(key, value) != null) {
-            System.err.println("option $key given twice")
-            usage()
-        }
+        if (!key.startsWith("--")) throw UsageException("unexpected argument '$key'")
+        val value = args.getOrNull(i + 1)?.takeUnless { it.startsWith("--") } ?: throw UsageException("option $key needs a value")
+        if (options.put(key, value) != null) throw UsageException("option $key given twice")
         i += 2
     }
     return options
@@ -301,22 +318,28 @@ private fun relaunchCommand(): List<String> {
     return listOf(java.toString()) + jvmFlags + listOf("-cp", System.getProperty("java.class.path"), "io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
 }
 
-/** Prints the live daemon (never its token); exits 1 when none answers. */
-private fun status(stateDir: Path) {
+/** Prints the live daemon (never its token); the exit status is 1 when none answers. */
+internal fun status(
+    stateDir: Path,
+    out: (String) -> Unit = ::println,
+): Int {
     val descriptor = DaemonDescriptor.read(stateDir)
     if (descriptor == null) {
-        println("no daemon (no readable ${stateDir.resolve(DaemonDescriptor.FILE_NAME)})")
-        exitProcess(1)
+        out("no daemon (no readable ${stateDir.resolve(DaemonDescriptor.FILE_NAME)})")
+        return 1
     }
-    when (probe(descriptor)) {
-        Probe.OK -> println("running 127.0.0.1:${descriptor.port} pid=${descriptor.pid} version=${descriptor.daemonVersion} adb=${descriptor.adb}")
+    return when (probe(descriptor)) {
+        Probe.OK -> {
+            out("running 127.0.0.1:${descriptor.port} pid=${descriptor.pid} version=${descriptor.daemonVersion} adb=${descriptor.adb}")
+            0
+        }
         Probe.REJECTED -> {
-            println("stale descriptor: port ${descriptor.port} is served by something else")
-            exitProcess(1)
+            out("stale descriptor: port ${descriptor.port} is served by something else")
+            1
         }
         Probe.DOWN -> {
-            println("not responding: daemon pid ${descriptor.pid} at 127.0.0.1:${descriptor.port} does not answer")
-            exitProcess(1)
+            out("not responding: daemon pid ${descriptor.pid} at 127.0.0.1:${descriptor.port} does not answer")
+            1
         }
     }
 }
@@ -325,27 +348,31 @@ private fun status(stateDir: Path) {
  * Signals the daemon only after it proved (by answering `Info` with the descriptor's token) that
  * it is the process that wrote the descriptor, so a recycled pid is never killed.
  */
-private fun stop(stateDir: Path) {
+internal fun stop(
+    stateDir: Path,
+    out: (String) -> Unit = ::println,
+): Int {
     val descriptor = DaemonDescriptor.read(stateDir)
     if (descriptor == null) {
-        println("no daemon running (no readable ${stateDir.resolve(DaemonDescriptor.FILE_NAME)})")
-        return
+        out("no daemon running (no readable ${stateDir.resolve(DaemonDescriptor.FILE_NAME)})")
+        return 0
     }
     val handle = ProcessHandle.of(descriptor.pid).orElse(null)
     val probe = probe(descriptor)
     if (probe != Probe.OK || handle == null) {
         val why = if (probe == Probe.REJECTED) "port ${descriptor.port} rejects its token" else "daemon pid ${descriptor.pid} does not answer"
-        println("stale descriptor ($why); removing it, signalling nothing")
+        out("stale descriptor ($why); removing it, signalling nothing")
         DaemonDescriptor.deleteIfOwned(stateDir, descriptor.token)
-        return
+        return 0
     }
     handle.destroy()
     try {
         handle.onExit().get(DAEMON_SHUTDOWN_HOOK_TIMEOUT_MS + STOP_SLACK_MS, TimeUnit.MILLISECONDS)
     } catch (_: TimeoutException) {
         System.err.println("daemon pid ${descriptor.pid} still shutting down after ${DAEMON_SHUTDOWN_HOOK_TIMEOUT_MS}ms")
-        exitProcess(1)
+        return 1
     }
     DaemonDescriptor.deleteIfOwned(stateDir, descriptor.token)
-    println("stopped daemon pid ${descriptor.pid}")
+    out("stopped daemon pid ${descriptor.pid}")
+    return 0
 }

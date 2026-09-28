@@ -2,6 +2,7 @@ package io.github.noamcohen48.tap.server
 
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
+import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
@@ -18,10 +19,13 @@ import io.github.noamcohen48.tap.daemon.DeviceEntry
 import io.github.noamcohen48.tap.daemon.DeviceStatus
 import io.github.noamcohen48.tap.daemon.TapDaemon
 import io.github.noamcohen48.tap.host.AdbDeviceState
+import io.github.noamcohen48.tap.host.CommandTransportException
+import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
 import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 class DeviceService(
     private val daemon: TapDaemon,
@@ -90,7 +94,31 @@ class DeviceService(
             val timeoutMs =
                 if (command.hasTimeoutMs()) positive(command.timeoutMs, "command.timeout_ms") else attachedDevice.defaultTimeoutMs
             val pending = attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)
-            ExecuteResponse.newBuilder().setResult(daemon.await(pending)).build()
+            ExecuteResponse.newBuilder().setResult(resultOf(pending)).build()
+        }
+
+    /**
+     * Awaits a submitted command and returns the driver's result as it arrived. Transport loss
+     * is reported as an error result (with the transmission state as its detail and the request
+     * identity the daemon issued), not thrown, so the client sees `INDETERMINATE` /
+     * `TRANSPORT_LOST` through the normal result path. Caller cancellation propagates as
+     * cancellation: it is never mapped to a transport-loss result.
+     */
+    private suspend fun resultOf(pending: DriverClient.PendingCommand): CommandResult =
+        try {
+            pending.await().result
+        } catch (loss: CommandTransportException) {
+            CommandResult
+                .newBuilder()
+                .setRequestId(loss.requestId)
+                .setSessionGeneration(loss.sessionGeneration)
+                .setError(
+                    CommandError
+                        .newBuilder()
+                        .setCode(loss.code)
+                        .setDetail(loss.transmissionState.name)
+                        .apply { loss.message?.let { message = it } },
+                ).build()
         }
 
     override suspend fun screenshot(request: ScreenshotRequest): ScreenshotResponse =

@@ -28,8 +28,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -131,13 +131,8 @@ class TapClient public constructor(
                     .connect(ConnectRequest.newBuilder().setName(name).build())
                     .clientConnectionId
             }
-        val connection = ClientConnection(this, id)
-        try {
-            connection.observe()
-        } catch (error: Throwable) {
-            throw error
-        }
-        return connection
+        // observe() closes the new id itself when it fails before the first event.
+        return ClientConnection(this, id).also { it.observe() }
     }
 
     /**
@@ -735,7 +730,7 @@ object TapDaemonProcess {
      * Starts a server in the background unless one is already running in [stateDir]. Extra
      * `tap serve` options (`--adb PATH`) go in [options]. Runs the executable on
      * `Dispatchers.IO` with a bounded wait; the calling coroutine stays cancellable while
-     * waiting (polling with `delay`, so cancellation destroys the process promptly).
+     * waiting on the process exit (cancellation destroys the process promptly).
      */
     suspend fun start(
         binary: String? = null,
@@ -799,14 +794,14 @@ object TapDaemonProcess {
                 // and propagates with its identity (never reported as our timeout).
                 val exited =
                     withTimeoutOrNull(timeout) {
-                        while (process.isAlive) delay(20)
+                        process.onExit().await()
                         true
                     }
                 if (exited == null) {
                     withContext(NonCancellable) {
                         runCatching { process.destroyForcibly() }
                         withTimeoutOrNull(5_000) {
-                            while (process.isAlive) delay(20)
+                            process.onExit().await()
                         }
                     }
                     throw TapException("`tap ${args.first()}` did not finish within $timeout")
@@ -825,7 +820,7 @@ object TapDaemonProcess {
                 withContext(NonCancellable) {
                     runCatching { process.destroyForcibly() }
                     withTimeoutOrNull(5_000) {
-                        while (process.isAlive) delay(20)
+                        process.onExit().await()
                     }
                 }
                 throw cancelled

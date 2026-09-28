@@ -1,10 +1,8 @@
 package io.github.noamcohen48.tap.daemon
 
-import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.AppLifecycle
-import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DEVICE_SESSION_CLOSE_TIMEOUT_MS
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
@@ -27,7 +25,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
 import java.util.UUID
-import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 class DaemonConfig(
     val adb: Adb,
@@ -609,30 +606,6 @@ class TapDaemon internal constructor(
             val detail = closeDeviceBounded(attachedDevice.deviceSession, timeoutMs, "attached device $id")
             config.log("attached device $id detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
             return@withContext detail
-        }
-
-    /**
-     * Awaits a submitted command and returns the driver's result as it arrived. Transport loss
-     * is reported as an error result (with the transmission state as its detail and the request
-     * identity the daemon issued), not thrown, so the client sees `INDETERMINATE` /
-     * `TRANSPORT_LOST` through the normal result path. Caller cancellation propagates as
-     * cancellation: it is never mapped to a transport-loss result.
-     */
-    suspend fun await(pending: DriverClient.PendingCommand): CommandResult =
-        try {
-            pending.await().result
-        } catch (loss: CommandTransportException) {
-            CommandResult
-                .newBuilder()
-                .setRequestId(loss.requestId)
-                .setSessionGeneration(loss.sessionGeneration)
-                .setError(
-                    CommandError
-                        .newBuilder()
-                        .setCode(loss.code)
-                        .setDetail(loss.transmissionState.name)
-                        .apply { loss.message?.let { message = it } },
-                ).build()
         }
 
     /**

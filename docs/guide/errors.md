@@ -97,8 +97,10 @@ build/tap-artifacts/com.shop.CheckoutTest/buysAnItem/      (pytest: tap-artifact
 ```
 
 The file prefix is the role name, so a two-device test yields `sender-…` and `receiver-…`.
-Capture never masks the original failure: a file that cannot be produced (the device went
-away) is simply missing, and the test still fails with its real error.
+Devices are captured in parallel, each within its own 60 s budget, so one slow or hung device
+does not cost the others their artifacts. Capture never masks the original failure: a file that
+cannot be produced (the device went away, the budget ran out) is simply missing, and the test
+still fails with its real error.
 
 The same data is available on demand: `device.screenshot()`, `device.dumpHierarchy()`,
 `device.driverLog()`, `device.info()`.

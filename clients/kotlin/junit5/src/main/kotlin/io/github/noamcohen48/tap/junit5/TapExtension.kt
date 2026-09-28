@@ -7,6 +7,8 @@ import io.github.noamcohen48.tap.sdk.TapContext
 import io.github.noamcohen48.tap.sdk.TapException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -20,7 +22,6 @@ import org.junit.jupiter.api.extension.InvocationInterceptor
 import org.junit.jupiter.api.extension.ParameterContext
 import org.junit.jupiter.api.extension.ParameterResolver
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext
-import org.junit.jupiter.api.extension.TestExecutionExceptionHandler
 import java.lang.reflect.Method
 import java.nio.file.Files
 import java.nio.file.Path
@@ -46,7 +47,6 @@ class TapExtension :
     BeforeEachCallback,
     AfterEachCallback,
     ParameterResolver,
-    TestExecutionExceptionHandler,
     InvocationInterceptor {
     override fun beforeEach(context: ExtensionContext) {
         val config = TapConfig.current
@@ -99,63 +99,22 @@ class TapExtension :
         TapTestBinding.current.set(state)
         try {
             invocation.proceed()
-        } catch (failure: Throwable) {
-            if (state.failure == null) state.failure = failure
-            throw failure
         } finally {
             TapTestBinding.current.remove()
         }
     }
 
-    override fun interceptBeforeEachMethod(
-        invocation: InvocationInterceptor.Invocation<Void>,
-        invocationContext: ReflectiveInvocationContext<Method>,
-        extensionContext: ExtensionContext,
-    ) {
-        try {
-            invocation.proceed()
-        } catch (failure: Throwable) {
-            extensionContext.store.get(KEY, TestState::class.java)?.let {
-                if (it.failure == null) it.failure = failure
-            }
-            throw failure
-        }
-    }
-
-    override fun interceptAfterEachMethod(
-        invocation: InvocationInterceptor.Invocation<Void>,
-        invocationContext: ReflectiveInvocationContext<Method>,
-        extensionContext: ExtensionContext,
-    ) {
-        try {
-            invocation.proceed()
-        } catch (failure: Throwable) {
-            extensionContext.store.get(KEY, TestState::class.java)?.let {
-                if (it.failure == null) it.failure = failure
-            }
-            throw failure
-        }
-    }
-
-    override fun handleTestExecutionException(
-        context: ExtensionContext,
-        throwable: Throwable,
-    ) {
-        context.store.get(KEY, TestState::class.java)?.failure = throwable
-        throw throwable
-    }
-
     override fun afterEach(context: ExtensionContext) {
         val state = context.store.remove(KEY, TestState::class.java) ?: return
-        val failure = state.failure ?: context.executionException.orElse(null)
+        // JUnit collects whatever the @BeforeEach methods, the test and the @AfterEach methods
+        // threw before this callback runs: the one record of the primary failure.
+        val failure = context.executionException.orElse(null)
         // Stop test coroutines promptly; sessions stay usable for artifact capture below.
         state.rootJob.cancel(CancellationException("test finished"))
         try {
             if (failure != null) {
                 runBlocking(TapContext("junit:${state.method}:artifacts")) {
-                    withContext(NonCancellable) {
-                        withTimeoutOrNull(60_000) { captureArtifacts(context, state) }
-                    }
+                    withContext(NonCancellable) { captureArtifacts(context, state, failure) }
                 }
             }
         } finally {
@@ -349,9 +308,14 @@ class TapExtension :
         return errors
     }
 
+    /**
+     * Failure artifacts per device, captured concurrently, each device within its own
+     * [ARTIFACT_BUDGET_MS] so one slow device cannot starve the others.
+     */
     private suspend fun captureArtifacts(
         context: ExtensionContext,
         state: TestState,
+        failure: Throwable,
     ) {
         val dir =
             TapConfig.current.artifactsDir
@@ -360,15 +324,19 @@ class TapExtension :
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching { Files.createDirectories(dir) }
         }
-        state.devices.forEach { (role, device) ->
-            val prefix = "$role-${device.serial}"
-            capture(dir.resolve("$prefix.png")) { device.screenshot() }
-            capture(dir.resolve("$prefix.xml")) { device.dumpHierarchy().toByteArray() }
-            capture(dir.resolve("$prefix.device-info.txt")) { device.info().toString().toByteArray() }
-            capture(dir.resolve("$prefix.driver.log")) { device.driverLog().joinToString("\n").toByteArray() }
-        }
-        state.failure?.let { failure ->
-            capture(dir.resolve("failure.txt")) { failure.stackTraceToString().toByteArray() }
+        capture(dir.resolve("failure.txt")) { failure.stackTraceToString().toByteArray() }
+        coroutineScope {
+            state.devices.forEach { (role, device) ->
+                launch {
+                    withTimeoutOrNull(ARTIFACT_BUDGET_MS) {
+                        val prefix = "$role-${device.serial}"
+                        capture(dir.resolve("$prefix.png")) { device.screenshot() }
+                        capture(dir.resolve("$prefix.xml")) { device.dumpHierarchy().toByteArray() }
+                        capture(dir.resolve("$prefix.device-info.txt")) { device.info().toString().toByteArray() }
+                        capture(dir.resolve("$prefix.driver.log")) { device.driverLog().joinToString("\n").toByteArray() }
+                    }
+                }
+            }
         }
     }
 
@@ -391,6 +359,9 @@ class TapExtension :
 
     private companion object {
         const val KEY = "tap.devices"
+
+        /** Failure-artifact budget per device. */
+        const val ARTIFACT_BUDGET_MS = 60_000L
 
         /** JVM-wide start index for [assignSerials]; advanced once per test. */
         val ROTATION = AtomicInteger(0)
