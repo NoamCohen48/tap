@@ -2,6 +2,8 @@
 .gradle/
 .kotlin/
 **/build/
+# ...but not the build-logic package `io.github.noamcohen48.tap.build`.
+!build-logic/src/**/build/
 local.properties
 
 # IDE
