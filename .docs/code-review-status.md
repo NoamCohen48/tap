@@ -8,10 +8,10 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 |---|---:|
 | Fixed | 136 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 4 |
+| Partial | 3 |
 | Open | 4 |
 | Won't fix (accepted risk, see decisions) | 2 |
-| Backlog (hygiene or performance, not pursued now; see decisions) | 10 |
+| Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
 | Deferred (synchronization is WIP, see below) | 7 |
 
 The counts cover all 171 findings; Open, Partial, Deferred, Won't fix and Backlog are exactly the rows below.
@@ -120,6 +120,16 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
   3. Only if traversal is clearly slower: walk raw `AccessibilityNodeInfo` roots and create a
      `UiObject2` only for the final match; selector semantics unchanged, proven by the existing
      selector tests and the device suite. Otherwise record the numbers and close DR-5.
+- **SY-3 is a fixture TODO (2026-09-28, user).** One fixture screen per case plus a device
+  test on both matrix devices; fix or document what each finds (driver behaviour changes go
+  to the user first). Best done after the client API batch (it can use `one()` and the wait
+  reasons):
+  - Password field: does typing work, and what do `text()` and selectors see (`""`, bullets)?
+  - Popup / spinner dropdown: its items live in a separate window; can they be found and
+    tapped with the default scope, or is `inAnyWindow` needed (document it)?
+  - Text that changes after an action ("Save" → "Saved"): the action reports success and a
+    follow-up wait sees the new text, per "the driver assumes nothing".
+  - WebView (local page, no network): find and tap an HTML button by text once loaded.
 - **P-9 was wrongly marked "leave"** (now Backlog, see above). CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
@@ -147,7 +157,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |
 | SY-1 | L | Deferred | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
 | SY-2 | N | Deferred | `require(method == "state")` throws IAE across binder | S |
-| SY-3 | M | Partial | No password, WebView, popup/spinner or text-changing-selector fixtures | M |
+| SY-3 | M | Backlog | No password, WebView, popup/spinner or text-changing-selector fixtures. TODO plan in decisions above | M |
 | SY-4 | L | Deferred | `FixtureFaultProvider` reuses the sync signature permission | S |
 | SY-5 | N | Fixed | Every fixture activity's KDoc names the scenarios it serves (documented rather than renamed: tests and docs launch them by name) | S |
 | X-3 | M | Partial | Driver `internal class ClientConnection` collides with the daemon/SDK name; Python `TapServer` vs Kotlin `TapClient` | S |
