@@ -21,6 +21,7 @@ import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import io.grpc.stub.MetadataUtils
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.lang.invoke.MethodHandles
 import java.lang.management.ManagementFactory
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -319,7 +320,9 @@ private fun relaunchCommand(): List<String> {
     val java = Path.of(System.getProperty("java.home"), "bin", if (File.separatorChar == '\\') "java.exe" else "java")
     // Keep the launcher's JVM flags (heap, JAVA_OPTS such as the native-image tracing agent).
     val jvmFlags = ManagementFactory.getRuntimeMXBean().inputArguments
-    return listOf(java.toString()) + jvmFlags + listOf("-cp", System.getProperty("java.class.path"), "io.github.noamcohen48.tap.daemon.TapDaemonMainKt")
+    // This file's own class, so a package move cannot leave the relaunch pointing at nothing.
+    val mainClass = MethodHandles.lookup().lookupClass().name
+    return listOf(java.toString()) + jvmFlags + listOf("-cp", System.getProperty("java.class.path"), mainClass)
 }
 
 /** Prints the live daemon (never its token); the exit status is 1 when none answers. */
