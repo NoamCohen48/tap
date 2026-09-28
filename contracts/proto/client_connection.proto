@@ -12,6 +12,8 @@ syntax = "proto3";
 
 package tap.v1;
 
+import "event_log.proto";
+
 option java_package = "io.github.noamcohen48.tap.api.v1";
 option java_multiple_files = true;
 option java_outer_classname = "ClientConnectionProto";
@@ -28,6 +30,9 @@ service ClientConnectionService {
   // Every live connection with its attached devices; how a later process finds a held
   // connection by name.
   rpc ListConnections(ListConnectionsRequest) returns (ListConnectionsResponse);
+  // The connection's event log (`event_log.proto`) after `after_seq`. Kept for every connection,
+  // the last 2000 events; renews a held connection like any call naming it.
+  rpc Events(EventsRequest) returns (EventsResponse);
 }
 
 message ConnectRequest {
@@ -131,4 +136,16 @@ message ConnectionEntry {
 
 message ListConnectionsResponse {
   repeated ConnectionEntry connections = 1;
+}
+
+message EventsRequest {
+  string client_connection_id = 1;
+  // Only events with a larger `seq`; 0 for all that are kept.
+  int64 after_seq = 2;
+}
+
+message EventsResponse {
+  repeated LoggedEvent events = 1;
+  // Events evicted from the log since the connection began (the log keeps the last 2000).
+  int64 dropped = 2;
 }

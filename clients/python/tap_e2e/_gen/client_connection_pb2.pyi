@@ -1,4 +1,5 @@
 # ruff: noqa
+from . import event_log_pb2 as _event_log_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -146,3 +147,19 @@ class ListConnectionsResponse(_message.Message):
     CONNECTIONS_FIELD_NUMBER: _ClassVar[int]
     connections: _containers.RepeatedCompositeFieldContainer[ConnectionEntry]
     def __init__(self, connections: _Optional[_Iterable[_Union[ConnectionEntry, _Mapping]]] = ...) -> None: ...
+
+class EventsRequest(_message.Message):
+    __slots__ = ("client_connection_id", "after_seq")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    AFTER_SEQ_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    after_seq: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., after_seq: _Optional[int] = ...) -> None: ...
+
+class EventsResponse(_message.Message):
+    __slots__ = ("events", "dropped")
+    EVENTS_FIELD_NUMBER: _ClassVar[int]
+    DROPPED_FIELD_NUMBER: _ClassVar[int]
+    events: _containers.RepeatedCompositeFieldContainer[_event_log_pb2.LoggedEvent]
+    dropped: int
+    def __init__(self, events: _Optional[_Iterable[_Union[_event_log_pb2.LoggedEvent, _Mapping]]] = ..., dropped: _Optional[int] = ...) -> None: ...

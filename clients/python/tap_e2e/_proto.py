@@ -4,6 +4,8 @@ schema needs a matching model constant; until then it maps to the model's "unkno
 
 from __future__ import annotations
 
+from google.protobuf import json_format
+
 from . import _gen as pb
 from .models import (
     AppProcess,
@@ -16,7 +18,9 @@ from .models import (
     Direction,
     ElementSnapshot,
     ErrorCode,
+    EventLog,
     FailureReason,
+    LoggedEvent,
     MatchMode,
     NodeChange,
     NodeFlag,
@@ -160,6 +164,28 @@ def connection_entry(entry: pb.ConnectionEntry) -> ConnectionEntry:
             for d in entry.attached_devices
         ),
     )
+
+
+def _json(message) -> dict:
+    return json_format.MessageToDict(message, preserving_proto_field_name=True)
+
+
+def logged_event(event: pb.LoggedEvent) -> LoggedEvent:
+    return LoggedEvent(
+        seq=event.seq,
+        at=event.at_epoch_ms / 1000,
+        duration=event.duration_ms / 1000,
+        serial=event.serial,
+        aut_package=event.aut_package,
+        command=_json(event.command) if event.HasField("command") else None,
+        app=_json(event.app) if event.HasField("app") else None,
+        error=_json(event.error) if event.HasField("error") else None,
+        failure=_json(event.failure) if event.HasField("failure") else None,
+    )
+
+
+def event_log(response: pb.EventsResponse) -> EventLog:
+    return EventLog(tuple(logged_event(e) for e in response.events), response.dropped)
 
 
 def screen_node(node: pb.ScreenNode) -> ScreenNode:

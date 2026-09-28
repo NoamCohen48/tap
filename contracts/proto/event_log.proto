@@ -1,0 +1,52 @@
+// tap.v1 — the per-connection event log: the device calls a client connection made, in order,
+// as the daemon ran them (`ClientConnectionService.Events`). It is a record of what happened, for
+// turning an exploratory session into a test; the daemon renders no code from it.
+//
+// Logged: every Execute except the diagnostic queries (`device_info`, `dump_hierarchy`), and the
+// app calls that change the device (install, uninstall, force-stop, clear-data, grant, launch,
+// cold launch). Not logged: screenshots, screen snapshots, ref resolution, driver logs and the
+// app queries. A command's selector is logged as sent, so a ref an agent used appears as the
+// selector the daemon resolved it to.
+
+syntax = "proto3";
+
+package tap.v1;
+
+import "command.proto";
+import "failure.proto";
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "EventLogProto";
+
+message LoggedEvent {
+  // 1, 2, 3, … per connection; never reused.
+  int64 seq = 1;
+  // When the call started.
+  int64 at_epoch_ms = 2;
+  int64 duration_ms = 3;
+  string serial = 4;
+  // The attached device's app under test.
+  string aut_package = 5;
+  oneof call {
+    Command command = 6;
+    AppCall app = 7;
+  }
+  // The command ran and the driver returned an error (`CommandResult.error`).
+  optional Error error = 8;
+  // The call failed as an RPC (the `tap-failure-bin` trailer), e.g. an app lifecycle failure.
+  optional Failure failure = 9;
+}
+
+// An AppService call. `operation` is the RPC in snake_case: install, uninstall, force_stop,
+// clear_data, grant_permission, launch, cold_launch.
+message AppCall {
+  string operation = 1;
+  string package_name = 2;
+  // launch / cold_launch.
+  optional string activity = 3;
+  // grant_permission.
+  optional string permission = 4;
+  // The explicit timeout the call carried.
+  optional int64 timeout_ms = 5;
+}

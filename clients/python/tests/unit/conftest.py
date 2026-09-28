@@ -41,6 +41,25 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         # Live connections: id -> ConnectRequest (hold tells held from observed).
         self.live: dict[str, pb.ConnectRequest] = {}
         self.devices: FakeDevices | None = None
+        # Event log per connection id, as the daemon records it (Execute and app changes).
+        self.logs: dict[str, list[pb.LoggedEvent]] = {}
+
+    def record(self, cid: str, serial: str, **call) -> None:
+        log = self.logs.setdefault(cid, [])
+        log.append(
+            pb.LoggedEvent(
+                seq=len(log) + 1,
+                at_epoch_ms=1_790_000_000_000 + len(log),
+                duration_ms=5,
+                serial=serial,
+                aut_package="com.example",
+                **call,
+            )
+        )
+
+    def Events(self, request, context):
+        events = [e for e in self.logs.get(request.client_connection_id, []) if e.seq > request.after_seq]
+        return pb.EventsResponse(events=events)
 
     def _drop_event(self, cid: str) -> threading.Event:
         return self._drops.setdefault(cid, threading.Event())
@@ -136,6 +155,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.attaches: list[tuple[str, int]] = []
         self.attach_requests: list[pb.AttachRequest] = []
         self.owners: list[tuple[str, str]] = []
+        self.log: FakeConnections | None = None
         self.deny: bool = False
         self.png = b"\x89PNG fake"
         self.corrupt_png = False
@@ -177,11 +197,14 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def Execute(self, request, context):
         self._own("execute", request, context)
         self.commands.append(request.command)
+        result = pb.CommandResult(done=pb.Done())
         if self.responder is not None:
-            result = self.responder(request.command)
-            if result is not None:
-                return pb.ExecuteResponse(result=result)
-        return pb.ExecuteResponse(result=pb.CommandResult(done=pb.Done()))
+            result = self.responder(request.command) or result
+        if self.log is not None and request.command.WhichOneof("op") not in ("device_info", "dump_hierarchy"):
+            error = {"error": result.error} if result.HasField("error") else {}
+            serial = request.attached_device_id.removeprefix("attached-")
+            self.log.record(request.client_connection_id, serial, command=request.command, **error)
+        return pb.ExecuteResponse(result=result)
 
     def Screenshot(self, request, context):
         self._own("screenshot", request, context)
@@ -222,6 +245,12 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
         self.owners: list[tuple[str, str]] = []
         self.install_parts: list[pb.InstallRequest] = []
         self.force_stops: list[pb.ForceStopRequest] = []
+        self.log: FakeConnections | None = None
+
+    def _record(self, operation: str, app: pb.AppTarget, **call) -> None:
+        if self.log is not None:
+            serial = app.attached_device_id.removeprefix("attached-")
+            self.log.record(app.client_connection_id, serial, app=pb.AppCall(operation=operation, package_name=app.package_name, **call))
 
     def IsInstalled(self, request, context):
         self.owners.append(("is_installed", request.app.client_connection_id))
@@ -230,7 +259,18 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
     def ForceStop(self, request, context):
         self.owners.append(("force_stop", request.app.client_connection_id))
         self.force_stops.append(request)
+        self._record("force_stop", request.app)
         return pb.ForceStopResponse()
+
+    def Launch(self, request, context):
+        self.owners.append(("launch", request.app.client_connection_id))
+        self._record("launch", request.app, **({"activity": request.activity} if request.HasField("activity") else {}))
+        return pb.LaunchResponse()
+
+    def ColdLaunch(self, request, context):
+        self.owners.append(("cold_launch", request.app.client_connection_id))
+        self._record("cold_launch", request.app)
+        return pb.ColdLaunchResponse(process=pb.ProcessIdentity(pid=4242, start_token="t"))
 
     def Install(self, request_iterator, context):
         self.install_parts.extend(request_iterator)
@@ -272,6 +312,8 @@ class Fake:
         self.devices = FakeDevices()
         self.apps = FakeApps()
         self.connections.devices = self.devices
+        self.devices.log = self.connections
+        self.apps.log = self.connections
         self.auth = _TokenCheck(self.connections)
         self.server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=16), interceptors=[self.auth]

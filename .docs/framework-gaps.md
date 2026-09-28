@@ -178,8 +178,10 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 - Driver `Log` output is only captured through the instrumentation stdout; no structured
   driver event log, no metrics (queue depth, command latency percentiles).
 - Redaction of typed text in logs/artifacts is not implemented. Exceptions render the
-  selector but not `inputText`; the driver log and any future protocol event log would need
-  an explicit redaction rule before secrets are typed in tests.
+  selector but not `inputText`; the driver log would need an explicit redaction rule before
+  secrets are typed in tests. The per-connection event log (`Events`, `tap-agent export`)
+  records `set_text` / `type_text` text verbatim, passwords included: it lives in daemon memory
+  (token-protected) until the connection ends, but an export file holds it in clear.
 - Session secret is passed as an instrumentation argument (visible in the host's `ps` through
   the `adb shell` argv, and to shell/root on the device). Accepted under the trusted-host
   threat model (`code-review-status.md`, decisions; DR-16), with the stdin alternative noted

@@ -21,6 +21,7 @@ lines: `contracts/` (what the components agree on), `device/`, `host/`, `clients
 Test process (any language)
 +-- clients/kotlin   :clients:kotlin:sdk (Device / App / Element / waits / selectors), :clients:kotlin:junit5 (@TapTest)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
++-- clients/agent    tap-agent: CLI + MCP server for coding agents, over tap-e2e (.docs/agent-surface.md)
         |
         | gRPC over loopback  (contracts/proto/*.proto, package tap.v1)
         v
@@ -160,6 +161,7 @@ tap/
 |   |   |   +-- daemon/core/
 |   |   |   |   +-- TapDaemon.kt       ConnectedClient/attached-device registries, device list, bounded teardown
 |   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted per build id, or a `--driver-apk` override
+|   |   |   |   +-- EventLog.kt        per-connection bounded event log (`Events`, `.docs/agent-surface.md` decision 3)
 |   |   |   +-- daemon/snapshot/       screen snapshots with refs (`.docs/agent-surface.md` decision 2); diagnostic only, never on the action path
 |   |   |   |   +-- HierarchyParser.kt   hand XML parser for the UiAutomator dump (no DTD/entities: XXE-safe, no JAXP in the native image) → pre-order DumpNodes
 |   |   |   |   +-- DumpMatcher.kt       the driver's native-plan selector semantics (scope + `pkg` filter, resources, relations) evaluated over a dump
@@ -168,9 +170,10 @@ tap/
 |   |   |   |   +-- RefAlignment.kt      node signatures (no bounds) and LCS alignment with a greedy fallback above a size budget
 |   |   |   |   +-- ScreenSnapshotState.kt per-device latest snapshot, ref counter (`eN`, never reused), ResolveRef; UnknownRef/RefNotAddressable exceptions
 |   |   |   +-- daemon/grpc/
-|   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info + exactly-one Observe (observing/heartbeat/closing)
+|   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info/ListConnections/Events + exactly-one Observe (observing/heartbeat/closing)
 |   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
+|   |   |       +-- EventRecording.kt          records an Execute / app call and its outcome into the owner's EventLog
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
 |   |   |       +-- common.kt                  Defaults (echoed in Info), suspend reply wrapper, exception → status + `tap-failure-bin` Failure trailer
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
@@ -246,13 +249,14 @@ tap/
 Gradle projects: `:contracts:protocol`, `:contracts:api`, `:device:driver`,
 `:device:driver:command-engine`, `:device:sync-sdk`, `:host:core`, `:host:daemon`,
 `:host:validation`, `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `:fixture-app`,
-`:samples:fixture-tests`. `clients/python` is a plain Python package.
+`:samples:fixture-tests`. `clients/python` and `clients/agent` are plain Python packages.
 
 Dependency direction:
 
 ```text
 samples:fixture-tests --> clients:kotlin:junit5 --> clients:kotlin:sdk --> contracts:api   (gRPC at run time)
 clients/python (tap-e2e) ---------------------------------------------> contracts:api   (committed stubs; gRPC at run time)
+clients/agent (tap-agent) --> clients/python (tap-e2e)                  (never gRPC directly)
 host:daemon (tap) --> host:core --> contracts:protocol
         \----------> contracts:api
 host:validation ---> host:core

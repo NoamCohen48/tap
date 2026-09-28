@@ -135,6 +135,9 @@ class ConnectedClient internal constructor(
 
     /** The single Observe stream owner; non-null while a stream is registered. */
     internal var observeOwner: Any? = null
+
+    /** The device calls this connection made (`Events`). */
+    val events = EventLog()
 }
 
 /**
@@ -191,6 +194,8 @@ class AttachedDevice internal constructor(
     internal val deviceSession: DaemonDeviceSession,
     val defaultTimeoutMs: Long,
     val driverLog: DriverLogBuffer,
+    /** The owning connection's log; calls on this device are recorded into it. */
+    val events: EventLog,
 ) {
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
     internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
@@ -312,6 +317,13 @@ class TapDaemon internal constructor(
         synchronized(lifecycleLock) {
             clientConnectionsById[id]?.takeUnless { it.closed } ?: throw UnknownClientConnectionException(id)
         }
+
+    /** The event log of connection [id]; like any call naming a held connection, it renews it. */
+    suspend fun eventLog(id: String): EventLog {
+        val connection = clientConnection(id)
+        markInUse(id)
+        return connection.events
+    }
 
     /** Every live connection with its attached devices, in no particular order. */
     fun connections(): List<ConnectionInfo> {
@@ -667,7 +679,7 @@ class TapDaemon internal constructor(
                     null
                 } else {
                     val attachedDevice =
-                        AttachedDevice(UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log)
+                        AttachedDevice(UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events)
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     attachedDevice
                 }

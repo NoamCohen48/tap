@@ -52,10 +52,12 @@ def pytest_collection_modifyitems(
 ) -> None:
     if _device_run():
         return
-    unit = pathlib.Path(__file__).parent / "unit"
+    suite = pathlib.Path(__file__).parent
+    unit = suite / "unit"
     skip = pytest.mark.skip(reason="device test: set TAP_SERIALS to run it")
     for item in items:
-        if unit not in item.path.parents:
+        # Only this suite's own items: a run may collect other packages' tests too.
+        if suite in item.path.parents and unit not in item.path.parents:
             item.add_marker(skip)
 
 
