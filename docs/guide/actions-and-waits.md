@@ -21,7 +21,7 @@ deadline of the *whole* command on the device, including the lookup; nothing els
 | `exists()` | whether at least one node matches right now |
 | `count()` | how many nodes match |
 | `snapshot()` | text, content description, class, bounds, enabled/checked/focused/… of the single match |
-| `text()` | the node's text, or `null`/`None` when it has none (an empty field's hint is *not* text) |
+| `text()` | the node's text as Android reports it, or `null`/`None` when it has none. An empty field reports its hint here; `snapshot().showingHint` (`showing_hint`) says so |
 | `isEnabled()`, `isChecked()` | shortcuts on `snapshot()` |
 
 `exists()` and `count()` accept any number of matches; `snapshot()` and everything below need
@@ -31,15 +31,27 @@ exactly one.
 
 | Method | What happens on the device |
 |---|---|
-| `tap()` | click at the centre of the node's visible bounds |
-| `longTap()` | long click |
-| `setText(value)` | focus the field, replace its content, then **verify** the text reads back — otherwise `ACTION_REJECTED`/`TEXT_MISMATCH` |
-| `typeText(value)` | focus and type character by character with key events (IME-free); unsupported characters are rejected *before* input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` |
-| `clearText()` | focus and clear |
-| `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves |
-| `scroll(direction, distancePercent = 80)` | one scroll of a scrollable container towards `direction`'s content edge (`DOWN` reveals content below). Returns `true` while more content remains |
-| `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80)` | scroll the container until `target` is visible inside it; returns `target` as an `Element`. Once it has scrolled, fails with `INDETERMINATE` and detail `END_REACHED`, `MAX_SCROLLS` or `WAIT_TIMEOUT` (the list moved, so the failure is not side-effect free); before the first scroll, `NOT_FOUND`/`AMBIGUOUS`/`WAIT_TIMEOUT` |
+| `tap()` | click at the centre of the node's visible bounds, whether or not the node is enabled (assert `isEnabled()` / `await(...).enabled()` first if it matters) |
+| `longTap()` | long click, likewise |
+| `setText(value)` | accessibility set-text on the node; `ACTION_REJECTED` only if the node refuses it. The field is **not** read back — assert it (see below) |
+| `typeText(value, awaitFocus = true)` | three client-side steps: `tap()`, then `await().focused()` (skip it with `awaitFocus = false`), then `device.typeText(value)`. Not read back |
+| `device.typeText(value)` | type character by character with real key events (IME-free) into whatever has input focus now; no target, no click, no settling. Unsupported characters (outside Android's virtual key map, e.g. emoji) are rejected *before* input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` |
+| `clearText()` | `setText("")` |
+| `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves. Returns nothing: whether the screen moved is for the test to assert |
+| `scroll(direction, distancePercent = 80)` | one scroll gesture on the node towards `direction`'s content edge (`DOWN` reveals content below). The node need not report itself scrollable, and nothing says whether content moved |
+| `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80, timeout)` | a client-side loop: while `target` does not exist inside the container, `scroll` once more; returns `target` as an `Element`. Gives up with `WaitTimeoutException` / `WaitTimeoutError` after `maxScrolls` scrolls or the timeout (default: the wait timeout). A failing scroll step propagates unchanged |
 | `device.pressBack()`, `device.pressHome()`, `device.pressKey(code)` | key events |
+
+Text actions report only what Android said about the input, never what the app did with it:
+apps reformat, truncate, reject or copy text elsewhere, and the framework assumes none of
+that. Assert the outcome with a selector that still identifies the field after the edit (its
+resource id, not its old text):
+
+```kotlin
+val email = device.element(resourceId("email"))
+email.setText("user@example.com")
+email.waitUntil.textEquals("user@example.com")
+```
 
 Directions are `UP`/`DOWN`/`LEFT`/`RIGHT` (`Direction.DIR_*` in the Kotlin proto types, plain
 constants exported by both SDKs).
@@ -49,8 +61,7 @@ val list = device.element(res("results"))
 list.scrollUntil(text("Wool socks"), timeout = 30.seconds).tap()
 ```
 
-An action that fails **before** input (`NOT_FOUND`, `AMBIGUOUS`, `NOT_INTERACTABLE`,
-`INVALID_*`) has changed nothing. An action that fails **after** input says so:
+An action that fails **before** input (`NOT_FOUND`, `AMBIGUOUS`, `INVALID_*`) has changed nothing. An action that fails **after** input says so:
 `STALE_DURING_COMMAND` (the target changed mid-action), `ACTION_REJECTED` (input was issued but
 did not take effect), `INDETERMINATE` (the transport dropped after the driver accepted the
 mutation). Tap never re-sends any of them for you.

@@ -51,7 +51,7 @@ enum ErrorCode {
 }
 
 // Gesture direction: where the finger moves for `swipe`, the content edge scrolled towards for
-// `scroll` / `scroll_until` (DOWN reveals content below).
+// `scroll` (DOWN reveals content below).
 enum Direction {
   DIR_UNSPECIFIED = 0;
   DIR_UP = 1;
@@ -90,7 +90,13 @@ message WaitScreenStable {
 message Tap { Selector selector = 1; }
 message LongTap { Selector selector = 1; }
 message SetText { Selector selector = 1; string text = 2; } // ≤ 256 chars
-message TypeText { Selector selector = 1; string text = 2; } // ≤ 256 chars
+// Key events for `text` (≤ 256 chars) into whatever has input focus; no target, no click.
+// Clients tap the field first (the SDKs' element typeText does).
+message TypeText {
+  reserved 1;
+  reserved "selector";
+  string text = 2;
+}
 message ClearText { Selector selector = 1; }
 
 message Swipe {
@@ -103,18 +109,14 @@ message Scroll {
   Direction direction = 2;
   optional int32 distance_percent = 3; // 1..100; default 80
 }
-message ScrollUntil {
-  Selector selector = 1; // the target
-  Selector container = 2; // the scrollable, in the same scope as the target
-  Direction direction = 3; // UNSPECIFIED = DOWN
-  optional int32 distance_percent = 4; // 1..100; default 80
-  optional int32 max_scrolls = 5; // 1..100; default 20
-}
 
 // One protocol request minus session identity (the server owns session id, generation and
 // request ids). Exactly one `op` must be set; its case name is the protocol `op`.
 message Command {
   reserved 2, 5, 22, 23; // health, screenshot, sync_bootstrap, sync_poll: host-internal
+  // scroll_until moved to the clients (a loop of `scroll` + `exists`).
+  reserved 21;
+  reserved "scroll_until";
   optional int64 timeout_ms = 1; // absent = the attached device's default action timeout
   oneof op {
     DeviceInfoQuery device_info = 3;
@@ -134,7 +136,6 @@ message Command {
     ClearText clear_text = 18;
     Swipe swipe = 19;
     Scroll scroll = 20;
-    ScrollUntil scroll_until = 21;
   }
 }
 
@@ -167,6 +168,9 @@ message ElementSnapshot {
   bool scrollable = 15;
   bool selected = 16;
   int32 child_count = 17;
+  // The node is showing its hint: on API 26+ an empty field then reports the hint as `text`.
+  // `text` is always the raw accessibility text; selectors match that same raw text.
+  bool showing_hint = 18;
 }
 
 // Static facts about the device plus the package currently owning the focused window.
@@ -200,10 +204,12 @@ message CommandResult {
   int64 request_id = 2;
   int64 session_generation = 3;
   reserved 11, 12; // artifact, sync: outcomes of host-internal operations
+  // swipe and scroll report `done`: whether content moved is for the test to observe.
+  reserved 6;
+  reserved "moved";
   oneof outcome {
     Done done = 4;
     bool bool = 5; // exists
-    bool moved = 6; // swipe, scroll: whether the content moved
     int32 count = 7; // count, capped at 1000
     string text = 8; // dump_hierarchy
     ElementSnapshot snapshot = 9;

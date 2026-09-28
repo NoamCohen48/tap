@@ -146,6 +146,10 @@ class SystemScope(_message.Message):
     package_name: str
     def __init__(self, package_name: _Optional[str] = ...) -> None: ...
 
+class AnyWindowScope(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class ExactlyOne(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
@@ -161,17 +165,19 @@ class At(_message.Message):
     def __init__(self, index: _Optional[int] = ...) -> None: ...
 
 class Selector(_message.Message):
-    __slots__ = ("node", "aut", "system", "exactly_one", "first", "at")
+    __slots__ = ("node", "aut", "system", "any_window", "exactly_one", "first", "at")
     NODE_FIELD_NUMBER: _ClassVar[int]
     AUT_FIELD_NUMBER: _ClassVar[int]
     SYSTEM_FIELD_NUMBER: _ClassVar[int]
+    ANY_WINDOW_FIELD_NUMBER: _ClassVar[int]
     EXACTLY_ONE_FIELD_NUMBER: _ClassVar[int]
     FIRST_FIELD_NUMBER: _ClassVar[int]
     AT_FIELD_NUMBER: _ClassVar[int]
     node: Node
     aut: AutScope
     system: SystemScope
+    any_window: AnyWindowScope
     exactly_one: ExactlyOne
     first: First
     at: At
-    def __init__(self, node: _Optional[_Union[Node, _Mapping]] = ..., aut: _Optional[_Union[AutScope, _Mapping]] = ..., system: _Optional[_Union[SystemScope, _Mapping]] = ..., exactly_one: _Optional[_Union[ExactlyOne, _Mapping]] = ..., first: _Optional[_Union[First, _Mapping]] = ..., at: _Optional[_Union[At, _Mapping]] = ...) -> None: ...
+    def __init__(self, node: _Optional[_Union[Node, _Mapping]] = ..., aut: _Optional[_Union[AutScope, _Mapping]] = ..., system: _Optional[_Union[SystemScope, _Mapping]] = ..., any_window: _Optional[_Union[AnyWindowScope, _Mapping]] = ..., exactly_one: _Optional[_Union[ExactlyOne, _Mapping]] = ..., first: _Optional[_Union[First, _Mapping]] = ..., at: _Optional[_Union[At, _Mapping]] = ...) -> None: ...

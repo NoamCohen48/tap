@@ -1,14 +1,16 @@
 # Tap Protocol Contract
 
-Date: 2026-09-26
+Date: 2026-09-28
 
-Status: application protocol `3.0`; Phase 1 contract is additive and not yet complete.
+Status: application protocol `4.0`; Phase 1 contract is additive and not yet complete.
 
 This document describes the implemented wire contract. Planned but unimplemented features
 (events, typed element handles, multi-gesture input) remain design work in
-`android-e2e-framework-implementation-plan.md` and are not part of protocol 3.0 yet.
+`android-e2e-framework-implementation-plan.md` and are not part of protocol 4.0 yet.
 
-Protocol 3.0 encodes every control payload as protobuf. The schema is the project's one schema,
+Protocol 4.0 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
+`scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added the `any_window` scope
+and `ElementSnapshot.showing_hint`). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
 same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
@@ -95,7 +97,7 @@ version, and returns `CHALLENGE` containing:
 - sorted supported application-protocol versions.
 
 The host selects the highest exact common `major.minor` version and a sorted subset of offered
-capabilities. Protocol 3.0 currently enables:
+capabilities. Protocol 4.0 currently enables:
 
 ```text
 artifact.screenshot.v1
@@ -147,8 +149,7 @@ Request {
 
 The request ID lives in the frame header. `command` is a public command, exactly one `op` case
 below; the other `body` cases are host-internal operations clients cannot send. Optional fields
-(`optional` in the proto, and the zero `UNSPECIFIED` value of `Direction` for `scroll_until`,
-`StabilitySignal`, `MatchMode`, and an unset `scope`/`pick`) take their documented default on
+(`optional` in the proto, and the zero `UNSPECIFIED` value of `StabilitySignal`, `MatchMode`, and an unset `scope`/`pick`) take their documented default on
 the **driver**, the one place defaults are applied; host core and the daemon forward commands
 as the client built them. `ResourceId.aut_package` is likewise resolved by the driver to the
 session's AUT package. In Kotlin, `contracts/protocol` `Operations.kt` holds the catalogue
@@ -162,19 +163,18 @@ result type.
 | `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, display size and rotation, focused package |
 | `press_key` | `PressKey` (mutation) | `key_code` ≥ 0 | `done` after one key press (`3`/`4` route through `pressHome`/`pressBack`); `ACTION_REJECTED` if the platform refused it |
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
-| `count` | `Count` | `selector` | `count` = matches in the focused window, capped at 1 000 (ignores the match limit) |
-| `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (hint excluded), description, hint, visible bounds, state flags, child count |
+| `count` | `Count` | `selector` | `count` = matches in the selector's scope, capped at 1 000 (ignores the match limit) |
+| `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count |
 | `wait_visible` | `WaitVisible` | `selector` | `done`, or `WAIT_TIMEOUT` |
 | `wait_gone` | `WaitGone` | `selector` | `done` once no match exists, or `WAIT_TIMEOUT` |
 | `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window, or `WAIT_TIMEOUT` |
 | `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
-| `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click |
-| `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: replaces the text; verified within 1 s |
-| `type_text` | `TypeText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: appends via key events; verified |
-| `clear_text` | `ClearText` (mutation) | `selector` | `done`: empties the field; verified |
-| `swipe` | `Swipe` (mutation) | `selector`, `direction` (required), `distance_percent` 1..100 | `moved` = true: finger gesture across the element |
-| `scroll` | `Scroll` (mutation) | `selector` (scrollable), `direction` (required), `distance_percent` | one scroll segment; `moved` = true while more content remains in that direction (UiAutomator semantics), false at the end or when no scroll event was observed |
-| `scroll_until` | `ScrollUntil` (mutation) | `selector`, `container`, `direction` (default `DOWN`), `distance_percent`, `max_scrolls` 1..100 (default 20) | `done` once the target is visible inside the container |
+| `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click; no enabled pre-check |
+| `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: `ACTION_SET_TEXT` accepted by the node (not read back) |
+| `type_text` | `TypeText` (mutation) | `text` (≤ 256 chars); no selector (field 1 reserved) | `done`: every key event injected into whatever has input focus; no click, no settling, not read back. `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` before input for a character the virtual key map cannot type |
+| `clear_text` | `ClearText` (mutation) | `selector` | `done`: `ACTION_SET_TEXT` with "" accepted (not read back) |
+| `swipe` | `Swipe` (mutation) | `selector`, `direction` (required), `distance_percent` 1..100 | `done` after one finger gesture across the element |
+| `scroll` | `Scroll` (mutation) | `selector`, `direction` (required), `distance_percent` | `done` after one scroll segment; no scrollable pre-check and no report of whether content moved (the clients' `scrollUntil` loops `exists` + `scroll`) |
 | `dump_hierarchy` | `DumpHierarchy` | – | `text` = accessibility XML (diagnostic only) |
 | `screenshot` | `CaptureScreenshot` (host-internal) | – | `done`; PNG blob + `Response.artifact` metadata (capability `artifact.screenshot.v1`) |
 | `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token` | `done` + `Response.sync` |
@@ -192,10 +192,10 @@ is `INVALID_REQUEST`, a selector problem `INVALID_SELECTOR`, and a `Request` wit
 `UNSUPPORTED`. All of this is decided on the reader lane before any UI access, and the request
 ID is consumed either way.
 
-Text observations (`SNAPSHOT.text`, and the verification behind `SET_TEXT`/`TYPE_TEXT`/
-`CLEAR_TEXT`) exclude a displayed hint: an empty `EditText` reports its hint as accessibility
-text with `isShowingHintText` set, and the driver reads that as empty text. Text *selectors*
-still match what UiAutomator's `By.text` sees (see the gaps document).
+Text is passed through as Android reports it: an empty `EditText` reports its hint as
+accessibility text with `isShowingHintText` set. `SNAPSHOT.text` carries that raw text and
+`showing_hint` says so; text selectors match the same raw text (`By.text` and the traversal
+predicate agree).
 
 Waits (`wait_visible`, `wait_gone`, `wait_app_visible`) poll on the driver at 50 ms until the
 condition holds or the request deadline passes, and honour cancellation between polls. A
@@ -237,7 +237,7 @@ data in the `internal` oneof:
 Response {
   result: CommandResult {
     duration_ms, request_id, session_generation     filled in by the driver
-    outcome: done | bool | moved | count | text | snapshot | device_info | error
+    outcome: done | bool | count | text | snapshot | device_info | error
   }
   internal: artifact (ArtifactInfo, screenshot) | sync (SyncState, sync_bootstrap/sync_poll)
 }
@@ -255,7 +255,9 @@ or XPath. Every sum type is a `oneof`:
 ```text
 Selector {
   node:  Node
-  scope: aut (default) | system {package_name}     allowlisted packages only
+  scope: aut (default)          the AUT's focused window
+       | system {package_name}   that package's focused window, any package (historical name)
+       | any_window              every window on screen, any package
   pick:  exactly_one (default) | first | at {index ≥ 0}
 }
 Node.kind =
@@ -284,16 +286,15 @@ needs at least two operands (`EMPTY_NODE`), a `match` with an empty `value` is o
 `EXACT` mode (`EMPTY_VALUE`: `CONTAINS ""` and the other modes would match every node, so a
 `first` mutation would hit an arbitrary one), and `REGEX` must compile under RE2 (linear time; no
 backreferences or lookaround). The rejection reason is returned as an `INVALID_SELECTOR`
-detail (`UNSPECIFIED_VALUE` for an unset or unknown enum). A resource with an explicit
-`package_name` must match the scope package; a `system`
-scope outside the driver's allowlist is `SCOPE_DENIED`; a target and container with different
-scope packages is `SCOPE_MISMATCH`.
+detail (`UNSPECIFIED_VALUE` for an unset or unknown enum). Under the `aut` scope a resource with an explicit
+`package_name` must be the AUT's (`SCOPE_DENIED`); `system` and `any_window` selectors may name
+any package's resources.
 
-`CommandValidation.validate(command)` checks the command's arguments and every selector it
-carries; `ScrollUntil` validates both its target and container. On the device,
+`CommandValidation.validate(command)` checks the command's arguments and the selector it
+carries. On the device,
 `CommandValidation.validateSelector(selector)` also returns the query plan. A selector compiles
 to one window-scoped `BySelector` (`ByBuilder` plus `UiWindow.findObjects` on the focused window of
-the scope package) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
+the scope package, or `UiDevice.findObjects` for `any_window`) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
 `any_of`, or a conjunction that repeats one of `BySelector`'s single-valued slots (the same
 text property twice, the same flag twice, two resources, two parents or two ancestors —
 children and descendants are lists and stay native). Those take the traversal plan, which
@@ -330,12 +331,10 @@ socket reader -> bounded queue (16) -> single command executor -> writer -> sock
 | Running, mutation started | Ignored; the definitive action result is returned |
 | Terminal or unknown ID | Ignored; never a second response |
 
-Commands checkpoint before selector resolution, between wait polls, and between scroll
-attempts. Immediately before the first irreversible platform call (`click`, text replacement,
-key injection, the first scroll gesture) the command passes an atomic gate that refuses on
+Commands checkpoint before selector resolution and between wait polls. Immediately before the first irreversible platform call (`click`, text replacement,
+key injection, a gesture) the command passes an atomic gate that refuses on
 cancel, deadline, or a poisoned session and otherwise makes the command uncancellable. Once
-open the gate stays open: passing it again (`scroll_until` gates once, before its first gesture)
-never refuses. Waits that simply run out of time still report `WAIT_TIMEOUT`;
+open the gate stays open: passing it again never refuses. Waits that simply run out of time still report `WAIT_TIMEOUT`;
 `DEADLINE_EXCEEDED` is reserved for expiry outside a normal condition result.
 
 After the gate opened, a failure whose code is "may have mutated: no" would be a false promise,
@@ -416,18 +415,18 @@ policy; Tap itself never retries.
 | Code | May have mutated | Retryable | Meaning / details |
 |---|:-:|:-:|---|
 | `INVALID_REQUEST` | no | no | Malformed or out-of-range request. `UNSUPPORTED_CHARACTERS`: text has no key-event mapping (rejected before input). |
-| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SCOPE_MISMATCH`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `UNSPECIFIED_VALUE`. |
+| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `UNSPECIFIED_VALUE`. |
 | `UNSUPPORTED` | no | no | No operation set (or one this driver does not know). |
 | `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
 | `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
 | `DUPLICATE_OR_STALE` | no | no | Request ID at or below the watermark. Not sent as a response: it prefixes the driver's `CLOSE` reason. |
 | `OVERLOADED` | no | yes | Command queue full; the ID is still consumed. |
 | `AUT_MISMATCH` | no | no | Observed AUT identity differs. `PROCESS_RESTARTED`, `PROCESS_MISMATCH` from synchronization. |
-| `NOT_FOUND` | no | yes | Zero matches. `END_REACHED`, `MAX_SCROLLS` for `SCROLL_UNTIL`. |
+| `NOT_FOUND` | no | yes | Zero matches. |
 | `AMBIGUOUS` | no | no | More than one match; returned before any input. |
-| `NOT_INTERACTABLE` | no | yes | Target exists but cannot take the action (not editable, not scrollable, focus never arrived: `FOCUS_TIMEOUT`). |
-| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `FOCUS_LOST`, `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
-| `ACTION_REJECTED` | yes | no | Input was issued but did not take effect. `TEXT_MISMATCH`, `FOCUS_TIMEOUT`, `DEADLINE_AFTER_FOCUS`, `PARTIAL_INPUT`. |
+| `NOT_INTERACTABLE` | no | yes | Reserved; no longer emitted (4.0: the driver does not pre-check enabled/scrollable). |
+| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
+| `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `PARTIAL_INPUT` (deadline mid-typing). Effects are never read back. |
 | `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
@@ -437,16 +436,11 @@ policy; Tap itself never retries.
 | `SYNC_PROVIDER_UNAVAILABLE` | no | yes | Synchronization provider unusable. `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `MALFORMED_STATE`, `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `PROVIDER_POISONED`. |
 | `DRIVER_UNHEALTHY` | no | no | Session poisoned by the watchdog (`WATCHDOG`, `HEARTBEAT_EXPIRED`); rebuild the session. |
 | `TRANSPORT_LOST` | no | no | Host-side: no response and no mutation risk. |
-| `INDETERMINATE` | yes | no | Mutation may have happened without a definitive result. `WATCHDOG`, `KEY_RELEASE_FAILED`; after the gate, the rewritten code's detail or name (`END_REACHED`, `MAX_SCROLLS`, `WAIT_TIMEOUT`, …). |
+| `INDETERMINATE` | yes | no | Mutation may have happened without a definitive result. `WATCHDOG`, `KEY_RELEASE_FAILED`; after the gate, the rewritten code's detail or name. |
 | `ARTIFACT_TRANSFER_FAILED` | yes | no | Blob capture or transfer failed. Driver: `CAPTURE_FAILED`, `ARTIFACT_TOO_LARGE`, `BLOB_INCOMPLETE`. Host verification: `BLOB_UNEXPECTED`, `BLOB_OUT_OF_ORDER`, `BLOB_LENGTH_MISMATCH`, `BLOB_CHECKSUM_MISMATCH`, `BLOB_INCOMPLETE`. |
 | `PAYLOAD_TOO_LARGE` | yes | no | The command ran but its response exceeded the control payload limit. |
 | `INTERNAL` | yes | no | Unexpected driver failure. |
 
-`scroll_until` that scrolled and still did not find its target reports `INDETERMINATE` with
-detail `END_REACHED` / `MAX_SCROLLS` / `WAIT_TIMEOUT` (the list position changed, so the
-"nothing happened" codes would be false); one that fails before its first gesture still reports
-`NOT_FOUND`/`AMBIGUOUS`/`WAIT_TIMEOUT`. A container that stops resolving after the first gesture
-is `STALE_DURING_COMMAND` (`TARGET_GONE`/`TARGET_AMBIGUOUS`).
 
 ### Host exceptions
 
@@ -555,6 +549,6 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 3.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
+Protocol 4.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
 `AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

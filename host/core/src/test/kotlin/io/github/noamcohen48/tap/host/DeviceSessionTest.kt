@@ -1020,7 +1020,7 @@ class DeviceSessionTest {
     }
 
     @Test
-    fun `launch shares one deadline between am start and the visibility wait`() =
+    fun `launch returns after am start without waiting on the driver`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
             val fake = FakeDriverServer("session-launch-deadline", 1, secret, acceptAnySession = true)
@@ -1036,13 +1036,8 @@ class DeviceSessionTest {
                         priorResponder?.invoke(serial, command)
                     }
                 }
-                val launching = async(Dispatchers.IO) { session.app().launch(".Main", timeoutMs = 2_000) }
-                val wait = withTimeout(5_000) { fake.nextFrame() }
-                val request = Request.parseFrom(wait.payload)
-                assertEquals(Command.OpCase.WAIT_APP_VISIBLE, request.command.opCase)
-                assertTrue(request.timeoutMs <= 1_600, "visibility wait got ${request.timeoutMs}ms of a 2000ms launch")
-                fake.respond(wait.requestId, Responses.done(1))
-                withTimeout(5_000) { launching.await() }
+                // Nothing answers driver frames here: a visibility wait would time out and fail the launch.
+                withTimeout(5_000) { session.app().launch(".Main", timeoutMs = 2_000) }
                 session.close(timeoutMs = 5_000)
             } finally {
                 fake.close()

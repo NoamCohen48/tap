@@ -26,40 +26,52 @@ internal sealed interface KeyPress {
 }
 
 /**
- * Keys `type_text` has pressed but not yet released. Whatever happens mid-sequence (a rejected
- * event, the deadline), every key still down is released before the command returns, so no
- * key is left stuck on the device.
+ * Keys `type_text` has pressed but not yet released, with the time each went down. Whatever
+ * happens mid-sequence (a rejected event, the deadline), every key still down is released
+ * before the command returns, so no key is left stuck on the device.
  */
 internal class PressedKeys {
-    private val down = linkedSetOf<Int>()
+    private val down = linkedMapOf<Int, Long>()
 
     val isEmpty: Boolean get() = down.isEmpty()
+
+    /**
+     * The down time a key event with [action] for [keyCode] carries when injected at [now]: a
+     * press starts a gesture at [now]; a release belongs to the press it ends.
+     */
+    fun downTimeFor(
+        action: Int,
+        keyCode: Int,
+        now: Long,
+    ): Long = if (action == KeyEvent.ACTION_UP) down[keyCode] ?: now else now
 
     /** Records one injection attempt of a key event with [action] (`KeyEvent.ACTION_*`). */
     fun record(
         action: Int,
         keyCode: Int,
+        downTime: Long,
         injected: Boolean,
     ) {
         if (!injected) return
         when (action) {
-            KeyEvent.ACTION_DOWN -> down += keyCode
+            KeyEvent.ACTION_DOWN -> down[keyCode] = downTime
             KeyEvent.ACTION_UP -> down -= keyCode
         }
     }
 
     /**
      * Releases every key still down, trying each up to [attempts] times with [release]
-     * (true = injected). Returns false when some key could not be released.
+     * (true = injected), which gets the key's down time. Returns false when some key could not
+     * be released.
      */
     fun releaseAll(
         attempts: Int = RELEASE_ATTEMPTS,
-        release: (keyCode: Int) -> Boolean,
+        release: (keyCode: Int, downTime: Long) -> Boolean,
     ): Boolean {
         var allReleased = true
-        for (keyCode in down.toList()) {
+        for ((keyCode, downTime) in down.entries.toList()) {
             var released = false
-            repeat(attempts) { if (!released) released = release(keyCode) }
+            repeat(attempts) { if (!released) released = release(keyCode, downTime) }
             if (released) down -= keyCode else allReleased = false
         }
         return allReleased

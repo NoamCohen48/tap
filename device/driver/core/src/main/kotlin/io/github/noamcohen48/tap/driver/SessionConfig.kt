@@ -14,7 +14,6 @@ internal class SessionConfig(
     val port: Int,
     val expectedAut: String,
     val syncAuthority: String,
-    val allowedSystemPackages: Set<String>,
     val uninterruptibleGraceMs: Long,
     val heartbeatTimeoutMs: Long,
 ) {
@@ -22,12 +21,6 @@ internal class SessionConfig(
         /** [argument] looks up one instrumentation argument (`Bundle::getString`). */
         fun from(argument: (String) -> String?): SessionConfig {
             fun required(name: String): String = requireNotNull(argument(name)) { "Missing instrumentation argument $name" }
-            val allowedSystemPackages =
-                required("tapSystemPackages")
-                    .split(',')
-                    .filter(String::isNotBlank)
-                    .toSet()
-            require(allowedSystemPackages.isNotEmpty()) { "tapSystemPackages is empty" }
             val uninterruptibleGraceMs =
                 argument("tapUninterruptibleGraceMs")?.toLong()
                     ?: CommandPipeline.DEFAULT_UNINTERRUPTIBLE_GRACE_MS
@@ -41,7 +34,6 @@ internal class SessionConfig(
                 port = required("tapPort").toInt(),
                 expectedAut = required("tapAutPackage"),
                 syncAuthority = required("tapSyncAuthority"),
-                allowedSystemPackages = allowedSystemPackages,
                 uninterruptibleGraceMs = uninterruptibleGraceMs,
                 heartbeatTimeoutMs = heartbeatTimeoutMs,
             )

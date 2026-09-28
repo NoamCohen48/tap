@@ -20,7 +20,7 @@ internal fun SelectorProto.renderText(): String =
             when (scopeCase) {
                 SelectorProto.ScopeCase.AUT -> message("aut") {}
                 SelectorProto.ScopeCase.SYSTEM -> message("system") { string("package_name", system.packageName) }
-                SelectorProto.ScopeCase.SCOPE_NOT_SET, null -> Unit
+                SelectorProto.ScopeCase.ANY_WINDOW, SelectorProto.ScopeCase.SCOPE_NOT_SET, null -> Unit
             }
             when (pickCase) {
                 SelectorProto.PickCase.EXACTLY_ONE -> message("exactly_one") {}
@@ -28,6 +28,8 @@ internal fun SelectorProto.renderText(): String =
                 SelectorProto.PickCase.AT -> message("at") { int("index", at.index) }
                 SelectorProto.PickCase.PICK_NOT_SET, null -> Unit
             }
+            // Field 7, so after the pick (4-6) in number order.
+            if (scopeCase == SelectorProto.ScopeCase.ANY_WINDOW) message("any_window") {}
         }.toString()
 
 private fun TextWriter.node(node: Node) {

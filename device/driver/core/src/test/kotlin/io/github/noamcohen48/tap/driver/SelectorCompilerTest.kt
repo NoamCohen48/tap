@@ -7,7 +7,8 @@ import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.github.noamcohen48.tap.protocol.Nodes
 import io.github.noamcohen48.tap.protocol.and
-import io.github.noamcohen48.tap.protocol.inSystemPackage
+import io.github.noamcohen48.tap.protocol.inAnyWindow
+import io.github.noamcohen48.tap.protocol.inPackage
 import io.github.noamcohen48.tap.protocol.or
 import io.github.noamcohen48.tap.protocol.pickAt
 import io.github.noamcohen48.tap.protocol.toSelector
@@ -17,14 +18,14 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class SelectorCompilerTest {
-    private val compiler = SelectorCompiler(AUT, setOf(SYSTEM_UI))
+    private val compiler = SelectorCompiler(AUT)
 
     @Test
     fun plainPredicatesCompileToOneNativeSelectorScopedToTheAut() {
         val compiled = compiler.compile((Nodes.text("OK") and Nodes.flag(NodeFlag.FLAG_ENABLED)).toSelector())
 
         val native = compiled as CompiledSelector.Native
-        assertEquals(AUT, native.scopePackage)
+        assertEquals(SearchScope.FocusedWindow(AUT), native.scope)
         val by = native.by.toString()
         assertTrue(by, by.contains("PKG='\\Q$AUT\\E'"))
         assertTrue(by, by.contains("TEXT='\\QOK\\E'"))
@@ -52,15 +53,28 @@ class SelectorCompilerTest {
     }
 
     @Test
-    fun allowedSystemPackageBecomesTheScope() {
-        val compiled = compiler.compile(Nodes.text("Allow").toSelector().inSystemPackage(SYSTEM_UI))
+    fun anyPackageBecomesTheScope() {
+        val compiled = compiler.compile(Nodes.text("Allow").toSelector().inPackage(SYSTEM_UI)) as CompiledSelector.Native
 
-        assertEquals(SYSTEM_UI, compiled.scopePackage)
+        assertEquals(SearchScope.FocusedWindow(SYSTEM_UI), compiled.scope)
+        assertTrue(compiled.by.toString(), compiled.by.toString().contains("PKG='\\Q$SYSTEM_UI\\E'"))
     }
 
     @Test
-    fun systemPackageOffTheAllowlistIsScopeDenied() {
-        assertScopeDenied { compiler.compile(Nodes.text("Allow").toSelector().inSystemPackage("com.evil")) }
+    fun anotherPackageMayNameItsOwnResources() {
+        val selector = Nodes.androidResource(SYSTEM_UI, "button").toSelector().inPackage(SYSTEM_UI)
+
+        assertEquals(SearchScope.FocusedWindow(SYSTEM_UI), compiler.compile(selector).scope)
+    }
+
+    @Test
+    fun anyWindowScopeSearchesEveryPackage() {
+        val native = compiler.compile(Nodes.text("OK").toSelector().inAnyWindow()) as CompiledSelector.Native
+
+        assertEquals(SearchScope.AllWindows, native.scope)
+        assertTrue(native.by.toString(), !native.by.toString().contains("PKG="))
+        val traversal = compiler.compile((Nodes.text("a") or Nodes.text("b")).toSelector().inAnyWindow())
+        assertEquals(SearchScope.AllWindows, traversal.scope)
     }
 
     @Test

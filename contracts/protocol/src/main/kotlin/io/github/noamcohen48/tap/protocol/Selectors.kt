@@ -2,9 +2,8 @@ package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
+import io.github.noamcohen48.tap.api.v1.AnyWindowScope
 import io.github.noamcohen48.tap.api.v1.At
-import io.github.noamcohen48.tap.api.v1.AutScope
-import io.github.noamcohen48.tap.api.v1.ExactlyOne
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
 import io.github.noamcohen48.tap.api.v1.Match
@@ -153,28 +152,19 @@ object Selectors {
 
 fun Node.toSelector(): Selector = Selectors.of(this)
 
-fun Selector.inSystemPackage(packageName: String): Selector =
+/** Search the focused window of [packageName] (any package) instead of the AUT's. */
+fun Selector.inPackage(packageName: String): Selector =
     toBuilder().setSystem(SystemScope.newBuilder().setPackageName(packageName)).build()
+
+/** Search every window on screen, of any package. */
+fun Selector.inAnyWindow(): Selector = toBuilder().setAnyWindow(AnyWindowScope.getDefaultInstance()).build()
 
 fun Selector.pickFirst(): Selector = toBuilder().setFirst(First.getDefaultInstance()).build()
 
 fun Selector.pickAt(index: Int): Selector = toBuilder().setAt(At.newBuilder().setIndex(index)).build()
 
-/** The system package this selector is scoped to, or null for the AUT (the default). */
-val Selector.systemPackage: String? get() = if (scopeCase == Selector.ScopeCase.SYSTEM) system.packageName else null
-
-/** Scope with the default made explicit, so two selectors compare by what they mean. */
-val Selector.effectiveScope: Any
-    get() = if (scopeCase == Selector.ScopeCase.SYSTEM) system else AutScope.getDefaultInstance()
-
-/** Pick with the default made explicit. */
-val Selector.effectivePick: Any
-    get() =
-        when (pickCase) {
-            Selector.PickCase.FIRST -> first
-            Selector.PickCase.AT -> at
-            Selector.PickCase.EXACTLY_ONE, Selector.PickCase.PICK_NOT_SET, null -> ExactlyOne.getDefaultInstance()
-        }
+/** The package this selector is scoped to (`inPackage`), or null for the AUT (the default) or any window. */
+val Selector.scopedPackage: String? get() = if (scopeCase == Selector.ScopeCase.SYSTEM) system.packageName else null
 
 /** The package a resource id is qualified with, `null` for a raw resource name. */
 fun ResourceId.qualifyingPackage(autPackage: String): String? =
@@ -187,7 +177,12 @@ fun ResourceId.qualifyingPackage(autPackage: String): String? =
 /** A compact, stable rendering for messages and logs, e.g. `text="OK" & parent(class~"List")`. */
 fun Selector.render(): String {
     val base = node.render()
-    val scope = systemPackage?.let { " in $it" }.orEmpty()
+    val scope =
+        when (scopeCase) {
+            Selector.ScopeCase.SYSTEM -> " in ${system.packageName}"
+            Selector.ScopeCase.ANY_WINDOW -> " in any window"
+            Selector.ScopeCase.AUT, Selector.ScopeCase.SCOPE_NOT_SET, null -> ""
+        }
     val pick =
         when (pickCase) {
             Selector.PickCase.FIRST -> " [first]"

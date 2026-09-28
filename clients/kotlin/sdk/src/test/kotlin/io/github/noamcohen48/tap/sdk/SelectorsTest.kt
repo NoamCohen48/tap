@@ -15,7 +15,7 @@ class SelectorsTest {
 
     @Test
     fun `and flattens plain predicates and keeps the receiver's pick and scope`() {
-        val combined = text("Add").at(1).inSystemPackage(system) and clickable()
+        val combined = text("Add").at(1).inPackage(system) and clickable()
         assertEquals(2, combined.proto.node.allOf.nodesCount)
         assertEquals(PickCase.AT, combined.proto.pickCase)
         assertEquals(1, combined.proto.at.index)
@@ -36,14 +36,27 @@ class SelectorsTest {
 
     @Test
     fun `and and or reject an operand with a different scope but accept the same one`() {
-        val other = text("x").inSystemPackage(system)
+        val other = text("x").inPackage(system)
         val failure = assertFailsWith<IllegalArgumentException> { text("a") and other }
         assertTrue(failure.message!!.contains("scope"), failure.message)
         assertFailsWith<IllegalArgumentException> { text("a") or other }
-        assertFailsWith<IllegalArgumentException> { text("a").inSystemPackage("other.pkg") and other }
-        val same = text("a").inSystemPackage(system) or other
+        assertFailsWith<IllegalArgumentException> { text("a").inPackage("other.pkg") and other }
+        val same = text("a").inPackage(system) or other
         assertEquals(system, same.proto.system.packageName)
         assertEquals(2, same.proto.node.anyOf.nodesCount)
+    }
+
+    @Test
+    fun `any window scope composes like a package scope and renders in field order`() {
+        val anywhere = text("OK").inAnyWindow()
+        assertEquals(ScopeCase.ANY_WINDOW, anywhere.proto.scopeCase)
+        assertFailsWith<IllegalArgumentException> { text("a") and anywhere }
+        assertFailsWith<IllegalArgumentException> { text("a").inPackage(system) or anywhere }
+        assertEquals(ScopeCase.ANY_WINDOW, (text("a").inAnyWindow() and anywhere).proto.scopeCase)
+        val row = rawRes("list").inAnyWindow().descendant(text("row"))
+        assertEquals(ScopeCase.ANY_WINDOW, row.proto.scopeCase)
+        val rendered = anywhere.first().render()
+        assertTrue(rendered.endsWith(" first { } any_window { }"), rendered)
     }
 
     @Test
@@ -57,7 +70,7 @@ class SelectorsTest {
             )
         for (relation in relations) {
             assertFailsWith<IllegalArgumentException> { relation(rawRes("card"), text("Play").at(0)) }
-            assertFailsWith<IllegalArgumentException> { relation(rawRes("card"), text("Play").inSystemPackage(system)) }
+            assertFailsWith<IllegalArgumentException> { relation(rawRes("card"), text("Play").inPackage(system)) }
             val ok = relation(rawRes("card").first(), text("Play"))
             assertEquals(PickCase.FIRST, ok.proto.pickCase)
         }
@@ -74,7 +87,7 @@ class SelectorsTest {
 
     @Test
     fun `descendant keeps the target's pick and the receiver's scope`() {
-        val target = rawRes("list").inSystemPackage(system).descendant(text("row").at(3))
+        val target = rawRes("list").inPackage(system).descendant(text("row").at(3))
         assertEquals(PickCase.AT, target.proto.pickCase)
         assertEquals(3, target.proto.at.index)
         assertEquals(ScopeCase.SYSTEM, target.proto.scopeCase)
@@ -86,8 +99,8 @@ class SelectorsTest {
 
     @Test
     fun `descendant rejects a target with a different scope`() {
-        assertFailsWith<IllegalArgumentException> { rawRes("list").descendant(text("row").inSystemPackage(system)) }
-        val same = rawRes("list").inSystemPackage(system).descendant(text("row").inSystemPackage(system))
+        assertFailsWith<IllegalArgumentException> { rawRes("list").descendant(text("row").inPackage(system)) }
+        val same = rawRes("list").inPackage(system).descendant(text("row").inPackage(system))
         assertEquals(system, same.proto.system.packageName)
     }
 
@@ -111,7 +124,7 @@ class SelectorsTest {
         )
         assertEquals(
             """node { resource { name: "button1" package_name: "android" } } system { package_name: "$system" } at { }""",
-            resId("android", "button1").inSystemPackage(system).at(0).render(),
+            resId("android", "button1").inPackage(system).at(0).render(),
         )
         assertEquals(
             "node { all_of { nodes { match { property: PROPERTY_TEXT value: \"a\" mode: MATCH_EXACT } } " +

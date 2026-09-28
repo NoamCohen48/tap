@@ -89,7 +89,6 @@ val ErrorCode.label: String get() = normalized().name.removePrefix("ERR_")
 object ErrorDetail {
     // INVALID_SELECTOR
     const val SCOPE_DENIED = "SCOPE_DENIED"
-    const val SCOPE_MISMATCH = "SCOPE_MISMATCH"
     const val SELECTOR_TOO_DEEP = "SELECTOR_TOO_DEEP"
     const val SELECTOR_TOO_LARGE = "SELECTOR_TOO_LARGE"
     const val STRING_TOO_LONG = "STRING_TOO_LONG"
@@ -101,20 +100,12 @@ object ErrorDetail {
     // INVALID_REQUEST
     const val UNSUPPORTED_CHARACTERS = "UNSUPPORTED_CHARACTERS"
 
-    // INDETERMINATE (scrolling after at least one scroll)
-    const val END_REACHED = "END_REACHED"
-    const val MAX_SCROLLS = "MAX_SCROLLS"
-
     // WAIT_TIMEOUT (screen stability)
     const val SCREEN_CHANGING = "SCREEN_CHANGING"
     const val APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
 
     // ACTION_REJECTED / STALE_DURING_COMMAND / INDETERMINATE (key input)
-    const val FOCUS_TIMEOUT = "FOCUS_TIMEOUT"
-    const val FOCUS_LOST = "FOCUS_LOST"
     const val KEY_RELEASE_FAILED = "KEY_RELEASE_FAILED"
-    const val TEXT_MISMATCH = "TEXT_MISMATCH"
-    const val DEADLINE_AFTER_FOCUS = "DEADLINE_AFTER_FOCUS"
     const val PARTIAL_INPUT = "PARTIAL_INPUT"
     const val TARGET_GONE = "TARGET_GONE"
     const val TARGET_AMBIGUOUS = "TARGET_AMBIGUOUS"

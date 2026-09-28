@@ -22,10 +22,15 @@ internal class QueryCommands(
         target: CompiledSelector,
     ): Int = retryWhileStale(context) { objects.count(target) }
 
-    /** Reads one element's state at this instant; the object is recycled before returning. */
+    /**
+     * Reads one element's state at this instant; the object is recycled before returning.
+     * `text` is the raw accessibility text (the hint, while one is shown on API 26+), with
+     * `showing_hint` saying so, so the snapshot agrees with what text selectors match.
+     */
     fun snapshot(target: CompiledSelector): ElementSnapshot {
         val element = objects.resolveTarget(target)
         return try {
+            val node = element.accessibilityNodeInfo
             val bounds = element.visibleBounds
             ElementSnapshot
                 .newBuilder()
@@ -33,7 +38,7 @@ internal class QueryCommands(
                     element.className?.let(::setClassName)
                     element.applicationPackage?.let(::setPackageName)
                     element.resourceName?.let(::setResourceName)
-                    element.displayedText()?.let(::setText)
+                    node.text?.toString()?.let(::setText)
                     element.contentDescription?.let(::setContentDescription)
                     element.hint?.let(::setHint)
                 }.setBounds(
@@ -53,6 +58,7 @@ internal class QueryCommands(
                 .setScrollable(element.isScrollable)
                 .setSelected(element.isSelected)
                 .setChildCount(element.childCount)
+                .setShowingHint(node.isShowingHintText)
                 .build()
         } finally {
             element.recycle()

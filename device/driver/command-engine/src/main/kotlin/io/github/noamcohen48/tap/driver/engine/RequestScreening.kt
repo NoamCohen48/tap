@@ -11,7 +11,7 @@ import io.github.noamcohen48.tap.wire.v1.Response
 /**
  * Reader-lane checks for a parsed, accepted request, run before it is submitted to the
  * [CommandPipeline]: session identity (`SESSION_MISMATCH`), then the timeout range and the shared
- * [CommandValidation] (arguments, selector structure, `SCOPE_MISMATCH`). They need no UI and no
+ * [CommandValidation] (arguments, selector structure). They need no UI and no
  * session config, so an invalid request is answered at once through [CommandPipeline.respond]
  * instead of waiting behind a running command (where it could come back `OVERLOADED` or expire in
  * the queue). The caller has already consumed the request ID.

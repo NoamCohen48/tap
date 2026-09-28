@@ -12,7 +12,6 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
-import io.github.noamcohen48.tap.api.v1.ScrollUntil
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
@@ -41,7 +40,7 @@ import io.github.noamcohen48.tap.wire.v1.SyncState
 import java.util.IdentityHashMap
 
 /**
- * Turns an accepted, screened [Request] into its terminal [Response]: the driver's scope policy,
+ * Turns an accepted, screened [Request] into its terminal [Response]: selector compilation,
  * then the typed [CommandHandler] dispatch to the command groups.
  * Handlers return their result or throw [CommandFailure]; this is the only place responses are
  * built. Every response is stamped with its duration and the request identity it answers.
@@ -50,18 +49,16 @@ internal class DriverCommandEngine(
     instrumentation: Instrumentation,
     device: UiDevice,
     expectedAut: String,
-    allowedSystemPackages: Set<String>,
     faults: FaultHooks,
     private val sync: SyncProviderClient,
 ) {
-    private val compiler = SelectorCompiler(expectedAut, allowedSystemPackages)
+    private val compiler = SelectorCompiler(expectedAut)
     private val objects = UiObjectAccess(device)
     private val gestures = GestureCommands(device, objects, faults)
-    private val textInput = TextInputCommands(instrumentation, device, objects)
+    private val textInput = TextInputCommands(instrumentation, objects)
     private val waits = WaitCommands(device, objects)
     private val queries = QueryCommands(device, objects)
     private val screenStability = ScreenStability(instrumentation)
-    private val scrolling = ScrollUntilCommand(objects)
     private val artifacts = ArtifactCommands(instrumentation, device)
 
     /** Runs on the pipeline executor. Deadlines are measured from [CommandContext.acceptedAtMs]. */
@@ -83,8 +80,8 @@ internal class DriverCommandEngine(
 
     /**
      * Compiles every selector the command carries, once for the whole request: this is where
-     * scope policy that needs session config (the system-package allowlist, AUT-only resources)
-     * is enforced, and the result is what every poll of the command reuses. Session identity,
+     * the session's AUT is applied (the default scope, AUT-only resources), and the result is
+     * what every poll of the command reuses. Session identity,
      * the timeout range and the shared structural validation already ran on the reader lane
      * (`RequestScreening`), so a request that reaches this point is well formed. A denied
      * selector never touches UI.
@@ -160,15 +157,12 @@ internal class DriverCommandEngine(
 
         override fun setText(command: SetText) = textInput.setText(context, command, selectors[command.selector])
 
-        override fun typeText(command: TypeText) = textInput.typeText(context, command, selectors[command.selector])
+        override fun typeText(command: TypeText) = textInput.typeText(context, command)
 
         override fun clearText(command: ClearText) = textInput.clearText(context, selectors[command.selector])
 
-        override fun swipe(command: Swipe): Boolean = gestures.swipe(context, command, selectors[command.selector])
+        override fun swipe(command: Swipe) = gestures.swipe(context, command, selectors[command.selector])
 
-        override fun scroll(command: Scroll): Boolean = gestures.scroll(context, command, selectors[command.selector])
-
-        override fun scrollUntil(command: ScrollUntil) =
-            scrolling.scrollUntil(context, command, selectors[command.selector], selectors[command.container])
+        override fun scroll(command: Scroll) = gestures.scroll(context, command, selectors[command.selector])
     }
 }

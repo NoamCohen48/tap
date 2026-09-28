@@ -1,8 +1,7 @@
 package io.github.noamcohen48.tap.junit5
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Coroutine coordination for simultaneous multi-device phases. All waiting is suspension
@@ -33,12 +32,15 @@ class DeviceBarrier(
         require(parties >= 2) { "DeviceBarrier needs at least 2 parties, got $parties" }
     }
 
-    private val mutex = Mutex()
+    // A plain monitor, not a coroutine Mutex: no critical section suspends, and the withdrawal
+    // on cancellation must not itself be cancellable (a cancelled coroutine cannot acquire a
+    // contended Mutex, which would leave its arrival counted).
+    private val lock = Any()
     private var arrived = 0
     private var tripped: CompletableGate = CompletableGate()
 
     private class CompletableGate {
-        private val deferred = kotlinx.coroutines.CompletableDeferred<Unit>()
+        private val deferred = CompletableDeferred<Unit>()
 
         suspend fun await() = deferred.await()
 
@@ -58,7 +60,7 @@ class DeviceBarrier(
     suspend fun await() {
         val gate: CompletableGate
         val isLast: Boolean
-        mutex.withLock {
+        synchronized(lock) {
             // One-shot already tripped: late arrivals pass through.
             if (oneShot && tripped.isTripped) return
             arrived++
@@ -76,7 +78,7 @@ class DeviceBarrier(
         try {
             gate.await()
         } catch (cancelled: CancellationException) {
-            mutex.withLock {
+            synchronized(lock) {
                 // Still the same untripped round: withdraw the arrival. A tripped or recycled
                 // barrier is untouched — the cancellation came too late to matter.
                 if (gate === tripped && !gate.isTripped) arrived--
@@ -86,5 +88,5 @@ class DeviceBarrier(
     }
 
     /** Arrivals currently waiting in this round (diagnostics). */
-    suspend fun waiting(): Int = mutex.withLock { arrived }
+    suspend fun waiting(): Int = synchronized(lock) { arrived }
 }

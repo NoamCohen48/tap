@@ -88,9 +88,11 @@ class AppLifecycle(
     }
 
     /**
-     * Starts [activity] (or the launcher activity) and waits until the package owns the
-     * focused window. [timeoutMs] bounds the whole launch: `am start -W` and the visibility wait
-     * share one deadline. Does not assert anything about prior process state; see [coldLaunch].
+     * Starts [activity] (or the launcher activity) with `am start -W` and returns once Android
+     * reports the launch complete, bounded by [timeoutMs]. Nothing about the app's UI is
+     * assumed: a test that needs the app in front or settled waits for that itself
+     * ([awaitAppVisible], `wait_screen_stable`). Does not assert anything about prior process
+     * state; see [coldLaunch].
      */
     suspend fun launch(
         activity: String?,
@@ -100,9 +102,8 @@ class AppLifecycle(
     }
 
     /**
-     * Verified force-stop (bounded by [stopTimeoutMs]), launch, then proof of a *new* process
-     * identity in the foreground. Launch, visibility and the process observation share the one
-     * [timeoutMs] deadline.
+     * Verified force-stop (bounded by [stopTimeoutMs]), launch, then the *new* process
+     * identity. Launch and the process observation share the one [timeoutMs] deadline.
      */
     suspend fun coldLaunch(
         activity: String?,
@@ -129,7 +130,6 @@ class AppLifecycle(
         AmStartOutput.failure(output)?.let { failure ->
             throw AppLifecycleException("am start $component failed on $serial: $failure\n$output")
         }
-        awaitAppVisible(remainingOrTimeout(deadline, timeoutMs, "package $packageName to be in the foreground"))
     }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */

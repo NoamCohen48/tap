@@ -161,7 +161,7 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
   descendant relations; `and`/`or` combinators; `first()`/`at(n)`) validated identically on
   host and driver, compiled to window-scoped `BySelector`s or a single hierarchy traversal —
   never XPath or a hierarchy dump on the hot path.
-- AUT-confined selectors and explicitly allowlisted system-package selectors.
+- AUT-confined selectors by default, widened per selector to another package or to every window.
 - Health, device info, key presses, exists, count, element snapshots, tap, long tap, direct
   and key-event text input, clear text, directional swipe and scroll, bounded View/Compose
   list scroll-and-search with end detection, visible/gone/app-visible waits, an explicit

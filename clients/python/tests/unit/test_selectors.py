@@ -12,7 +12,7 @@ SYSTEM = "com.google.android.permissioncontroller"
 
 
 def test_and_keeps_the_left_pick_and_scope():
-    combined = text("Add").at(1).in_system_package(SYSTEM) & clickable()
+    combined = text("Add").at(1).in_package(SYSTEM) & clickable()
     assert len(combined.proto.node.all_of.nodes) == 2
     assert combined.proto.WhichOneof("pick") == "at"
     assert combined.proto.system.package_name == SYSTEM
@@ -34,16 +34,30 @@ def test_operands_with_a_pick_are_rejected(operand):
 
 
 def test_operands_with_a_different_scope_are_rejected_but_the_same_is_fine():
-    other = text("x").in_system_package(SYSTEM)
+    other = text("x").in_package(SYSTEM)
     with pytest.raises(ValueError, match="scope"):
         text("a") & other
     with pytest.raises(ValueError, match="scope"):
         raw_res("card").has_child(other)
     with pytest.raises(ValueError, match="scope"):
-        text("a").in_system_package("other.pkg") | other
-    same = text("a").in_system_package(SYSTEM) | other
+        text("a").in_package("other.pkg") | other
+    same = text("a").in_package(SYSTEM) | other
     assert same.proto.system.package_name == SYSTEM
     assert len(same.proto.node.any_of.nodes) == 2
+
+
+def test_any_window_scope_composes_like_a_package_scope():
+    anywhere = text("OK").in_any_window()
+    assert anywhere.proto.WhichOneof("scope") == "any_window"
+    with pytest.raises(ValueError, match="scope"):
+        text("a") & anywhere
+    with pytest.raises(ValueError, match="scope"):
+        text("a").in_package(SYSTEM) | anywhere
+    combined = text("a").in_any_window() & anywhere
+    assert combined.proto.WhichOneof("scope") == "any_window"
+    row = raw_res("list").in_any_window().descendant(text("row"))
+    assert row.proto.WhichOneof("scope") == "any_window"
+    assert row.render().endswith("any_window { }")
 
 
 def test_descendant_and_child_reject_a_picked_receiver():
@@ -54,14 +68,14 @@ def test_descendant_and_child_reject_a_picked_receiver():
 
 
 def test_descendant_keeps_the_target_pick_and_the_receiver_scope():
-    target = raw_res("list").in_system_package(SYSTEM).descendant(text("row").at(3))
+    target = raw_res("list").in_package(SYSTEM).descendant(text("row").at(3))
     assert target.proto.WhichOneof("pick") == "at"
     assert target.proto.at.index == 3
     assert target.proto.system.package_name == SYSTEM
     related = [n for n in target.proto.node.all_of.nodes if n.HasField("related")]
     assert related[0].related.relation == pb.RELATION_ANCESTOR
     with pytest.raises(ValueError, match="scope"):
-        raw_res("list").descendant(text("row").in_system_package(SYSTEM))
+        raw_res("list").descendant(text("row").in_package(SYSTEM))
 
 
 def test_selectors_are_hashable_values():

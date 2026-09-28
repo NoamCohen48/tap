@@ -16,7 +16,6 @@ class SessionConfigTest {
             "tapPort" to "7912",
             "tapAutPackage" to "com.example.app",
             "tapSyncAuthority" to "com.example.app.tap-sync",
-            "tapSystemPackages" to "com.android.systemui,,android",
         )
 
     @Test
@@ -27,7 +26,6 @@ class SessionConfigTest {
         assertEquals(7L, config.generation)
         assertArrayEquals(byteArrayOf(1, 2, 3), config.secret)
         assertEquals(7912, config.port)
-        assertEquals(setOf("com.android.systemui", "android"), config.allowedSystemPackages)
         assertEquals(CommandPipeline.DEFAULT_UNINTERRUPTIBLE_GRACE_MS, config.uninterruptibleGraceMs)
         assertEquals(SessionConfig.DEFAULT_HEARTBEAT_TIMEOUT_MS, config.heartbeatTimeoutMs)
     }
@@ -43,7 +41,6 @@ class SessionConfigTest {
     @Test
     fun rejectsMissingOrUnboundedArguments() {
         assertThrows(IllegalArgumentException::class.java) { SessionConfig.from((required - "tapSecret")::get) }
-        assertThrows(IllegalArgumentException::class.java) { SessionConfig.from((required + ("tapSystemPackages" to ","))::get) }
         assertThrows(IllegalArgumentException::class.java) { SessionConfig.from((required + ("tapHeartbeatTimeoutMs" to "0"))::get) }
     }
 }

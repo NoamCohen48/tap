@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.host
 
 import io.github.noamcohen48.tap.api.v1.CommandResult
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.protocol.Commands
@@ -66,7 +67,7 @@ class DriverClientTest {
     @Test
     fun handshakeExposesNegotiatedContract() {
         assertEquals("fake-driver", client.driverInstanceId)
-        assertEquals(3, client.negotiatedVersion.major)
+        assertEquals(4, client.negotiatedVersion.major)
         assertTrue("synchronization.v1" in client.enabledCapabilities)
     }
 
@@ -586,13 +587,13 @@ class DriverClientTest {
 
             // The next valid command takes that ID and carries the session envelope, its optional
             // fields left absent for the driver to default.
-            val scroll = client.submit(Commands.scrollUntil(selector, container = selector), timeoutMs = 1_500)
+            val scroll = client.submit(Commands.scroll(selector, Direction.DIR_DOWN), timeoutMs = 1_500)
             val (frame, request) = driver.nextRequest()
             assertEquals(idBefore, frame.requestId)
             assertEquals("session-1", request.sessionId)
             assertEquals(7L, request.generation)
             assertEquals(1_500L, request.timeoutMs)
-            assertFalse(request.command.scrollUntil.hasMaxScrolls())
+            assertFalse(request.command.scroll.hasDistancePercent())
             driver.respond(frame.requestId, Responses.done(1))
             assertTrue(scroll.await().ok)
         }
@@ -677,16 +678,16 @@ class DriverClientTest {
         runBlocking {
             val pending =
                 async(Dispatchers.IO) {
-                    runCatching { client.execute(Commands.scrollUntil(selector, container = selector)) }
+                    runCatching { client.execute(Commands.scroll(selector, Direction.DIR_DOWN)) }
                 }
             val frame = driver.nextFrame()
-            driver.respond(frame.requestId, Responses.failure(ErrorCode.ERR_NOT_FOUND, detail = "END_REACHED", durationMs = 1))
+            driver.respond(frame.requestId, Responses.failure(ErrorCode.ERR_NOT_FOUND, detail = "SOME_DETAIL", durationMs = 1))
 
             val failure = pending.await().exceptionOrNull() as RemoteCommandException
             assertEquals(ErrorCode.ERR_NOT_FOUND, failure.code)
-            assertEquals("END_REACHED", failure.detail)
+            assertEquals("SOME_DETAIL", failure.detail)
             assertTrue(failure.retryable)
-            assertTrue("NOT_FOUND/END_REACHED" in failure.message.orEmpty())
+            assertTrue("NOT_FOUND/SOME_DETAIL" in failure.message.orEmpty())
         }
 
     @Test

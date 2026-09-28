@@ -4,7 +4,6 @@ import io.github.noamcohen48.tap.host.DEVICE_PORT
 import io.github.noamcohen48.tap.host.DEVICE_PORT_RANGE
 import io.github.noamcohen48.tap.host.DRIVER_TEST_RUNNER
 import io.github.noamcohen48.tap.host.JournalState
-import io.github.noamcohen48.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import io.github.noamcohen48.tap.host.SessionJournal
 import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.host.processStartToken
@@ -163,9 +162,6 @@ class RecoveryTest {
                 "-e",
                 "tapAutPackage",
                 FIXTURE_PACKAGE,
-                "-e",
-                "tapSystemPackages",
-                PERMISSION_CONTROLLER_PACKAGE,
                 "-e",
                 "tapSyncAuthority",
                 SYNC_AUTHORITY,

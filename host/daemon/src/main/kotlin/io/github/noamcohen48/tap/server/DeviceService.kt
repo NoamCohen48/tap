@@ -43,7 +43,6 @@ class DeviceService(
                     TapDaemon.AttachDeviceOptions(
                         skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
                         syncAuthority = request.takeIf { it.hasSyncAuthority() }?.syncAuthority,
-                        allowedSystemPackages = request.allowedSystemPackagesList.toSet(),
                         defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else Defaults.ACTION_TIMEOUT_MS,
                         leaseTimeoutMs = if (request.hasLeaseTimeoutMs()) nonNegative(request.leaseTimeoutMs, "lease_timeout_ms") else 0L,
                     ),

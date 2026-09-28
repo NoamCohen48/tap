@@ -26,7 +26,6 @@ const val DRIVER_TEST_PACKAGE = "$DRIVER_PACKAGE.test"
 const val DRIVER_TEST_RUNNER = "$DRIVER_TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner"
 const val DEVICE_PORT = 27183
 val DEVICE_PORT_RANGE = 27183..27187
-const val PERMISSION_CONTROLLER_PACKAGE = "com.google.android.permissioncontroller"
 const val LATE_MUTATION_QUARANTINE = "UNINTERRUPTIBLE_MUTATION_RESET_REQUIRED"
 
 /**
@@ -112,7 +111,6 @@ suspend fun startDriverWithRetry(
     encodedSecret: String,
     autPackage: String,
     syncAuthority: String = "$autPackage.tap-sync",
-    allowedSystemPackages: Set<String> = setOf(PERMISSION_CONTROLLER_PACKAGE),
     overallDeadlineNanos: Long? = null,
     driverArguments: Map<String, String> = emptyMap(),
     logSink: (String) -> Unit = ::println,
@@ -160,9 +158,6 @@ suspend fun startDriverWithRetry(
                                 "-e",
                                 "tapAutPackage",
                                 autPackage,
-                                "-e",
-                                "tapSystemPackages",
-                                allowedSystemPackages.joinToString(","),
                                 "-e",
                                 "tapSyncAuthority",
                                 syncAuthority,

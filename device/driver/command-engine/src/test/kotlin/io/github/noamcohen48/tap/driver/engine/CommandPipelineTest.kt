@@ -8,7 +8,7 @@ import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import io.github.noamcohen48.tap.protocol.Requests
 import io.github.noamcohen48.tap.protocol.Selectors
-import io.github.noamcohen48.tap.protocol.inSystemPackage
+import io.github.noamcohen48.tap.protocol.inPackage
 import io.github.noamcohen48.tap.protocol.withEnvelope
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.MAX_BLOB_CHUNK_BYTES
@@ -531,12 +531,10 @@ class CommandPipelineTest {
         pipeline.submit(3, 30_000) { ok() }
 
         // The reader lane screens before submitting, so each rejection goes straight to the writer.
-        val list = Selectors.androidResource(SCREEN_AUT, "list")
         val rejected =
             mapOf(
                 4L to Requests.of(Commands.tap(Selector.getDefaultInstance())).withEnvelope(SESSION, GENERATION, 5_000),
-                5L to Requests.of(Commands.scrollUntil(Selectors.text("OK").inSystemPackage("com.android.systemui"), list))
-                    .withEnvelope(SESSION, GENERATION, 5_000),
+                5L to Requests.of(Commands.tap(Selectors.text("OK").inPackage(" "))).withEnvelope(SESSION, GENERATION, 5_000),
                 6L to Requests.health().withEnvelope(SESSION, GENERATION, MAX_REQUEST_TIMEOUT_MS + 1),
                 7L to Requests.health().withEnvelope(SESSION, GENERATION + 1, 5_000),
             )
@@ -557,7 +555,7 @@ class CommandPipelineTest {
             answers.map { it.response.errorCode },
         )
         assertEquals(ErrorDetail.EMPTY_NODE, answers[0].response.detail)
-        assertEquals(ErrorDetail.SCOPE_MISMATCH, answers[1].response.detail)
+        assertEquals(ErrorDetail.EMPTY_VALUE, answers[1].response.detail)
         assertEquals(1L, pipeline.snapshot().running, "the long command is still running")
         assertEquals(listOf(2L, 3L), pipeline.snapshot().queued)
 
@@ -634,11 +632,11 @@ class CommandPipelineTest {
         assertEquals(ErrorCode.ERR_NOT_FOUND, nextResponse().response.errorCode)
         pipeline.submit(2, 5_000) { ctx ->
             ctx.markMutationStarted()
-            Responses.failure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.TEXT_MISMATCH, durationMs = 0)
+            Responses.failure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.PARTIAL_INPUT, durationMs = 0)
         }
         val rejected = nextResponse().response
         assertEquals(ErrorCode.ERR_ACTION_REJECTED, rejected.errorCode)
-        assertEquals(ErrorDetail.TEXT_MISMATCH, rejected.detail)
+        assertEquals(ErrorDetail.PARTIAL_INPUT, rejected.detail)
     }
 
     private inline fun <reified T : Outbound> next(): T {

@@ -77,7 +77,6 @@ class Device:
         timeouts: Timeouts | None = None,
         skip_driver_install: bool = False,
         sync_authority: str | None = None,
-        allowed_system_packages: list[str] | None = None,
         wait_for_device: float = 0,
     ) -> Device:
         """Attach ``serial`` for ``aut_package`` (used by ``ClientConnection.attach_device``).
@@ -91,7 +90,6 @@ class Device:
             serial=serial,
             aut_package=aut_package,
             default_timeout_ms=int(timeouts.action * 1000),
-            allowed_system_packages=allowed_system_packages or [],
         )
         if wait_for_device > 0:  # absent = fail at once when another session holds it
             request.lease_timeout_ms = int(wait_for_device * 1000)
@@ -173,6 +171,16 @@ class Device:
     def press_key(self, key_code: int) -> None:
         """Injects one Android key code (a mutation: never replayed on transport loss)."""
         self.execute_or_raise(press_key=pb.PressKey(key_code=key_code))
+
+    def type_text(self, value: str, timeout: float | None = None) -> None:
+        """Type ``value`` as real key events into whatever has input focus now.
+
+        No target and no click (``Element.type_text`` taps first). Unsupported characters are
+        rejected before any input with ``INVALID_REQUEST``/``UNSUPPORTED_CHARACTERS``; otherwise
+        it reports whether every key event was accepted. Where the characters landed is for the
+        test to assert.
+        """
+        self.execute_or_raise(timeout, type_text=pb.TypeText(text=value))
 
     def screenshot(
         self,

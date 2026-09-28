@@ -5,17 +5,15 @@ import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
-import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.Scroll
-import io.github.noamcohen48.tap.api.v1.ScrollUntil
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
-import io.github.noamcohen48.tap.api.v1.TypeText
 import kotlin.time.Duration
+import kotlin.time.TimeSource
 
 /**
  * A selector bound to a device. Every method resolves the selector again on the device, so
@@ -41,14 +39,17 @@ class Element internal constructor(
     /** True when at least one node matches right now (any number of matches is fine). */
     suspend fun exists(timeout: Duration? = null): Boolean = run(timeout) { exists = Exists.newBuilder().setSelector(target).build() }.bool
 
-    /** Matches in the focused window right now, ignoring the selector's match limit. */
+    /** Matches in the selector's scope right now, ignoring its match limit. */
     suspend fun count(timeout: Duration? = null): Int = run(timeout) { count = Count.newBuilder().setSelector(target).build() }.count
 
     /** State of the one matching node at this instant (`AMBIGUOUS`/`NOT_FOUND` otherwise). */
     suspend fun snapshot(timeout: Duration? = null): ElementSnapshot =
         run(timeout) { snapshot = Snapshot.newBuilder().setSelector(target).build() }.snapshot
 
-    /** Text of the one matching node, or null when it has none (an empty field's hint is not text). */
+    /**
+     * Raw accessibility text of the one matching node, or null when it has none. On API 26+ an
+     * empty field reports its hint here; `snapshot().showingHint` says so.
+     */
     suspend fun text(timeout: Duration? = null): String? = snapshot(timeout).let { if (it.hasText()) it.text else null }
 
     /** `snapshot().enabled` of the one matching node. */
@@ -69,7 +70,12 @@ class Element internal constructor(
         run(timeout) { longTap = LongTap.newBuilder().setSelector(target).build() }
     }
 
-    /** Accessibility text replacement, verified on the device. */
+    /**
+     * Accessibility text replacement (`ACTION_SET_TEXT`) on the one matching node. Fails with
+     * `ACTION_REJECTED` only when the node refuses the action; the field is not read back, so
+     * assert the effect yourself with a selector that survives the edit:
+     * `element(resourceId("email")).waitUntil.textEquals("new")`.
+     */
     suspend fun setText(
         value: String,
         timeout: Duration? = null,
@@ -84,22 +90,24 @@ class Element internal constructor(
         }
     }
 
-    /** Focus plus real key events; unsupported characters are rejected before any input. */
+    /**
+     * Taps the one matching node, waits until it reports focus (with [awaitFocus]; bounded by
+     * the wait timeout), then types [value] as real key events with [Device.typeText]. Three
+     * steps, so a failure says which one failed. Pass `awaitFocus = false` when focus goes
+     * elsewhere (a child or a separate input view), and wait for what that app needs yourself.
+     * The field is not read back: assert the effect yourself.
+     */
     suspend fun typeText(
         value: String,
+        awaitFocus: Boolean = true,
         timeout: Duration? = null,
     ) {
-        run(timeout) {
-            typeText =
-                TypeText
-                    .newBuilder()
-                    .setSelector(target)
-                    .setText(value)
-                    .build()
-        }
+        tap(timeout)
+        if (awaitFocus) await().focused()
+        device.typeText(value, timeout)
     }
 
-    /** Focus the one matching editable node and clear its text. */
+    /** [setText] with an empty string: `ACTION_SET_TEXT` on the one matching node, not read back. */
     suspend fun clearText(timeout: Duration? = null) {
         run(timeout) { clearText = ClearText.newBuilder().setSelector(target).build() }
     }
@@ -122,18 +130,16 @@ class Element internal constructor(
     }
 
     /**
-     * One scroll segment of this (scrollable) element towards [direction]'s content edge
-     * (UiAutomator semantics: `DOWN` reveals content below). Returns `true` while more content
-     * remains in that direction, `false` once the end was reached or no scroll was observed.
+     * One scroll gesture on the one matching node towards [direction]'s content edge
+     * (UiAutomator semantics: `DOWN` reveals content below). Nothing is reported about whether
+     * content moved; observe that with a query or wait.
      */
     suspend fun scroll(
         direction: Direction,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         timeout: Duration? = null,
-    ): Boolean =
-        run(
-            timeout,
-        ) {
+    ) {
+        run(timeout) {
             scroll =
                 Scroll
                     .newBuilder()
@@ -141,17 +147,19 @@ class Element internal constructor(
                     .setDirection(direction)
                     .setDistancePercent(distancePercent)
                     .build()
-        }.moved
+        }
+    }
 
     /**
-     * Scrolls this container until [target] is visible inside it and returns the target as a
-     * lazy element scoped to this container (`descendant`), so a later action cannot hit a
-     * duplicate elsewhere on screen; a container with `first()`/`at()` cannot be carried into a
-     * relation, and then the bare [target] is returned. Once it has scrolled, a failure is a [CommandException] `INDETERMINATE` whose
-     * detail says why (`END_REACHED`, `MAX_SCROLLS` or `WAIT_TIMEOUT`): the list moved, so the
-     * failure is not side-effect free and is never reported as a plain wait timeout. Before the
-     * first scroll it fails like any command (`NOT_FOUND`/`AMBIGUOUS` for the container), and a
-     * device `WAIT_TIMEOUT` then becomes [WaitTimeoutException].
+     * Client-side loop: checks whether [target] exists inside this container ([descendant]) and,
+     * while it does not, [scroll]s once, up to [maxScrolls] scrolls within [timeout] (default
+     * the device's wait timeout). Returns the target as a lazy element scoped to this container,
+     * so a later action cannot hit a duplicate elsewhere on screen; a container with
+     * `first()`/`at()` cannot be carried into a relation, and then the bare [target] is used.
+     *
+     * Throws [WaitTimeoutException] when the target never appeared. The list may have scrolled
+     * by then. Every step is an ordinary command, so a failing step throws its own
+     * [CommandException].
      */
     suspend fun scrollUntil(
         target: Selector,
@@ -160,29 +168,24 @@ class Element internal constructor(
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         timeout: Duration? = null,
     ): Element {
-        val result =
-            device.execute(timeout ?: device.timeouts.wait) {
-                scrollUntil =
-                    ScrollUntil
-                        .newBuilder()
-                        .setSelector(target.proto)
-                        .setContainer(this@Element.target)
-                        .setDirection(direction)
-                        .setMaxScrolls(maxScrolls)
-                        .setDistancePercent(distancePercent)
-                        .build()
-            }
-        if (result.hasError()) {
-            if (result.error.code == ErrorCode.ERR_WAIT_TIMEOUT) {
-                throw WaitTimeoutException(
-                    "${target.render()} to scroll into view in ${selector.render()}",
-                    device.serial,
-                    result.durationMs,
-                )
-            }
-            throw CommandException(result, "scroll_until", device.serial, target.render())
+        require(maxScrolls >= 0) { "maxScrolls must not be negative" }
+        val found = Element(device, if (selector.hasPick) target else selector.descendant(target))
+        val started = TimeSource.Monotonic.markNow()
+        val budget = timeout ?: device.timeouts.wait
+        var scrolls = 0
+        while (true) {
+            if (found.exists()) return found
+            if (scrolls == maxScrolls || started.elapsedNow() >= budget) break
+            scroll(direction, distancePercent)
+            scrolls++
         }
-        return Element(device, if (selector.hasPick) target else selector.descendant(target))
+        throw WaitTimeoutException(
+            "${target.render()} to scroll into view in ${selector.render()}",
+            device.serial,
+            started.elapsedNow().inWholeMilliseconds,
+            polls = scrolls,
+            lastObservation = "not found after $scrolls scrolls",
+        )
     }
 
     // --- Derived elements ---------------------------------------------------------------------

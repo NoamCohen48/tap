@@ -1,23 +1,20 @@
 package io.github.noamcohen48.tap.host.validation
 
-import io.github.noamcohen48.tap.api.v1.ErrorCode
-import io.github.noamcohen48.tap.host.PERMISSION_CONTROLLER_PACKAGE
 import io.github.noamcohen48.tap.protocol.Commands
-import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.Selectors
-import io.github.noamcohen48.tap.protocol.detail
-import io.github.noamcohen48.tap.protocol.errorCode
-import io.github.noamcohen48.tap.protocol.inSystemPackage
+import io.github.noamcohen48.tap.protocol.inAnyWindow
+import io.github.noamcohen48.tap.protocol.inPackage
 import io.github.noamcohen48.tap.protocol.ok
 
 /**
- * A runtime permission dialog: AUT-scoped selectors do not see it, an unlisted system package
- * is `SCOPE_DENIED`, and the permission controller's allow button (per API level) grants it.
+ * A runtime permission dialog: AUT-scoped selectors do not see it, another package's scope
+ * sees only that package, and the permission controller's allow button (per API level) is
+ * found in its package's scope and in the any-window scope, which grants it.
  */
 @DeviceTest
 class PermissionTest {
     @OnEachDevice
-    fun `permission dialog is reachable only through the permission controller scope`(serial: String) =
+    fun `permission dialog is reachable through its package scope and any window`(serial: String) =
         deviceTest(serial) { device ->
             device.shell("pm", "revoke", FIXTURE_PACKAGE, "android.permission.CAMERA")
             device.withSession { session ->
@@ -35,21 +32,23 @@ class PermissionTest {
                 check(autPermissionChoice.ok && !autPermissionChoice.result.bool) {
                     "AUT scope check failed: $autPermissionChoice"
                 }
-                val deniedScope =
-                    client.send(Commands.exists(Selectors.text(permissionChoiceText).inSystemPackage("com.android.settings")))
-                check(
-                    !deniedScope.ok && deniedScope.errorCode == ErrorCode.ERR_INVALID_SELECTOR &&
-                        deniedScope.detail == ErrorDetail.SCOPE_DENIED,
-                ) { "Unlisted system package should be SCOPE_DENIED: $deniedScope" }
+                val otherPackage =
+                    client.send(Commands.exists(Selectors.text(permissionChoiceText).inPackage("com.android.settings")))
+                check(otherPackage.ok && !otherPackage.result.bool) { "Another package's scope should not see the dialog: $otherPackage" }
                 val allowPermission =
-                    Selectors
-                        .androidResource(
-                            PERMISSION_RESOURCE_PACKAGE,
-                            if (device.apiLevel >= 30) "permission_allow_foreground_only_button" else "permission_allow_button",
-                        ).inSystemPackage(PERMISSION_CONTROLLER_PACKAGE)
-                check(client.send(Commands.waitVisible(allowPermission), timeoutMs = 10_000).ok) { "Allow button did not appear" }
-                check(client.send(Commands.tap(allowPermission)).ok)
+                    Selectors.androidResource(
+                        PERMISSION_RESOURCE_PACKAGE,
+                        if (device.apiLevel >= 30) "permission_allow_foreground_only_button" else "permission_allow_button",
+                    )
+                check(client.send(Commands.waitVisible(allowPermission.inAnyWindow()), timeoutMs = 10_000).ok) {
+                    "Allow button did not appear in any window"
+                }
+                val inControllerScope = client.send(Commands.exists(allowPermission.inPackage(PERMISSION_CONTROLLER_PACKAGE)))
+                check(inControllerScope.ok && inControllerScope.result.bool) { "Controller scope should see the dialog: $inControllerScope" }
+                check(client.send(Commands.tap(allowPermission.inAnyWindow())).ok)
                 check(client.send(Commands.waitVisible(Selectors.text("Camera granted")), timeoutMs = 10_000).ok)
             }
         }
 }
+
+private const val PERMISSION_CONTROLLER_PACKAGE = "com.google.android.permissioncontroller"

@@ -106,6 +106,7 @@ class GoldenWireTest {
             ),
             "request-tap-aut-resource" to (envelope(Requests.of(Commands.tap(Selectors.of(Nodes.autResource("login"))))) to Request::parseFrom),
             "request-press-key" to (envelope(Requests.of(Commands.pressKey(KEYCODE_BACK))) to Request::parseFrom),
+            "request-type-text" to (envelope(Requests.of(Commands.typeText("keys 42"))) to Request::parseFrom),
             "request-set-text" to (
                 envelope(Requests.of(Commands.setText(Selectors.androidResource(AUT, "email"), "user@example.com"))) to Request::parseFrom
             ),
@@ -116,15 +117,13 @@ class GoldenWireTest {
             "request-swipe-default-distance" to (
                 envelope(Requests.of(Commands.swipe(Selectors.rawResource("pager"), Direction.DIR_LEFT))) to Request::parseFrom
             ),
-            "request-scroll-until" to (
+            "request-scroll-any-window" to (
                 envelope(
                     Requests.of(
-                        Commands.scrollUntil(
-                            Selectors.text("Row 40"),
-                            Selectors.androidResource(AUT, "list"),
-                            direction = Direction.DIR_UP,
+                        Commands.scroll(
+                            Selectors.androidResource(AUT, "list").inAnyWindow(),
+                            Direction.DIR_UP,
                             distancePercent = 50,
-                            maxScrolls = 10,
                         ).toBuilder().setTimeoutMs(9_000).build(),
                     ),
                 ) to Request::parseFrom
@@ -150,14 +149,13 @@ class GoldenWireTest {
                             Selectors.of(
                                 (Nodes.text("Allow") or Nodes.text("While using the app", MatchMode.MATCH_CONTAINS)) and
                                     Nodes.flag(NodeFlag.FLAG_ENABLED),
-                            ).inSystemPackage(system).pickFirst(),
+                            ).inPackage(system).pickFirst(),
                         ),
                     ),
                 ) to Request::parseFrom
             ),
             "response-done" to (Responses.done().stamped(31, 12, 3) to Response::parseFrom),
             "response-bool" to (result { setBool(true) } to Response::parseFrom),
-            "response-moved-false" to (result { setMoved(false) } to Response::parseFrom),
             "response-count" to (result { setCount(MAX_MATCH_COUNT) } to Response::parseFrom),
             "response-text" to (result { setText("<hierarchy rotation=\"0\"/>") } to Response::parseFrom),
             "response-snapshot" to (
@@ -172,6 +170,17 @@ class GoldenWireTest {
                             .setClickable(true)
                             .setEnabled(true)
                             .setFocusable(true),
+                    )
+                } to Response::parseFrom
+            ),
+            "response-snapshot-showing-hint" to (
+                result {
+                    setSnapshot(
+                        ElementSnapshot.newBuilder()
+                            .setClassName("android.widget.EditText")
+                            .setText("Email")
+                            .setHint("Email")
+                            .setShowingHint(true),
                     )
                 } to Response::parseFrom
             ),

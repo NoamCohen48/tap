@@ -4,6 +4,7 @@ package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
+import io.github.noamcohen48.tap.api.v1.AnyWindowScope
 import io.github.noamcohen48.tap.api.v1.At
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
@@ -23,8 +24,9 @@ import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
  *
  * Build one with the top-level functions ([text], [res], [desc], ...), narrow it with the
  * methods below and combine selectors with [and] / [or]; each call returns a new selector. Bind
- * it with [Device.element]. Matching happens on the device, scoped to the app under test, and
- * mutations require exactly one match.
+ * it with [Device.element]. Matching happens on the device, by default in the app under test's
+ * focused window ([Selector.inPackage], [Selector.inAnyWindow] widen it), and mutations require
+ * exactly one match.
  *
  * A [Selector] wraps the server API's own `tap.v1.Selector`, a small expression tree that the
  * server forwards to the driver unchanged, so anything built here is validated identically by
@@ -214,7 +216,7 @@ class Selector internal constructor(
     ) {
         require(!other.hasExplicitScope || other.scopeKey == scopeKey) {
             "$operation: the operand ${other.render()} has a different scope than ${render()}; " +
-                "set inSystemPackage(...) on the combined selector instead"
+                "set inPackage(...)/inAnyWindow() on the combined selector instead"
         }
     }
 
@@ -222,27 +224,40 @@ class Selector internal constructor(
     internal val hasPick: Boolean
         get() = proto.pickCase == SelectorProto.PickCase.FIRST || proto.pickCase == SelectorProto.PickCase.AT
 
-    /** True when a non-default scope (a system package) is set; `aut` is the default. */
-    private val hasExplicitScope: Boolean get() = proto.scopeCase == SelectorProto.ScopeCase.SYSTEM
+    /** True when a non-default scope (a package, any window) is set; `aut` is the default. */
+    private val hasExplicitScope: Boolean get() = scopeKey != null
 
-    /** The effective scope: null for the app under test, else the system package. */
-    private val scopeKey: String? get() = if (hasExplicitScope) proto.system.packageName else null
+    /** The effective scope: null for the app under test, else the package or any window. */
+    private val scopeKey: String?
+        get() =
+            when (proto.scopeCase) {
+                SelectorProto.ScopeCase.SYSTEM -> "package ${proto.system.packageName}"
+                SelectorProto.ScopeCase.ANY_WINDOW -> "any window"
+                SelectorProto.ScopeCase.AUT, SelectorProto.ScopeCase.SCOPE_NOT_SET, null -> null
+            }
 
     private fun copyScope(target: SelectorProto.Builder) {
         when (proto.scopeCase) {
             SelectorProto.ScopeCase.SYSTEM -> target.system = proto.system
-            SelectorProto.ScopeCase.AUT, SelectorProto.ScopeCase.SCOPE_NOT_SET -> target.clearScope()
+            SelectorProto.ScopeCase.ANY_WINDOW -> target.anyWindow = proto.anyWindow
+            SelectorProto.ScopeCase.AUT, SelectorProto.ScopeCase.SCOPE_NOT_SET, null -> target.clearScope()
         }
     }
 
     // --- Scope and match choice ---------------------------------------------------------------
 
     /**
-     * Allow this selector to match inside the allowlisted system package [packageName] (by
-     * default only `com.google.android.permissioncontroller`) instead of the app under test.
+     * Search the focused window of [packageName] instead of the app under test's: any package,
+     * such as the permission controller's dialog or another app.
      */
-    fun inSystemPackage(packageName: String): Selector =
+    fun inPackage(packageName: String): Selector =
         Selector(proto.toBuilder().setSystem(SystemScope.newBuilder().setPackageName(packageName)).build())
+
+    /**
+     * Search every window on screen, of any package (dialogs, popups, the system UI, other
+     * apps), instead of only the app under test's focused window.
+     */
+    fun inAnyWindow(): Selector = Selector(proto.toBuilder().setAnyWindow(AnyWindowScope.getDefaultInstance()).build())
 
     /** Accept the first match in accessibility order instead of requiring exactly one. */
     fun first(): Selector = Selector(proto.toBuilder().setFirst(First.getDefaultInstance()).build())
@@ -347,7 +362,7 @@ fun resId(
 /**
  * View resource id `name` of the **app under test**: `<aut>:id/name`, with the package filled in
  * on the device from the session, so the same selector works on every device and role. Use
- * [resId] for another package (a system dialog with [Selector.inSystemPackage]).
+ * [resId] for another package (a system dialog with [Selector.inPackage] or [Selector.inAnyWindow]).
  */
 fun res(name: String): Selector = selector(autResource(name))
 

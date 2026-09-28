@@ -3,6 +3,7 @@ again on the device, so nothing goes stale between calls."""
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -46,7 +47,7 @@ class Element:
         return self._run(timeout, exists=pb.Exists(selector=self._target)).bool
 
     def count(self, timeout: float | None = None) -> int:
-        """Matches in the focused window right now, ignoring the selector's match limit."""
+        """Matches in the selector's scope right now, ignoring its match limit."""
         return self._run(timeout, count=pb.Count(selector=self._target)).count
 
     def snapshot(self, timeout: float | None = None) -> pb.ElementSnapshot:
@@ -54,7 +55,8 @@ class Element:
         return self._run(timeout, snapshot=pb.Snapshot(selector=self._target)).snapshot
 
     def text(self, timeout: float | None = None) -> str | None:
-        """Text of the one matching node, or None when it has none (an empty field's hint is not text)."""
+        """Raw accessibility text of the one matching node, or None when it has none. On API 26+
+        an empty field reports its hint here; ``snapshot().showing_hint`` says so."""
         snapshot = self.snapshot(timeout)
         return snapshot.text if snapshot.HasField("text") else None
 
@@ -77,15 +79,31 @@ class Element:
         self._run(timeout, long_tap=pb.LongTap(selector=self._target))
 
     def set_text(self, value: str, timeout: float | None = None) -> None:
-        """Accessibility text replacement, verified on the device."""
+        """Accessibility text replacement (``ACTION_SET_TEXT``) on the one matching node.
+
+        Fails with ``ACTION_REJECTED`` only when the node refuses the action. The field is not
+        read back: assert the effect with a selector that survives the edit, e.g.
+        ``d.element(resource_id("email")).text_equals("new")``.
+        """
         self._run(timeout, set_text=pb.SetText(selector=self._target, text=value))
 
-    def type_text(self, value: str, timeout: float | None = None) -> None:
-        """Focus plus real key events; unsupported characters are rejected before any input."""
-        self._run(timeout, type_text=pb.TypeText(selector=self._target, text=value))
+    def type_text(
+        self, value: str, await_focus: bool = True, timeout: float | None = None
+    ) -> None:
+        """Tap the one matching node, wait until it reports focus, then type ``value``.
+
+        Three steps (``tap``, ``wait().focused()`` when ``await_focus``, ``Device.type_text``),
+        so a failure says which one failed. Pass ``await_focus=False`` when focus goes elsewhere
+        (a child or a separate input view) and wait for what that app needs yourself. The field
+        is not read back: assert the effect yourself.
+        """
+        self.tap(timeout)
+        if await_focus:
+            self.wait().focused()
+        self.device.type_text(value, timeout)
 
     def clear_text(self, timeout: float | None = None) -> None:
-        """Focus the one matching editable node and clear its text."""
+        """``set_text("")``: ``ACTION_SET_TEXT`` on the one matching node, not read back."""
         self._run(timeout, clear_text=pb.ClearText(selector=self._target))
 
     def swipe(
@@ -109,18 +127,18 @@ class Element:
         direction: pb.Direction,
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
-    ) -> bool:
-        """One scroll segment towards ``direction``'s content edge (UiAutomator semantics: DOWN
-        reveals content below). True while more content remains, False at the end or when no
-        scroll was observed."""
-        return self._run(
+    ) -> None:
+        """One scroll gesture on the one matching node towards ``direction``'s content edge
+        (UiAutomator semantics: DOWN reveals content below). Nothing is reported about whether
+        content moved; observe that with a query or wait."""
+        self._run(
             timeout,
             scroll=pb.Scroll(
                 selector=self._target,
                 direction=direction,
                 distance_percent=distance_percent,
             ),
-        ).moved
+        )
 
     def scroll_until(
         self,
@@ -130,35 +148,38 @@ class Element:
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
     ) -> Element:
-        """Scrolls this container until ``target`` is visible inside it and returns the target as
-        a lazy element scoped to this container (``descendant``), so a later action cannot hit a
-        duplicate elsewhere on screen; a container with ``first()``/``at()`` cannot be carried
-        into a relation, and then the bare ``target`` is returned. Once it has scrolled, a failure is ``CommandError`` INDETERMINATE whose
-        detail says why (END_REACHED, MAX_SCROLLS or WAIT_TIMEOUT): the list moved, so it is not
-        side-effect free and never a plain wait timeout. Before the first scroll it fails like
-        any command (NOT_FOUND/AMBIGUOUS for the container), and a device WAIT_TIMEOUT then raises
-        ``WaitTimeoutError``."""
-        result = self.device.execute(
-            self.device.timeouts.wait if timeout is None else timeout,
-            scroll_until=pb.ScrollUntil(
-                selector=target.proto,
-                container=self._target,
-                direction=direction,
-                max_scrolls=max_scrolls,
-                distance_percent=distance_percent,
-            ),
-        )
-        if result.HasField("error"):
-            if result.error.code == pb.ERR_WAIT_TIMEOUT:
-                raise WaitTimeoutError(
-                    f"{target.render()} to scroll into view in {self.selector.render()}",
-                    self.device.serial,
-                    result.duration_ms,
-                )
-            raise CommandError(result, "scroll_until", self.device.serial, target.render())
+        """Client-side loop: checks whether ``target`` exists inside this container
+        (``descendant``) and, while it does not, ``scroll``s once, up to ``max_scrolls`` scrolls
+        within ``timeout`` seconds (default: the device's wait timeout). Returns the target as a
+        lazy element scoped to this container, so a later action cannot hit a duplicate
+        elsewhere on screen; a container with ``first()``/``at()`` cannot be carried into a
+        relation, and then the bare ``target`` is used.
+
+        Raises ``WaitTimeoutError`` when the target never appeared. The list may have scrolled
+        by then. Every step is an ordinary command, so a failing step raises its own
+        ``CommandError``."""
+        if max_scrolls < 0:
+            raise ValueError("max_scrolls must not be negative")
         container = self.selector
-        return Element(
+        found = Element(
             self.device, target if container._has_pick else container.descendant(target)
+        )
+        budget = self.device.timeouts.wait if timeout is None else timeout
+        started = time.monotonic()
+        scrolls = 0
+        while True:
+            if found.exists():
+                return found
+            if scrolls == max_scrolls or time.monotonic() - started >= budget:
+                break
+            self.scroll(direction, distance_percent)
+            scrolls += 1
+        raise WaitTimeoutError(
+            f"{target.render()} to scroll into view in {container.render()}",
+            self.device.serial,
+            int((time.monotonic() - started) * 1000),
+            polls=scrolls,
+            last=f"not found after {scrolls} scrolls",
         )
 
     # --- derived ----------------------------------------------------------------------------------

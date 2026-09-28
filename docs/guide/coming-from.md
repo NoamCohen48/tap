@@ -17,11 +17,11 @@ deliberately different.
 | `tapOn: { text: "Add", index: 1 }` | `device.element(text("Add").at(1)).tap()` | without `at`, two matches are `AMBIGUOUS` |
 | `tapOn: { point: "50%,50%" }` | — | no coordinates by design |
 | `longPressOn` | `element.longTap()` | |
-| `inputText` | `element.setText(v)` / `typeText(v)` | `setText` verifies the read-back |
+| `inputText` | `element.setText(v)` / `typeText(v)`; `device.typeText(v)` types into the current focus | neither reads the field back: assert with `await(...).textEquals(v)` |
 | `eraseText` | `element.clearText()` | |
 | `back` | `device.pressBack()` | |
 | `scroll` / `swipe` | `element.scroll(DOWN)` / `element.swipe(UP)` | always relative to an element |
-| `scrollUntilVisible` | `container.scrollUntil(target)` | fails `INDETERMINATE` with detail `END_REACHED` / `MAX_SCROLLS` |
+| `scrollUntilVisible` | `container.scrollUntil(target)` | a client-side loop of `exists` + `scroll`; gives up with `WaitTimeoutException` |
 | `assertVisible` | `device.await(sel).visible()` | Maestro's assert already waits; so does this |
 | `assertNotVisible` | `device.await(sel).gone()` | |
 | `assertTrue` / `extendedWaitUntil` | `device.await(sel).textEquals(...)`, `.enabled()`, `.count(n)`; `device.awaitUntil { … }` for anything else | |
@@ -61,7 +61,7 @@ Kotlin note: every `tap()`/`setText()`/`await()` below is `suspend` inside `tapT
 | `driver.activateApp` / `terminateApp` | `app.launch()` / `app.forceStop()` | verified |
 | `driver.installApp` / `removeApp` | `app.install(path)` / `app.uninstall()` | |
 | `driver.resetApp` | `app.clearData()` | |
-| `mobile: acceptAlert` | tap the dialog through `inSystemPackage(...)` or `app.grantPermission(...)` | |
+| `mobile: acceptAlert` | tap the dialog through `inAnyWindow()` / `inPackage(...)` or `app.grantPermission(...)` | |
 | `StaleElementReferenceException` | — | there are no references to go stale |
 | implicit wait | — | none; write the wait |
 | Grid / parallel sessions | `@TapDevices("a", "b")`, per-device locks shared by every process | sessions opened in serial order, so no deadlocks |

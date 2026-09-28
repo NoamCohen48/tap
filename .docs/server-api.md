@@ -106,7 +106,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 | RPC | Semantics |
 |---|---|
 | `ListDevices()` → `repeated DeviceEntry` | Every device ADB lists. Its `state` is one of: <br>• `DEVICE_FREE` <br>• `DEVICE_LEASED`, with `client_connection_id` when the holder is this daemon <br>• `DEVICE_QUARANTINED`, with `quarantine_reason`; an unreadable journal is quarantined with reason `journal unreadable: …` <br>• `DEVICE_UNAUTHORIZED` <br>• `DEVICE_OFFLINE`, which also covers any other non-`device` ADB state |
-| `Attach(client_connection_id, serial, aut_package, skip_driver_install?, sync_authority?, allowed_system_packages, default_timeout_ms?, lease_timeout_ms?)` → `{attached_device_id, serial, generation, device_info}` | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
+| `Attach(client_connection_id, serial, aut_package, skip_driver_install?, sync_authority?, default_timeout_ms?, lease_timeout_ms?)` → `{attached_device_id, serial, generation, device_info}` | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
 | `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. |
 | `Screenshot(…, timeout_ms?)` → `{png, sha256, width?, height?}` | The verified PNG bytes. Writing a file is the client's job; the server takes no host path. |
 | `DriverLog(…)` | The instrumentation's stdout ring buffer (last 2 000 lines). |
@@ -124,8 +124,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
   (`.docs/protocol-contract.md`): `Execute` validates the command (`CommandValidation`, the same
   code the driver runs; a failure is `INVALID_ARGUMENT`), wraps it in a wire `Request` and
   returns the driver's `CommandResult` unchanged. No conversion layer exists.
-- Optional fields take their default on the driver only (`max_scrolls` = 20, `distance_percent`
-  = 80, …); the server never fills them in.
+- Optional fields take their default on the driver only (`distance_percent` = 80, …); the server never fills them in.
 
 `CommandResult` is `duration_ms`, the driver's `request_id`/`session_generation`, and a
 `oneof outcome` of the public result kinds or `error`.
@@ -138,6 +137,12 @@ wire types:
   rejects that zero value (`INVALID_ARGUMENT`) where the field has no default, and any value this
   build does not know.
 - `ResourceId.aut_package = true` is resolved by the driver to the attached device's AUT package.
+- Protocol 4.0 (2026-09-28) removed `ScrollUntil` (`Command` field 21), `CommandResult.moved`
+  (6), `AttachRequest.allowed_system_packages` (6) and `TypeText.selector` (1); all are
+  `reserved`. `TypeText` types into the current focus; the SDKs' element `typeText` taps,
+  waits for focus, then sends it. It added the
+  `AnyWindowScope any_window` selector scope and `ElementSnapshot.showing_hint`. The clients'
+  `scrollUntil` / `scroll_until` are client-side loops of `Exists` + `Scroll`.
 
 ### AppService: AUT lifecycle
 
@@ -152,7 +157,9 @@ its own response message. The RPCs are:
   - It then installs the file and deletes it.
 - `Uninstall`, `IsInstalled`, `ForceStop`, `ClearData`, `GrantPermission`.
 - `Launch` and `ColdLaunch` take an optional `activity`, where absent means the launcher.
-  `ColdLaunch` returns `ProcessIdentity{pid, start_token}`, a verified new process.
+  `ColdLaunch` returns `ProcessIdentity{pid, start_token}`, a verified new process. Both
+  return once `am start -W` does; they do not wait for the app's window (a client that needs
+  it calls `WAIT_APP_VISIBLE` / `WAIT_SCREEN_STABLE`).
 - `Process`, `IsRunning`.
 - `AwaitIdle(stable_for_ms?)`, where the default is 200 ms.
 

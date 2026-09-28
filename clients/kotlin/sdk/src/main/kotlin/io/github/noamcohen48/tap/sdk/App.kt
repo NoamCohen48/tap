@@ -147,7 +147,11 @@ class App internal constructor(
         }
     }
 
-    /** Starts [activity] (or the launcher activity) and waits until the package owns the focused window. */
+    /**
+     * Starts [activity] (or the launcher activity) with `am start -W` and returns when Android
+     * reports the launch complete. Nothing about the UI is assumed: wait for what the test needs
+     * ([Device.awaitAppVisible], [Device.awaitScreenStable], an element wait).
+     */
     suspend fun launch(
         activity: String? = null,
         timeout: Duration = device.timeouts.lifecycle,
@@ -164,7 +168,7 @@ class App internal constructor(
         }
     }
 
-    /** Verified force-stop, launch, then proof of a *new* process identity in the foreground. */
+    /** Verified force-stop, [launch], then the *new* process identity. */
     suspend fun coldLaunch(
         activity: String? = null,
         timeout: Duration = device.timeouts.lifecycle,

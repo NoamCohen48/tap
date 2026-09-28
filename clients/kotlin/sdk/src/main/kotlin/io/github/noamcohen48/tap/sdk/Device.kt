@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.PressKey
+import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
@@ -92,8 +93,6 @@ data class DeviceOptions(
     val skipDriverInstall: Boolean = false,
     /** Content-provider authority of the AUT's `sync-sdk`, when it is not the default. */
     val syncAuthority: String? = null,
-    /** System packages (permission controller, ...) that system-scoped selectors may match. */
-    val allowedSystemPackages: List<String> = emptyList(),
     /** How long to wait for a device another session holds before failing; zero fails at once. */
     val waitForDevice: Duration = Duration.ZERO,
 )
@@ -217,6 +216,19 @@ class Device internal constructor(
     /** Injects one Android key code (a mutation: never replayed on transport loss). */
     suspend fun pressKey(keyCode: Int) {
         executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
+    }
+
+    /**
+     * Types [value] as real key events into whatever has input focus now: no target and no
+     * click (see [Element.typeText] for tap-then-type). Unsupported characters are rejected
+     * before any input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS`; otherwise it reports
+     * whether every key event was accepted. Where the characters landed is for the test to assert.
+     */
+    suspend fun typeText(
+        value: String,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout ?: timeouts.action) { typeText = TypeText.newBuilder().setText(value).build() }
     }
 
     /**
@@ -681,7 +693,6 @@ class Device internal constructor(
                     .setSerial(serial)
                     .setAutPackage(autPackage)
                     .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
-                    .addAllAllowedSystemPackages(options.allowedSystemPackages)
                     .apply {
                         // Absent = fail at once when another session holds the device.
                         if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
