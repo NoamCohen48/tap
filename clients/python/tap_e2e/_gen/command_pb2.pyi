@@ -172,12 +172,10 @@ class SetText(_message.Message):
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ...) -> None: ...
 
 class TypeText(_message.Message):
-    __slots__ = ("selector", "text")
-    SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("text",)
     TEXT_FIELD_NUMBER: _ClassVar[int]
-    selector: _selector_pb2.Selector
     text: str
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ...) -> None: ...
+    def __init__(self, text: _Optional[str] = ...) -> None: ...
 
 class ClearText(_message.Message):
     __slots__ = ("selector",)

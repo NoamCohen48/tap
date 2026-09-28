@@ -172,6 +172,16 @@ class Device:
         """Injects one Android key code (a mutation: never replayed on transport loss)."""
         self.execute_or_raise(press_key=pb.PressKey(key_code=key_code))
 
+    def type_text(self, value: str, timeout: float | None = None) -> None:
+        """Type ``value`` as real key events into whatever has input focus now.
+
+        No target and no click (``Element.type_text`` taps first). Unsupported characters are
+        rejected before any input with ``INVALID_REQUEST``/``UNSUPPORTED_CHARACTERS``; otherwise
+        it reports whether every key event was accepted. Where the characters landed is for the
+        test to assert.
+        """
+        self.execute_or_raise(timeout, type_text=pb.TypeText(text=value))
+
     def screenshot(
         self,
         timeout: float | None = None,

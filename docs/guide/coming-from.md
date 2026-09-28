@@ -17,7 +17,7 @@ deliberately different.
 | `tapOn: { text: "Add", index: 1 }` | `device.element(text("Add").at(1)).tap()` | without `at`, two matches are `AMBIGUOUS` |
 | `tapOn: { point: "50%,50%" }` | — | no coordinates by design |
 | `longPressOn` | `element.longTap()` | |
-| `inputText` | `element.setText(v)` / `typeText(v)` | `setText` verifies the read-back |
+| `inputText` | `element.setText(v)` / `typeText(v)`; `device.typeText(v)` types into the current focus | neither reads the field back: assert with `await(...).textEquals(v)` |
 | `eraseText` | `element.clearText()` | |
 | `back` | `device.pressBack()` | |
 | `scroll` / `swipe` | `element.scroll(DOWN)` / `element.swipe(UP)` | always relative to an element |

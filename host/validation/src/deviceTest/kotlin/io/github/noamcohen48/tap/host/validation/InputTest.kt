@@ -7,6 +7,8 @@ import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.detail
 import io.github.noamcohen48.tap.protocol.errorCode
 import io.github.noamcohen48.tap.protocol.ok
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 
 /**
  * Text input: `SET_TEXT`, key-event `TYPE_TEXT` (the field sees real key events), a refused
@@ -27,11 +29,16 @@ class InputTest {
                 check(client.send(Commands.setText(input, "phase zero")).ok)
                 check(client.send(Commands.waitVisible(Selectors.text("phase zero"))).ok)
                 val keyboardInput = Selectors.androidResource(FIXTURE_PACKAGE, "keyboard_input")
-                val typedInput = client.send(Commands.typeText(keyboardInput, "keys 42"), timeoutMs = 30_000)
+                // TYPE_TEXT has no target: the test focuses the field and waits for it itself.
+                check(client.send(Commands.tap(keyboardInput)).ok)
+                withTimeout(10_000) {
+                    while (!client.execute(Commands.snapshot(keyboardInput)).snapshot.focused) delay(100)
+                }
+                val typedInput = client.send(Commands.typeText("keys 42"), timeoutMs = 30_000)
                 check(typedInput.ok) { "Keyboard input failed: $typedInput" }
                 check(client.send(Commands.waitVisible(Selectors.text("keys 42"))).ok)
                 check(client.send(Commands.waitVisible(Selectors.text("Keyboard event received"))).ok)
-                val unsupportedInput = client.send(Commands.typeText(keyboardInput, "emoji 😀"))
+                val unsupportedInput = client.send(Commands.typeText("emoji 😀"))
                 check(
                     !unsupportedInput.ok && unsupportedInput.errorCode == ErrorCode.ERR_INVALID_REQUEST &&
                         unsupportedInput.detail == ErrorDetail.UNSUPPORTED_CHARACTERS,

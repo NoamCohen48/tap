@@ -34,7 +34,8 @@ exactly one.
 | `tap()` | click at the centre of the node's visible bounds, whether or not the node is enabled (assert `isEnabled()` / `await(...).enabled()` first if it matters) |
 | `longTap()` | long click, likewise |
 | `setText(value)` | accessibility set-text on the node; `ACTION_REJECTED` only if the node refuses it. The field is **not** read back — assert it (see below) |
-| `typeText(value)` | click the node, then type character by character with key events (IME-free) wherever focus is; unsupported characters are rejected *before* input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS`. Not read back |
+| `typeText(value, awaitFocus = true)` | three client-side steps: `tap()`, then `await().focused()` (skip it with `awaitFocus = false`), then `device.typeText(value)`. Not read back |
+| `device.typeText(value)` | type character by character with real key events (IME-free) into whatever has input focus now; no target, no click, no settling. Unsupported characters (outside Android's virtual key map, e.g. emoji) are rejected *before* input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` |
 | `clearText()` | `setText("")` |
 | `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves. Returns nothing: whether the screen moved is for the test to assert |
 | `scroll(direction, distancePercent = 80)` | one scroll gesture on the node towards `direction`'s content edge (`DOWN` reveals content below). The node need not report itself scrollable, and nothing says whether content moved |

@@ -51,7 +51,6 @@ class SelectorsTest {
                 expectAmbiguous(Commands.tap(duplicateButton))
                 expectAmbiguous(Commands.longTap(duplicateButton))
                 expectAmbiguous(Commands.setText(duplicateInput, "leak"))
-                expectAmbiguous(Commands.typeText(duplicateInput, "leak"))
                 expectAmbiguous(Commands.clearText(duplicateInput))
                 expectAmbiguous(Commands.swipe(duplicateScroll, Direction.DIR_UP))
                 expectAmbiguous(Commands.scroll(duplicateScroll, Direction.DIR_DOWN))

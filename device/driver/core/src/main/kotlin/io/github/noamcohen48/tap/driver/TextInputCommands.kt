@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.test.uiautomator.UiDevice
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.TypeText
@@ -16,14 +15,14 @@ import io.github.noamcohen48.tap.protocol.ErrorDetail
 
 /**
  * `set_text`, `clear_text` and `type_text`. The driver assumes nothing about how the app reacts
- * to input: it resolves exactly one node, acts on that node, and reports only what Android
- * returned for the action or key events. It never reads the field back or resolves the
+ * to input: `set_text`/`clear_text` resolve exactly one node and act on it, `type_text` injects
+ * key events into the current focus, and each reports only what Android returned for the
+ * action or key events. It never reads the field back or resolves the
  * selector again, because what the app does with the text (reformat, truncate, reject, copy
  * it elsewhere) is for the test to assert.
  */
 internal class TextInputCommands(
     private val instrumentation: Instrumentation,
-    private val device: UiDevice,
     private val objects: UiObjectAccess,
 ) {
     fun setText(
@@ -61,14 +60,13 @@ internal class TextInputCommands(
     }
 
     /**
-     * Clicks the resolved node, lets the UI settle (bounded; never fails the command), then
-     * injects [TypeText.getText] as key events wherever input focus is. Reports whether every
-     * event was accepted; where the characters landed is for the test to assert.
+     * Injects [TypeText.getText] as key events wherever input focus is: no target, no click, no
+     * settling. Reports whether every event was accepted; where the characters landed is for
+     * the test to assert.
      */
     fun typeText(
         context: CommandContext,
         command: TypeText,
-        target: CompiledSelector,
     ) {
         context.checkpoint()
         val events =
@@ -78,19 +76,8 @@ internal class TextInputCommands(
                     detail = ErrorDetail.UNSUPPORTED_CHARACTERS,
                     message = "Text cannot be represented as Android key events",
                 )
-        val element = objects.resolveTarget(target)
-        try {
-            if (context.isExpired()) throw CommandFailure(ErrorCode.ERR_DEADLINE_EXCEEDED)
-            // The click is the first injected input; everything after it is definitive.
-            context.markMutationStarted()
-            element.click()
-        } finally {
-            element.recycle()
-        }
-        device.waitForIdle(minOf(SETTLE_WAIT_MS, context.remainingMs()))
-        if (context.isExpired()) {
-            throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, detail = ErrorDetail.DEADLINE_AFTER_FOCUS)
-        }
+        // The first key event is the first input; everything after it is definitive.
+        context.markMutationStarted()
         injectKeys(context, events)
     }
 
@@ -139,9 +126,4 @@ internal class TextInputCommands(
         downTime: Long,
         eventTime: Long,
     ): KeyEvent = KeyEvent(downTime, eventTime, action, keyCode, repeatCount, metaState, deviceId, scanCode, flags, source)
-
-    private companion object {
-        /** Bound for letting the UI settle between the click and the first key event. */
-        const val SETTLE_WAIT_MS = 3_000L
-    }
 }

@@ -66,7 +66,7 @@ class OperationsTest {
 
     @Test
     fun mutationsAreExactlyTheInputCommands() {
-        val mutations = setOf("press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until")
+        val mutations = setOf("press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll")
         sampleCommands.forEach { (name, command) ->
             assertEquals(name in mutations, command.isMutation, name)
             assertEquals(name in mutations, command.toRequest().isMutation, name)
@@ -86,7 +86,7 @@ class OperationsTest {
         assertNull(Requests.health().targetSelector)
         assertEquals(target, Requests.of(Commands.tap(target)).targetSelector)
         val targeted = sampleCommands.filterValues { it.targetSelector != null }.keys
-        assertEquals(sampleCommands.keys - setOf("device_info", "press_key", "dump_hierarchy", "wait_app_visible", "wait_screen_stable"), targeted)
+        assertEquals(sampleCommands.keys - setOf("device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable"), targeted)
     }
 
     @Test
@@ -294,7 +294,7 @@ class OperationsTest {
                 "tap" to Commands.tap(button),
                 "long_tap" to Commands.longTap(Selectors.contentDescription("More")),
                 "set_text" to Commands.setText(button, "user@example.com"),
-                "type_text" to Commands.typeText(button, "typed"),
+                "type_text" to Commands.typeText("typed"),
                 "clear_text" to Commands.clearText(button),
                 "swipe" to Commands.swipe(list, Direction.DIR_LEFT, distancePercent = 60),
                 "scroll" to Commands.scroll(list, Direction.DIR_DOWN),

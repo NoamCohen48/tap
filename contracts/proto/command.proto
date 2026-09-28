@@ -90,7 +90,13 @@ message WaitScreenStable {
 message Tap { Selector selector = 1; }
 message LongTap { Selector selector = 1; }
 message SetText { Selector selector = 1; string text = 2; } // ≤ 256 chars
-message TypeText { Selector selector = 1; string text = 2; } // ≤ 256 chars
+// Key events for `text` (≤ 256 chars) into whatever has input focus; no target, no click.
+// Clients tap the field first (the SDKs' element typeText does).
+message TypeText {
+  reserved 1;
+  reserved "selector";
+  string text = 2;
+}
 message ClearText { Selector selector = 1; }
 
 message Swipe {

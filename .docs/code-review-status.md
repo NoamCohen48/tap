@@ -24,8 +24,8 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
   - `set_text` / `clear_text`: resolve exactly one node, perform `ACTION_SET_TEXT` on that
     node, report `ACTION_REJECTED` only when Android refuses the action. No `isEditable`
     pre-check, no read-back of the field's text.
-  - `type_text`: click the resolved node, let the UI settle, inject the key events, report
-    whether each event was accepted. No focus wait, no `isEditable` pre-check, no read-back.
+  - `type_text`: inject the key events, report whether each was accepted. No `isEditable`
+    pre-check, no read-back (since 2026-09-28 also no click or settle; see below).
   - Nothing is re-resolved after the action, so a selector that matches differently after
     the edit (the edited text, another element that now shows it, several matches) cannot
     affect the result. Tests assert outcomes with a selector that survives the edit
@@ -44,8 +44,10 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     (DR-10: observations and selectors now agree).
   - Launch returns after `am start -W`; waiting for the window is the client's explicit
     `awaitAppVisible` / `awaitScreenStable`.
-  - Open: `type_text` still clicks and then settles (`waitForIdle` ≤ 3 s) before injecting; the
-    user has not yet decided whether to drop the settle.
+  - `type_text` has no target: it injects key events into the current focus, with no click
+    and no settle (`TypeText.selector` reserved, `DEADLINE_AFTER_FOCUS` gone). Element
+    `typeText` in both SDKs is `tap` → `await().focused()` (opt out with `awaitFocus = false`)
+    → `device.typeText`. `set_text` stays the accessibility action; both are kept.
 - **Synchronization is WIP (2026-09-28, user).** The sync SDK/provider path is ignored for
   now; its findings (DR-12, DR-13, DR-14, SY-1, SY-2, SY-4) are Deferred, not Open.
 - **P-9 was wrongly marked "leave".** CANCELLED before acceptance is safe to retry, but the

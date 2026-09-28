@@ -106,6 +106,7 @@ class GoldenWireTest {
             ),
             "request-tap-aut-resource" to (envelope(Requests.of(Commands.tap(Selectors.of(Nodes.autResource("login"))))) to Request::parseFrom),
             "request-press-key" to (envelope(Requests.of(Commands.pressKey(KEYCODE_BACK))) to Request::parseFrom),
+            "request-type-text" to (envelope(Requests.of(Commands.typeText("keys 42"))) to Request::parseFrom),
             "request-set-text" to (
                 envelope(Requests.of(Commands.setText(Selectors.androidResource(AUT, "email"), "user@example.com"))) to Request::parseFrom
             ),

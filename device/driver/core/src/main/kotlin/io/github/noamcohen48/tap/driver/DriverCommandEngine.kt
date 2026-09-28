@@ -55,7 +55,7 @@ internal class DriverCommandEngine(
     private val compiler = SelectorCompiler(expectedAut)
     private val objects = UiObjectAccess(device)
     private val gestures = GestureCommands(device, objects, faults)
-    private val textInput = TextInputCommands(instrumentation, device, objects)
+    private val textInput = TextInputCommands(instrumentation, objects)
     private val waits = WaitCommands(device, objects)
     private val queries = QueryCommands(device, objects)
     private val screenStability = ScreenStability(instrumentation)
@@ -157,7 +157,7 @@ internal class DriverCommandEngine(
 
         override fun setText(command: SetText) = textInput.setText(context, command, selectors[command.selector])
 
-        override fun typeText(command: TypeText) = textInput.typeText(context, command, selectors[command.selector])
+        override fun typeText(command: TypeText) = textInput.typeText(context, command)
 
         override fun clearText(command: ClearText) = textInput.clearText(context, selectors[command.selector])
 

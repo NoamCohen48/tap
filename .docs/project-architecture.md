@@ -181,9 +181,9 @@ tap/
 |   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package io.github.noamcohen48.tap.sdk)
 |   |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/sdk/
 |   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), ClientConnection (observe/availableSerials/attachDevice), DaemonDiscovery (descriptor lookup), TapDaemonProcess (`tap start`/`tap stop`)
-|   |   |       +-- Device.kt            Device.attach(connection, serial, …), execute/element/await/app/info/pressKey/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
+|   |   |       +-- Device.kt            Device.attach(connection, serial, …), execute/element/await/app/info/pressKey/typeText/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
-|   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/typeText/clearText/swipe/scroll, scrollUntil (client-side exists + scroll loop), first/at/descendant/child
+|   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/clearText/swipe/scroll, typeText (tap + await focused + Device.typeText) and scrollUntil (exists + scroll loop) client-side, first/at/descendant/child
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
 |   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the proto Selector
 |   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (proto ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException

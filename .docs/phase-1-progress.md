@@ -15,7 +15,8 @@ Status: in progress.
   the `moved` result removed (swipe/scroll return `done`; the clients' `scrollUntil` loops
   `exists` + `scroll`), no enabled/scrollable pre-checks (`NOT_INTERACTABLE` no longer emitted),
   key-up events carry their press's `downTime`, `SNAPSHOT.text` is Android's raw text plus
-  `showing_hint`, launch returns after `am start -W`, and selector scope is any package
+  `showing_hint`, `type_text` types into the current focus (no target, click or settle; the
+  SDKs tap and await focus first), launch returns after `am start -W`, and selector scope is any package
   (`system`, no allowlist) or every window (`any_window`). Proven by the validation `deviceTest`
   suite (`ScrollTest`, `PermissionTest`, `InputTest`), the Kotlin fixture tests and the Python
   suite on emulator-5554 (API 34) and 85e49002 (API 29); entries below describe the behaviour of their time.

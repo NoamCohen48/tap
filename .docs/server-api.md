@@ -138,7 +138,9 @@ wire types:
   build does not know.
 - `ResourceId.aut_package = true` is resolved by the driver to the attached device's AUT package.
 - Protocol 4.0 (2026-09-28) removed `ScrollUntil` (`Command` field 21), `CommandResult.moved`
-  (6) and `AttachRequest.allowed_system_packages` (6); all three are `reserved`. It added the
+  (6), `AttachRequest.allowed_system_packages` (6) and `TypeText.selector` (1); all are
+  `reserved`. `TypeText` types into the current focus; the SDKs' element `typeText` taps,
+  waits for focus, then sends it. It added the
   `AnyWindowScope any_window` selector scope and `ElementSnapshot.showing_hint`. The clients'
   `scrollUntil` / `scroll_until` are client-side loops of `Exists` + `Scroll`.
 

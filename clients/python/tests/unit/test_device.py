@@ -8,7 +8,7 @@ import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapServer, WaitTimeoutError
 from tap_e2e import _gen as pb
-from tap_e2e import raw_res, text
+from tap_e2e import raw_res, res, text
 
 from .conftest import TOKEN
 
@@ -166,6 +166,29 @@ def test_scroll_until_scrolls_until_the_target_exists_in_the_container(fake, dev
     assert all(op.scroll.direction == pb.DIR_DOWN for op in ops if op.HasField("scroll"))
     # A picked container cannot be carried into a relation: the bare target is used.
     assert lst.first().scroll_until(text("row 40")).selector == text("row 40")
+
+
+def test_type_text_taps_waits_for_focus_then_types_into_the_focus(fake, device):
+    ops: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        op = command.WhichOneof("op")
+        if op not in ("tap", "snapshot", "type_text"):
+            return None
+        ops.append(command)
+        if op == "snapshot":
+            snapshots = sum(1 for c in ops if c.HasField("snapshot"))
+            return pb.CommandResult(snapshot=pb.ElementSnapshot(focused=snapshots == 2))
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    device.element(res("email")).type_text("abc")
+    assert [c.WhichOneof("op") for c in ops] == ["tap", "snapshot", "snapshot", "type_text"]
+    assert ops[-1].type_text.text == "abc"
+
+    ops.clear()
+    device.element(res("email")).type_text("d", await_focus=False)
+    assert [c.WhichOneof("op") for c in ops] == ["tap", "type_text"]
 
 
 def test_scroll_until_gives_up_after_max_scrolls(fake, device):

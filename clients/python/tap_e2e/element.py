@@ -87,13 +87,20 @@ class Element:
         """
         self._run(timeout, set_text=pb.SetText(selector=self._target, text=value))
 
-    def type_text(self, value: str, timeout: float | None = None) -> None:
-        """Click the one matching node, then type ``value`` as key events wherever focus is.
+    def type_text(
+        self, value: str, await_focus: bool = True, timeout: float | None = None
+    ) -> None:
+        """Tap the one matching node, wait until it reports focus, then type ``value``.
 
-        Unsupported characters are rejected before any input; otherwise it reports whether every
-        key event was accepted. The field is not read back: assert the effect yourself.
+        Three steps (``tap``, ``wait().focused()`` when ``await_focus``, ``Device.type_text``),
+        so a failure says which one failed. Pass ``await_focus=False`` when focus goes elsewhere
+        (a child or a separate input view) and wait for what that app needs yourself. The field
+        is not read back: assert the effect yourself.
         """
-        self._run(timeout, type_text=pb.TypeText(selector=self._target, text=value))
+        self.tap(timeout)
+        if await_focus:
+            self.wait().focused()
+        self.device.type_text(value, timeout)
 
     def clear_text(self, timeout: float | None = None) -> None:
         """``set_text("")``: ``ACTION_SET_TEXT`` on the one matching node, not read back."""

@@ -23,7 +23,7 @@ and formats all of it into one line:
 
 ```
 AMBIGUOUS during TAP text("Add") on emulator-5554 (request 14, generation 1, 62 ms): 3 matches
-STALE_DURING_COMMAND/TARGET_GONE during TYPE_TEXT resId(com.shop:id/email) on 85e49002 (request 9, generation 1, 820 ms)
+STALE_DURING_COMMAND/TARGET_GONE during SET_TEXT resId(com.shop:id/email) on 85e49002 (request 9, generation 1, 820 ms)
 WAIT_TIMEOUT/SCREEN_CHANGING during WAIT_SCREEN_STABLE on emulator-5554 (request 3, generation 1, 10004 ms)
 ```
 
@@ -46,7 +46,7 @@ The codes, grouped by what they tell you:
 | Code | Meaning / details |
 |---|---|
 | `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS` |
-| `ACTION_REJECTED` | Android refused the input: the node refused set-text, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing), `DEADLINE_AFTER_FOCUS` |
+| `ACTION_REJECTED` | Android refused the input: the node refused set-text, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing) |
 | `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance)) |
 
 **Waits:**

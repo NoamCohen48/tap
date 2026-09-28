@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.PressKey
+import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
@@ -215,6 +216,19 @@ class Device internal constructor(
     /** Injects one Android key code (a mutation: never replayed on transport loss). */
     suspend fun pressKey(keyCode: Int) {
         executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
+    }
+
+    /**
+     * Types [value] as real key events into whatever has input focus now: no target and no
+     * click (see [Element.typeText] for tap-then-type). Unsupported characters are rejected
+     * before any input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS`; otherwise it reports
+     * whether every key event was accepted. Where the characters landed is for the test to assert.
+     */
+    suspend fun typeText(
+        value: String,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout ?: timeouts.action) { typeText = TypeText.newBuilder().setText(value).build() }
     }
 
     /**

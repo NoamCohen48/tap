@@ -16,6 +16,8 @@ import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.Done
+import io.github.noamcohen48.tap.api.v1.Command
+import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
@@ -608,6 +610,43 @@ class TapClientTest {
                         assertTrue(ops.filter { it.hasScroll() }.all { it.scroll.selector == rawRes("list").proto && it.scroll.direction == Direction.DIR_DOWN })
                         // A picked container cannot be carried into a relation: the bare target is used.
                         assertEquals(text("row 40"), list.first().scrollUntil(text("row 40")).selector)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `typeText taps the field, waits for its focus, then types into the focus`() {
+        runBlocking {
+            var snapshots = 0
+            fakeDevices.executeResponder = { request ->
+                when {
+                    request.command.hasSnapshot() ->
+                        CommandResult.newBuilder().setSnapshot(ElementSnapshot.newBuilder().setFocused(++snapshots == 2)).build()
+                    request.command.hasTap() || request.command.hasTypeText() -> CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        device.element(res("email")).typeText("abc")
+                        val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasTap() || it.hasSnapshot() || it.hasTypeText() }
+                        assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.SNAPSHOT, Command.OpCase.SNAPSHOT, Command.OpCase.TYPE_TEXT), ops.map { it.opCase })
+                        assertEquals("abc", ops.last().typeText.text)
+
+                        fakeDevices.executeRequests.clear()
+                        device.element(res("email")).typeText("d", awaitFocus = false)
+                        val unwaited = fakeDevices.executeRequests.map { it.command.opCase }.filter { it != Command.OpCase.DEVICE_INFO }
+                        assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.TYPE_TEXT), unwaited)
                     } finally {
                         device.detach()
                     }

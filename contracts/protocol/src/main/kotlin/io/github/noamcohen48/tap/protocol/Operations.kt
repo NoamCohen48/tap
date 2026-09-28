@@ -102,11 +102,10 @@ val Command.targetSelector: Selector?
             OpCase.TAP -> tap.selector
             OpCase.LONG_TAP -> longTap.selector
             OpCase.SET_TEXT -> setText.selector
-            OpCase.TYPE_TEXT -> typeText.selector
             OpCase.CLEAR_TEXT -> clearText.selector
             OpCase.SWIPE -> swipe.selector
             OpCase.SCROLL -> scroll.selector
-            OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
+            OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.TYPE_TEXT, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
             OpCase.WAIT_SCREEN_STABLE, OpCase.OP_NOT_SET, null,
             -> null
         }
@@ -159,10 +158,8 @@ object Commands {
         text: String,
     ): Command = Command.newBuilder().setSetText(SetText.newBuilder().setSelector(selector).setText(text)).build()
 
-    fun typeText(
-        selector: Selector,
-        text: String,
-    ): Command = Command.newBuilder().setTypeText(TypeText.newBuilder().setSelector(selector).setText(text)).build()
+    /** Key events for [text] into whatever has input focus now; tap the field first. */
+    fun typeText(text: String): Command = Command.newBuilder().setTypeText(TypeText.newBuilder().setText(text)).build()
 
     fun clearText(selector: Selector): Command = Command.newBuilder().setClearText(ClearText.newBuilder().setSelector(selector)).build()
 

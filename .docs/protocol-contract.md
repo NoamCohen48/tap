@@ -9,7 +9,7 @@ This document describes the implemented wire contract. Planned but unimplemented
 `android-e2e-framework-implementation-plan.md` and are not part of protocol 4.0 yet.
 
 Protocol 4.0 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
-`scroll_until`, the `moved` result and the attach allowlist, and added the `any_window` scope
+`scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added the `any_window` scope
 and `ElementSnapshot.showing_hint`). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
@@ -171,7 +171,7 @@ result type.
 | `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click; no enabled pre-check |
 | `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: `ACTION_SET_TEXT` accepted by the node (not read back) |
-| `type_text` | `TypeText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: clicks the node, every key event injected (not read back) |
+| `type_text` | `TypeText` (mutation) | `text` (≤ 256 chars); no selector (field 1 reserved) | `done`: every key event injected into whatever has input focus; no click, no settling, not read back. `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` before input for a character the virtual key map cannot type |
 | `clear_text` | `ClearText` (mutation) | `selector` | `done`: `ACTION_SET_TEXT` with "" accepted (not read back) |
 | `swipe` | `Swipe` (mutation) | `selector`, `direction` (required), `distance_percent` 1..100 | `done` after one finger gesture across the element |
 | `scroll` | `Scroll` (mutation) | `selector`, `direction` (required), `distance_percent` | `done` after one scroll segment; no scrollable pre-check and no report of whether content moved (the clients' `scrollUntil` loops `exists` + `scroll`) |
@@ -426,7 +426,7 @@ policy; Tap itself never retries.
 | `AMBIGUOUS` | no | no | More than one match; returned before any input. |
 | `NOT_INTERACTABLE` | no | yes | Reserved; no longer emitted (4.0: the driver does not pre-check enabled/scrollable). |
 | `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
-| `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `DEADLINE_AFTER_FOCUS`, `PARTIAL_INPUT`. Effects are never read back. |
+| `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `PARTIAL_INPUT` (deadline mid-typing). Effects are never read back. |
 | `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |

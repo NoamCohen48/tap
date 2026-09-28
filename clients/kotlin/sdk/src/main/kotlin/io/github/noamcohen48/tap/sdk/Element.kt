@@ -12,7 +12,6 @@ import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
-import io.github.noamcohen48.tap.api.v1.TypeText
 import kotlin.time.Duration
 import kotlin.time.TimeSource
 
@@ -92,22 +91,20 @@ class Element internal constructor(
     }
 
     /**
-     * Clicks the one matching node, then types [value] as real key events wherever input focus
-     * is. Unsupported characters are rejected before any input; otherwise it reports whether
-     * every key event was accepted. The field is not read back: assert the effect yourself.
+     * Taps the one matching node, waits until it reports focus (with [awaitFocus]; bounded by
+     * the wait timeout), then types [value] as real key events with [Device.typeText]. Three
+     * steps, so a failure says which one failed. Pass `awaitFocus = false` when focus goes
+     * elsewhere (a child or a separate input view), and wait for what that app needs yourself.
+     * The field is not read back: assert the effect yourself.
      */
     suspend fun typeText(
         value: String,
+        awaitFocus: Boolean = true,
         timeout: Duration? = null,
     ) {
-        run(timeout) {
-            typeText =
-                TypeText
-                    .newBuilder()
-                    .setSelector(target)
-                    .setText(value)
-                    .build()
-        }
+        tap(timeout)
+        if (awaitFocus) await().focused()
+        device.typeText(value, timeout)
     }
 
     /** [setText] with an empty string: `ACTION_SET_TEXT` on the one matching node, not read back. */
