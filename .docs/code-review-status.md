@@ -9,10 +9,11 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 | Fixed | 136 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
 | Partial | 8 |
-| Open | 12 |
+| Open | 10 |
+| Won't fix (accepted risk, see decisions) | 2 |
 | Deferred (synchronization is WIP, see below) | 7 |
 
-The counts cover all 171 findings; Open, Partial and Deferred are exactly the rows below.
+The counts cover all 171 findings; Open, Partial, Deferred and Won't fix are exactly the rows below.
 
 Fixed/obsolete items are not repeated below except where a remark matters. Obsolete: B-5,
 P-1, P-2, P-10, DR-11 (`scroll_until` left the driver in protocol 4.0), DM-12 (not a bug: always under `lifecycleLock`), DM-14, and P-12's claim is
@@ -52,6 +53,24 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     → `device.typeText`. `set_text` stays the accessibility action; both are kept.
 - **Synchronization is WIP (2026-09-28, user).** The sync SDK/provider path is ignored for
   now; its findings (DR-12, DR-13, DR-14, SY-1, SY-2, SY-4, H-15) are Deferred, not Open.
+- **Threat model: the host and the devices belong to the tester (2026-09-28, user).** Tap
+  runs in a development or CI environment where the machine and every attached device are the
+  user's own. The per-launch secret and HMAC handshake exist to bind a host to *its* driver
+  session (fencing stale generations, never talking to the wrong driver), not to defend
+  against other local users or hostile apps. Hardening that only matters against those is
+  not done; revisit before Tap runs on shared multi-user hosts or device farms.
+  - DR-16 (secret visible in host `ps` via `am instrument` argv): accepted. The review's
+    0600-file fix also does not work as written: the driver runs as its own app UID and
+    cannot read a shell-owned 0600 file in `/data/local/tmp` (SELinux blocks app reads of
+    shell data too). If it is ever needed, feed the `am instrument` command through
+    `adb shell`'s stdin so the secret never appears in a host argv; on the device only
+    shell and root can read another process's argv (Android 7+ `hidepid`).
+  - DR-15 (an app on the device can keep the host out of the driver's accept loop by
+    connecting and staying silent through the 10 s handshake timeout): accepted. It is a
+    denial of service only; without the secret the app cannot authenticate. If it is ever
+    needed, the stronger fix is a `localabstract:` socket whose accept checks the peer UID
+    (adbd is shell 2000, or root) and closes anything else before reading, making each
+    rejection immediate; concurrent handshakes with a short timeout only raise the bar.
 - **P-9 was wrongly marked "leave".** CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
@@ -72,8 +91,8 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | DR-10 | M | Fixed | Snapshot text is raw like the selectors, plus `showing_hint` (`InputTest`, `MainScreenTest`) | S |
 | DR-13 | M | Deferred | Signature permission defined only in sync-sdk; install order can drop the grant (unverified) | S |
 | DR-14 | M | Deferred | One provider timeout poisons sync for the session; call thread leaks; `SecurityException` in the generic catch | S |
-| DR-15 | M | Open | `ServerSocket(port, 1)`, serialized accept, 10 s handshake timeout: any app can hold the accept loop | S–M |
-| DR-16 | M | Open | Session secret passed as `-e tapSecret` in `am instrument` argv | M |
+| DR-15 | M | Won't fix | `ServerSocket(port, 1)`, serialized accept, 10 s handshake timeout: an app on the device can hold the accept loop. Accepted under the trusted-host threat model (decisions above) | — |
+| DR-16 | M | Won't fix | Session secret passed as `-e tapSecret` in `am instrument` argv. Accepted under the trusted-host threat model (decisions above) | — |
 | DR-21 | L | Fixed | No common version: the driver answers HELLO with `AUTH_RESULT{ok=false, UNSUPPORTED}` before closing; the host reports it (`DriverClientTest`, `FencingTest`) | S |
 | DR-22 | L | Open | `dumpHierarchy` → `PAYLOAD_TOO_LARGE`, a may-have-mutated code (see P-9) | S |
 | P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |

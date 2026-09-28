@@ -180,9 +180,10 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 - Redaction of typed text in logs/artifacts is not implemented. Exceptions render the
   selector but not `inputText`; the driver log and any future protocol event log would need
   an explicit redaction rule before secrets are typed in tests.
-- Session secret is passed as an instrumentation argument (visible in `ps`/`dumpsys` on a
-  rooted device for the process lifetime). Acceptable for debug builds; note for the security
-  review.
+- Session secret is passed as an instrumentation argument (visible in the host's `ps` through
+  the `adb shell` argv, and to shell/root on the device). Accepted under the trusted-host
+  threat model (`code-review-status.md`, decisions; DR-16), with the stdin alternative noted
+  there for shared hosts.
 
 ## CI, benchmarks, reliability gates (plan §23–24, Phase 3–4)
 
