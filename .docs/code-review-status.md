@@ -109,7 +109,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | H-19 | M | Open | `DeviceSession.open` ≈190 lines with a `suspendCancellableCoroutine` handoff | L |
 | H-20 | M | Fixed | The lock holder records its PID in the lock file; `isLeased` reads it (advisory, no lock taken; a dead PID reads as free) (`SessionJournalTest`) | S |
 | H-22 | M | Partial | Primitives shared; HELLO/CHALLENGE/AUTH state machine still hand-written in driver, client and fake | M |
-| H-23 | M | Partial | `BlobReceiverTest` and lease timeout/probe tests added; still thin: `recoverJournal` branches, AppLifecycle timeouts | M |
+| H-23 | M | Partial | `BlobReceiverTest`, lease timeout/probe tests and every `recoverJournal` branch (`RecoverJournalTest`) added; AppLifecycle deadline splitting is still only covered on devices | M |
 | H-3 | L | Fixed | One shared whitespace `Regex` in `Adb.kt` | S |
 | H-4 | L | Fixed | `isPortListening` tolerates a missing `tcp6` when the other table was read, and still fails on a failed read (`AdbTest`) | S |
 | H-9 | L | Partial | `lastWriteNanos` is set after a completed write and the ping budget is clamped, not truncated. Still one `async` per write: it is how a cancelled caller tells "not started" from "started" (`INDETERMINATE`); a channel writer needs the same handshake | S |
