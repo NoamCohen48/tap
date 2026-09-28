@@ -44,7 +44,7 @@ class AppService(
     private val daemon: TapDaemon,
 ) : AppServiceGrpcKt.AppServiceCoroutineImplBase() {
     /** The [AppLifecycle] of the target package, on a device the calling connection owns. */
-    private fun app(target: AppTarget): AppLifecycle {
+    private suspend fun app(target: AppTarget): AppLifecycle {
         argument(target.packageName.isNotBlank()) { "package_name is required" }
         return daemon.attachedDevice(target.attachedDeviceId, target.clientConnectionId).deviceSession.app(target.packageName)
     }

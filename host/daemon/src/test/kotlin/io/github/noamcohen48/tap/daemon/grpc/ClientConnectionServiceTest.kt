@@ -3,6 +3,9 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
+import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.api.v1.Hold
+import io.github.noamcohen48.tap.api.v1.ListConnectionsRequest
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
@@ -93,5 +96,42 @@ class ClientConnectionServiceTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (daemon.clientConnectionExists(id) && System.nanoTime() < deadline) Thread.sleep(10)
         assertFalse(daemon.clientConnectionExists(id))
+    }
+
+    private fun connectHeld(
+        name: String,
+        idleMs: Long,
+    ): String =
+        stub
+            .connect(ConnectRequest.newBuilder().setName(name).setHold(Hold.newBuilder().setIdleTimeoutMs(idleMs)).build())
+            .clientConnectionId
+
+    private fun rejected(call: () -> Unit): Pair<Status.Code, FailureReason> {
+        val error = assertFailsWith<StatusRuntimeException> { call() }
+        return error.status.code to checkNotNull(error.trailers?.get(FAILURE_TRAILER)).reason
+    }
+
+    @Test
+    fun `a held connection is listed by name, refuses Observe and keeps its name unique`() {
+        val held = connectHeld("agent", 60_000)
+        val observed = connect()
+        val rows = stub.listConnections(ListConnectionsRequest.getDefaultInstance()).connectionsList.associateBy { it.clientConnectionId }
+        assertEquals("agent", rows.getValue(held).name)
+        assertEquals(60_000L, rows.getValue(held).hold.idleTimeoutMs)
+        assertFalse(rows.getValue(observed).hasHold())
+        assertEquals(Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION, rejected { observe(held).next() })
+        assertEquals(Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION, rejected { connectHeld("agent", 60_000) })
+        stub.disconnect(DisconnectRequest.newBuilder().setClientConnectionId(held).build())
+        connectHeld("agent", 60_000)
+    }
+
+    @Test
+    fun `a held connection needs a name and an idle timeout within bounds`() {
+        val invalid = Status.Code.INVALID_ARGUMENT to FailureReason.FAILURE_REASON_INVALID_ARGUMENT
+        assertEquals(invalid, rejected { connectHeld(" ", 60_000) })
+        assertEquals(invalid, rejected { connectHeld("a", 999) })
+        assertEquals(invalid, rejected { connectHeld("b", 86_400_001) })
+        connectHeld("c", 1_000)
+        connectHeld("d", 86_400_000)
     }
 }

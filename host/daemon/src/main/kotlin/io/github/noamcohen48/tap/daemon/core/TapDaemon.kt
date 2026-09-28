@@ -14,11 +14,13 @@ import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,6 +83,25 @@ sealed class DeviceStatus {
     ) : DeviceStatus()
 }
 
+/** One row of [TapDaemon.connections]: a live connection and the devices it has attached. */
+data class ConnectionInfo(
+    val id: String,
+    val name: String,
+    val holdIdleMs: Long?,
+    val idleMs: Long,
+    val attachedDevices: List<AttachedDevice>,
+)
+
+/** A held connection's name is already taken by another held connection. */
+class HeldNameTakenException(
+    name: String,
+) : DaemonPreconditionException("A held client connection named '$name' already exists")
+
+/** Observe on a held connection, which has no stream by definition. */
+class HeldConnectionObserveException(
+    id: String,
+) : DaemonPreconditionException("Client connection $id is held: it has no Observe stream")
+
 /** One row of [TapDaemon.devices]: a serial ADB lists and what the lock and journal say about it. */
 data class DeviceEntry(
     val serial: String,
@@ -88,8 +109,9 @@ data class DeviceEntry(
 )
 
 /**
- * One client process talking to the daemon. Every attached device belongs to it; when its Observe stream ends or it disconnects,
- * all owned devices are detached.
+ * One client talking to the daemon. Every attached device belongs to it; when it ends, all owned
+ * devices are detached. An observed connection ([holdIdleMs] null) ends with its Observe stream; a
+ * held one ends [holdIdleMs] after the last call that named it (`.docs/agent-surface.md`).
  *
  * All mutable state is guarded by the owning [TapDaemon]'s lifecycle lock; transitions are
  * short non-suspending synchronized blocks, never held across suspension.
@@ -97,8 +119,16 @@ data class DeviceEntry(
 class ConnectedClient internal constructor(
     val id: String,
     val name: String,
+    /** Set for a held connection: how long it may go without a call before it is ended. */
+    val holdIdleMs: Long? = null,
 ) {
     internal var closed = false
+
+    /** Held connections: when the last call naming it started or finished ([System.nanoTime]). */
+    internal var lastUsedNanos = System.nanoTime()
+
+    /** Held connections: calls naming it that have not finished; it is never idle while any run. */
+    internal var inFlight = 0
 
     /** Invoked once with the reason when the connection closes, so an Observe stream can complete. */
     internal val onDisconnect = HashSet<(String) -> Unit>()
@@ -240,11 +270,27 @@ class TapDaemon internal constructor(
 
     // ---- connections -------------------------------------------------------------------------
 
-    fun connectClient(name: String): ConnectedClient {
-        val connection = ConnectedClient(UUID.randomUUID().toString(), name)
+    /**
+     * Registers a connection. Without [holdIdleMs] it is observed: it must open its Observe stream
+     * within the grace period and ends with it. With [holdIdleMs] it is held: no stream, a name
+     * unique among held connections, and it ends [holdIdleMs] after the last call that named it.
+     */
+    fun connectClient(
+        name: String,
+        holdIdleMs: Long? = null,
+    ): ConnectedClient {
+        val connection = ConnectedClient(UUID.randomUUID().toString(), name, holdIdleMs)
         synchronized(lifecycleLock) {
             if (closing) throw DaemonClosingException()
+            if (holdIdleMs != null && clientConnectionsById.values.any { it.holdIdleMs != null && it.name == name }) {
+                throw HeldNameTakenException(name)
+            }
             clientConnectionsById[connection.id] = connection
+        }
+        if (holdIdleMs != null) {
+            config.log("client connection ${connection.id} connected ($name, held, idle ${holdIdleMs}ms)")
+            launchIdleReaper(connection)
+            return connection
         }
         config.log("client connection ${connection.id} connected ($name)")
         // Observe is the only liveness signal, so a client that dies between Connect and Observe
@@ -264,6 +310,69 @@ class TapDaemon internal constructor(
             clientConnectionsById[id]?.takeUnless { it.closed } ?: throw UnknownClientConnectionException(id)
         }
 
+    /** Every live connection with its attached devices, in no particular order. */
+    fun connections(): List<ConnectionInfo> {
+        val now = System.nanoTime()
+        return synchronized(lifecycleLock) {
+            clientConnectionsById.values.filterNot { it.closed }.map { connection ->
+                ConnectionInfo(
+                    id = connection.id,
+                    name = connection.name,
+                    holdIdleMs = connection.holdIdleMs,
+                    idleMs = if (connection.inFlight > 0) 0L else (now - connection.lastUsedNanos) / 1_000_000L,
+                    attachedDevices = attachedDevicesById.values.filter { it.ownerConnectionId == connection.id },
+                )
+            }
+        }
+    }
+
+    /**
+     * Marks a call naming held connection [id] as running until the calling coroutine's job
+     * completes (the gRPC call), so the idle clock starts only when it has finished. Observed
+     * and unknown connections are left alone.
+     */
+    private suspend fun markInUse(id: String) {
+        val connection =
+            synchronized(lifecycleLock) {
+                clientConnectionsById[id]?.takeIf { it.holdIdleMs != null && !it.closed }?.also {
+                    it.inFlight++
+                    it.lastUsedNanos = System.nanoTime()
+                }
+            } ?: return
+        val finished = {
+            synchronized(lifecycleLock) {
+                connection.inFlight--
+                connection.lastUsedNanos = System.nanoTime()
+            }
+        }
+        val job = currentCoroutineContext()[Job]
+        if (job == null) finished() else job.invokeOnCompletion { finished() }
+    }
+
+    /** Ends held [connection] once it has had no call for its idle timeout. */
+    private fun launchIdleReaper(connection: ConnectedClient) {
+        val idleMs = checkNotNull(connection.holdIdleMs)
+        cleanupScope.launch {
+            while (true) {
+                val waitMs =
+                    synchronized(lifecycleLock) {
+                        if (connection.closed) return@launch
+                        val idleForMs = (System.nanoTime() - connection.lastUsedNanos) / 1_000_000L
+                        when {
+                            connection.inFlight > 0 -> idleMs
+                            idleForMs >= idleMs -> null
+                            else -> idleMs - idleForMs
+                        }
+                    }
+                if (waitMs == null) {
+                    disconnectClient(connection.id, "idle for ${idleMs}ms")
+                    return@launch
+                }
+                delay(waitMs)
+            }
+        }
+    }
+
     /**
      * Atomically claims the single Observe stream for [id]. Unknown or closed → throws
      * [UnknownClientConnectionException] (NOT_FOUND); already observed → throws
@@ -279,6 +388,7 @@ class TapDaemon internal constructor(
             val connection =
                 clientConnectionsById[id]?.takeUnless { it.closed }
                     ?: throw UnknownClientConnectionException(id)
+            if (connection.holdIdleMs != null) throw HeldConnectionObserveException(id)
             if (connection.observeOwner != null) throw DuplicateClientObserveException(id)
             connection.observeOwner = token
             connection.onDisconnect.add(closer)
@@ -504,6 +614,7 @@ class TapDaemon internal constructor(
             clientConnectionsById[ownerConnectionId]?.takeUnless { it.closed }
                 ?: throw UnknownClientConnectionException(ownerConnectionId)
         }
+        markInUse(ownerConnectionId)
         val useBundled = !options.skipDriverInstall && config.driver != null
         // The install cache is only a shortcut: a device whose driver is missing or of another
         // build (another daemon, a reused emulator, a manual uninstall) is reinstalled. The test
@@ -576,13 +687,14 @@ class TapDaemon internal constructor(
      * Returns the attached device, rejecting use after sticky reap quarantine so a poisoned device
      * cannot be driven through a direct command path that bypasses [AppLifecycle].
      */
-    fun attachedDevice(
+    suspend fun attachedDevice(
         id: String,
         clientConnectionId: String,
     ): AttachedDevice {
         val found = synchronized(lifecycleLock) { attachedDevicesById[id] } ?: throw UnknownAttachedDeviceException(id)
         if (found.ownerConnectionId != clientConnectionId) throw NotOwnerException(id, clientConnectionId)
         found.deviceSession.checkUsable()
+        markInUse(clientConnectionId)
         return found
     }
 
@@ -603,6 +715,7 @@ class TapDaemon internal constructor(
                     if (found.ownerConnectionId != clientConnectionId) throw NotOwnerException(id, clientConnectionId)
                     attachedDevicesById.remove(id)
                 } ?: throw UnknownAttachedDeviceException(id)
+            markInUse(clientConnectionId)
             val detail = closeDeviceBounded(attachedDevice.deviceSession, timeoutMs, "attached device $id")
             config.log("attached device $id detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
             return@withContext detail

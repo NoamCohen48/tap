@@ -226,6 +226,14 @@ grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `Ta
   - The stream's `finally` calls `disconnectObservedClient`, which ignores a stale token.
   - Disconnect removes the connection and its devices under the lifecycle lock, then closes
     those devices concurrently outside it.
+- **Held connections:**
+  - `connectClient(name, holdIdleMs)` registers one and launches its idle reaper instead of the
+    observe-grace reaper; `observeAcquire` refuses it.
+  - Every lookup that names the connection (`attachDevice`, `attachedDevice`, `detachDevice`)
+    counts the call as running until the calling coroutine's job completes — for a servicer,
+    the gRPC call — so a call longer than the idle timeout never has its connection ended
+    under it. The idle clock restarts when the last running call finishes.
+  - Expiry is an ordinary `disconnectClient(…, "idle for Nms")`.
 - **Detach / close:**
   - Each device close has a bounded budget. The `DeviceSession` gets that budget minus a small
     margin, so its own cleanup finishes before the daemon gives up on it.

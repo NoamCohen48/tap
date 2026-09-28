@@ -135,6 +135,9 @@ Snapshot line format:
 
 ## Phases (one commit each)
 
+Status: 1–2 done.
+
+
 1. Contract: this record, proto for phases 2–3 (the event-log proto comes with phase 6), docs.
 2. Held connections: daemon core + `ClientConnectionService` + unit tests.
 3. Snapshots: parser, selector synthesis, ref alignment, `ScreenSnapshot`/`ResolveRef` + unit tests.
