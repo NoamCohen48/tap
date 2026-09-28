@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Nodes
 import io.github.noamcohen48.tap.protocol.SelectorPlanKind
 import io.github.noamcohen48.tap.protocol.conjunction
+import io.github.noamcohen48.tap.protocol.inAnyWindow
 import io.github.noamcohen48.tap.protocol.inPackage
 import io.github.noamcohen48.tap.protocol.render
 import io.github.noamcohen48.tap.protocol.toSelector
@@ -40,10 +41,11 @@ class SelectorSynthesisTest {
                 val selector = result.selector
                 assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(selector), selector.render())
                 assertEquals(node.windowPackage == AUT, selector.hasAut(), selector.render())
-                if (!selector.hasAut()) assertEquals(node.windowPackage, selector.system.packageName)
+                // Another package's window: every window, so the status bar is reachable too.
+                if (!selector.hasAut()) assertTrue(selector.hasAnyWindow(), selector.render())
                 if (result.byIndex) {
-                    // The driver picks among its focused window's matches, in pre-order.
-                    val matches = matcher.matches(selector, window = node.window)
+                    // `aut` picks among its focused window's matches, `any_window` among all, in pre-order.
+                    val matches = matcher.matches(selector, window = node.window.takeIf { selector.hasAut() })
                     assertSame(node, matches[selector.at.index], "$name ${selector.render()}")
                 } else {
                     assertTrue(selector.pickCase == Selector.PickCase.PICK_NOT_SET, selector.render())
@@ -72,7 +74,7 @@ class SelectorSynthesisTest {
         }
         val emulator = Dumps.hierarchy("emulator-5554-MainActivity")
         val clock = synthesise(emulator)[emulator.nodes.single { it.resourceName == "$SYSTEM_UI:id/clock" }.index]
-        assertEquals(Nodes.androidResource(SYSTEM_UI, "clock").toSelector().inPackage(SYSTEM_UI), clock?.selector)
+        assertEquals(Nodes.androidResource(SYSTEM_UI, "clock").toSelector().inAnyWindow(), clock?.selector)
     }
 
     @Test

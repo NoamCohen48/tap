@@ -1,10 +1,10 @@
 package io.github.noamcohen48.tap.daemon.snapshot
 
 import io.github.noamcohen48.tap.api.v1.At
+import io.github.noamcohen48.tap.api.v1.AnyWindowScope
 import io.github.noamcohen48.tap.api.v1.AutScope
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.Selector
-import io.github.noamcohen48.tap.api.v1.SystemScope
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
@@ -45,10 +45,12 @@ internal class Synthesised(
  * non-index selector; last, the most specific conjunction with an `At` pick.
  *
  * Uniqueness is checked with [DumpMatcher] in the node's scope: a window of the AUT package is
- * `aut`, any other package's window is `system{package}`. Every emitted selector passes the
+ * `aut`; a node in any other package's window gets `any_window`, checked against every window
+ * of the dump (`system{package}` would search only that package's *focused* window, which the
+ * status bar, the navigation bar or an overlay never is). Every emitted selector passes the
  * shared [CommandValidation] and compiles to the driver's native plan, whose semantics
- * [DumpMatcher] emulates. A node whose own package differs from its window's (the native
- * `pkg` filter can never match it) or that has no string property at all gets no selector.
+ * [DumpMatcher] emulates. An AUT-window node whose own package differs from the AUT (the native
+ * `pkg` filter can never match it) or a node with no string property at all gets no selector.
  */
 internal class SelectorSynthesis(
     hierarchy: Hierarchy,
@@ -74,9 +76,10 @@ internal class SelectorSynthesis(
         node: DumpNode,
         done: Array<Synthesised?>,
     ): Synthesised? {
-        if (node.packageName != node.windowPackage) return null
         val scopePackage = node.windowPackage
-        val scope = matcher.packageScope(scopePackage)
+        val inAut = scopePackage == autPackage
+        if (inAut && node.packageName != autPackage) return null
+        val scope = if (inAut) matcher.packageScope(autPackage) else matcher.allWindows()
         val resource = resource(node.resourceName, scopePackage)
         val text = node.text?.usable()?.let { Nodes.text(it) }
         val description = node.contentDescription?.usable()?.let { Nodes.contentDescription(it) }
@@ -119,7 +122,8 @@ internal class SelectorSynthesis(
         val position =
             seeds(predicate)
                 .map { nodes[it] }
-                .filter { it.window == node.window && matcher.inScope(it, scope) && matcher.matches(predicate, it) }
+                // `aut` searches one window; `any_window` picks among every window's matches.
+                .filter { (!inAut || it.window == node.window) && matcher.inScope(it, scope) && matcher.matches(predicate, it) }
                 .indexOf(node)
         if (position < 0) return null
         val selector = selector(predicate, scopePackage).toBuilder().setAt(At.newBuilder().setIndex(position)).build()
@@ -158,7 +162,7 @@ internal class SelectorSynthesis(
                 if (scopePackage == autPackage) {
                     setAut(AutScope.getDefaultInstance())
                 } else {
-                    setSystem(SystemScope.newBuilder().setPackageName(scopePackage))
+                    setAnyWindow(AnyWindowScope.getDefaultInstance())
                 }
             }.build()
 

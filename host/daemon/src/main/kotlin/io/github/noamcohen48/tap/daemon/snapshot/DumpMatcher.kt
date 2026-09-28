@@ -44,9 +44,11 @@ internal class DumpMatcher(
     fun scope(selector: Selector): Scope =
         when (selector.scopeCase) {
             Selector.ScopeCase.SYSTEM -> packageScope(selector.system.packageName)
-            Selector.ScopeCase.ANY_WINDOW -> Scope(hierarchy.windowPackages.indices.toSet(), null)
+            Selector.ScopeCase.ANY_WINDOW -> allWindows()
             Selector.ScopeCase.AUT, Selector.ScopeCase.SCOPE_NOT_SET, null -> packageScope(autPackage)
         }
+
+    fun allWindows(): Scope = Scope(hierarchy.windowPackages.indices.toSet(), null)
 
     fun packageScope(packageName: String): Scope =
         Scope(hierarchy.windowPackages.withIndex().filter { it.value == packageName }.map { it.index }.toSet(), packageName)

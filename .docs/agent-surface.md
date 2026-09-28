@@ -138,7 +138,7 @@ Snapshot line format:
 
 ## Phases (one commit each)
 
-Status: 1, 2 and 4 done; 3 in progress.
+Status: 1–4 done.
 
 1. Contract: this record, proto for phases 2–3 (the event-log proto comes with phase 6), docs.
 2. Held connections: daemon core + `ClientConnectionService` + unit tests.
@@ -153,17 +153,19 @@ Status: 1, 2 and 4 done; 3 in progress.
 - Phase 3 (snapshots) is implemented in `host/daemon/.../daemon/snapshot/` and wired into
   `DeviceService`; unit-tested on six recorded fixture dumps (both local devices × three
   activities), with the device check pending in phase 4. Details the record did not fix:
+  - Scope: a node in an AUT window gets `aut`; a node in any other package's window gets
+    `any_window` (not `system{package}`, which searches only that package's *focused* window,
+    so the status bar, navigation bar and overlays would resolve to `NOT_FOUND`).
   - Uniqueness emulates the driver's *native* plan, which every synthesised selector compiles
-    to: the scope's `pkg` filter applies to the node itself (a node whose package differs from
-    its window's gets no selector), and because the dump does not say which window is focused,
-    matches are counted over every window of the scope's package (never fewer than the
-    driver's). An `At` index is counted within the node's own window.
+    to. In `aut` the `pkg` filter applies to the node itself (an AUT-window node of another
+    package gets no selector), and because the dump does not say which window is focused,
+    matches are counted over every AUT window (never fewer than the driver's); an `At` index is
+    counted within the node's own window. In `any_window` matches and `At` indexes are counted
+    over the whole dump.
   - In `aut` scope a resource id of another package (`android:id/content`) is not used: the
     driver denies it (`SCOPE_DENIED`).
   - The ancestor round also tries the class alone with the ancestor ("a Button under X"); the
     ancestor must be at most 32 levels up (the driver's traversal walk bound).
-  - `system{package}` searches only that package's *focused* window, so a ref into a window
-    that is never focused (the status bar) resolves but the driver answers `NOT_FOUND`.
   - The dump is parsed by a small hand parser (DTDs rejected, only predefined entities and
     character references), so the native image needs no extra metadata for it.
 
