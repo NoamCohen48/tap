@@ -43,6 +43,7 @@ from .models import (
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
+    WaitReason,
 )
 from .selectors import (
     CONTAINS,
@@ -124,6 +125,7 @@ __all__ = [
     "TapConnection",
     "TapError",
     "Timeouts",
+    "WaitReason",
     "WaitTimeoutError",
     "all_of",
     "any_of",

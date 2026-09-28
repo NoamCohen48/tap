@@ -81,16 +81,21 @@ device.await(res("spinner"), timeout = 30.seconds).gone()
 | Method | Condition |
 |---|---|
 | `visible()` | at least one match |
+| `one()` | exactly one match (what `tap()` and other actions need) |
 | `gone()` | zero matches |
 | `enabled()`, `disabled()` | exactly one match with that state |
 | `checked()`, `unchecked()`, `focused()` | likewise |
 | `textEquals(s)`, `textContains(s)` | text of the single match |
 | `count(n)` | exactly `n` matches |
 
-`visible()` and `gone()` poll **on the device** in a single round trip; the property waits
-take a snapshot from the host every `pollInterval` (100 ms). A miss raises
-`WaitTimeoutException` / `WaitTimeoutError` with the elapsed time, the number of polls and the
-last observation (e.g. `text='Placing order…' enabled=False …`). Note that `visible()` means
+`visible()`, `one()` and `gone()` poll **on the device** in a single round trip; the property
+waits take a snapshot from the host every `pollInterval` (100 ms). A miss raises
+`WaitTimeoutException` / `WaitTimeoutError`. For the device waits it carries `reason`
+(`WaitReason.NO_MATCH`, `AMBIGUOUS` for `one()`, `STILL_PRESENT` for `gone()`) and
+`matchCount` / `match_count` from the last poll; for the property waits, the number of polls and
+the last observation (e.g. `text='Placing order…' enabled=False …`). `visible()` passes with
+several matches, so when the next step is an action, `one()` is the wait that proves it can
+run. Note that `visible()` means
 *present in the accessibility tree*, which is what UiAutomator can see; an element scrolled
 off-screen in a `RecyclerView` is usually absent from the tree, an element hidden by another
 window usually is not.

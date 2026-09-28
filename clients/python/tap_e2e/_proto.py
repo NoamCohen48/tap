@@ -19,6 +19,7 @@ from .models import (
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
+    WaitReason,
 )
 
 
@@ -51,6 +52,13 @@ def failure_reason(number: int) -> FailureReason:
 
 def device_state(number: int) -> DeviceState:
     return _named(DeviceState, pb.DeviceState, number, "DEVICE_", DeviceState.UNKNOWN)
+
+
+def wait_reason(detail: str) -> WaitReason | None:
+    try:
+        return WaitReason[detail]
+    except KeyError:
+        return None
 
 
 def _optional(message, field: str):

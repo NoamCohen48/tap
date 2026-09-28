@@ -677,6 +677,30 @@ class TapClientTest {
     }
 
     @Test
+    fun `device wait timeouts carry the reason and match count, and one asks for exactly one`() {
+        val ambiguous =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("AMBIGUOUS")
+                .setMatchCount(3)
+        fakeDevices.executeRequests.clear()
+        val failure =
+            waitMappingWith({ CommandResult.newBuilder().setError(ambiguous).build() }) { it.await(text("Row")).one() }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.AMBIGUOUS, failure.reason)
+        assertEquals(3, failure.matchCount)
+        assertTrue(failure.message!!.contains("AMBIGUOUS (3 matches)"), failure.message)
+        assertTrue(fakeDevices.executeRequests.any { it.command.waitVisible.exactlyOne })
+
+        val unknown = ambiguous.clone().setDetail("SOMETHING_NEW").clearMatchCount()
+        val later = waitMappingWith({ CommandResult.newBuilder().setError(unknown).build() }) { it.await(text("Row")).gone() }
+        assertIs<WaitTimeoutException>(later)
+        assertEquals(null, later.reason)
+        assertEquals(null, later.matchCount)
+    }
+
+    @Test
     fun `every command carries the timeout and one deadline policy`() {
         runBlocking {
             val connection = client().connect("test")
@@ -795,17 +819,19 @@ class TapClientTest {
         code: ErrorCode,
         call: suspend (Device) -> Unit,
     ): Throwable =
+        waitMappingWith({
+            CommandResult
+                .newBuilder()
+                .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(code))
+                .build()
+        }, call)
+
+    private fun waitMappingWith(
+        failure: () -> CommandResult,
+        call: suspend (Device) -> Unit,
+    ): Throwable =
         runBlocking {
-            fakeDevices.executeResponder = { request ->
-                if (request.command.hasDeviceInfo()) {
-                    null
-                } else {
-                    CommandResult
-                        .newBuilder()
-                        .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(code))
-                        .build()
-                }
-            }
+            fakeDevices.executeResponder = { request -> if (request.command.hasDeviceInfo()) null else failure() }
             val connection = client().connect("test")
             try {
                 tapScope {

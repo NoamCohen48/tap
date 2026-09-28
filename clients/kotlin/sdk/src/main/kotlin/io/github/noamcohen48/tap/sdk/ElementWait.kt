@@ -7,7 +7,7 @@ import io.github.noamcohen48.tap.api.v1.WaitVisible
 import kotlin.time.Duration
 
 /**
- * Wait builder returned by [Device.await] / [Element.await]. [visible] and [gone] poll on the
+ * Wait builder returned by [Device.await] / [Element.await]. [visible], [one] and [gone] poll on the
  * device in a single RPC; property waits poll snapshots from the host with [delay]-based
  * polling, so test-root cancellation and sibling failure cancel them promptly.
  *
@@ -18,7 +18,10 @@ class ElementWait internal constructor(
     private val selector: Selector,
     private val timeout: Duration,
 ) {
-    /** Waits until at least one match exists; returns the lazy element. */
+    /**
+     * Waits until at least one match exists; returns the lazy element. A timeout's
+     * [WaitTimeoutException.reason] is [WaitReason.NO_MATCH].
+     */
     suspend fun visible(): Element {
         deviceWait("wait_visible", "${selector.render()} to be visible") {
             waitVisible =
@@ -27,7 +30,24 @@ class ElementWait internal constructor(
         return Element(device, selector)
     }
 
-    /** Waits until no match exists. */
+    /**
+     * Waits until exactly one match exists — what a mutation such as `tap()` needs — and returns
+     * the lazy element. A timeout's [WaitTimeoutException.reason] is [WaitReason.NO_MATCH] or
+     * [WaitReason.AMBIGUOUS] with [WaitTimeoutException.matchCount] from the last poll.
+     */
+    suspend fun one(): Element {
+        deviceWait("wait_visible", "${selector.render()} to match exactly one node") {
+            waitVisible =
+                WaitVisible
+                    .newBuilder()
+                    .setSelector(selector.proto)
+                    .setExactlyOne(true)
+                    .build()
+        }
+        return Element(device, selector)
+    }
+
+    /** Waits until no match exists. A timeout's reason is [WaitReason.STILL_PRESENT], with the count. */
     suspend fun gone() {
         deviceWait("wait_gone", "${selector.render()} to be gone") { waitGone = WaitGone.newBuilder().setSelector(selector.proto).build() }
     }
@@ -71,7 +91,7 @@ class ElementWait internal constructor(
         val result = device.execute(timeout, build)
         if (!result.hasError()) return
         if (result.error.code == ErrorCodeProto.ERR_WAIT_TIMEOUT) {
-            throw WaitTimeoutException(description, device.serial, result.durationMs)
+            throw WaitTimeoutException.of(result, description, device.serial)
         }
         throw CommandException(result, operation, device.serial, selector.render())
     }

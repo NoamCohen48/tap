@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.samples
 import io.github.noamcohen48.tap.junit5.TapTest
 import io.github.noamcohen48.tap.junit5.tapTest
 import io.github.noamcohen48.tap.sdk.Device
+import io.github.noamcohen48.tap.sdk.WaitReason
 import io.github.noamcohen48.tap.sdk.WaitTimeoutException
 import io.github.noamcohen48.tap.sdk.res
 import org.junit.jupiter.api.Test
@@ -59,7 +60,7 @@ class MotionTest {
                     assertFailsSuspend<WaitTimeoutException> {
                         device.awaitAppSettled(stableFor = 500.milliseconds, timeout = 3.seconds)
                     }
-                assertEquals("SCREEN_CHANGING", failure.lastObservation)
+                assertEquals(WaitReason.SCREEN_CHANGING, failure.reason)
                 assertTrue(failure.elapsedMs >= 3_000, "gave up after ${failure.elapsedMs}ms")
             } finally {
                 ticker.tap()

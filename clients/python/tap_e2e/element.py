@@ -226,15 +226,27 @@ class ElementWait:
         self.timeout = timeout
 
     def visible(self) -> Element:
-        """Wait until at least one node matches; polled on the device in one RPC."""
+        """Wait until at least one node matches; polled on the device in one RPC. A timeout's
+        ``reason`` is ``NO_MATCH``."""
         self._device_wait(
             f"{self.selector.render()} to be visible",
             wait_visible=pb.WaitVisible(selector=self.selector._proto),
         )
         return Element(self.device, self.selector)
 
+    def one(self) -> Element:
+        """Wait until exactly one node matches — what a mutation such as ``tap()`` needs; polled
+        on the device in one RPC. A timeout's ``reason`` is ``NO_MATCH`` or ``AMBIGUOUS`` with
+        ``match_count`` from the last poll."""
+        self._device_wait(
+            f"{self.selector.render()} to match exactly one node",
+            wait_visible=pb.WaitVisible(selector=self.selector._proto, exactly_one=True),
+        )
+        return Element(self.device, self.selector)
+
     def gone(self) -> None:
-        """Wait until no node matches; polled on the device in one RPC."""
+        """Wait until no node matches; polled on the device in one RPC. A timeout's ``reason`` is
+        ``STILL_PRESENT`` with ``match_count``."""
         self._device_wait(
             f"{self.selector.render()} to be gone",
             wait_gone=pb.WaitGone(selector=self.selector._proto),
@@ -294,7 +306,7 @@ class ElementWait:
         if not result.HasField("error"):
             return
         if result.error.code == pb.ERR_WAIT_TIMEOUT:
-            raise WaitTimeoutError(description, self.device.serial, result.duration_ms)
+            raise WaitTimeoutError._from_result(result, description, self.device.serial)
         (name,) = op
         raise CommandError._from_result(result, name, self.device.serial, self.selector.render())
 

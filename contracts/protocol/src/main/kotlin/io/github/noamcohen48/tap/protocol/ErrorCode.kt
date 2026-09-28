@@ -100,7 +100,13 @@ object ErrorDetail {
     // INVALID_REQUEST
     const val UNSUPPORTED_CHARACTERS = "UNSUPPORTED_CHARACTERS"
 
-    // WAIT_TIMEOUT (screen stability)
+    // WAIT_TIMEOUT: why the condition was still unmet at the last poll. wait_visible /
+    // wait_gone also set Error.match_count.
+    const val NO_MATCH = "NO_MATCH"
+    const val AMBIGUOUS = "AMBIGUOUS"
+    const val STILL_PRESENT = "STILL_PRESENT"
+
+    // WAIT_TIMEOUT (screen stability, wait_app_visible)
     const val SCREEN_CHANGING = "SCREEN_CHANGING"
     const val APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
 
@@ -148,6 +154,8 @@ class CommandFailure(
     val code: ErrorCode,
     val detail: String? = null,
     message: String? = null,
+    /** `Error.match_count`: matches at a wait's last poll. */
+    val matchCount: Int? = null,
 ) : RuntimeException(message ?: code.label) {
     val remoteMessage: String? = message
 }

@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import _proto
-from .models import ErrorCode, FailureReason
+from .models import ErrorCode, FailureReason, WaitReason
 
 if TYPE_CHECKING:
     from . import _gen as pb
@@ -89,7 +89,10 @@ class CommandError(TapError):
 
 class WaitTimeoutError(TapError):
     """A condition did not hold within its timeout; the message names the device, the
-    condition and the last observation so a log line alone is diagnosable."""
+    condition and what was observed so a log line alone is diagnosable: ``reason`` and
+    ``match_count`` for the waits the device runs (``visible``, ``one``, ``gone``,
+    ``await_app_visible``, ``await_screen_stable``), ``last_observation`` and ``polls`` for the
+    ones the client polls."""
 
     def __init__(
         self,
@@ -98,16 +101,41 @@ class WaitTimeoutError(TapError):
         elapsed_ms: int,
         polls: int = 0,
         last: str | None = None,
+        reason: WaitReason | None = None,
+        match_count: int | None = None,
     ):
         self.description = description
         self.serial = serial
         self.elapsed_ms = elapsed_ms
         self.polls = polls
         self.last_observation = last
+        self.reason = reason
+        """Why the device-side condition was still unmet at its last poll; None for client-polled
+        waits."""
+        self.match_count = match_count
+        """Matches at the last poll of ``visible`` / ``one`` / ``gone`` (capped at 1000)."""
+        why = ""
+        if reason is not None:
+            why = f"; {reason.value}" + (f" ({match_count} matches)" if match_count is not None else "")
         suffix = f"; last observed: {last}" if last else ""
         polled = f" after {polls} polls" if polls else ""
         super().__init__(
-            f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{suffix}"
+            f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{why}{suffix}"
+        )
+
+    @classmethod
+    def _from_result(
+        cls, result: pb.CommandResult, description: str, serial: str, last: str | None = None
+    ) -> WaitTimeoutError:
+        """From a device ``WAIT_TIMEOUT`` result: its ``detail`` and ``match_count``."""
+        error = result.error
+        return cls(
+            description,
+            serial,
+            result.duration_ms,
+            last=last,
+            reason=_proto.wait_reason(error.detail) if error.HasField("detail") else None,
+            match_count=error.match_count if error.HasField("match_count") else None,
         )
 
 

@@ -6,9 +6,9 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 141 |
+| Fixed | 142 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 1 |
+| Partial | 0 |
 | Open | 1 |
 | Won't fix (accepted risk, see decisions) | 2 |
 | Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
@@ -216,7 +216,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | K-1 | M | Backlog | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
 | K-17 | M | Fixed | `App` unit test: targets, timeouts, activity, chunked APK upload, process identity and a refused grant (`TapClientTest`) | S |
 | K-11 | L | Fixed | The internal node combinators are private `conjunction`/`disjunction`; `allOf`/`anyOf` are only the public selector entry points | S |
-| K-13 | L | Partial | Device-side waits carry no last observation | S |
+| K-13 | L | Fixed | Driver `WaitCommands` report the last poll: `WAIT_TIMEOUT` detail `NO_MATCH` / `AMBIGUOUS` / `STILL_PRESENT` / `APP_NOT_VISIBLE` plus additive `Error.match_count`; additive `WaitVisible.exactly_one` behind `await(sel).one()` in both SDKs; `WaitTimeoutException.reason` / `matchCount` (`WaitReason`), Python `reason` / `match_count`. Host passes results through unchanged. Tests: `TapClientTest`, `test_device.py`, fixture `waitTimeoutIsDiagnosable` (Kotlin + Python) on the API 29/34 matrix; `deviceTest` 45/45 | — |
 | K-14 | L | Fixed | The process starter is injected per call; `tap start`/`stop` wait on `process.onExit()` instead of polling | S |
 | K-16 | N | Fixed | The rethrow-only catch in `connect` is gone | S |
 | J-6 | L | Fixed | The primary failure is JUnit's `executionException` only; the recording interceptors, the exception handler and `TestState.failure` are gone | S |

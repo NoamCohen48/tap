@@ -304,11 +304,10 @@ class Device internal constructor(
                 if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) {
                     throw CommandException(result, "wait_app_visible", serial, null)
                 }
-                throw WaitTimeoutException(
+                throw WaitTimeoutException.of(
+                    result,
                     "package $packageName to be in the foreground",
                     serial,
-                    result.durationMs,
-                    0,
                     "currentPackage=${observeOrNull { infoInner() }?.currentPackage}",
                 )
             }
@@ -353,13 +352,7 @@ class Device internal constructor(
                         StabilitySignal.PIXELS -> "pixels"
                         StabilitySignal.ALL -> "screen"
                     }
-                throw WaitTimeoutException(
-                    "the $packageName $what to stay unchanged for $stableFor",
-                    serial,
-                    result.durationMs,
-                    0,
-                    if (result.error.hasDetail()) result.error.detail else null,
-                )
+                throw WaitTimeoutException.of(result, "the $packageName $what to stay unchanged for $stableFor", serial)
             }
         }
     }

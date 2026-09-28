@@ -38,6 +38,7 @@ WAITS = {
     "await_app_visible": lambda d: d.await_app_visible(),
     "await_screen_stable": lambda d: d.await_screen_stable(),
     "wait_visible": lambda d: d.wait(text("x")).visible(),
+    "wait_one": lambda d: d.wait(text("x")).one(),
     "wait_gone": lambda d: d.wait(text("x")).gone(),
 }
 
@@ -52,6 +53,33 @@ def test_only_wait_timeout_becomes_wait_timeout_error(fake, device, wait):
         with pytest.raises(CommandError) as info:
             wait(device)
         assert info.value.code.name == pb.ErrorCode.Name(code).removeprefix("ERR_")
+
+
+def test_device_wait_timeouts_carry_the_reason_and_match_count(fake, device):
+    from tap_e2e import WaitReason
+
+    sent: list[pb.Command] = []
+    detail = {"detail": "AMBIGUOUS", "match_count": 3}
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.HasField("device_info"):
+            return None
+        sent.append(command)
+        return pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, **detail))
+
+    fake.devices.responder = respond
+    with pytest.raises(WaitTimeoutError) as info:
+        device.wait(text("Row")).one()
+    assert info.value.reason is WaitReason.AMBIGUOUS
+    assert info.value.match_count == 3
+    assert "AMBIGUOUS (3 matches)" in str(info.value)
+    assert sent[-1].wait_visible.exactly_one
+
+    detail = {"detail": "SOMETHING_NEW"}
+    with pytest.raises(WaitTimeoutError) as info:
+        device.wait(text("Row")).visible()
+    assert info.value.reason is None and info.value.match_count is None
+    assert not sent[-1].wait_visible.exactly_one
 
 
 def test_zero_timeout_is_not_replaced_by_the_default(fake, device):

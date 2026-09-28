@@ -157,6 +157,29 @@ enum class FailureReason {
 }
 
 /** A device's state in [TapClient.devices]. Only [FREE] and [LEASED] devices can be attached. */
+/** Why a device-side wait timed out ([WaitTimeoutException.reason]). */
+enum class WaitReason {
+    /** `visible` / `one`: nothing matched. */
+    NO_MATCH,
+
+    /** `one`: several nodes matched ([WaitTimeoutException.matchCount] says how many). */
+    AMBIGUOUS,
+
+    /** `gone`: the selector still matched. */
+    STILL_PRESENT,
+
+    /** `awaitScreenStable`: the screen kept changing. */
+    SCREEN_CHANGING,
+
+    /** `awaitAppVisible` / `awaitScreenStable`: the package never owned the focused window. */
+    APP_NOT_VISIBLE,
+    ;
+
+    internal companion object {
+        fun of(detail: String): WaitReason? = entries.firstOrNull { it.name == detail }
+    }
+}
+
 enum class DeviceState {
     /** Online and not held by any session. */
     FREE,

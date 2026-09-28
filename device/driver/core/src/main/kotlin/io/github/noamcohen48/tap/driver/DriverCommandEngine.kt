@@ -73,7 +73,7 @@ internal class DriverCommandEngine(
                 context.checkpoint()
                 request.dispatch(Handlers(context, selectors))
             } catch (failure: CommandFailure) {
-                Responses.failure(failure.code, detail = failure.detail, message = failure.remoteMessage)
+                Responses.failure(failure.code, detail = failure.detail, message = failure.remoteMessage, matchCount = failure.matchCount)
             }
         return response.stamped(context.elapsed(), context.requestId, generation)
     }
@@ -143,9 +143,9 @@ internal class DriverCommandEngine(
 
         override fun snapshot(command: Snapshot): ElementSnapshot = queries.snapshot(selectors[command.selector])
 
-        override fun waitVisible(command: WaitVisible) = waits.waitVisible(context, selectors[command.selector], expected = true)
+        override fun waitVisible(command: WaitVisible) = waits.waitVisible(context, selectors[command.selector], exactlyOne = command.exactlyOne)
 
-        override fun waitGone(command: WaitGone) = waits.waitVisible(context, selectors[command.selector], expected = false)
+        override fun waitGone(command: WaitGone) = waits.waitGone(context, selectors[command.selector])
 
         override fun waitAppVisible(command: WaitAppVisible) = waits.waitAppVisible(context, command)
 

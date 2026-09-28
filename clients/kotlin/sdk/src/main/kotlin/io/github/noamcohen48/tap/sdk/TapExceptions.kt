@@ -66,7 +66,12 @@ class CommandException(
     )
 }
 
-/** A wait ran out of time. Carries what was observed so the failure is diagnosable without a rerun. */
+/**
+ * A wait ran out of time. Carries what was observed so the failure is diagnosable without a
+ * rerun: [reason] and [matchCount] for the waits the device runs (`visible`, `one`, `gone`,
+ * `awaitAppVisible`, `awaitScreenStable`), [lastObservation] and [polls] for the ones the client
+ * polls.
+ */
 class WaitTimeoutException(
     val description: String,
     val serial: String,
@@ -74,14 +79,36 @@ class WaitTimeoutException(
     val polls: Int = 0,
     val lastObservation: String? = null,
     cause: Throwable? = null,
+    /** Why the device-side condition was still unmet at its last poll; null for client-polled waits. */
+    val reason: WaitReason? = null,
+    /** Matches at the last poll of `visible` / `one` / `gone` (capped at 1000). */
+    val matchCount: Int? = null,
 ) : TapException(
         buildString {
             append("Timed out after ${elapsedMs}ms waiting for $description on $serial")
             if (polls > 0) append(" ($polls polls)")
+            if (reason != null) append("; ").append(reason.name).append(matchCount?.let { " ($it matches)" } ?: "")
             if (lastObservation != null) append("; last observed: $lastObservation")
         },
         cause,
-    )
+    ) {
+    internal companion object {
+        /** From a device `WAIT_TIMEOUT` result: its `detail` and `match_count`. */
+        fun of(
+            result: CommandResult,
+            description: String,
+            serial: String,
+            lastObservation: String? = null,
+        ) = WaitTimeoutException(
+            description,
+            serial,
+            result.durationMs,
+            lastObservation = lastObservation,
+            reason = if (result.error.hasDetail()) WaitReason.of(result.error.detail) else null,
+            matchCount = if (result.error.hasMatchCount()) result.error.matchCount else null,
+        )
+    }
+}
 
 /** An AUT lifecycle postcondition did not hold (process still alive, window never appeared...). */
 class AppLifecycleException(

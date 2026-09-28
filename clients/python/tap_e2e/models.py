@@ -105,6 +105,22 @@ class FailureReason(enum.Enum):
     DAEMON_PRECONDITION = "DAEMON_PRECONDITION"
 
 
+class WaitReason(enum.Enum):
+    """Why a device-side wait timed out (``WaitTimeoutError.reason``)."""
+
+    NO_MATCH = "NO_MATCH"
+    """``visible`` / ``one``: nothing matched."""
+    AMBIGUOUS = "AMBIGUOUS"
+    """``one``: several nodes matched (``WaitTimeoutError.match_count`` says how many)."""
+    STILL_PRESENT = "STILL_PRESENT"
+    """``gone``: the selector still matched."""
+    SCREEN_CHANGING = "SCREEN_CHANGING"
+    """``await_screen_stable``: the screen kept changing."""
+    APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
+    """``await_app_visible`` / ``await_screen_stable``: the package never owned the focused
+    window."""
+
+
 class DeviceState(enum.Enum):
     """A device's state in ``TapClient.devices()``. Only ``FREE`` and ``LEASED`` devices can be
     attached; ``UNKNOWN`` is a state this client version does not know."""

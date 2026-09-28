@@ -53,7 +53,7 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `WAIT_TIMEOUT` | the condition stayed false. `SCREEN_CHANGING` / `APP_NOT_VISIBLE` for the stability waits |
+| `WAIT_TIMEOUT` | the condition stayed false. The detail is the wait's `reason`: `NO_MATCH`, `AMBIGUOUS`, `STILL_PRESENT`, `SCREEN_CHANGING` or `APP_NOT_VISIBLE` |
 | `DEADLINE_EXCEEDED` | the command's deadline passed outside a normal wait (`EXPIRED_IN_QUEUE`) |
 | `CANCELLED` | stopped before mutation (`CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`) |
 
@@ -77,12 +77,15 @@ repeat a mutation after them blindly.
 ## Wait timeouts
 
 ```
-Timed out after 10012 ms after 98 polls waiting for text("Order placed") visible on emulator-5554; last observed: 0 matches
-Timed out after 5003 ms after 48 polls waiting for resId(com.shop:id/pay) enabled on emulator-5554; last observed: enabled=false
+Timed out after 10012ms waiting for text("Order placed") to be visible on emulator-5554; NO_MATCH (0 matches)
+Timed out after 10008ms waiting for text("Buy") to match exactly one node on emulator-5554; AMBIGUOUS (3 matches)
+Timed out after 5003ms waiting for resId(com.shop:id/pay) to be enabled on emulator-5554 (48 polls); last observed: text=Pay enabled=false …
 ```
 
-`description`, `serial`, `elapsedMs`, `polls` and `lastObservation` are fields on the
-exception.
+`description`, `serial`, `elapsedMs`, `reason`, `matchCount`, `polls` and `lastObservation`
+are fields on the exception (Python: `elapsed_ms`, `match_count`, `last_observation`).
+`reason` is a `WaitReason` for the waits the device runs (`visible()`, `one()`, `gone()`,
+`awaitAppVisible`, `awaitScreenStable`) and null / None for the ones the client polls.
 
 ## Failure artifacts
 

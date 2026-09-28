@@ -78,7 +78,11 @@ message Exists { Selector selector = 1; }
 message Count { Selector selector = 1; }
 message Snapshot { Selector selector = 1; }
 
-message WaitVisible { Selector selector = 1; }
+message WaitVisible {
+  Selector selector = 1;
+  // true = wait for exactly one match (a mutation's precondition); false = one or more.
+  bool exactly_one = 2;
+}
 message WaitGone { Selector selector = 1; }
 message WaitAppVisible { string package_name = 1; }
 message WaitScreenStable {
@@ -195,6 +199,8 @@ message Error {
   ErrorCode code = 1;
   optional string detail = 2; // stable sub-reason; see the errors guide
   optional string message = 3; // human-readable context; never branch on it
+  // WAIT_TIMEOUT of wait_visible / wait_gone: matches at the last poll (capped at 1000).
+  optional int32 match_count = 4;
 }
 
 // One protocol response: exactly one `outcome`, named like the protocol result `kind`.

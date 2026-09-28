@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.sdk.CommandException
 import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.Direction
 import io.github.noamcohen48.tap.sdk.ErrorCode
+import io.github.noamcohen48.tap.sdk.WaitReason
 import io.github.noamcohen48.tap.sdk.WaitTimeoutException
 import io.github.noamcohen48.tap.sdk.rawRes
 import io.github.noamcohen48.tap.sdk.res
@@ -119,6 +120,16 @@ class MainScreenTest {
                     device.await(textStartsWith("Never rendered"), timeout = 1.seconds).visible()
                 }
             assertTrue(timeout.message!!.contains(device.serial))
+            assertEquals(WaitReason.NO_MATCH to 0, timeout.reason to timeout.matchCount)
+
+            // visible() is "one or more"; one() is the explicit exactly-one wait and says how many matched.
+            val ambiguous = textMatches("(?i)ambiguous tap")
+            device.await(ambiguous).visible()
+            val notOne = assertFailsSuspend<WaitTimeoutException> { device.await(ambiguous, timeout = 1.seconds).one() }
+            assertEquals(WaitReason.AMBIGUOUS to 2, notOne.reason to notOne.matchCount)
+            val present = assertFailsSuspend<WaitTimeoutException> { device.await(ambiguous, timeout = 1.seconds).gone() }
+            assertEquals(WaitReason.STILL_PRESENT to 2, present.reason to present.matchCount)
+            device.await(res("ambiguous_button_left")).one().tap()
         }
     }
 

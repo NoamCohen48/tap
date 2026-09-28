@@ -285,12 +285,8 @@ class Device:
                 last = f"currentPackage={self.info().current_package}"
             except Exception:  # noqa: BLE001 - diagnostics only
                 last = None
-            raise WaitTimeoutError(
-                f"package {package_name} to be in the foreground",
-                self.serial,
-                result.duration_ms,
-                0,
-                last,
+            raise WaitTimeoutError._from_result(
+                result, f"package {package_name} to be in the foreground", self.serial, last
             )
 
     def await_screen_stable(
@@ -324,12 +320,8 @@ class Device:
             what = {StabilitySignal.TREE: "hierarchy", StabilitySignal.PIXELS: "pixels"}.get(
                 signal, "screen"
             )
-            raise WaitTimeoutError(
-                f"the {package_name} {what} to stay unchanged for {stable_for:g}s",
-                self.serial,
-                result.duration_ms,
-                0,
-                result.error.detail or None,
+            raise WaitTimeoutError._from_result(
+                result, f"the {package_name} {what} to stay unchanged for {stable_for:g}s", self.serial
             )
 
     def await_app_settled(
