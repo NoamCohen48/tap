@@ -109,6 +109,24 @@ class AdbTest {
         }
 
     @Test
+    fun `a permission reads as granted only from its own granted line`() =
+        runBlocking {
+            val dumpsys =
+                """
+                    install permissions:
+                      android.permission.INTERNET: granted=true
+                    User 0: ceDataInode=1 installed=true
+                      runtime permissions:
+                        android.permission.CAMERA: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED ]
+                        android.permission.CAMERA_EXTRA: granted=true
+                """.trimIndent()
+            val adb = scriptedAdb(dumpsys)
+            assertTrue(adb.isPermissionGranted(serial, "com.example", "android.permission.INTERNET"))
+            assertFalse(adb.isPermissionGranted(serial, "com.example", "android.permission.CAMERA"))
+            assertFalse(adb.isPermissionGranted(serial, "com.example", "android.permission.RECORD_AUDIO"))
+        }
+
+    @Test
     fun `installed package reads versionName and versionCode on API 29 and 34`() =
         runBlocking {
             for (output in listOf(DUMPSYS_API_29, DUMPSYS_API_34)) {
@@ -227,6 +245,19 @@ class AdbTest {
             val adb = FakeAdb(mapOf("shell cat /proc/net/tcp /proc/net/tcp6" to ok(table)))
             assertTrue(adb.isPortListening(serial, 27183)) // 0x6A2F, state 0A
             assertFalse(adb.isPortListening(serial, 27184)) // 0x6A30 is ESTABLISHED, not LISTEN
+        }
+
+    @Test
+    fun `listening port tolerates a kernel without tcp6 but not a failed read`() =
+        runTest {
+            val ipv4Only =
+                "sl  local_address rem_address   st\n 0: 00000000:6A2F 00000000:0000 0A\n" +
+                    "cat: /proc/net/tcp6: No such file or directory"
+            val noIpv6 = FakeAdb(mapOf("shell cat /proc/net/tcp /proc/net/tcp6" to Adb.Result(1, ipv4Only)))
+            assertTrue(noIpv6.isPortListening(serial, 27183))
+
+            val offline = FakeAdb(mapOf("shell cat /proc/net/tcp /proc/net/tcp6" to Adb.Result(1, "error: device offline")))
+            assertFailsWith<AdbCommandException> { offline.isPortListening(serial, 27183) }
         }
 
     @Test

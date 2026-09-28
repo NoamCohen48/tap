@@ -270,8 +270,11 @@ class DriverClient private constructor(
                     message = "Artifact ${response.artifact.blobId.ifEmpty { "(none)" }} was not received intact",
                 ).stamped(response.result.durationMs, response.result.requestId, response.result.sessionGeneration)
 
-        /** Verified artifact bytes of a successful artifact response; null otherwise. */
-        fun artifact(): ByteArray? = artifactBytes?.copyOf()
+        /**
+         * Verified artifact bytes of a successful artifact response; null otherwise. Handed over,
+         * not copied (a screenshot can be tens of MB): the caller owns the array.
+         */
+        fun artifact(): ByteArray? = artifactBytes
 
         internal fun fail(cause: Throwable) {
             deadlineWatcher?.cancel()
@@ -599,6 +602,15 @@ class DriverClient private constructor(
         helloPayload: ByteArray,
         challengeFrame: Frame,
     ) {
+        if (challengeFrame.type == FrameType.AUTH_RESULT) {
+            // The driver refused the HELLO outright; today that means no common protocol version.
+            val refusal = parsePayload("AUTH_RESULT", challengeFrame.payload, AuthenticationResult::parseFrom)
+            val reason = if (refusal.hasError()) refusal.error else "no reason given"
+            throw DriverHandshakeException(
+                "Driver refused the handshake ($reason): no common protocol version with host " +
+                    SUPPORTED_PROTOCOL_VERSIONS.joinToString { "${it.major}.${it.minor}" },
+            )
+        }
         check(challengeFrame.type == FrameType.CHALLENGE)
         val challenge = parsePayload("CHALLENGE", challengeFrame.payload, Challenge::parseFrom)
         check(ProtocolNegotiation.isValidChallenge(challenge)) { "Driver contract is invalid" }

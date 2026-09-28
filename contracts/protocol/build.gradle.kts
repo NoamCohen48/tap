@@ -17,12 +17,15 @@ dependencies {
 
 /*
  * The engine version (gradle.properties `tap.version.engine`) is compiled in as
- * `ENGINE_VERSION`, which the host and driver build ids and the daemon version derive from.
+ * `ENGINE_VERSION`, which the host and driver build ids and the daemon version derive from, and
+ * the catalog's UiAutomator version as `UIAUTOMATOR_VERSION` (the driver's reported build id).
  */
 val generateEngineVersion by tasks.registering {
     val version = project.version.toString()
+    val uiAutomator = libs.versions.uiautomator.get()
     val outDir = layout.buildDirectory.dir("generated/engine-version")
     inputs.property("version", version)
+    inputs.property("uiAutomator", uiAutomator)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().file("io/github/noamcohen48/tap/protocol/EngineVersion.kt").asFile
@@ -34,6 +37,9 @@ val generateEngineVersion by tasks.registering {
             |
             |/** Version of the engine (daemon, bundled driver, protocol, tap-api). */
             |const val ENGINE_VERSION = "$version"
+            |
+            |/** The androidx.test.uiautomator version the driver is built against (version catalog). */
+            |const val UIAUTOMATOR_VERSION = "$uiAutomator"
             |""".trimMargin(),
         )
     }

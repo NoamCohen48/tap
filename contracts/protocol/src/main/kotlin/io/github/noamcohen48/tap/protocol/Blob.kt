@@ -54,8 +54,10 @@ object BlobFrames {
     }
 
     /** Lower-case hex SHA-256 of [bytes]. Hand-rolled: `java.util.HexFormat` needs API 34 on Android. */
-    fun sha256Hex(bytes: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    fun sha256Hex(bytes: ByteArray): String = hex(MessageDigest.getInstance("SHA-256").digest(bytes))
+
+    /** Lower-case hex of [digest], the form [sha256Hex] and the blob frames use. */
+    fun hex(digest: ByteArray): String {
         val hex = CharArray(digest.size * 2)
         digest.forEachIndexed { index, byte ->
             val value = byte.toInt() and 0xFF

@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.host
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -168,39 +169,38 @@ suspend fun startDriverWithRetry(
                 }
         }
         val output = StringBuilder()
+        val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
+        // The drain looks at each line once; it completes with the instance ID, or null when the
+        // output ends (the instrumentation exited) without the marker.
+        val ready = CompletableDeferred<String?>()
         val drainScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val outputDrain =
             drainScope.launch {
-                withContext(Dispatchers.IO) {
-                    process.inputStream.bufferedReader().forEachLine { line ->
-                        synchronized(output) { output.appendLine(line) }
-                        logSink(line)
+                try {
+                    withContext(Dispatchers.IO) {
+                        process.inputStream.bufferedReader().forEachLine { line ->
+                            synchronized(output) { output.appendLine(line) }
+                            logSink(line)
+                            if (!ready.isCompleted && markerPrefix in line) {
+                                ready.complete(line.substringAfter(markerPrefix).trim())
+                            }
+                        }
                     }
+                } finally {
+                    ready.complete(null)
                 }
             }
         var handedOff = false
         var attemptCleanupError: Throwable? = null
         try {
             currentCoroutineContext().ensureActive()
-            val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
             val deadline =
                 minOf(
                     System.nanoTime() + 10_000_000_000L,
                     overallDeadlineNanos ?: Long.MAX_VALUE,
                 )
-            var instanceId: String? = null
-            while (System.nanoTime() < deadline && process.isAlive) {
-                instanceId =
-                    synchronized(output) {
-                        output
-                            .lineSequence()
-                            .firstOrNull { markerPrefix in it }
-                            ?.substringAfter(markerPrefix)
-                            ?.trim()
-                    }
-                if (!instanceId.isNullOrEmpty()) break
-                delay(25)
-            }
+            val remainingMs = (deadline - System.nanoTime()) / 1_000_000L
+            val instanceId = if (remainingMs > 0) withTimeoutOrNull(remainingMs) { ready.await() } else null
             if (!instanceId.isNullOrEmpty()) {
                 handedOff = true
                 return RunningInstrumentation(process, output, outputDrain, devicePort, instanceId, drainScope)

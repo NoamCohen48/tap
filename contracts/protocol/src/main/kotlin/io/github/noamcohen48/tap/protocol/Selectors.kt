@@ -238,4 +238,19 @@ fun Node.render(): String =
 private fun Node.renderOperand(): String =
     if (kindCase == Node.KindCase.ALL_OF || kindCase == Node.KindCase.ANY_OF) "(${render()})" else render()
 
-private fun quote(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+/** JSON string escaping, so a value with quotes or line breaks still renders on one unambiguous line. */
+private fun quote(value: String): String =
+    buildString(value.length + 2) {
+        append('"')
+        for (char in value) {
+            when (char) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> if (char < ' ') append("\\u%04x".format(char.code)) else append(char)
+            }
+        }
+        append('"')
+    }

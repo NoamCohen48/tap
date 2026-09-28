@@ -10,11 +10,11 @@ state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 | `isInstalled()` | | `pm` query |
 | `install(apk)` | uploads the local APK file (streamed in 1 MiB chunks, so the server may run on another machine), then `adb install -r -t` | package visible afterwards |
 | `uninstall()` | `pm uninstall` | package gone |
-| `launch(activity = null)` | `am start` the given or the launcher activity | the package owns the focused window |
+| `launch(activity = null)` | `am start -W` the given or the launcher activity | Android reports the launch complete (nothing about the UI: wait for it yourself) |
 | `coldLaunch(activity = null)` | force-stop, launch | **a new process identity** (PID + start token) is in the foreground; returned as `ProcessIdentity` |
 | `forceStop()` | `am force-stop` | no process of the package remains |
 | `clearData()` | `pm clear` | data, cache and runtime permissions gone; app left stopped |
-| `grantPermission(name)` | `pm grant` | |
+| `grantPermission(name)` | `pm grant` | `dumpsys package` lists it as granted |
 | `process()` | | the single current `ProcessIdentity` |
 | `isRunning()` | | any process of the package |
 | `awaitIdle(stableFor = 200 ms)` | | the app's own busy counter — below |

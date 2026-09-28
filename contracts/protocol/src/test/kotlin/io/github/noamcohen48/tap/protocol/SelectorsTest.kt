@@ -57,5 +57,6 @@ class SelectorsTest {
                 .render(),
         )
         assertEquals("text=\"say \\\"hi\\\"\"", Selectors.text("say \"hi\"").render())
+        assertEquals("text=\"a\\nb\\\\c\\u0001\"", Selectors.text("a\nb\\c\u0001").render())
     }
 }
