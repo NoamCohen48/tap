@@ -431,8 +431,8 @@ class TapTestBridgeTest {
                 val extension = TapExtension()
                 val backing = HashMap<Any, Any?>(mapOf("tap.devices" to state))
                 val testMethod = TapTestBridgeTest::class.java.getDeclaredMethod("metadata-only test stays possible")
-                val context = stubContext(stubStore(backing), TapTestBridgeTest::class.java, testMethod)
                 var observed: Throwable? = null
+                val context = stubContext(stubStore(backing), TapTestBridgeTest::class.java, testMethod) { observed }
                 var flagAfterTest: Boolean? = null
                 var afterEachError: Throwable? = null
                 val thread =
@@ -442,7 +442,6 @@ class TapTestBridgeTest {
                             tapTest { awaitCancellation() }
                         } catch (failure: Throwable) {
                             observed = failure
-                            if (state.failure == null) state.failure = failure
                         } finally {
                             TapTestBinding.current.remove()
                         }
@@ -465,7 +464,6 @@ class TapTestBridgeTest {
                 val primary = observed
                 assertTrue(primary is CancellationException, "interruption stays the primary failure, was $primary")
                 assertTrue(primary.cause is InterruptedException, "original interruption preserved as the cause")
-                assertTrue(primary === state.failure, "stored primary is the observed failure")
                 assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeDevices.closes.toSet(), "AfterEach closes every device")
                 assertEquals(1, primary.suppressed.size, "quarantine error suppressed, not replacing")
                 assertTrue(primary.suppressed[0].message!!.contains("serial-bbb"))
@@ -583,6 +581,7 @@ class TapTestBridgeTest {
         store: ExtensionContext.Store,
         testClass: Class<*>,
         testMethod: Method,
+        executionException: () -> Throwable? = { null },
     ): ExtensionContext =
         Proxy.newProxyInstance(
             javaClass.classLoader,
@@ -590,7 +589,7 @@ class TapTestBridgeTest {
         ) { _, method, _ ->
             when (method.name) {
                 "getStore" -> store
-                "getExecutionException" -> java.util.Optional.empty<Throwable>()
+                "getExecutionException" -> java.util.Optional.ofNullable(executionException())
                 "getRequiredTestMethod" -> testMethod
                 "getRequiredTestClass" -> testClass
                 "getDisplayName" -> "stub"

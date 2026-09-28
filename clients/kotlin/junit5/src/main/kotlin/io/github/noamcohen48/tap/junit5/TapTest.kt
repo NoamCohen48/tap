@@ -13,18 +13,14 @@ import kotlinx.coroutines.runBlocking
  * Per-test coroutine root and devices, created in `BeforeEach` and consumed by [tapTest].
  * [rootJob] is the ownership domain: device opens run as its children (setup scope) and the
  * test body runs as its child (test scope), so timeout/interruption and sibling failure cancel
- * in-flight RPCs. [failure] records the primary setup/invocation/lifecycle failure for
- * `AfterEach` to preserve.
+ * in-flight RPCs. The primary failure is JUnit's own record (`executionException`).
  */
 internal class TestState(
     val rootJob: Job,
     val devices: Map<String, Device>,
     val assignment: Map<String, String>,
     val method: String,
-) {
-    @Volatile
-    var failure: Throwable? = null
-}
+)
 
 /**
  * The JUnit-bound test state for the current thread, installed by the extension's

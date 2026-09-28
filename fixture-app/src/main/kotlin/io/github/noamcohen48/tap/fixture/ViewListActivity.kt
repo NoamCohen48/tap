@@ -5,6 +5,10 @@ import android.widget.ArrayAdapter
 import android.widget.ListView
 import androidx.activity.ComponentActivity
 
+/**
+ * A 100-item View `ListView`, the classic-View counterpart of the Compose list on
+ * [MainActivity]: scrolling, back navigation and View-hierarchy selectors.
+ */
 class ViewListActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

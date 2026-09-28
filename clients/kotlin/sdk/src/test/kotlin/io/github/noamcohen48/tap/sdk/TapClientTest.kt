@@ -62,6 +62,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -1097,6 +1098,101 @@ class TapClientTest {
     }
 
     @Test
+    fun `detaching a device from inside another device's operation nested in its own refuses`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val first = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val second = tapScope { connection.attachDevice("emulator-5555", "com.test") }
+                try {
+                    // first's operation encloses second's: first stays admitted, so detaching it
+                    // fails fast instead of waiting on its own drain.
+                    val nested =
+                        withTimeout(10_000) {
+                            tapScope {
+                                assertFailsWith<TapUsageException> {
+                                    first.awaitUntil("outer", timeout = 5.seconds) {
+                                        second.awaitUntil("inner", timeout = 5.seconds) {
+                                            first.detachAndReport()
+                                            true
+                                        }
+                                        true
+                                    }
+                                }
+                            }
+                        }
+                    assertTrue(nested.message!!.contains("own admitted operation"), "unexpected: ${nested.message}")
+                } finally {
+                    tapScope {
+                        first.detach()
+                        second.detach()
+                    }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `app calls name their target, pass timeouts and stream the apk in chunks`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                try {
+                    val app = device.app()
+                    val apk = Files.createTempFile("tap-app-test", ".apk")
+                    val bytes = ByteArray(2 * 1024 * 1024 + 17) { it.toByte() }
+                    Files.write(apk, bytes)
+                    tapScope {
+                        assertTrue(app.isRunning())
+                        app.install(apk, timeout = 90.seconds)
+                        app.grantPermission("android.permission.CAMERA")
+                        app.launch(".Main", timeout = 7.seconds)
+                        app.launch()
+                        assertEquals(ProcessIdentity(4242, "token"), app.coldLaunch(timeout = 9.seconds))
+                        val refused = assertFailsWith<ServerException> { app.grantPermission("android.permission.NOPE") }
+                        assertEquals("FAILED_PRECONDITION", refused.status)
+                    }
+                    assertEquals(listOf(1024 * 1024, 1024 * 1024, 17), fakeApps.installChunks)
+                    assertContentEquals(bytes, fakeApps.installed.toByteArray())
+
+                    val requests = fakeApps.requests
+                    val header = requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.InstallHeader>().single()
+                    assertEquals(bytes.size.toLong(), header.sizeBytes)
+                    assertEquals(90_000, header.timeoutMs)
+                    val launches = requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.LaunchRequest>()
+                    assertEquals(listOf(".Main" to 7_000L, "" to device.timeouts.lifecycle.inWholeMilliseconds), launches.map { it.activity to it.timeoutMs })
+                    assertFalse(launches[1].hasActivity())
+                    assertEquals(9_000, requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.ColdLaunchRequest>().single().timeoutMs)
+                    val targets =
+                        requests.map { request ->
+                            when (request) {
+                                is io.github.noamcohen48.tap.api.v1.IsRunningRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.InstallHeader -> request.app
+                                is io.github.noamcohen48.tap.api.v1.GrantPermissionRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.LaunchRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.ColdLaunchRequest -> request.app
+                                else -> error("unexpected request $request")
+                            }
+                        }
+                    assertEquals(7, targets.size)
+                    for (target in targets) {
+                        assertEquals("com.test", target.packageName)
+                        assertEquals(connection.id, target.clientConnectionId)
+                        assertEquals(device.attachedDeviceId, target.attachedDeviceId)
+                    }
+                } finally {
+                    tapScope { device.detach() }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `quarantined close reports detail`() {
         runBlocking {
             fakeDevices.quarantineNextClose = "driver would not die"
@@ -1413,9 +1509,60 @@ class TapClientTest {
     }
 
     private class FakeApps : AppServiceGrpcKt.AppServiceCoroutineImplBase() {
+        val requests = java.util.concurrent.CopyOnWriteArrayList<Any>()
+        val installChunks = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        val installed = java.io.ByteArrayOutputStream()
+
         override suspend fun isRunning(request: io.github.noamcohen48.tap.api.v1.IsRunningRequest): io.github.noamcohen48.tap.api.v1.IsRunningResponse =
             io.github.noamcohen48.tap.api.v1.IsRunningResponse
+                .newBuilder()
+                .setRunning(true)
+                .build()
+                .also { requests += request }
+
+        override suspend fun install(
+            requests: kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.InstallRequest>,
+        ): io.github.noamcohen48.tap.api.v1.InstallResponse {
+            requests.collect { part ->
+                if (part.hasHeader()) {
+                    this.requests += part.header
+                } else {
+                    installChunks += part.chunk.size()
+                    synchronized(installed) { part.chunk.writeTo(installed) }
+                }
+            }
+            return io.github.noamcohen48.tap.api.v1.InstallResponse
                 .getDefaultInstance()
+        }
+
+        override suspend fun grantPermission(
+            request: io.github.noamcohen48.tap.api.v1.GrantPermissionRequest,
+        ): io.github.noamcohen48.tap.api.v1.GrantPermissionResponse {
+            requests += request
+            if (request.permission == "android.permission.NOPE") {
+                throw io.grpc.StatusException(io.grpc.Status.FAILED_PRECONDITION.withDescription("not granted after pm grant"))
+            }
+            return io.github.noamcohen48.tap.api.v1.GrantPermissionResponse
+                .getDefaultInstance()
+        }
+
+        override suspend fun launch(request: io.github.noamcohen48.tap.api.v1.LaunchRequest): io.github.noamcohen48.tap.api.v1.LaunchResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.LaunchResponse
+                .getDefaultInstance()
+        }
+
+        override suspend fun coldLaunch(request: io.github.noamcohen48.tap.api.v1.ColdLaunchRequest): io.github.noamcohen48.tap.api.v1.ColdLaunchResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.ColdLaunchResponse
+                .newBuilder()
+                .setProcess(
+                    io.github.noamcohen48.tap.api.v1.ProcessIdentity
+                        .newBuilder()
+                        .setPid(4242)
+                        .setStartToken("token"),
+                ).build()
+        }
     }
 
     private class TestChannel(
@@ -1468,6 +1615,9 @@ class TapClientTest {
                 .AtomicBoolean(false)
         private val inputBytes = output.toByteArray()
         private val outputSink = java.io.ByteArrayOutputStream()
+        private val exit = java.util.concurrent.CompletableFuture<Process>().also { if (!alive) it.complete(this) }
+
+        override fun onExit(): java.util.concurrent.CompletableFuture<Process> = exit.thenApply { it }
 
         override fun getOutputStream(): java.io.OutputStream = outputSink
 
@@ -1490,11 +1640,11 @@ class TapClientTest {
         override fun destroy() {
             destroyed.set(true)
             alive = false
+            exit.complete(this)
         }
 
         override fun destroyForcibly(): Process {
-            destroyed.set(true)
-            alive = false
+            destroy()
             return this
         }
     }

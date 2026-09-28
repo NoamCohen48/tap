@@ -5,6 +5,11 @@ import android.os.Bundle
 import java.net.InetAddress
 import java.net.ServerSocket
 
+/**
+ * Binds the loopback port given as the `port` extra and holds it while the process lives: the
+ * session-lifecycle check that a driver moves on to the next reserved port when one is taken.
+ * No UI.
+ */
 class PortOccupierActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

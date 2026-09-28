@@ -7,6 +7,10 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 
+/**
+ * Requests `CAMERA` on a tap and shows the answer, so a test can drive the system permission
+ * dialog (a window outside the AUT) or pre-grant the permission and see it reported.
+ */
 class PermissionActivity : ComponentActivity() {
     private val requestCamera = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         findViewById<TextView>(R.id.permission_status).text =

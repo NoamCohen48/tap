@@ -302,8 +302,8 @@ class DeviceSession private constructor(
                 observedPrior = prior
                 adb.wakeAndDismissKeyguard(serial)
                 if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
-                    config.driverApk?.let { adb.install(serial, it) }
-                    config.driverTestApk?.let { adb.install(serial, it) }
+                    config.driverApk?.let { installDriverPackage(adb, serial, DRIVER_PACKAGE, it) }
+                    config.driverTestApk?.let { installDriverPackage(adb, serial, DRIVER_TEST_PACKAGE, it) }
                 }
 
                 val generation = Math.addExact(prior?.generation ?: 0L, 1L)
@@ -508,6 +508,32 @@ internal fun quarantineEarlyOpen(
             updatedAtEpochMs = now,
         ),
     )
+}
+
+/**
+ * Installs one of Tap's own driver packages. A copy signed by another build (another machine's
+ * debug key) cannot be updated in place (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`); the driver keeps
+ * no state worth preserving, so that copy is uninstalled and the install retried once. Never
+ * used for the app under test.
+ */
+internal suspend fun installDriverPackage(
+    adb: Adb,
+    serial: String,
+    packageName: String,
+    apk: java.nio.file.Path,
+) {
+    try {
+        adb.install(serial, apk)
+    } catch (incompatible: AdbCommandException) {
+        if ("INSTALL_FAILED_UPDATE_INCOMPATIBLE" !in incompatible.output) throw incompatible
+        adb.uninstall(serial, packageName)
+        try {
+            adb.install(serial, apk)
+        } catch (retry: Throwable) {
+            retry.addSuppressed(incompatible)
+            throw retry
+        }
+    }
 }
 
 /** Bound for `DeviceSession.close` cleanup; journal finalization and lease release always run. */
