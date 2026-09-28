@@ -367,6 +367,7 @@ class TapClient:
         on ``close`` from any process, or when the daemon stops. Its name must be unique among
         held connections (else ``ServerError``, reason ``DAEMON_PRECONDITION``). Tests should
         keep the default: a crashed test run would otherwise hold its devices until the timeout.
+        ``hold`` is experimental (the agent surface): it may change in any release.
 
         Use the result as a context manager, or call ``close`` when done.
         """
@@ -395,7 +396,9 @@ class TapClient:
     def resume(self, name: str) -> TapConnection:
         """The held connection named ``name`` (see ``connect(..., hold=...)``), for this process
         to use; ``attached_devices()`` returns its devices. Raises ``TapError`` when no held
-        connection has that name (it was closed, or it expired)."""
+        connection has that name (it was closed, or it expired).
+
+        Experimental: not covered by the compatibility promise; it may change in any release."""
         entry = next((c for c in self.connections() if c.hold is not None and c.name == name), None)
         if entry is None:
             raise TapError(f"no held connection named {name!r} (closed, or idle past its timeout)")
@@ -573,7 +576,10 @@ class TapConnection:
         the device (install, uninstall, force-stop, clear-data, grant, launch, cold launch).
         Only events with ``seq > after_seq``. A selector appears as sent, so a snapshot ref shows
         as the selector it named. The log is data, for turning a session into a test in any
-        language; nothing renders code from it."""
+        language; nothing renders code from it. Typed text is recorded verbatim, passwords
+        included.
+
+        Experimental: not covered by the compatibility promise; it may change in any release."""
         with mapped_errors():
             return _proto.event_log(
                 self.client.client_connections.Events(

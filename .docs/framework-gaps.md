@@ -1,6 +1,6 @@
 # Framework Gaps
 
-Last updated: 2026-09-21
+Last updated: 2026-09-28 (first release, 0.0.1 alpha)
 
 This is the honest delta between what `.docs/android-e2e-framework-implementation-plan.md`
 specifies and what the repository implements and proves on devices today. It is the
@@ -25,11 +25,12 @@ A product team can write and run real tests today:
   `DeviceBarrier` (reusable/one-shot) for simultaneous phases, failure artifacts, `tap.*`
   system-property / `TAP_*` env config.
 - `clients/python` — the same API and a pytest plugin.
-- `:samples:fixture-tests` — thirteen device tests (single-device journeys, ambiguity, text
-  input, Compose list scrolling, app-owned idle sync, explicit screen-stability waits,
-  lifecycle, and two two-device tests including sibling-cancellation without replay), plus a
-  device-free JUnit discovery guard. The 0.2.0-client suite passed on API 29 and API 34
-  concurrently on 2026-09-21.
+- `clients/agent` — `tap-agent` (experimental): CLI + MCP server for coding agents over held
+  connections, screen snapshots with refs and the per-connection event log.
+- `:samples:fixture-tests` — device tests (single-device journeys, ambiguity, text input,
+  Compose list scrolling, app-owned idle sync, explicit screen-stability waits, lifecycle,
+  opt-in device reuse, and two-device tests including sibling-cancellation without replay),
+  plus a device-free JUnit discovery guard. Passes on API 29 and API 34 concurrently.
 
 Everything below is what separates that from the production-grade framework the plan
 describes.
@@ -192,8 +193,8 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 Done (2026-09-19, `release-engineering.md`): GitHub Actions CI (API contract lint/breaking +
 stub check, JVM unit tests and artifacts, Python build, API 34 emulator sample suites, native
 image on `main`) and tag-driven releases per artifact family (daemon binaries + `tap-api`,
-Kotlin client, Python wheel, sync-sdk) with per-family versions. Not yet proven on a GitHub
-runner (no push since it was written).
+Kotlin client, Python wheel, agent tools, sync-sdk) with per-family versions. First run on
+GitHub with the 0.0.1 release (2026-09-28).
 
 Not started: sharding across devices at the JUnit platform level (device locks handle
 concurrency; nothing distributes classes across devices), a physical-device / API 29 CI lane, soak lane, benchmark
@@ -212,7 +213,7 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 | Gap | Impact | Notes |
 |---|---|---|
 | pytest plugin exposes pinned serials only | `min_api`/`emulator`/`model_contains` are reachable from scripts but not from a marker | Add `@pytest.mark.tap_devices(left={"min_api": 30}, ...)`. |
-| Server has no per-run structured event stream | Bindings cannot build reports from server events | Belongs with plan §19 events. |
+| Server has no per-run structured event stream | Bindings cannot build reports from server events | Partly there: every connection has an event log of its device calls (`Events` RPC, `event_log()` in Python, `tap-agent export`; experimental). No streaming, no run-level events, not in the Kotlin client. |
 | Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later; the Kotlin coroutine façade landed in client 0.2.0. |
 
 ## Suggested order

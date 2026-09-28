@@ -21,7 +21,7 @@ See `README.md` for build/run commands.
   note in the relevant decision record. Never silently "correct" code back to the plan.
 - `.docs/pool-and-leases.md` — decision record: the server leases nothing; exclusive device
   use is the per-serial journal lock, roles and device choice are client-side.
-- `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 1.0). Update it in
+- `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 4.0). Update it in
   the same change as any protocol edit.
 - `.docs/project-architecture.md` — current module/file layout.
 - `.docs/phase-1-progress.md` — Phase 1 checklist. Keep it honest: only tick items that are

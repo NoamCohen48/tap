@@ -244,7 +244,9 @@ class Device:
         device, and each node says whether it was added since the previous snapshot; nodes
         that are gone are in ``removed``. Act on a node through its selector
         (``device.element(node.selector)``) or ``resolve_ref``: the device still requires
-        exactly one match at action time."""
+        exactly one match at action time.
+
+        Experimental: not covered by the compatibility promise; it may change in any release."""
         self._ensure_usable("screen_snapshot")
         request = pb.ScreenSnapshotRequest(
             client_connection_id=self.owner_connection.id,
@@ -262,7 +264,9 @@ class Device:
         """The selector behind a ``ScreenNode.ref`` (``e7`` or ``@e7``) of any snapshot of this
         attached device. Raises ``ServerError`` with reason ``UNKNOWN_REF`` for a ref the daemon
         never issued or whose node has gone, and ``REF_NOT_ADDRESSABLE`` for a node without a
-        selector."""
+        selector.
+
+        Experimental: not covered by the compatibility promise; it may change in any release."""
         self._ensure_usable("resolve_ref")
         with mapped_errors(self.serial):
             response = self.client.device_stub.ResolveRef(

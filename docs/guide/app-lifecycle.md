@@ -56,6 +56,14 @@ Two options, in order of preference:
 
 ## App-owned idle: `sync-sdk`
 
+!!! warning "Experimental, not released yet"
+    App synchronization is still being designed. `awaitIdle` / `await_idle` and
+    `DeviceOptions.syncAuthority` are marked experimental (Kotlin: opt in with
+    `@OptIn(ExperimentalTapApi::class)`) and may change in any release, and `tap-sync-sdk` has
+    no published release yet. On Android 11+ the driver can currently see only the sync
+    provider of Tap's own fixture app, so `awaitIdle` against your app fails with a `SYNC_*`
+    detail until that is solved.
+
 Waiting on the UI covers most cases, but some work is invisible to the accessibility tree: a
 request in flight whose response will *replace* the screen, a database write the next screen
 reads. For that the app can tell Tap when it is busy.
@@ -65,7 +73,7 @@ signature-level permission; never release it):
 
 ```kotlin
 dependencies {
-    e2eImplementation("io.github.noamcohen48.tap:tap-sync-sdk:0.1.0")
+    e2eImplementation("io.github.noamcohen48.tap:tap-sync-sdk:<version>")
 }
 ```
 

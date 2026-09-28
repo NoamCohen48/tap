@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.sdk.CommandException
 import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.Direction
 import io.github.noamcohen48.tap.sdk.ErrorCode
+import io.github.noamcohen48.tap.sdk.ExperimentalTapApi
 import io.github.noamcohen48.tap.sdk.WaitReason
 import io.github.noamcohen48.tap.sdk.WaitTimeoutException
 import io.github.noamcohen48.tap.sdk.rawRes
@@ -18,6 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(ExperimentalTapApi::class) // awaitIdle
 @TapTest
 class MainScreenTest {
     @Test

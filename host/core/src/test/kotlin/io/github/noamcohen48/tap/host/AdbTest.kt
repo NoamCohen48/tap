@@ -110,7 +110,7 @@ class AdbTest {
         }
 
     @Test
-    fun `a driver signed by another build is uninstalled and reinstalled, anything else fails`() =
+    fun `a driver signed by another build or newer is uninstalled and reinstalled, anything else fails`() =
         runBlocking {
             val apk = Files.createTempFile("tap-driver", ".apk")
             fun adbWith(
@@ -142,6 +142,11 @@ class AdbTest {
                 commands.map { it[3] },
             )
             assertEquals(listOf("uninstall", DRIVER_PACKAGE), commands[1].drop(3))
+
+            // An older engine meeting a newer driver on the device (rollback, or a dev build).
+            val downgrade = mutableListOf<List<String>>()
+            installDriverPackage(adbWith(downgrade, "Failure [INSTALL_FAILED_VERSION_DOWNGRADE]"), serial, DRIVER_PACKAGE, apk)
+            assertEquals(listOf("install", "uninstall", "install"), downgrade.map { it[3] })
 
             val other = mutableListOf<List<String>>()
             assertFailsWith<AdbCommandException> {

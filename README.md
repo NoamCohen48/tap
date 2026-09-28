@@ -10,10 +10,15 @@
 Host-driven Android E2E framework in three parts: an on-device driver (`device/`), one host
 server per machine (`host/`, `tap start`: ADB, driver lifecycle, sessions, device list; gRPC
 over loopback, JVM or native image) and thin language clients (`clients/`: Kotlin SDK +
-JUnit 5, Python + pytest). `contracts/` holds what they agree on (the TAP1 device protocol
-and the `tap.v1` server API). Phases 0 and 1 (feasibility, contract, driver) are complete
-and the first usable cut of Phase 2 (server + clients) is in; this is not a production
-release. What is still missing is listed in [`.docs/framework-gaps.md`](.docs/framework-gaps.md).
+JUnit 5, Python + pytest; `clients/agent`: `tap-agent`, a CLI and MCP server for coding
+agents). `contracts/` holds what they agree on (the TAP1 device protocol and the `tap.v1`
+server API).
+
+Status: **alpha, 0.0.1** — the first release of every artifact family. Any 0.x release may
+change the API; app synchronization (`sync-sdk`, `awaitIdle`) and the agent surface
+(`tap-agent`, held connections, snapshots, the event log) are experimental on top of that
+(`docs/reference/releases.md`). What is still missing is listed in
+[`.docs/framework-gaps.md`](.docs/framework-gaps.md).
 
 User documentation lives in [`docs/`](docs/index.md) (guide + generated Kotlin/Python/gRPC
 references); build the site with `scripts/build-docs.sh` (see [Docs](#docs)).
@@ -111,12 +116,10 @@ itself. Configuration is read from system properties or environment variables:
 ```
 
 It builds the fixture app and the daemon distribution, starts the server (`tap.manageDaemon`,
-which installs the driver), runs thirteen tests (including two two-device tests that are skipped with
-one serial) concurrently across the devices, and stops the server again unless one was already
-running (`-Ptap.manageDaemon=false` to require a running one). The thirteen-device-test suite
-uses the 0.2.0 coroutine client (`tapTest`) and passed on the API 29/API 34 matrix on 2026-09-21;
-a device-free discovery guard makes the Gradle report contain fourteen tests total
-(see `.docs/coroutines.md`).
+which installs the driver), runs the fixture tests concurrently across the devices (the
+two-device tests are skipped with one serial), and stops the server again unless one was
+already running (`-Ptap.manageDaemon=false` to require a running one). The suite runs on the
+API 29/API 34 matrix locally and on an API 34 emulator in CI.
 
 ## Python tests
 
@@ -153,6 +156,23 @@ The plugin connects to a running server (`TAP_SERVER`, or `~/.tap/daemon.json` w
 `tap start`); with `TAP_MANAGE_DAEMON=1` it starts one from `TAP_BIN` before the run and stops
 it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid>/`. See
 `clients/python/README.md`.
+
+## Coding agents
+
+`tap-agent` (`clients/agent`, experimental) lets a coding agent drive a device through the same
+server: `snapshot` prints the screen with refs, actions take a ref or a selector, `--settle`
+prints what changed, and `export` writes the session's device calls as JSON (`tap-events/1`)
+for turning into a test in any language. The same steps are MCP tools (`tap-agent mcp`).
+
+```bash
+uv pip install -e clients/python -e clients/agent    # or pip
+tap-agent attach emulator-5554 io.github.noamcohen48.tap.fixture --cold
+tap-agent snapshot -i
+tap-agent tap @e3 --settle
+tap-agent export -o session.json && tap-agent release
+```
+
+See `docs/guide/agents.md` and `clients/agent/README.md`.
 
 ## Current slice
 
@@ -194,11 +214,10 @@ it afterwards if it started it. Failure artifacts land in `tap-artifacts/<nodeid
 with constraints; a coroutine Kotlin SDK (`Device`/`App`/`Element`/waits/selectors, all `suspend`
 behind `tapTest`/`tapScope`) and JUnit 5 extension (`tapTest` bridge, per-test root job,
 `DeviceBarrier`, failure artifacts), and a Python client and pytest plugin, all gRPC clients of
-the server. Host-side validation passed the no-reboot run (`host --no-reboot` on API 29 and
-API 34, plus the native-image Python smoke flow, on 2026-09-21, including every
-`PHASE_1_*_OK` marker); the new 0.2.0 Kotlin client (`tapTest`, thirteen device fixture tests)
-also passed its API 29/API 34 matrix, including both multi-device tests
-(see `.docs/coroutines.md`).
+the server. Host-side validation passes the no-reboot run on API 29 and API 34; the
+Kotlin and Python fixture suites pass on the same matrix, including the multi-device tests.
+- The agent surface: held connections that outlive a process, screen snapshots whose refs
+  name selectors the server checked, a per-connection event log, and `tap-agent` on top.
 
 The exact implemented wire contract is in [`.docs/protocol-contract.md`](.docs/protocol-contract.md).
 
@@ -289,14 +308,15 @@ For framework fault validation, prefix a tap step with `!ERROR_CODE:`, for examp
 
 ## Versioning, CI and releases
 
-Four independently versioned artifact families: the **engine** (`tap` daemon binary/JVM
-dist with the bundled driver, plus the `io.github.noamcohen48.tap:tap-api` stubs; `tap.version.engine`
-in `gradle.properties`), the **Kotlin client** (`tap-client`, `tap-junit5`;
-`tap.version.client.kotlin`), the **Python client** (`tap-e2e`; `clients/python/pyproject.toml`)
-and **sync-sdk** (`tap-sync-sdk`; `tap.version.sync-sdk`). Tag `daemon/vX.Y.Z`,
-`client-kotlin/vX.Y.Z`, `client-python/vX.Y.Z` or `sync-sdk/vX.Y.Z` on a commit whose
-version matches and `.github/workflows/release.yml` publishes to GitHub Packages (Maven) and
-GitHub Releases (binaries, wheel). `ci.yml` lints the proto, checks it for breaking changes
+Five independently versioned artifact families: the **engine** (`tap` daemon binary/JVM
+dist with the bundled driver, plus the `io.github.noamcohen48.tap:tap-schema`/`tap-api` stubs;
+`tap.version.engine` in `gradle.properties`), the **Kotlin client** (`tap-client`, `tap-junit5`;
+`tap.version.client.kotlin`), the **Python client** (`tap-e2e`; `clients/python/pyproject.toml`),
+the **agent tools** (`tap-agent`; `clients/agent/pyproject.toml`) and **sync-sdk**
+(`tap-sync-sdk`; `tap.version.sync-sdk`). Tag `daemon/vX.Y.Z`, `client-kotlin/vX.Y.Z`,
+`client-python/vX.Y.Z`, `client-agent/vX.Y.Z` or `sync-sdk/vX.Y.Z` on a commit whose version
+matches and `.github/workflows/release.yml` publishes to GitHub Packages (Maven) and GitHub
+Releases (binaries, wheels). `CHANGELOG.md` records each release. `ci.yml` lints the proto, checks it for breaking changes
 and stub drift, runs the JVM/Python builds and unit tests, the sample suites on an API 34
 emulator and the native image. Details and rationale (why the driver is not a separate
 package): [`.docs/release-engineering.md`](.docs/release-engineering.md).
@@ -319,8 +339,8 @@ internal design record.
 
 ## Design
 
-The normative design is in
-`.docs/android-e2e-framework-implementation-plan.md`. Current status is in
+The original design is `.docs/android-e2e-framework-implementation-plan.md` (a reference: the
+code, the contracts and the decision records win where they differ). Current status is in
 `.docs/phase-1-progress.md`, the remaining delta to the plan in `.docs/framework-gaps.md`,
 the module layout in `.docs/project-architecture.md`, the device wire protocol in
 `.docs/protocol-contract.md` and the host server API in `.docs/server-api.md`.

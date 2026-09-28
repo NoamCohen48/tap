@@ -144,7 +144,7 @@ Snapshot line format:
 
 ## Phases (one commit each)
 
-Status: 1–7 done.
+Status: 1–7 done. Released as **experimental** in 0.0.1 (2026-09-28): `tap-agent`, held connections, snapshots/refs, the event log and `tap-events/1` are outside the compatibility promise (`docs/reference/releases.md`).
 
 1. Contract: this record, proto for phases 2–3 (the event-log proto comes with phase 6), docs.
 2. Held connections: daemon core + `ClientConnectionService` + unit tests.
