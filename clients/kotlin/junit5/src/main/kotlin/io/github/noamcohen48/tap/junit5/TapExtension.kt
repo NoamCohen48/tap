@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.extension.AfterAllCallback
 import org.junit.jupiter.api.extension.AfterEachCallback
 import org.junit.jupiter.api.extension.BeforeEachCallback
 import org.junit.jupiter.api.extension.ExtensionContext
@@ -42,11 +43,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * failure in `coroutineScope`/`async` cancels the other device's in-flight RPC by structured
  * rules. After the test (or setup) it captures failure artifacts while sessions are still
  * live when possible, then cancels the root job and performs bounded non-cancellable cleanup,
- * preserving the primary failure and suppressing cleanup failures into it.
+ * preserving the primary failure and suppressing cleanup failures into it. With
+ * `@TapTest(deviceLifetime = PER_CLASS)` the devices are kept in the class store instead,
+ * probed before each reuse, and detached in `afterAll`.
  */
 class TapExtension :
     BeforeEachCallback,
     AfterEachCallback,
+    AfterAllCallback,
     ParameterResolver,
     InvocationInterceptor {
     override fun beforeEach(context: ExtensionContext) {
@@ -59,6 +63,8 @@ class TapExtension :
             val state =
                 runBlocking(rootJob + TapContext("junit:$method:setup")) {
                     val roles = declaredRoles(context)
+                    val held = if (perClass(context)) reusable(context, roles) else null
+                    if (held != null) return@runBlocking TestState(rootJob, held, held.mapValues { it.value.serial }, method)
                     val available =
                         config.serials.ifEmpty {
                             SharedConnection.connection().availableSerials()
@@ -78,6 +84,7 @@ class TapExtension :
                         } else {
                             openAll(connection, assignment, config)
                         }
+                    if (perClass(context)) context.classStore.put(HELD, HeldDevices(roles, devices))
                     TestState(rootJob, devices, devices.mapValues { it.value.serial }, method)
                 }
             context.store.put(KEY, state)
@@ -119,7 +126,8 @@ class TapExtension :
                 }
             }
         } finally {
-            val closeErrors = closeAll(state)
+            // PER_CLASS keeps the devices for the next test; afterAll detaches them.
+            val closeErrors = if (perClass(context)) emptyList() else closeAll(state)
             if (failure == null) {
                 closeErrors.firstOrNull()?.let { first ->
                     closeErrors.drop(1).forEach(first::addSuppressed)
@@ -133,6 +141,38 @@ class TapExtension :
                 // is unnecessary: JUnit reports it. When it is stored, it was already thrown.
             }
         }
+    }
+
+    override fun afterAll(context: ExtensionContext) {
+        val held = context.classStore.remove(HELD, HeldDevices::class.java) ?: return
+        val errors = closeAll(TestState(Job(), held.devices, emptyMap(), "afterAll"))
+        errors.firstOrNull()?.let { first ->
+            errors.drop(1).forEach(first::addSuppressed)
+            throw first
+        }
+    }
+
+    private fun perClass(context: ExtensionContext): Boolean =
+        context.requiredTestClass.getAnnotation(TapTest::class.java)?.deviceLifetime == DeviceLifetime.PER_CLASS
+
+    /**
+     * The class's held devices when they serve [roles] and all still answer (`info()`, a few ms);
+     * otherwise null, after detaching whatever was held so the caller attaches afresh. A detach
+     * failure of a device that already stopped working is dropped: the attach that follows
+     * reports the device's state (quarantined, offline) itself.
+     */
+    private suspend fun reusable(
+        context: ExtensionContext,
+        roles: List<String>,
+    ): Map<String, Device>? {
+        val held = context.classStore.get(HELD, HeldDevices::class.java) ?: return null
+        val alive = held.roles == roles && held.devices.values.all { !it.isDetached && runCatching { it.info() }.isSuccess }
+        if (alive) return held.devices
+        context.classStore.remove(HELD)
+        withContext(NonCancellable) {
+            withTimeoutOrNull(120_000) { held.devices.values.forEach { runCatching { it.detach() } } }
+        }
+        return null
     }
 
     override fun supportsParameter(
@@ -342,8 +382,22 @@ class TapExtension :
     private val ExtensionContext.store: ExtensionContext.Store
         get() = getStore(Namespace.create(TapExtension::class.java, requiredTestMethod))
 
+    /** The test class's store, which outlives its methods (PER_CLASS devices). */
+    private val ExtensionContext.classStore: ExtensionContext.Store
+        get() {
+            val classContext = generateSequence(this) { it.parent.orElse(null) }.first { it.testMethod.isEmpty }
+            return classContext.getStore(Namespace.create(TapExtension::class.java, classContext.requiredTestClass))
+        }
+
+    /** Devices a PER_CLASS test class holds across its tests, with the roles they were opened for. */
+    private class HeldDevices(
+        val roles: List<String>,
+        val devices: Map<String, Device>,
+    )
+
     private companion object {
         const val KEY = "tap.devices"
+        const val HELD = "tap.classDevices"
 
         /** JVM-wide start index for [assignSerials]; advanced once per test. */
         val ROTATION = AtomicInteger(0)

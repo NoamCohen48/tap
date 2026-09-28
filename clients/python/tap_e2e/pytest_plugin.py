@@ -9,6 +9,10 @@ Configuration (ini option, or environment variable):
     tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
     tap_capture   / TAP_CAPTURE    onFailure (default) = Device.capture() every device of a
                                    failed test into that directory; off = capture nothing
+    tap_device_scope / TAP_DEVICE_SCOPE
+                                   function (default) = attach before each test, detach after it;
+                                   class / module / session = keep the devices for the next test of
+                                   the same class / module / session (see below)
     tap_server     / TAP_SERVER      host:port of a running server (default: the one `tap start` recorded)
                    TAP_TOKEN       bearer token for an explicit TAP_SERVER (default: read from
                                    daemon.json in the state dir)
@@ -25,7 +29,13 @@ single-role test moves on to the next device when one is held by another session
 when all are). Before each test one device per role is attached in sorted
 serial order so concurrent multi-device tests cannot deadlock; after it, a failed test's
 devices are captured (``Device.capture()``: screenshot, hierarchy, device info, driver log)
-while they remain attached, then they are detached. Attachments never outlive a test.
+while they remain attached, then they are detached. Attachments never outlive a test, unless ``tap_device_scope`` says
+otherwise: then consecutive tests of one class / module / the session that declare the same roles
+reuse the devices, saving the driver start of each attach (about 1 s on an emulator, several on a
+slow phone). Nothing is reset between them — the app keeps the previous test's state, so each test
+brings it where it needs it (``cold_launch()``, ``clear_data()``). A reused device is probed
+before each test; one that stopped working is detached and a fresh one attached. Failure artifacts
+are still captured per test; the devices are detached when the scope ends.
 """
 
 from __future__ import annotations
@@ -64,6 +74,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini(
         "tap_capture", "onFailure or off: capture failed tests' devices", default="onFailure"
     )
+    parser.addini(
+        "tap_device_scope",
+        "function, class, module or session: how long attached devices are kept",
+        default="function",
+    )
     parser.addini("tap_server", "host:port of a running tap server")
     parser.addini(
         "tap_manage_daemon",
@@ -93,6 +108,7 @@ class TapConfig:
     acquire_timeout: float
     manage_daemon: bool
     capture_on_failure: bool = True
+    device_scope: str = "function"
 
     @classmethod
     def from_pytest(cls, config: pytest.Config) -> TapConfig:
@@ -123,7 +139,92 @@ class TapConfig:
             ).lower()
             in ("1", "true", "yes"),
             capture_on_failure=_capture_mode(option("tap_capture", "TAP_CAPTURE", "onFailure")),
+            device_scope=_device_scope(option("tap_device_scope", "TAP_DEVICE_SCOPE", "function")),
         )
+
+
+_DEVICE_SCOPES = ("function", "class", "module", "session")
+
+
+def _device_scope(value: str) -> str:
+    """``tap_device_scope``: one of ``_DEVICE_SCOPES`` (case-insensitive)."""
+    scope = value.strip().lower()
+    if scope not in _DEVICE_SCOPES:
+        raise pytest.UsageError(f"tap_device_scope must be one of {list(_DEVICE_SCOPES)}, was {value!r}")
+    return scope
+
+
+def _scope_key(item: pytest.Item, scope: str) -> str | None:
+    """Which tests share devices under ``scope``: None for none (``function``, or ``class`` for a
+    test outside a class)."""
+    if scope == "session":
+        return "session"
+    if scope == "module":
+        return str(item.path)
+    if scope == "class" and getattr(item, "cls", None) is not None:
+        return f"{item.path}::{item.cls.__qualname__}"  # type: ignore[attr-defined]
+    return None
+
+
+@dataclass
+class _Held:
+    """Devices kept across the tests of one scope (``tap_device_scope``)."""
+
+    scope: str
+    key: str
+    roles: list[str]
+    devices: dict[str, Device]
+
+
+_HELD = pytest.StashKey[_Held | None]()
+
+
+def _detach_all(devices: dict[str, Device]) -> list[Exception]:
+    errors: list[Exception] = []
+    for device in devices.values():
+        try:
+            quarantine = device.detach()
+            if quarantine:
+                errors.append(
+                    DeviceQuarantinedError(device.serial, f"{device.serial} quarantined: {quarantine}")
+                )
+        except Exception as error:  # noqa: BLE001
+            errors.append(error)
+    return errors
+
+
+def _reusable(config: pytest.Config, key: str | None, roles: list[str]) -> dict[str, Device] | None:
+    """The held devices when they belong to ``key``, serve ``roles`` and all still answer
+    (``info()``, a few ms); otherwise None, after detaching whatever was held. A detach failure of
+    a device that already stopped working is dropped: the attach that follows reports the
+    device's state (quarantined, offline) itself."""
+    held = config.stash.get(_HELD, None)
+    if held is None:
+        return None
+    if held.key == key and held.roles == roles:
+        try:
+            for device in held.devices.values():
+                device.info()
+            return held.devices
+        except Exception:  # noqa: BLE001 - a broken session is replaced, not reported here
+            pass
+    config.stash[_HELD] = None
+    _detach_all(held.devices)
+    return None
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> None:
+    """Ends a ``tap_device_scope``: after the last test of the scope, detach the held devices."""
+    held = item.config.stash.get(_HELD, None)
+    if held is None:
+        return
+    if nextitem is not None and _scope_key(nextitem, held.scope) == held.key:
+        return
+    item.config.stash[_HELD] = None
+    errors = _detach_all(held.devices)
+    if errors:
+        raise errors[0]
 
 
 def _capture_mode(value: str) -> bool:
@@ -257,8 +358,12 @@ def tap_devices(
             else f"the server lists {available}"
         )
         pytest.skip(f"{request.node.name} needs {len(roles)} devices but {where}")
+    key = _scope_key(request.node, tap_config.device_scope)
+    reused = _reusable(request.config, key, roles)
     start = next(_ROTATION)
-    if len(roles) == 1:
+    if reused is not None:
+        devices = reused
+    elif len(roles) == 1:
         device = _attach_single(
             tap_connection, tap_config, _rotate(available, start)
         )
@@ -267,6 +372,8 @@ def tap_devices(
         devices = _attach_all(
             tap_connection, tap_config, _assign(roles, available, start)
         )
+    if key is not None and reused is None:
+        request.config.stash[_HELD] = _Held(tap_config.device_scope, key, roles, devices)
     state = TestDevices(devices, [device.serial for device in devices.values()])
     request.node.stash[_STATE] = state
     yield devices
@@ -275,18 +382,8 @@ def tap_devices(
         if failed and tap_config.capture_on_failure:
             _capture_artifacts(request.node, tap_config, state)
     finally:
-        close_errors = []
-        for device in devices.values():
-            try:
-                quarantine = device.detach()
-                if quarantine:
-                    close_errors.append(
-                        DeviceQuarantinedError(
-                            device.serial, f"{device.serial} quarantined: {quarantine}"
-                        )
-                    )
-            except Exception as error:  # noqa: BLE001
-                close_errors.append(error)
+        # Held devices stay for the next test of the scope; pytest_runtest_teardown ends it.
+        close_errors = [] if key is not None else _detach_all(devices)
         # A cleanup failure after a passing test is a real failure: the device may be quarantined.
         if close_errors and not failed:
             raise close_errors[0]

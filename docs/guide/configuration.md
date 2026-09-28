@@ -104,6 +104,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | `tap_aut` | `TAP_AUT` | the application under test | **required** |
 | `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, starting one device further on per test | any device the server lists |
 | `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
+| `tap_device_scope` | `TAP_DEVICE_SCOPE` | `function` = attach before each test, detach after it; `class` / `module` / `session` = keep the devices for the next test of the same class / module / run ([Reusing devices](#reusing-devices)) | `function` |
 | `tap_capture` | `TAP_CAPTURE` | `onFailure` = `device.capture()` every device of a failed test into that directory; `off` = capture nothing | `onFailure` |
 | `tap_server` | `TAP_SERVER` | `host:port` of a running server | the one in `daemon.json` |
 | — | `TAP_TOKEN` | bearer token for an explicit `TAP_SERVER` | the one in `daemon.json` |
@@ -115,6 +116,35 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 Fixtures: `tap_device` (the default role), `tap_devices` (dict role → `Device`), plus
 `tap_connection`, `tap_client` and `tap_config` for scripts that want the lower layers. Marker:
 `@pytest.mark.tap_devices("a", "b")`.
+
+## Reusing devices
+
+By default every test attaches its devices and detaches them afterwards, so each test starts
+with a fresh driver session. Starting the driver is most of an attach's cost: about 1.2 s on an
+emulator and 3.8 s on a mid-range phone (measured on the local API 34 emulator and an API 29
+Samsung), per test. A suite can opt out of that:
+
+=== "Kotlin"
+
+    ```kotlin
+    @TapTest(deviceLifetime = DeviceLifetime.PER_CLASS)
+    class CheckoutTest { ... }
+    ```
+
+=== "Python"
+
+    ```ini
+    # pytest.ini — or TAP_DEVICE_SCOPE=class
+    [pytest]
+    tap_device_scope = class
+    ```
+
+Consecutive tests of the class (Python: of the class, module or whole run) that declare the same
+roles then share the attached devices, which are detached after the last of them. Nothing is
+reset between tests: the app keeps whatever state the previous test left, so each test brings
+it where it needs it (`coldLaunch()`, `clearData()`). Before each test a reused device is probed
+(`info()`, a few milliseconds); one that stopped working — quarantined, driver lost, detached by
+the test — is detached and a fresh one attached. Failure artifacts are still captured per test.
 
 ## Session options
 

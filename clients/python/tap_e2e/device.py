@@ -383,6 +383,11 @@ class Device:
 
     # --- lifecycle --------------------------------------------------------------------------------
 
+    @property
+    def detached(self) -> bool:
+        """True once ``detach()`` ran; every later call on this device is rejected."""
+        return self._detached
+
     def detach(self) -> str | None:
         """Detaches the device. Returns the quarantine detail when the device could not be left
         clean (the server keeps it out of circulation), else None. Idempotent once it

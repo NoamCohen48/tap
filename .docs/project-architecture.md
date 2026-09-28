@@ -194,7 +194,7 @@ tap/
 |   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package io.github.noamcohen48.tap.junit5)
 |   |       +-- src/main/kotlin/io/github/noamcohen48/tap/junit5/
-|   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
+|   |           +-- Annotations.kt       @TapTest(deviceLifetime), DeviceLifetime, @TapDevice(role), @TapDevices(roles), Devices
 |   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
 |   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
 |   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles, capture mode (tap.capture)
@@ -206,7 +206,7 @@ tap/
 |       +-- tap_e2e/_gen/            committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); private: the public API is models.py
 |       +-- tap_e2e/{client,device,element,app,selectors,errors}.py   TapClient/TapConnection, Device, Element/ElementWait, App, selector DSL, typed errors (mapped by failure reason)
 |       +-- tap_e2e/models.py        client-owned value types and artifacts (mirrors Models.kt + Artifacts.kt); _proto.py maps proto <-> models
-|       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, failure artifacts
+|       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, tap_device_scope reuse, failure capture
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
 |
 +-- samples/fixture-tests/       JUnit 5 sample suite against the fixture app (real devices, through the daemon)
@@ -217,6 +217,7 @@ tap/
 |       +-- LifecycleTest.kt     cold launch identity, force-stop, clear-data, DEVICE_INFO
 |       +-- MultiDeviceTest.kt   @TapDevices("left","right") concurrent two-device journey
 |       +-- MotionTest.kt        awaitAnimationEnd / awaitAppSettled: wait out an animation, time out on a ticking screen
+|       +-- DeviceReuseTest.kt   @TapTest(deviceLifetime = PER_CLASS): one device across the class, replaced once detached
 |
 +-- .github/                     CI (ci.yml) and tag-driven releases (release.yml, scripts/release_version.py); see release-engineering.md
 +-- fixture-app/                 Android app used only by the validation flow and the samples

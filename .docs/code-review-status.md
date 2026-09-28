@@ -6,10 +6,10 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 142 |
+| Fixed | 143 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
 | Partial | 0 |
-| Open | 1 |
+| Open | 0 |
 | Won't fix (accepted risk, see decisions) | 2 |
 | Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
 | Deferred (synchronization is WIP, see below) | 7 |
@@ -221,7 +221,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | K-16 | N | Fixed | The rethrow-only catch in `connect` is gone | S |
 | J-6 | L | Fixed | The primary failure is JUnit's `executionException` only; the recording interceptors, the exception handler and `TestState.failure` are gone | S |
 | J-7 | L | Fixed | Typed artifacts (K-4) plus `Device.capture()` / `device.capture()` in both SDKs (`Capture.kt`, `models.Capture`): the four parts in parallel, each bounded, failures recorded per part, never throws; `saveTo` / `save_to`. JUnit extension and pytest plugin only call it and write `failure.txt`; `tap.capture` / `tap_capture` = `onFailure` \| `off`. Tests: `TapClientTest` / `test_device.py` capture cases, `TapConfigTest`, `test_plugin.py` | — |
-| J-9 | L | Open | No opt-in class-level device reuse | M |
+| J-9 | L | Fixed | Measured first (2026-09-28, native daemon): attach 1.2 s (emulator-5554) / 3.8 s (85e49002) per test, almost all driver start; detach 0.2 s. Opt-in reuse: `@TapTest(deviceLifetime = PER_CLASS)` (class store, `info()` probe before reuse, re-attach when it fails or the device was detached, `afterAll` detaches) and pytest `tap_device_scope = function\|class\|module\|session` (`pytest_runtest_teardown` ends the scope). No app reset; artifacts still per test. Tests: fixture `DeviceReuseTest` on the matrix, `test_plugin.py` scope/probe cases; Python device suite passes with `TAP_DEVICE_SCOPE=module` (5 attaches for the run, all detached by scope end) | — |
 | S-2 | L | Fixed | `runCatching` + one assertion instead of `fail()` inside `catch (AssertionError)` | S |
 | S-3 | L | Fixed | `MultiDeviceTest` asserts its two roles hold distinct serials | S |
 
