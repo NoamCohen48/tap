@@ -18,7 +18,7 @@ Status: in progress.
   `showing_hint`, launch returns after `am start -W`, and selector scope is any package
   (`system`, no allowlist) or every window (`any_window`). Proven by the validation `deviceTest`
   suite (`ScrollTest`, `PermissionTest`, `InputTest`), the Kotlin fixture tests and the Python
-  suite on emulator-5554 (API 34); entries below describe the behaviour of their time.
+  suite on emulator-5554 (API 34) and 85e49002 (API 29); entries below describe the behaviour of their time.
 - The handshake MACs the payload bytes as sent (negotiation carried as serialized bytes), so no
   canonical encoding is needed; a payload that does not parse fails the handshake.
 - Authenticated HELLO/CHALLENGE/NEGOTIATION transcript with separate HMAC domains.
