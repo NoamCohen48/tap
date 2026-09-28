@@ -154,6 +154,12 @@ enum class FailureReason {
 
     /** The daemon cannot serve the request in its current state. */
     DAEMON_PRECONDITION,
+
+    /** The ref is not in the attached device's latest screen snapshot. */
+    UNKNOWN_REF,
+
+    /** The ref's node had no selector that matched it alone. */
+    REF_NOT_ADDRESSABLE,
 }
 
 /** A device's state in [TapClient.devices]. Only [FREE] and [LEASED] devices can be attached. */

@@ -7,6 +7,8 @@ from __future__ import annotations
 from . import _gen as pb
 from .models import (
     AppProcess,
+    AttachedDeviceEntry,
+    ConnectionEntry,
     Bounds,
     DeviceEntry,
     DeviceInfo,
@@ -16,6 +18,10 @@ from .models import (
     ErrorCode,
     FailureReason,
     MatchMode,
+    NodeChange,
+    NodeFlag,
+    ScreenNode,
+    ScreenSnapshot,
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
@@ -52,6 +58,14 @@ def failure_reason(number: int) -> FailureReason:
 
 def device_state(number: int) -> DeviceState:
     return _named(DeviceState, pb.DeviceState, number, "DEVICE_", DeviceState.UNKNOWN)
+
+
+def node_flag(number: int) -> NodeFlag | None:
+    return _named(NodeFlag, pb.NodeFlag, number, "FLAG_", None)
+
+
+def node_change(number: int) -> NodeChange:
+    return _named(NodeChange, pb.NodeChange, number, "NODE_", NodeChange.NONE)
 
 
 def wait_reason(detail: str) -> WaitReason | None:
@@ -132,4 +146,49 @@ def server_info(info: pb.InfoResponse) -> ServerInfo:
             idle_stable=d.idle_stable_ms / 1000,
             acquire=d.acquire_timeout_ms / 1000,
         ),
+    )
+
+
+def connection_entry(entry: pb.ConnectionEntry) -> ConnectionEntry:
+    return ConnectionEntry(
+        id=entry.client_connection_id,
+        name=entry.name,
+        hold=entry.hold.idle_timeout_ms / 1000 if entry.HasField("hold") else None,
+        idle=entry.idle_ms / 1000,
+        attached_devices=tuple(
+            AttachedDeviceEntry(d.attached_device_id, d.serial, d.aut_package, d.generation)
+            for d in entry.attached_devices
+        ),
+    )
+
+
+def screen_node(node: pb.ScreenNode) -> ScreenNode:
+    from .selectors import Selector  # selectors imports this module
+
+    b = node.bounds
+    return ScreenNode(
+        ref=node.ref,
+        depth=node.depth,
+        window_package=node.window_package,
+        class_name=_optional(node, "class_name"),
+        resource_name=_optional(node, "resource_name"),
+        text=_optional(node, "text"),
+        content_description=_optional(node, "content_description"),
+        hint=_optional(node, "hint"),
+        bounds=Bounds(b.left, b.top, b.right, b.bottom),
+        flags=frozenset(f for f in map(node_flag, node.flags) if f is not None),
+        password=node.password,
+        interactive=node.interactive,
+        selector=Selector(node.selector) if node.HasField("selector") else None,
+        by_index=node.by_index,
+        change=node_change(node.change),
+    )
+
+
+def screen_snapshot(response: pb.ScreenSnapshotResponse) -> ScreenSnapshot:
+    return ScreenSnapshot(
+        snapshot_id=response.snapshot_id,
+        nodes=tuple(map(screen_node, response.nodes)),
+        removed=tuple(map(screen_node, response.removed)),
+        rotation=response.rotation,
     )

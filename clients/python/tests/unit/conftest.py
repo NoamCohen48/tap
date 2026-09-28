@@ -38,6 +38,9 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         self.disconnect_error: grpc.StatusCode | None = None
         self._drops: dict[str, threading.Event] = {}
         self._closing: dict[str, str] = {}
+        # Live connections: id -> ConnectRequest (hold tells held from observed).
+        self.live: dict[str, pb.ConnectRequest] = {}
+        self.devices: FakeDevices | None = None
 
     def _drop_event(self, cid: str) -> threading.Event:
         return self._drops.setdefault(cid, threading.Event())
@@ -51,13 +54,48 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         self.drop(cid)
 
     def Connect(self, request, context):
+        if request.HasField("hold") and any(
+            c.HasField("hold") and c.name == request.name for c in self.live.values()
+        ):
+            fail(
+                context,
+                grpc.StatusCode.FAILED_PRECONDITION,
+                pb.FAILURE_REASON_DAEMON_PRECONDITION,
+                f"a held connection named {request.name} already exists",
+            )
         self.connects += 1
-        return pb.ConnectResponse(client_connection_id=f"conn-{self.connects}")
+        cid = f"conn-{self.connects}"
+        self.live[cid] = request
+        return pb.ConnectResponse(client_connection_id=cid)
+
+    def ListConnections(self, request, context):
+        entries = []
+        for cid, connect in self.live.items():
+            entry = pb.ConnectionEntry(client_connection_id=cid, name=connect.name, idle_ms=1500)
+            if connect.HasField("hold"):
+                entry.hold.CopyFrom(connect.hold)
+            for attach in self.devices.attached.get(cid, []) if self.devices else []:
+                entry.attached_devices.add(
+                    attached_device_id=f"attached-{attach.serial}",
+                    serial=attach.serial,
+                    aut_package=attach.aut_package,
+                    generation=1,
+                )
+            entries.append(entry)
+        return pb.ListConnectionsResponse(connections=entries)
 
     def Observe(self, request, context):
+        cid = request.client_connection_id
+        held = self.live.get(cid)
+        if held is not None and held.HasField("hold"):
+            fail(
+                context,
+                grpc.StatusCode.FAILED_PRECONDITION,
+                pb.FAILURE_REASON_DAEMON_PRECONDITION,
+                "a held connection has no Observe stream",
+            )
         if self.observe_mode == "empty":
             return
-        cid = request.client_connection_id
         if self.observe_mode == "closing":
             yield pb.ObserveResponse(closing=pb.Closing(reason="daemon shutting down"))
             return
@@ -74,6 +112,7 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
 
     def Disconnect(self, request, context):
         self.disconnects.append(request.client_connection_id)
+        self.live.pop(request.client_connection_id, None)
         self.drop(request.client_connection_id)
         if self.disconnect_error is not None:
             context.abort(self.disconnect_error, "disconnect boom")
@@ -100,6 +139,12 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.deny: bool = False
         self.png = b"\x89PNG fake"
         self.corrupt_png = False
+        # Accepted attaches per client connection id.
+        self.attached: dict[str, list[pb.AttachRequest]] = {}
+        self.snapshot = pb.ScreenSnapshotResponse()
+        self.snapshot_requests: list[pb.ScreenSnapshotRequest] = []
+        # ref -> selector; any other ref is UNKNOWN_REF.
+        self.refs: dict[str, pb.Selector] = {}
 
     def _own(self, rpc: str, request, context) -> None:
         self.owners.append((rpc, request.client_connection_id))
@@ -122,6 +167,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
                 f"device {request.serial} is held by another session",
                 serial=request.serial,
             )
+        self.attached.setdefault(request.client_connection_id, []).append(request)
         return pb.AttachResponse(
             attached_device_id=f"attached-{request.serial}",
             serial=request.serial,
@@ -141,6 +187,18 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self._own("screenshot", request, context)
         sent = self.png + b"!" if self.corrupt_png else self.png
         return pb.ScreenshotResponse(png=sent, sha256=hashlib.sha256(self.png).hexdigest())
+
+    def ScreenSnapshot(self, request, context):
+        self._own("screen_snapshot", request, context)
+        self.snapshot_requests.append(request)
+        return self.snapshot
+
+    def ResolveRef(self, request, context):
+        self._own("resolve_ref", request, context)
+        selector = self.refs.get(request.ref.removeprefix("@"))
+        if selector is None:
+            fail(context, grpc.StatusCode.NOT_FOUND, pb.FAILURE_REASON_UNKNOWN_REF, f"unknown ref {request.ref}")
+        return pb.ResolveRefResponse(selector=selector, snapshot_id=self.snapshot.snapshot_id)
 
     def DriverLog(self, request, context):
         self._own("driver_log", request, context)
@@ -213,6 +271,7 @@ class Fake:
         self.connections = FakeConnections()
         self.devices = FakeDevices()
         self.apps = FakeApps()
+        self.connections.devices = self.devices
         self.auth = _TokenCheck(self.connections)
         self.server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=16), interceptors=[self.auth]

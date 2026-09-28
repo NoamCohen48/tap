@@ -1,16 +1,25 @@
 # ruff: noqa
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Mapping as _Mapping
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
 from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ConnectRequest(_message.Message):
-    __slots__ = ("name",)
+    __slots__ = ("name", "hold")
     NAME_FIELD_NUMBER: _ClassVar[int]
+    HOLD_FIELD_NUMBER: _ClassVar[int]
     name: str
-    def __init__(self, name: _Optional[str] = ...) -> None: ...
+    hold: Hold
+    def __init__(self, name: _Optional[str] = ..., hold: _Optional[_Union[Hold, _Mapping]] = ...) -> None: ...
+
+class Hold(_message.Message):
+    __slots__ = ("idle_timeout_ms",)
+    IDLE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    idle_timeout_ms: int
+    def __init__(self, idle_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class ConnectResponse(_message.Message):
     __slots__ = ("client_connection_id",)
@@ -101,3 +110,39 @@ class Defaults(_message.Message):
     idle_stable_ms: int
     acquire_timeout_ms: int
     def __init__(self, action_timeout_ms: _Optional[int] = ..., wait_timeout_ms: _Optional[int] = ..., lifecycle_timeout_ms: _Optional[int] = ..., idle_stable_ms: _Optional[int] = ..., acquire_timeout_ms: _Optional[int] = ...) -> None: ...
+
+class ListConnectionsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class AttachedDeviceEntry(_message.Message):
+    __slots__ = ("attached_device_id", "serial", "aut_package", "generation")
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_FIELD_NUMBER: _ClassVar[int]
+    attached_device_id: str
+    serial: str
+    aut_package: str
+    generation: int
+    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., generation: _Optional[int] = ...) -> None: ...
+
+class ConnectionEntry(_message.Message):
+    __slots__ = ("client_connection_id", "name", "hold", "idle_ms", "attached_devices")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    HOLD_FIELD_NUMBER: _ClassVar[int]
+    IDLE_MS_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    name: str
+    hold: Hold
+    idle_ms: int
+    attached_devices: _containers.RepeatedCompositeFieldContainer[AttachedDeviceEntry]
+    def __init__(self, client_connection_id: _Optional[str] = ..., name: _Optional[str] = ..., hold: _Optional[_Union[Hold, _Mapping]] = ..., idle_ms: _Optional[int] = ..., attached_devices: _Optional[_Iterable[_Union[AttachedDeviceEntry, _Mapping]]] = ...) -> None: ...
+
+class ListConnectionsResponse(_message.Message):
+    __slots__ = ("connections",)
+    CONNECTIONS_FIELD_NUMBER: _ClassVar[int]
+    connections: _containers.RepeatedCompositeFieldContainer[ConnectionEntry]
+    def __init__(self, connections: _Optional[_Iterable[_Union[ConnectionEntry, _Mapping]]] = ...) -> None: ...

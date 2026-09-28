@@ -1,7 +1,9 @@
 // tap.v1 — client connections: a client process's connection to the daemon and its unit of
 // ownership. Attached devices belong to a client connection, and every call on one names its
-// `client_connection_id`; when the connection's Observe stream ends (the client exited) or it
-// never opens one, the daemon detaches those devices.
+// `client_connection_id`. An observed connection (the default) lives while its Observe stream is
+// open: when the stream ends (the client exited) or it never opens one, the daemon detaches its
+// devices. A held connection (`ConnectRequest.hold`) has no stream and lives until Disconnect or
+// `hold.idle_timeout_ms` without a call naming it (`.docs/agent-surface.md`).
 //
 // Every RPC of every service must carry `authorization: Bearer <token>`, the per-instance token
 // in `<state dir>/daemon.json`; without it the call fails UNAUTHENTICATED.
@@ -23,10 +25,22 @@ service ClientConnectionService {
   rpc Observe(ObserveRequest) returns (stream ObserveResponse);
   rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
   rpc Info(InfoRequest) returns (InfoResponse);
+  // Every live connection with its attached devices; how a later process finds a held
+  // connection by name.
+  rpc ListConnections(ListConnectionsRequest) returns (ListConnectionsResponse);
 }
 
 message ConnectRequest {
   string name = 1;
+  // Present: a held connection. It needs no Observe stream (opening one is FAILED_PRECONDITION)
+  // and ends on Disconnect, daemon shutdown, or `idle_timeout_ms` after the last call that named
+  // it. Its `name` must be non-blank and unique among held connections (FAILED_PRECONDITION).
+  optional Hold hold = 2;
+}
+
+message Hold {
+  // 1000..86400000.
+  int64 idle_timeout_ms = 1;
 }
 
 message ConnectResponse {
@@ -94,4 +108,27 @@ message Defaults {
   int64 idle_stable_ms = 4;
   // How long clients wait for a device another session holds (Attach `lease_timeout_ms`).
   int64 acquire_timeout_ms = 5;
+}
+
+message ListConnectionsRequest {}
+
+message AttachedDeviceEntry {
+  string attached_device_id = 1;
+  string serial = 2;
+  string aut_package = 3;
+  int64 generation = 4;
+}
+
+message ConnectionEntry {
+  string client_connection_id = 1;
+  string name = 2;
+  // Set for a held connection.
+  optional Hold hold = 3;
+  // Since the last call that named the connection.
+  int64 idle_ms = 4;
+  repeated AttachedDeviceEntry attached_devices = 5;
+}
+
+message ListConnectionsResponse {
+  repeated ConnectionEntry connections = 1;
 }

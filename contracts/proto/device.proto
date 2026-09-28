@@ -9,6 +9,7 @@ syntax = "proto3";
 package tap.v1;
 
 import "command.proto";
+import "selector.proto";
 
 option java_package = "io.github.noamcohen48.tap.api.v1";
 option java_multiple_files = true;
@@ -21,6 +22,12 @@ service DeviceService {
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
   rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
+  // A compact, ref-addressed outline of the screen, parsed from the diagnostic hierarchy dump
+  // (`.docs/agent-surface.md`). Refs name selectors the daemon synthesised, never node handles.
+  rpc ScreenSnapshot(ScreenSnapshotRequest) returns (ScreenSnapshotResponse);
+  // The selector a ref of the latest snapshot names. Unknown ref: NOT_FOUND (UNKNOWN_REF);
+  // a node with no selector: FAILED_PRECONDITION (REF_NOT_ADDRESSABLE).
+  rpc ResolveRef(ResolveRefRequest) returns (ResolveRefResponse);
 }
 
 // State of a listed device.
@@ -112,4 +119,66 @@ message DriverLogRequest {
 
 message DriverLogResponse {
   repeated string lines = 1;
+}
+
+message ScreenSnapshotRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // For the hierarchy dump; absent = the attached device's default command timeout.
+  optional int64 timeout_ms = 3;
+}
+
+// A node against the previous snapshot of the same attached device.
+enum NodeChange {
+  NODE_CHANGE_UNSPECIFIED = 0; // there was no previous snapshot
+  NODE_ADDED = 1;
+  NODE_UNCHANGED = 2;
+  NODE_REMOVED = 3;
+}
+
+// One visible node, in dump (pre-order) order.
+message ScreenNode {
+  // `e<N>`. Stable across snapshots while the node is unchanged; never reused for another node.
+  string ref = 1;
+  int32 depth = 2;
+  // The package of the window root the node is under.
+  string window_package = 3;
+  optional string class_name = 4;
+  optional string resource_name = 5;
+  optional string text = 6;
+  optional string content_description = 7;
+  optional string hint = 8;
+  Bounds bounds = 9;
+  // The boolean properties that are true.
+  repeated NodeFlag flags = 10;
+  bool password = 11;
+  // Clickable, long-clickable, checkable, scrollable or editable.
+  bool interactive = 12;
+  // A selector that matched only this node in the dump; absent when none was found.
+  optional Selector selector = 13;
+  // The selector ends in an `At` pick: correct for this dump, fragile if the screen reorders.
+  bool by_index = 14;
+  NodeChange change = 15;
+}
+
+message ScreenSnapshotResponse {
+  // Increases per attached device.
+  int64 snapshot_id = 1;
+  repeated ScreenNode nodes = 2;
+  // Nodes of the previous snapshot that are gone; their refs no longer resolve.
+  repeated ScreenNode removed = 3;
+  int32 rotation = 4;
+}
+
+message ResolveRefRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // With or without the leading `@`.
+  string ref = 3;
+}
+
+message ResolveRefResponse {
+  Selector selector = 1;
+  bool by_index = 2;
+  int64 snapshot_id = 3;
 }

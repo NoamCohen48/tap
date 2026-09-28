@@ -41,6 +41,8 @@ See `README.md` for build/run commands.
   client/`tapTest` conversion (client 0.2.0) passed its JVM suites and the 13-test API 29/API 34
   device matrix. It lists the pre-migration design, decisions, implementation history and
   verification evidence.
+- `.docs/agent-surface.md` — decision record + phase plan: the agent surface (held connections,
+  screen snapshots with refs, event log, and `tap-agent` — CLI + MCP in Python on `tap-e2e`).
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /

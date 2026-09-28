@@ -7,6 +7,8 @@ import io.github.noamcohen48.tap.daemon.core.DaemonClosingException
 import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
 import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
+import io.github.noamcohen48.tap.daemon.snapshot.RefNotAddressableException
+import io.github.noamcohen48.tap.daemon.snapshot.UnknownRefException
 import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AppLifecycleException
 import io.github.noamcohen48.tap.host.DeviceBusyException
@@ -53,6 +55,8 @@ class FailureStatusTest {
                 AdbCommandException("s", listOf("shell"), 1, "") to (Status.Code.UNAVAILABLE to FailureReason.FAILURE_REASON_ADB_FAILED),
                 SessionClosingException("s") to (Status.Code.ABORTED to FailureReason.FAILURE_REASON_SESSION_UNUSABLE),
                 DaemonClosingException() to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION),
+                UnknownRefException("e7", 3) to (Status.Code.NOT_FOUND to FailureReason.FAILURE_REASON_UNKNOWN_REF),
+                RefNotAddressableException("e9") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE),
             )
         for ((error, expected) in cases) {
             val (code, failure) = failureOf(error)

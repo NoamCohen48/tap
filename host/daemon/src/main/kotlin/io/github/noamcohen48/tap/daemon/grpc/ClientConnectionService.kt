@@ -1,14 +1,19 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
+import io.github.noamcohen48.tap.api.v1.AttachedDeviceEntry
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Closing
+import io.github.noamcohen48.tap.api.v1.ConnectionEntry
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.Heartbeat
+import io.github.noamcohen48.tap.api.v1.Hold
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.api.v1.ListConnectionsRequest
+import io.github.noamcohen48.tap.api.v1.ListConnectionsResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
@@ -29,10 +34,48 @@ class ClientConnectionService(
 ) : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
     override suspend fun connect(request: ConnectRequest): ConnectResponse =
         reply {
+            val holdIdleMs =
+                if (request.hasHold()) {
+                    argument(request.name.isNotBlank()) { "a held connection needs a name" }
+                    request.hold.idleTimeoutMs.also {
+                        argument(it in MIN_HOLD_IDLE_MS..MAX_HOLD_IDLE_MS) {
+                            "hold.idle_timeout_ms must be in $MIN_HOLD_IDLE_MS..$MAX_HOLD_IDLE_MS, got $it"
+                        }
+                    }
+                } else {
+                    null
+                }
             ConnectResponse
                 .newBuilder()
-                .setClientConnectionId(daemon.connectClient(request.name.ifBlank { "unnamed" }).id)
+                .setClientConnectionId(daemon.connectClient(request.name.ifBlank { "unnamed" }, holdIdleMs).id)
                 .build()
+        }
+
+    override suspend fun listConnections(request: ListConnectionsRequest): ListConnectionsResponse =
+        reply {
+            ListConnectionsResponse
+                .newBuilder()
+                .addAllConnections(
+                    daemon.connections().sortedBy { it.name }.map { connection ->
+                        ConnectionEntry
+                            .newBuilder()
+                            .setClientConnectionId(connection.id)
+                            .setName(connection.name)
+                            .setIdleMs(connection.idleMs)
+                            .apply { connection.holdIdleMs?.let { hold = Hold.newBuilder().setIdleTimeoutMs(it).build() } }
+                            .addAllAttachedDevices(
+                                connection.attachedDevices.map { device ->
+                                    AttachedDeviceEntry
+                                        .newBuilder()
+                                        .setAttachedDeviceId(device.id)
+                                        .setSerial(device.deviceSession.serial)
+                                        .setAutPackage(device.deviceSession.autPackage)
+                                        .setGeneration(device.deviceSession.generation)
+                                        .build()
+                                },
+                            ).build()
+                    },
+                ).build()
         }
 
     /**
@@ -91,6 +134,10 @@ class ClientConnectionService(
     companion object {
         /** Outbound heartbeat cadence; not a death detector, only idle-proxy traffic. */
         const val OBSERVE_HEARTBEAT_MS = 15_000L
+
+        /** Bounds for `ConnectRequest.hold.idle_timeout_ms`. */
+        const val MIN_HOLD_IDLE_MS = 1_000L
+        const val MAX_HOLD_IDLE_MS = 86_400_000L
     }
 
     private inline fun event(fill: ObserveResponse.Builder.() -> Unit): ObserveResponse =

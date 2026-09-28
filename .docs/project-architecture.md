@@ -160,14 +160,23 @@ tap/
 |   |   |   +-- daemon/core/
 |   |   |   |   +-- TapDaemon.kt       ConnectedClient/attached-device registries, device list, bounded teardown
 |   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted per build id, or a `--driver-apk` override
+|   |   |   +-- daemon/snapshot/       screen snapshots with refs (`.docs/agent-surface.md` decision 2); diagnostic only, never on the action path
+|   |   |   |   +-- HierarchyParser.kt   hand XML parser for the UiAutomator dump (no DTD/entities: XXE-safe, no JAXP in the native image) → pre-order DumpNodes
+|   |   |   |   +-- DumpMatcher.kt       the driver's native-plan selector semantics (scope + `pkg` filter, resources, relations) evaluated over a dump
+|   |   |   |   +-- SelectorSynthesis.kt per-node selector: resource/text/desc/pairs/hint → + ancestor → `At(index)` (by_index); uniqueness via DumpMatcher
+|   |   |   |   +-- ScreenSnapshots.kt   dump XML → ScreenNodes (flags, interactive, selector)
+|   |   |   |   +-- RefAlignment.kt      node signatures (no bounds) and LCS alignment with a greedy fallback above a size budget
+|   |   |   |   +-- ScreenSnapshotState.kt per-device latest snapshot, ref counter (`eN`, never reused), ResolveRef; UnknownRef/RefNotAddressable exceptions
 |   |   |   +-- daemon/grpc/
 |   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info + exactly-one Observe (observing/heartbeat/closing)
-|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog
+|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
 |   |   |       +-- common.kt                  Defaults (echoed in Info), suspend reply wrapper, exception → status + `tap-failure-bin` Failure trailer
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
-|   |   +-- src/test/kotlin/...      core: TapDaemonLifecycleTest; cli: CliTest, DaemonDescriptorTest; grpc: ClientConnectionServiceTest, AppServiceTest, FailureStatusTest
+|   |   +-- src/test/kotlin/...      core: TapDaemonLifecycleTest; cli: CliTest, DaemonDescriptorTest; grpc: ClientConnectionServiceTest, AppServiceTest, FailureStatusTest,
+|   |   |                            ScreenSnapshotServiceTest; snapshot: HierarchyParserTest, SelectorSynthesisTest, ScreenSnapshotStateTest
+|   |   +-- src/test/resources/snapshot/  fixture-app hierarchy dumps recorded on emulator-5554 (API 34) and 85e49002 (API 29)
 |   +-- validation/              :host:validation — device validation suite + `tap-product-probe` (exe)
 |       +-- src/main/kotlin/io/github/noamcohen48/tap/host/validation/
 |       |   +-- ProductProbe.kt, ProductProbeMain.kt   latency/inventory probe for arbitrary apps

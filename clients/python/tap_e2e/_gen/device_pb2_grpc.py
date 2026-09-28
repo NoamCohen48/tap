@@ -64,6 +64,16 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.DriverLogRequest.SerializeToString,
                 response_deserializer=device__pb2.DriverLogResponse.FromString,
                 _registered_method=True)
+        self.ScreenSnapshot = channel.unary_unary(
+                '/tap.v1.DeviceService/ScreenSnapshot',
+                request_serializer=device__pb2.ScreenSnapshotRequest.SerializeToString,
+                response_deserializer=device__pb2.ScreenSnapshotResponse.FromString,
+                _registered_method=True)
+        self.ResolveRef = channel.unary_unary(
+                '/tap.v1.DeviceService/ResolveRef',
+                request_serializer=device__pb2.ResolveRefRequest.SerializeToString,
+                response_deserializer=device__pb2.ResolveRefResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -105,6 +115,22 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ScreenSnapshot(self, request, context):
+        """A compact, ref-addressed outline of the screen, parsed from the diagnostic hierarchy dump
+        (`.docs/agent-surface.md`). Refs name selectors the daemon synthesised, never node handles.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolveRef(self, request, context):
+        """The selector a ref of the latest snapshot names. Unknown ref: NOT_FOUND (UNKNOWN_REF);
+        a node with no selector: FAILED_PRECONDITION (REF_NOT_ADDRESSABLE).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -137,6 +163,16 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.DriverLog,
                     request_deserializer=device__pb2.DriverLogRequest.FromString,
                     response_serializer=device__pb2.DriverLogResponse.SerializeToString,
+            ),
+            'ScreenSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.ScreenSnapshot,
+                    request_deserializer=device__pb2.ScreenSnapshotRequest.FromString,
+                    response_serializer=device__pb2.ScreenSnapshotResponse.SerializeToString,
+            ),
+            'ResolveRef': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveRef,
+                    request_deserializer=device__pb2.ResolveRefRequest.FromString,
+                    response_serializer=device__pb2.ResolveRefResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -301,6 +337,60 @@ class DeviceService:
             '/tap.v1.DeviceService/DriverLog',
             device__pb2.DriverLogRequest.SerializeToString,
             device__pb2.DriverLogResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ScreenSnapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/ScreenSnapshot',
+            device__pb2.ScreenSnapshotRequest.SerializeToString,
+            device__pb2.ScreenSnapshotResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveRef(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/ResolveRef',
+            device__pb2.ResolveRefRequest.SerializeToString,
+            device__pb2.ResolveRefResponse.FromString,
             options,
             channel_credentials,
             insecure,
