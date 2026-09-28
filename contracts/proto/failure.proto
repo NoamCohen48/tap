@@ -56,6 +56,10 @@ enum FailureReason {
   FAILURE_REASON_SESSION_UNUSABLE = 18;
   // The daemon cannot serve the request in its current state (FAILED_PRECONDITION).
   FAILURE_REASON_DAEMON_PRECONDITION = 19;
+  // The ref is not in the attached device's latest screen snapshot (NOT_FOUND).
+  FAILURE_REASON_UNKNOWN_REF = 20;
+  // The ref's node had no selector that matched it alone (FAILED_PRECONDITION).
+  FAILURE_REASON_REF_NOT_ADDRESSABLE = 21;
 }
 
 message Failure {

@@ -29,6 +29,8 @@ class FailureReason(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FAILURE_REASON_DRIVER_COMMAND: _ClassVar[FailureReason]
     FAILURE_REASON_SESSION_UNUSABLE: _ClassVar[FailureReason]
     FAILURE_REASON_DAEMON_PRECONDITION: _ClassVar[FailureReason]
+    FAILURE_REASON_UNKNOWN_REF: _ClassVar[FailureReason]
+    FAILURE_REASON_REF_NOT_ADDRESSABLE: _ClassVar[FailureReason]
 FAILURE_REASON_UNSPECIFIED: FailureReason
 FAILURE_REASON_INTERNAL: FailureReason
 FAILURE_REASON_INVALID_ARGUMENT: FailureReason
@@ -49,6 +51,8 @@ FAILURE_REASON_DRIVER_TRANSPORT: FailureReason
 FAILURE_REASON_DRIVER_COMMAND: FailureReason
 FAILURE_REASON_SESSION_UNUSABLE: FailureReason
 FAILURE_REASON_DAEMON_PRECONDITION: FailureReason
+FAILURE_REASON_UNKNOWN_REF: FailureReason
+FAILURE_REASON_REF_NOT_ADDRESSABLE: FailureReason
 
 class Failure(_message.Message):
     __slots__ = ("reason", "serial", "waited_ms", "error_code", "detail")

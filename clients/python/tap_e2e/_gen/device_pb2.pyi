@@ -1,5 +1,6 @@
 # ruff: noqa
 from . import command_pb2 as _command_pb2
+from . import selector_pb2 as _selector_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -17,12 +18,23 @@ class DeviceState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     DEVICE_QUARANTINED: _ClassVar[DeviceState]
     DEVICE_OFFLINE: _ClassVar[DeviceState]
     DEVICE_UNAUTHORIZED: _ClassVar[DeviceState]
+
+class NodeChange(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    NODE_CHANGE_UNSPECIFIED: _ClassVar[NodeChange]
+    NODE_ADDED: _ClassVar[NodeChange]
+    NODE_UNCHANGED: _ClassVar[NodeChange]
+    NODE_REMOVED: _ClassVar[NodeChange]
 DEVICE_STATE_UNSPECIFIED: DeviceState
 DEVICE_FREE: DeviceState
 DEVICE_LEASED: DeviceState
 DEVICE_QUARANTINED: DeviceState
 DEVICE_OFFLINE: DeviceState
 DEVICE_UNAUTHORIZED: DeviceState
+NODE_CHANGE_UNSPECIFIED: NodeChange
+NODE_ADDED: NodeChange
+NODE_UNCHANGED: NodeChange
+NODE_REMOVED: NodeChange
 
 class DeviceEntry(_message.Message):
     __slots__ = ("serial", "state", "client_connection_id", "quarantine_reason")
@@ -143,3 +155,79 @@ class DriverLogResponse(_message.Message):
     LINES_FIELD_NUMBER: _ClassVar[int]
     lines: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, lines: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class ScreenSnapshotRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "timeout_ms")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    timeout_ms: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+
+class ScreenNode(_message.Message):
+    __slots__ = ("ref", "depth", "window_package", "class_name", "resource_name", "text", "content_description", "hint", "bounds", "flags", "password", "interactive", "selector", "by_index", "change")
+    REF_FIELD_NUMBER: _ClassVar[int]
+    DEPTH_FIELD_NUMBER: _ClassVar[int]
+    WINDOW_PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    CLASS_NAME_FIELD_NUMBER: _ClassVar[int]
+    RESOURCE_NAME_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    HINT_FIELD_NUMBER: _ClassVar[int]
+    BOUNDS_FIELD_NUMBER: _ClassVar[int]
+    FLAGS_FIELD_NUMBER: _ClassVar[int]
+    PASSWORD_FIELD_NUMBER: _ClassVar[int]
+    INTERACTIVE_FIELD_NUMBER: _ClassVar[int]
+    SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    BY_INDEX_FIELD_NUMBER: _ClassVar[int]
+    CHANGE_FIELD_NUMBER: _ClassVar[int]
+    ref: str
+    depth: int
+    window_package: str
+    class_name: str
+    resource_name: str
+    text: str
+    content_description: str
+    hint: str
+    bounds: _command_pb2.Bounds
+    flags: _containers.RepeatedScalarFieldContainer[_selector_pb2.NodeFlag]
+    password: bool
+    interactive: bool
+    selector: _selector_pb2.Selector
+    by_index: bool
+    change: NodeChange
+    def __init__(self, ref: _Optional[str] = ..., depth: _Optional[int] = ..., window_package: _Optional[str] = ..., class_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[_command_pb2.Bounds, _Mapping]] = ..., flags: _Optional[_Iterable[_Union[_selector_pb2.NodeFlag, str]]] = ..., password: _Optional[bool] = ..., interactive: _Optional[bool] = ..., selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., by_index: _Optional[bool] = ..., change: _Optional[_Union[NodeChange, str]] = ...) -> None: ...
+
+class ScreenSnapshotResponse(_message.Message):
+    __slots__ = ("snapshot_id", "nodes", "removed", "rotation")
+    SNAPSHOT_ID_FIELD_NUMBER: _ClassVar[int]
+    NODES_FIELD_NUMBER: _ClassVar[int]
+    REMOVED_FIELD_NUMBER: _ClassVar[int]
+    ROTATION_FIELD_NUMBER: _ClassVar[int]
+    snapshot_id: int
+    nodes: _containers.RepeatedCompositeFieldContainer[ScreenNode]
+    removed: _containers.RepeatedCompositeFieldContainer[ScreenNode]
+    rotation: int
+    def __init__(self, snapshot_id: _Optional[int] = ..., nodes: _Optional[_Iterable[_Union[ScreenNode, _Mapping]]] = ..., removed: _Optional[_Iterable[_Union[ScreenNode, _Mapping]]] = ..., rotation: _Optional[int] = ...) -> None: ...
+
+class ResolveRefRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "ref")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    REF_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    ref: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., ref: _Optional[str] = ...) -> None: ...
+
+class ResolveRefResponse(_message.Message):
+    __slots__ = ("selector", "by_index", "snapshot_id")
+    SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    BY_INDEX_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_ID_FIELD_NUMBER: _ClassVar[int]
+    selector: _selector_pb2.Selector
+    by_index: bool
+    snapshot_id: int
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., by_index: _Optional[bool] = ..., snapshot_id: _Optional[int] = ...) -> None: ...

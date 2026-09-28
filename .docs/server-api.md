@@ -86,10 +86,11 @@ is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Resp
 
 | RPC | Semantics |
 |---|---|
-| `Connect(name)` → `client_connection_id` | A connection is one client process. Every attached device belongs to it. |
+| `Connect(name, hold?)` → `client_connection_id` | A connection is one client process. Every attached device belongs to it. With `hold{idle_timeout_ms}` (1 s..24 h) it is a **held** connection (`agent-surface.md`): no Observe stream (opening one is `FAILED_PRECONDITION`), not reaped by the 30 s observe grace, ends on `Disconnect`, daemon shutdown, or `idle_timeout_ms` after the last call that named it. A held connection's name must be non-blank and unique among held connections (`FAILED_PRECONDITION`, `DAEMON_PRECONDITION`). |
 | `Observe(client_connection_id)` → stream `ObserveResponse` | Liveness. Events are a `oneof`: `observing` first, then `heartbeat` every 15 s (idle-proxy traffic, not a death detector). A daemon-side disconnect (Disconnect, reaping, shutdown) sends `closing{reason}` and completes the stream normally. **When the stream ends for any reason, the client is disconnected** and every owned device is detached. A second concurrent Observe is `FAILED_PRECONDITION`. |
 | `Disconnect(client_connection_id)` → `{attached_devices_detached}` | Explicit teardown. |
 | `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
+| `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, AUT package, generation). How a later process (`tap` CLI) finds a held connection by name. |
 
 A connection whose Observe is not open 30 s after `Connect` is reaped. A client that crashes
 between Connect and Observe therefore cannot leak a connection.
@@ -110,6 +111,8 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 | `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?, match_count?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. |
 | `Screenshot(…, timeout_ms?)` → `{png, sha256, width?, height?}` | The verified PNG bytes. Writing a file is the client's job; the server takes no host path. |
 | `DriverLog(…)` | The instrumentation's stdout ring buffer (last 2 000 lines). |
+| `ScreenSnapshot(…, timeout_ms?)` → `{snapshot_id, nodes, removed, rotation}` | A compact outline parsed from the diagnostic hierarchy dump (every window root, visible nodes, pre-order). Each `ScreenNode` has a ref `eN`, depth, window package, class, resource name, text, description, hint, bounds, the true flags, `interactive`, and a selector the daemon synthesised that matched only this node in the dump (absent when none; `by_index` when it needed an `At` pick). Refs are aligned with the device's previous snapshot: unchanged nodes keep their ref and are `NODE_UNCHANGED`, new ones get fresh numbers and are `NODE_ADDED`, gone ones are listed in `removed`. A ref is never reused for another node. |
+| `ResolveRef(…, ref)` → `{selector, by_index, snapshot_id}` | The selector a ref of the latest snapshot names; the caller sends it in an ordinary `Execute`, where the driver still demands exactly one match. Unknown ref: `NOT_FOUND` / `UNKNOWN_REF`. A node without a selector: `FAILED_PRECONDITION` / `REF_NOT_ADDRESSABLE`. |
 | `Detach(…)` → `{clean, detail?}` | `clean=false` means cleanup timed out or the session was quarantined, and `detail` says why. |
 
 `Command`:
@@ -188,6 +191,7 @@ failure, a client-side deadline).
 | ADB reap uncertain | `FAILED_PRECONDITION` | `ADB_REAP_UNCERTAIN` |
 | Host-issued driver command failed | `FAILED_PRECONDITION` | `DRIVER_COMMAND` |
 | Duplicate Observe, daemon closing | `FAILED_PRECONDITION` | `DAEMON_PRECONDITION` |
+| Ref not in the latest snapshot / ref without a selector | `NOT_FOUND` / `FAILED_PRECONDITION` | `UNKNOWN_REF` / `REF_NOT_ADDRESSABLE` |
 | Session unusable (poisoned driver connection) | `ABORTED` | `SESSION_UNUSABLE` |
 | Driver start failure | `UNAVAILABLE` | `DRIVER_START_FAILED` |
 | ADB command failure, gated ADB runner | `UNAVAILABLE` | `ADB_FAILED` |
