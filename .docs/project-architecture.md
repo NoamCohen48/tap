@@ -21,6 +21,7 @@ lines: `contracts/` (what the components agree on), `device/`, `host/`, `clients
 Test process (any language)
 +-- clients/kotlin   :clients:kotlin:sdk (Device / App / Element / waits / selectors), :clients:kotlin:junit5 (@TapTest)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
++-- clients/agent    tap-agent: CLI + MCP server for coding agents, over tap-e2e (.docs/agent-surface.md)
         |
         | gRPC over loopback  (contracts/proto/*.proto, package tap.v1)
         v
@@ -246,13 +247,14 @@ tap/
 Gradle projects: `:contracts:protocol`, `:contracts:api`, `:device:driver`,
 `:device:driver:command-engine`, `:device:sync-sdk`, `:host:core`, `:host:daemon`,
 `:host:validation`, `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `:fixture-app`,
-`:samples:fixture-tests`. `clients/python` is a plain Python package.
+`:samples:fixture-tests`. `clients/python` and `clients/agent` are plain Python packages.
 
 Dependency direction:
 
 ```text
 samples:fixture-tests --> clients:kotlin:junit5 --> clients:kotlin:sdk --> contracts:api   (gRPC at run time)
 clients/python (tap-e2e) ---------------------------------------------> contracts:api   (committed stubs; gRPC at run time)
+clients/agent (tap-agent) --> clients/python (tap-e2e)                  (never gRPC directly)
 host:daemon (tap) --> host:core --> contracts:protocol
         \----------> contracts:api
 host:validation ---> host:core

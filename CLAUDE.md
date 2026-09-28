@@ -3,7 +3,8 @@
 Kotlin host-driven Android E2E framework in three components, mirrored by the layout:
 `device/` (driver, sync-sdk), `host/` (`:host:core` session infrastructure, `:host:daemon` =
 `tap serve` over loopback gRPC / native image, `:host:validation`), `clients/` (Kotlin SDK +
-JUnit 5, Python + pytest — all gRPC clients of the server), with `contracts/proto` holding
+JUnit 5, Python + pytest — all gRPC clients of the server; `clients/agent` = `tap-agent`, the agent
+CLI + MCP server, built on the Python client), with `contracts/proto` holding
 the one protobuf schema (`tap.v1` server API, `tap.wire.v1` device payloads). Phases 0 and 1 (contract and driver) are
 complete; Phase 2 (server + clients) has a usable first cut with `:samples:fixture-tests`.
 Nothing under `host/` may depend on `clients/`; clients depend only on `:contracts:api`.
@@ -136,3 +137,6 @@ Rules when doing so:
   -e clients/python[dev]`). `TAP_BIN=<native tap> TAP_MANAGE_DAEMON=1 TAP_SERIALS=emulator-5554,85e49002
   pytest clients/python/tests` validates the server + client on the local matrix (starts and
   stops the server; without `TAP_MANAGE_DAEMON` a running one is required).
+- `tap-agent` (`clients/agent`): install with `uv pip install --python .venv/bin/python -e
+  clients/python -e clients/agent` (the venv has no pip); unit tests `pytest clients/agent/tests`
+  reuse the Python client's in-process fake daemon.

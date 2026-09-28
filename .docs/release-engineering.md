@@ -7,13 +7,14 @@ image).
 
 ## What is an artifact, and why
 
-The repository builds four things people install, each on its own version line:
+The repository builds five things people install, each on its own version line:
 
 | Family | Tag | Artifacts | Version source |
 |---|---|---|---|
 | **engine** (`server`) | `daemon/vX.Y.Z` | `tap` native binary (linux-x86_64, macos-aarch64) and JVM dist on a GitHub Release; Maven `io.github.noamcohen48.tap:tap-schema` (generated protobuf-lite messages of `contracts/proto`) and `tap-api` (the `tap.v1` gRPC stubs, depending on `tap-schema`) to GitHub Packages | `gradle.properties` `tap.version.engine` |
 | **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | `gradle.properties` `tap.version.client.kotlin` |
 | **Python client** | `client-python/vX.Y.Z` | `tap-e2e` wheel + sdist on a GitHub Release (PyPI opt-in) | `clients/python/pyproject.toml` |
+| **Agent tools** | `client-agent/vX.Y.Z` (release job not wired yet; CI builds the wheel) | `tap-agent` wheel + sdist (CLI + MCP server, depends on `tap-e2e`) | `clients/agent/pyproject.toml` |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
 
 ### The host daemon and the driver are one artifact (the engine)

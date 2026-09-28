@@ -136,9 +136,13 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install and build
         run: |
-          python -m pip install --quiet build "clients/python[dev]"
+          python -m pip install --quiet build "clients/python[dev]" \
+            "clients/agent[dev]"
           python -c "import tap_e2e; print('tap-e2e', tap_e2e.__version__)"
           python -m build --outdir dist clients/python
+          python -m build --outdir dist clients/agent
+      - name: Unit tests (fake daemon, no device)
+        run: python -m pytest -q clients/python/tests/unit clients/agent/tests
       - name: >-
           Plugin loads (the sample suite itself needs a device and the fixture
           APK)

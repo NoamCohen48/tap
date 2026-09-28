@@ -232,6 +232,14 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
         self.force_stops.append(request)
         return pb.ForceStopResponse()
 
+    def Launch(self, request, context):
+        self.owners.append(("launch", request.app.client_connection_id))
+        return pb.LaunchResponse()
+
+    def ColdLaunch(self, request, context):
+        self.owners.append(("cold_launch", request.app.client_connection_id))
+        return pb.ColdLaunchResponse(process=pb.ProcessIdentity(pid=4242, start_token="t"))
+
     def Install(self, request_iterator, context):
         self.install_parts.extend(request_iterator)
         return pb.InstallResponse()
