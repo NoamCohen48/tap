@@ -8,10 +8,10 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 |---|---:|
 | Fixed | 136 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 5 |
+| Partial | 4 |
 | Open | 4 |
 | Won't fix (accepted risk, see decisions) | 2 |
-| Backlog (hygiene, not pursued now; see decisions) | 9 |
+| Backlog (hygiene or performance, not pursued now; see decisions) | 10 |
 | Deferred (synchronization is WIP, see below) | 7 |
 
 The counts cover all 171 findings; Open, Partial, Deferred, Won't fix and Backlog are exactly the rows below.
@@ -84,6 +84,42 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     client. Neither SDK exposes the flags.
   - H-9, H-19, H-22, K-1, B-3: refactors with no behaviour change. H-23: remaining unit
     coverage for deadline splitting that the device suite already exercises.
+- **Client API batch (2026-09-28, user; to implement, one client version bump).**
+  - K-4: both SDKs return SDK-owned types with internal proto→model mappers (`AppProcess`
+    replaces `App.ProcessIdentity`). Not a return to X-1's two schemas: X-1 was the internal
+    wire; this is the public API surface.
+  - X-3: driver `ClientConnection` → `DriverConnection`; daemon `ClientConnection` →
+    `ConnectedClient`; SDK `ClientConnection` → `TapConnection`; JUnit `TapClientConnection` →
+    `ConnectionMemo`; Python `TapServer` → `TapClient`, `ClientConnection` → `TapConnection`;
+    `:host:daemon` packages → `…daemon.core` / `.grpc` / `.cli`. The proto
+    `ClientConnectionService` and the user-facing word "server" stay.
+  - K-9: suspend `use {}` on client and connection, `connection.attach(serial, pkg) { device -> }`
+    (installs the scope marker, always detaches; body failure wins). `tapScope`,
+    `attachDevice`, `ensureTapBound` stay.
+  - K-13: device-side waits report why they timed out, from the driver up. The code stays
+    `WAIT_TIMEOUT`; `Error.detail` is `NO_MATCH`, `AMBIGUOUS`, `STILL_PRESENT` or
+    `SCREEN_CHANGING`, plus an additive `Error.match_count`; both SDKs expose `reason` and
+    `matchCount`. `visible()` keeps "one or more"; exactly one is the explicit
+    `await(sel).one()` (additive `WaitVisible.exactly_one`).
+  - J-7 (instead of an `ArtifactSink`): typed low-level results sharing an `Artifact`
+    shape (`bytes`, `mediaType`, `save`): `Screenshot` (format, width, height), `Hierarchy`
+    (`xml` + bytes), `DeviceInfo`, `DriverLog`. `device.capture()` bundles them (parallel,
+    bounded, never throws) with `saveTo(dir, prefix)`. The JUnit/pytest adapters only call it
+    and write `failure.txt`; `tap.artifacts = onFailure | off`.
+  - J-9: opt-in device reuse (`@TapTest(deviceLifetime = PER_CLASS)`, Python
+    `tap_device_scope`); no automatic app reset; an unusable session is re-attached at the
+    next test; measure attach cost first.
+  - PY-12: `TapClient.create()` discovers and probes; `TapClient(endpoint)` does no I/O.
+- **DR-5 is a performance TODO (2026-09-28, user).** Too large for now and performance only.
+  Plan when picked up:
+  1. Read `UiObject2` / `ByMatcher` at the pinned AndroidX uiautomator version: does each
+     `getAccessibilityNodeInfo()` / `getChildren()` refresh the node or wait for idle?
+  2. Add a device timing test: one element found through the native path and through a
+     traversal selector (regex, and a relation), on the fixture's long list and its animating
+     screen, on both matrix devices.
+  3. Only if traversal is clearly slower: walk raw `AccessibilityNodeInfo` roots and create a
+     `UiObject2` only for the final match; selector semantics unchanged, proven by the existing
+     selector tests and the device suite. Otherwise record the numbers and close DR-5.
 - **P-9 was wrongly marked "leave"** (now Backlog, see above). CANCELLED before acceptance is safe to retry, but the
   per-code flags cannot express "when"; DR-22 (`PAYLOAD_TOO_LARGE` flagged mutating) is the
   same problem. Needs a per-response `may_have_mutated`.
@@ -98,7 +134,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 |---|---|---|---|---|
 | DR-12 | H | Deferred | Driver `<queries>` names only the fixture's sync provider; a real AUT's provider is invisible, so idle sync cannot work outside the fixture | S |
 | DR-3 | H | Fixed | Text verification re-resolves the selector after the edit → false `TEXT_MISMATCH`/`FOCUS_TIMEOUT`. Resolved by the decision above | M |
-| DR-5 | H | Partial | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost; measure first) | M–L |
+| DR-5 | H | Backlog | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost). TODO plan in decisions above | M–L |
 | DR-4 | M | Fixed | Password fields can never match expected text. Resolved by the decision above | S |
 | DR-6 | M | Fixed | Verification removed; key-up events carry the press's `downTime` (`KeyInputTest`) | S |
 | DR-10 | M | Fixed | Snapshot text is raw like the selectors, plus `showing_hint` (`InputTest`, `MainScreenTest`) | S |
