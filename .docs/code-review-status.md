@@ -6,10 +6,10 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 136 |
+| Fixed | 139 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
-| Partial | 3 |
-| Open | 4 |
+| Partial | 2 |
+| Open | 2 |
 | Won't fix (accepted risk, see decisions) | 2 |
 | Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
 | Deferred (synchronization is WIP, see below) | 7 |
@@ -160,7 +160,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | SY-3 | M | Backlog | No password, WebView, popup/spinner or text-changing-selector fixtures. TODO plan in decisions above | M |
 | SY-4 | L | Deferred | `FixtureFaultProvider` reuses the sync signature permission | S |
 | SY-5 | N | Fixed | Every fixture activity's KDoc names the scenarios it serves (documented rather than renamed: tests and docs launch them by name) | S |
-| X-3 | M | Partial | Driver `internal class ClientConnection` collides with the daemon/SDK name; Python `TapServer` vs Kotlin `TapClient` | S |
+| X-3 | M | Fixed | One name per role: driver `DriverConnection`, daemon `ConnectedClient` (packages `daemon.core`/`.grpc`/`.cli`), SDK `TapConnection`, JUnit `ConnectionMemo`, Python `TapClient`/`TapConnection` (`11a1115`) | S |
 
 ### Protocol and command engine (contracts/protocol, device/driver/command-engine)
 
@@ -210,7 +210,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 |---|---|---|---|---|
 | K-15 | L→bug | Fixed | `DeviceAdmission` carries every admitted device of the enclosing operations, so detaching A inside B's operation nested in A's fails fast (`TapClientTest`) | M |
 | J-5 | L→bug | Fixed | `DeviceBarrier` uses a plain monitor; withdrawal can no longer be cancelled | S |
-| K-4 | M | Open | Proto types in the public API (`Device.info(): DeviceInfo`, `execute: CommandResult`); `App.ProcessIdentity` clashes with the proto name. Breaking — ask first | L |
+| K-4 | M | Fixed | Both SDKs return their own types (`Models.kt`/`Artifacts.kt`, `models.py`) through internal mappers; `execute`, `Selector.proto` and `tap-api` are internal (`ModelsTest`, `test_models.py` prove every schema value maps). Kotlin client 0.3.0, Python 0.2.0 | L |
 | K-9 | M | Open | `tapScope`/`ensureTapBound` mandatory; no `use {}`/`attach {}` helpers | M |
 | K-1 | M | Backlog | Mutex + 5 atomics; `established` write-only; `register()` unused; events capped at 200 | M |
 | K-17 | M | Fixed | `App` unit test: targets, timeouts, activity, chunked APK upload, process identity and a refused grant (`TapClientTest`) | S |
@@ -229,7 +229,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | PY-9 | L | Fixed | Failure artifacts are captured per device on their own thread within a 60 s per-device budget; a straggler is abandoned, not joined | S |
-| PY-12 | N | Open | `TapServer.__init__` probes `Info` when discovering from `daemon.json` | S |
+| PY-12 | N | Fixed | `TapClient(endpoint)` does no I/O; `TapClient.create()` discovers and probes (`11a1115`) | S |
 
 ### Build
 

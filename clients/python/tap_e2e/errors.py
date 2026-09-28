@@ -1,18 +1,15 @@
 """Exception hierarchy. Driver failures arrive as data (CommandResult.error) and become
-CommandError; server-level failures arrive as gRPC status codes and are mapped in server.py."""
+CommandError; server-level failures arrive as gRPC status codes and are mapped in client.py."""
 
 from __future__ import annotations
 
-import enum
+from typing import TYPE_CHECKING
 
-from . import _gen as pb
+from . import _proto
+from .models import ErrorCode, FailureReason
 
-# The error code enum is the proto's, minus the ERR_ prefix, so names match the wire protocol
-# and the Kotlin SDK (e.g. ErrorCode.AMBIGUOUS).
-ErrorCode = enum.Enum(  # type: ignore[misc]
-    "ErrorCode",
-    {name[len("ERR_") :]: value for name, value in pb.ErrorCode.items() if value != 0},
-)
+if TYPE_CHECKING:
+    from . import _gen as pb
 
 
 class TapError(Exception):
@@ -22,11 +19,11 @@ class TapError(Exception):
 class ServerError(TapError):
     """The host server rejected or failed a call (unknown connection or device, bad argument,
     driver start failure, ...). ``code`` is the gRPC status code name; ``reason`` is the server's
-    structured ``tap.v1.FailureReason`` value, ``FAILURE_REASON_UNSPECIFIED`` (0) when the
-    failure did not come from the daemon."""
+    structured ``FailureReason``, ``FailureReason.UNSPECIFIED`` when the failure did not come
+    from the daemon."""
 
     def __init__(
-        self, code: str, details: str, reason: int = pb.FAILURE_REASON_UNSPECIFIED
+        self, code: str, details: str, reason: FailureReason = FailureReason.UNSPECIFIED
     ):
         super().__init__(f"{code}: {details}")
         self.code = code
@@ -40,28 +37,53 @@ class CommandError(TapError):
 
     def __init__(
         self,
-        result: pb.CommandResult,
+        code: ErrorCode,
+        detail: str | None,
+        driver_message: str | None,
         operation: str,
         serial: str,
         selector: str | None,
+        request_id: int,
+        generation: int,
+        duration_ms: int,
     ):
-        self.code = ErrorCode(result.error.code)  # type: ignore[operator]
-        self.detail = result.error.detail if result.error.HasField("detail") else None
-        self.driver_message = (
-            result.error.message if result.error.HasField("message") else None
-        )
+        self.code = code
+        self.detail = detail
+        self.driver_message = driver_message
         self.operation = operation
         self.serial = serial
         self.selector = selector
-        self.request_id = result.request_id
-        self.generation = result.session_generation
-        self.duration_ms = result.duration_ms
+        self.request_id = request_id
+        self.generation = generation
+        self.duration_ms = duration_ms
         where = f" {selector}" if selector else ""
         detail = f"/{self.detail}" if self.detail else ""
         message = f": {self.driver_message}" if self.driver_message else ""
         super().__init__(
             f"{self.code.name}{detail} during {operation}{where} on {serial} "
             f"(request {self.request_id}, generation {self.generation}, {self.duration_ms} ms){message}"
+        )
+
+
+    @classmethod
+    def _from_result(
+        cls,
+        result: pb.CommandResult,
+        operation: str,
+        serial: str,
+        selector: str | None,
+    ) -> CommandError:
+        error = result.error
+        return cls(
+            _proto.error_code(error.code),
+            error.detail if error.HasField("detail") else None,
+            error.message if error.HasField("message") else None,
+            operation,
+            serial,
+            selector,
+            result.request_id,
+            result.session_generation,
+            result.duration_ms,
         )
 
 

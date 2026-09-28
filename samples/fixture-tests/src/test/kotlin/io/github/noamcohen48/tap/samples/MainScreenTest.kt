@@ -1,11 +1,11 @@
 package io.github.noamcohen48.tap.samples
 
-import io.github.noamcohen48.tap.api.v1.Direction
-import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.junit5.TapTest
 import io.github.noamcohen48.tap.junit5.tapTest
 import io.github.noamcohen48.tap.sdk.CommandException
 import io.github.noamcohen48.tap.sdk.Device
+import io.github.noamcohen48.tap.sdk.Direction
+import io.github.noamcohen48.tap.sdk.ErrorCode
 import io.github.noamcohen48.tap.sdk.WaitTimeoutException
 import io.github.noamcohen48.tap.sdk.rawRes
 import io.github.noamcohen48.tap.sdk.res
@@ -64,7 +64,7 @@ class MainScreenTest {
             assertEquals("Item 40", item.text())
 
             // Back up: UiAutomator scroll direction names the content edge you move towards.
-            val first = list.scrollUntil(rawRes("item-1"), direction = Direction.DIR_UP, maxScrolls = 30, timeout = 30.seconds)
+            val first = list.scrollUntil(rawRes("item-1"), direction = Direction.UP, maxScrolls = 30, timeout = 30.seconds)
             assertEquals("Item 1", first.text())
         }
     }
@@ -80,14 +80,14 @@ class MainScreenTest {
                 assertFailsSuspend<CommandException> {
                     device.element(ambiguous).tap()
                 }
-            assertEquals(ErrorCode.ERR_AMBIGUOUS, failure.code)
+            assertEquals(ErrorCode.AMBIGUOUS, failure.code)
             assertEquals(2, device.element(ambiguous).count())
             assertEquals("Ambiguous taps: left=0 right=0", device.element(res("ambiguous_status")).text())
 
             // A disjunction is still one selector: both buttons match, so it is just as AMBIGUOUS.
             val either = res("ambiguous_button_left") or res("ambiguous_button_right")
             assertEquals(2, device.element(either).count())
-            assertEquals(ErrorCode.ERR_AMBIGUOUS, assertFailsSuspend<CommandException> { device.element(either).tap() }.code)
+            assertEquals(ErrorCode.AMBIGUOUS, assertFailsSuspend<CommandException> { device.element(either).tap() }.code)
 
             // Disambiguate by resource id (or by relation/index) instead of relaxing the invariant.
             device.element(res("ambiguous_button_right").andText("AMBIGUOUS TAP")).tap()

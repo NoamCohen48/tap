@@ -4,7 +4,7 @@ Package `tap-e2e`, importable as `tap`. Everything below is generated from the d
 type hints of `clients/python/tap_e2e`.
 
 ```python
-from tap_e2e import TapClient, res_id, text, desc, CONTAINS, DOWN, STABILITY_TREE
+from tap_e2e import TapClient, res_id, text, desc, CONTAINS, DOWN, StabilitySignal
 from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServerError
 ```
 
@@ -28,7 +28,9 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 
 ::: tap_e2e.app.App
 
-::: tap_e2e.app.ProcessIdentity
+## Values and artifacts
+
+::: tap_e2e.models
 
 ## Server and client connection
 

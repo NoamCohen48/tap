@@ -17,9 +17,8 @@ Artifacts `io.github.noamcohen48.tap:tap-client` (the SDK: `TapClient`, `TapConn
 
 | Package | Module | Contents |
 |---|---|---|
-| `io.github.noamcohen48.tap.sdk` | tap-client | `TapClient`, `TapConnection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, `ProcessIdentity`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions |
+| `io.github.noamcohen48.tap.sdk` | tap-client | `TapClient`, `TapConnection`, `Device`, `Timeouts`, `DeviceOptions`, `Element`, `ElementWait`, `App`, selector functions (`res`, `resId`, `text`, `desc`, …) and `Selector`, exceptions, and the SDK's own value types: enums (`ErrorCode`, `FailureReason`, `MatchMode`, `Direction`, `StabilitySignal`, `DeviceState`), `ElementSnapshot`, `AppProcess`, `DeviceEntry`, `ServerInfo`, and the artifacts `Screenshot`, `Hierarchy`, `DeviceInfo`, `DriverLog` |
 | `io.github.noamcohen48.tap.junit5` | tap-junit5 | `@TapTest`, `@TapDevice`, `@TapDevices`, `Devices`, `TapConfig`, `TapExtension` |
-| `io.github.noamcohen48.tap.api.v1` | tap-api (transitive) | the generated protobuf/gRPC types (`Selector`, `Command`, `ErrorCode`, `Direction`, `StabilitySignal`, …) |
 
 !!! tip
     If the link above 404s you are reading the raw Markdown: run `scripts/build-docs.sh`,

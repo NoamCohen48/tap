@@ -126,11 +126,11 @@ Consuming:
 
 ```kotlin
 repositories { maven("https://maven.pkg.github.com/NoamCohen48/tap") { credentials { … } } }
-testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")
+testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")
 ```
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
 curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.1.0/tap-0.1.0-linux-x86_64 && chmod +x tap
 ```
 

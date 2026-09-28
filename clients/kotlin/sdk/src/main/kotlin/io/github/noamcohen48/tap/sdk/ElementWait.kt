@@ -1,8 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.Command
-import io.github.noamcohen48.tap.api.v1.ElementSnapshot
-import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.WaitGone
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import kotlin.time.Duration
@@ -49,10 +48,10 @@ class ElementWait internal constructor(
     suspend fun focused(): Element = property("focused") { it.focused }
 
     /** Wait until the one matching node's text equals [expected]. */
-    suspend fun textEquals(expected: String): Element = property("text == \"$expected\"") { it.hasText() && it.text == expected }
+    suspend fun textEquals(expected: String): Element = property("text == \"$expected\"") { it.text == expected }
 
     /** Wait until the one matching node's text contains [part]. */
-    suspend fun textContains(part: String): Element = property("text containing \"$part\"") { it.hasText() && part in it.text }
+    suspend fun textContains(part: String): Element = property("text containing \"$part\"") { it.text?.contains(part) == true }
 
     /** Waits until exactly [expected] matches are visible. */
     suspend fun count(expected: Int): Element {
@@ -71,7 +70,7 @@ class ElementWait internal constructor(
     ) {
         val result = device.execute(timeout, build)
         if (!result.hasError()) return
-        if (result.error.code == ErrorCode.ERR_WAIT_TIMEOUT) {
+        if (result.error.code == ErrorCodeProto.ERR_WAIT_TIMEOUT) {
             throw WaitTimeoutException(description, device.serial, result.durationMs)
         }
         throw CommandException(result, operation, device.serial, selector.render())
@@ -88,7 +87,7 @@ class ElementWait internal constructor(
                 try {
                     element.snapshot()
                 } catch (e: CommandException) {
-                    if (e.code == ErrorCode.ERR_NOT_FOUND) {
+                    if (e.code == ErrorCode.NOT_FOUND) {
                         last = "not found"
                         return@awaitUntil false
                     }

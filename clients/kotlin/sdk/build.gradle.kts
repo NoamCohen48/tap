@@ -1,6 +1,6 @@
 /*
- * Kotlin client for the Tap host daemon. A thin layer over the generated tap.v1 stubs; it
- * contains no ADB, session or driver logic (that lives in host/) and never links host modules.
+ * Kotlin client for the Tap host daemon. A layer over the generated tap.v1 stubs that exposes
+ * only its own model types; it contains no ADB, session or driver logic (that lives in host/) and never links host modules.
  */
 plugins {
     id("tap.kotlin-jvm")
@@ -12,7 +12,11 @@ plugins {
 tapPublication { maven("tap-client", "Kotlin client for the Tap host daemon") }
 
 dependencies {
-    api(project(":contracts:api"))
+    // The generated tap.v1 types are an implementation detail (K-4): the public API is the SDK's
+    // own models. gRPC's channel type (the TapClient transport seam) and coroutines stay public.
+    implementation(project(":contracts:api"))
+    api(libs.grpc.stub)
+    api(libs.coroutines.core)
     implementation(libs.grpc.netty.shaded)
     // daemon.json parsing (port + bearer token); no serialization plugin needed.
     implementation(libs.serialization.json)

@@ -3,8 +3,6 @@ package io.github.noamcohen48.tap.sdk
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Count
-import io.github.noamcohen48.tap.api.v1.Direction
-import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.Scroll
@@ -44,13 +42,13 @@ class Element internal constructor(
 
     /** State of the one matching node at this instant (`AMBIGUOUS`/`NOT_FOUND` otherwise). */
     suspend fun snapshot(timeout: Duration? = null): ElementSnapshot =
-        run(timeout) { snapshot = Snapshot.newBuilder().setSelector(target).build() }.snapshot
+        run(timeout) { snapshot = Snapshot.newBuilder().setSelector(target).build() }.snapshot.toModel()
 
     /**
      * Raw accessibility text of the one matching node, or null when it has none. On API 26+ an
      * empty field reports its hint here; `snapshot().showingHint` says so.
      */
-    suspend fun text(timeout: Duration? = null): String? = snapshot(timeout).let { if (it.hasText()) it.text else null }
+    suspend fun text(timeout: Duration? = null): String? = snapshot(timeout).text
 
     /** `snapshot().enabled` of the one matching node. */
     suspend fun isEnabled(timeout: Duration? = null): Boolean = snapshot(timeout).enabled
@@ -123,7 +121,7 @@ class Element internal constructor(
                 Swipe
                     .newBuilder()
                     .setSelector(target)
-                    .setDirection(direction)
+                    .setDirection(direction.toProto())
                     .setDistancePercent(distancePercent)
                     .build()
         }
@@ -144,7 +142,7 @@ class Element internal constructor(
                 Scroll
                     .newBuilder()
                     .setSelector(target)
-                    .setDirection(direction)
+                    .setDirection(direction.toProto())
                     .setDistancePercent(distancePercent)
                     .build()
         }
@@ -163,7 +161,7 @@ class Element internal constructor(
      */
     suspend fun scrollUntil(
         target: Selector,
-        direction: Direction = Direction.DIR_DOWN,
+        direction: Direction = Direction.DOWN,
         maxScrolls: Int = 20,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         timeout: Duration? = null,

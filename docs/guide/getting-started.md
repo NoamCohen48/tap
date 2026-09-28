@@ -64,7 +64,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")   // brings tap-client and tap-api
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")   // brings tap-client
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 
@@ -116,7 +116,7 @@ device info and driver log under `build/tap-artifacts/<class>/<method>/`.
 ## 3. Python + pytest
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
 ```
 
 The package registers a pytest plugin. Configure the app under test in `pytest.ini` or the

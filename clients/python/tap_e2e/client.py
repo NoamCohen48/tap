@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import grpc
 
 from . import _gen as pb
+from . import _proto
 from ._gen import (
     app_pb2_grpc,
     client_connection_pb2_grpc,
@@ -41,6 +42,7 @@ from .errors import (
     TapError,
     WaitTimeoutError,
 )
+from .models import DeviceEntry, DeviceState, FailureReason, ServerInfo
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -258,29 +260,29 @@ def _map_rpc_error(error: grpc.RpcError, serial: str | None = None) -> TapError:
     code = error.code()
     details = error.details() or ""
     failure = _failure(error)
-    reason = failure.reason
+    reason = _proto.failure_reason(failure.reason)
     failed_serial = failure.serial or serial or "?"
-    if reason == pb.FAILURE_REASON_UNAUTHENTICATED:
+    if reason is FailureReason.UNAUTHENTICATED:
         return ServerError(
             code.name,
             "wrong or missing daemon token (read from daemon.json in the state dir, or "
             f"TAP_TOKEN with an explicit TAP_SERVER): {details}",
             reason,
         )
-    if reason == pb.FAILURE_REASON_NOT_OWNER:
+    if reason is FailureReason.NOT_OWNER:
         return ServerError(
             code.name,
             f"device {failed_serial} is attached by another client connection; only the "
             f"connection that attached it may use or detach it: {details}",
             reason,
         )
-    if reason == pb.FAILURE_REASON_HOST_WAIT_TIMEOUT:
+    if reason is FailureReason.HOST_WAIT_TIMEOUT:
         return WaitTimeoutError(details, failed_serial, failure.waited_ms)
-    if reason == pb.FAILURE_REASON_DEVICE_BUSY:
+    if reason is FailureReason.DEVICE_BUSY:
         return DeviceBusyError(details)
-    if reason == pb.FAILURE_REASON_DEVICE_QUARANTINED:
+    if reason is FailureReason.DEVICE_QUARANTINED:
         return DeviceQuarantinedError(failed_serial, details)
-    if reason == pb.FAILURE_REASON_APP_LIFECYCLE:
+    if reason is FailureReason.APP_LIFECYCLE:
         return AppLifecycleError(details)
     return ServerError(code.name, details, reason)
 
@@ -328,21 +330,20 @@ class TapClient:
         ``tap start`` when none is running. Never starts a server."""
         return cls(resolve_endpoint(address, token))
 
-    def info(self) -> pb.InfoResponse:
-        """Daemon version and pid, protocol version, ADB executable, state dir, and whether the
-        daemon carries a driver to install (``driver_available``)."""
+    def info(self) -> ServerInfo:
+        """Daemon version and pid, protocol version, ADB executable, state dir, whether the
+        daemon carries a driver to install (``driver_available``) and its default timeouts."""
         with mapped_errors():
-            return self.client_connections.Info(pb.InfoRequest(), timeout=10)
+            return _proto.server_info(self.client_connections.Info(pb.InfoRequest(), timeout=10))
 
-    def devices(self) -> list[pb.DeviceEntry]:
+    def devices(self) -> list[DeviceEntry]:
         """Every device ADB lists, with its state (``FREE``, ``LEASED``, ``QUARANTINED``,
         ``OFFLINE``, ``UNAUTHORIZED``); only ``FREE`` and ``LEASED`` devices can be attached."""
         with mapped_errors():
-            return list(
-                self.device_stub.ListDevices(
-                    pb.ListDevicesRequest(), timeout=30
-                ).devices
-            )
+            return [
+                _proto.device_entry(entry)
+                for entry in self.device_stub.ListDevices(pb.ListDevicesRequest(), timeout=30).devices
+            ]
 
     def connect(
         self, name: str, first_event_timeout: float = FIRST_EVENT_TIMEOUT
@@ -471,9 +472,9 @@ class TapConnection:
         devices = [
             d
             for d in self.client.devices()
-            if d.state in (pb.DEVICE_FREE, pb.DEVICE_LEASED)
+            if d.state in (DeviceState.FREE, DeviceState.LEASED)
         ]
-        devices.sort(key=lambda d: d.state != pb.DEVICE_FREE)
+        devices.sort(key=lambda d: d.state is not DeviceState.FREE)
         return [d.serial for d in devices]
 
     def attach_device(self, serial: str, aut_package: str, **options) -> Device:

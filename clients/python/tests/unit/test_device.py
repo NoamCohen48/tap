@@ -51,13 +51,13 @@ def test_only_wait_timeout_becomes_wait_timeout_error(fake, device, wait):
         _fail_with(fake, code)
         with pytest.raises(CommandError) as info:
             wait(device)
-        assert info.value.code == ErrorCode(code)
+        assert info.value.code.name == pb.ErrorCode.Name(code).removeprefix("ERR_")
 
 
 def test_zero_timeout_is_not_replaced_by_the_default(fake, device):
-    device.execute(0, device_info=pb.DeviceInfoQuery())
+    device._execute(0, device_info=pb.DeviceInfoQuery())
     device.dump_hierarchy(timeout=0)
-    device.execute(None, device_info=pb.DeviceInfoQuery())
+    device._execute(None, device_info=pb.DeviceInfoQuery())
     assert [c.timeout_ms for c in fake.devices.commands] == [0, 0, 10_000]
 
 
@@ -112,10 +112,12 @@ def test_permission_denied_names_the_foreign_connection(fake, device):
         fake.devices.deny = False
 
 
-def test_screenshot_is_checked_and_written_client_side(fake, device, tmp_path):
+def test_screenshot_is_checked_client_side_and_saves(fake, device, tmp_path):
     target = tmp_path / "shots" / "a.png"
-    assert device.screenshot(write_to=target) == fake.devices.png
-    assert target.read_bytes() == fake.devices.png
+    shot = device.screenshot()
+    assert shot.bytes == fake.devices.png
+    assert shot.media_type == "image/png"
+    assert shot.save(target).read_bytes() == fake.devices.png
     fake.devices.corrupt_png = True
     with pytest.raises(TapError, match="checksum"):
         device.screenshot()
@@ -162,7 +164,7 @@ def test_scroll_until_scrolls_until_the_target_exists_in_the_container(fake, dev
     in_list = raw_res("list").descendant(text("row 40"))
     assert lst.scroll_until(text("row 40")).selector == in_list
     assert [op.WhichOneof("op") for op in ops] == ["exists", "scroll"] * 3 + ["exists"]
-    assert all(op.exists.selector == in_list.proto for op in ops if op.HasField("exists"))
+    assert all(op.exists.selector == in_list._proto for op in ops if op.HasField("exists"))
     assert all(op.scroll.direction == pb.DIR_DOWN for op in ops if op.HasField("scroll"))
     # A picked container cannot be carried into a relation: the bare target is used.
     assert lst.first().scroll_until(text("row 40")).selector == text("row 40")
@@ -212,4 +214,4 @@ def test_scroll_until_propagates_a_failing_step(fake, device):
     _fail_with(fake, pb.ERR_NOT_FOUND)
     with pytest.raises(CommandError) as info:
         device.element(raw_res("list")).scroll_until(text("row 40"))
-    assert info.value.code == ErrorCode(pb.ERR_NOT_FOUND)
+    assert info.value.code is ErrorCode.NOT_FOUND

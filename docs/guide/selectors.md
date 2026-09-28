@@ -40,8 +40,8 @@ whose every action resolves the selector again on the device, so there is nothin
 | `className(value)` | `class_name(value)` | widget class name |
 | `clickable()`, `scrollable()` | `clickable()`, `scrollable()` | any node with that property |
 
-`text`, `desc`, `hint` and `className` take a match mode (`MATCH_EXACT`, `MATCH_CONTAINS`,
-`MATCH_STARTS_WITH`, `MATCH_ENDS_WITH`, `MATCH_REGEX`; in Python `EXACT`, `CONTAINS`, …).
+`text`, `desc`, `hint` and `className` take a `MatchMode` (`EXACT`, `CONTAINS`, `STARTS_WITH`,
+`ENDS_WITH`, `REGEX`; Python also exports them as plain constants).
 Regexes are RE2: linear-time, no backreferences or lookaround, and an invalid pattern is
 rejected before it reaches the device.
 

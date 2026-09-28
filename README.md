@@ -67,7 +67,7 @@ in-flight RPC. `DeviceBarrier(parties)` coordinates genuinely simultaneous phase
 propagation still uses the observing device's UI condition, not a barrier.
 
 - `device.element(selector)` is lazy; every action resolves the selector again on the device
-  and requires exactly one match (`CommandException` with `ERR_AMBIGUOUS`/`ERR_NOT_FOUND`
+  and requires exactly one match (`CommandException` with `AMBIGUOUS`/`NOT_FOUND`
   otherwise). Use `resId`, `rawRes` (Compose `testTag`), `text*`, `desc`, `hint`,
   `className`, refinements (`.clickable()`, `.andText(...)`), relations
   (`.hasDescendant(...)`, `.child(...)`) and `.first()`/`.at(n)`.

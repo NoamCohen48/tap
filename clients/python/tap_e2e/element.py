@@ -8,16 +8,19 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
+from . import _proto
 from .errors import CommandError, WaitTimeoutError
+from .models import Direction, ElementSnapshot, ErrorCode
 from .selectors import Selector
 
 if TYPE_CHECKING:
     from .device import Device
 
-DOWN = pb.DIR_DOWN
-UP = pb.DIR_UP
-LEFT = pb.DIR_LEFT
-RIGHT = pb.DIR_RIGHT
+# Module-level shorthands for the directions: ``element.scroll(DOWN)``.
+DOWN = Direction.DOWN
+UP = Direction.UP
+LEFT = Direction.LEFT
+RIGHT = Direction.RIGHT
 DEFAULT_GESTURE_PERCENT = 80
 
 
@@ -34,11 +37,11 @@ class Element:
         self.selector = selector
 
     def _run(self, timeout: float | None, **op) -> pb.CommandResult:
-        return self.device.execute_or_raise(timeout, self.selector, **op)
+        return self.device._execute_or_raise(timeout, self.selector, **op)
 
     @property
     def _target(self) -> pb.Selector:
-        return self.selector.proto
+        return self.selector._proto
 
     # --- queries ----------------------------------------------------------------------------------
 
@@ -50,15 +53,16 @@ class Element:
         """Matches in the selector's scope right now, ignoring its match limit."""
         return self._run(timeout, count=pb.Count(selector=self._target)).count
 
-    def snapshot(self, timeout: float | None = None) -> pb.ElementSnapshot:
+    def snapshot(self, timeout: float | None = None) -> ElementSnapshot:
         """State of the one matching node at this instant (AMBIGUOUS/NOT_FOUND otherwise)."""
-        return self._run(timeout, snapshot=pb.Snapshot(selector=self._target)).snapshot
+        return _proto.element_snapshot(
+            self._run(timeout, snapshot=pb.Snapshot(selector=self._target)).snapshot
+        )
 
     def text(self, timeout: float | None = None) -> str | None:
         """Raw accessibility text of the one matching node, or None when it has none. On API 26+
         an empty field reports its hint here; ``snapshot().showing_hint`` says so."""
-        snapshot = self.snapshot(timeout)
-        return snapshot.text if snapshot.HasField("text") else None
+        return self.snapshot(timeout).text
 
     def is_enabled(self, timeout: float | None = None) -> bool:
         """``snapshot().enabled`` of the one matching node."""
@@ -108,7 +112,7 @@ class Element:
 
     def swipe(
         self,
-        direction: pb.Direction,
+        direction: Direction,
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
     ) -> None:
@@ -117,14 +121,14 @@ class Element:
             timeout,
             swipe=pb.Swipe(
                 selector=self._target,
-                direction=direction,
+                direction=_proto.direction(direction),
                 distance_percent=distance_percent,
             ),
         )
 
     def scroll(
         self,
-        direction: pb.Direction,
+        direction: Direction,
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
     ) -> None:
@@ -135,7 +139,7 @@ class Element:
             timeout,
             scroll=pb.Scroll(
                 selector=self._target,
-                direction=direction,
+                direction=_proto.direction(direction),
                 distance_percent=distance_percent,
             ),
         )
@@ -143,7 +147,7 @@ class Element:
     def scroll_until(
         self,
         target: Selector,
-        direction: pb.Direction = DOWN,
+        direction: Direction = DOWN,
         max_scrolls: int = 20,
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
@@ -225,7 +229,7 @@ class ElementWait:
         """Wait until at least one node matches; polled on the device in one RPC."""
         self._device_wait(
             f"{self.selector.render()} to be visible",
-            wait_visible=pb.WaitVisible(selector=self.selector.proto),
+            wait_visible=pb.WaitVisible(selector=self.selector._proto),
         )
         return Element(self.device, self.selector)
 
@@ -233,7 +237,7 @@ class ElementWait:
         """Wait until no node matches; polled on the device in one RPC."""
         self._device_wait(
             f"{self.selector.render()} to be gone",
-            wait_gone=pb.WaitGone(selector=self.selector.proto),
+            wait_gone=pb.WaitGone(selector=self.selector._proto),
         )
 
     def enabled(self) -> Element:
@@ -259,13 +263,13 @@ class ElementWait:
     def text_equals(self, expected: str) -> Element:
         """Wait until the one matching node's text equals ``expected``."""
         return self._property(
-            f'text == "{expected}"', lambda s: s.HasField("text") and s.text == expected
+            f'text == "{expected}"', lambda s: s.text == expected
         )
 
     def text_contains(self, part: str) -> Element:
         """Wait until the one matching node's text contains ``part``."""
         return self._property(
-            f'text containing "{part}"', lambda s: s.HasField("text") and part in s.text
+            f'text containing "{part}"', lambda s: s.text is not None and part in s.text
         )
 
     def count(self, expected: int) -> Element:
@@ -286,16 +290,16 @@ class ElementWait:
         return element
 
     def _device_wait(self, description: str, **op) -> None:
-        result = self.device.execute(self.timeout, **op)
+        result = self.device._execute(self.timeout, **op)
         if not result.HasField("error"):
             return
         if result.error.code == pb.ERR_WAIT_TIMEOUT:
             raise WaitTimeoutError(description, self.device.serial, result.duration_ms)
         (name,) = op
-        raise CommandError(result, name, self.device.serial, self.selector.render())
+        raise CommandError._from_result(result, name, self.device.serial, self.selector.render())
 
     def _property(
-        self, description: str, predicate: Callable[[pb.ElementSnapshot], bool]
+        self, description: str, predicate: Callable[[ElementSnapshot], bool]
     ) -> Element:
         element = Element(self.device, self.selector)
         last: dict[str, str | None] = {"seen": None}
@@ -304,7 +308,7 @@ class ElementWait:
             try:
                 snapshot = element.snapshot()
             except CommandError as error:
-                if error.code.name == "NOT_FOUND":
+                if error.code is ErrorCode.NOT_FOUND:
                     last["seen"] = "not found"
                     return False
                 raise

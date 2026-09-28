@@ -16,6 +16,8 @@ dependencies {
     compileOnly(libs.junit.platform.launcher)
 
     testImplementation(kotlin("test"))
+    // Fake daemons in the tests implement the generated services.
+    testImplementation(project(":contracts:api"))
     testImplementation(libs.coroutines.test)
     testImplementation(libs.grpc.inprocess)
     testImplementation(libs.junit.jupiter)

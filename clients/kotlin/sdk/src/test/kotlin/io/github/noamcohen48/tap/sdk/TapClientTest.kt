@@ -538,7 +538,7 @@ class TapClientTest {
         waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitAppVisible() }.let { assertIs<WaitTimeoutException>(it) }
         waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.awaitAppVisible() }.let {
             assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY, it.code)
+            assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), it.code)
         }
     }
 
@@ -547,7 +547,7 @@ class TapClientTest {
         waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitScreenStable() }.let { assertIs<WaitTimeoutException>(it) }
         waitMapping(ErrorCode.ERR_TRANSPORT_LOST) { it.awaitScreenStable() }.let {
             assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_TRANSPORT_LOST, it.code)
+            assertEquals(ErrorCode.ERR_TRANSPORT_LOST.toModel(), it.code)
         }
     }
 
@@ -556,7 +556,7 @@ class TapClientTest {
         val scroll: suspend (Device) -> Unit = { it.element(rawRes("list")).scrollUntil(text("row 40")) }
         waitMapping(ErrorCode.ERR_NOT_FOUND, scroll).let {
             assertIs<CommandException>(it)
-            assertEquals(ErrorCode.ERR_NOT_FOUND, it.code)
+            assertEquals(ErrorCode.ERR_NOT_FOUND.toModel(), it.code)
         }
     }
 
@@ -1151,7 +1151,7 @@ class TapClientTest {
                         app.grantPermission("android.permission.CAMERA")
                         app.launch(".Main", timeout = 7.seconds)
                         app.launch()
-                        assertEquals(ProcessIdentity(4242, "token"), app.coldLaunch(timeout = 9.seconds))
+                        assertEquals(AppProcess(4242, "token"), app.coldLaunch(timeout = 9.seconds))
                         val refused = assertFailsWith<ServerException> { app.grantPermission("android.permission.NOPE") }
                         assertEquals("FAILED_PRECONDITION", refused.status)
                     }

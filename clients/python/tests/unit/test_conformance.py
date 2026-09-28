@@ -82,8 +82,8 @@ def test_failures_map_by_reason(case):
     assert type(error) is RAISES[case["raises"]]
     if isinstance(error, ServerError):
         assert error.code == case["status"]
-        assert error.reason == pb.FailureReason.Value(
-            case.get("reason", "FAILURE_REASON_UNSPECIFIED")
+        assert error.reason.name == case.get("reason", "FAILURE_REASON_UNSPECIFIED").removeprefix(
+            "FAILURE_REASON_"
         )
     if isinstance(error, WaitTimeoutError):
         assert error.serial == case["serial"]

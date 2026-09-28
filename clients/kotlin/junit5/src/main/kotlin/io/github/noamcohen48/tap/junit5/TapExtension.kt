@@ -330,10 +330,10 @@ class TapExtension :
                 launch {
                     withTimeoutOrNull(ARTIFACT_BUDGET_MS) {
                         val prefix = "$role-${device.serial}"
-                        capture(dir.resolve("$prefix.png")) { device.screenshot() }
-                        capture(dir.resolve("$prefix.xml")) { device.dumpHierarchy().toByteArray() }
-                        capture(dir.resolve("$prefix.device-info.txt")) { device.info().toString().toByteArray() }
-                        capture(dir.resolve("$prefix.driver.log")) { device.driverLog().joinToString("\n").toByteArray() }
+                        capture(dir.resolve("$prefix.png")) { device.screenshot().bytes }
+                        capture(dir.resolve("$prefix.xml")) { device.dumpHierarchy().bytes }
+                        capture(dir.resolve("$prefix.device-info.json")) { device.info().bytes }
+                        capture(dir.resolve("$prefix.driver.log")) { device.driverLog().bytes }
                     }
                 }
             }

@@ -182,12 +182,15 @@ tap/
 |   |   +-- sdk/                 :clients:kotlin:sdk — public Kotlin API (package io.github.noamcohen48.tap.sdk)
 |   |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/sdk/
 |   |   |       +-- TapClient.kt         TapClient (channel, stubs, devices, connect), TapConnection (observe/availableSerials/attachDevice), DaemonDiscovery (descriptor lookup), TapDaemonProcess (`tap start`/`tap stop`)
-|   |   |       +-- Device.kt            Device.attach(connection, serial, …), execute/element/await/app/info/pressKey/typeText/screenshot/dumpHierarchy/driverLog/awaitUntil, Timeouts, DeviceOptions
+|   |   |       +-- Device.kt            Device.attach(connection, serial, …), element/await/app/info/pressKey/typeText/screenshot/dumpHierarchy/driverLog/awaitUntil (internal execute), Timeouts, DeviceOptions
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/clearText/swipe/scroll, typeText (tap + await focused + Device.typeText) and scrollUntil (exists + scroll loop) client-side, first/at/descendant/child
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
-|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the proto Selector
-|   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (proto ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
+|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the (internal) proto Selector
+|   |   |       +-- Models.kt            SDK-owned value types: MatchMode, Direction, StabilitySignal, ErrorCode, FailureReason, DeviceState, Bounds, ElementSnapshot, AppProcess, DeviceEntry, ServerInfo/ServerDefaults
+|   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, Hierarchy, DeviceInfo, DriverLog
+|   |   |       +-- ProtoMapping.kt      internal proto <-> model mappers (enums by name after the proto prefix)
+|   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package io.github.noamcohen48.tap.junit5)
 |   |       +-- src/main/kotlin/io/github/noamcohen48/tap/junit5/
 |   |           +-- Annotations.kt       @TapTest, @TapDevice(role), @TapDevices(roles), Devices
@@ -199,8 +202,9 @@ tap/
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the daemon)
 |       +-- pyproject.toml, README.md
 |       +-- scripts/gen_stubs.py     regenerates tap_e2e/_gen from contracts/proto/*.proto; --check for CI
-|       +-- tap_e2e/_gen/            committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); the package re-exports them all
+|       +-- tap_e2e/_gen/            committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); private: the public API is models.py
 |       +-- tap_e2e/{client,device,element,app,selectors,errors}.py   TapClient/TapConnection, Device, Element/ElementWait, App, selector DSL, typed errors (mapped by failure reason)
+|       +-- tap_e2e/models.py        client-owned value types and artifacts (mirrors Models.kt + Artifacts.kt); _proto.py maps proto <-> models
 |       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, failure artifacts
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
 |

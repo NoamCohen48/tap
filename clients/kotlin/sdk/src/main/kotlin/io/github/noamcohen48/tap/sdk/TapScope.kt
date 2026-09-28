@@ -1,7 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.Failure
-import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.api.v1.FailureReason as FailureReasonProto
 import io.grpc.Metadata
 import io.grpc.Status
 import io.grpc.StatusException
@@ -88,7 +88,7 @@ internal suspend fun <T> mapped(
 /**
  * Switches on the server's `tap-failure-bin` reason; the status message is only carried along
  * for humans. A status without the trailer (a proxy, a transport failure, a cancelled call) is a
- * [ServerException] with reason `FAILURE_REASON_UNSPECIFIED`.
+ * [ServerException] with reason [FailureReason.UNSPECIFIED].
  */
 internal fun mapStatus(
     status: Status,
@@ -99,30 +99,30 @@ internal fun mapStatus(
     val failure = Status.trailersFromThrowable(cause)?.get(FAILURE_TRAILER) ?: Failure.getDefaultInstance()
     val failedSerial = failure.serial.ifEmpty { serial ?: "?" }
     return when (failure.reason) {
-        FailureReason.FAILURE_REASON_UNAUTHENTICATED -> {
+        FailureReasonProto.FAILURE_REASON_UNAUTHENTICATED -> {
             ServerException(
                 status.code.name,
                 "wrong or missing daemon token (read from daemon.json in the state dir, or " +
                     "tap.token / TAP_TOKEN with an explicit address): $details",
                 cause,
-                failure.reason,
+                failure.reason.toModel(),
             )
         }
 
-        FailureReason.FAILURE_REASON_NOT_OWNER -> {
+        FailureReasonProto.FAILURE_REASON_NOT_OWNER -> {
             ServerException(
                 status.code.name,
                 "device $failedSerial is attached by another client connection; only the connection " +
                     "that attached it may use or detach it: $details",
                 cause,
-                failure.reason,
+                failure.reason.toModel(),
             )
         }
 
-        FailureReason.FAILURE_REASON_HOST_WAIT_TIMEOUT -> WaitTimeoutException(details, failedSerial, failure.waitedMs, cause = cause)
-        FailureReason.FAILURE_REASON_DEVICE_BUSY -> DeviceBusyException(details, cause)
-        FailureReason.FAILURE_REASON_DEVICE_QUARANTINED -> DeviceQuarantinedException(failedSerial, details, cause)
-        FailureReason.FAILURE_REASON_APP_LIFECYCLE -> AppLifecycleException(details, cause)
-        else -> ServerException(status.code.name, details, cause, failure.reason)
+        FailureReasonProto.FAILURE_REASON_HOST_WAIT_TIMEOUT -> WaitTimeoutException(details, failedSerial, failure.waitedMs, cause = cause)
+        FailureReasonProto.FAILURE_REASON_DEVICE_BUSY -> DeviceBusyException(details, cause)
+        FailureReasonProto.FAILURE_REASON_DEVICE_QUARANTINED -> DeviceQuarantinedException(failedSerial, details, cause)
+        FailureReasonProto.FAILURE_REASON_APP_LIFECYCLE -> AppLifecycleException(details, cause)
+        else -> ServerException(status.code.name, details, cause, failure.reason.toModel())
     }
 }

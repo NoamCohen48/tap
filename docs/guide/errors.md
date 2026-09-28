@@ -10,7 +10,7 @@ into another:
 | `AppLifecycleException` | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
 | `DeviceBusyException` | `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
 | `DeviceQuarantinedException` | `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
-| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FAILURE_REASON_DRIVER_START_FAILED`); branch on it, not on the message |
+| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FailureReason.DRIVER_START_FAILED`); branch on it, not on the message |
 
 All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of
 course, yours.
@@ -104,8 +104,9 @@ does not cost the others their artifacts. Capture never masks the original failu
 cannot be produced (the device went away, the budget ran out) is simply missing, and the test
 still fails with its real error.
 
-The same data is available on demand: `device.screenshot()`, `device.dumpHierarchy()`,
-`device.driverLog()`, `device.info()`.
+The same data is available on demand as typed values: `device.screenshot()` (`Screenshot`),
+`device.dumpHierarchy()` (`Hierarchy`), `device.driverLog()` (`DriverLog`) and `device.info()`
+(`DeviceInfo`); see [Screenshots and dumps](actions-and-waits.md#screenshots-and-dumps).
 
 ## Reading the hierarchy dump
 

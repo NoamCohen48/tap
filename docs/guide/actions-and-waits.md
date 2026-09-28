@@ -53,8 +53,8 @@ email.setText("user@example.com")
 email.waitUntil.textEquals("user@example.com")
 ```
 
-Directions are `UP`/`DOWN`/`LEFT`/`RIGHT` (`Direction.DIR_*` in the Kotlin proto types, plain
-constants exported by both SDKs).
+Directions are the `Direction` enum, `UP`/`DOWN`/`LEFT`/`RIGHT`, in both SDKs (Python also
+exports them as plain constants).
 
 ```kotlin
 val list = device.element(res("results"))
@@ -154,11 +154,34 @@ round trip per poll.
 
 ## Screenshots and dumps
 
-- `device.screenshot()` → PNG bytes, checked against the server's SHA-256. Save them yourself
-  (`Path.writeBytes`), or in Python pass `write_to="shot.png"` to have the client write the file.
-- `device.dumpHierarchy()` → the accessibility tree as XML. Diagnostic only; lookups never use it.
-- `device.driverLog()` → the driver's own log lines for the session.
-- `device.info()` → serial, API level, model, display size.
+Each returns a typed value, not a file: keep it in memory, assert on it, attach it to a report
+or write it where you like. All four share one artifact shape: `bytes` (the serialized form),
+`mediaType` / `media_type`, `extension` and `save(path)` (creates parent directories).
+
+- `device.screenshot()` → `Screenshot`: the PNG `bytes` (checked against the server's
+  SHA-256), its `format` and its `width` / `height`.
+- `device.dumpHierarchy()` → `Hierarchy`: the accessibility tree as `xml` (a string) and as
+  UTF-8 `bytes`. Diagnostic only; lookups never use it.
+- `device.driverLog()` → `DriverLog`: the driver's recent `lines` for the session, `text`
+  joined with newlines.
+- `device.info()` → `DeviceInfo`: API level, manufacturer, model, display size and rotation,
+  and the package owning the focused window; `bytes` is JSON.
+
+=== "Kotlin"
+
+    ```kotlin
+    val shot = device.screenshot()
+    println("${shot.width}x${shot.height}")
+    shot.save(Path.of("build/shots/login.png"))
+    ```
+
+=== "Python"
+
+    ```python
+    shot = device.screenshot()
+    print(shot.width, shot.height)
+    shot.save("build/shots/login.png")
+    ```
 
 All four are captured automatically into the failure artifacts by the JUnit extension and the
 pytest plugin.

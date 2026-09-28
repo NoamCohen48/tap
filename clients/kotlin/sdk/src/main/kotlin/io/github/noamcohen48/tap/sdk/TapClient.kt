@@ -3,12 +3,9 @@ package io.github.noamcohen48.tap.sdk
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
-import io.github.noamcohen48.tap.api.v1.DeviceEntry
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.InfoRequest
-import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
@@ -97,10 +94,10 @@ class TapClient public constructor(
     internal val apps = AppServiceGrpcKt.AppServiceCoroutineStub(callChannel)
 
     /** Daemon version and pid, protocol version, ADB executable, state dir, whether a driver is available. */
-    suspend fun info(): InfoResponse =
+    suspend fun info(): ServerInfo =
         mapped {
             clientConnections.withDeadlineAfter(10, TimeUnit.SECONDS).info(InfoRequest.getDefaultInstance())
-        }
+        }.toModel()
 
     /**
      * Every device ADB lists, with its state (`FREE`, `LEASED`, `QUARANTINED`, `OFFLINE`,
@@ -112,6 +109,7 @@ class TapClient public constructor(
                 .withDeadlineAfter(30, TimeUnit.SECONDS)
                 .listDevices(ListDevicesRequest.getDefaultInstance())
                 .devicesList
+                .map { it.toModel() }
         }
 
     /**
@@ -340,8 +338,8 @@ class TapConnection internal constructor(
     suspend fun availableSerials(): List<String> =
         client
             .devices()
-            .filter { it.state == DeviceState.DEVICE_FREE || it.state == DeviceState.DEVICE_LEASED }
-            .sortedBy { it.state != DeviceState.DEVICE_FREE }
+            .filter { it.state == DeviceState.FREE || it.state == DeviceState.LEASED }
+            .sortedBy { it.state != DeviceState.FREE }
             .map { it.serial }
 
     /**

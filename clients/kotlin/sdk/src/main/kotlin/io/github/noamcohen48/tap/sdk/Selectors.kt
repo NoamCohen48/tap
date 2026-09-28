@@ -9,7 +9,6 @@ import io.github.noamcohen48.tap.api.v1.At
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
 import io.github.noamcohen48.tap.api.v1.Match
-import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Related
@@ -28,13 +27,13 @@ import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
  * focused window ([Selector.inPackage], [Selector.inAnyWindow] widen it), and mutations require
  * exactly one match.
  *
- * A [Selector] wraps the server API's own `tap.v1.Selector`, a small expression tree that the
+ * A [Selector] builds the server API's `tap.v1.Selector`, a small expression tree that the
  * server forwards to the driver unchanged, so anything built here is validated identically by
- * the server and the driver and rendered in exceptions. Building a selector performs no
+ * the server and the driver; [render] shows that tree, and exceptions quote it. Building a selector performs no
  * I/O; each terminal action resolves it again.
  */
 class Selector internal constructor(
-    val proto: SelectorProto,
+    internal val proto: SelectorProto,
 ) {
     private val node: Node get() = proto.node
 
@@ -48,25 +47,25 @@ class Selector internal constructor(
     /** Also require this text ([mode]: exact, contains, starts with, ends with, RE2 regex). */
     fun andText(
         value: String,
-        mode: MatchMode = MatchMode.MATCH_EXACT,
+        mode: MatchMode = MatchMode.EXACT,
     ): Selector = also(match(TextProperty.PROPERTY_TEXT, value, mode))
 
     /** Also require this content description. */
     fun andDesc(
         value: String,
-        mode: MatchMode = MatchMode.MATCH_EXACT,
+        mode: MatchMode = MatchMode.EXACT,
     ): Selector = also(match(TextProperty.PROPERTY_CONTENT_DESCRIPTION, value, mode))
 
     /** Also require this widget class name. */
     fun andClassName(
         value: String,
-        mode: MatchMode = MatchMode.MATCH_EXACT,
+        mode: MatchMode = MatchMode.EXACT,
     ): Selector = also(match(TextProperty.PROPERTY_CLASS_NAME, value, mode))
 
     /** Also require this hint (empty text fields). */
     fun andHint(
         value: String,
-        mode: MatchMode = MatchMode.MATCH_EXACT,
+        mode: MatchMode = MatchMode.EXACT,
     ): Selector = also(match(TextProperty.PROPERTY_HINT, value, mode))
 
     /** Also require the resource id `packageName:id/name`. */
@@ -292,7 +291,7 @@ private fun match(
                 .newBuilder()
                 .setProperty(property)
                 .setValue(value)
-                .setMode(mode),
+                .setMode(mode.toProto()),
         ).build()
 
 private fun flag(
@@ -332,22 +331,22 @@ private fun selector(node: Node): Selector = Selector(SelectorProto.newBuilder()
 /** Visible text. Compose `Text` and View `TextView`/`Button` both expose this. */
 fun text(
     value: String,
-    mode: MatchMode = MatchMode.MATCH_EXACT,
+    mode: MatchMode = MatchMode.EXACT,
 ): Selector = selector(match(TextProperty.PROPERTY_TEXT, value, mode))
 
 /** Text containing [value]. */
-fun textContains(value: String): Selector = text(value, MatchMode.MATCH_CONTAINS)
+fun textContains(value: String): Selector = text(value, MatchMode.CONTAINS)
 
 /** Text starting with [value]. */
-fun textStartsWith(value: String): Selector = text(value, MatchMode.MATCH_STARTS_WITH)
+fun textStartsWith(value: String): Selector = text(value, MatchMode.STARTS_WITH)
 
 /** Text fully matching the RE2 regular expression [re2] (linear time; no backreferences or lookaround). */
-fun textMatches(re2: String): Selector = text(re2, MatchMode.MATCH_REGEX)
+fun textMatches(re2: String): Selector = text(re2, MatchMode.REGEX)
 
 /** `contentDescription` (View) / `contentDescription` semantics (Compose). */
 fun desc(
     value: String,
-    mode: MatchMode = MatchMode.MATCH_EXACT,
+    mode: MatchMode = MatchMode.EXACT,
 ): Selector = selector(match(TextProperty.PROPERTY_CONTENT_DESCRIPTION, value, mode))
 
 /** Compose `testTag` projected through `testTagsAsResourceId`; never package-qualified. */
@@ -369,13 +368,13 @@ fun res(name: String): Selector = selector(autResource(name))
 /** Widget class name, e.g. `android.widget.EditText`. */
 fun className(
     value: String,
-    mode: MatchMode = MatchMode.MATCH_EXACT,
+    mode: MatchMode = MatchMode.EXACT,
 ): Selector = selector(match(TextProperty.PROPERTY_CLASS_NAME, value, mode))
 
 /** Hint of an empty text field (an empty `EditText` shows its hint as its text). */
 fun hint(
     value: String,
-    mode: MatchMode = MatchMode.MATCH_EXACT,
+    mode: MatchMode = MatchMode.EXACT,
 ): Selector = selector(match(TextProperty.PROPERTY_HINT, value, mode))
 
 /** Any node with the given boolean property; combine with the `and*` builders. */

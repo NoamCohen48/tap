@@ -339,10 +339,10 @@ def _capture_device(directory: pathlib.Path, role: str, device: Device) -> None:
         return min(_ARTIFACT_CALL_S, deadline - time.monotonic())
 
     steps = [
-        (f"{prefix}.png", lambda t: device.screenshot(timeout=t)),
-        (f"{prefix}.xml", lambda t: device.dump_hierarchy(timeout=t).encode()),
-        (f"{prefix}.device-info.txt", lambda t: str(device.info()).encode()),
-        (f"{prefix}.driver.log", lambda t: "\n".join(device.driver_log()).encode()),
+        (f"{prefix}.png", lambda t: device.screenshot(timeout=t).bytes),
+        (f"{prefix}.xml", lambda t: device.dump_hierarchy(timeout=t).bytes),
+        (f"{prefix}.device-info.json", lambda t: device.info().bytes),
+        (f"{prefix}.driver.log", lambda t: device.driver_log().bytes),
     ]
     for name, produce in steps:
         remaining = budget()
