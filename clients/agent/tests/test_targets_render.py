@@ -148,3 +148,11 @@ def test_diff_marks_added_and_removed():
     assert render.diff_text(unchanged) == "(no change)"
     first = ScreenSnapshot(1, (_node("e2", text="Title"),), (), 0)
     assert render.diff_text(first) == render.snapshot_text(first)
+
+
+def test_a_long_removed_list_is_counted():
+    gone = tuple(_node(f"e{i}", NodeChange.REMOVED, text=f"n{i}") for i in range(14))
+    snapshot = ScreenSnapshot(2, (_node("e99", NodeChange.ADDED, text="Home"),), gone, 0)
+    lines = render.diff_text(snapshot).splitlines()
+    assert lines[-1] == "- … and 4 more" and len(lines) == 2 + 1 + 10 + 1
+    assert len(render.diff_text(snapshot, full=True).splitlines()) == 2 + 1 + 14

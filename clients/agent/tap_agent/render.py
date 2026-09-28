@@ -13,6 +13,8 @@ DEFAULT = "default"
 ALL = "all"
 
 MAX_TEXT = 80
+# Removed nodes listed one by one; the rest are counted (leaving a screen removes all of it).
+MAX_REMOVED = 10
 
 
 def _quote(value: str) -> str:
@@ -107,5 +109,8 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
     removed = [n for n in snapshot.removed if shown(n, level)]
     if removed:
         lines.append("# removed")
-        lines.extend(f"- {node_line(n)}" for n in removed)
+        listed = removed if full else removed[:MAX_REMOVED]
+        lines.extend(f"- {node_line(n)}" for n in listed)
+        if len(listed) < len(removed):
+            lines.append(f"- … and {len(removed) - len(listed)} more")
     return "\n".join(lines) if lines else "(no change)"

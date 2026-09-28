@@ -138,7 +138,7 @@ Snapshot line format:
 
 ## Phases (one commit each)
 
-Status: 1–4 done.
+Status: 1–6 done; 7 (event log + export) open.
 
 1. Contract: this record, proto for phases 2–3 (the event-log proto comes with phase 6), docs.
 2. Held connections: daemon core + `ClientConnectionService` + unit tests.
@@ -168,6 +168,17 @@ Status: 1–4 done.
     ancestor must be at most 32 levels up (the driver's traversal walk bound).
   - The dump is parsed by a small hand parser (DTDs rejected, only predefined entities and
     character references), so the native image needs no extra metadata for it.
+
+- Phases 4–6 (2026-09-28): `tap-e2e` held connections/resume/snapshots, `clients/agent`
+  (`tap-agent` CLI + `tap-agent mcp`), 39 unit tests over the fake daemon. Device run on the
+  native daemon: a CLI session on emulator-5554 (attach --cold, snapshot, tap by ref with
+  `--settle`, an ambiguous text selector refused before input, fill, wait, a status-bar ref
+  tapped through `any_window`, an unknown ref, key back, screenshot, capture, release) and an
+  MCP stdio session on 85e49002 (attach, snapshot, tap/fill with settle, wait, screenshot as
+  image content) at the same time, each in its own session; exit 3 without a daemon. The
+  Python device suite (130) and `:samples:fixture-tests` (17) passed on both devices after it.
+  A changed text shows as `+` new ref / `-` old ref (the ref signature includes the text); a
+  diff that removes a whole screen lists 10 removed nodes and counts the rest.
 
 ## Verification
 
