@@ -95,7 +95,8 @@ async def test_a_passing_step_is_recorded_with_its_wait_and_the_header(attached,
     )
     assert recording.recorder.startswith("tap-studio ") and recording.recorded_at.seconds > 0
     assert [s.id for s in recording.steps] == ["s1"]
-    dumps(recording)  # a valid tap-recording/1 document
+    document = (await attached.get_recording(pb.GetRecordingRequest(), None)).document
+    assert document == dumps(recording) + "\n"  # the file, as the back end writes it
     second_step = await attached.perform(pb.PerformRequest(step=step(action={"command": {"press_key": {"key_code": 4}}})), None)
     assert second_step.step.id == "s2"
     assert (await attached.get_session(pb.GetSessionRequest(), None)).session.steps == 2

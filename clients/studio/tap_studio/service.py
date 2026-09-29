@@ -29,7 +29,7 @@ from tap_e2e import proto as tap
 
 from . import __version__, steps
 from ._gen import studio_pb2 as studio
-from .recording import FORMAT, RecordingError, secret_name
+from .recording import FORMAT, RecordingError, dumps, secret_name
 from .screen import DeviceWorker, FrameError
 
 CONNECTION_NAME = "tap-studio"
@@ -242,7 +242,7 @@ class Studio:
     async def get_recording(self, request: studio.GetRecordingRequest, ctx: RequestContext) -> studio.GetRecordingResponse:
         if self.recording is None or not self.recording.steps:
             raise ConnectError(Code.NOT_FOUND, "nothing recorded yet")
-        return studio.GetRecordingResponse(recording=self.recording)
+        return studio.GetRecordingResponse(recording=self.recording, document=dumps(self.recording) + "\n")
 
 
 def _new_recording(attached: studio.AttachedDevice) -> studio.Recording:

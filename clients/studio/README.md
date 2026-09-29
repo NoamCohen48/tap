@@ -5,9 +5,11 @@ daemon: see the app's screen with its elements overlaid, act on them by clicking
 you did as `tap-recording/1` JSON: element interactions (`tap res("search")`), never
 coordinates. The design is `.docs/recorder.md` in the repository.
 
-So far: the server, its access control, the recording format, the back end (attach a device,
-stream its screen, run and record steps) and the page shell. The page's screen, inspector and
-steps list arrive in the next phases. It needs a running daemon (`tap start`).
+So far: pick a device and the app under test, see its screen with the element overlay, record
+by clicking (Act, Assert and Inspect modes; text and secrets; wheel scrolls; drags swipe; Back,
+Home and app steps), inspect an element's selector candidates and properties or the screen tree,
+and export the recording. Editing steps, choosing another candidate, import and replay arrive
+next. It needs a running daemon (`tap start`).
 
 ```bash
 tap-studio              # serves on a free loopback port and opens the page
@@ -28,7 +30,10 @@ anything else (loopback hosts only, same-origin only).
   recording), `screen.py` (the per-device worker thread and the frame loop), `steps.py`
   (completing and running a step), `recording.py` (the `tap-recording/1` document); `_gen/` is
   generated.
-- `web/`: the page (React + TypeScript 7, Bun + Vite); `src/gen/` is generated. `bun run build`
+- `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, modes, the three
+  areas), `ScreenView.tsx` (frame, overlay, pointer handling), `Inspector.tsx`, `StepsPanel.tsx`
+  (steps, export), `frames.ts` (the `Frames` stream), `describe.ts` (steps and selectors as SDK
+  calls), `geometry.ts` (hit-testing), `steps.ts` (`Perform` requests); `src/gen/` is generated. `bun run build`
   writes it into `tap_studio/static/`, which the wheel ships.
 - `scripts/gen_protos.py`: regenerates both `_gen/` and `web/src/gen/` from the proto
   (`--check` verifies them; needs `bun install` in `web/` first).

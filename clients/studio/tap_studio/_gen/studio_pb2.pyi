@@ -235,10 +235,12 @@ class GetRecordingRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class GetRecordingResponse(_message.Message):
-    __slots__ = ("recording",)
+    __slots__ = ("recording", "document")
     RECORDING_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_FIELD_NUMBER: _ClassVar[int]
     recording: Recording
-    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ...) -> None: ...
+    document: str
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., document: _Optional[str] = ...) -> None: ...
 
 class Recording(_message.Message):
     __slots__ = ("format", "recorded_at", "recorder", "device", "aut_package", "secrets", "steps")

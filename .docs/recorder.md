@@ -165,7 +165,8 @@ Three areas and a top bar, dense, light and dark themes, Tap brand (ink `#17202A
   dashed, faded overlay (decision 4). Overlay filter: interactive / all nodes / off. Hover shows
   the selector that would be recorded and its match count. Nodes with no unique selector get a
   red hatched box: the app's accessibility gaps (decision 8). Below: Back, Home, the App menu
-  (cold launch, launch, force stop, clear data, grant permission), Refresh.
+  (cold launch, launch, force stop, clear data, grant permission). No Refresh: the frame loop
+  follows the screen.
 - **Inspector:** *Element* — class, `@ref`, the ranked selector candidates as a radio list (match
   count; *by row*, *by index*, *dynamic text* chips; candidates matching more than one node are
   disabled), the actions and assertions that fit the node, its properties. *Screen tree* — every
@@ -335,7 +336,7 @@ daemon
      put the next count behind a screenshot (263 → 98 ms median on 85e49002).
    - The loop resumes at once after a user call instead of after a separate post-action
      settle: frames are `moving` (new picture hash, or added/removed nodes) until the screen
-     settles, then the delay doubles from 0.25 s to 2 s; any user call resets it. It runs only
+     settles, then the delay doubles from 0.25 s to 2 s; a `Perform` resets it. It runs only
      while a page reads `Frames`.
    - The wait is always inferred (`wait_visible exactly_one` on the action's selector); a
      request that carries one is refused. Gesture distance defaults to 80 %.
@@ -348,8 +349,36 @@ daemon
    - `--session NAME` (resume a named recording) is dropped for now: the page exports and
      will import recordings (phase 5).
 4. Front end: frame + overlay + hover + click-to-act, steps list, export.
-5. Recording model: inferred waits, assert mode, candidate choice and warnings, secrets; replay
-   from the page.
+   **Done 2026-09-29.** Device picker and package, then the three areas of the demo: the screen
+   with its overlay, the inspector (element / screen tree) and the steps with export. Page tests
+   (Vitest, 36) run the whole app against a fake `StudioService` on a Connect router transport:
+   attach, tap, long tap, a node without a selector, a secret, assert mode, inspect and
+   right-click, a drag swipe, a failed and a paused step, export, Back, release. No device run
+   yet (phase 6). Settled while building it:
+   - Steps and selectors are shown as the Kotlin SDK calls they replay as
+     (`element(res("go")).tap()`, `await(res("go")).one()`), rendered from the proto by
+     `describe.ts`; the JSON is only in the export.
+   - Hit-testing is in the page: one pointer layer over the frame, boxes in percent of the
+     frame (bounds and screenshot are both in display orientation, so rotation needs nothing),
+     the smallest node under the pointer wins, then the deeper one. Act mode hits interactive
+     nodes (all nodes when the overlay shows all); Assert and Inspect hit every node.
+   - Hover does not call `Count`: every candidate is unique in its snapshot by construction
+     (phase 2), so the hover shows the selector and its ref. `Count` stays for typed selectors
+     (phase 5).
+   - Assert mode, the text popover (Set text / Type keys) and secrets came into this phase:
+     without them no useful flow can be recorded. The assertions offered are the ones that hold
+     on the node as shown (visible, exactly one, text is, enabled or disabled, checked or not,
+     focused); *gone* is not offered on a node that is on screen, since it could only time out.
+   - A drag of at least 4 % of the frame width is a swipe on the scrollable under its start, or
+     else the node under it; the wheel scrolls the scrollable under the pointer once it has been
+     quiet for 700 ms.
+   - Export shows `GetRecordingResponse.document`, the file exactly as the back end's `dumps`
+     writes it, so there is one serializer; Download names it
+     `<package>-<time>.tap-recording.json`.
+   - No Refresh button: the frame loop already follows the screen.
+   - Left for phase 5: choosing another candidate, warnings on the steps, editing, import and
+     replay.
+5. Recording model: candidate choice and warnings, step editing, import; replay from the page.
 6. Device run on the local matrix and docs (`docs/guide/`, release family).
 
 ## Verification

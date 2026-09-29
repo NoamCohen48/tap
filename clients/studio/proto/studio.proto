@@ -199,6 +199,9 @@ message GetRecordingRequest {}
 
 message GetRecordingResponse {
   Recording recording = 1;
+  // The same recording as its tap-recording/1 file (tap_studio.recording.dumps), so the page
+  // exports exactly what the back end writes and validates.
+  string document = 2;
 }
 
 // ---- tap-recording/1 ----------------------------------------------------------------------------
