@@ -16,14 +16,16 @@ one:
 
 === "Native binary"
 
-    Download `tap-<version>-linux-x86_64` or `tap-<version>-macos-aarch64` from the latest
-    `daemon/v*` [release](https://github.com/NoamCohen48/tap/releases), make it executable and
-    put it on your `PATH` as `tap`.
+    1. Download `tap-0.0.1-linux-x86_64` (Linux) or `tap-0.0.1-macos-aarch64` (macOS on Apple
+       silicon) from the [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.0.1).
+    2. Rename it to `tap` and make it executable:
 
-    ```bash
-    chmod +x tap-0.0.1-linux-x86_64 && sudo mv tap-0.0.1-linux-x86_64 /usr/local/bin/tap
-    tap version
-    ```
+        ```bash
+        mv tap-0.0.1-linux-x86_64 tap && chmod +x tap
+        ./tap version
+        ```
+
+    The examples below write `tap`; use `./tap`, or put the file in a directory on your `PATH`.
 
 === "JVM distribution"
 
@@ -198,7 +200,6 @@ that for you on the next test.
 
 ## Next
 
-- [How it works](how-it-works.md) explains client connections and attached devices.
 - [Selectors](selectors.md) and [Actions and waits](actions-and-waits.md) cover the API you
   will use in every test.
 - [Coding agents](agents.md) sets up `tap-agent`, which lets Claude Code or another agent drive

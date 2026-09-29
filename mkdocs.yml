@@ -88,7 +88,6 @@ nav:
   - Home: index.md
   - Guide:
       - Getting started: guide/getting-started.md
-      - How it works: guide/how-it-works.md
       - Selectors: guide/selectors.md
       - Actions and waits: guide/actions-and-waits.md
       - App lifecycle and sync: guide/app-lifecycle.md
@@ -103,6 +102,10 @@ nav:
       - Python client: reference/python.md
       - gRPC server API (tap.v1): reference/grpc.md
       - Releases and versions: reference/releases.md
+  - Development:
+      - development/index.md
+      - Architecture: development/architecture.md
+      - Building and testing: development/building-and-testing.md
   - Project:
       - Changelog: https://github.com/NoamCohen48/tap/blob/main/CHANGELOG.md
       - Contributing: https://github.com/NoamCohen48/tap/blob/main/CONTRIBUTING.md

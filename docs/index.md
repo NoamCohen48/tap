@@ -2,12 +2,10 @@
 
 <img src="assets/logo-lockup.svg" alt="Tap" width="200" height="64" style="display:block;margin:0 0 1rem">
 
-**Host-driven end-to-end testing for Android, in Kotlin or Python.**
+**Reliable end-to-end tests for Android apps, written in Kotlin or Python.**
 
-Tap runs your UI tests on the host and drives real Android devices and emulators through a
-small on-device driver. One `tap` server per machine owns ADB and the devices; tests written
-with JUnit 5 or pytest talk to it over gRPC. Your app is never modified: the driver is a
-separate package, so tests can force-stop, clear or reinstall the app mid-test and carry on.
+Tap lets you write UI tests for your Android app with the tools you already use, JUnit 5 or
+pytest, and run them on real phones and emulators. You don't need to change your app.
 
 === "Kotlin"
 
@@ -40,53 +38,47 @@ separate package, so tests can force-stop, clear or reinstall the app mid-test a
     ```
 
 [Get started](guide/getting-started.md){ .md-button .md-button--primary }
-[How it works](guide/how-it-works.md){ .md-button }
+[Coding agents](guide/agents.md){ .md-button }
 
 ## Why Tap
 
 <div class="grid cards" markdown>
 
--   **No stale elements**
+-   **Stable tests**
 
     ---
 
-    Every action re-resolves its selector on the device and needs exactly one match.
-    `AMBIGUOUS` or `NOT_FOUND` comes back *before* any input is injected.
+    Tap finds the element fresh for every action and refuses to guess when more than one matches.
 
--   **Waits you can see**
-
-    ---
-
-    Nothing sleeps or settles implicitly. You wait for what you mean: an element visible or
-    gone, the app in front, the screen or animations settled.
-
--   **Honest failures**
+-   **No hidden waiting**
 
     ---
 
-    A closed set of error codes with stable sub-reasons. If the connection drops after a tap was
-    accepted, the result is `INDETERMINATE`; Tap never replays it.
+    Tests wait only where you say, so they stay fast and predictable.
 
--   **Failure artifacts built in**
-
-    ---
-
-    Screenshot, accessibility hierarchy, device info and driver log for every device in a
-    failed test, captured while the session is still live.
-
--   **Multi-device tests**
+-   **Clear failures**
 
     ---
 
-    Declare roles such as `@TapDevices("sender", "receiver")` and get every device or none.
-    Device locks are shared by every test process on the machine.
+    Every failure has a specific reason, plus a screenshot and screen layout of each device.
 
--   **One engine, thin clients**
+-   **Several devices in one test**
 
     ---
 
-    ADB, sessions and the driver live in the server. Kotlin and Python are thin gRPC clients
-    of the same API, so they behave the same.
+    Test chat, calls or sharing between two phones.
+
+-   **Kotlin or Python**
+
+    ---
+
+    Both work the same way; pick the one your team knows.
+
+-   **Works with coding agents**
+
+    ---
+
+    Claude Code and other agents can drive a device, check a change, and hand you the steps as a test.
 
 </div>
 
@@ -119,20 +111,16 @@ separate package, so tests can force-stop, clear or reinstall the app mid-test a
 
     Kotlin, Python and gRPC references, generated from the source.
 
+-   **[Development](development/index.md)**
+
+    How Tap is built inside, and how to build, test and change it.
+
 </div>
 
 Coming from another tool? [Coming from Maestro or Appium](guide/coming-from.md) maps the
 concepts you already know.
 
-## Project status
-
-!!! warning "Alpha"
-
-    Tap is at **0.0.x**. The server, driver and both clients are tested on a physical API 29
-    device, an API 34 emulator and an emulator lane in CI, but any 0.x release may change the
-    API. App synchronization (`sync-sdk`, `awaitIdle`) and the agent surface (`tap-agent`,
-    held connections, snapshots, the event log) are experimental even by that standard. See
-    [Releases and versions](reference/releases.md).
+## Open source
 
 Tap is open source under the Apache License 2.0. Issues and pull requests are welcome on
 [GitHub](https://github.com/NoamCohen48/tap); see the
