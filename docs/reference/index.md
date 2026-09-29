@@ -11,9 +11,14 @@ from the code:
 
 `scripts/build-docs.sh` runs the three generators and then `mkdocs build --strict`; the
 guide pages are plain Markdown under `docs/` and can be served alone with `mkdocs serve`.
-The same script also produces a **Markdown edition** of everything (`build/docs-md/`, the
-`docs-md` CI artifact): the guide as-is, the Kotlin reference through Dokka's GFM renderer
-and the Python reference through lazydocs, for reading offline or in a repository.
+The same script also produces a **Markdown edition** of everything: the guide as-is, the
+Kotlin reference through Dokka's GFM renderer, the Python reference through lazydocs, the
+gRPC reference, the `tap-agent` README and skill, and the changelog, for reading offline, in a
+repository or by a coding agent. Every GitHub Release carries it as
+`tap-docs-<version>.zip` and `tap-docs-<version>.tar.gz`, built from the tagged commit.
+
+`tap-agent` (experimental) has no generated reference: see [Coding agents](../guide/agents.md)
+and `tap-agent --help`.
 
 The server API page is the contract every client implements. If you want a client in another
 language, that page plus the proto is all you need; the Kotlin and Python clients are ~1 000

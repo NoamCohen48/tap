@@ -4,7 +4,13 @@ Each artifact family is versioned on its own (`docs/reference/releases.md`); ent
 families they cover. Tap is in alpha: any 0.x release may change the API, and parts marked
 experimental may change in any release.
 
-## 0.0.1 — 2026-09-28 (alpha)
+## Unreleased
+
+- Licensed under Apache-2.0 (`LICENSE`; the wheels and POMs carry it).
+- Every GitHub Release carries the complete documentation as Markdown
+  (`tap-docs-<version>.zip` / `.tar.gz`).
+
+## 0.0.1 — 2026-09-29 (alpha)
 
 First release of the engine (`daemon/v0.0.1`: the `tap` server with the bundled driver, plus
 `tap-schema` / `tap-api`), the Kotlin client (`client-kotlin/v0.0.1`: `tap-client`,

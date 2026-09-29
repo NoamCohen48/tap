@@ -8,11 +8,15 @@ version = "0.0.1"
 description = "CLI and MCP server for coding agents driving Android devices through the Tap daemon"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
+license = { text = "Apache-2.0" }
 # tap-e2e: held connections, resume, screen snapshots and the event log (0.0.1, the first release).
 # mcp 2.x (the server class is mcp.server.mcpserver.MCPServer); built and tested on 2.2.0.
 dependencies = ["tap-e2e>=0.0.1", "mcp>=2.2,<3"]
-classifiers = ["Development Status :: 3 - Alpha"]
+classifiers = ["Development Status :: 3 - Alpha", "License :: OSI Approved :: Apache Software License"]
+
+[project.urls]
+Homepage = "https://github.com/NoamCohen48/tap"
+Documentation = "https://github.com/NoamCohen48/tap/tree/main/docs"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "anyio>=4"]

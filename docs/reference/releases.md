@@ -11,6 +11,10 @@ push of the tag builds and publishes that family from the tagged commit.
 | **Agent tools** (experimental) | `client-agent/vX.Y.Z` | `tap_agent-X.Y.Z-py3-none-any.whl`, sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **sync-sdk** (experimental, not released yet) | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | GitHub Packages |
 
+Every release also carries the complete documentation as Markdown (`tap-docs-X.Y.Z.zip` and
+`.tar.gz`: this guide, the Kotlin, Python and gRPC references, tap-agent and the changelog),
+built from the tagged commit.
+
 The server Maven release also carries `tap-schema` (the protobuf messages `tap-api` is built on).
 
 The server and the on-device driver are **one** artifact: the driver APKs are bundled inside

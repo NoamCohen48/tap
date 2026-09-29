@@ -1,7 +1,7 @@
 # Versioning, CI and releases
 
 Status: implemented 2026-09-19 (`.github/workflows/ci.yml`, `.github/workflows/release.yml`).
-The first release is **0.0.1 (alpha)** for every family (2026-09-28); the earlier 0.1.0–0.3.0
+The first release is **0.0.1 (alpha)** for every family (tagged 2026-09-29); the earlier 0.1.0–0.3.0
 numbers were never published and were reset to it. `sync-sdk` is experimental and is not
 tagged yet. Stability promises and the experimental list are public in
 `docs/reference/releases.md`; `CHANGELOG.md` records each release.
@@ -119,7 +119,11 @@ Pages, otherwise the artifact is the deliverable).
 ## Releases (`release.yml`, on tags)
 
 `resolve` maps the tag to a family and checks the version; then one job set per family (see
-the table above). Maven goes to this repository's GitHub Packages registry
+the table above). `docs-bundle` runs for every family: `.github/actions/build-docs` (shared
+with `docs.yml`) builds the Markdown edition from the tagged commit, and the family's release
+attaches it as `tap-docs-<version>.zip` and `.tar.gz` (guide, Kotlin/Python/gRPC references,
+tap-agent README and skill, changelog; not `.docs/`). For the Python families the bundle stays
+out of `dist/`, which the PyPI step uploads whole. Maven goes to this repository's GitHub Packages registry
 (`https://maven.pkg.github.com/NoamCohen48/tap`; readers need a token with `read:packages`
 even for public repositories). Binaries and wheels go to a GitHub Release named after the
 tag, with `SHA256SUMS` for the server. PyPI publishing is wired (trusted publishing) but off
@@ -144,8 +148,9 @@ curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.0.
 
 - Group id and packages are `io.github.noamcohen48.tap` (decided in the 2026-09-26 review, X-4);
   changing it after a release breaks every consumer.
-- License: none chosen yet (`pyproject.toml` says Proprietary, there is no `LICENSE` file).
-  Decide before the repository or the artifacts go public.
+- License: Apache-2.0 (owner's call, 2026-09-29: anyone may use, fork and contribute). `LICENSE`
+  at the root, copied into `clients/python` and `clients/agent` so the wheels carry it; the POMs
+  name it. Releases before that commit (0.0.1) carry no license file.
 - A published version is never replaced (GitHub Packages refuses a republish, PyPI never
   allows one, and a replaced GitHub Release asset breaks caches and `SHA256SUMS`): a fix is
   a new patch release. Test the pipeline with a pre-release (`X.Y.Z-rc.N`) when in doubt.
