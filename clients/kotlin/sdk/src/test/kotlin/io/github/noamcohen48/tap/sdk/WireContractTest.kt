@@ -216,6 +216,28 @@ class WireContractTest {
             }
         }
 
+    @Test
+    fun `audio start and stop preserve ownership and verify checksum`() =
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    device.startAudioRecording("playback", 12)
+                    assertEquals("conn-1", devices.audioStart?.clientConnectionId)
+                    assertEquals("playback", devices.audioStart?.source)
+                    assertEquals(12, devices.audioStart?.maxSeconds)
+                    assertEquals("opus", device.stopAudioRecording().extension)
+                    assertEquals("conn-1", devices.audioStop?.clientConnectionId)
+                    devices.corruptAudio = true
+                    assertFailsWith<IllegalStateException> { device.stopAudioRecording() }
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
     // --- Fakes ----------------------------------------------------------------------------------
 
     private class Connections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
@@ -250,6 +272,27 @@ class WireContractTest {
         @Volatile var denyExecute = false
 
         @Volatile var corruptScreenshot = false
+        @Volatile var corruptAudio = false
+        @Volatile var audioStart: io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest? = null
+        @Volatile var audioStop: io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest? = null
+
+        override suspend fun startAudioRecording(
+            request: io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest,
+        ): io.github.noamcohen48.tap.api.v1.StartAudioRecordingResponse {
+            audioStart = request
+            return io.github.noamcohen48.tap.api.v1.StartAudioRecordingResponse.getDefaultInstance()
+        }
+
+        override suspend fun stopAudioRecording(
+            request: io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest,
+        ): io.github.noamcohen48.tap.api.v1.StopAudioRecordingResponse {
+            audioStop = request
+            val bytes = byteArrayOf(1, 2, 3)
+            return io.github.noamcohen48.tap.api.v1.StopAudioRecordingResponse.newBuilder()
+                .setOpus(ByteString.copyFrom(bytes))
+                .setSha256(if (corruptAudio) "bad" else sha256Hex(bytes))
+                .build()
+        }
 
         override suspend fun attach(request: AttachRequest): AttachResponse {
             attaches.add(request)

@@ -12,6 +12,8 @@ import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
+import io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
@@ -33,6 +35,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -243,6 +246,44 @@ class Device internal constructor(
         timeout: Duration? = null,
     ) {
         executeOrThrow(timeout ?: timeouts.action) { typeText = TypeText.newBuilder().setText(value).build() }
+    }
+
+    /**
+     * Start scrcpy audio capture on this device (scrcpy must be on the server's PATH).
+     * [source] is `output` (Android 11+, mutes local device sound), `playback` (Android 13+,
+     * duplicates locally but apps may opt out), or `mic`. One active recording per attachment;
+     * [maxSeconds] is a hard 1–60 s bound. Detach discards unfinished audio.
+     */
+    suspend fun startAudioRecording(source: String = "output", maxSeconds: Int = 60) {
+        ensureTapBound("Device.startAudioRecording")
+        require(source in setOf("output", "playback", "mic")) { "Unknown audio source: $source" }
+        require(maxSeconds in 1..60) { "maxSeconds must be 1..60" }
+        admitted("Device.startAudioRecording") {
+            mapped(serial) {
+                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).startAudioRecording(
+                    StartAudioRecordingRequest.newBuilder()
+                        .setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                        .setSource(source).setMaxSeconds(maxSeconds).build(),
+                )
+            }
+        }
+    }
+
+    /** Stop the audio capture and return a checksummed Opus [AudioRecording] (up to 3 MiB). */
+    suspend fun stopAudioRecording(): AudioRecording {
+        ensureTapBound("Device.stopAudioRecording")
+        return admitted("Device.stopAudioRecording") {
+            val response = mapped(serial) {
+                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).stopAudioRecording(
+                    StopAudioRecordingRequest.newBuilder()
+                        .setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).build(),
+                )
+            }
+            val bytes = response.opus.toByteArray()
+            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            if (hash != response.sha256) throw IllegalStateException("Audio checksum mismatch for $serial")
+            AudioRecording(bytes)
+        }
     }
 
     /**

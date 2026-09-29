@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
 import io.github.noamcohen48.tap.host.SessionJournalStore
+import io.github.noamcohen48.tap.host.ScrcpyAudioRecorder
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -196,6 +197,7 @@ class AttachedDevice internal constructor(
     val driverLog: DriverLogBuffer,
     /** The owning connection's log; calls on this device are recorded into it. */
     val events: EventLog,
+    val audio: ScrcpyAudioRecorder,
 ) {
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
     internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
@@ -469,7 +471,7 @@ class TapDaemon internal constructor(
             // every owned device from the authoritative registry. Launch every cleanup without
             // awaiting so N uncooperative devices cannot add N ms.
             if (deadlineNanos != null && remainingMs(deadlineNanos) <= 0L) {
-                devices.forEach { launchDetachedCleanup(it.deviceSession, shutdownAttachedDeviceMs, "attached device ${it.id}") }
+                devices.forEach { launchDetachedCleanup(it, shutdownAttachedDeviceMs, "attached device ${it.id}") }
                 config.log("connection $id shutdown budget exhausted; ${devices.size} attached device(s) detached with cleanup launched")
                 return@withContext devices.size
             }
@@ -479,7 +481,7 @@ class TapDaemon internal constructor(
             coroutineScope {
                 devices.map { attachedDevice ->
                     async {
-                        val detail = closeDeviceBounded(attachedDevice.deviceSession, timeoutMs, "attached device ${attachedDevice.id}")
+                        val detail = closeAttachedDevice(attachedDevice, timeoutMs)
                         config.log("attached device ${attachedDevice.id} detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
                     }
                 }.awaitAll()
@@ -564,15 +566,34 @@ class TapDaemon internal constructor(
      * Best effort: process exit may cut it short; the next attachment recovers a non-terminal journal.
      */
     private fun launchDetachedCleanup(
-        device: DaemonDeviceSession,
+        device: AttachedDevice,
         timeoutMs: Long,
         label: String,
     ) {
         cleanupScope.launch {
-            val outcome = runCatching { device.close(timeoutMs.coerceAtLeast(1L)) }
-            val detail = outcome.exceptionOrNull()?.message
+            // Detached cleanup already runs in its own job; pass the full core close bound.
+            val outcome = runCatching {
+                val audioError = runCatching { device.audio.close() }.exceptionOrNull()?.message
+                val coreError = runCatching { device.deviceSession.close(timeoutMs.coerceAtLeast(1L)) }.exceptionOrNull()?.message
+                listOfNotNull(audioError, coreError).takeIf { it.isNotEmpty() }?.joinToString("; ")
+            }
+            val detail = outcome.getOrNull() ?: outcome.exceptionOrNull()?.message
             config.log("$label detached cleanup finished" + (detail?.let { " (quarantined: $it)" } ?: ""))
         }
+    }
+
+    /** Stop scrcpy before releasing this session's serial lock. An audio failure does not skip
+     * driver cleanup; both diagnostics are preserved in the detach detail. */
+    private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long): String? {
+        val started = System.nanoTime()
+        val audioError = runCatching { device.audio.close() }.exceptionOrNull()?.message
+        val elapsedMs = (System.nanoTime() - started).coerceAtLeast(0L) / 1_000_000L
+        // Audio and driver cleanup share the same device budget, rather than adding two full
+        // shutdown deadlines. Even an audio failure must not skip journal/driver close.
+        val remainingMs = (timeoutMs - elapsedMs).coerceAtLeast(1L)
+        val sessionError = closeDeviceBounded(device.deviceSession, remainingMs, "attached device ${device.id}")
+        val audioTimeout = if (elapsedMs >= timeoutMs) "AUDIO_CLEANUP_TIMEOUT: attached device ${device.id} exceeded ${timeoutMs}ms" else null
+        return listOfNotNull(audioError, audioTimeout, sessionError).takeIf { it.isNotEmpty() }?.joinToString("; ")
     }
 
     private fun deadlineAfterMs(timeoutMs: Long): Long {
@@ -679,7 +700,10 @@ class TapDaemon internal constructor(
                     null
                 } else {
                     val attachedDevice =
-                        AttachedDevice(UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events)
+                        AttachedDevice(
+                            UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events,
+                            ScrcpyAudioRecorder(serial, config.stateDir),
+                        )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     attachedDevice
                 }
@@ -705,10 +729,13 @@ class TapDaemon internal constructor(
     suspend fun attachedDevice(
         id: String,
         clientConnectionId: String,
+        requireDriver: Boolean = true,
     ): AttachedDevice {
         val found = synchronized(lifecycleLock) { attachedDevicesById[id] } ?: throw UnknownAttachedDeviceException(id)
         if (found.ownerConnectionId != clientConnectionId) throw NotOwnerException(id, clientConnectionId)
-        found.deviceSession.checkUsable()
+        // Audio lives outside the driver. Its owner may still collect a recording after TAP1
+        // transport loss; only driver-dependent calls require a usable driver connection.
+        if (requireDriver) found.deviceSession.checkUsable()
         markInUse(clientConnectionId)
         return found
     }
@@ -731,7 +758,7 @@ class TapDaemon internal constructor(
                     attachedDevicesById.remove(id)
                 } ?: throw UnknownAttachedDeviceException(id)
             markInUse(clientConnectionId)
-            val detail = closeDeviceBounded(attachedDevice.deviceSession, timeoutMs, "attached device $id")
+            val detail = closeAttachedDevice(attachedDevice, timeoutMs)
             config.log("attached device $id detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
             return@withContext detail
         }
@@ -772,7 +799,7 @@ class TapDaemon internal constructor(
                     val detachedDevices = detached.flatMap { it.attachedDevices }
                     detachedDevices.forEach { attachedDevice ->
                         launchDetachedCleanup(
-                            attachedDevice.deviceSession,
+                            attachedDevice,
                             shutdownAttachedDeviceMs,
                             "attached device ${attachedDevice.id}",
                         )

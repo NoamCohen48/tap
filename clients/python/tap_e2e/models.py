@@ -434,6 +434,25 @@ class Artifact:
         return target
 
 
+class AudioRecording(Artifact):
+    """A bounded Opus recording of device playback or microphone audio.
+
+    Returned by ``Device.stop_audio_recording()``. Capture starts only when requested;
+    ``save(path)`` writes the verified bytes without touching the device again.
+    """
+
+    media_type = "audio/ogg"
+    extension = "opus"
+
+    def __init__(self, data: builtins.bytes):
+        self._data = data
+
+    @property
+    def bytes(self) -> builtins.bytes:
+        """Encoded Opus bytes."""
+        return self._data
+
+
 class ImageFormat(enum.Enum):
     """The encoding of a ``Screenshot``'s bytes."""
 

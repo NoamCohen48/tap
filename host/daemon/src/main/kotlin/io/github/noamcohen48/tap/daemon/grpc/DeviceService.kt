@@ -3,6 +3,10 @@ package io.github.noamcohen48.tap.daemon.grpc
 import com.google.protobuf.ByteString
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
+import io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StartAudioRecordingResponse
+import io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopAudioRecordingResponse
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
@@ -27,6 +31,7 @@ import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshots
 import io.github.noamcohen48.tap.host.AdbDeviceState
+import io.github.noamcohen48.tap.host.AudioRecordingException
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
@@ -34,6 +39,7 @@ import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 
 /** Diagnostic queries left out of the event log: they read the device, they do not test it. */
 private val UNLOGGED_OPS = setOf(Command.OpCase.DEVICE_INFO, Command.OpCase.DUMP_HIERARCHY)
@@ -172,6 +178,28 @@ class DeviceService(
         reply {
             argument(request.ref.removePrefix("@").isNotBlank()) { "ref is required" }
             daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId).screen.resolve(request.ref)
+        }
+
+    override suspend fun startAudioRecording(request: StartAudioRecordingRequest): StartAudioRecordingResponse =
+        reply {
+            val source = request.source.ifBlank { "output" }
+            argument(source in setOf("output", "playback", "mic")) { "source must be output, playback, or mic" }
+            val seconds = request.maxSeconds.takeIf { it != 0 } ?: 60
+            argument(seconds in 1..60) { "max_seconds must be in 1..60" }
+            val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val api = attached.deviceSession.client.execute(Commands.deviceInfo(), Defaults.ACTION_TIMEOUT_MS).deviceInfo.apiLevel
+            if (api < 30 || (source == "playback" && api < 33)) {
+                throw AudioRecordingException("$source audio capture is unsupported on Android API $api")
+            }
+            attached.audio.start(source, seconds)
+            StartAudioRecordingResponse.getDefaultInstance()
+        }
+
+    override suspend fun stopAudioRecording(request: StopAudioRecordingRequest): StopAudioRecordingResponse =
+        reply {
+            val bytes = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false).audio.stop()
+            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            StopAudioRecordingResponse.newBuilder().setOpus(ByteString.copyFrom(bytes)).setSha256(hash).build()
         }
 
     override suspend fun driverLog(request: DriverLogRequest): DriverLogResponse =

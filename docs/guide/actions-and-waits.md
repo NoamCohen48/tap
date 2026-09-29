@@ -164,6 +164,14 @@ Each returns a typed value, not a file: keep it in memory, assert on it, attach 
 or write it where you like. All four share one artifact shape: `bytes` (the serialized form),
 `mediaType` / `media_type`, `extension` and `save(path)` (creates parent directories).
 
+- Audio: `device.startAudioRecording()` / `device.stopAudioRecording()` in Kotlin, or
+  `device.start_audio_recording()` / `device.stop_audio_recording()` in Python. The latter
+  returns an Opus `AudioRecording` artifact with `bytes` and `save(path)`. The daemon host
+  needs `scrcpy` on `PATH`; capture is explicit and limited to 60 seconds. The default
+  `output` source requires Android 11+ and redirects audio away from device speakers.
+  `playback` (Android 13+) keeps local playback but apps may opt out; `mic` records the
+  device microphone. Only one capture per attached device; detach discards an unfinished one.
+  Android 10 and earlier cannot use scrcpy audio.
 - `device.screenshot()` → `Screenshot`: the PNG `bytes` (checked against the server's
   SHA-256), its `format` and its `width` / `height`.
 - `device.dumpHierarchy()` → `Hierarchy`: the accessibility tree as `xml` (a string) and as

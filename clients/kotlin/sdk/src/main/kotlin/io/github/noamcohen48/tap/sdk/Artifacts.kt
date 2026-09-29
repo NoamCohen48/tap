@@ -28,6 +28,16 @@ interface Artifact {
     }
 }
 
+/** A bounded Opus capture returned by [Device.stopAudioRecording]. */
+class AudioRecording(override val bytes: ByteArray) : Artifact {
+    override val mediaType: String = "audio/ogg"
+    override val extension: String = "opus"
+
+    override fun equals(other: Any?): Boolean = other is AudioRecording && bytes.contentEquals(other.bytes)
+    override fun hashCode(): Int = bytes.contentHashCode()
+    override fun toString(): String = "AudioRecording(${bytes.size} bytes)"
+}
+
 /** The encoding of a [Screenshot]'s bytes. */
 enum class ImageFormat(
     val mediaType: String,

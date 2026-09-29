@@ -155,6 +155,38 @@ class ScreenshotResponse(_message.Message):
     height: int
     def __init__(self, png: _Optional[bytes] = ..., sha256: _Optional[str] = ..., width: _Optional[int] = ..., height: _Optional[int] = ...) -> None: ...
 
+class StartAudioRecordingRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "source", "max_seconds")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    MAX_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    source: str
+    max_seconds: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., source: _Optional[str] = ..., max_seconds: _Optional[int] = ...) -> None: ...
+
+class StartAudioRecordingResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class StopAudioRecordingRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ...) -> None: ...
+
+class StopAudioRecordingResponse(_message.Message):
+    __slots__ = ("opus", "sha256")
+    OPUS_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    opus: bytes
+    sha256: str
+    def __init__(self, opus: _Optional[bytes] = ..., sha256: _Optional[str] = ...) -> None: ...
+
 class DriverLogRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]

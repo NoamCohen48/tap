@@ -17,6 +17,7 @@ from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
 from .models import (
     AttachedDeviceEntry,
+    AudioRecording,
     Capture,
     DeviceInfo,
     DriverLog,
@@ -243,6 +244,44 @@ class Device:
                     f"server said {response.sha256}"
                 )
         return Screenshot._png(png)
+
+    def start_audio_recording(self, source: str = "output", max_seconds: int = 60) -> None:
+        """Start an optional scrcpy Opus capture (Android 11+, scrcpy on the server PATH).
+
+        ``output`` captures device audio but mutes its speakers; ``playback`` duplicates
+        locally on Android 13+ but the AUT may opt out; ``mic`` captures the microphone.
+        One recording per device; it ends automatically after at most 60 seconds, but call
+        ``stop_audio_recording`` to retrieve it. Detach discards an unfinished recording.
+        """
+        self._ensure_usable("start_audio_recording")
+        if source not in ("output", "playback", "mic") or not 1 <= max_seconds <= 60:
+            raise ValueError("source must be output/playback/mic and max_seconds must be 1..60")
+        with mapped_errors(self.serial):
+            self.client.device_stub.StartAudioRecording(
+                pb.StartAudioRecordingRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                    source=source,
+                    max_seconds=max_seconds,
+                ),
+                timeout=30,
+            )
+
+    def stop_audio_recording(self) -> AudioRecording:
+        """Stop the recording and return a verified, bounded Opus artifact. No implicit retry."""
+        self._ensure_usable("stop_audio_recording")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.StopAudioRecording(
+                pb.StopAudioRecordingRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                ),
+                timeout=30,
+            )
+        actual = hashlib.sha256(response.opus).hexdigest()
+        if actual != response.sha256:
+            raise TapError(f"audio recording of {self.serial} failed its checksum")
+        return AudioRecording(response.opus)
 
     def dump_hierarchy(self, timeout: float | None = None) -> Hierarchy:
         """The diagnostic accessibility ``Hierarchy``. Never used by selectors; keep it out of

@@ -22,6 +22,9 @@ service DeviceService {
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
   rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
+  // Host-managed scrcpy audio; never occupies the driver's command executor. One capture per attachment.
+  rpc StartAudioRecording(StartAudioRecordingRequest) returns (StartAudioRecordingResponse);
+  rpc StopAudioRecording(StopAudioRecordingRequest) returns (StopAudioRecordingResponse);
   // A compact, ref-addressed outline of the screen, parsed from the diagnostic hierarchy dump
   // (`.docs/agent-surface.md`). Refs name selectors the daemon synthesised, never node handles.
   rpc ScreenSnapshot(ScreenSnapshotRequest) returns (ScreenSnapshotResponse);
@@ -110,6 +113,29 @@ message ScreenshotResponse {
   string sha256 = 2;
   optional int32 width = 3;
   optional int32 height = 4;
+}
+
+// Opus, up to 60 seconds; unsupported Android versions and missing scrcpy fail explicitly.
+message StartAudioRecordingRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // "output" (default; mutes device speakers), "playback" (Android 13+, duplicated
+  // local audio; apps can opt out), or "mic" (device microphone).
+  string source = 3;
+  // Absent/zero = 60 seconds. An early Stop ends the capture before this limit.
+  int32 max_seconds = 4;
+}
+
+message StartAudioRecordingResponse {}
+
+message StopAudioRecordingRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+message StopAudioRecordingResponse {
+  bytes opus = 1; // capped at 3 MiB; never an unbounded unary artifact
+  string sha256 = 2;
 }
 
 message DriverLogRequest {
