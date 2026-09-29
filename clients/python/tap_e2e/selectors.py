@@ -298,6 +298,20 @@ class Selector:
         copy.at.index = index
         return Selector(copy)
 
+    @classmethod
+    def from_proto(cls, message: pb.Selector) -> Selector:
+        """The Selector for a ``tap.v1.Selector`` message (``tap_e2e.proto``), e.g. one a
+        ``ScreenNode`` or a stored recording holds; the message is copied."""
+        copy = pb.Selector()
+        copy.CopyFrom(message)
+        return cls(copy)
+
+    def to_proto(self) -> pb.Selector:
+        """A copy of the ``tap.v1.Selector`` message this Selector sends."""
+        copy = pb.Selector()
+        copy.CopyFrom(self._proto)
+        return copy
+
     def render(self) -> str:
         """The selector as protobuf text, exactly as the device will see it."""
         return text_format.MessageToString(self._proto, as_one_line=True)

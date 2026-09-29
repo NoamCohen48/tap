@@ -22,14 +22,15 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from tap_e2e._gen import command_pb2 as command__pb2
-from tap_e2e._gen import event_log_pb2 as event__log__pb2
-from tap_e2e._gen import failure_pb2 as failure__pb2
+from tap_e2e.proto import command_pb2 as command__pb2
+from tap_e2e.proto import device_pb2 as device__pb2
+from tap_e2e.proto import event_log_pb2 as event__log__pb2
+from tap_e2e.proto import failure_pb2 as failure__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from tap_e2e._gen import selector_pb2 as selector__pb2
+from tap_e2e.proto import selector_pb2 as selector__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cstudio.proto\x12\rtap.studio.v1\x1a\rcommand.proto\x1a\x0f\x65vent_log.proto\x1a\rfailure.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0eselector.proto\"\r\n\x0bInfoRequest\"0\n\x0cInfoResponse\x12\x10\n\x08recorder\x18\x01 \x01(\t\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\"\x15\n\x13GetRecordingRequest\"C\n\x14GetRecordingResponse\x12+\n\trecording\x18\x01 \x01(\x0b\x32\x18.tap.studio.v1.Recording\"\xd7\x01\n\tRecording\x12\x0e\n\x06\x66ormat\x18\x01 \x01(\t\x12/\n\x0brecorded_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08recorder\x18\x03 \x01(\t\x12-\n\x06\x64\x65vice\x18\x04 \x01(\x0b\x32\x1d.tap.studio.v1.RecordedDevice\x12\x13\n\x0b\x61ut_package\x18\x05 \x01(\t\x12\x0f\n\x07secrets\x18\x06 \x03(\t\x12\"\n\x05steps\x18\x07 \x03(\x0b\x32\x13.tap.studio.v1.Step\"\x90\x01\n\x0eRecordedDevice\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x16\n\tapi_level\x18\x02 \x01(\x05H\x00\x88\x01\x01\x12\x19\n\x0cmanufacturer\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x12\n\x05model\x18\x04 \x01(\tH\x02\x88\x01\x01\x42\x0c\n\n_api_levelB\x0f\n\r_manufacturerB\x08\n\x06_model\"\x88\x02\n\x04Step\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\x04note\x18\x02 \x01(\tH\x01\x88\x01\x01\x12\'\n\x07outcome\x18\x03 \x01(\x0b\x32\x16.tap.studio.v1.Outcome\x12\x1e\n\x03\x61pp\x18\n \x01(\x0b\x32\x0f.tap.v1.AppCallH\x00\x12+\n\x06\x61\x63tion\x18\x0b \x01(\x0b\x32\x19.tap.studio.v1.ActionStepH\x00\x12\'\n\x04type\x18\x0c \x01(\x0b\x32\x17.tap.studio.v1.TypeStepH\x00\x12\x31\n\tassertion\x18\r \x01(\x0b\x32\x1c.tap.studio.v1.AssertionStepH\x00\x42\x06\n\x04kindB\x07\n\x05_note\"\xa5\x01\n\nActionStep\x12 \n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x0f.tap.v1.Command\x12\x1d\n\x04wait\x18\x02 \x01(\x0b\x32\x0f.tap.v1.Command\x12\x13\n\x06secret\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x36\n\x0fselector_origin\x18\x04 \x01(\x0e\x32\x1d.tap.studio.v1.SelectorOriginB\t\n\x07_secret\"\xaa\x01\n\x08TypeStep\x12\"\n\x08selector\x18\x01 \x01(\x0b\x32\x10.tap.v1.Selector\x12\x0e\n\x04text\x18\x02 \x01(\tH\x00\x12\x10\n\x06secret\x18\x03 \x01(\tH\x00\x12\x17\n\x0fskip_focus_wait\x18\x04 \x01(\x08\x12\x36\n\x0fselector_origin\x18\x05 \x01(\x0e\x32\x1d.tap.studio.v1.SelectorOriginB\x07\n\x05input\"\xc2\x01\n\rAssertionStep\x12\"\n\x08selector\x18\x01 \x01(\x0b\x32\x10.tap.v1.Selector\x12+\n\tcondition\x18\x02 \x01(\x0e\x32\x18.tap.studio.v1.Condition\x12\x0e\n\x04text\x18\x03 \x01(\tH\x00\x12\x0f\n\x05\x63ount\x18\x04 \x01(\x05H\x00\x12\x36\n\x0fselector_origin\x18\x05 \x01(\x0e\x32\x1d.tap.studio.v1.SelectorOriginB\x07\n\x05value\"^\n\x07Outcome\x12\x13\n\x0b\x64uration_ms\x18\x01 \x01(\x05\x12\x1c\n\x05\x65rror\x18\x02 \x01(\x0b\x32\r.tap.v1.Error\x12 \n\x07\x66\x61ilure\x18\x03 \x01(\x0b\x32\x0f.tap.v1.Failure*\x8f\x01\n\x0eSelectorOrigin\x12\x1f\n\x1bSELECTOR_ORIGIN_UNSPECIFIED\x10\x00\x12\x1f\n\x1bSELECTOR_ORIGIN_SYNTHESIZED\x10\x01\x12\x1f\n\x1bSELECTOR_ORIGIN_ALTERNATIVE\x10\x02\x12\x1a\n\x16SELECTOR_ORIGIN_EDITED\x10\x03*\xa7\x02\n\tCondition\x12\x19\n\x15\x43ONDITION_UNSPECIFIED\x10\x00\x12\x15\n\x11\x43ONDITION_VISIBLE\x10\x01\x12\x11\n\rCONDITION_ONE\x10\x02\x12\x12\n\x0e\x43ONDITION_GONE\x10\x03\x12\x15\n\x11\x43ONDITION_ENABLED\x10\x04\x12\x16\n\x12\x43ONDITION_DISABLED\x10\x05\x12\x15\n\x11\x43ONDITION_CHECKED\x10\x06\x12\x17\n\x13\x43ONDITION_UNCHECKED\x10\x07\x12\x15\n\x11\x43ONDITION_FOCUSED\x10\x08\x12\x19\n\x15\x43ONDITION_TEXT_EQUALS\x10\t\x12\x1b\n\x17\x43ONDITION_TEXT_CONTAINS\x10\n\x12\x13\n\x0f\x43ONDITION_COUNT\x10\x0b\x32\xb3\x01\n\rStudioService\x12\x44\n\x04Info\x12\x1a.tap.studio.v1.InfoRequest\x1a\x1b.tap.studio.v1.InfoResponse\"\x03\x90\x02\x01\x12\\\n\x0cGetRecording\x12\".tap.studio.v1.GetRecordingRequest\x1a#.tap.studio.v1.GetRecordingResponse\"\x03\x90\x02\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cstudio.proto\x12\rtap.studio.v1\x1a\rcommand.proto\x1a\x0c\x64\x65vice.proto\x1a\x0f\x65vent_log.proto\x1a\rfailure.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0eselector.proto\"\r\n\x0bInfoRequest\"0\n\x0cInfoResponse\x12\x10\n\x08recorder\x18\x01 \x01(\t\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\"\x9c\x01\n\x0e\x41ttachedDevice\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x13\n\x0b\x61ut_package\x18\x02 \x01(\t\x12\x11\n\tapi_level\x18\x03 \x01(\x05\x12\x14\n\x0cmanufacturer\x18\x04 \x01(\t\x12\r\n\x05model\x18\x05 \x01(\t\x12\x15\n\rdisplay_width\x18\x06 \x01(\x05\x12\x16\n\x0e\x64isplay_height\x18\x07 \x01(\x05\"u\n\x07Session\x12-\n\x06\x64\x65vice\x18\x01 \x01(\x0b\x32\x1d.tap.studio.v1.AttachedDevice\x12\x11\n\trecording\x18\x02 \x01(\x08\x12\r\n\x05steps\x18\x03 \x01(\x05\x12\x19\n\x11recording_package\x18\x04 \x01(\t\"\x13\n\x11GetSessionRequest\"=\n\x12GetSessionResponse\x12\'\n\x07session\x18\x01 \x01(\x0b\x32\x16.tap.studio.v1.Session\"\x14\n\x12ListDevicesRequest\"o\n\x0c\x44\x65viceChoice\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\"\n\x05state\x18\x02 \x01(\x0e\x32\x13.tap.v1.DeviceState\x12\x10\n\x08\x61ttached\x18\x03 \x01(\x08\x12\x19\n\x11quarantine_reason\x18\x04 \x01(\t\"C\n\x13ListDevicesResponse\x12,\n\x07\x64\x65vices\x18\x01 \x03(\x0b\x32\x1b.tap.studio.v1.DeviceChoice\"4\n\rAttachRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x13\n\x0b\x61ut_package\x18\x02 \x01(\t\"9\n\x0e\x41ttachResponse\x12\'\n\x07session\x18\x01 \x01(\x0b\x32\x16.tap.studio.v1.Session\"\x10\n\x0eReleaseRequest\":\n\x0fReleaseResponse\x12\'\n\x07session\x18\x01 \x01(\x0b\x32\x16.tap.studio.v1.Session\"\x0f\n\rFramesRequest\"\xd6\x01\n\x0e\x46ramesResponse\x12\x10\n\x08sequence\x18\x01 \x01(\x03\x12,\n\x08taken_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0b\n\x03png\x18\x03 \x01(\x0c\x12\r\n\x05width\x18\x04 \x01(\x05\x12\x0e\n\x06height\x18\x05 \x01(\x05\x12\x10\n\x08rotation\x18\x06 \x01(\x05\x12\x13\n\x0bsnapshot_id\x18\x07 \x01(\x03\x12!\n\x05nodes\x18\x08 \x03(\x0b\x32\x12.tap.v1.ScreenNode\x12\x0e\n\x06moving\x18\t \x01(\x08\"2\n\x0c\x43ountRequest\x12\"\n\x08selector\x18\x01 \x01(\x0b\x32\x10.tap.v1.Selector\"\x1e\n\rCountResponse\x12\r\n\x05\x63ount\x18\x01 \x01(\x05\"_\n\x0ePerformRequest\x12!\n\x04step\x18\x01 \x01(\x0b\x32\x13.tap.studio.v1.Step\x12\x19\n\x0csecret_value\x18\x02 \x01(\tH\x00\x88\x01\x01\x42\x0f\n\r_secret_value\"W\n\x0fPerformResponse\x12!\n\x04step\x18\x01 \x01(\x0b\x32\x13.tap.studio.v1.Step\x12\x10\n\x08recorded\x18\x02 \x01(\x08\x12\x0f\n\x07message\x18\x03 \x01(\t\"(\n\x13SetRecordingRequest\x12\x11\n\trecording\x18\x01 \x01(\x08\"?\n\x14SetRecordingResponse\x12\'\n\x07session\x18\x01 \x01(\x0b\x32\x16.tap.studio.v1.Session\"\x15\n\x13NewRecordingRequest\"?\n\x14NewRecordingResponse\x12\'\n\x07session\x18\x01 \x01(\x0b\x32\x16.tap.studio.v1.Session\"\x15\n\x13GetRecordingRequest\"C\n\x14GetRecordingResponse\x12+\n\trecording\x18\x01 \x01(\x0b\x32\x18.tap.studio.v1.Recording\"\xd7\x01\n\tRecording\x12\x0e\n\x06\x66ormat\x18\x01 \x01(\t\x12/\n\x0brecorded_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08recorder\x18\x03 \x01(\t\x12-\n\x06\x64\x65vice\x18\x04 \x01(\x0b\x32\x1d.tap.studio.v1.RecordedDevice\x12\x13\n\x0b\x61ut_package\x18\x05 \x01(\t\x12\x0f\n\x07secrets\x18\x06 \x03(\t\x12\"\n\x05steps\x18\x07 \x03(\x0b\x32\x13.tap.studio.v1.Step\"\x90\x01\n\x0eRecordedDevice\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x16\n\tapi_level\x18\x02 \x01(\x05H\x00\x88\x01\x01\x12\x19\n\x0cmanufacturer\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x12\n\x05model\x18\x04 \x01(\tH\x02\x88\x01\x01\x42\x0c\n\n_api_levelB\x0f\n\r_manufacturerB\x08\n\x06_model\"\x88\x02\n\x04Step\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\x04note\x18\x02 \x01(\tH\x01\x88\x01\x01\x12\'\n\x07outcome\x18\x03 \x01(\x0b\x32\x16.tap.studio.v1.Outcome\x12\x1e\n\x03\x61pp\x18\n \x01(\x0b\x32\x0f.tap.v1.AppCallH\x00\x12+\n\x06\x61\x63tion\x18\x0b \x01(\x0b\x32\x19.tap.studio.v1.ActionStepH\x00\x12\'\n\x04type\x18\x0c \x01(\x0b\x32\x17.tap.studio.v1.TypeStepH\x00\x12\x31\n\tassertion\x18\r \x01(\x0b\x32\x1c.tap.studio.v1.AssertionStepH\x00\x42\x06\n\x04kindB\x07\n\x05_note\"\xa5\x01\n\nActionStep\x12 \n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x0f.tap.v1.Command\x12\x1d\n\x04wait\x18\x02 \x01(\x0b\x32\x0f.tap.v1.Command\x12\x13\n\x06secret\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x36\n\x0fselector_origin\x18\x04 \x01(\x0e\x32\x1d.tap.studio.v1.SelectorOriginB\t\n\x07_secret\"\xaa\x01\n\x08TypeStep\x12\"\n\x08selector\x18\x01 \x01(\x0b\x32\x10.tap.v1.Selector\x12\x0e\n\x04text\x18\x02 \x01(\tH\x00\x12\x10\n\x06secret\x18\x03 \x01(\tH\x00\x12\x17\n\x0fskip_focus_wait\x18\x04 \x01(\x08\x12\x36\n\x0fselector_origin\x18\x05 \x01(\x0e\x32\x1d.tap.studio.v1.SelectorOriginB\x07\n\x05input\"\xc2\x01\n\rAssertionStep\x12\"\n\x08selector\x18\x01 \x01(\x0b\x32\x10.tap.v1.Selector\x12+\n\tcondition\x18\x02 \x01(\x0e\x32\x18.tap.studio.v1.Condition\x12\x0e\n\x04text\x18\x03 \x01(\tH\x00\x12\x0f\n\x05\x63ount\x18\x04 \x01(\x05H\x00\x12\x36\n\x0fselector_origin\x18\x05 \x01(\x0e\x32\x1d.tap.studio.v1.SelectorOriginB\x07\n\x05value\"^\n\x07Outcome\x12\x13\n\x0b\x64uration_ms\x18\x01 \x01(\x05\x12\x1c\n\x05\x65rror\x18\x02 \x01(\x0b\x32\r.tap.v1.Error\x12 \n\x07\x66\x61ilure\x18\x03 \x01(\x0b\x32\x0f.tap.v1.Failure*\x8f\x01\n\x0eSelectorOrigin\x12\x1f\n\x1bSELECTOR_ORIGIN_UNSPECIFIED\x10\x00\x12\x1f\n\x1bSELECTOR_ORIGIN_SYNTHESIZED\x10\x01\x12\x1f\n\x1bSELECTOR_ORIGIN_ALTERNATIVE\x10\x02\x12\x1a\n\x16SELECTOR_ORIGIN_EDITED\x10\x03*\xa7\x02\n\tCondition\x12\x19\n\x15\x43ONDITION_UNSPECIFIED\x10\x00\x12\x15\n\x11\x43ONDITION_VISIBLE\x10\x01\x12\x11\n\rCONDITION_ONE\x10\x02\x12\x12\n\x0e\x43ONDITION_GONE\x10\x03\x12\x15\n\x11\x43ONDITION_ENABLED\x10\x04\x12\x16\n\x12\x43ONDITION_DISABLED\x10\x05\x12\x15\n\x11\x43ONDITION_CHECKED\x10\x06\x12\x17\n\x13\x43ONDITION_UNCHECKED\x10\x07\x12\x15\n\x11\x43ONDITION_FOCUSED\x10\x08\x12\x19\n\x15\x43ONDITION_TEXT_EQUALS\x10\t\x12\x1b\n\x17\x43ONDITION_TEXT_CONTAINS\x10\n\x12\x13\n\x0f\x43ONDITION_COUNT\x10\x0b\x32\x8a\x07\n\rStudioService\x12\x44\n\x04Info\x12\x1a.tap.studio.v1.InfoRequest\x1a\x1b.tap.studio.v1.InfoResponse\"\x03\x90\x02\x01\x12V\n\nGetSession\x12 .tap.studio.v1.GetSessionRequest\x1a!.tap.studio.v1.GetSessionResponse\"\x03\x90\x02\x01\x12Y\n\x0bListDevices\x12!.tap.studio.v1.ListDevicesRequest\x1a\".tap.studio.v1.ListDevicesResponse\"\x03\x90\x02\x01\x12\x45\n\x06\x41ttach\x12\x1c.tap.studio.v1.AttachRequest\x1a\x1d.tap.studio.v1.AttachResponse\x12H\n\x07Release\x12\x1d.tap.studio.v1.ReleaseRequest\x1a\x1e.tap.studio.v1.ReleaseResponse\x12L\n\x06\x46rames\x12\x1c.tap.studio.v1.FramesRequest\x1a\x1d.tap.studio.v1.FramesResponse\"\x03\x90\x02\x01\x30\x01\x12G\n\x05\x43ount\x12\x1b.tap.studio.v1.CountRequest\x1a\x1c.tap.studio.v1.CountResponse\"\x03\x90\x02\x01\x12H\n\x07Perform\x12\x1d.tap.studio.v1.PerformRequest\x1a\x1e.tap.studio.v1.PerformResponse\x12W\n\x0cSetRecording\x12\".tap.studio.v1.SetRecordingRequest\x1a#.tap.studio.v1.SetRecordingResponse\x12W\n\x0cNewRecording\x12\".tap.studio.v1.NewRecordingRequest\x1a#.tap.studio.v1.NewRecordingResponse\x12\\\n\x0cGetRecording\x12\".tap.studio.v1.GetRecordingRequest\x1a#.tap.studio.v1.GetRecordingResponse\"\x03\x90\x02\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,34 +39,84 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_STUDIOSERVICE'].methods_by_name['Info']._loaded_options = None
   _globals['_STUDIOSERVICE'].methods_by_name['Info']._serialized_options = b'\220\002\001'
+  _globals['_STUDIOSERVICE'].methods_by_name['GetSession']._loaded_options = None
+  _globals['_STUDIOSERVICE'].methods_by_name['GetSession']._serialized_options = b'\220\002\001'
+  _globals['_STUDIOSERVICE'].methods_by_name['ListDevices']._loaded_options = None
+  _globals['_STUDIOSERVICE'].methods_by_name['ListDevices']._serialized_options = b'\220\002\001'
+  _globals['_STUDIOSERVICE'].methods_by_name['Frames']._loaded_options = None
+  _globals['_STUDIOSERVICE'].methods_by_name['Frames']._serialized_options = b'\220\002\001'
+  _globals['_STUDIOSERVICE'].methods_by_name['Count']._loaded_options = None
+  _globals['_STUDIOSERVICE'].methods_by_name['Count']._serialized_options = b'\220\002\001'
   _globals['_STUDIOSERVICE'].methods_by_name['GetRecording']._loaded_options = None
   _globals['_STUDIOSERVICE'].methods_by_name['GetRecording']._serialized_options = b'\220\002\001'
-  _globals['_SELECTORORIGIN']._serialized_start=1551
-  _globals['_SELECTORORIGIN']._serialized_end=1694
-  _globals['_CONDITION']._serialized_start=1697
-  _globals['_CONDITION']._serialized_end=1992
-  _globals['_INFOREQUEST']._serialized_start=127
-  _globals['_INFOREQUEST']._serialized_end=140
-  _globals['_INFORESPONSE']._serialized_start=142
-  _globals['_INFORESPONSE']._serialized_end=190
-  _globals['_GETRECORDINGREQUEST']._serialized_start=192
-  _globals['_GETRECORDINGREQUEST']._serialized_end=213
-  _globals['_GETRECORDINGRESPONSE']._serialized_start=215
-  _globals['_GETRECORDINGRESPONSE']._serialized_end=282
-  _globals['_RECORDING']._serialized_start=285
-  _globals['_RECORDING']._serialized_end=500
-  _globals['_RECORDEDDEVICE']._serialized_start=503
-  _globals['_RECORDEDDEVICE']._serialized_end=647
-  _globals['_STEP']._serialized_start=650
-  _globals['_STEP']._serialized_end=914
-  _globals['_ACTIONSTEP']._serialized_start=917
-  _globals['_ACTIONSTEP']._serialized_end=1082
-  _globals['_TYPESTEP']._serialized_start=1085
-  _globals['_TYPESTEP']._serialized_end=1255
-  _globals['_ASSERTIONSTEP']._serialized_start=1258
-  _globals['_ASSERTIONSTEP']._serialized_end=1452
-  _globals['_OUTCOME']._serialized_start=1454
-  _globals['_OUTCOME']._serialized_end=1548
-  _globals['_STUDIOSERVICE']._serialized_start=1995
-  _globals['_STUDIOSERVICE']._serialized_end=2174
+  _globals['_SELECTORORIGIN']._serialized_start=3021
+  _globals['_SELECTORORIGIN']._serialized_end=3164
+  _globals['_CONDITION']._serialized_start=3167
+  _globals['_CONDITION']._serialized_end=3462
+  _globals['_INFOREQUEST']._serialized_start=141
+  _globals['_INFOREQUEST']._serialized_end=154
+  _globals['_INFORESPONSE']._serialized_start=156
+  _globals['_INFORESPONSE']._serialized_end=204
+  _globals['_ATTACHEDDEVICE']._serialized_start=207
+  _globals['_ATTACHEDDEVICE']._serialized_end=363
+  _globals['_SESSION']._serialized_start=365
+  _globals['_SESSION']._serialized_end=482
+  _globals['_GETSESSIONREQUEST']._serialized_start=484
+  _globals['_GETSESSIONREQUEST']._serialized_end=503
+  _globals['_GETSESSIONRESPONSE']._serialized_start=505
+  _globals['_GETSESSIONRESPONSE']._serialized_end=566
+  _globals['_LISTDEVICESREQUEST']._serialized_start=568
+  _globals['_LISTDEVICESREQUEST']._serialized_end=588
+  _globals['_DEVICECHOICE']._serialized_start=590
+  _globals['_DEVICECHOICE']._serialized_end=701
+  _globals['_LISTDEVICESRESPONSE']._serialized_start=703
+  _globals['_LISTDEVICESRESPONSE']._serialized_end=770
+  _globals['_ATTACHREQUEST']._serialized_start=772
+  _globals['_ATTACHREQUEST']._serialized_end=824
+  _globals['_ATTACHRESPONSE']._serialized_start=826
+  _globals['_ATTACHRESPONSE']._serialized_end=883
+  _globals['_RELEASEREQUEST']._serialized_start=885
+  _globals['_RELEASEREQUEST']._serialized_end=901
+  _globals['_RELEASERESPONSE']._serialized_start=903
+  _globals['_RELEASERESPONSE']._serialized_end=961
+  _globals['_FRAMESREQUEST']._serialized_start=963
+  _globals['_FRAMESREQUEST']._serialized_end=978
+  _globals['_FRAMESRESPONSE']._serialized_start=981
+  _globals['_FRAMESRESPONSE']._serialized_end=1195
+  _globals['_COUNTREQUEST']._serialized_start=1197
+  _globals['_COUNTREQUEST']._serialized_end=1247
+  _globals['_COUNTRESPONSE']._serialized_start=1249
+  _globals['_COUNTRESPONSE']._serialized_end=1279
+  _globals['_PERFORMREQUEST']._serialized_start=1281
+  _globals['_PERFORMREQUEST']._serialized_end=1376
+  _globals['_PERFORMRESPONSE']._serialized_start=1378
+  _globals['_PERFORMRESPONSE']._serialized_end=1465
+  _globals['_SETRECORDINGREQUEST']._serialized_start=1467
+  _globals['_SETRECORDINGREQUEST']._serialized_end=1507
+  _globals['_SETRECORDINGRESPONSE']._serialized_start=1509
+  _globals['_SETRECORDINGRESPONSE']._serialized_end=1572
+  _globals['_NEWRECORDINGREQUEST']._serialized_start=1574
+  _globals['_NEWRECORDINGREQUEST']._serialized_end=1595
+  _globals['_NEWRECORDINGRESPONSE']._serialized_start=1597
+  _globals['_NEWRECORDINGRESPONSE']._serialized_end=1660
+  _globals['_GETRECORDINGREQUEST']._serialized_start=1662
+  _globals['_GETRECORDINGREQUEST']._serialized_end=1683
+  _globals['_GETRECORDINGRESPONSE']._serialized_start=1685
+  _globals['_GETRECORDINGRESPONSE']._serialized_end=1752
+  _globals['_RECORDING']._serialized_start=1755
+  _globals['_RECORDING']._serialized_end=1970
+  _globals['_RECORDEDDEVICE']._serialized_start=1973
+  _globals['_RECORDEDDEVICE']._serialized_end=2117
+  _globals['_STEP']._serialized_start=2120
+  _globals['_STEP']._serialized_end=2384
+  _globals['_ACTIONSTEP']._serialized_start=2387
+  _globals['_ACTIONSTEP']._serialized_end=2552
+  _globals['_TYPESTEP']._serialized_start=2555
+  _globals['_TYPESTEP']._serialized_end=2725
+  _globals['_ASSERTIONSTEP']._serialized_start=2728
+  _globals['_ASSERTIONSTEP']._serialized_end=2922
+  _globals['_OUTCOME']._serialized_start=2924
+  _globals['_OUTCOME']._serialized_end=3018
+  _globals['_STUDIOSERVICE']._serialized_start=3465
+  _globals['_STUDIOSERVICE']._serialized_end=4371
 # @@protoc_insertion_point(module_scope)

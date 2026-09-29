@@ -2,8 +2,9 @@
 """Regenerates the studio's code from proto/studio.proto, or verifies it is current (--check).
 
 - Python, into tap_studio/_gen: the messages (grpcio-tools' protoc) and the Connect server and
-  client (protoc-gen-connect-python). The tap.v1 imports are pointed at tap-e2e's generated modules:
-  protobuf registers each .proto file once per process, so the studio must share tap-e2e's.
+  client (protoc-gen-connect-python). The tap.v1 imports are pointed at tap-e2e's public modules
+  (tap_e2e.proto): protobuf registers each .proto file once per process, so the studio must share
+  tap-e2e's.
 - TypeScript, into web/src/gen: protobuf-es messages for studio.proto *and* the tap.v1 protos it
   imports (the page needs them typed too), with protoc-gen-es from web/node_modules (`bun install`).
 
@@ -42,7 +43,7 @@ def _python_import(match: re.Match[str]) -> str:
     module, alias = match.groups()
     if module == "studio_pb2":
         return f"from . import {module} as {alias}"
-    return f"from tap_e2e._gen import {module} as {alias}"
+    return f"from tap_e2e.proto import {module} as {alias}"
 
 
 def generate(py_out: pathlib.Path, ts_out: pathlib.Path) -> None:

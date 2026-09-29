@@ -87,14 +87,7 @@ def validate(recording: studio.Recording) -> None:
         elif step.id in ids:
             problems.append(f"{where}: id is used twice")
         ids.add(step.id)
-        kind = step.WhichOneof("kind")
-        if kind is None:
-            problems.append(f"{where}: kind is required (app, action, type or assertion)")
-        else:
-            check = {"app": _app, "action": _action, "type": _type, "assertion": _assertion}[kind]
-            problems += [f"{where}: {problem}" for problem in check(getattr(step, kind), used)]
-        if step.outcome.HasField("error") and step.outcome.HasField("failure"):
-            problems.append(f"{where}: outcome has at most one of error and failure")
+        problems += [f"{where}: {problem}" for problem in _step(step, used)]
 
     if len(set(recording.secrets)) != len(recording.secrets):
         problems.append("secrets lists a name twice")
@@ -106,6 +99,36 @@ def validate(recording: studio.Recording) -> None:
         )
     if problems:
         raise RecordingError(problems)
+
+
+def validate_step(step: studio.Step) -> None:
+    """Raises ``RecordingError`` with every rule one step breaks, apart from its id."""
+    problems = _step(step, set())
+    if problems:
+        raise RecordingError(problems)
+
+
+def secret_name(step: studio.Step) -> str | None:
+    """The secret a step types, if any."""
+    kind = step.WhichOneof("kind")
+    if kind == "action" and step.action.HasField("secret"):
+        return step.action.secret
+    if kind == "type" and step.type.WhichOneof("input") == "secret":
+        return step.type.secret
+    return None
+
+
+def _step(step: studio.Step, used: set[str]) -> list[str]:
+    problems = []
+    kind = step.WhichOneof("kind")
+    if kind is None:
+        problems.append("kind is required (app, action, type or assertion)")
+    else:
+        check = {"app": _app, "action": _action, "type": _type, "assertion": _assertion}[kind]
+        problems += check(getattr(step, kind), used)
+    if step.outcome.HasField("error") and step.outcome.HasField("failure"):
+        problems.append("outcome has at most one of error and failure")
+    return problems
 
 
 def _app(call, used: set[str]) -> list[str]:

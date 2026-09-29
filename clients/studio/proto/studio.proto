@@ -10,6 +10,7 @@ syntax = "proto3";
 package tap.studio.v1;
 
 import "command.proto";
+import "device.proto";
 import "event_log.proto";
 import "failure.proto";
 import "google/protobuf/timestamp.proto";
@@ -20,6 +21,35 @@ service StudioService {
   rpc Info(InfoRequest) returns (InfoResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // The attached device and whether steps are being recorded.
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The devices the daemon sees. UNAVAILABLE when no daemon runs (`tap start`).
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Attaches a device for an app, releasing the one attached before.
+  rpc Attach(AttachRequest) returns (AttachResponse);
+  // Releases the attached device; open frame streams end.
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+  // The attached device's screen: a frame whenever one is taken, newest only (a slow reader skips
+  // frames). Frames are taken only while a stream is open, never while a Perform or Count is
+  // waiting, fast while the screen changes and slower while it does not. Ends when the device is
+  // released; FAILED_PRECONDITION without one.
+  rpc Frames(FramesRequest) returns (stream FramesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // How many nodes a selector matches now (the inspector's live count).
+  rpc Count(CountRequest) returns (CountResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Runs one step on the attached device and, while recording, appends it when it passed.
+  rpc Perform(PerformRequest) returns (PerformResponse);
+  // Record or pause: paused, Perform still runs steps but records nothing.
+  rpc SetRecording(SetRecordingRequest) returns (SetRecordingResponse);
+  // Discards the recording and starts an empty one.
+  rpc NewRecording(NewRecordingRequest) returns (NewRecordingResponse);
   // The recording in progress. NOT_FOUND before anything is recorded.
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -33,6 +63,136 @@ message InfoResponse {
   string recorder = 1;
   // The recording format this studio writes: "tap-recording/1".
   string format = 2;
+}
+
+// ---- session ----------------------------------------------------------------------------------
+
+message AttachedDevice {
+  string serial = 1;
+  string aut_package = 2;
+  int32 api_level = 3;
+  string manufacturer = 4;
+  string model = 5;
+  int32 display_width = 6;
+  int32 display_height = 7;
+}
+
+message Session {
+  // Absent when no device is attached.
+  AttachedDevice device = 1;
+  // Whether Perform appends the steps that pass.
+  bool recording = 2;
+  // Steps in the recording.
+  int32 steps = 3;
+  // The app the recording is for once it has steps; attaching for another app is allowed, but
+  // nothing is recorded there until NewRecording.
+  string recording_package = 4;
+}
+
+message GetSessionRequest {}
+
+message GetSessionResponse {
+  Session session = 1;
+}
+
+message ListDevicesRequest {}
+
+message DeviceChoice {
+  string serial = 1;
+  // Only DEVICE_FREE and DEVICE_LEASED devices can be attached (a lease held by this studio's own
+  // connection or by another client of the same daemon).
+  tap.v1.DeviceState state = 2;
+  // Attached by this studio.
+  bool attached = 3;
+  // QUARANTINED: why.
+  string quarantine_reason = 4;
+}
+
+message ListDevicesResponse {
+  repeated DeviceChoice devices = 1;
+}
+
+message AttachRequest {
+  string serial = 1;
+  // The app under test: `aut` selectors are confined to it.
+  string aut_package = 2;
+}
+
+message AttachResponse {
+  Session session = 1;
+}
+
+message ReleaseRequest {}
+
+message ReleaseResponse {
+  Session session = 1;
+}
+
+// ---- screen -----------------------------------------------------------------------------------
+
+message FramesRequest {}
+
+// One frame: a screen snapshot and the screenshot taken right after it, so the nodes and the
+// picture show the same screen unless it was changing (`moving`).
+message FramesResponse {
+  // Increases per attached device.
+  int64 sequence = 1;
+  google.protobuf.Timestamp taken_at = 2;
+  // The screenshot, PNG.
+  bytes png = 3;
+  int32 width = 4;
+  int32 height = 5;
+  // Quarter turns, from the snapshot.
+  int32 rotation = 6;
+  // The daemon's snapshot: every node with its ref, bounds and selector candidates.
+  int64 snapshot_id = 7;
+  repeated tap.v1.ScreenNode nodes = 8;
+  // The nodes or the picture differ from the previous frame: the screen may still be changing, so
+  // the overlay is provisional.
+  bool moving = 9;
+}
+
+message CountRequest {
+  tap.v1.Selector selector = 1;
+}
+
+message CountResponse {
+  // Capped at 1000, as the driver's count.
+  int32 count = 1;
+}
+
+// ---- steps ------------------------------------------------------------------------------------
+
+message PerformRequest {
+  // The step to run. `id` and `outcome` are ignored and an action's `wait` must be absent: the
+  // studio sets the id, infers the wait (decision 6) and measures the outcome.
+  Step step = 1;
+  // The value of the step's `secret` (a secret set_text or type step, and only then): sent to the
+  // device, never written to the recording.
+  optional string secret_value = 2;
+}
+
+message PerformResponse {
+  // The step as run, with its outcome; its `id` is set when it was recorded.
+  Step step = 1;
+  // Appended to the recording: recording is on and the step passed.
+  bool recorded = 2;
+  // Why it failed, for a person; empty when it passed.
+  string message = 3;
+}
+
+message SetRecordingRequest {
+  bool recording = 1;
+}
+
+message SetRecordingResponse {
+  Session session = 1;
+}
+
+message NewRecordingRequest {}
+
+message NewRecordingResponse {
+  Session session = 1;
 }
 
 message GetRecordingRequest {}

@@ -20,6 +20,33 @@ class StudioService(Protocol):
     async def info(self, request: studio__pb2.InfoRequest, ctx: RequestContext) -> studio__pb2.InfoResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def get_session(self, request: studio__pb2.GetSessionRequest, ctx: RequestContext) -> studio__pb2.GetSessionResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def list_devices(self, request: studio__pb2.ListDevicesRequest, ctx: RequestContext) -> studio__pb2.ListDevicesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def release(self, request: studio__pb2.ReleaseRequest, ctx: RequestContext) -> studio__pb2.ReleaseResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    def frames(self, request: studio__pb2.FramesRequest, ctx: RequestContext) -> AsyncIterator[studio__pb2.FramesResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def count(self, request: studio__pb2.CountRequest, ctx: RequestContext) -> studio__pb2.CountResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def set_recording(self, request: studio__pb2.SetRecordingRequest, ctx: RequestContext) -> studio__pb2.SetRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def new_recording(self, request: studio__pb2.NewRecordingRequest, ctx: RequestContext) -> studio__pb2.NewRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def get_recording(self, request: studio__pb2.GetRecordingRequest, ctx: RequestContext) -> studio__pb2.GetRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -38,6 +65,96 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.info,
+                ),
+                "/tap.studio.v1.StudioService/GetSession": Endpoint.unary(
+                    method=MethodInfo(
+                        name="GetSession",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetSessionRequest,
+                        output=studio__pb2.GetSessionResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.get_session,
+                ),
+                "/tap.studio.v1.StudioService/ListDevices": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListDevices",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListDevicesRequest,
+                        output=studio__pb2.ListDevicesResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.list_devices,
+                ),
+                "/tap.studio.v1.StudioService/Attach": Endpoint.unary(
+                    method=MethodInfo(
+                        name="Attach",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.AttachRequest,
+                        output=studio__pb2.AttachResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.attach,
+                ),
+                "/tap.studio.v1.StudioService/Release": Endpoint.unary(
+                    method=MethodInfo(
+                        name="Release",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ReleaseRequest,
+                        output=studio__pb2.ReleaseResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.release,
+                ),
+                "/tap.studio.v1.StudioService/Frames": Endpoint.server_stream(
+                    method=MethodInfo(
+                        name="Frames",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.FramesRequest,
+                        output=studio__pb2.FramesResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.frames,
+                ),
+                "/tap.studio.v1.StudioService/Count": Endpoint.unary(
+                    method=MethodInfo(
+                        name="Count",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.CountRequest,
+                        output=studio__pb2.CountResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.count,
+                ),
+                "/tap.studio.v1.StudioService/Perform": Endpoint.unary(
+                    method=MethodInfo(
+                        name="Perform",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.PerformRequest,
+                        output=studio__pb2.PerformResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.perform,
+                ),
+                "/tap.studio.v1.StudioService/SetRecording": Endpoint.unary(
+                    method=MethodInfo(
+                        name="SetRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetRecordingRequest,
+                        output=studio__pb2.SetRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.set_recording,
+                ),
+                "/tap.studio.v1.StudioService/NewRecording": Endpoint.unary(
+                    method=MethodInfo(
+                        name="NewRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.NewRecordingRequest,
+                        output=studio__pb2.NewRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.new_recording,
                 ),
                 "/tap.studio.v1.StudioService/GetRecording": Endpoint.unary(
                     method=MethodInfo(
@@ -84,6 +201,192 @@ class StudioServiceClient(ConnectClient):
             use_get=use_get,
         )
 
+    async def get_session(
+        self,
+        request: studio__pb2.GetSessionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetSessionResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetSession",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetSessionRequest,
+                output=studio__pb2.GetSessionResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def list_devices(
+        self,
+        request: studio__pb2.ListDevicesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListDevicesResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListDevices",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListDevicesRequest,
+                output=studio__pb2.ListDevicesResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def attach(
+        self,
+        request: studio__pb2.AttachRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.AttachResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Attach",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.AttachRequest,
+                output=studio__pb2.AttachResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def release(
+        self,
+        request: studio__pb2.ReleaseRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.ReleaseResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Release",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ReleaseRequest,
+                output=studio__pb2.ReleaseResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def frames(
+        self,
+        request: studio__pb2.FramesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> AsyncIterator[studio__pb2.FramesResponse]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="Frames",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.FramesRequest,
+                output=studio__pb2.FramesResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def count(
+        self,
+        request: studio__pb2.CountRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.CountResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Count",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.CountRequest,
+                output=studio__pb2.CountResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def perform(
+        self,
+        request: studio__pb2.PerformRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.PerformResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Perform",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.PerformRequest,
+                output=studio__pb2.PerformResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def set_recording(
+        self,
+        request: studio__pb2.SetRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetRecordingResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetRecordingRequest,
+                output=studio__pb2.SetRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def new_recording(
+        self,
+        request: studio__pb2.NewRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.NewRecordingResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="NewRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.NewRecordingRequest,
+                output=studio__pb2.NewRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def get_recording(
         self,
         request: studio__pb2.GetRecordingRequest,
@@ -110,6 +413,24 @@ class StudioServiceClient(ConnectClient):
 class StudioServiceSync(Protocol):
     def info(self, request: studio__pb2.InfoRequest, ctx: RequestContext) -> studio__pb2.InfoResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def get_session(self, request: studio__pb2.GetSessionRequest, ctx: RequestContext) -> studio__pb2.GetSessionResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def list_devices(self, request: studio__pb2.ListDevicesRequest, ctx: RequestContext) -> studio__pb2.ListDevicesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def release(self, request: studio__pb2.ReleaseRequest, ctx: RequestContext) -> studio__pb2.ReleaseResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def frames(self, request: studio__pb2.FramesRequest, ctx: RequestContext) -> Iterator[studio__pb2.FramesResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def count(self, request: studio__pb2.CountRequest, ctx: RequestContext) -> studio__pb2.CountResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def set_recording(self, request: studio__pb2.SetRecordingRequest, ctx: RequestContext) -> studio__pb2.SetRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def new_recording(self, request: studio__pb2.NewRecordingRequest, ctx: RequestContext) -> studio__pb2.NewRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def get_recording(self, request: studio__pb2.GetRecordingRequest, ctx: RequestContext) -> studio__pb2.GetRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -127,6 +448,96 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.info,
+                ),
+                "/tap.studio.v1.StudioService/GetSession": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="GetSession",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetSessionRequest,
+                        output=studio__pb2.GetSessionResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.get_session,
+                ),
+                "/tap.studio.v1.StudioService/ListDevices": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListDevices",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListDevicesRequest,
+                        output=studio__pb2.ListDevicesResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.list_devices,
+                ),
+                "/tap.studio.v1.StudioService/Attach": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="Attach",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.AttachRequest,
+                        output=studio__pb2.AttachResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.attach,
+                ),
+                "/tap.studio.v1.StudioService/Release": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="Release",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ReleaseRequest,
+                        output=studio__pb2.ReleaseResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.release,
+                ),
+                "/tap.studio.v1.StudioService/Frames": EndpointSync.server_stream(
+                    method=MethodInfo(
+                        name="Frames",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.FramesRequest,
+                        output=studio__pb2.FramesResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.frames,
+                ),
+                "/tap.studio.v1.StudioService/Count": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="Count",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.CountRequest,
+                        output=studio__pb2.CountResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.count,
+                ),
+                "/tap.studio.v1.StudioService/Perform": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="Perform",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.PerformRequest,
+                        output=studio__pb2.PerformResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.perform,
+                ),
+                "/tap.studio.v1.StudioService/SetRecording": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="SetRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetRecordingRequest,
+                        output=studio__pb2.SetRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.set_recording,
+                ),
+                "/tap.studio.v1.StudioService/NewRecording": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="NewRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.NewRecordingRequest,
+                        output=studio__pb2.NewRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.new_recording,
                 ),
                 "/tap.studio.v1.StudioService/GetRecording": EndpointSync.unary(
                     method=MethodInfo(
@@ -171,6 +582,192 @@ class StudioServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def get_session(
+        self,
+        request: studio__pb2.GetSessionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetSessionResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetSession",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetSessionRequest,
+                output=studio__pb2.GetSessionResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def list_devices(
+        self,
+        request: studio__pb2.ListDevicesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListDevicesResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListDevices",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListDevicesRequest,
+                output=studio__pb2.ListDevicesResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def attach(
+        self,
+        request: studio__pb2.AttachRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.AttachResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Attach",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.AttachRequest,
+                output=studio__pb2.AttachResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def release(
+        self,
+        request: studio__pb2.ReleaseRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.ReleaseResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Release",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ReleaseRequest,
+                output=studio__pb2.ReleaseResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def frames(
+        self,
+        request: studio__pb2.FramesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> Iterator[studio__pb2.FramesResponse]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="Frames",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.FramesRequest,
+                output=studio__pb2.FramesResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def count(
+        self,
+        request: studio__pb2.CountRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.CountResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Count",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.CountRequest,
+                output=studio__pb2.CountResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def perform(
+        self,
+        request: studio__pb2.PerformRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.PerformResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Perform",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.PerformRequest,
+                output=studio__pb2.PerformResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def set_recording(
+        self,
+        request: studio__pb2.SetRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetRecordingResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetRecordingRequest,
+                output=studio__pb2.SetRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def new_recording(
+        self,
+        request: studio__pb2.NewRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.NewRecordingResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="NewRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.NewRecordingRequest,
+                output=studio__pb2.NewRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )
 
     def get_recording(

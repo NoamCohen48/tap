@@ -5,12 +5,14 @@ daemon: see the app's screen with its elements overlaid, act on them by clicking
 you did as `tap-recording/1` JSON: element interactions (`tap res("search")`), never
 coordinates. The design is `.docs/recorder.md` in the repository.
 
-This is the first cut: the server, its access control, the recording format and the page shell.
-The screen, inspector and recording arrive in the next phases.
+So far: the server, its access control, the recording format, the back end (attach a device,
+stream its screen, run and record steps) and the page shell. The page's screen, inspector and
+steps list arrive in the next phases. It needs a running daemon (`tap start`).
 
 ```bash
 tap-studio              # serves on a free loopback port and opens the page
 tap-studio --no-open    # prints the link instead
+tap-studio --serial emulator-5554 --package com.example   # also attaches the device at start
 ```
 
 The link carries a one-time launch token; the page signs in with it and the server refuses
@@ -21,7 +23,10 @@ anything else (loopback hosts only, same-origin only).
 - `proto/studio.proto`: the one contract, `tap.studio.v1`: the page's API (`StudioService`,
   served over Connect) and the `tap-recording/1` document (`Recording`). It imports `tap.v1`
   from `contracts/proto`.
-- `tap_studio/`: the Python back end (Starlette + connect-python on `tap-e2e`); `_gen/` is
+- `tap_studio/`: the Python back end (Starlette + connect-python on `tap-e2e`): `server.py`
+  (the app, login and access checks), `service.py` (`StudioService`: session, device,
+  recording), `screen.py` (the per-device worker thread and the frame loop), `steps.py`
+  (completing and running a step), `recording.py` (the `tap-recording/1` document); `_gen/` is
   generated.
 - `web/`: the page (React + TypeScript 7, Bun + Vite); `src/gen/` is generated. `bun run build`
   writes it into `tap_studio/static/`, which the wheel ships.

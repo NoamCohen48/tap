@@ -1,11 +1,12 @@
 # ruff: noqa
 import datetime
 
-from tap_e2e._gen import command_pb2 as _command_pb2
-from tap_e2e._gen import event_log_pb2 as _event_log_pb2
-from tap_e2e._gen import failure_pb2 as _failure_pb2
+from tap_e2e.proto import command_pb2 as _command_pb2
+from tap_e2e.proto import device_pb2 as _device_pb2
+from tap_e2e.proto import event_log_pb2 as _event_log_pb2
+from tap_e2e.proto import failure_pb2 as _failure_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from tap_e2e._gen import selector_pb2 as _selector_pb2
+from tap_e2e.proto import selector_pb2 as _selector_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -64,6 +65,170 @@ class InfoResponse(_message.Message):
     recorder: str
     format: str
     def __init__(self, recorder: _Optional[str] = ..., format: _Optional[str] = ...) -> None: ...
+
+class AttachedDevice(_message.Message):
+    __slots__ = ("serial", "aut_package", "api_level", "manufacturer", "model", "display_width", "display_height")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    API_LEVEL_FIELD_NUMBER: _ClassVar[int]
+    MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    aut_package: str
+    api_level: int
+    manufacturer: str
+    model: str
+    display_width: int
+    display_height: int
+    def __init__(self, serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
+
+class Session(_message.Message):
+    __slots__ = ("device", "recording", "steps", "recording_package")
+    DEVICE_FIELD_NUMBER: _ClassVar[int]
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    STEPS_FIELD_NUMBER: _ClassVar[int]
+    RECORDING_PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    device: AttachedDevice
+    recording: bool
+    steps: int
+    recording_package: str
+    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., recording_package: _Optional[str] = ...) -> None: ...
+
+class GetSessionRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetSessionResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class ListDevicesRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class DeviceChoice(_message.Message):
+    __slots__ = ("serial", "state", "attached", "quarantine_reason")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_FIELD_NUMBER: _ClassVar[int]
+    QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    state: _device_pb2.DeviceState
+    attached: bool
+    quarantine_reason: str
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[_device_pb2.DeviceState, str]] = ..., attached: _Optional[bool] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+
+class ListDevicesResponse(_message.Message):
+    __slots__ = ("devices",)
+    DEVICES_FIELD_NUMBER: _ClassVar[int]
+    devices: _containers.RepeatedCompositeFieldContainer[DeviceChoice]
+    def __init__(self, devices: _Optional[_Iterable[_Union[DeviceChoice, _Mapping]]] = ...) -> None: ...
+
+class AttachRequest(_message.Message):
+    __slots__ = ("serial", "aut_package")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    aut_package: str
+    def __init__(self, serial: _Optional[str] = ..., aut_package: _Optional[str] = ...) -> None: ...
+
+class AttachResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class ReleaseRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ReleaseResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class FramesRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class FramesResponse(_message.Message):
+    __slots__ = ("sequence", "taken_at", "png", "width", "height", "rotation", "snapshot_id", "nodes", "moving")
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    TAKEN_AT_FIELD_NUMBER: _ClassVar[int]
+    PNG_FIELD_NUMBER: _ClassVar[int]
+    WIDTH_FIELD_NUMBER: _ClassVar[int]
+    HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    ROTATION_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_ID_FIELD_NUMBER: _ClassVar[int]
+    NODES_FIELD_NUMBER: _ClassVar[int]
+    MOVING_FIELD_NUMBER: _ClassVar[int]
+    sequence: int
+    taken_at: _timestamp_pb2.Timestamp
+    png: bytes
+    width: int
+    height: int
+    rotation: int
+    snapshot_id: int
+    nodes: _containers.RepeatedCompositeFieldContainer[_device_pb2.ScreenNode]
+    moving: bool
+    def __init__(self, sequence: _Optional[int] = ..., taken_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., png: _Optional[bytes] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., rotation: _Optional[int] = ..., snapshot_id: _Optional[int] = ..., nodes: _Optional[_Iterable[_Union[_device_pb2.ScreenNode, _Mapping]]] = ..., moving: _Optional[bool] = ...) -> None: ...
+
+class CountRequest(_message.Message):
+    __slots__ = ("selector",)
+    SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    selector: _selector_pb2.Selector
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ...) -> None: ...
+
+class CountResponse(_message.Message):
+    __slots__ = ("count",)
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    count: int
+    def __init__(self, count: _Optional[int] = ...) -> None: ...
+
+class PerformRequest(_message.Message):
+    __slots__ = ("step", "secret_value")
+    STEP_FIELD_NUMBER: _ClassVar[int]
+    SECRET_VALUE_FIELD_NUMBER: _ClassVar[int]
+    step: Step
+    secret_value: str
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ...) -> None: ...
+
+class PerformResponse(_message.Message):
+    __slots__ = ("step", "recorded", "message")
+    STEP_FIELD_NUMBER: _ClassVar[int]
+    RECORDED_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    step: Step
+    recorded: bool
+    message: str
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., recorded: _Optional[bool] = ..., message: _Optional[str] = ...) -> None: ...
+
+class SetRecordingRequest(_message.Message):
+    __slots__ = ("recording",)
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    recording: bool
+    def __init__(self, recording: _Optional[bool] = ...) -> None: ...
+
+class SetRecordingResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class NewRecordingRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class NewRecordingResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
 
 class GetRecordingRequest(_message.Message):
     __slots__ = ()

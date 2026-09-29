@@ -78,8 +78,8 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
      check (other localhost ports share cookies) guard every request. The daemon's token never
      reaches the browser. `tap-e2e` is synchronous; blocking calls run in a thread pool and the
      frame loop on its own thread. The generated Python imports `tap.v1` from `tap-e2e`'s
-     generated modules (`tap_e2e._gen`), because protobuf registers each `.proto` file once per
-     process; `tap-e2e` has no public name for them yet.
+     public `tap_e2e.proto` (its generated modules), because protobuf registers each `.proto`
+     file once per process.
    - **Front end: React + TypeScript**, built with Vite, with **Bun** as package manager and
      script runner and **TypeScript 7** as the type checker; messages and the client from
      protobuf-es + Connect-Web. The built assets ship inside the wheel, so users need no Bun or
@@ -262,7 +262,7 @@ strings (proto3 JSON).
 
 ```
 tap-studio [--port N] [--no-open] [--page-origin URL]      (phase 1)
-           [--serial S] [--package P] [--session NAME]      (phase 3)
+           [--serial S --package P]                         (phase 3: attach at start)
   → prints and opens http://127.0.0.1:N/login?t=<launch token>
 
 page (React, clients/studio/web)
@@ -273,8 +273,10 @@ page (React, clients/studio/web)
 
 back end (Python, Starlette + connect-python, on tap-e2e)
   /login                              launch token → cookie
-  /tap.studio.v1.StudioService/*      Connect: Info, GetRecording (phase 1); devices, attach,
-                                      frames (server stream), act, assert, steps, replay (phase 3+)
+  /tap.studio.v1.StudioService/*      Connect: Info, GetRecording (phase 1); GetSession,
+                                      ListDevices, Attach, Release, Frames (server stream),
+                                      Count, Perform, SetRecording, NewRecording (phase 3);
+                                      replay (phase 5)
   /                                   the built page
 
 daemon
@@ -318,6 +320,30 @@ daemon
    Python client's fake daemon; per-frame cost measured on the matrix (`screen-streaming.md`;
    ask the owner before using the devices). `tap-e2e` gains a public name for its `tap.v1`
    modules and the studio stops importing `tap_e2e._gen`.
+   **Done 2026-09-29** except the device measurement (waiting for the owner's go-ahead).
+   `tap_e2e.proto` re-exports the generated modules, with `Selector.from_proto` /
+   `to_proto`. `tap_studio.service.Studio` is one observed `tap-studio` connection, at most one
+   attached device (attaching again releases the previous one) and one recording;
+   `tap_studio.screen.DeviceWorker` runs every device call on one thread per device;
+   `tap_studio.steps` completes and runs a step through the typed `tap-e2e` API (an action is
+   `wait(selector).one()` then the element call, so the device sees exactly the recorded
+   commands). Settled while building it:
+   - `Perform` and `Count` are user calls and go ahead of the frame loop; a snapshot whose
+     screenshot would come after a user call is dropped rather than paired with a later picture.
+   - The loop resumes at once after a user call instead of after a separate post-action
+     settle: frames are `moving` (new picture hash, or added/removed nodes) until the screen
+     settles, then the delay doubles from 0.25 s to 2 s; any user call resets it. It runs only
+     while a page reads `Frames`.
+   - The wait is always inferred (`wait_visible exactly_one` on the action's selector); a
+     request that carries one is refused. Gesture distance defaults to 80 %.
+   - A failed step runs and is reported but is not recorded; with recording paused, steps run
+     and are not recorded either.
+   - A recording belongs to its app: after re-attaching for another package, `Perform` is
+     refused while recording until the user pauses or starts a new recording.
+   - Secret values are held in memory only (for replay in this process); the recording keeps
+     the names.
+   - `--session NAME` (resume a named recording) is dropped for now: the page exports and
+     will import recordings (phase 5).
 4. Front end: frame + overlay + hover + click-to-act, steps list, export.
 5. Recording model: inferred waits, assert mode, candidate choice and warnings, secrets; replay
    from the page.

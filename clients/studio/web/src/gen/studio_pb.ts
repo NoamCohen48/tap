@@ -14,6 +14,8 @@ import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobu
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Command, Error } from "./command_pb";
 import { file_command } from "./command_pb";
+import type { DeviceState, ScreenNode } from "./device_pb";
+import { file_device } from "./device_pb";
 import type { AppCall } from "./event_log_pb";
 import { file_event_log } from "./event_log_pb";
 import type { Failure } from "./failure_pb";
@@ -28,7 +30,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file studio.proto.
  */
 export const file_studio: GenFile = /*@__PURE__*/
-  fileDesc("CgxzdHVkaW8ucHJvdG8SDXRhcC5zdHVkaW8udjEiDQoLSW5mb1JlcXVlc3QiMAoMSW5mb1Jlc3BvbnNlEhAKCHJlY29yZGVyGAEgASgJEg4KBmZvcm1hdBgCIAEoCSIVChNHZXRSZWNvcmRpbmdSZXF1ZXN0IkMKFEdldFJlY29yZGluZ1Jlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nItcBCglSZWNvcmRpbmcSDgoGZm9ybWF0GAEgASgJEi8KC3JlY29yZGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIQCghyZWNvcmRlchgDIAEoCRItCgZkZXZpY2UYBCABKAsyHS50YXAuc3R1ZGlvLnYxLlJlY29yZGVkRGV2aWNlEhMKC2F1dF9wYWNrYWdlGAUgASgJEg8KB3NlY3JldHMYBiADKAkSIgoFc3RlcHMYByADKAsyEy50YXAuc3R1ZGlvLnYxLlN0ZXAikAEKDlJlY29yZGVkRGV2aWNlEg4KBnNlcmlhbBgBIAEoCRIWCglhcGlfbGV2ZWwYAiABKAVIAIgBARIZCgxtYW51ZmFjdHVyZXIYAyABKAlIAYgBARISCgVtb2RlbBgEIAEoCUgCiAEBQgwKCl9hcGlfbGV2ZWxCDwoNX21hbnVmYWN0dXJlckIICgZfbW9kZWwiiAIKBFN0ZXASCgoCaWQYASABKAkSEQoEbm90ZRgCIAEoCUgBiAEBEicKB291dGNvbWUYAyABKAsyFi50YXAuc3R1ZGlvLnYxLk91dGNvbWUSHgoDYXBwGAogASgLMg8udGFwLnYxLkFwcENhbGxIABIrCgZhY3Rpb24YCyABKAsyGS50YXAuc3R1ZGlvLnYxLkFjdGlvblN0ZXBIABInCgR0eXBlGAwgASgLMhcudGFwLnN0dWRpby52MS5UeXBlU3RlcEgAEjEKCWFzc2VydGlvbhgNIAEoCzIcLnRhcC5zdHVkaW8udjEuQXNzZXJ0aW9uU3RlcEgAQgYKBGtpbmRCBwoFX25vdGUipQEKCkFjdGlvblN0ZXASIAoHY29tbWFuZBgBIAEoCzIPLnRhcC52MS5Db21tYW5kEh0KBHdhaXQYAiABKAsyDy50YXAudjEuQ29tbWFuZBITCgZzZWNyZXQYAyABKAlIAIgBARI2Cg9zZWxlY3Rvcl9vcmlnaW4YBCABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgkKB19zZWNyZXQiqgEKCFR5cGVTdGVwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEg4KBHRleHQYAiABKAlIABIQCgZzZWNyZXQYAyABKAlIABIXCg9za2lwX2ZvY3VzX3dhaXQYBCABKAgSNgoPc2VsZWN0b3Jfb3JpZ2luGAUgASgOMh0udGFwLnN0dWRpby52MS5TZWxlY3Rvck9yaWdpbkIHCgVpbnB1dCLCAQoNQXNzZXJ0aW9uU3RlcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIrCgljb25kaXRpb24YAiABKA4yGC50YXAuc3R1ZGlvLnYxLkNvbmRpdGlvbhIOCgR0ZXh0GAMgASgJSAASDwoFY291bnQYBCABKAVIABI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBXZhbHVlIl4KB091dGNvbWUSEwoLZHVyYXRpb25fbXMYASABKAUSHAoFZXJyb3IYAiABKAsyDS50YXAudjEuRXJyb3ISIAoHZmFpbHVyZRgDIAEoCzIPLnRhcC52MS5GYWlsdXJlKo8BCg5TZWxlY3Rvck9yaWdpbhIfChtTRUxFQ1RPUl9PUklHSU5fVU5TUEVDSUZJRUQQABIfChtTRUxFQ1RPUl9PUklHSU5fU1lOVEhFU0laRUQQARIfChtTRUxFQ1RPUl9PUklHSU5fQUxURVJOQVRJVkUQAhIaChZTRUxFQ1RPUl9PUklHSU5fRURJVEVEEAMqpwIKCUNvbmRpdGlvbhIZChVDT05ESVRJT05fVU5TUEVDSUZJRUQQABIVChFDT05ESVRJT05fVklTSUJMRRABEhEKDUNPTkRJVElPTl9PTkUQAhISCg5DT05ESVRJT05fR09ORRADEhUKEUNPTkRJVElPTl9FTkFCTEVEEAQSFgoSQ09ORElUSU9OX0RJU0FCTEVEEAUSFQoRQ09ORElUSU9OX0NIRUNLRUQQBhIXChNDT05ESVRJT05fVU5DSEVDS0VEEAcSFQoRQ09ORElUSU9OX0ZPQ1VTRUQQCBIZChVDT05ESVRJT05fVEVYVF9FUVVBTFMQCRIbChdDT05ESVRJT05fVEVYVF9DT05UQUlOUxAKEhMKD0NPTkRJVElPTl9DT1VOVBALMrMBCg1TdHVkaW9TZXJ2aWNlEkQKBEluZm8SGi50YXAuc3R1ZGlvLnYxLkluZm9SZXF1ZXN0GhsudGFwLnN0dWRpby52MS5JbmZvUmVzcG9uc2UiA5ACARJcCgxHZXRSZWNvcmRpbmcSIi50YXAuc3R1ZGlvLnYxLkdldFJlY29yZGluZ1JlcXVlc3QaIy50YXAuc3R1ZGlvLnYxLkdldFJlY29yZGluZ1Jlc3BvbnNlIgOQAgFiBnByb3RvMw", [file_command, file_event_log, file_failure, file_google_protobuf_timestamp, file_selector]);
+  fileDesc("CgxzdHVkaW8ucHJvdG8SDXRhcC5zdHVkaW8udjEiDQoLSW5mb1JlcXVlc3QiMAoMSW5mb1Jlc3BvbnNlEhAKCHJlY29yZGVyGAEgASgJEg4KBmZvcm1hdBgCIAEoCSKcAQoOQXR0YWNoZWREZXZpY2USDgoGc2VyaWFsGAEgASgJEhMKC2F1dF9wYWNrYWdlGAIgASgJEhEKCWFwaV9sZXZlbBgDIAEoBRIUCgxtYW51ZmFjdHVyZXIYBCABKAkSDQoFbW9kZWwYBSABKAkSFQoNZGlzcGxheV93aWR0aBgGIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgHIAEoBSJ1CgdTZXNzaW9uEi0KBmRldmljZRgBIAEoCzIdLnRhcC5zdHVkaW8udjEuQXR0YWNoZWREZXZpY2USEQoJcmVjb3JkaW5nGAIgASgIEg0KBXN0ZXBzGAMgASgFEhkKEXJlY29yZGluZ19wYWNrYWdlGAQgASgJIhMKEUdldFNlc3Npb25SZXF1ZXN0Ij0KEkdldFNlc3Npb25SZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCJvCgxEZXZpY2VDaG9pY2USDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEhAKCGF0dGFjaGVkGAMgASgIEhkKEXF1YXJhbnRpbmVfcmVhc29uGAQgASgJIkMKE0xpc3REZXZpY2VzUmVzcG9uc2USLAoHZGV2aWNlcxgBIAMoCzIbLnRhcC5zdHVkaW8udjEuRGV2aWNlQ2hvaWNlIjQKDUF0dGFjaFJlcXVlc3QSDgoGc2VyaWFsGAEgASgJEhMKC2F1dF9wYWNrYWdlGAIgASgJIjkKDkF0dGFjaFJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iEAoOUmVsZWFzZVJlcXVlc3QiOgoPUmVsZWFzZVJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iDwoNRnJhbWVzUmVxdWVzdCLWAQoORnJhbWVzUmVzcG9uc2USEAoIc2VxdWVuY2UYASABKAMSLAoIdGFrZW5fYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3BuZxgDIAEoDBINCgV3aWR0aBgEIAEoBRIOCgZoZWlnaHQYBSABKAUSEAoIcm90YXRpb24YBiABKAUSEwoLc25hcHNob3RfaWQYByABKAMSIQoFbm9kZXMYCCADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIOCgZtb3ZpbmcYCSABKAgiMgoMQ291bnRSZXF1ZXN0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIh4KDUNvdW50UmVzcG9uc2USDQoFY291bnQYASABKAUiXwoOUGVyZm9ybVJlcXVlc3QSIQoEc3RlcBgBIAEoCzITLnRhcC5zdHVkaW8udjEuU3RlcBIZCgxzZWNyZXRfdmFsdWUYAiABKAlIAIgBAUIPCg1fc2VjcmV0X3ZhbHVlIlcKD1BlcmZvcm1SZXNwb25zZRIhCgRzdGVwGAEgASgLMhMudGFwLnN0dWRpby52MS5TdGVwEhAKCHJlY29yZGVkGAIgASgIEg8KB21lc3NhZ2UYAyABKAkiKAoTU2V0UmVjb3JkaW5nUmVxdWVzdBIRCglyZWNvcmRpbmcYASABKAgiPwoUU2V0UmVjb3JkaW5nUmVzcG9uc2USJwoHc2Vzc2lvbhgBIAEoCzIWLnRhcC5zdHVkaW8udjEuU2Vzc2lvbiIVChNOZXdSZWNvcmRpbmdSZXF1ZXN0Ij8KFE5ld1JlY29yZGluZ1Jlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iFQoTR2V0UmVjb3JkaW5nUmVxdWVzdCJDChRHZXRSZWNvcmRpbmdSZXNwb25zZRIrCglyZWNvcmRpbmcYASABKAsyGC50YXAuc3R1ZGlvLnYxLlJlY29yZGluZyLXAQoJUmVjb3JkaW5nEg4KBmZvcm1hdBgBIAEoCRIvCgtyZWNvcmRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEAoIcmVjb3JkZXIYAyABKAkSLQoGZGV2aWNlGAQgASgLMh0udGFwLnN0dWRpby52MS5SZWNvcmRlZERldmljZRITCgthdXRfcGFja2FnZRgFIAEoCRIPCgdzZWNyZXRzGAYgAygJEiIKBXN0ZXBzGAcgAygLMhMudGFwLnN0dWRpby52MS5TdGVwIpABCg5SZWNvcmRlZERldmljZRIOCgZzZXJpYWwYASABKAkSFgoJYXBpX2xldmVsGAIgASgFSACIAQESGQoMbWFudWZhY3R1cmVyGAMgASgJSAGIAQESEgoFbW9kZWwYBCABKAlIAogBAUIMCgpfYXBpX2xldmVsQg8KDV9tYW51ZmFjdHVyZXJCCAoGX21vZGVsIogCCgRTdGVwEgoKAmlkGAEgASgJEhEKBG5vdGUYAiABKAlIAYgBARInCgdvdXRjb21lGAMgASgLMhYudGFwLnN0dWRpby52MS5PdXRjb21lEh4KA2FwcBgKIAEoCzIPLnRhcC52MS5BcHBDYWxsSAASKwoGYWN0aW9uGAsgASgLMhkudGFwLnN0dWRpby52MS5BY3Rpb25TdGVwSAASJwoEdHlwZRgMIAEoCzIXLnRhcC5zdHVkaW8udjEuVHlwZVN0ZXBIABIxCglhc3NlcnRpb24YDSABKAsyHC50YXAuc3R1ZGlvLnYxLkFzc2VydGlvblN0ZXBIAEIGCgRraW5kQgcKBV9ub3RlIqUBCgpBY3Rpb25TdGVwEiAKB2NvbW1hbmQYASABKAsyDy50YXAudjEuQ29tbWFuZBIdCgR3YWl0GAIgASgLMg8udGFwLnYxLkNvbW1hbmQSEwoGc2VjcmV0GAMgASgJSACIAQESNgoPc2VsZWN0b3Jfb3JpZ2luGAQgASgOMh0udGFwLnN0dWRpby52MS5TZWxlY3Rvck9yaWdpbkIJCgdfc2VjcmV0IqoBCghUeXBlU3RlcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIOCgR0ZXh0GAIgASgJSAASEAoGc2VjcmV0GAMgASgJSAASFwoPc2tpcF9mb2N1c193YWl0GAQgASgIEjYKD3NlbGVjdG9yX29yaWdpbhgFIAEoDjIdLnRhcC5zdHVkaW8udjEuU2VsZWN0b3JPcmlnaW5CBwoFaW5wdXQiwgEKDUFzc2VydGlvblN0ZXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISKwoJY29uZGl0aW9uGAIgASgOMhgudGFwLnN0dWRpby52MS5Db25kaXRpb24SDgoEdGV4dBgDIAEoCUgAEg8KBWNvdW50GAQgASgFSAASNgoPc2VsZWN0b3Jfb3JpZ2luGAUgASgOMh0udGFwLnN0dWRpby52MS5TZWxlY3Rvck9yaWdpbkIHCgV2YWx1ZSJeCgdPdXRjb21lEhMKC2R1cmF0aW9uX21zGAEgASgFEhwKBWVycm9yGAIgASgLMg0udGFwLnYxLkVycm9yEiAKB2ZhaWx1cmUYAyABKAsyDy50YXAudjEuRmFpbHVyZSqPAQoOU2VsZWN0b3JPcmlnaW4SHwobU0VMRUNUT1JfT1JJR0lOX1VOU1BFQ0lGSUVEEAASHwobU0VMRUNUT1JfT1JJR0lOX1NZTlRIRVNJWkVEEAESHwobU0VMRUNUT1JfT1JJR0lOX0FMVEVSTkFUSVZFEAISGgoWU0VMRUNUT1JfT1JJR0lOX0VESVRFRBADKqcCCglDb25kaXRpb24SGQoVQ09ORElUSU9OX1VOU1BFQ0lGSUVEEAASFQoRQ09ORElUSU9OX1ZJU0lCTEUQARIRCg1DT05ESVRJT05fT05FEAISEgoOQ09ORElUSU9OX0dPTkUQAxIVChFDT05ESVRJT05fRU5BQkxFRBAEEhYKEkNPTkRJVElPTl9ESVNBQkxFRBAFEhUKEUNPTkRJVElPTl9DSEVDS0VEEAYSFwoTQ09ORElUSU9OX1VOQ0hFQ0tFRBAHEhUKEUNPTkRJVElPTl9GT0NVU0VEEAgSGQoVQ09ORElUSU9OX1RFWFRfRVFVQUxTEAkSGwoXQ09ORElUSU9OX1RFWFRfQ09OVEFJTlMQChITCg9DT05ESVRJT05fQ09VTlQQCzKKBwoNU3R1ZGlvU2VydmljZRJECgRJbmZvEhoudGFwLnN0dWRpby52MS5JbmZvUmVxdWVzdBobLnRhcC5zdHVkaW8udjEuSW5mb1Jlc3BvbnNlIgOQAgESVgoKR2V0U2Vzc2lvbhIgLnRhcC5zdHVkaW8udjEuR2V0U2Vzc2lvblJlcXVlc3QaIS50YXAuc3R1ZGlvLnYxLkdldFNlc3Npb25SZXNwb25zZSIDkAIBElkKC0xpc3REZXZpY2VzEiEudGFwLnN0dWRpby52MS5MaXN0RGV2aWNlc1JlcXVlc3QaIi50YXAuc3R1ZGlvLnYxLkxpc3REZXZpY2VzUmVzcG9uc2UiA5ACARJFCgZBdHRhY2gSHC50YXAuc3R1ZGlvLnYxLkF0dGFjaFJlcXVlc3QaHS50YXAuc3R1ZGlvLnYxLkF0dGFjaFJlc3BvbnNlEkgKB1JlbGVhc2USHS50YXAuc3R1ZGlvLnYxLlJlbGVhc2VSZXF1ZXN0Gh4udGFwLnN0dWRpby52MS5SZWxlYXNlUmVzcG9uc2USTAoGRnJhbWVzEhwudGFwLnN0dWRpby52MS5GcmFtZXNSZXF1ZXN0Gh0udGFwLnN0dWRpby52MS5GcmFtZXNSZXNwb25zZSIDkAIBMAESRwoFQ291bnQSGy50YXAuc3R1ZGlvLnYxLkNvdW50UmVxdWVzdBocLnRhcC5zdHVkaW8udjEuQ291bnRSZXNwb25zZSIDkAIBEkgKB1BlcmZvcm0SHS50YXAuc3R1ZGlvLnYxLlBlcmZvcm1SZXF1ZXN0Gh4udGFwLnN0dWRpby52MS5QZXJmb3JtUmVzcG9uc2USVwoMU2V0UmVjb3JkaW5nEiIudGFwLnN0dWRpby52MS5TZXRSZWNvcmRpbmdSZXF1ZXN0GiMudGFwLnN0dWRpby52MS5TZXRSZWNvcmRpbmdSZXNwb25zZRJXCgxOZXdSZWNvcmRpbmcSIi50YXAuc3R1ZGlvLnYxLk5ld1JlY29yZGluZ1JlcXVlc3QaIy50YXAuc3R1ZGlvLnYxLk5ld1JlY29yZGluZ1Jlc3BvbnNlElwKDEdldFJlY29yZGluZxIiLnRhcC5zdHVkaW8udjEuR2V0UmVjb3JkaW5nUmVxdWVzdBojLnRhcC5zdHVkaW8udjEuR2V0UmVjb3JkaW5nUmVzcG9uc2UiA5ACAWIGcHJvdG8z", [file_command, file_device, file_event_log, file_failure, file_google_protobuf_timestamp, file_selector]);
 
 /**
  * @generated from message tap.studio.v1.InfoRequest
@@ -70,6 +72,509 @@ export const InfoResponseSchema: GenMessage<InfoResponse> = /*@__PURE__*/
   messageDesc(file_studio, 1);
 
 /**
+ * @generated from message tap.studio.v1.AttachedDevice
+ */
+export type AttachedDevice = Message<"tap.studio.v1.AttachedDevice"> & {
+  /**
+   * @generated from field: string serial = 1;
+   */
+  serial: string;
+
+  /**
+   * @generated from field: string aut_package = 2;
+   */
+  autPackage: string;
+
+  /**
+   * @generated from field: int32 api_level = 3;
+   */
+  apiLevel: number;
+
+  /**
+   * @generated from field: string manufacturer = 4;
+   */
+  manufacturer: string;
+
+  /**
+   * @generated from field: string model = 5;
+   */
+  model: string;
+
+  /**
+   * @generated from field: int32 display_width = 6;
+   */
+  displayWidth: number;
+
+  /**
+   * @generated from field: int32 display_height = 7;
+   */
+  displayHeight: number;
+};
+
+/**
+ * Describes the message tap.studio.v1.AttachedDevice.
+ * Use `create(AttachedDeviceSchema)` to create a new message.
+ */
+export const AttachedDeviceSchema: GenMessage<AttachedDevice> = /*@__PURE__*/
+  messageDesc(file_studio, 2);
+
+/**
+ * @generated from message tap.studio.v1.Session
+ */
+export type Session = Message<"tap.studio.v1.Session"> & {
+  /**
+   * Absent when no device is attached.
+   *
+   * @generated from field: tap.studio.v1.AttachedDevice device = 1;
+   */
+  device?: AttachedDevice | undefined;
+
+  /**
+   * Whether Perform appends the steps that pass.
+   *
+   * @generated from field: bool recording = 2;
+   */
+  recording: boolean;
+
+  /**
+   * Steps in the recording.
+   *
+   * @generated from field: int32 steps = 3;
+   */
+  steps: number;
+
+  /**
+   * The app the recording is for once it has steps; attaching for another app is allowed, but
+   * nothing is recorded there until NewRecording.
+   *
+   * @generated from field: string recording_package = 4;
+   */
+  recordingPackage: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.Session.
+ * Use `create(SessionSchema)` to create a new message.
+ */
+export const SessionSchema: GenMessage<Session> = /*@__PURE__*/
+  messageDesc(file_studio, 3);
+
+/**
+ * @generated from message tap.studio.v1.GetSessionRequest
+ */
+export type GetSessionRequest = Message<"tap.studio.v1.GetSessionRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.GetSessionRequest.
+ * Use `create(GetSessionRequestSchema)` to create a new message.
+ */
+export const GetSessionRequestSchema: GenMessage<GetSessionRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 4);
+
+/**
+ * @generated from message tap.studio.v1.GetSessionResponse
+ */
+export type GetSessionResponse = Message<"tap.studio.v1.GetSessionResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Session session = 1;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.GetSessionResponse.
+ * Use `create(GetSessionResponseSchema)` to create a new message.
+ */
+export const GetSessionResponseSchema: GenMessage<GetSessionResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 5);
+
+/**
+ * @generated from message tap.studio.v1.ListDevicesRequest
+ */
+export type ListDevicesRequest = Message<"tap.studio.v1.ListDevicesRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.ListDevicesRequest.
+ * Use `create(ListDevicesRequestSchema)` to create a new message.
+ */
+export const ListDevicesRequestSchema: GenMessage<ListDevicesRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 6);
+
+/**
+ * @generated from message tap.studio.v1.DeviceChoice
+ */
+export type DeviceChoice = Message<"tap.studio.v1.DeviceChoice"> & {
+  /**
+   * @generated from field: string serial = 1;
+   */
+  serial: string;
+
+  /**
+   * Only DEVICE_FREE and DEVICE_LEASED devices can be attached (a lease held by this studio's own
+   * connection or by another client of the same daemon).
+   *
+   * @generated from field: tap.v1.DeviceState state = 2;
+   */
+  state: DeviceState;
+
+  /**
+   * Attached by this studio.
+   *
+   * @generated from field: bool attached = 3;
+   */
+  attached: boolean;
+
+  /**
+   * QUARANTINED: why.
+   *
+   * @generated from field: string quarantine_reason = 4;
+   */
+  quarantineReason: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.DeviceChoice.
+ * Use `create(DeviceChoiceSchema)` to create a new message.
+ */
+export const DeviceChoiceSchema: GenMessage<DeviceChoice> = /*@__PURE__*/
+  messageDesc(file_studio, 7);
+
+/**
+ * @generated from message tap.studio.v1.ListDevicesResponse
+ */
+export type ListDevicesResponse = Message<"tap.studio.v1.ListDevicesResponse"> & {
+  /**
+   * @generated from field: repeated tap.studio.v1.DeviceChoice devices = 1;
+   */
+  devices: DeviceChoice[];
+};
+
+/**
+ * Describes the message tap.studio.v1.ListDevicesResponse.
+ * Use `create(ListDevicesResponseSchema)` to create a new message.
+ */
+export const ListDevicesResponseSchema: GenMessage<ListDevicesResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 8);
+
+/**
+ * @generated from message tap.studio.v1.AttachRequest
+ */
+export type AttachRequest = Message<"tap.studio.v1.AttachRequest"> & {
+  /**
+   * @generated from field: string serial = 1;
+   */
+  serial: string;
+
+  /**
+   * The app under test: `aut` selectors are confined to it.
+   *
+   * @generated from field: string aut_package = 2;
+   */
+  autPackage: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.AttachRequest.
+ * Use `create(AttachRequestSchema)` to create a new message.
+ */
+export const AttachRequestSchema: GenMessage<AttachRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 9);
+
+/**
+ * @generated from message tap.studio.v1.AttachResponse
+ */
+export type AttachResponse = Message<"tap.studio.v1.AttachResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Session session = 1;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.AttachResponse.
+ * Use `create(AttachResponseSchema)` to create a new message.
+ */
+export const AttachResponseSchema: GenMessage<AttachResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 10);
+
+/**
+ * @generated from message tap.studio.v1.ReleaseRequest
+ */
+export type ReleaseRequest = Message<"tap.studio.v1.ReleaseRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.ReleaseRequest.
+ * Use `create(ReleaseRequestSchema)` to create a new message.
+ */
+export const ReleaseRequestSchema: GenMessage<ReleaseRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 11);
+
+/**
+ * @generated from message tap.studio.v1.ReleaseResponse
+ */
+export type ReleaseResponse = Message<"tap.studio.v1.ReleaseResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Session session = 1;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.ReleaseResponse.
+ * Use `create(ReleaseResponseSchema)` to create a new message.
+ */
+export const ReleaseResponseSchema: GenMessage<ReleaseResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 12);
+
+/**
+ * @generated from message tap.studio.v1.FramesRequest
+ */
+export type FramesRequest = Message<"tap.studio.v1.FramesRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.FramesRequest.
+ * Use `create(FramesRequestSchema)` to create a new message.
+ */
+export const FramesRequestSchema: GenMessage<FramesRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 13);
+
+/**
+ * One frame: a screen snapshot and the screenshot taken right after it, so the nodes and the
+ * picture show the same screen unless it was changing (`moving`).
+ *
+ * @generated from message tap.studio.v1.FramesResponse
+ */
+export type FramesResponse = Message<"tap.studio.v1.FramesResponse"> & {
+  /**
+   * Increases per attached device.
+   *
+   * @generated from field: int64 sequence = 1;
+   */
+  sequence: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp taken_at = 2;
+   */
+  takenAt?: Timestamp | undefined;
+
+  /**
+   * The screenshot, PNG.
+   *
+   * @generated from field: bytes png = 3;
+   */
+  png: Uint8Array;
+
+  /**
+   * @generated from field: int32 width = 4;
+   */
+  width: number;
+
+  /**
+   * @generated from field: int32 height = 5;
+   */
+  height: number;
+
+  /**
+   * Quarter turns, from the snapshot.
+   *
+   * @generated from field: int32 rotation = 6;
+   */
+  rotation: number;
+
+  /**
+   * The daemon's snapshot: every node with its ref, bounds and selector candidates.
+   *
+   * @generated from field: int64 snapshot_id = 7;
+   */
+  snapshotId: bigint;
+
+  /**
+   * @generated from field: repeated tap.v1.ScreenNode nodes = 8;
+   */
+  nodes: ScreenNode[];
+
+  /**
+   * The nodes or the picture differ from the previous frame: the screen may still be changing, so
+   * the overlay is provisional.
+   *
+   * @generated from field: bool moving = 9;
+   */
+  moving: boolean;
+};
+
+/**
+ * Describes the message tap.studio.v1.FramesResponse.
+ * Use `create(FramesResponseSchema)` to create a new message.
+ */
+export const FramesResponseSchema: GenMessage<FramesResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 14);
+
+/**
+ * @generated from message tap.studio.v1.CountRequest
+ */
+export type CountRequest = Message<"tap.studio.v1.CountRequest"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.CountRequest.
+ * Use `create(CountRequestSchema)` to create a new message.
+ */
+export const CountRequestSchema: GenMessage<CountRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 15);
+
+/**
+ * @generated from message tap.studio.v1.CountResponse
+ */
+export type CountResponse = Message<"tap.studio.v1.CountResponse"> & {
+  /**
+   * Capped at 1000, as the driver's count.
+   *
+   * @generated from field: int32 count = 1;
+   */
+  count: number;
+};
+
+/**
+ * Describes the message tap.studio.v1.CountResponse.
+ * Use `create(CountResponseSchema)` to create a new message.
+ */
+export const CountResponseSchema: GenMessage<CountResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 16);
+
+/**
+ * @generated from message tap.studio.v1.PerformRequest
+ */
+export type PerformRequest = Message<"tap.studio.v1.PerformRequest"> & {
+  /**
+   * The step to run. `id` and `outcome` are ignored and an action's `wait` must be absent: the
+   * studio sets the id, infers the wait (decision 6) and measures the outcome.
+   *
+   * @generated from field: tap.studio.v1.Step step = 1;
+   */
+  step?: Step | undefined;
+
+  /**
+   * The value of the step's `secret` (a secret set_text or type step, and only then): sent to the
+   * device, never written to the recording.
+   *
+   * @generated from field: optional string secret_value = 2;
+   */
+  secretValue?: string | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.PerformRequest.
+ * Use `create(PerformRequestSchema)` to create a new message.
+ */
+export const PerformRequestSchema: GenMessage<PerformRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 17);
+
+/**
+ * @generated from message tap.studio.v1.PerformResponse
+ */
+export type PerformResponse = Message<"tap.studio.v1.PerformResponse"> & {
+  /**
+   * The step as run, with its outcome; its `id` is set when it was recorded.
+   *
+   * @generated from field: tap.studio.v1.Step step = 1;
+   */
+  step?: Step | undefined;
+
+  /**
+   * Appended to the recording: recording is on and the step passed.
+   *
+   * @generated from field: bool recorded = 2;
+   */
+  recorded: boolean;
+
+  /**
+   * Why it failed, for a person; empty when it passed.
+   *
+   * @generated from field: string message = 3;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.PerformResponse.
+ * Use `create(PerformResponseSchema)` to create a new message.
+ */
+export const PerformResponseSchema: GenMessage<PerformResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 18);
+
+/**
+ * @generated from message tap.studio.v1.SetRecordingRequest
+ */
+export type SetRecordingRequest = Message<"tap.studio.v1.SetRecordingRequest"> & {
+  /**
+   * @generated from field: bool recording = 1;
+   */
+  recording: boolean;
+};
+
+/**
+ * Describes the message tap.studio.v1.SetRecordingRequest.
+ * Use `create(SetRecordingRequestSchema)` to create a new message.
+ */
+export const SetRecordingRequestSchema: GenMessage<SetRecordingRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 19);
+
+/**
+ * @generated from message tap.studio.v1.SetRecordingResponse
+ */
+export type SetRecordingResponse = Message<"tap.studio.v1.SetRecordingResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Session session = 1;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.SetRecordingResponse.
+ * Use `create(SetRecordingResponseSchema)` to create a new message.
+ */
+export const SetRecordingResponseSchema: GenMessage<SetRecordingResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 20);
+
+/**
+ * @generated from message tap.studio.v1.NewRecordingRequest
+ */
+export type NewRecordingRequest = Message<"tap.studio.v1.NewRecordingRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.NewRecordingRequest.
+ * Use `create(NewRecordingRequestSchema)` to create a new message.
+ */
+export const NewRecordingRequestSchema: GenMessage<NewRecordingRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 21);
+
+/**
+ * @generated from message tap.studio.v1.NewRecordingResponse
+ */
+export type NewRecordingResponse = Message<"tap.studio.v1.NewRecordingResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Session session = 1;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.NewRecordingResponse.
+ * Use `create(NewRecordingResponseSchema)` to create a new message.
+ */
+export const NewRecordingResponseSchema: GenMessage<NewRecordingResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 22);
+
+/**
  * @generated from message tap.studio.v1.GetRecordingRequest
  */
 export type GetRecordingRequest = Message<"tap.studio.v1.GetRecordingRequest"> & {
@@ -80,7 +585,7 @@ export type GetRecordingRequest = Message<"tap.studio.v1.GetRecordingRequest"> &
  * Use `create(GetRecordingRequestSchema)` to create a new message.
  */
 export const GetRecordingRequestSchema: GenMessage<GetRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 2);
+  messageDesc(file_studio, 23);
 
 /**
  * @generated from message tap.studio.v1.GetRecordingResponse
@@ -97,7 +602,7 @@ export type GetRecordingResponse = Message<"tap.studio.v1.GetRecordingResponse">
  * Use `create(GetRecordingResponseSchema)` to create a new message.
  */
 export const GetRecordingResponseSchema: GenMessage<GetRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 3);
+  messageDesc(file_studio, 24);
 
 /**
  * @generated from message tap.studio.v1.Recording
@@ -156,7 +661,7 @@ export type Recording = Message<"tap.studio.v1.Recording"> & {
  * Use `create(RecordingSchema)` to create a new message.
  */
 export const RecordingSchema: GenMessage<Recording> = /*@__PURE__*/
-  messageDesc(file_studio, 4);
+  messageDesc(file_studio, 25);
 
 /**
  * @generated from message tap.studio.v1.RecordedDevice
@@ -188,7 +693,7 @@ export type RecordedDevice = Message<"tap.studio.v1.RecordedDevice"> & {
  * Use `create(RecordedDeviceSchema)` to create a new message.
  */
 export const RecordedDeviceSchema: GenMessage<RecordedDevice> = /*@__PURE__*/
-  messageDesc(file_studio, 5);
+  messageDesc(file_studio, 26);
 
 /**
  * @generated from message tap.studio.v1.Step
@@ -253,7 +758,7 @@ export type Step = Message<"tap.studio.v1.Step"> & {
  * Use `create(StepSchema)` to create a new message.
  */
 export const StepSchema: GenMessage<Step> = /*@__PURE__*/
-  messageDesc(file_studio, 6);
+  messageDesc(file_studio, 27);
 
 /**
  * One command; a command with a selector is preceded by the wait that proved it could run.
@@ -296,7 +801,7 @@ export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
  * Use `create(ActionStepSchema)` to create a new message.
  */
 export const ActionStepSchema: GenMessage<ActionStep> = /*@__PURE__*/
-  messageDesc(file_studio, 7);
+  messageDesc(file_studio, 28);
 
 /**
  * The element typeText flow, three commands: tap `selector`, await it focused (unless
@@ -351,7 +856,7 @@ export type TypeStep = Message<"tap.studio.v1.TypeStep"> & {
  * Use `create(TypeStepSchema)` to create a new message.
  */
 export const TypeStepSchema: GenMessage<TypeStep> = /*@__PURE__*/
-  messageDesc(file_studio, 8);
+  messageDesc(file_studio, 29);
 
 /**
  * A check: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
@@ -406,7 +911,7 @@ export type AssertionStep = Message<"tap.studio.v1.AssertionStep"> & {
  * Use `create(AssertionStepSchema)` to create a new message.
  */
 export const AssertionStepSchema: GenMessage<AssertionStep> = /*@__PURE__*/
-  messageDesc(file_studio, 9);
+  messageDesc(file_studio, 30);
 
 /**
  * At most one of `error` and `failure`; neither means the step passed.
@@ -439,7 +944,7 @@ export type Outcome = Message<"tap.studio.v1.Outcome"> & {
  * Use `create(OutcomeSchema)` to create a new message.
  */
 export const OutcomeSchema: GenMessage<Outcome> = /*@__PURE__*/
-  messageDesc(file_studio, 10);
+  messageDesc(file_studio, 31);
 
 /**
  * Where a step's selector came from.
@@ -572,6 +1077,99 @@ export const StudioService: GenService<{
     methodKind: "unary";
     input: typeof InfoRequestSchema;
     output: typeof InfoResponseSchema;
+  },
+  /**
+   * The attached device and whether steps are being recorded.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.GetSession
+   */
+  getSession: {
+    methodKind: "unary";
+    input: typeof GetSessionRequestSchema;
+    output: typeof GetSessionResponseSchema;
+  },
+  /**
+   * The devices the daemon sees. UNAVAILABLE when no daemon runs (`tap start`).
+   *
+   * @generated from rpc tap.studio.v1.StudioService.ListDevices
+   */
+  listDevices: {
+    methodKind: "unary";
+    input: typeof ListDevicesRequestSchema;
+    output: typeof ListDevicesResponseSchema;
+  },
+  /**
+   * Attaches a device for an app, releasing the one attached before.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.Attach
+   */
+  attach: {
+    methodKind: "unary";
+    input: typeof AttachRequestSchema;
+    output: typeof AttachResponseSchema;
+  },
+  /**
+   * Releases the attached device; open frame streams end.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.Release
+   */
+  release: {
+    methodKind: "unary";
+    input: typeof ReleaseRequestSchema;
+    output: typeof ReleaseResponseSchema;
+  },
+  /**
+   * The attached device's screen: a frame whenever one is taken, newest only (a slow reader skips
+   * frames). Frames are taken only while a stream is open, never while a Perform or Count is
+   * waiting, fast while the screen changes and slower while it does not. Ends when the device is
+   * released; FAILED_PRECONDITION without one.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.Frames
+   */
+  frames: {
+    methodKind: "server_streaming";
+    input: typeof FramesRequestSchema;
+    output: typeof FramesResponseSchema;
+  },
+  /**
+   * How many nodes a selector matches now (the inspector's live count).
+   *
+   * @generated from rpc tap.studio.v1.StudioService.Count
+   */
+  count: {
+    methodKind: "unary";
+    input: typeof CountRequestSchema;
+    output: typeof CountResponseSchema;
+  },
+  /**
+   * Runs one step on the attached device and, while recording, appends it when it passed.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.Perform
+   */
+  perform: {
+    methodKind: "unary";
+    input: typeof PerformRequestSchema;
+    output: typeof PerformResponseSchema;
+  },
+  /**
+   * Record or pause: paused, Perform still runs steps but records nothing.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.SetRecording
+   */
+  setRecording: {
+    methodKind: "unary";
+    input: typeof SetRecordingRequestSchema;
+    output: typeof SetRecordingResponseSchema;
+  },
+  /**
+   * Discards the recording and starts an empty one.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.NewRecording
+   */
+  newRecording: {
+    methodKind: "unary";
+    input: typeof NewRecordingRequestSchema;
+    output: typeof NewRecordingResponseSchema;
   },
   /**
    * The recording in progress. NOT_FOUND before anything is recorded.

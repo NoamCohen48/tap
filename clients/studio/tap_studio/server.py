@@ -17,14 +17,15 @@ Access control, since any local process or web page can reach a loopback port:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import hmac
 import pathlib
+import sys
+from collections.abc import AsyncIterator
 from http.cookies import CookieError, SimpleCookie
 
-from connectrpc.code import Code
-from connectrpc.errors import ConnectError
-from connectrpc.request import RequestContext
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -33,10 +34,9 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import __version__
 from ._gen import studio_connect
-from ._gen import studio_pb2 as studio
-from .recording import FORMAT
+from ._gen import studio_pb2
+from .service import Studio
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
@@ -48,26 +48,33 @@ def cookie_name(token: str) -> str:
     return "tap_studio_" + hashlib.sha256(token.encode()).hexdigest()[:12]
 
 
-class Studio:
-    """``tap.studio.v1.StudioService``: the studio's state and the calls the page makes."""
-
-    def __init__(self) -> None:
-        self.recording: studio.Recording | None = None
-
-    async def info(self, request: studio.InfoRequest, ctx: RequestContext) -> studio.InfoResponse:
-        return studio.InfoResponse(recorder=f"tap-studio {__version__}", format=FORMAT)
-
-    async def get_recording(
-        self, request: studio.GetRecordingRequest, ctx: RequestContext
-    ) -> studio.GetRecordingResponse:
-        if self.recording is None:
-            raise ConnectError(Code.NOT_FOUND, "nothing recorded yet")
-        return studio.GetRecordingResponse(recording=self.recording)
-
-
-def create_app(token: str, static_dir: pathlib.Path | None = STATIC, service: Studio | None = None) -> Starlette:
+def create_app(
+    token: str,
+    static_dir: pathlib.Path | None = STATIC,
+    service: Studio | None = None,
+    attach: studio_pb2.AttachRequest | None = None,
+) -> Starlette:
     """The studio's ASGI app. ``static_dir`` is the built page; without an ``index.html`` there,
-    ``/`` explains how to build it."""
+    ``/`` explains how to build it. ``attach`` is attached in the background at start, so the
+    page is up while the driver starts. Shutting the app down releases the device."""
+    studio = service or Studio()
+
+    async def attach_at_start(request: studio_pb2.AttachRequest) -> None:
+        try:
+            await studio.attach(request, None)  # type: ignore[arg-type]
+            print(f"Attached {request.serial} for {request.aut_package}", flush=True)
+        except Exception as error:  # noqa: BLE001 - reported; the page can attach again
+            print(f"tap-studio: could not attach {request.serial}: {error}", file=sys.stderr, flush=True)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        starting = asyncio.create_task(attach_at_start(attach)) if attach is not None else None
+        try:
+            yield
+        finally:
+            if starting is not None:
+                starting.cancel()
+            await studio.close()
 
     def login(request: Request) -> Response:
         # The one route the guard lets through without the cookie; it checks the token itself.
@@ -78,13 +85,13 @@ def create_app(token: str, static_dir: pathlib.Path | None = STATIC, service: St
         response.set_cookie(cookie_name(token), token, httponly=True, samesite="strict", path="/")
         return response
 
-    connect = studio_connect.StudioServiceASGIApplication(service or Studio())
+    connect = studio_connect.StudioServiceASGIApplication(studio)
     routes: list[Route | Mount] = [Route("/login", login), Mount(connect.path, app=connect)]
     if static_dir is not None and (static_dir / "index.html").is_file():
         routes.append(Mount("/", StaticFiles(directory=static_dir, html=True)))
     else:
         routes.append(Route("/", lambda request: HTMLResponse(_UNBUILT, status_code=503)))
-    return Starlette(routes=routes, middleware=[Middleware(_Guard, token=token)])
+    return Starlette(routes=routes, middleware=[Middleware(_Guard, token=token)], lifespan=lifespan)
 
 
 class _Guard:
