@@ -155,6 +155,25 @@ Bug reports, ideas and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBU
 Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) and report security issues privately
 as described in [SECURITY.md](SECURITY.md).
 
+## Acknowledgements
+
+Tap stands on the shoulders of projects that solved these problems first, and we are grateful
+to their authors:
+
+- [AndroidX UiAutomator](https://developer.android.com/training/testing/other-components/ui-automator),
+  which the on-device driver is built on.
+- [Appium UiAutomator2](https://github.com/appium/appium-uiautomator2-server), whose years of
+  Android edge cases (input, permission dialogs, screenshots) shaped how the driver handles
+  them.
+- [Maestro](https://github.com/mobile-dev-inc/maestro), for its approach to waiting for an app
+  to settle, failure reports and running on many devices.
+- [uiautomator2](https://github.com/openatx/uiautomator2), whose Python API guided the feel of
+  the Python client.
+- [agent-device](https://github.com/callstackincubator/agent-device), which showed what a
+  device tool for coding agents should look like and inspired `tap-agent`.
+
+Tap is written independently; no code was copied from these projects.
+
 ## License
 
 Tap is licensed under the [Apache License 2.0](LICENSE).
