@@ -35,6 +35,9 @@ internal class Synthesised(
     val kind: SelectorKind,
 ) {
     val byIndex: Boolean get() = kind == SelectorKind.BY_INDEX
+
+    /** The predicates it is a conjunction of, to recognise a candidate that only adds to it. */
+    val operands: Set<Node> = selector.node.conjunction.toSet()
 }
 
 /**
@@ -43,6 +46,11 @@ internal class Synthesised(
  * fragile: resource id, text, description, their pairs with each other and the class, the hint;
  * then each of those with an `ancestor` relation to the nearest ancestor that has its own
  * non-index selector; last, the most specific conjunction with an `At` pick.
+ *
+ * [synthesise] keeps the first candidate that is unique; [candidates] keeps every one, in the
+ * same order (the first is [synthesise]'s), leaving out a candidate that only adds predicates to
+ * an earlier one (text + class when the text alone is unique), and the `At` pick unless nothing
+ * else is unique (`.docs/recorder.md`, decision 8).
  *
  * Uniqueness is checked with [DumpMatcher] in the node's scope: a window of the AUT package is
  * `aut`; a node in any other package's window gets `any_window`, checked against every window
@@ -64,21 +72,32 @@ internal class SelectorSynthesis(
     private val byClass = index { it.className }
     private val byResource = index { it.resourceName }
 
-    /** One entry per [Hierarchy.nodes] entry; null where no selector was found. */
-    fun synthesise(): List<Synthesised?> {
-        val result = arrayOfNulls<Synthesised>(nodes.size)
+    /** One entry per [Hierarchy.nodes] entry: its selector, or null where none was found. */
+    fun synthesise(): List<Synthesised?> = run(all = false).map { it.firstOrNull() }
+
+    /** One entry per [Hierarchy.nodes] entry: its ranked candidates, empty where none was found. */
+    fun candidates(): List<List<Synthesised>> = run(all = true)
+
+    private fun run(all: Boolean): List<List<Synthesised>> {
+        val primary = arrayOfNulls<Synthesised>(nodes.size)
+        val result = MutableList(nodes.size) { emptyList<Synthesised>() }
         // Pre-order: every ancestor is done before its descendants need it.
-        nodes.forEach { result[it.index] = synthesise(it, result) }
-        return result.asList()
+        nodes.forEach { node ->
+            result[node.index] = candidates(node, primary, all)
+            primary[node.index] = result[node.index].firstOrNull()
+        }
+        return result
     }
 
-    private fun synthesise(
+    /** [node]'s unique candidates in rank order; only the first unless [all]. */
+    private fun candidates(
         node: DumpNode,
         done: Array<Synthesised?>,
-    ): Synthesised? {
+        all: Boolean,
+    ): List<Synthesised> {
         val scopePackage = node.windowPackage
         val inAut = scopePackage == autPackage
-        if (inAut && node.packageName != autPackage) return null
+        if (inAut && node.packageName != autPackage) return emptyList()
         val scope = if (inAut) matcher.packageScope(autPackage) else matcher.allWindows()
         val resource = resource(node.resourceName, scopePackage)
         val text = node.text?.usable()?.let { Nodes.text(it) }
@@ -103,8 +122,22 @@ internal class SelectorSynthesis(
                 pair(resource, className) to SelectorKind.COMBINED,
                 hint to SelectorKind.PLAIN,
             ).filter { it.first != null }
+        val found = mutableListOf<Synthesised>()
+
+        /** Adds [predicate] when it is unique and not an earlier candidate plus more; true when done. */
+        fun offer(
+            predicate: Node,
+            kind: SelectorKind,
+        ): Boolean {
+            val operands = predicate.conjunction.toSet()
+            if (found.none { operands.containsAll(it.operands) }) {
+                unique(predicate, node, scope, scopePackage)?.let { found += Synthesised(it, kind) }
+            }
+            return !all && found.isNotEmpty()
+        }
+
         for ((predicate, kind) in candidates) {
-            unique(predicate!!, node, scope, scopePackage)?.let { return Synthesised(it, kind) }
+            if (offer(predicate!!, kind)) return found
         }
 
         val ancestor = addressableAncestor(node, done)
@@ -113,11 +146,24 @@ internal class SelectorSynthesis(
             // The class alone is no candidate by itself, but "a Button under X" is.
             val own = candidates.map { it.first!! } + listOfNotNull(className)
             for (predicate in own) {
-                unique(Nodes.allOf(predicate, related), node, scope, scopePackage)?.let { return Synthesised(it, SelectorKind.ANCESTOR) }
+                if (offer(Nodes.allOf(predicate, related), SelectorKind.ANCESTOR)) return found
             }
         }
+        if (found.isNotEmpty()) return found
 
-        val specific = listOfNotNull(resource, text, description, hint, className).takeIf { it.isNotEmpty() } ?: return null
+        val specific = listOfNotNull(resource, text, description, hint, className)
+        return listOfNotNull(byIndex(node, specific, scope, scopePackage))
+    }
+
+    /** The conjunction of all of [node]'s predicates ([specific]) with an `At` pick, when valid. */
+    private fun byIndex(
+        node: DumpNode,
+        specific: List<Node>,
+        scope: DumpMatcher.Scope,
+        scopePackage: String,
+    ): Synthesised? {
+        if (specific.isEmpty()) return null
+        val inAut = scopePackage == autPackage
         val predicate = Nodes.allOf(specific)
         val position =
             seeds(predicate)

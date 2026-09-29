@@ -20,7 +20,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file device.proto.
  */
 export const file_device: GenFile = /*@__PURE__*/
-  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnkixwIKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhMKC2F1dF9wYWNrYWdlGAMgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIbCg5zeW5jX2F1dGhvcml0eRgFIAEoCUgBiAEBEh8KEmRlZmF1bHRfdGltZW91dF9tcxgHIAEoA0gCiAEBEh0KEGxlYXNlX3RpbWVvdXRfbXMYCCABKANIA4gBAUIWChRfc2tpcF9kcml2ZXJfaW5zdGFsbEIRCg9fc3luY19hdXRob3JpdHlCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tc0oECAYQB1IXYWxsb3dlZF9zeXN0ZW1fcGFja2FnZXMieQoOQXR0YWNoUmVzcG9uc2USGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDEicKC2RldmljZV9pbmZvGAQgASgLMhIudGFwLnYxLkRldmljZUluZm8iSQoNRGV0YWNoUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiPwoORGV0YWNoUmVzcG9uc2USDQoFY2xlYW4YASABKAgSEwoGZGV0YWlsGAIgASgJSACIAQFCCQoHX2RldGFpbCJsCg5FeGVjdXRlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSIAoHY29tbWFuZBgDIAEoCzIPLnRhcC52MS5Db21tYW5kIjgKD0V4ZWN1dGVSZXNwb25zZRIlCgZyZXN1bHQYASABKAsyFS50YXAudjEuQ29tbWFuZFJlc3VsdCJ1ChFTY3JlZW5zaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBQg0KC190aW1lb3V0X21zIm8KElNjcmVlbnNob3RSZXNwb25zZRILCgNwbmcYASABKAwSDgoGc2hhMjU2GAIgASgJEhIKBXdpZHRoGAMgASgFSACIAQESEwoGaGVpZ2h0GAQgASgFSAGIAQFCCAoGX3dpZHRoQgkKB19oZWlnaHQiTAoQRHJpdmVyTG9nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiIgoRRHJpdmVyTG9nUmVzcG9uc2USDQoFbGluZXMYASADKAkieQoVU2NyZWVuU25hcHNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMi3AMKClNjcmVlbk5vZGUSCwoDcmVmGAEgASgJEg0KBWRlcHRoGAIgASgFEhYKDndpbmRvd19wYWNrYWdlGAMgASgJEhcKCmNsYXNzX25hbWUYBCABKAlIAIgBARIaCg1yZXNvdXJjZV9uYW1lGAUgASgJSAGIAQESEQoEdGV4dBgGIAEoCUgCiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YByABKAlIA4gBARIRCgRoaW50GAggASgJSASIAQESHgoGYm91bmRzGAkgASgLMg4udGFwLnYxLkJvdW5kcxIfCgVmbGFncxgKIAMoDjIQLnRhcC52MS5Ob2RlRmxhZxIQCghwYXNzd29yZBgLIAEoCBITCgtpbnRlcmFjdGl2ZRgMIAEoCBInCghzZWxlY3RvchgNIAEoCzIQLnRhcC52MS5TZWxlY3RvckgFiAEBEhAKCGJ5X2luZGV4GA4gASgIEiIKBmNoYW5nZRgPIAEoDjISLnRhcC52MS5Ob2RlQ2hhbmdlQg0KC19jbGFzc19uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50QgsKCV9zZWxlY3RvciKHAQoWU2NyZWVuU25hcHNob3RSZXNwb25zZRITCgtzbmFwc2hvdF9pZBgBIAEoAxIhCgVub2RlcxgCIAMoCzISLnRhcC52MS5TY3JlZW5Ob2RlEiMKB3JlbW92ZWQYAyADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIQCghyb3RhdGlvbhgEIAEoBSJaChFSZXNvbHZlUmVmUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSCwoDcmVmGAMgASgJIl8KElJlc29sdmVSZWZSZXNwb25zZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIQCghieV9pbmRleBgCIAEoCBITCgtzbmFwc2hvdF9pZBgDIAEoAyqUAQoLRGV2aWNlU3RhdGUSHAoYREVWSUNFX1NUQVRFX1VOU1BFQ0lGSUVEEAASDwoLREVWSUNFX0ZSRUUQARIRCg1ERVZJQ0VfTEVBU0VEEAISFgoSREVWSUNFX1FVQVJBTlRJTkVEEAMSEgoOREVWSUNFX09GRkxJTkUQBBIXChNERVZJQ0VfVU5BVVRIT1JJWkVEEAUqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMqIECg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
+  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnkixwIKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhMKC2F1dF9wYWNrYWdlGAMgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIbCg5zeW5jX2F1dGhvcml0eRgFIAEoCUgBiAEBEh8KEmRlZmF1bHRfdGltZW91dF9tcxgHIAEoA0gCiAEBEh0KEGxlYXNlX3RpbWVvdXRfbXMYCCABKANIA4gBAUIWChRfc2tpcF9kcml2ZXJfaW5zdGFsbEIRCg9fc3luY19hdXRob3JpdHlCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tc0oECAYQB1IXYWxsb3dlZF9zeXN0ZW1fcGFja2FnZXMieQoOQXR0YWNoUmVzcG9uc2USGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDEicKC2RldmljZV9pbmZvGAQgASgLMhIudGFwLnYxLkRldmljZUluZm8iSQoNRGV0YWNoUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiPwoORGV0YWNoUmVzcG9uc2USDQoFY2xlYW4YASABKAgSEwoGZGV0YWlsGAIgASgJSACIAQFCCQoHX2RldGFpbCJsCg5FeGVjdXRlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSIAoHY29tbWFuZBgDIAEoCzIPLnRhcC52MS5Db21tYW5kIjgKD0V4ZWN1dGVSZXNwb25zZRIlCgZyZXN1bHQYASABKAsyFS50YXAudjEuQ29tbWFuZFJlc3VsdCJ1ChFTY3JlZW5zaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBQg0KC190aW1lb3V0X21zIm8KElNjcmVlbnNob3RSZXNwb25zZRILCgNwbmcYASABKAwSDgoGc2hhMjU2GAIgASgJEhIKBXdpZHRoGAMgASgFSACIAQESEwoGaGVpZ2h0GAQgASgFSAGIAQFCCAoGX3dpZHRoQgkKB19oZWlnaHQiTAoQRHJpdmVyTG9nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiIgoRRHJpdmVyTG9nUmVzcG9uc2USDQoFbGluZXMYASADKAkilgEKFVNjcmVlblNuYXBzaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBEhsKE3NlbGVjdG9yX2NhbmRpZGF0ZXMYBCABKAhCDQoLX3RpbWVvdXRfbXMiWwoRU2VsZWN0b3JDYW5kaWRhdGUSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIgoEa2luZBgCIAEoDjIULnRhcC52MS5TZWxlY3RvcktpbmQiiwQKClNjcmVlbk5vZGUSCwoDcmVmGAEgASgJEg0KBWRlcHRoGAIgASgFEhYKDndpbmRvd19wYWNrYWdlGAMgASgJEhcKCmNsYXNzX25hbWUYBCABKAlIAIgBARIaCg1yZXNvdXJjZV9uYW1lGAUgASgJSAGIAQESEQoEdGV4dBgGIAEoCUgCiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YByABKAlIA4gBARIRCgRoaW50GAggASgJSASIAQESHgoGYm91bmRzGAkgASgLMg4udGFwLnYxLkJvdW5kcxIfCgVmbGFncxgKIAMoDjIQLnRhcC52MS5Ob2RlRmxhZxIQCghwYXNzd29yZBgLIAEoCBITCgtpbnRlcmFjdGl2ZRgMIAEoCBInCghzZWxlY3RvchgNIAEoCzIQLnRhcC52MS5TZWxlY3RvckgFiAEBEhAKCGJ5X2luZGV4GA4gASgIEiIKBmNoYW5nZRgPIAEoDjISLnRhcC52MS5Ob2RlQ2hhbmdlEi0KCmNhbmRpZGF0ZXMYECADKAsyGS50YXAudjEuU2VsZWN0b3JDYW5kaWRhdGVCDQoLX2NsYXNzX25hbWVCEAoOX3Jlc291cmNlX25hbWVCBwoFX3RleHRCFgoUX2NvbnRlbnRfZGVzY3JpcHRpb25CBwoFX2hpbnRCCwoJX3NlbGVjdG9yIocBChZTY3JlZW5TbmFwc2hvdFJlc3BvbnNlEhMKC3NuYXBzaG90X2lkGAEgASgDEiEKBW5vZGVzGAIgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSIwoHcmVtb3ZlZBgDIAMoCzISLnRhcC52MS5TY3JlZW5Ob2RlEhAKCHJvdGF0aW9uGAQgASgFIloKEVJlc29sdmVSZWZSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRILCgNyZWYYAyABKAkiXwoSUmVzb2x2ZVJlZlJlc3BvbnNlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhAKCGJ5X2luZGV4GAIgASgIEhMKC3NuYXBzaG90X2lkGAMgASgDKpQBCgtEZXZpY2VTdGF0ZRIcChhERVZJQ0VfU1RBVEVfVU5TUEVDSUZJRUQQABIPCgtERVZJQ0VfRlJFRRABEhEKDURFVklDRV9MRUFTRUQQAhIWChJERVZJQ0VfUVVBUkFOVElORUQQAxISCg5ERVZJQ0VfT0ZGTElORRAEEhcKE0RFVklDRV9VTkFVVEhPUklaRUQQBSqaAQoMU2VsZWN0b3JLaW5kEh0KGVNFTEVDVE9SX0tJTkRfVU5TUEVDSUZJRUQQABIXChNTRUxFQ1RPUl9LSU5EX1BMQUlOEAESGgoWU0VMRUNUT1JfS0lORF9DT01CSU5FRBACEhoKFlNFTEVDVE9SX0tJTkRfQU5DRVNUT1IQAxIaChZTRUxFQ1RPUl9LSU5EX0JZX0lOREVYEAQqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMqIECg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
 
 /**
  * One listed device. Anything richer than the serial comes from DeviceInfo after attachment.
@@ -380,6 +380,13 @@ export type ScreenSnapshotRequest = Message<"tap.v1.ScreenSnapshotRequest"> & {
    * @generated from field: optional int64 timeout_ms = 3;
    */
   timeoutMs?: bigint | undefined;
+
+  /**
+   * Also fill ScreenNode.candidates (an inspector offering the user a choice of selectors).
+   *
+   * @generated from field: bool selector_candidates = 4;
+   */
+  selectorCandidates: boolean;
 };
 
 /**
@@ -388,6 +395,30 @@ export type ScreenSnapshotRequest = Message<"tap.v1.ScreenSnapshotRequest"> & {
  */
 export const ScreenSnapshotRequestSchema: GenMessage<ScreenSnapshotRequest> = /*@__PURE__*/
   messageDesc(file_device, 13);
+
+/**
+ * A selector that matched only its node in the dump.
+ *
+ * @generated from message tap.v1.SelectorCandidate
+ */
+export type SelectorCandidate = Message<"tap.v1.SelectorCandidate"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+
+  /**
+   * @generated from field: tap.v1.SelectorKind kind = 2;
+   */
+  kind: SelectorKind;
+};
+
+/**
+ * Describes the message tap.v1.SelectorCandidate.
+ * Use `create(SelectorCandidateSchema)` to create a new message.
+ */
+export const SelectorCandidateSchema: GenMessage<SelectorCandidate> = /*@__PURE__*/
+  messageDesc(file_device, 14);
 
 /**
  * One visible node, in dump (pre-order) order.
@@ -481,6 +512,15 @@ export type ScreenNode = Message<"tap.v1.ScreenNode"> & {
    * @generated from field: tap.v1.NodeChange change = 15;
    */
   change: NodeChange;
+
+  /**
+   * Only with ScreenSnapshotRequest.selector_candidates: every selector that matched only this
+   * node, best first (the first is `selector`). A candidate that merely adds predicates to an
+   * earlier one is left out, and a BY_INDEX pick is offered only when nothing else is unique.
+   *
+   * @generated from field: repeated tap.v1.SelectorCandidate candidates = 16;
+   */
+  candidates: SelectorCandidate[];
 };
 
 /**
@@ -488,7 +528,7 @@ export type ScreenNode = Message<"tap.v1.ScreenNode"> & {
  * Use `create(ScreenNodeSchema)` to create a new message.
  */
 export const ScreenNodeSchema: GenMessage<ScreenNode> = /*@__PURE__*/
-  messageDesc(file_device, 14);
+  messageDesc(file_device, 15);
 
 /**
  * @generated from message tap.v1.ScreenSnapshotResponse
@@ -524,7 +564,7 @@ export type ScreenSnapshotResponse = Message<"tap.v1.ScreenSnapshotResponse"> & 
  * Use `create(ScreenSnapshotResponseSchema)` to create a new message.
  */
 export const ScreenSnapshotResponseSchema: GenMessage<ScreenSnapshotResponse> = /*@__PURE__*/
-  messageDesc(file_device, 15);
+  messageDesc(file_device, 16);
 
 /**
  * @generated from message tap.v1.ResolveRefRequest
@@ -553,7 +593,7 @@ export type ResolveRefRequest = Message<"tap.v1.ResolveRefRequest"> & {
  * Use `create(ResolveRefRequestSchema)` to create a new message.
  */
 export const ResolveRefRequestSchema: GenMessage<ResolveRefRequest> = /*@__PURE__*/
-  messageDesc(file_device, 16);
+  messageDesc(file_device, 17);
 
 /**
  * @generated from message tap.v1.ResolveRefResponse
@@ -580,7 +620,7 @@ export type ResolveRefResponse = Message<"tap.v1.ResolveRefResponse"> & {
  * Use `create(ResolveRefResponseSchema)` to create a new message.
  */
 export const ResolveRefResponseSchema: GenMessage<ResolveRefResponse> = /*@__PURE__*/
-  messageDesc(file_device, 17);
+  messageDesc(file_device, 18);
 
 /**
  * State of a listed device.
@@ -626,6 +666,53 @@ export const DeviceStateSchema: GenEnum<DeviceState> = /*@__PURE__*/
   enumDesc(file_device, 0);
 
 /**
+ * How a synthesised selector singles out its node.
+ *
+ * @generated from enum tap.v1.SelectorKind
+ */
+export enum SelectorKind {
+  /**
+   * @generated from enum value: SELECTOR_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * One predicate: resource id, text, description or hint.
+   *
+   * @generated from enum value: SELECTOR_KIND_PLAIN = 1;
+   */
+  PLAIN = 1,
+
+  /**
+   * Two predicates of the node itself (resource and text, text and class, ...).
+   *
+   * @generated from enum value: SELECTOR_KIND_COMBINED = 2;
+   */
+  COMBINED = 2,
+
+  /**
+   * The node's own predicate plus an `ancestor` relation to an addressable ancestor.
+   *
+   * @generated from enum value: SELECTOR_KIND_ANCESTOR = 3;
+   */
+  ANCESTOR = 3,
+
+  /**
+   * All of the node's predicates plus an `At` pick: correct for this dump, fragile if the
+   * screen reorders.
+   *
+   * @generated from enum value: SELECTOR_KIND_BY_INDEX = 4;
+   */
+  BY_INDEX = 4,
+}
+
+/**
+ * Describes the enum tap.v1.SelectorKind.
+ */
+export const SelectorKindSchema: GenEnum<SelectorKind> = /*@__PURE__*/
+  enumDesc(file_device, 1);
+
+/**
  * A node against the previous snapshot of the same attached device.
  *
  * @generated from enum tap.v1.NodeChange
@@ -658,7 +745,7 @@ export enum NodeChange {
  * Describes the enum tap.v1.NodeChange.
  */
 export const NodeChangeSchema: GenEnum<NodeChange> = /*@__PURE__*/
-  enumDesc(file_device, 1);
+  enumDesc(file_device, 2);
 
 /**
  * @generated from service tap.v1.DeviceService

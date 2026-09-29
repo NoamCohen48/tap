@@ -164,7 +164,7 @@ class DeviceService(
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             val timeoutMs = if (request.hasTimeoutMs()) positive(request.timeoutMs, "timeout_ms") else attachedDevice.defaultTimeoutMs
             val xml = attachedDevice.deviceSession.client.execute(Commands.dumpHierarchy(), timeoutMs).text
-            val screen = withContext(Dispatchers.Default) { ScreenSnapshots.screen(xml, attachedDevice.deviceSession.autPackage) }
+            val screen = withContext(Dispatchers.Default) { ScreenSnapshots.screen(xml, attachedDevice.deviceSession.autPackage, request.selectorCandidates) }
             attachedDevice.screen.record(screen)
         }
 

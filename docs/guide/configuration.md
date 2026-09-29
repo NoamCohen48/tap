@@ -185,7 +185,10 @@ time. It also has a `change` value saying whether it was added since the previou
 that device; nodes that disappeared are listed in `removed`. A ref keeps pointing at the same
 node from one snapshot to the next, and is never given to a different node. A ref only names a
 selector, so acting on it still goes through the normal rule: the device must find exactly one
-match at the moment of the action.
+match at the moment of the action. `screen_snapshot(selector_candidates=True)` also fills each
+node's `candidates`: every selector that matched only that node, best first (the first is
+`selector`), each with its `SelectorKind` (`PLAIN`, `COMBINED`, `ANCESTOR` or `BY_INDEX`), for
+tools that let a person choose between them.
 
 `connection.event_log()` returns what the connection did on its devices, in order: every
 command except the diagnostic device-info and hierarchy queries, and every app call that

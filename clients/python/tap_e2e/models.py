@@ -163,6 +163,19 @@ class NodeChange(enum.Enum):
     REMOVED = "REMOVED"
 
 
+class SelectorKind(enum.Enum):
+    """How a ``SelectorCandidate`` singles out its node. ``PLAIN``: one property (resource id,
+    text, description or hint); ``COMBINED``: two of the node's own properties; ``ANCESTOR``: a
+    property plus an ancestor it sits under; ``BY_INDEX``: an index pick, right for this dump but
+    fragile if the screen reorders. ``UNKNOWN``: a kind this client does not know."""
+
+    PLAIN = "PLAIN"
+    COMBINED = "COMBINED"
+    ANCESTOR = "ANCESTOR"
+    BY_INDEX = "BY_INDEX"
+    UNKNOWN = "UNKNOWN"
+
+
 # --- values ---------------------------------------------------------------------------------------
 
 
@@ -364,6 +377,17 @@ class ScreenNode:
     selector: Selector | None
     by_index: bool
     change: NodeChange
+    candidates: tuple[SelectorCandidate, ...] = ()
+    """Only from ``screen_snapshot(selector_candidates=True)``: every selector that matched only
+    this node, best first (the first is ``selector``)."""
+
+
+@dataclass(frozen=True)
+class SelectorCandidate:
+    """One selector that matched only its ``ScreenNode`` in the dump, and how it does so."""
+
+    selector: Selector
+    kind: SelectorKind
 
 
 @dataclass(frozen=True)

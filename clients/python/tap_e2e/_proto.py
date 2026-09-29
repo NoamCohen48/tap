@@ -26,6 +26,8 @@ from .models import (
     NodeFlag,
     ScreenNode,
     ScreenSnapshot,
+    SelectorCandidate,
+    SelectorKind,
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
@@ -70,6 +72,10 @@ def node_flag(number: int) -> NodeFlag | None:
 
 def node_change(number: int) -> NodeChange:
     return _named(NodeChange, pb.NodeChange, number, "NODE_", NodeChange.NONE)
+
+
+def selector_kind(number: int) -> SelectorKind:
+    return _named(SelectorKind, pb.SelectorKind, number, "SELECTOR_KIND_", SelectorKind.UNKNOWN)
 
 
 def wait_reason(detail: str) -> WaitReason | None:
@@ -208,6 +214,7 @@ def screen_node(node: pb.ScreenNode) -> ScreenNode:
         selector=Selector(node.selector) if node.HasField("selector") else None,
         by_index=node.by_index,
         change=node_change(node.change),
+        candidates=tuple(SelectorCandidate(Selector(c.selector), selector_kind(c.kind)) for c in node.candidates),
     )
 
 

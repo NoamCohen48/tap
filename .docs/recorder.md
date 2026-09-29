@@ -301,13 +301,19 @@ daemon
 ## Phases (one commit each)
 
 1. Contract: this record approved; `tap-recording/1` written down; the package skeleton
-   (Python back end, React/Vite front end, the wheel with built assets, CI). **Implemented
-   2026-09-29, uncommitted:** `proto/studio.proto` with `Info` and `GetRecording`, the generator,
+   (Python back end, React/Vite front end, the wheel with built assets, CI). **Done
+   2026-09-29 (`d6b904a`):** `proto/studio.proto` with `Info` and `GetRecording`, the generator,
    `tap_studio.recording` (load/dump/validate) and the guarded server with 64 unit tests, the page
    shell calling `Info` (Vitest), the `studio` CI job; checked in a browser against a local
    `tap-studio` (no device).
 2. Selector candidates in `ScreenSnapshot` (daemon synthesis + unit tests on the recorded
-   dumps).
+   dumps). **Done 2026-09-29:** `ScreenSnapshotRequest.selector_candidates` (off by default)
+   fills `ScreenNode.candidates` with every `SelectorCandidate{selector, kind}` that is unique in
+   the dump, in the synthesis's rank order, so the first is `ScreenNode.selector`. Minimal only:
+   a candidate that adds predicates to an earlier one is dropped, and the `At` pick is offered
+   only when nothing else is unique. `SelectorSynthesisTest` checks, on every recorded dump, that
+   each candidate is valid, native and matches its node alone; `tap-e2e` exposes them as
+   `screen_snapshot(selector_candidates=True)` → `ScreenNode.candidates`.
 3. Back end: attach / frame stream / act / assert / recording RPCs, unit tests on the
    Python client's fake daemon; per-frame cost measured on the matrix (`screen-streaming.md`;
    ask the owner before using the devices). `tap-e2e` gains a public name for its `tap.v1`
