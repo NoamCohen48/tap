@@ -172,6 +172,16 @@ or write it where you like. All four share one artifact shape: `bytes` (the seri
   `playback` (Android 13+) keeps local playback but apps may opt out; `mic` records the
   device microphone. Only one capture per attached device; detach discards an unfinished one.
   Android 10 and earlier cannot use scrcpy audio.
+- Video: `device.startRecording()` / `device.stopRecording()` in Kotlin, or
+  `device.start_recording()` / `device.stop_recording()` in Python. The default is video-only
+  (MP4, up to 30 seconds/16 MiB; 1024 px, at most 15 fps). Select `audioSource = "output"` (Python:
+  `audio_source="output"`) to record both into one Matroska file; video-only also works on
+  Android 10. Use `video = false` with an audio source for Opus-only. Audio and video use
+  **one scrcpy process** and share one recording slot with the audio-only helpers; starting
+  another recording before stopping fails. The returned `Recording` artifact exposes
+  `bytes`, `mediaType` / `media_type`, `extension`, and `save(path)`. This is an opt-in file,
+  not a live screen stream or an automatic failure artifact. A static screen may yield
+  fewer video frames, so a video-only file can be shorter than the elapsed recording time.
 - `device.screenshot()` → `Screenshot`: the PNG `bytes` (checked against the server's
   SHA-256), its `format` and its `width` / `height`.
 - `device.dumpHierarchy()` → `Hierarchy`: the accessibility tree as `xml` (a string) and as

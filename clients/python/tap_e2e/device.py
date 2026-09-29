@@ -22,6 +22,7 @@ from .models import (
     DeviceInfo,
     DriverLog,
     Hierarchy,
+    Recording,
     ScreenSnapshot,
     Screenshot,
     StabilitySignal,
@@ -282,6 +283,50 @@ class Device:
         if actual != response.sha256:
             raise TapError(f"audio recording of {self.serial} failed its checksum")
         return AudioRecording(response.opus)
+
+    def start_recording(
+        self, *, video: bool = True, audio_source: str | None = None, max_seconds: int | None = None
+    ) -> None:
+        """Begin one scrcpy recording (server needs scrcpy on PATH).
+
+        Defaults to silent H.264 MP4 video (Android 21+). Set ``audio_source`` to
+        ``output`` (Android 11+, mutes device playback), ``playback`` (Android 13+,
+        retains local audio but apps may opt out) or ``mic``. With both tracks the
+        result is Matroska; use ``video=False`` for Opus-only audio. Video is limited
+        to 30 seconds/16 MiB; audio-only to 60 seconds/3 MiB. One active recording
+        per attachment, including ``start_audio_recording``; detach discards it.
+        """
+        self._ensure_usable("start_recording")
+        limit = 30 if video else 60
+        if (not video and audio_source is None) or (audio_source is not None and audio_source not in ("output", "playback", "mic")):
+            raise ValueError("select video or an audio_source of output/playback/mic")
+        duration = limit if max_seconds is None else max_seconds
+        if not 1 <= duration <= limit:
+            raise ValueError(f"max_seconds must be 1..{limit}")
+        with mapped_errors(self.serial):
+            self.client.device_stub.StartRecording(
+                pb.StartRecordingRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                    video=video,
+                    audio_source=audio_source or "",
+                    max_seconds=duration,
+                ), timeout=30,
+            )
+
+    def stop_recording(self) -> Recording:
+        """Stop and return a checksummed, bounded MP4, Matroska or Opus artifact."""
+        self._ensure_usable("stop_recording")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.StopRecording(
+                pb.StopRecordingRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                ), timeout=30,
+            )
+        if hashlib.sha256(response.data).hexdigest() != response.sha256:
+            raise TapError(f"recording of {self.serial} failed its checksum")
+        return Recording(response.data, response.format)
 
     def dump_hierarchy(self, timeout: float | None = None) -> Hierarchy:
         """The diagnostic accessibility ``Hierarchy``. Never used by selectors; keep it out of

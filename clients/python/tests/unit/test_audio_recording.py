@@ -4,7 +4,7 @@ import hashlib
 from types import SimpleNamespace
 
 import pytest
-from tap_e2e import AudioRecording
+from tap_e2e import AudioRecording, Recording
 from tap_e2e import _gen as pb
 from tap_e2e.device import Device, Timeouts
 from tap_e2e.errors import TapError
@@ -16,6 +16,8 @@ class Stub:
         self.stopped = None
         self.payload = b"opus test bytes"
         self.hash = hashlib.sha256(self.payload).hexdigest()
+        self.media_started = None
+        self.media_stopped = None
 
     def StartAudioRecording(self, request, timeout):
         self.started = (request, timeout)
@@ -24,6 +26,14 @@ class Stub:
     def StopAudioRecording(self, request, timeout):
         self.stopped = (request, timeout)
         return pb.StopAudioRecordingResponse(opus=self.payload, sha256=self.hash)
+
+    def StartRecording(self, request, timeout):
+        self.media_started = (request, timeout)
+        return pb.StartRecordingResponse()
+
+    def StopRecording(self, request, timeout):
+        self.media_stopped = (request, timeout)
+        return pb.StopRecordingResponse(data=self.payload, format="mkv", sha256=self.hash)
 
 
 def attached():
@@ -59,3 +69,29 @@ def test_audio_rejects_invalid_input_and_checksum():
     stub.hash = "bad"
     with pytest.raises(TapError, match="checksum"):
         device.stop_audio_recording()
+
+
+def test_recording_selects_tracks_and_checks_artifact():
+    device, stub = attached()
+    device.start_recording(audio_source="playback", max_seconds=12)
+    assert stub.media_started[0].video is True
+    assert stub.media_started[0].audio_source == "playback"
+    assert stub.media_started[0].max_seconds == 12
+    result = device.stop_recording()
+    assert isinstance(result, Recording)
+    assert result.extension == "mkv"
+    assert result.media_type == "video/x-matroska"
+    assert result.bytes == stub.payload
+    assert stub.media_stopped[0].client_connection_id == "owner"
+
+
+def test_recording_validation_and_corrupt_checksum():
+    device, stub = attached()
+    with pytest.raises(ValueError):
+        device.start_recording(video=False)
+    with pytest.raises(ValueError):
+        device.start_recording(max_seconds=31)
+    assert stub.media_started is None
+    stub.hash = "bad"
+    with pytest.raises(TapError, match="checksum"):
+        device.stop_recording()

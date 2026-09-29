@@ -238,6 +238,28 @@ class WireContractTest {
             }
         }
 
+    @Test
+    fun `recording selects video and audio in one request and verifies the bytes`() = runBlocking {
+        val connection = client().connect("test")
+        try {
+            tapScope {
+                val device = connection.attachDevice("emulator-5554", "com.test")
+                device.startRecording(audioSource = "playback", maxSeconds = 12)
+                assertEquals("conn-1", devices.mediaStart?.clientConnectionId)
+                assertTrue(devices.mediaStart!!.video)
+                assertEquals("playback", devices.mediaStart!!.audioSource)
+                assertEquals(12, devices.mediaStart!!.maxSeconds)
+                assertEquals("mkv", device.stopRecording().extension)
+                assertEquals("conn-1", devices.mediaStop?.clientConnectionId)
+                devices.corruptMedia = true
+                assertFailsWith<IllegalStateException> { device.stopRecording() }
+                device.detach()
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
     // --- Fakes ----------------------------------------------------------------------------------
 
     private class Connections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
@@ -275,6 +297,26 @@ class WireContractTest {
         @Volatile var corruptAudio = false
         @Volatile var audioStart: io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest? = null
         @Volatile var audioStop: io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest? = null
+        @Volatile var corruptMedia = false
+        @Volatile var mediaStart: io.github.noamcohen48.tap.api.v1.StartRecordingRequest? = null
+        @Volatile var mediaStop: io.github.noamcohen48.tap.api.v1.StopRecordingRequest? = null
+
+        override suspend fun startRecording(
+            request: io.github.noamcohen48.tap.api.v1.StartRecordingRequest,
+        ): io.github.noamcohen48.tap.api.v1.StartRecordingResponse {
+            mediaStart = request
+            return io.github.noamcohen48.tap.api.v1.StartRecordingResponse.getDefaultInstance()
+        }
+
+        override suspend fun stopRecording(
+            request: io.github.noamcohen48.tap.api.v1.StopRecordingRequest,
+        ): io.github.noamcohen48.tap.api.v1.StopRecordingResponse {
+            mediaStop = request
+            val bytes = byteArrayOf(4, 5, 6)
+            return io.github.noamcohen48.tap.api.v1.StopRecordingResponse.newBuilder()
+                .setData(ByteString.copyFrom(bytes)).setFormat("mkv")
+                .setSha256(if (corruptMedia) "bad" else sha256Hex(bytes)).build()
+        }
 
         override suspend fun startAudioRecording(
             request: io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest,

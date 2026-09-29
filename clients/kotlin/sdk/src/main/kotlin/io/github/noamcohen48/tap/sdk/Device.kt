@@ -14,6 +14,8 @@ import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
@@ -283,6 +285,46 @@ class Device internal constructor(
             val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             if (hash != response.sha256) throw IllegalStateException("Audio checksum mismatch for $serial")
             AudioRecording(bytes)
+        }
+    }
+
+    /**
+     * Begin one optional scrcpy capture. [video] defaults to silent H.264 MP4; [audioSource]
+     * may be `output` (Android 11+, redirects local playback), `playback` (Android 13+,
+     * keeps local sound but apps can opt out), or `mic`. With both tracks, [stopRecording]
+     * returns Matroska. Video is bounded to 30 seconds/16 MiB; audio-only to 60 seconds/3 MiB.
+     * A capture shares the same slot as [startAudioRecording]; detach discards unfinished media.
+     */
+    suspend fun startRecording(video: Boolean = true, audioSource: String? = null, maxSeconds: Int = if (video) 30 else 60) {
+        ensureTapBound("Device.startRecording")
+        require(video || audioSource != null) { "Select video or an audio source" }
+        require(audioSource == null || audioSource in setOf("output", "playback", "mic")) { "Unknown audio source: $audioSource" }
+        require(maxSeconds in 1..(if (video) 30 else 60)) { "maxSeconds is outside the recording limit" }
+        admitted("Device.startRecording") {
+            mapped(serial) {
+                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).startRecording(
+                    StartRecordingRequest.newBuilder()
+                        .setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                        .setVideo(video).setAudioSource(audioSource.orEmpty()).setMaxSeconds(maxSeconds).build(),
+                )
+            }
+        }
+    }
+
+    /** Stop and return a checksummed [Recording], formatted as MP4, Matroska or Opus. */
+    suspend fun stopRecording(): Recording {
+        ensureTapBound("Device.stopRecording")
+        return admitted("Device.stopRecording") {
+            val response = mapped(serial) {
+                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).stopRecording(
+                    StopRecordingRequest.newBuilder()
+                        .setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).build(),
+                )
+            }
+            val bytes = response.data.toByteArray()
+            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            if (hash != response.sha256) throw IllegalStateException("Recording checksum mismatch for $serial")
+            Recording(bytes, response.format)
         }
     }
 

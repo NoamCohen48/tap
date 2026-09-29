@@ -187,6 +187,42 @@ class StopAudioRecordingResponse(_message.Message):
     sha256: str
     def __init__(self, opus: _Optional[bytes] = ..., sha256: _Optional[str] = ...) -> None: ...
 
+class StartRecordingRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "video", "audio_source", "max_seconds")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    VIDEO_FIELD_NUMBER: _ClassVar[int]
+    AUDIO_SOURCE_FIELD_NUMBER: _ClassVar[int]
+    MAX_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    video: bool
+    audio_source: str
+    max_seconds: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., video: _Optional[bool] = ..., audio_source: _Optional[str] = ..., max_seconds: _Optional[int] = ...) -> None: ...
+
+class StartRecordingResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class StopRecordingRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ...) -> None: ...
+
+class StopRecordingResponse(_message.Message):
+    __slots__ = ("data", "format", "sha256")
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    data: bytes
+    format: str
+    sha256: str
+    def __init__(self, data: _Optional[bytes] = ..., format: _Optional[str] = ..., sha256: _Optional[str] = ...) -> None: ...
+
 class DriverLogRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]

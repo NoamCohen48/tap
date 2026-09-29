@@ -453,6 +453,26 @@ class AudioRecording(Artifact):
         return self._data
 
 
+class Recording(Artifact):
+    """An opt-in device recording: MP4 video, Matroska video+audio, or Opus audio.
+
+    ``Device.stop_recording()`` returns these verified bytes; save them wherever a test
+    keeps its artifacts. A recording is never started implicitly on failure.
+    """
+
+    def __init__(self, data: builtins.bytes, format: str):  # noqa: A002
+        if format not in ("mp4", "mkv", "opus"):
+            raise ValueError(f"Unknown recording format: {format}")
+        self._data = data
+        self.extension = format
+        self.media_type = {"mp4": "video/mp4", "mkv": "video/x-matroska", "opus": "audio/ogg"}[format]
+
+    @property
+    def bytes(self) -> builtins.bytes:
+        """Encoded recording bytes."""
+        return self._data
+
+
 class ImageFormat(enum.Enum):
     """The encoding of a ``Screenshot``'s bytes."""
 

@@ -13,7 +13,7 @@ import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
 import io.github.noamcohen48.tap.host.AdbTimeoutException
 import io.github.noamcohen48.tap.host.AppLifecycleException
-import io.github.noamcohen48.tap.host.AudioRecordingException
+import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DeviceBusyException
 import io.github.noamcohen48.tap.host.DeviceQuarantinedException
@@ -141,7 +141,7 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 Status.FAILED_PRECONDITION
             }
             is AppLifecycleException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_APP_LIFECYCLE }
-            is AudioRecordingException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            is RecordingException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             is DriverBuildMismatchException ->
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_BUILD_MISMATCH }
             is RemoteCommandException -> {

@@ -9,8 +9,9 @@ experimental may change in any release.
 `daemon/v0.0.2`, `client-kotlin/v0.0.2`, `client-python/v0.0.2`, `client-agent/v0.0.2`, and the
 first `client-studio/v0.0.1`. `tap-agent` and `tap-studio` need `tap-e2e` 0.0.2.
 
-- **Daemon / Kotlin / Python clients:** explicit audio recording via an external scrcpy binary
-  on the daemon host, with bounded Opus artifact delivery and cleanup on detach.
+- **Daemon / Kotlin / Python clients:** opt-in scrcpy recording of audio, video or both in one
+  per-device session; bounded Opus/MP4/Matroska artifacts, checksum validation and cleanup
+  on detach. scrcpy is an external daemon-host dependency.
 
 - Licensed under Apache-2.0 (`LICENSE`; the wheels and POMs carry it).
 - Every GitHub Release carries the complete documentation as Markdown

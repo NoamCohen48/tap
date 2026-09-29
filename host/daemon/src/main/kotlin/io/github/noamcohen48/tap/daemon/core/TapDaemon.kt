@@ -11,7 +11,7 @@ import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
 import io.github.noamcohen48.tap.host.SessionJournalStore
-import io.github.noamcohen48.tap.host.ScrcpyAudioRecorder
+import io.github.noamcohen48.tap.host.ScrcpyRecorder
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -197,7 +197,7 @@ class AttachedDevice internal constructor(
     val driverLog: DriverLogBuffer,
     /** The owning connection's log; calls on this device are recorded into it. */
     val events: EventLog,
-    val audio: ScrcpyAudioRecorder,
+    val recording: ScrcpyRecorder,
 ) {
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
     internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
@@ -573,7 +573,7 @@ class TapDaemon internal constructor(
         cleanupScope.launch {
             // Detached cleanup already runs in its own job; pass the full core close bound.
             val outcome = runCatching {
-                val audioError = runCatching { device.audio.close() }.exceptionOrNull()?.message
+                val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
                 val coreError = runCatching { device.deviceSession.close(timeoutMs.coerceAtLeast(1L)) }.exceptionOrNull()?.message
                 listOfNotNull(audioError, coreError).takeIf { it.isNotEmpty() }?.joinToString("; ")
             }
@@ -586,7 +586,7 @@ class TapDaemon internal constructor(
      * driver cleanup; both diagnostics are preserved in the detach detail. */
     private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long): String? {
         val started = System.nanoTime()
-        val audioError = runCatching { device.audio.close() }.exceptionOrNull()?.message
+        val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
         val elapsedMs = (System.nanoTime() - started).coerceAtLeast(0L) / 1_000_000L
         // Audio and driver cleanup share the same device budget, rather than adding two full
         // shutdown deadlines. Even an audio failure must not skip journal/driver close.
@@ -702,7 +702,7 @@ class TapDaemon internal constructor(
                     val attachedDevice =
                         AttachedDevice(
                             UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events,
-                            ScrcpyAudioRecorder(serial, config.stateDir),
+                            ScrcpyRecorder(serial, config.stateDir),
                         )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     attachedDevice

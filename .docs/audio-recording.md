@@ -74,6 +74,38 @@ bounded first product version, not the future long-running streaming/video pipel
 - Native daemon: `nativeCompile` succeeded and a native-image device smoke started and stopped audio, returning an Opus artifact. Another native smoke detached during recording: no scrcpy process or temporary recording remained. The native build consumed too many cores; `host/daemon/build.gradle.kts` now limits native-image parallelism to two, and the owner's `~/.gradle/gradle.properties` limits Gradle workers to two. No further unbounded build is needed.
 - Not tested on the API 29 Samsung: the product refuses unsupported API levels before launching scrcpy. `playback` duplication and `mic` have unit/argument coverage but no device-family validation yet.
 
+## Opt-in video artifact extension (this branch, follow-up)
+
+The same `ScrcpyRecorder` now owns audio-only, video-only and combined tracks. The new
+`StartRecording` / `StopRecording` RPC pair adds MP4 for silent H.264 video and Matroska
+for H.264 + Opus; the original audio RPCs remain thin adapters over the same one-child
+slot. Video is bounded to 1024 px, 15 fps and 2 Mbps, up to 30 seconds/16 MiB;
+audio-only remains up to 60 seconds/3 MiB. Video-only does not require the Android 11 audio path and works on
+Android 10. A second Start (audio or video) fails instead of spawning another scrcpy
+instance. Every Stop returns a checksummed, bounded file; there is no implicit capture.
+
+This is **file recording only**. It does not implement Studio's low-latency `ScreenStream`
+or change its paired screenshot+snapshot overlay decision (`screen-streaming.md`).
+Video frames are variable-rate: on the API 34 emulator a static display produced a ~1.1 s
+MP4 after a 3 s capture because the encoder emitted no further frames. That file remains a
+valid video of the unchanged screen but **its duration does not necessarily equal wall time**.
+Combined media, which includes continuous audio samples, preserved the 12.6 s timeline in
+the test below; do not use video-only file duration as a timer assertion.
+
+### Video extension verification
+
+- JVM: protocol golden, host core/daemon and Kotlin SDK unit suites passed after extending
+  the recorder and wire contract; Python/agent unit suites passed (124), stub drift clean.
+- JVM daemon + Python client, emulator-5554: video-only MP4 96,884 bytes, H.264 stream;
+  combined MKV 984,431 bytes, H.264 + Opus streams with measured nonzero audio (peak
+  −41.1 dBFS). Second simultaneous audio start was rejected. Only the attached emulator
+  was used, the uploaded generated WAV was removed, and the daemon stopped afterward.
+  Capture used a temporarily foregrounded media preview; no Samsung run.
+- Native-image rebuilt with `--parallelism=2` (builder confirmed 2/12 threads), then the
+  native daemon returned a valid H.264 MP4 from the API 34 emulator (460×1024 frame,
+  54,071 bytes). Its server was stopped and no recording process/file remained under the
+  daemon state dir.
+
 ## Longer-term direction and limits
 
-Clients never invoke ADB or scrcpy; capture belongs to the attached device and its owning connection. The host starts scrcpy only on request, keeps the recording file temporary, returns a bounded Opus artifact on Stop, and tears down scrcpy on detach and connection loss. This is independent of Tap's one-command driver executor. A future long-running pipeline would need streaming, disk quotas, automatic failure-artifact policy, and AV synchronization rather than the first version's 60-second/3-MiB unary limit. A sudden daemon `SIGKILL` can leave an external scrcpy child until its `--time-limit` expires; the session lock is then OS-released, so crash recovery of that child remains a follow-up. This work does not alter Tap Studio's `screen-streaming.md` decision or imply video recording.
+Clients never invoke ADB or scrcpy; capture belongs to the attached device and its owning connection. The host starts scrcpy only on request, keeps the recording file temporary, returns a bounded Opus artifact on Stop, and tears down scrcpy on detach and connection loss. This is independent of Tap's one-command driver executor. A future long-running pipeline would need streamed delivery, disk quotas, automatic failure-artifact policy, and AV synchronization rather than these short bounded unary artifacts. A sudden daemon `SIGKILL` can leave an external scrcpy child until its `--time-limit` expires; the session lock is then OS-released, so crash recovery of that child remains a follow-up. This work does not alter Tap Studio's `screen-streaming.md` decision or imply video recording.

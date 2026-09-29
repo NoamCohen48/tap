@@ -7,6 +7,10 @@ import io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StartAudioRecordingResponse
 import io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopAudioRecordingResponse
+import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StartRecordingResponse
+import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopRecordingResponse
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
@@ -31,7 +35,7 @@ import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshots
 import io.github.noamcohen48.tap.host.AdbDeviceState
-import io.github.noamcohen48.tap.host.AudioRecordingException
+import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
@@ -189,17 +193,43 @@ class DeviceService(
             val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             val api = attached.deviceSession.client.execute(Commands.deviceInfo(), Defaults.ACTION_TIMEOUT_MS).deviceInfo.apiLevel
             if (api < 30 || (source == "playback" && api < 33)) {
-                throw AudioRecordingException("$source audio capture is unsupported on Android API $api")
+                throw RecordingException("$source audio capture is unsupported on Android API $api")
             }
-            attached.audio.start(source, seconds)
+            attached.recording.start(source, seconds)
             StartAudioRecordingResponse.getDefaultInstance()
         }
 
     override suspend fun stopAudioRecording(request: StopAudioRecordingRequest): StopAudioRecordingResponse =
         reply {
-            val bytes = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false).audio.stop()
+            val bytes = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false).recording.stop()
             val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             StopAudioRecordingResponse.newBuilder().setOpus(ByteString.copyFrom(bytes)).setSha256(hash).build()
+        }
+
+    override suspend fun startRecording(request: StartRecordingRequest): StartRecordingResponse =
+        reply {
+            val source = request.audioSource.takeIf { it.isNotBlank() }
+            argument(request.video || source != null) { "video or audio_source must be set" }
+            argument(source == null || source in setOf("output", "playback", "mic")) { "audio_source must be output, playback, or mic" }
+            val max = if (request.video) 30 else 60
+            val seconds = request.maxSeconds.takeIf { it != 0 } ?: max
+            argument(seconds in 1..max) { "max_seconds must be in 1..$max" }
+            val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            if (source != null) {
+                val api = attached.deviceSession.client.execute(Commands.deviceInfo(), Defaults.ACTION_TIMEOUT_MS).deviceInfo.apiLevel
+                if (api < 30 || (source == "playback" && api < 33)) {
+                    throw RecordingException("$source audio capture is unsupported on Android API $api")
+                }
+            }
+            attached.recording.start(request.video, source, seconds)
+            StartRecordingResponse.getDefaultInstance()
+        }
+
+    override suspend fun stopRecording(request: StopRecordingRequest): StopRecordingResponse =
+        reply {
+            val media = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false).recording.stopMedia()
+            val hash = MessageDigest.getInstance("SHA-256").digest(media.bytes).joinToString("") { "%02x".format(it) }
+            StopRecordingResponse.newBuilder().setData(ByteString.copyFrom(media.bytes)).setFormat(media.format).setSha256(hash).build()
         }
 
     override suspend fun driverLog(request: DriverLogRequest): DriverLogResponse =

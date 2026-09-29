@@ -132,7 +132,9 @@ Missing:
 - `dumpsys window/activity`, crash/ANR evidence, redacted protocol event log.
 - Incremental JSONL event stream; JUnit XML is whatever the build tool writes; no HTML report;
   no Flowdeck adapter.
-- Optional rotating `screenrecord` video.
+- Optional rotating **automatic failure-capture** video. Opt-in `Device.startRecording` /
+  `start_recording` now records bounded scrcpy MP4/MKV on demand, but does not rotate files,
+  start with each test, or attach video to JUnit/pytest failure artifacts.
 - Separate deadlines per artifact step; today capture runs sequentially with the action
   timeout.
 
