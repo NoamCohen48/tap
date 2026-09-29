@@ -7,7 +7,7 @@
 #                          zipped for the CI artifact, and attached to every GitHub Release
 #
 # Generated inputs (all ignored by git, regenerated on every run):
-#   docs/reference/kotlin/         Dokka HTML aggregate of :clients:kotlin:sdk + :junit5 (site)
+#   docs/reference/kotlin-api/     Dokka HTML aggregate of :clients:kotlin:sdk + :junit5 (site)
 #   build/docs-md/reference/kotlin/ Dokka GFM of the same modules (-Ptap.dokkaFormat=gfm)
 #   docs/reference/grpc.md         protoc-gen-doc Markdown for contracts/proto/*.proto (both)
 #   (Python, site)                 mkdocstrings renders clients/python/tap_e2e at mkdocs time
@@ -27,8 +27,8 @@ MD=build/docs-md
 
 echo "== Kotlin reference (Dokka HTML for the site, GFM for the Markdown bundle)"
 ./gradlew --quiet :dokkaGenerate
-rm -rf docs/reference/kotlin
-cp -r build/dokka/html docs/reference/kotlin
+rm -rf docs/reference/kotlin docs/reference/kotlin-api
+cp -r build/dokka/html docs/reference/kotlin-api
 ./gradlew --quiet -Ptap.dokkaFormat=gfm \
   :clients:kotlin:sdk:dokkaGeneratePublicationHtml :clients:kotlin:junit5:dokkaGeneratePublicationHtml
 rm -rf "$MD" && mkdir -p "$MD/reference/kotlin" "$MD/reference/python"
@@ -71,7 +71,7 @@ echo "== Markdown bundle"
 # The guide and the hand-written reference pages are Markdown already; only the two pages that
 # embed site-specific machinery (the Dokka HTML link, the mkdocstrings directives) are replaced
 # with plain indexes of the generated Markdown.
-(cd docs && find . -name '*.md' -not -path './reference/kotlin/*' -exec cp --parents {} "../$MD/" \;)
+(cd docs && find . -name '*.md' -not -path './reference/kotlin-api/*' -not -path './assets/dokka/*' -exec cp --parents {} "../$MD/" \;)
 cat > "$MD/reference/kotlin.md" <<'MDX'
 # Kotlin client
 

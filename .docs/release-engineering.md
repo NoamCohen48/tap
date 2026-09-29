@@ -122,7 +122,7 @@ device (the emulator lane uses the JVM dist).
 ## Docs (`docs.yml`)
 
 Runs on changes to `docs/`, `mkdocs.yml`, the clients or the API proto: `scripts/build-docs.sh`
-(Dokka → `docs/reference/kotlin/`, protoc-gen-doc → `docs/reference/grpc.md`, mkdocstrings at
+(Dokka → `docs/reference/kotlin-api/`, protoc-gen-doc → `docs/reference/grpc.md`, mkdocstrings at
 build time, `mkdocs build --strict`; then Dokka GFM + lazydocs into `build/docs-md/`) and
 uploads `build/site` as the `site` artifact and `tap-docs-md.zip` as `docs-md`. Deploy to
 GitHub Pages is gated on the `DEPLOY_DOCS=true` repository variable, with "GitHub Actions" as

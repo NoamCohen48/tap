@@ -8,9 +8,9 @@ name: Docs
 on:
   push:
     branches: [main]
-    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, CHANGELOG.md, .github/workflows/docs.yml, .github/actions/build-docs/**]
+    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, CHANGELOG.md, build-logic/**, build.gradle.kts, .github/workflows/docs.yml, .github/actions/build-docs/**]
   pull_request:
-    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, CHANGELOG.md, .github/workflows/docs.yml, .github/actions/build-docs/**]
+    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, CHANGELOG.md, build-logic/**, build.gradle.kts, .github/workflows/docs.yml, .github/actions/build-docs/**]
   workflow_dispatch:
 
 permissions:
