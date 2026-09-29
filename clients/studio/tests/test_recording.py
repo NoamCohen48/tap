@@ -12,6 +12,7 @@ from tap_studio.recording import FORMAT, RecordingError, dump, dumps, load, load
 SEARCH = {"node": {"resource": {"name": "search", "aut_package": True}}}
 PASSWORD = {"node": {"resource": {"name": "password", "aut_package": True}}}
 ONE = {"wait_visible": {"selector": SEARCH, "exactly_one": True}}
+SECOND = {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Add"}}, "at": {"index": 1}}
 
 EXAMPLE = {
     "format": "tap-recording/1",
@@ -122,7 +123,7 @@ def test_every_problem_is_reported_with_its_step():
     assert caught.value.problems == [
         "steps[0] (a): kind is required (app, action, type or assertion)",
         "steps[1] (a): id is used twice",
-        "steps[1] (a): action tap is recorded with its wait (wait_visible, exactly_one)",
+        "steps[1] (a): action tap is recorded with its wait (wait_visible)",
     ]
 
 
@@ -177,7 +178,9 @@ def action(command: dict, wait: dict | None = None, **extra) -> dict:
         (action({"tap": {"selector": SEARCH}}), "tap is recorded with its wait"),
         (action({"tap": {}}, ONE), "action.command.tap.selector has no node"),
         (action({"tap": {"selector": SEARCH}}, {"wait_visible": {"selector": SEARCH}}), "exactly_one"),
-        (action({"tap": {"selector": SEARCH}}, {"wait_gone": {"selector": SEARCH}}), "exactly_one"),
+        (action({"tap": {"selector": SEARCH}}, {"wait_gone": {"selector": SEARCH}}), "must be wait_visible"),
+        (action({"tap": {"selector": SECOND}}, {"wait_visible": {"selector": SECOND, "exactly_one": True}}),
+         "must not be exactly_one: the selector has a pick"),
         (action({"tap": {"selector": SEARCH}}, {"wait_visible": {"selector": PASSWORD, "exactly_one": True}}),
          "wait's selector differs"),
         (action({"press_key": {"key_code": 4}}, ONE), "press_key has no selector"),
@@ -189,6 +192,10 @@ def action(command: dict, wait: dict | None = None, **extra) -> dict:
 def test_action_step_rules(step, message):
     secret = step["action"].get("secret")
     rejects(with_steps(step, secrets=[secret] if secret else []), message)
+
+
+def test_a_picked_selector_waits_for_any_match():
+    loads(text(with_steps(action({"tap": {"selector": SECOND}}, {"wait_visible": {"selector": SECOND}}))))
 
 
 def test_secret_set_text_and_every_action_op_load():

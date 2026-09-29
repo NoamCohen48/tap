@@ -303,7 +303,7 @@ function PopoverView({
         />
       ) : (
         <div className="opts">
-          {checksFor(node).map((option, i) => (
+          {checksFor(node, target.selector).map((option, i) => (
             <button key={option.label} type="button" autoFocus={i === 0} onClick={() => onPerform(steps.assertion(target, option.check))}>
               {option.label}
             </button>

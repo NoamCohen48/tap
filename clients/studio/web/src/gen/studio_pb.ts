@@ -1047,8 +1047,10 @@ export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
   command?: Command | undefined;
 
   /**
-   * For every op but press_key (and only then): `wait_visible` of the command's selector with
-   * `exactly_one`. A replayer sends `wait` then `command`, unchanged.
+   * For every op but press_key (and only then): `wait_visible` of the command's selector, with
+   * `exactly_one` unless the selector has a `first` or `at` pick (waits count every match, so a
+   * picked selector waits for at least one and the command picks). A replayer sends `wait` then
+   * `command`, unchanged.
    *
    * @generated from field: tap.v1.Command wait = 2;
    */
@@ -1078,7 +1080,8 @@ export const ActionStepSchema: GenMessage<ActionStep> = /*@__PURE__*/
 
 /**
  * The element typeText flow, three commands: tap `selector`, await it focused (unless
- * `skip_focus_wait`), then `type_text`. The exactly-one wait before the tap is implied.
+ * `skip_focus_wait`), then `type_text`. The wait before the tap is implied: exactly one match,
+ * or at least one for a selector with a `first` or `at` pick.
  *
  * @generated from message tap.studio.v1.TypeStep
  */

@@ -12,6 +12,7 @@ import os
 import pathlib
 
 from google.protobuf import json_format
+from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
 
@@ -144,6 +145,13 @@ def _app(call, used: set[str]) -> list[str]:
     return problems
 
 
+def picks(selector: tap.Selector) -> bool:
+    """Whether the selector picks among several matches (``first`` or ``at``). The driver's
+    waits count every match whatever the pick, so such a selector waits for at least one match
+    and the action then picks; any other waits for exactly one."""
+    return selector.WhichOneof("pick") in ("first", "at")
+
+
 def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
     op = action.command.WhichOneof("op")
     if op not in ACTION_OPS:
@@ -157,9 +165,15 @@ def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
         if not selector.HasField("node"):
             problems.append(f"action.command.{op}.selector has no node")
         if not action.HasField("wait"):
-            problems.append(f"action {op} is recorded with its wait (wait_visible, exactly_one)")
-        elif action.wait.WhichOneof("op") != "wait_visible" or not action.wait.wait_visible.exactly_one:
-            problems.append("action.wait must be wait_visible with exactly_one")
+            problems.append(f"action {op} is recorded with its wait (wait_visible)")
+        elif action.wait.WhichOneof("op") != "wait_visible":
+            problems.append("action.wait must be wait_visible")
+        elif action.wait.wait_visible.exactly_one == picks(selector):
+            problems.append(
+                "action.wait must not be exactly_one: the selector has a pick, and waits count every match"
+                if picks(selector)
+                else "action.wait must be exactly_one: the selector has no pick"
+            )
         elif action.wait.wait_visible.selector != selector:
             problems.append(f"action.wait's selector differs from command.{op}.selector")
     if action.HasField("secret"):

@@ -144,3 +144,25 @@ export function stepChips(step: Step, missingSecrets: readonly string[]): Chip[]
   }
   return chips;
 }
+
+const elements = (n: number) => `${n} element${n === 1 ? "" : "s"}`;
+
+/**
+ * What a live count of the selector means for the step. `Count` counts every match whatever the
+ * pick, as the driver's waits do: an action needs exactly one match, or with `.first()` /
+ * `.at(i)` enough matches for the pick; an assertion needs none of that.
+ */
+export function countLine(count: number, selector: Selector, assertion: boolean): { text: string; warn: boolean } {
+  const now = `Matches ${elements(count)} now`;
+  if (assertion) return { text: `${now}.`, warn: false };
+  if (selector.pick.case === "first") {
+    return count > 0 ? { text: `${now}; the step uses the first.`, warn: false } : { text: `${now}.`, warn: true };
+  }
+  if (selector.pick.case === "at") {
+    const index = selector.pick.value.index;
+    return count > index
+      ? { text: `${now}; the step uses element ${index + 1}.`, warn: false }
+      : { text: `${now}: .at(${index}) needs at least ${index + 1}.`, warn: true };
+  }
+  return count === 1 ? { text: `${now}.`, warn: false } : { text: `${now}: an action needs exactly one when it runs.`, warn: true };
+}

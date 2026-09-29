@@ -164,8 +164,14 @@ code,
   font-weight: 500;
 }
 .modes button kbd {
-  font: 11px var(--mono);
+  font: 10px/1 var(--mono);
   color: var(--faint);
+  min-width: 16px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  text-align: center;
 }
 .modes button[aria-pressed="true"][data-mode="act"] {
   background: var(--accent-soft);

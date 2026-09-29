@@ -217,7 +217,7 @@ function Element({
           <div className="section">
             <h4>Assert</h4>
             <div className="actions">
-              {checksFor(node).map((option) => (
+              {checksFor(node, selector).map((option) => (
                 <button
                   key={option.label}
                   type="button"

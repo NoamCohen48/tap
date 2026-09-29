@@ -12,7 +12,9 @@ export type StepState = "run" | "ok" | "fail";
 
 export type ReplayRequest = { fromStepId?: string; only?: boolean; secretValues?: Record<string, string> };
 
-export type ReplaySummary = { tone: "ok" | "fail" | "info"; text: string };
+/** How a replay ended. A failed step is named by id: the page numbers it when it shows it, since
+ *  steps can be inserted while the replay runs (a prepended cold launch). */
+export type ReplaySummary = { tone: "ok" | "fail" | "info"; text: string; failedStepId?: string };
 
 export const passed = (outcome: Outcome | undefined) => !!outcome && !outcome.error && !outcome.failure;
 
@@ -23,14 +25,15 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
   const abort = useRef<AbortController | null>(null);
 
   const start = useCallback(
-    async (request: ReplayRequest, number: (stepId: string) => number) => {
+    async (request: ReplayRequest, alreadyRan = 0) => {
       if (abort.current) return;
       const controller = new AbortController();
       abort.current = controller;
       setRunning(true);
       setStates({});
       setSummary(null);
-      let ran = 0;
+      // Steps run just before the stream (a prepended cold launch) count in the summary.
+      let ran = alreadyRan;
       let last: string | null = null;
       let failure: { stepId: string; message: string } | null = null;
       try {
@@ -51,7 +54,7 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
           if (!ok) failure = { stepId: event.stepId, message: event.message };
         }
         if (failure) {
-          setSummary({ tone: "fail", text: `Step ${number(failure.stepId)} failed. ${failure.message}` });
+          setSummary({ tone: "fail", text: failure.message, failedStepId: failure.stepId });
         } else {
           setSummary({ tone: "ok", text: ran === 1 ? "The step passed." : `All ${ran} steps passed.` });
         }

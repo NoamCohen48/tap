@@ -114,7 +114,9 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
    so bare taps fail with `NOT_FOUND` on the next screen when replayed. When the user acts on a
    node, that node was on screen and matched once by its selector, so the step records
    `await(selector).one()` then the action. This is evidence, not a guess. No sleeps are ever
-   recorded.
+   recorded. A selector with a `first()` / `at(i)` pick matches several nodes by design, and the
+   driver's waits count every match whatever the pick, so it records `await(selector).visible()`
+   instead and the action applies the pick (found on the device run, phase 6).
 
 7. **Assertions are first-class steps.** An *assert mode* turns a click into a check instead of
    an action: visible, gone, exactly one, text equals / contains, enabled, checked, count. The UI
@@ -242,12 +244,13 @@ strings (proto3 JSON).
     clear_data, grant_permission.
   - `action`: one `tap.v1.Command` in `command` (tap, long_tap, set_text, clear_text, scroll,
     swipe, press_key) and, for every op but press_key, the recorded precondition in `wait` (a
-    `Command` holding `wait_visible` of the same selector with `exactly_one`, decision 6). A
+    `Command` holding `wait_visible` of the same selector, with `exactly_one` unless the selector
+    has a `first` / `at` pick, decision 6). A
     replayer sends `wait` then `command`, unchanged. With `secret` (set_text only),
     `set_text.text` is empty and the value is the named secret's.
   - `type`: the element `typeText` flow, three commands: tap `selector`, await it focused
     (unless `skip_focus_wait`, the SDKs' `await_focus = false`), then `type_text` of `text` or of
-    the named `secret`. The exactly-one wait before the tap is implied.
+    the named `secret`. The wait before the tap is implied, as for an action.
   - `assertion`: `selector` + `condition`, the SDKs' element waits (`CONDITION_VISIBLE`, `ONE`,
     `GONE`, `ENABLED`, `DISABLED`, `CHECKED`, `UNCHECKED`, `FOCUSED`, `TEXT_EQUALS` /
     `TEXT_CONTAINS` with `text`, `COUNT` with `count`), replayed as the SDK wait of the same name
@@ -409,6 +412,23 @@ daemon
      same `loads` as everything else and reports every problem; it replaces the recording and
      forgets the secret values.
 6. Device run on the local matrix and docs (`docs/guide/`, release family).
+   **Device run on emulator-5554 (API 34), 2026-09-29; 85e49002 not yet.** On the fixture app,
+   in the browser, with the frame loop running: a tap, a set text with `$` in it, a tap retargeted
+   to a typed `text("AMBIGUOUS TAP").at(1)`, a wheel scroll of the Compose list and two text
+   assertions. Replay with the cold launch prepended passed (7 steps); the exported file,
+   replayed through `tap-e2e` in a fresh connection after releasing the device, passed the same
+   7 steps. It found and fixed:
+   - The inferred wait was always `exactly_one`, which a selector with a pick can never satisfy
+     (the driver's waits ignore the pick): a picked selector now waits for any match (decision
+     6), the validator enforces the rule, and the page offers no *Exactly one* check on such a
+     target and reads a live count against the pick ("the step uses element 2").
+   - SIGTERM or Ctrl-C with a page open did not stop the studio: uvicorn waits for open
+     responses before shutting the app down, and `Frames` only ends when the device is released,
+     so the device stayed attached until the process was killed. The exit signal now releases
+     the device first (and uvicorn cuts what is left after 5 s).
+   - A replay that failed after a prepended cold launch named the step by its old number, and
+     the summary did not count the launch.
+   - The mode switch's shortcut numbers read as counts; they are keycaps now.
 
 ## Verification
 

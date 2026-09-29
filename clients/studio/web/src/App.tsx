@@ -88,7 +88,9 @@ function TopBar({ status, children }: { status: Status; children?: ReactNode }) 
 
 type RecordingState = { steps: Step[]; missingSecrets: string[] };
 
-type Dialog = { kind: "launch"; request: ReplayRequest } | { kind: "secrets"; names: string[]; request: ReplayRequest };
+/** `launched`: the cold launch was just performed as step 1, so the replay starts after it and counts it. */
+type Checked = { launch?: boolean; launched?: boolean };
+type Dialog = { kind: "launch"; request: ReplayRequest } | { kind: "secrets"; names: string[]; request: ReplayRequest; checked: Checked };
 
 function Workspace({
   client,
@@ -226,9 +228,15 @@ function Workspace({
   };
 
   const number = (stepId: string) => steps.findIndex((s) => s.id === stepId) + 1;
+  const summary = replay.summary && {
+    tone: replay.summary.tone,
+    text: replay.summary.failedStepId
+      ? `Step ${number(replay.summary.failedStepId)} failed. ${replay.summary.text}`
+      : replay.summary.text,
+  };
 
   /** Replays, first offering a cold launch (from the first step) and asking for missing secrets. */
-  const startReplay = (request: ReplayRequest, checked: { launch?: boolean } = {}) => {
+  const startReplay = (request: ReplayRequest, checked: Checked = {}) => {
     setLastRun(null);
     if (!request.fromStepId && !checked.launch && steps[0]?.kind.case !== "app") {
       setDialog({ kind: "launch", request });
@@ -247,18 +255,18 @@ function Workspace({
       ),
     ];
     if (names.length) {
-      setDialog({ kind: "secrets", names, request });
+      setDialog({ kind: "secrets", names, request, checked });
       return;
     }
     setDialog(null);
-    void replay.start(request, number).then(() => client.getRecording({}).then(apply, () => undefined));
+    void replay.start(request, checked.launched ? 1 : 0).then(() => client.getRecording({}).then(apply, () => undefined));
   };
 
   const launchFirst = async (request: ReplayRequest) => {
     setDialog(null);
     const first = steps[0]!.id;
     if (await perform(stepsApi.app("cold_launch", device.autPackage), first))
-      startReplay({ ...request, fromStepId: first }, { launch: true });
+      startReplay({ ...request, fromStepId: first }, { launch: true, launched: true });
   };
 
   const nodes = frame?.nodes ?? [];
@@ -302,10 +310,11 @@ function Workspace({
               type="button"
               data-mode={m.mode}
               aria-pressed={mode === m.mode}
-              title={`${m.title} (${m.key})`}
+              title={`${m.title} (key ${m.key})`}
+              aria-keyshortcuts={m.key}
               onClick={() => setMode(m.mode)}
             >
-              {m.label} <kbd>{m.key}</kbd>
+              {m.label} <kbd aria-hidden="true">{m.key}</kbd>
             </button>
           ))}
         </div>
@@ -351,7 +360,7 @@ function Workspace({
           steps={steps}
           missingSecrets={recording.missingSecrets}
           recording={session.recording}
-          lastRun={replay.running ? { tone: "info", text: "Replaying…" } : (replay.summary ?? lastRun)}
+          lastRun={replay.running ? { tone: "info", text: "Replaying…" } : (summary ?? lastRun)}
           selectedId={selectedStep}
           states={replay.states}
           replaying={replay.running}
@@ -404,7 +413,7 @@ function Workspace({
         <SecretsDialog
           names={dialog.names}
           onSubmit={(values) =>
-            startReplay({ ...dialog.request, secretValues: { ...dialog.request.secretValues, ...values } }, { launch: true })
+            startReplay({ ...dialog.request, secretValues: { ...dialog.request.secretValues, ...values } }, { ...dialog.checked, launch: true })
           }
           onCancel={() => setDialog(null)}
         />

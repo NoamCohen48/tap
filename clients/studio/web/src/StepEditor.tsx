@@ -2,7 +2,7 @@ import { clone, equals } from "@bufbuild/protobuf";
 import { useEffect, useId, useState } from "react";
 import type { StudioClient } from "./api";
 import { describeSelector } from "./describe";
-import { nodeFor, stepOrigin, stepSelector, stepText, takesSecret, withSelector, withText } from "./edit";
+import { countLine, nodeFor, stepOrigin, stepSelector, stepText, takesSecret, withSelector, withText } from "./edit";
 import { errorMessage } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
 import { SelectorSchema, type Selector } from "./gen/selector_pb";
@@ -56,6 +56,8 @@ export function StepEditor({
   const [typed, setTyped] = useState(original ? describeSelector(original) : "");
   const [typedError, setTypedError] = useState<string | null>(null);
   const count = useCount(client, target?.selector);
+  const counted =
+    count.state === "done" && target ? countLine(count.count, target.selector, step.kind.case === "assertion") : null;
 
   const initialText = stepText(step);
   const [text, setText] = useState(initialText && "text" in initialText ? initialText.text : "");
@@ -145,21 +147,9 @@ export function StepEditor({
               onChange={(e) => type(e.target.value)}
             />
           </label>
-          <div
-            id={`${id}-count`}
-            className={`count-line${typedError || (count.state === "done" && count.count !== 1) ? " warn" : ""}`}
-            aria-live="polite"
-          >
+          <div id={`${id}-count`} className={`count-line${typedError || counted?.warn ? " warn" : ""}`} aria-live="polite">
             {typedError ??
-              (count.state === "counting"
-                ? "Counting…"
-                : count.state === "done"
-                  ? count.count === 1
-                    ? "Matches 1 element now."
-                    : `Matches ${count.count} elements now: an action needs exactly one when it runs.`
-                  : count.state === "failed"
-                    ? count.message
-                    : "")}
+              (count.state === "counting" ? "Counting…" : count.state === "done" ? counted?.text : count.state === "failed" ? count.message : "")}
           </div>
         </fieldset>
       )}

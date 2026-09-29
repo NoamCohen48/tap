@@ -10,12 +10,16 @@ export type CheckOption = { label: string; check: Check };
 
 const has = (node: ScreenNode, flag: NodeFlag) => node.flags.includes(flag);
 
-/** The assertions that hold on the node as it is on this frame, so recording one passes. */
-export function checksFor(node: ScreenNode): CheckOption[] {
-  const options: CheckOption[] = [
-    { label: "Visible", check: { condition: Condition.VISIBLE } },
-    { label: "Exactly one", check: { condition: Condition.ONE } },
-  ];
+/** Whether the selector picks among several matches. Waits count every match whatever the pick. */
+export const picks = (selector: Selector | undefined) => selector?.pick.case === "first" || selector?.pick.case === "at";
+
+/**
+ * The assertions that hold on the node as it is on this frame, so recording one passes. No
+ * "Exactly one" for a selector that picks: it matches several nodes, so the check could only fail.
+ */
+export function checksFor(node: ScreenNode, selector: Selector | undefined): CheckOption[] {
+  const options: CheckOption[] = [{ label: "Visible", check: { condition: Condition.VISIBLE } }];
+  if (!picks(selector)) options.push({ label: "Exactly one", check: { condition: Condition.ONE } });
   if (node.text) options.push({ label: `Text is “${node.text}”`, check: { condition: Condition.TEXT_EQUALS, text: node.text } });
   options.push(
     has(node, NodeFlag.FLAG_ENABLED)

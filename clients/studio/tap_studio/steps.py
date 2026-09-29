@@ -26,7 +26,7 @@ from tap_e2e import (
 from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
-from .recording import RecordingError, secret_name, validate_step
+from .recording import RecordingError, picks, secret_name, validate_step
 
 DEFAULT_GESTURE_PERCENT = 80
 """The distance ``scroll`` and ``swipe`` get when the page leaves it out, as the SDKs' default."""
@@ -99,7 +99,7 @@ def _complete_action(action: studio.ActionStep) -> list[str]:
             gesture.distance_percent = DEFAULT_GESTURE_PERCENT
     if op is not None and not action.HasField("wait") and getattr(command, op).HasField("selector"):
         selector = getattr(command, op).selector
-        action.wait.CopyFrom(tap.Command(wait_visible=tap.WaitVisible(selector=selector, exactly_one=True)))
+        action.wait.CopyFrom(tap.Command(wait_visible=tap.WaitVisible(selector=selector, exactly_one=not picks(selector))))
     return []
 
 
@@ -153,7 +153,8 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
         return
     message = getattr(command, op)
     timeout = _seconds(command)
-    element = device.wait(Selector.from_proto(action.wait.wait_visible.selector), _seconds(action.wait)).one()
+    wait = device.wait(Selector.from_proto(action.wait.wait_visible.selector), _seconds(action.wait))
+    element = wait.one() if action.wait.wait_visible.exactly_one else wait.visible()
     perform: dict[str, Callable[[], None]] = {
         "tap": lambda: element.tap(timeout),
         "long_tap": lambda: element.long_tap(timeout),
@@ -167,7 +168,9 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
 
 def _type(device: Device, step: studio.TypeStep, secret_value: str | None) -> None:
     value = secret_value if step.WhichOneof("input") == "secret" else step.text
-    device.wait(Selector.from_proto(step.selector)).one().type_text(value or "", await_focus=not step.skip_focus_wait)
+    wait = device.wait(Selector.from_proto(step.selector))
+    element = wait.visible() if picks(step.selector) else wait.one()
+    element.type_text(value or "", await_focus=not step.skip_focus_wait)
 
 
 def _assertion(device: Device, step: studio.AssertionStep) -> None:

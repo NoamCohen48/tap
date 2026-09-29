@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import secrets
 import socket
 import sys
@@ -13,6 +14,7 @@ import uvicorn
 from . import __version__
 from ._gen import studio_pb2 as studio
 from .server import create_app
+from .service import Studio
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,10 +56,33 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_open:
         webbrowser.open(link)
     attach = studio.AttachRequest(serial=args.serial, aut_package=args.package) if args.serial else None
-    app = create_app(token, attach=attach)
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="on"))
+    service = Studio()
+    app = create_app(token, service=service, attach=attach)
+    server = _Server(service, uvicorn.Config(app, log_level="warning", lifespan="on", timeout_graceful_shutdown=5))
     try:
         server.run(sockets=[sock])
     except KeyboardInterrupt:
         pass
     return 0
+
+
+class _Server(uvicorn.Server):
+    """Releases the device as soon as an exit is asked for. uvicorn waits for open responses
+    before it shuts the app down, and a page's ``Frames`` stream only ends when the device is
+    released: without this, Ctrl-C or SIGTERM would wait on the stream (then, after the graceful
+    timeout, cut it) while the device stays attached."""
+
+    def __init__(self, service: Studio, config: uvicorn.Config) -> None:
+        super().__init__(config)
+        self._service = service
+        self._releasing: asyncio.Task[None] | None = None
+
+    def handle_exit(self, sig, frame) -> None:  # noqa: ANN001 - uvicorn's signal handler signature
+        if self._releasing is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop is not None:
+                self._releasing = loop.create_task(self._service.close())
+        super().handle_exit(sig, frame)

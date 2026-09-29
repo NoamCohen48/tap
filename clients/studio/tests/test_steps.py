@@ -59,6 +59,19 @@ def test_a_revised_action_waits_for_its_new_selector_with_the_old_timeout():
         revise(edited, "1234")
 
 
+def test_a_picked_selector_waits_for_any_match_and_the_action_picks(daemon, device):
+    # Waits count every match whatever the pick, so exactly one could never hold for `.at(1)`.
+    second = {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Add"}}, "at": {"index": 1}}
+    prepared = prepare(step(action={"command": {"tap": {"selector": second}}}), None)
+    assert prepared.action.wait == command({"wait_visible": {"selector": second}})
+    daemon.devices.commands.clear()
+    run(device, prepared)
+    assert sent(daemon) == [prepared.action.wait, prepared.action.command]
+    daemon.devices.commands.clear()
+    run(device, prepare(step(type={"selector": second, "text": "x", "skip_focus_wait": True}), None))
+    assert sent(daemon)[0] == command({"wait_visible": {"selector": second}})
+
+
 def test_gestures_get_the_default_distance_and_keys_no_wait():
     prepared = prepare(step(action={"command": {"swipe": {"selector": SEARCH, "direction": "DIR_LEFT"}}}), None)
     assert prepared.action.command.swipe.distance_percent == 80

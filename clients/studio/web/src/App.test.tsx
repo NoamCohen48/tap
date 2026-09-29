@@ -68,6 +68,7 @@ function fakeStudio() {
     missing: [] as string[],
     nextId: 1,
     failNext: null as string | null,
+    failAt: null as { stepId: string; message: string } | null,
     updates: [] as UpdateStepRequest[],
     replays: [] as ReplayRequest[],
     counted: [] as string[],
@@ -166,7 +167,7 @@ function fakeStudio() {
             await Promise.race([state.replayGate, new Promise((resolve) => context.signal.addEventListener("abort", resolve))]);
             if (context.signal.aborted) return;
           }
-          const failed = state.failNext;
+          const failed = state.failNext ?? (state.failAt?.stepId === step.id ? state.failAt.message : null);
           state.failNext = null;
           const outcome = create(OutcomeSchema, failed ? { durationMs: 7, error: { message: failed } } : { durationMs: 5 });
           step.outcome = outcome;
@@ -467,13 +468,23 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Replay" }));
       const dialog = await screen.findByRole("dialog", { name: "Start from a cold launch?" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cold launch first" }));
-      expect(await screen.findByText("All 2 steps passed.")).toBeTruthy();
+      // The cold launch runs before the stream and counts: three steps ran.
+      expect(await screen.findByText("All 3 steps passed.")).toBeTruthy();
       const launch = fake.state.performed[2]!;
       expect(launch.step?.kind.case === "app" && launch.step.kind.value.operation).toBe("cold_launch");
       expect(launch.beforeStepId).toBe("s1");
       expect(fake.state.replays[0]!.fromStepId).toBe("s1"); // the launch is not run twice
       expect(listed()[0]).toBe('app("com.example").coldLaunch()');
       expect(screen.getAllByText("✓ 5 ms")).toHaveLength(2);
+    });
+
+    it("names a failed step by its place after a prepended cold launch", async () => {
+      const fake = await recordTwo();
+      fake.state.failAt = { stepId: "s2", message: "no key" };
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cold launch first" }));
+      // The launch is step 1 now, so pressBack() is step 3.
+      expect((await screen.findByRole("alert")).textContent).toBe("Step 3 failed. no key");
     });
 
     it("a replay stops at the first failure, and Stop ends it", async () => {
