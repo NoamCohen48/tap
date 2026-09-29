@@ -180,7 +180,7 @@ class Studio:
         assert device is not None
         selector = Selector.from_proto(request.selector)
         try:
-            count = await worker.call(lambda: device.element(selector).count())
+            count = await worker.call(lambda: device.element(selector).count(), changes_screen=False)
         except TapError as error:
             raise _connect_error(error) from None
         return studio.CountResponse(count=count)

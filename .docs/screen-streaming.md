@@ -58,6 +58,27 @@ rate proves insufficient.
 - **Measure it.** Per-frame cost (snapshot + screenshot) on emulator-5554 and 85e49002 on the
   fixture screens, recorded here, is the evidence for whether and when to add video.
 
+### Measured (2026-09-29, 85e49002 only)
+
+Samsung SM-J810G, API 29, 720x1480, the fixture's main screen (76 nodes, 120 selector
+candidates), JVM daemon, `tap-studio`'s `DeviceWorker` loop (medians, p90 in brackets):
+
+| | median |
+|---|---|
+| `ScreenSnapshot` with selector candidates | 70 ms (73) |
+| `Screenshot` (PNG, 73 KiB) | 357 ms (380) |
+| a frame (snapshot + screenshot) | ~430 ms, so ~2.3 frames/s while the screen moves |
+| `Count` alone / while frames stream | 62 ms / 98 ms (167) |
+| `Perform` tap (wait + tap) | 251 ms |
+| tap returned → first frame taken after it | 488 ms (906) |
+
+The screenshot is 80 % of a frame. Two frames a second is enough to follow what a tap did but
+not to watch a scroll or an animation, which is what video would add. A frame's cost is in the
+screenshot, so a cheaper capture (smaller or JPEG) would help the loop before video would.
+The first run showed `Count` at 263 ms while frames streamed: every user call woke the
+settled loop, so the next count waited behind a screenshot. Only calls that may change the
+screen (`Perform`) wake it now. emulator-5554 is not measured yet.
+
 ## Later: encoded video (options C/D)
 
 When paired frames are too slow in practice, add `DeviceService.ScreenStream(client_connection_id,

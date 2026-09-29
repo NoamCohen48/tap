@@ -112,6 +112,32 @@ async def test_a_user_call_never_waits_behind_more_than_the_call_running(worker)
         assert not (calls[at - 1] == "snapshot" and at + 1 < len(calls) and calls[at + 1] == "screenshot"), calls
 
 
+async def test_only_a_call_that_may_change_the_screen_wakes_a_settled_loop():
+    worker = DeviceWorker("emulator-5554", slow=5, backoff_start=5)
+    worker.device = ScriptedDevice()  # type: ignore[assignment]
+    frames: list = []
+
+    async def read() -> None:
+        async for frame in worker.frames():
+            frames.append(frame)
+
+    reader = asyncio.create_task(read())
+    try:
+        while not frames:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)  # into the 5 s back-off
+        device = worker.device
+        await worker.call(lambda: device._log("count"), changes_screen=False)
+        await asyncio.sleep(0.3)
+        assert len(frames) == 1  # still backing off
+        await worker.call(lambda: device._log("tap"))
+        await asyncio.sleep(0.3)
+        assert [f.sequence for f in frames] == [1, 2]  # at once
+    finally:
+        reader.cancel()
+        await worker.close()
+
+
 async def test_the_loop_runs_only_while_someone_reads(worker):
     stream = worker.frames()
     await asyncio.wait_for(take(stream, 2), 5)

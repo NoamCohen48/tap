@@ -9,7 +9,9 @@ because the picture after it would show another screen.
 
 The loop runs only while a page reads frames. It takes the next frame at once while the screen
 changes (a node added or removed, or another picture), backs off to ``slow`` seconds while it
-does not, and starts over at once after every user call.
+does not, and starts over at once after a user call that may change the screen (Perform). A
+read-only call (Count) does not wake it: the inspector counts as the user browses, and waking
+the loop would put each next count behind a screenshot.
 """
 
 from __future__ import annotations
@@ -52,7 +54,8 @@ class DeviceWorker:
         self._urgent = 0
         self._calm = asyncio.Event()  # no urgent call is waiting or running
         self._calm.set()
-        self._kick = asyncio.Event()  # an urgent call finished: the screen may have changed
+        self._kick = asyncio.Event()  # the urgent calls finished and one may have changed the screen
+        self._touched = False  # an urgent call that may change the screen ran since the last kick
         self._published = asyncio.Condition()
         self._frame: studio.FramesResponse | None = None
         self._sequence = 0
@@ -61,10 +64,12 @@ class DeviceWorker:
         self._error: str | None = None
         self._closed = False
 
-    async def call(self, function: Callable[[], T], *, urgent: bool = True) -> T:
-        """Runs ``function`` on the device's thread. Urgent calls hold the frame loop off."""
+    async def call(self, function: Callable[[], T], *, urgent: bool = True, changes_screen: bool = True) -> T:
+        """Runs ``function`` on the device's thread. Urgent calls hold the frame loop off; one that
+        ``changes_screen`` also restarts it at full rate when the urgent calls are done."""
         if urgent:
             self._urgent += 1
+            self._touched = self._touched or changes_screen
             self._calm.clear()
         try:
             return await asyncio.get_running_loop().run_in_executor(self._executor, function)
@@ -73,7 +78,9 @@ class DeviceWorker:
                 self._urgent -= 1
                 if self._urgent == 0:
                     self._calm.set()
-                    self._kick.set()
+                    if self._touched:
+                        self._touched = False
+                        self._kick.set()
 
     async def frames(self) -> AsyncIterator[studio.FramesResponse]:
         """The newest frame, then each new one; a reader that falls behind skips frames. Ends

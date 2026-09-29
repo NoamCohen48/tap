@@ -320,7 +320,8 @@ daemon
    Python client's fake daemon; per-frame cost measured on the matrix (`screen-streaming.md`;
    ask the owner before using the devices). `tap-e2e` gains a public name for its `tap.v1`
    modules and the studio stops importing `tap_e2e._gen`.
-   **Done 2026-09-29** except the device measurement (waiting for the owner's go-ahead).
+   **Done 2026-09-29.** Per-frame cost measured on 85e49002 (`screen-streaming.md`: ~430 ms a
+   frame, mostly the screenshot); emulator-5554 not yet.
    `tap_e2e.proto` re-exports the generated modules, with `Selector.from_proto` /
    `to_proto`. `tap_studio.service.Studio` is one observed `tap-studio` connection, at most one
    attached device (attaching again releases the previous one) and one recording;
@@ -330,6 +331,8 @@ daemon
    commands). Settled while building it:
    - `Perform` and `Count` are user calls and go ahead of the frame loop; a snapshot whose
      screenshot would come after a user call is dropped rather than paired with a later picture.
+     Only `Perform` wakes a settled loop; `Count` cannot change the screen, and waking the loop
+     put the next count behind a screenshot (263 → 98 ms median on 85e49002).
    - The loop resumes at once after a user call instead of after a separate post-action
      settle: frames are `moving` (new picture hash, or added/removed nodes) until the screen
      settles, then the delay doubles from 0.25 s to 2 s; any user call resets it. It runs only
