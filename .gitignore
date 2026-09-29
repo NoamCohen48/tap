@@ -31,5 +31,6 @@ dist/
 
 # generated documentation inputs (scripts/build-docs.sh)
 docs/reference/kotlin/
+docs/reference/kotlin-api/
 docs/reference/grpc.md
 build/site/

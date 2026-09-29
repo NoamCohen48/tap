@@ -101,6 +101,27 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @dataclass
 class TapConfig:
+    """The plugin's settings, read from ``pytest.ini`` (``tap_*`` keys) or ``TAP_*`` environment
+    variables; the environment wins.
+
+    Attributes:
+        aut: Package of the app under test (``tap_aut`` / ``TAP_AUT``). Required.
+        serials: Devices to use, in order (``tap_serials`` / ``TAP_SERIALS``, comma-separated).
+            Empty means every device the server lists.
+        artifacts: Where failure artifacts are written (``tap_artifacts`` / ``TAP_ARTIFACTS``,
+            default ``tap-artifacts``).
+        server: ``host:port`` of the server (``tap_server`` / ``TAP_SERVER``). ``None`` finds
+            the one ``tap start`` recorded.
+        acquire_timeout: Seconds to wait for a device another session holds
+            (``tap_acquire_timeout`` / ``TAP_ACQUIRE_TIMEOUT``).
+        manage_daemon: Start the server before the session and stop it afterwards if this run
+            started it (``tap_manage_daemon`` / ``TAP_MANAGE_DAEMON``).
+        capture_on_failure: Save screenshot, hierarchy, device info and driver log when a test
+            fails (``tap_capture`` / ``TAP_CAPTURE``: ``onFailure`` or ``off``).
+        device_scope: How long attached devices are kept: ``function`` (default), ``class``,
+            ``module`` or ``session`` (``tap_device_scope`` / ``TAP_DEVICE_SCOPE``).
+    """
+
     aut: str
     serials: list[str]
     artifacts: pathlib.Path
@@ -112,6 +133,7 @@ class TapConfig:
 
     @classmethod
     def from_pytest(cls, config: pytest.Config) -> TapConfig:
+        """Read the settings from the pytest configuration and the environment."""
         def option(name: str, env: str, default: str = "") -> str:
             return os.environ.get(env) or str(config.getini(name) or default)
 
@@ -250,6 +272,8 @@ _STATE = pytest.StashKey[TestDevices]()
 
 @pytest.fixture(scope="session")
 def tap_config(pytestconfig: pytest.Config) -> TapConfig:
+    """The plugin's [TapConfig][tap_e2e.pytest_plugin.TapConfig] for the session. Fails the
+    run if no app under test is configured."""
     config = TapConfig.from_pytest(pytestconfig)
     if not config.aut:
         pytest.fail("tap_aut (or TAP_AUT) must name the AUT package", pytrace=False)
@@ -347,6 +371,13 @@ def tap_devices(
     tap_connection: TapConnection,
     tap_config: TapConfig,
 ) -> Generator[dict[str, Device], None, None]:
+    """The test's devices by role, attached before the test and detached after it.
+
+    Roles come from ``@pytest.mark.tap_devices("sender", "receiver")``; without the marker
+    there is one role, ``"device"``. Each role gets a different serial, and the test is skipped
+    when there are fewer devices than roles. If the test fails, failure artifacts are saved for
+    every device under ``tap_artifacts/<test id>/``.
+    """
     roles = _declared_roles(request.node)
     # Roles → serials is decided here (declaration order over a rotated device list); the
     # server only knows serials.
@@ -391,6 +422,7 @@ def tap_devices(
 
 @pytest.fixture
 def tap_device(tap_devices: dict[str, Device]) -> Device:
+    """The test's single device: ``tap_devices["device"]``."""
     if DEFAULT_ROLE not in tap_devices:
         pytest.fail(
             f"tap_device needs role '{DEFAULT_ROLE}' but the test declared {list(tap_devices)}",

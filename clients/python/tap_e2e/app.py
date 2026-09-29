@@ -30,8 +30,10 @@ class App:
     """
 
     def __init__(self, device: Device, package_name: str):
-        self.device = device
-        self.package_name = package_name
+        self.device: Device = device
+        """The device the app runs on."""
+        self.package_name: str = package_name
+        """The app's package name."""
         self._apps = device.client.apps
 
     def _target(self) -> pb.AppTarget:

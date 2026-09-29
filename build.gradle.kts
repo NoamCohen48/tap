@@ -10,7 +10,7 @@ plugins {
 }
 
 /*
- * Generated Kotlin API reference (docs/reference/kotlin): Dokka over the two client modules
+ * Generated Kotlin API reference (docs/reference/kotlin-api): Dokka over the two client modules
  * only. `./gradlew :dokkaGenerate` aggregates them into build/dokka/html.
  */
 dependencies {
@@ -20,6 +20,11 @@ dependencies {
 
 dokka {
     moduleName.set("Tap Kotlin client")
+    // Same branding as the modules (build-logic TapDokka.kt): Tap logo, footer back to the site.
+    pluginsConfiguration.html {
+        footerMessage.set("Tap &middot; Apache License 2.0 &middot; <a href=\"https://noamcohen48.github.io/tap/\">Documentation</a>")
+        customAssets.from(layout.projectDirectory.file("docs/assets/dokka/logo-icon.svg"))
+    }
 }
 
 /*

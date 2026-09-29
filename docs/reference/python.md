@@ -1,6 +1,6 @@
 # Python client
 
-Package `tap-e2e`, importable as `tap`. Everything below is generated from the docstrings and
+Package `tap-e2e`, imported as `tap_e2e`. Everything below is generated from the docstrings and
 type hints of `clients/python/tap_e2e`.
 
 ```python
@@ -11,6 +11,10 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 ## Device
 
 ::: tap_e2e.device.Device
+    options:
+      filters:
+        - "!^_"
+        - "!^(owner_connection|attached_device_id|client)$"
 
 ::: tap_e2e.device.Timeouts
 

@@ -80,9 +80,19 @@ plugins:
             separate_signature: true
             members_order: source
             docstring_style: google
+            show_attribute_values: false
+            show_root_full_path: false
+            show_labels: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            # Internal plumbing (gRPC stubs, deadlines, the owning connection) stays out of the
+            # reference; Device.client is filtered in docs/reference/python.md.
             filters:
               - "!^_"
               - "!^pb$"
+              - "!^(owner_connection|attached_device_id|channel|client_connections|device_stub|apps)$"
+              - "!^(RPC_DEADLINE_SLACK|INSTALL_CHUNK_BYTES|FAILURE_TRAILER|FIRST_EVENT_TIMEOUT|MAX_EVENTS)$"
+              - "!^pytest_"
             show_if_no_docstring: true
 
 nav:

@@ -312,8 +312,10 @@ class TapClient:
     """
 
     def __init__(self, endpoint: Endpoint):
-        self.endpoint = endpoint
-        self.address = endpoint.address
+        self.endpoint: Endpoint = endpoint
+        """The server address and bearer token this client uses."""
+        self.address: str = endpoint.address
+        """The server's ``host:port``."""
         self.channel = _channel(
             endpoint, options=[("grpc.max_receive_message_length", 64 * 1024 * 1024)]
         )
@@ -435,10 +437,15 @@ class TapConnection:
         name: str | None = None,
         hold: float | None = None,
     ):
-        self.client = client
-        self.id = client_connection_id
-        self.name = name
-        self.hold = hold
+        self.client: TapClient = client
+        """The client this connection was opened on."""
+        self.id: str = client_connection_id
+        """The server's id for this connection."""
+        self.name: str | None = name
+        """The name given to ``connect``, shown by ``tap status``."""
+        self.hold: float | None = hold
+        """For a held connection, the idle timeout in seconds after which the server ends it;
+        ``None`` for an ordinary one that ends with this process (experimental)."""
         self._stream = None
         self._events: collections.deque[str] = collections.deque(maxlen=MAX_EVENTS)
         self._closing = False

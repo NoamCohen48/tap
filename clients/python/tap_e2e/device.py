@@ -72,10 +72,14 @@ class Device:
         self.owner_connection = owner_connection
         self.client = owner_connection.client
         self.attached_device_id = response.attached_device_id
-        self.serial = response.serial
-        self.generation = response.generation
-        self.aut_package = aut_package
-        self.timeouts = timeouts
+        self.serial: str = response.serial
+        """The device's ADB serial, e.g. ``emulator-5554``."""
+        self.generation: int = response.generation
+        """The server's session generation for this device; it changes when the driver is rebuilt."""
+        self.aut_package: str = aut_package
+        """The package of the app under test that selectors are confined to by default."""
+        self.timeouts: Timeouts = timeouts
+        """Default timeouts for actions, waits and app lifecycle calls on this device."""
         self._detached = False
 
     @classmethod
