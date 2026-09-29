@@ -102,6 +102,19 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 | `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64 running `.github/scripts/device-tests.sh` (the action runs each `script` line as its own `sh -c`, so the lane is one script): `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`), then `.github/scripts/agent-smoke.sh` — a `tap-agent` session (attach, install, cold launch, snapshot, tap by ref with `--settle`, wait, export) whose JSON export is checked (install and cold launch first, the ref logged as its `view_button` selector, every call ok). One serial, so two-device tests are skipped. Failure artifacts (incl. `build/agent-smoke`) are uploaded. |
 | `native-image` | (push to `main` only) GraalVM 21 `nativeCompile`, then `tap start` and `.github/scripts/daemon_smoke.py`: every RPC that needs no device (Info, ListDevices, held Connect, ListConnections, Events, Disconnect, an observed connection) on the native binary, which catches missing reflection metadata before a release. |
 
+Duration (2026-09-29 runs): about 22 min end to end. API contract and Python < 1 min, JVM 6
+min, native image 6 min, device tests 16 min, and the device job starts only after `jvm` and
+`python` pass. Its 16 min: a cold emulator boot on a 2–4 vCPU runner, a Gradle rebuild of the
+driver APKs, fixture and daemon (already built by `jvm`), then the Kotlin suite, the Python suite
+and the agent smoke in sequence, each test attaching the driver on a slow emulator. Not done
+yet, in order of payoff for effort:
+
+- run `device-tests` in parallel with `jvm`/`python` instead of after them (≈6 min wall time;
+  costs emulator minutes on runs a unit test would have failed);
+- cache the AVD snapshot (`android-emulator-runner`'s documented cache step; ≈2–3 min boot);
+- `paths-ignore` for docs-only pushes (`docs/**`, `.docs/**`, `*.md`) on the device job;
+- reuse the `jvm` job's daemon dist and APKs as artifacts instead of rebuilding (a few min).
+
 Not in CI, still local: `:host:validation:deviceTest` (needs the two-device local matrix; the
 `reboot`-tagged scenario reboots), the Samsung API 29 lane, and a native-image run against a
 device (the emulator lane uses the JVM dist).
