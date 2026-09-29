@@ -20,6 +20,7 @@ def test_cold_launch_produces_a_new_process_and_survives_clear_data(tap_device):
     app.clear_data()
     assert not app.is_running()
     app.launch(".MainActivity")
-    assert tap_device.element(res("view_button")).exists()
+    # launch does not wait for the window; the test does.
+    tap_device.wait(res("view_button")).visible()
 
     assert tap_device.info().current_package == "io.github.noamcohen48.tap.fixture"

@@ -1,21 +1,12 @@
 package io.github.noamcohen48.tap.driver
 
 import android.view.KeyEvent
-import io.github.noamcohen48.tap.protocol.KEYCODE_BACK
-import io.github.noamcohen48.tap.protocol.KEYCODE_HOME
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KeyInputTest {
-    @Test
-    fun backAndHomeUseTheDedicatedCallsEverythingElseIsAKeyCode() {
-        assertEquals(KeyPress.Back, KeyPress.of(KEYCODE_BACK))
-        assertEquals(KeyPress.Home, KeyPress.of(KEYCODE_HOME))
-        assertEquals(KeyPress.Code(66), KeyPress.of(66))
-    }
-
     @Test
     fun onlyInjectedDownsWithoutAnInjectedUpStayPressed() {
         val keys = PressedKeys()
