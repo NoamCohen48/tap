@@ -5,6 +5,7 @@ site_description: >-
   Host-driven end-to-end testing for Android, in Kotlin or Python: one server
   per machine, a separate on-device driver, thin JUnit 5 and pytest clients.
 site_author: Noam Cohen
+site_url: https://noamcohen48.github.io/tap/
 repo_url: https://github.com/NoamCohen48/tap
 repo_name: NoamCohen48/tap
 copyright: Copyright &copy; 2026 Noam Cohen. Licensed under the Apache License 2.0.

@@ -17,8 +17,8 @@
 </p>
 
 <p align="center">
-  <a href="docs/guide/getting-started.md">Getting started</a> ·
-  <a href="docs/index.md">Documentation</a> ·
+  <a href="https://noamcohen48.github.io/tap/guide/getting-started/">Getting started</a> ·
+  <a href="https://noamcohen48.github.io/tap/">Documentation</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -137,17 +137,17 @@ Other agents can use the CLI directly: `tap-agent skill` prints the instructions
 
 | | |
 |---|---|
-| [Getting started](docs/guide/getting-started.md) | a first test, step by step |
-| [Selectors](docs/guide/selectors.md) | finding elements on the screen |
-| [Actions and waits](docs/guide/actions-and-waits.md) | tapping, typing, scrolling and waiting |
-| [App lifecycle](docs/guide/app-lifecycle.md) | installing, launching and resetting your app |
-| [Multi-device tests](docs/guide/multi-device.md) | tests that use several devices |
-| [Configuration](docs/guide/configuration.md) | settings and the `tap` command |
-| [Errors and artifacts](docs/guide/errors.md) | what failures mean and what to look at |
-| [Coding agents](docs/guide/agents.md) | using `tap-agent` |
-| [Coming from Maestro or Appium](docs/guide/coming-from.md) | how the concepts map |
-| [API reference](docs/reference/index.md) | every Kotlin, Python and server API |
-| [Development](docs/development/index.md) | how Tap is built, and how to work on it |
+| [Getting started](https://noamcohen48.github.io/tap/guide/getting-started/) | a first test, step by step |
+| [Selectors](https://noamcohen48.github.io/tap/guide/selectors/) | finding elements on the screen |
+| [Actions and waits](https://noamcohen48.github.io/tap/guide/actions-and-waits/) | tapping, typing, scrolling and waiting |
+| [App lifecycle](https://noamcohen48.github.io/tap/guide/app-lifecycle/) | installing, launching and resetting your app |
+| [Multi-device tests](https://noamcohen48.github.io/tap/guide/multi-device/) | tests that use several devices |
+| [Configuration](https://noamcohen48.github.io/tap/guide/configuration/) | settings and the `tap` command |
+| [Errors and artifacts](https://noamcohen48.github.io/tap/guide/errors/) | what failures mean and what to look at |
+| [Coding agents](https://noamcohen48.github.io/tap/guide/agents/) | using `tap-agent` |
+| [Coming from Maestro or Appium](https://noamcohen48.github.io/tap/guide/coming-from/) | how the concepts map |
+| [API reference](https://noamcohen48.github.io/tap/reference/) | every Kotlin, Python and server API |
+| [Development](https://noamcohen48.github.io/tap/development/) | how Tap is built, and how to work on it |
 
 ## Contributing
 
