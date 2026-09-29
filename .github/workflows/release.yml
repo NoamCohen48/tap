@@ -1,17 +1,15 @@
 name: Release
 
 # One tag per artifact family (see .docs/release-engineering.md):
-#   daemon/v1.2.3        tap daemon: native binaries + JVM dist on a GitHub
-# Release,
-#                         io.github.noamcohen48.tap:tap-api to GitHub Packages (same
-# engine version)
-#   client-kotlin/v1.2.3  io.github.noamcohen48.tap:tap-client + tap-junit5 to GitHub
-# Packages
-#   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when
-# enabled)
-#   client-agent/v1.2.3   tap-agent (agent CLI + MCP server) wheel + sdist on a
-# GitHub Release (PyPI when enabled)
-#   sync-sdk/v1.2.3       io.github.noamcohen48.tap:tap-sync-sdk (AAR) to GitHub Packages
+#   daemon/v1.2.3         tap daemon: native binaries + JVM dist on a GitHub Release;
+#                         tap-schema + tap-api to GitHub Packages (same engine version)
+#   client-kotlin/v1.2.3  tap-client + tap-junit5 to GitHub Packages
+#   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when enabled)
+#   client-agent/v1.2.3   tap-agent (agent CLI + MCP server) wheel + sdist on a GitHub Release
+#                         (PyPI when enabled)
+#   sync-sdk/v1.2.3       tap-sync-sdk (AAR) to GitHub Packages
+# Every release also carries the complete documentation as Markdown, built from the tagged
+# commit: tap-docs-<version>.zip and tap-docs-<version>.tar.gz (docs-bundle job).
 # The tag's version must equal the one in gradle.properties / pyproject.toml.
 on:
   push:
@@ -47,8 +45,28 @@ jobs:
           echo "engine=$(sed -n 's/^tap.version.engine=//p' \
           gradle.properties)" >> "$GITHUB_OUTPUT"
 
-  # ---- daemon/v*
-  # --------------------------------------------------------------------------
+  # ---- every family: the docs as Markdown ------------------------------------------------
+  docs-bundle:
+    name: Docs bundle (Markdown)
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-docs
+      - name: Archive
+        run: |
+          name="tap-docs-${{ needs.resolve.outputs.version }}"
+          mkdir -p docs-bundle
+          cp -r build/docs-md "build/$name"
+          (cd build && zip -qr "../docs-bundle/$name.zip" "$name" && tar -czf "../docs-bundle/$name.tar.gz" "$name")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle/*
+          if-no-files-found: error
+
+  # ---- daemon/v* ----------------------------------------------------------------------------
   daemon-native:
     name: Daemon native (${{ matrix.label }})
     needs: resolve
@@ -139,13 +157,17 @@ jobs:
 
   daemon-release:
     name: GitHub Release (daemon)
-    needs: [resolve, daemon-native, daemon-jvm]
+    needs: [resolve, daemon-native, daemon-jvm, docs-bundle]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: daemon-*
           merge-multiple: true
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-bundle
           path: release
       - name: Checksums
         run: cd release && sha256sum * > SHA256SUMS
@@ -165,12 +187,14 @@ jobs:
             - Maven:
             `io.github.noamcohen48.tap:tap-api:${{ needs.resolve.outputs.version }}`
             (GitHub Packages)
+            - `tap-docs-${{ needs.resolve.outputs.version }}.zip` / `.tar.gz`: the
+            complete documentation (guide, Kotlin/Python/gRPC references, tap-agent,
+            changelog) as Markdown
 
-  # ---- client-kotlin/v*
-  # -----------------------------------------------------------------------
+  # ---- client-kotlin/v* ---------------------------------------------------------------------
   client-kotlin:
     name: Kotlin client to GitHub Packages
-    needs: resolve
+    needs: [resolve, docs-bundle]
     if: needs.resolve.outputs.family == 'client-kotlin'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -206,9 +230,14 @@ jobs:
           sdk=":clients:kotlin:sdk:$publish"
           junit=":clients:kotlin:junit5:$publish"
           ./gradlew "$sdk" "$junit"
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
           name: tap Kotlin client ${{ needs.resolve.outputs.version }}
+          files: docs-bundle/*
           body: |
             ```kotlin
             // brings tap-client and tap-api ${{ needs.resolve.outputs.engine }}
@@ -221,11 +250,10 @@ jobs:
             needs.resolve.outputs.engine }} (tag `daemon/v${{
             needs.resolve.outputs.engine }}`).
 
-  # ---- client-python/v*
-  # -----------------------------------------------------------------------
+  # ---- client-python/v* ---------------------------------------------------------------------
   client-python:
     name: Python client
-    needs: resolve
+    needs: [resolve, docs-bundle]
     if: needs.resolve.outputs.family == 'client-python'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -245,10 +273,17 @@ jobs:
           python -m pip install --quiet \
           "dist/tap_e2e-${version}-py3-none-any.whl"
           python -c "import tap_e2e, sys; sys.exit(tap_e2e.__version__ != '${version}')"
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
           name: tap Python client ${{ needs.resolve.outputs.version }}
-          files: dist/*
+          # The docs stay out of dist/, which the PyPI step uploads whole.
+          files: |
+            dist/*
+            docs-bundle/*
           body: |
             ```bash
             pip install https://github.com/${{ github.repository
@@ -258,8 +293,7 @@ jobs:
             Requires a `tap` daemon of engine version ${{
             needs.resolve.outputs.engine }} (tag `daemon/v${{
             needs.resolve.outputs.engine }}`).
-      # Opt in by setting the repository variable PUBLISH_TO_PYPI=true and
-      # registering this
+      # Opt in by setting the repository variable PUBLISH_TO_PYPI=true and registering this
       # workflow as a trusted publisher of the tap-e2e project on PyPI.
       - name: Publish to PyPI
         if: vars.PUBLISH_TO_PYPI == 'true'
@@ -267,11 +301,10 @@ jobs:
         with:
           packages-dir: dist
 
-  # ---- client-agent/v*
-  # ------------------------------------------------------------------------
+  # ---- client-agent/v* ----------------------------------------------------------------------
   client-agent:
     name: tap-agent
-    needs: resolve
+    needs: [resolve, docs-bundle]
     if: needs.resolve.outputs.family == 'client-agent'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -291,10 +324,16 @@ jobs:
           "dist/tap_agent-${version}-py3-none-any.whl"
           python -c "import tap_agent, sys; sys.exit(tap_agent.__version__ != '${version}')"
           tap-agent --help > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
           name: tap-agent ${{ needs.resolve.outputs.version }}
-          files: dist/*
+          files: |
+            dist/*
+            docs-bundle/*
           body: |
             CLI and MCP server for coding agents driving Android devices
             through a running `tap` daemon (`tap-agent skill`,
@@ -317,11 +356,10 @@ jobs:
         with:
           packages-dir: dist
 
-  # ---- sync-sdk/v*
-  # ----------------------------------------------------------------------------
+  # ---- sync-sdk/v* --------------------------------------------------------------------------
   sync-sdk:
     name: sync-sdk to GitHub Packages
-    needs: resolve
+    needs: [resolve, docs-bundle]
     if: needs.resolve.outputs.family == 'sync-sdk'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -342,9 +380,14 @@ jobs:
         run: >-
           ./gradlew
           :device:sync-sdk:publishAllPublicationsToGitHubPackagesRepository
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
           name: tap sync-sdk ${{ needs.resolve.outputs.version }}
+          files: docs-bundle/*
           body: |
             ```kotlin
             // in the E2E build flavour of the app under test

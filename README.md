@@ -337,6 +337,10 @@ alone. `.github/workflows/docs.yml` builds both on every change (artifacts `site
 KDoc/docstring, since that is what the references are generated from. `.docs/` remains the
 internal design record.
 
+## License
+
+Apache-2.0 (`LICENSE`): use it, fork it, contribute. Security reports: `SECURITY.md`.
+
 ## Design
 
 The original design is `.docs/android-e2e-framework-implementation-plan.md` (a reference: the

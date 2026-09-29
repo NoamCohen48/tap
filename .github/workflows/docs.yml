@@ -8,9 +8,9 @@ name: Docs
 on:
   push:
     branches: [main]
-    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, .github/workflows/docs.yml]
+    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, CHANGELOG.md, .github/workflows/docs.yml, .github/actions/build-docs/**]
   pull_request:
-    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, .github/workflows/docs.yml]
+    paths: [docs/**, mkdocs.yml, scripts/build-docs.sh, clients/**, contracts/api/**, CHANGELOG.md, .github/workflows/docs.yml, .github/actions/build-docs/**]
   workflow_dispatch:
 
 permissions:
@@ -29,24 +29,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: bufbuild/buf-action@v1
-        with:
-          setup_only: true
-      - name: protoc-gen-doc
-        run: |
-          curl -fsSL https://github.com/pseudomuto/protoc-gen-doc/releases/download/v1.5.1/protoc-gen-doc_1.5.1_linux_amd64.tar.gz \
-            | tar -xz -C /usr/local/bin protoc-gen-doc
-      - name: Python deps
-        run: python -m pip install --quiet -r docs/requirements.txt -e "clients/python[dev]"
-      - run: scripts/build-docs.sh
+      - uses: ./.github/actions/build-docs
       - uses: actions/upload-artifact@v4
         with:
           name: site

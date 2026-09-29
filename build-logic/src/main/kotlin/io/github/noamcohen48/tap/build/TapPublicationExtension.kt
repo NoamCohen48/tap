@@ -30,6 +30,14 @@ abstract class TapPublicationExtension
                     pom {
                         name.set(artifactId)
                         this.description.set(description)
+                        url.set("https://github.com/NoamCohen48/tap")
+                        licenses {
+                            license {
+                                name.set("Apache-2.0")
+                                url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                            }
+                        }
+                        scm { url.set("https://github.com/NoamCohen48/tap") }
                     }
                 }
             }
