@@ -22,6 +22,7 @@ Test process (any language)
 +-- clients/kotlin   :clients:kotlin:sdk (Device / App / Element / waits / selectors), :clients:kotlin:junit5 (@TapTest)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
 +-- clients/agent    tap-agent: CLI + MCP server for coding agents, over tap-e2e (.docs/agent-surface.md)
++-- clients/studio   tap-studio (experimental): browser inspector + action recorder, over tap-e2e (.docs/recorder.md)
         |
         | gRPC over loopback  (contracts/proto/*.proto, package tap.v1)
         v
@@ -248,7 +249,9 @@ tap/
 Gradle projects: `:contracts:protocol`, `:contracts:api`, `:device:driver`,
 `:device:driver:command-engine`, `:device:sync-sdk`, `:host:core`, `:host:daemon`,
 `:host:validation`, `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `:fixture-app`,
-`:samples:fixture-tests`. `clients/python` and `clients/agent` are plain Python packages.
+`:samples:fixture-tests`. `clients/python`, `clients/agent` and `clients/studio` are plain Python
+packages; `clients/studio/web` is the studio's page (React + TypeScript, Bun + Vite), built into
+the `tap-studio` wheel.
 
 Dependency direction:
 
@@ -256,6 +259,8 @@ Dependency direction:
 samples:fixture-tests --> clients:kotlin:junit5 --> clients:kotlin:sdk --> contracts:api   (gRPC at run time)
 clients/python (tap-e2e) ---------------------------------------------> contracts:api   (committed stubs; gRPC at run time)
 clients/agent (tap-agent) --> clients/python (tap-e2e)                  (never gRPC directly)
+clients/studio (tap-studio) --> clients/python (tap-e2e)                (never gRPC directly; its own
+        proto/studio.proto imports contracts/proto for the page, served over Connect on loopback)
 host:daemon (tap) --> host:core --> contracts:protocol
         \----------> contracts:api
 host:validation ---> host:core

@@ -1,0 +1,891 @@
+<meta charset="utf-8">
+<title>Tap Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --bg: #EEF0F3;
+  --surface: #FFFFFF;
+  --surface-2: #F5F6F8;
+  --ink: #17202A;
+  --muted: #5B6673;
+  --faint: #8A949F;
+  --line: #D9DDE3;
+  --accent: #D9481C;
+  --accent-fill: #FF6A3D;
+  --accent-soft: rgba(255,106,61,.12);
+  --assert: #2C63D6;
+  --assert-soft: rgba(44,99,214,.12);
+  --ok: #1B8A4B;
+  --ok-soft: rgba(27,138,75,.12);
+  --warn: #A86A08;
+  --warn-soft: rgba(214,152,20,.16);
+  --bad: #C63D3D;
+  --bad-soft: rgba(198,61,61,.12);
+  --code-bg: #F2F4F7;
+  --shadow: 0 1px 2px rgba(23,32,42,.06), 0 4px 16px rgba(23,32,42,.06);
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0C1117; --surface: #141C25; --surface-2: #1A2430; --ink: #E6EAEF; --muted: #9AA6B4;
+    --faint: #6C7886; --line: #273341; --accent: #FF8A62; --accent-fill: #FF6A3D;
+    --accent-soft: rgba(255,106,61,.16); --assert: #7EA6FF; --assert-soft: rgba(126,166,255,.16);
+    --ok: #4CD38A; --ok-soft: rgba(76,211,138,.14); --warn: #F2B84B; --warn-soft: rgba(242,184,75,.16);
+    --bad: #F27A74; --bad-soft: rgba(242,122,116,.15); --code-bg: #101820;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0C1117; --surface: #141C25; --surface-2: #1A2430; --ink: #E6EAEF; --muted: #9AA6B4;
+  --faint: #6C7886; --line: #273341; --accent: #FF8A62; --accent-fill: #FF6A3D;
+  --accent-soft: rgba(255,106,61,.16); --assert: #7EA6FF; --assert-soft: rgba(126,166,255,.16);
+  --ok: #4CD38A; --ok-soft: rgba(76,211,138,.14); --warn: #F2B84B; --warn-soft: rgba(242,184,75,.16);
+  --bad: #F27A74; --bad-soft: rgba(242,122,116,.15); --code-bg: #101820;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); padding-inline: 16px; padding-block: 0 16px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: 12.5px; }
+.app { max-width: 1480px; margin: 0 auto; display: grid; gap: 12px; grid-template-rows: auto 1fr; min-height: 100%; }
+
+/* top bar */
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 12px 4px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; letter-spacing: .01em; }
+.brand svg { width: 26px; height: 26px; color: var(--ink); }
+.brand small { font-weight: 500; color: var(--muted); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.devchip { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 13px; }
+.devchip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.devchip .sep { color: var(--faint); }
+.spacer { flex: 1; }
+.modes { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 2px; }
+.modes button { border: 0; background: transparent; padding: 5px 12px; border-radius: 6px; color: var(--muted); display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.modes button kbd { font: 11px var(--mono); color: var(--faint); }
+.modes button[aria-pressed="true"][data-mode="act"] { background: var(--accent-soft); color: var(--accent); }
+.modes button[aria-pressed="true"][data-mode="assert"] { background: var(--assert-soft); color: var(--assert); }
+.modes button[aria-pressed="true"][data-mode="inspect"] { background: var(--surface-2); color: var(--ink); }
+.rec { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 12px; font-weight: 500; }
+.rec .led { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
+.rec.on .led { animation: pulse 1.6s ease-in-out infinite; }
+.rec:not(.on) .led { background: var(--faint); }
+.rec .time { font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .rec.on .led { animation: none; } * { transition: none !important; } }
+
+/* columns */
+.cols { display: grid; gap: 12px; grid-template-columns: minmax(300px, 400px) minmax(320px, 1fr) minmax(300px, 380px); align-items: start; }
+@media (max-width: 1180px) { .cols { grid-template-columns: minmax(280px, 380px) 1fr; } .steps-col { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.panel-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.panel-h h2 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+.panel-h .count { color: var(--muted); font-size: 12px; }
+.panel-b { padding: 12px; }
+
+/* device column */
+.device-col { display: grid; gap: 10px; }
+.device-stage { padding: 14px; display: grid; justify-items: center; gap: 10px; }
+.frame-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12px; color: var(--muted); width: 100%; }
+.frame-status .pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 99px; font-weight: 500; }
+.pill.settled { background: var(--ok-soft); color: var(--ok); }
+.pill.moving { background: var(--warn-soft); color: var(--warn); }
+.frame-status .mono { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.phone-box { position: relative; width: 100%; }
+.phone { position: absolute; left: 0; top: 0; width: 360px; height: 800px; transform-origin: 0 0; border-radius: 34px; background: #0B0F14; padding: 0; box-shadow: 0 0 0 10px #0B0F14, var(--shadow); overflow: hidden; }
+.screen { position: absolute; inset: 0; background: #FAFAFA; color: #1B1F24; font-family: Roboto, "IBM Plex Sans", system-ui, sans-serif; overflow: hidden; }
+.screen .n { position: absolute; box-sizing: border-box; }
+.overlay { position: absolute; inset: 0; }
+.ob { position: absolute; box-sizing: border-box; border: 1.5px solid rgba(255,106,61,.75); background: rgba(255,106,61,.06); border-radius: 4px; padding: 0; transition: background .12s, border-color .12s; }
+.ob.passive { border-color: rgba(120,130,140,.55); border-style: dashed; background: transparent; }
+.ob.gap { border: 1.5px dashed #D64545; background: repeating-linear-gradient(45deg, rgba(214,69,69,.14) 0 4px, transparent 4px 8px); }
+.ob:hover, .ob.hover { background: rgba(255,106,61,.2); border-color: #FF6A3D; }
+.ob.sel { border: 2.5px solid #FF6A3D; background: rgba(255,106,61,.16); box-shadow: 0 0 0 3px rgba(255,106,61,.25); }
+.mode-assert .ob { border-color: rgba(44,99,214,.75); background: rgba(44,99,214,.06); }
+.mode-assert .ob:hover, .mode-assert .ob.hover { background: rgba(44,99,214,.2); border-color: #2C63D6; }
+.mode-assert .ob.sel { border-color: #2C63D6; box-shadow: 0 0 0 3px rgba(44,99,214,.25); background: rgba(44,99,214,.16); }
+.mode-inspect .ob { border-color: rgba(100,112,125,.6); background: transparent; }
+.mode-inspect .ob:hover, .mode-inspect .ob.hover { background: rgba(100,112,125,.18); border-color: #4A5561; }
+.mode-inspect .ob.sel { border-color: #17202A; box-shadow: 0 0 0 3px rgba(23,32,42,.2); }
+.provisional .ob { border-style: dashed; opacity: .45; }
+.provisional .screen { filter: saturate(.85); }
+.tip { position: absolute; z-index: 5; pointer-events: none; background: #17202A; color: #F1F3F5; font: 11.5px/1.35 var(--mono); padding: 5px 8px; border-radius: 6px; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.tip b { color: #FF9C7A; font-weight: 500; }
+.tip .c { color: #9FE2B9; }
+.tip .c.bad { color: #FF9C95; }
+.devbar { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; justify-content: center; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 5px 10px; font-size: 13px; font-weight: 500; min-height: 32px; }
+.btn:hover { background: var(--surface-2); }
+.btn svg { width: 15px; height: 15px; }
+.btn.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
+.btn.primary:hover { filter: brightness(1.05); background: var(--accent-fill); }
+.btn.assert { background: var(--assert-soft); border-color: transparent; color: var(--assert); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.small { min-height: 26px; padding: 2px 8px; font-size: 12px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 4px 9px; font-size: 12px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.menu-wrap { position: relative; }
+.menu { position: absolute; z-index: 10; bottom: calc(100% + 6px); left: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; min-width: 190px; display: grid; }
+.menu button { text-align: left; border: 0; background: transparent; padding: 6px 10px; border-radius: 5px; font-size: 13px; }
+.menu button:hover { background: var(--surface-2); }
+.menu small { color: var(--muted); display: block; font-size: 11.5px; }
+
+/* popover over the device */
+.pop { position: absolute; z-index: 8; width: 260px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 10px; display: grid; gap: 8px; font-size: 13px; }
+.pop h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.pop h3 code { color: var(--ink); }
+.pop input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
+.pop .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pop label.chk { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.pop .opts { display: grid; gap: 2px; }
+.pop .opts button { text-align: left; border: 0; background: transparent; border-radius: 6px; padding: 6px 8px; display: flex; justify-content: space-between; gap: 8px; }
+.pop .opts button:hover { background: var(--assert-soft); }
+.pop .opts code { color: var(--muted); font-size: 11.5px; }
+
+/* inspector */
+.tabs { display: flex; gap: 2px; }
+.tabs button { border: 0; background: transparent; padding: 4px 10px; border-radius: 6px; color: var(--muted); font-weight: 500; font-size: 13px; }
+.tabs button[aria-selected="true"] { background: var(--surface-2); color: var(--ink); }
+.node-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 12px; }
+.node-head .cls { font-size: 16px; font-weight: 600; }
+.node-head .ref { font: 12px var(--mono); color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; }
+.tag { font-size: 11.5px; padding: 1px 7px; border-radius: 99px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.section { margin-top: 14px; }
+.section > h4 { margin: 0 0 6px; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.cands { display: grid; gap: 4px; }
+.cand { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); text-align: left; }
+.cand:hover { background: var(--surface-2); }
+.cand.chosen { border-color: var(--accent-fill); background: var(--accent-soft); }
+.cand.nope { opacity: .6; cursor: not-allowed; }
+.cand .radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--faint); box-sizing: border-box; }
+.cand.chosen .radio { border: 4px solid var(--accent-fill); }
+.cand code { white-space: normal; word-break: break-word; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.chip { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.info { background: var(--surface-2); color: var(--muted); }
+.gapnote { border: 1px dashed var(--bad); background: var(--bad-soft); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.gapnote b { color: var(--bad); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.textact { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.textact input[type=text] { flex: 1 1 140px; min-width: 0; border: 1px solid var(--line); background: var(--surface-2); border-radius: 7px; padding: 5px 8px; }
+.props { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: 12.5px; }
+.props dt { color: var(--muted); }
+.props dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.props dd.none { color: var(--faint); font-family: var(--sans); }
+.flags { display: flex; gap: 4px; flex-wrap: wrap; }
+.empty { color: var(--muted); font-size: 13px; padding: 24px 8px; text-align: center; }
+.tree { display: grid; gap: 1px; max-height: 560px; overflow: auto; font-size: 12.5px; }
+.tree button { border: 0; background: transparent; text-align: left; padding: 3px 6px; border-radius: 5px; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
+.tree button:hover { background: var(--surface-2); }
+.tree button.sel { background: var(--accent-soft); }
+.tree .r { font: 11px var(--mono); color: var(--accent); min-width: 30px; }
+.tree .k { color: var(--muted); }
+.tree .l { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.tree .x { font-size: 10.5px; color: var(--bad); }
+.filter { width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface-2); border-radius: 7px; padding: 5px 8px; margin-bottom: 8px; }
+
+/* steps */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.step { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); align-items: start; }
+.step:last-child { border-bottom: 0; }
+.step .num { font: 11px var(--mono); color: var(--faint); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.step .kind { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.kind.k-command { color: var(--accent); } .kind.k-assert { color: var(--assert); } .kind.k-app, .kind.k-key { color: var(--muted); }
+.step code { display: block; white-space: normal; word-break: break-word; }
+.step .wait { color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+.step .wait code { display: inline; font-size: 11.5px; color: var(--muted); }
+.step .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.step .res { font: 11px var(--mono); color: var(--ok); white-space: nowrap; }
+.step .res.run { color: var(--warn); }
+.step .res.fail { color: var(--bad); }
+.step .tools { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.step:hover .tools, .step:focus-within .tools { opacity: 1; }
+.iconbtn { border: 0; background: transparent; width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center; color: var(--muted); padding: 0; }
+.iconbtn:hover { background: var(--surface-2); color: var(--ink); }
+.iconbtn svg { width: 14px; height: 14px; }
+.step.new { animation: flash 1.2s ease-out; }
+@keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+.steps-foot { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid var(--line); }
+.hint-line { font-size: 12px; color: var(--muted); padding: 8px 12px; border-top: 1px solid var(--line); }
+.paused-note { font-size: 12px; background: var(--warn-soft); color: var(--warn); padding: 6px 12px; }
+
+/* export drawer */
+.drawer-back { position: fixed; inset: 0; background: rgba(8,12,16,.45); z-index: 20; display: grid; justify-items: end; }
+.drawer { width: min(640px, 100%); height: 100%; background: var(--surface); border-left: 1px solid var(--line); display: grid; grid-template-rows: auto 1fr auto; }
+.drawer pre { margin: 0; overflow: auto; padding: 14px 16px; background: var(--code-bg); font: 12px/1.5 var(--mono); }
+.drawer .panel-h { padding: 12px 16px; }
+.drawer .foot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); align-items: center; flex-wrap: wrap; }
+.drawer .foot small { color: var(--muted); flex: 1 1 200px; }
+
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 30; background: #17202A; color: #F1F3F5; padding: 8px 14px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow); max-width: calc(100% - 32px); }
+.demo-note { font-size: 12px; color: var(--muted); }
+</style>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="15" y="5" width="34" height="54" rx="8" fill="none" stroke="currentColor" stroke-width="4"/><line x1="27" y1="52" x2="37" y2="52" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="29" r="11.5" fill="none" stroke="#FF6A3D" stroke-width="3"/><circle cx="32" cy="29" r="5" fill="#FF6A3D"/></svg>
+      Tap Studio <small>demo</small>
+    </div>
+    <div class="devchip" title="Held connection 'studio', idle timeout 15 min">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="mono">emulator-5554</span><span class="sep">·</span><span>API 34</span><span class="sep">·</span><span class="mono">com.example.basket</span>
+    </div>
+    <span class="spacer"></span>
+    <div class="modes" role="group" aria-label="Click mode" id="modes">
+      <button data-mode="act" aria-pressed="true" title="Click performs the action and records it (1)">Act <kbd>1</kbd></button>
+      <button data-mode="assert" aria-pressed="false" title="Click records a check on the element (2)">Assert <kbd>2</kbd></button>
+      <button data-mode="inspect" aria-pressed="false" title="Click only selects; nothing runs (3)">Inspect <kbd>3</kbd></button>
+    </div>
+    <button class="rec on" id="rec" aria-pressed="true" title="Pause recording: actions still run on the device but are not recorded">
+      <span class="led" aria-hidden="true"></span><span id="recLabel">Recording</span><span class="time" id="recTime">00:00</span>
+    </button>
+  </header>
+
+  <main class="cols">
+    <section class="device-col">
+      <div class="panel">
+        <div class="device-stage">
+          <div class="frame-status">
+            <span id="framePill" class="pill settled">settled</span>
+            <span class="mono" id="frameInfo">frame 212</span>
+            <span class="spacer"></span>
+            <span class="seg" role="group" aria-label="Overlay">
+              <button data-ov="interactive" aria-pressed="true">Interactive</button>
+              <button data-ov="all" aria-pressed="false">All nodes</button>
+              <button data-ov="none" aria-pressed="false">Off</button>
+            </span>
+          </div>
+          <div class="phone-box" id="phoneBox">
+            <div class="phone" id="phone">
+              <div class="screen" id="screen"></div>
+              <div class="overlay" id="overlay"></div>
+            </div>
+            <div class="tip" id="tip" hidden></div>
+            <div class="pop" id="pop" hidden></div>
+          </div>
+          <div class="devbar">
+            <button class="btn" id="kBack" title="press_key BACK"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+            <button class="btn" id="kHome" title="press_key HOME"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>Home</button>
+            <div class="menu-wrap">
+              <button class="btn" id="appBtn" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>App</button>
+              <div class="menu" id="appMenu" hidden>
+                <button data-app="cold_launch">Cold launch<small>force-stop, then launch; new process</small></button>
+                <button data-app="launch">Launch</button>
+                <button data-app="force_stop">Force stop</button>
+                <button data-app="clear_data">Clear data<small>also revokes permissions</small></button>
+                <button data-app="grant_permission">Grant permission…</button>
+              </div>
+            </div>
+            <button class="btn" id="refresh" title="Take a new frame now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>Refresh</button>
+          </div>
+        </div>
+      </div>
+      <p class="demo-note">Mock app drawn in the page. In Tap Studio the screen is the device's screenshot and the boxes come from its snapshot. Scroll the wheel over the list to record a scroll; Alt-click for a long tap; right-click selects without acting.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h">
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-tab="element">Element</button>
+          <button role="tab" aria-selected="false" data-tab="tree">Screen tree</button>
+        </div>
+      </div>
+      <div class="panel-b" id="inspector"></div>
+    </section>
+
+    <section class="panel steps-col">
+      <div class="panel-h">
+        <h2>Steps</h2><span class="count" id="stepCount"></span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn small" id="replay"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Replay</button>
+        <button class="btn small primary" id="exportBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></svg>Export</button>
+      </div>
+      <div class="paused-note" id="pausedNote" hidden>Recording paused: actions run on the device but are not added.</div>
+      <ol class="steps" id="steps"></ol>
+      <div class="hint-line">Each action is recorded with the wait that proves it can run: the element was on screen and matched once.</div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer-back" id="drawer" hidden>
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+    <div class="panel-h"><h2 id="drawerTitle">Export recording</h2><span class="count">tap-recording/1 · draft format</span><span style="flex:1"></span><button class="iconbtn" id="drawerClose" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <pre id="json"></pre>
+    <div class="foot"><small>Commands are <code>tap.v1</code> messages in proto3 JSON: replay one by sending it unchanged, or turn the file into a Kotlin or Python test.</small><button class="btn" id="copyJson">Copy JSON</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const AUT = "com.example.basket";
+const PRODUCTS = [
+  { name: "Wool socks", price: "$12.00", cat: "Socks" },
+  { name: "Cotton socks", price: "$8.50", cat: "Socks" },
+  { name: "Wool hat", price: "$24.00", cat: "Hats" },
+  { name: "Running shoes", price: "$89.00", cat: "Shoes" },
+  { name: "Rain jacket", price: "$64.00", cat: "All" },
+  { name: "Wool scarf", price: "$19.00", cat: "Hats" },
+  { name: "Trail shoes", price: "$95.00", cat: "Shoes" },
+];
+const S = {
+  screen: "home", query: "wool", chip: "All", scroll: 0, cart: [], snack: false,
+  mode: "act", overlay: "interactive", tab: "element", selected: null, chosen: {},
+  hover: null, frame: 212, frameAt: Date.now(), moving: false, recording: true,
+  recStart: Date.now() - 38000, steps: [], treeFilter: "",
+};
+const refBySig = new Map(); let refCounter = 1;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------- the mock app: nodes with bounds (device px at 360x800) ---------- */
+function visibleProducts() {
+  const q = S.query.trim().toLowerCase();
+  return PRODUCTS.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (S.chip === "All" || p.cat === S.chip));
+}
+function buildNodes() {
+  const N = []; let d = 0;
+  const add = (o) => { N.push(Object.assign({ depth: d, flags: [], pkg: AUT, win: AUT }, o)); return o; };
+  if (S.screen === "launcher") {
+    add({ ui: "wall", cls: "android.widget.FrameLayout", b: [0, 28, 360, 732], pkg: "com.android.launcher3", win: "com.android.launcher3" });
+    d = 1;
+    add({ ui: "appicon", cls: "android.widget.TextView", text: "Basket", desc: "Basket", b: [40, 560, 72, 92], interactive: true, flags: ["clickable"], pkg: "com.android.launcher3", win: "com.android.launcher3", scope: "launcher", onTap: () => { S.screen = "home"; } });
+    add({ ui: "appicon2", cls: "android.widget.TextView", text: "Clock", desc: "Clock", b: [144, 560, 72, 92], interactive: true, flags: ["clickable"], pkg: "com.android.launcher3", win: "com.android.launcher3", scope: "launcher", onTap: () => toast("Demo: only Basket opens") });
+    add({ ui: "appicon3", cls: "android.widget.TextView", text: "Files", desc: "Files", b: [248, 560, 72, 92], interactive: true, flags: ["clickable"], pkg: "com.android.launcher3", win: "com.android.launcher3", scope: "launcher", onTap: () => toast("Demo: only Basket opens") });
+    return N;
+  }
+  add({ ui: "root", cls: "android.widget.FrameLayout", b: [0, 28, 360, 732] });
+  d = 1;
+  if (S.screen === "home") {
+    add({ ui: "title", cls: "android.widget.TextView", text: "Basket", b: [16, 38, 140, 36] });
+    add({ ui: "cartbtn", cls: "android.widget.ImageButton", res: "cart_button", desc: "Cart", b: [300, 34, 44, 44], interactive: true, flags: ["clickable", "focusable"], onTap: () => { S.screen = "cart"; } });
+    add({ ui: "field", cls: "android.widget.EditText", res: "search", hint: "Search products", text: S.query || "Search products", showingHint: !S.query, b: [16, 92, 328, 48], interactive: true, editable: true, flags: ["clickable", "focusable", "enabled"] });
+    let x = 16;
+    for (const c of ["All", "Socks", "Hats", "Shoes"]) {
+      const w = c.length * 9 + 30;
+      add({ ui: "chip", cls: "android.widget.CompoundButton", text: c, b: [x, 154, w, 32], interactive: true, checkable: true, checked: S.chip === c, flags: ["clickable", "checkable"].concat(S.chip === c ? ["checked"] : []), onTap: () => { S.chip = c; S.scroll = 0; } });
+      x += w + 8;
+    }
+    const list = add({ ui: "list", cls: "androidx.recyclerview.widget.RecyclerView", res: "results", b: [0, 198, 360, 494], interactive: true, scrollable: true, flags: ["scrollable", "focusable"] });
+    d = 2;
+    const prods = visibleProducts();
+    prods.forEach((p, i) => {
+      const y = 198 + i * 96 - S.scroll;
+      if (y + 96 <= 198 || y >= 692) return;
+      const clip = (yy, h) => { const t = Math.max(yy, 198), btm = Math.min(yy + h, 692); return [t, btm - t]; };
+      const [ry, rh] = clip(y, 96);
+      add({ ui: "row", cls: "android.view.ViewGroup", res: "product_row", b: [0, ry, 360, rh], row: p.name, depth: 2 });
+      const inside = (yy, h) => yy >= 198 && yy + h <= 692;
+      if (inside(y + 14, 24)) add({ ui: "ptitle", cls: "android.widget.TextView", res: "name", text: p.name, b: [16, y + 14, 160, 24], row: p.name, depth: 3 });
+      if (inside(y + 42, 22)) add({ ui: "price", cls: "android.widget.TextView", res: "price", text: p.price, b: [16, y + 42, 100, 22], row: p.name, depth: 3 });
+      if (inside(y + 30, 36)) add({ ui: "heart", cls: "android.view.View", b: [180, y + 30, 36, 36], interactive: true, flags: ["clickable"], row: p.name, depth: 3, onTap: () => toast("Liked (demo)") });
+      if (inside(y + 26, 44)) add({ ui: "addbtn", cls: "android.widget.Button", res: "add_to_cart", text: "Add to cart", b: [228, y + 26, 116, 44], interactive: true, flags: ["clickable", "focusable", "enabled"], row: p.name, depth: 3, onTap: () => { S.cart.push(p); S.snack = true; } });
+    });
+    d = 1;
+    list.maxScroll = Math.max(0, prods.length * 96 - 494);
+    if (S.snack) add({ ui: "snack", cls: "android.widget.TextView", res: "snackbar_text", text: S.cart.length === 1 ? "1 item in cart" : S.cart.length + " items in cart", b: [16, 628, 328, 48] });
+    const navs = [["Home", "nav_home"], ["Orders", "nav_orders"], ["Account", "nav_account"]];
+    navs.forEach(([t, r], i) => add({ ui: "nav", cls: "android.widget.FrameLayout", res: r, text: t, b: [i * 120, 692, 120, 68], interactive: true, flags: ["clickable"].concat(i === 0 ? ["selected"] : []), sel: i === 0, onTap: () => { if (i) toast("Demo: " + t + " screen not built"); } }));
+  } else if (S.screen === "cart") {
+    add({ ui: "up", cls: "android.widget.ImageButton", desc: "Navigate up", b: [6, 34, 44, 44], interactive: true, flags: ["clickable"], onTap: () => { S.screen = "home"; } });
+    add({ ui: "title", cls: "android.widget.TextView", text: "Cart", b: [60, 38, 140, 36] });
+    const items = S.cart.length ? S.cart : [];
+    if (!items.length) add({ ui: "emptytext", cls: "android.widget.TextView", res: "empty", text: "Your cart is empty", b: [16, 120, 328, 28] });
+    items.forEach((p, i) => {
+      const y = 96 + i * 76;
+      add({ ui: "crow", cls: "android.view.ViewGroup", res: "cart_row", b: [0, y, 360, 76], row: p.name });
+      add({ ui: "ptitle", cls: "android.widget.TextView", res: "name", text: p.name, b: [16, y + 14, 200, 24], row: p.name, depth: 2 });
+      add({ ui: "price", cls: "android.widget.TextView", res: "price", text: p.price, b: [16, y + 40, 100, 22], row: p.name, depth: 2 });
+      add({ ui: "qty", cls: "android.widget.TextView", res: "qty", text: "Qty 1", b: [280, y + 26, 64, 24], row: p.name, depth: 2 });
+    });
+    const total = items.reduce((a, p) => a + parseFloat(p.price.slice(1)), 0).toFixed(2);
+    add({ ui: "tlabel", cls: "android.widget.TextView", text: "Total", b: [16, 630, 100, 26] });
+    add({ ui: "total", cls: "android.widget.TextView", res: "total", text: "$" + total, b: [244, 630, 100, 26] });
+    add({ ui: "checkout", cls: "android.widget.Button", res: "checkout", text: "Checkout", b: [16, 672, 328, 52], interactive: true, enabled: items.length > 0, flags: ["clickable"].concat(items.length ? ["enabled"] : []), onTap: () => { if (S.cart.length) { S.cart = []; S.screen = "order"; } } });
+  } else if (S.screen === "order") {
+    add({ ui: "check", cls: "android.widget.ImageView", desc: "Success", b: [148, 220, 64, 64] });
+    add({ ui: "big", cls: "android.widget.TextView", text: "Order placed", b: [40, 300, 280, 36] });
+    add({ ui: "sub", cls: "android.widget.TextView", res: "order_number", text: "Order #48213", b: [40, 340, 280, 24] });
+    add({ ui: "continue", cls: "android.widget.Button", res: "continue_shopping", text: "Continue shopping", b: [16, 672, 328, 52], interactive: true, flags: ["clickable", "enabled"], onTap: () => { S.screen = "home"; S.query = ""; S.chip = "All"; S.scroll = 0; } });
+  }
+  return N;
+}
+
+/* ---------- selectors: candidates, counts, rendering, proto JSON ---------- */
+const dynamicText = (t) => /\d/.test(t || "");
+function matches(n, d) {
+  if (d.res && n.res !== d.res) return false;
+  if (d.text && (n.text !== d.text)) return false;
+  if (d.desc && n.desc !== d.desc) return false;
+  if (d.hint && n.hint !== d.hint) return false;
+  if (d.cls && n.cls !== d.cls) return false;
+  if (d.anc && n.row !== d.anc.has) return false;
+  return true;
+}
+function count(nodes, d) { return nodes.filter((n) => n.ui !== "wall" && matches(n, d)).length; }
+function candidates(nodes, n) {
+  const out = []; const base = [];
+  const sc = n.scope ? { scope: n.scope } : {};
+  if (n.res) base.push({ res: n.res });
+  if (n.text && !n.showingHint) base.push({ text: n.text });
+  if (n.desc && n.desc !== n.text) base.push({ desc: n.desc });
+  if (n.hint) base.push({ hint: n.hint });
+  for (const b of base) out.push(Object.assign({}, b, sc, { count: count(nodes, b) }));
+  if (!out.some((c) => c.count === 1) && n.row && (n.res || n.text)) {
+    const key = n.res ? { res: n.res } : { text: n.text };
+    const rowRes = nodes.find((x) => x.row === n.row && (x.ui === "row" || x.ui === "crow")).res;
+    const withRow = Object.assign({}, key, { anc: { res: rowRes, has: n.row } });
+    out.unshift(Object.assign(withRow, { count: count(nodes, withRow), rel: true }));
+    const same = nodes.filter((x) => matches(x, key));
+    out.push(Object.assign({}, key, { at: same.indexOf(n), count: 1, byIndex: true }));
+  }
+  for (const c of out) {
+    c.dynamic = !!(c.text && dynamicText(c.text));
+    c.ok = c.count === 1;
+  }
+  out.sort((a, b) => (b.ok - a.ok) || (a.byIndex - b.byIndex) || (a.dynamic - b.dynamic));
+  return out;
+}
+function preferred(cands) { return cands.find((c) => c.ok && !c.byIndex && !c.dynamic) || cands.find((c) => c.ok) || null; }
+function q(s) { return '"' + String(s).replace(/"/g, '\\"') + '"'; }
+function renderSel(d) {
+  let s;
+  if (d.res) s = "res(" + q(d.res) + ")";
+  else if (d.text) s = "text(" + q(d.text) + ")";
+  else if (d.desc) s = "desc(" + q(d.desc) + ")";
+  else if (d.hint) s = "hint(" + q(d.hint) + ")";
+  else s = "className(" + q(d.cls) + ")";
+  if (d.res && d.text) s += ".andText(" + q(d.text) + ")";
+  if (d.anc) s += ".hasAncestor(res(" + q(d.anc.res) + ").hasDescendant(text(" + q(d.anc.has) + ")))";
+  if (d.at != null) s += ".at(" + d.at + ")";
+  if (d.scope === "launcher") s += '.inPackage("com.android.launcher3")';
+  return s;
+}
+function nodeJson(d) {
+  const parts = [];
+  if (d.res) parts.push({ resource: { name: d.res, aut_package: true } });
+  if (d.text) parts.push({ match: { property: "TEXT", value: d.text } });
+  if (d.desc) parts.push({ match: { property: "CONTENT_DESCRIPTION", value: d.desc } });
+  if (d.hint) parts.push({ match: { property: "HINT", value: d.hint } });
+  if (d.anc) parts.push({ related: { relation: "ANCESTOR", node: { all_of: { nodes: [{ resource: { name: d.anc.res, aut_package: true } }, { related: { relation: "DESCENDANT", node: { match: { property: "TEXT", value: d.anc.has } } } }] } } } });
+  return parts.length === 1 ? parts[0] : { all_of: { nodes: parts } };
+}
+function selJson(d) {
+  const o = { node: nodeJson(d) };
+  if (d.scope === "launcher") o.system = { package_name: "com.android.launcher3" };
+  if (d.at != null) o.at = { index: d.at };
+  return o;
+}
+const plain = (c) => { const o = {}; for (const k of ["res", "text", "desc", "hint", "cls", "anc", "at", "scope"]) if (c[k] != null) o[k] = c[k]; return o; };
+
+/* ---------- state per frame ---------- */
+let NODES = [];
+function sig(n) { return [n.win, n.cls, n.res || "", n.text || "", n.desc || "", n.row || "", n.ui].join("|"); }
+function refresh() {
+  NODES = buildNodes();
+  for (const n of NODES) { const k = sig(n); if (!refBySig.has(k)) refBySig.set(k, "e" + refCounter++); n.ref = refBySig.get(k); }
+  for (const n of NODES) { n.cands = candidates(NODES, n); }
+  if (S.selected && !NODES.some((n) => n.ref === S.selected)) S.selected = null;
+}
+function nodeByRef(r) { return NODES.find((n) => n.ref === r); }
+function chosenCand(n) {
+  const k = S.chosen[n.ref];
+  if (k != null) { const c = n.cands.find((c) => renderSel(c) === k && c.ok); if (c) return c; }
+  return preferred(n.cands);
+}
+
+/* ---------- drawing the mock screen ---------- */
+function drawScreen() {
+  const el = $("screen"); let h = "";
+  h += '<div class="n" style="left:0;top:0;width:360px;height:28px;background:' + (S.screen === "launcher" ? "transparent" : "#F1F1F1") + ';display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:500;z-index:2;color:' + (S.screen === "launcher" ? "#fff" : "#222") + '"><span>9:41</span><span>▾ ▴ ▮</span></div>';
+  for (const n of NODES) {
+    const [x, y, w, hh] = n.b; const st = "left:" + x + "px;top:" + y + "px;width:" + w + "px;height:" + hh + "px;";
+    switch (n.ui) {
+      case "wall": h += '<div class="n" style="left:0;top:0;width:360px;height:800px;background:linear-gradient(160deg,#2B4C63,#16293A 60%,#1D2F24)"></div>'; break;
+      case "appicon": case "appicon2": case "appicon3": {
+        const col = n.ui === "appicon" ? "#FF6A3D" : n.ui === "appicon2" ? "#4A7BD0" : "#3FA46A";
+        h += '<div class="n" style="' + st + 'display:grid;justify-items:center;gap:6px;color:#fff;font-size:12px"><div style="width:56px;height:56px;border-radius:16px;background:' + col + ';display:grid;place-items:center;font-weight:700;font-size:22px">' + n.text[0] + '</div>' + n.text + '</div>'; break; }
+      case "root": h += '<div class="n" style="' + st + 'background:#FAFAFA"></div>'; break;
+      case "title": h += '<div class="n" style="' + st + 'font-size:22px;font-weight:600;line-height:36px">' + esc(n.text) + '</div>'; break;
+      case "cartbtn": h += '<div class="n" style="' + st + 'display:grid;place-items:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1B1F24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg>' + (S.cart.length ? '<span style="position:absolute;right:4px;top:4px;background:#E2462B;color:#fff;border-radius:9px;min-width:17px;height:17px;font-size:11px;display:grid;place-items:center;font-weight:600">' + S.cart.length + '</span>' : "") + '</div>'; break;
+      case "field": h += '<div class="n" style="' + st + 'border-radius:24px;background:#EDEEF0;display:flex;align-items:center;gap:10px;padding:0 16px;font-size:15px;color:' + (n.showingHint ? "#80868B" : "#1B1F24") + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F6368" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' + esc(n.text) + '</div>'; break;
+      case "chip": h += '<div class="n" style="' + st + 'border-radius:16px;border:1px solid ' + (n.checked ? "#1B1F24" : "#C9CCD1") + ';background:' + (n.checked ? "#1B1F24" : "#fff") + ';color:' + (n.checked ? "#fff" : "#1B1F24") + ';font-size:13px;display:grid;place-items:center;font-weight:500">' + esc(n.text) + '</div>'; break;
+      case "list": h += '<div class="n" style="' + st + 'background:#FAFAFA"></div>'; break;
+      case "row": h += '<div class="n" style="' + st + 'border-bottom:1px solid #ECEDEF"></div>'; break;
+      case "crow": h += '<div class="n" style="' + st + 'border-bottom:1px solid #ECEDEF"></div>'; break;
+      case "ptitle": h += '<div class="n" style="' + st + 'font-size:16px;font-weight:500">' + esc(n.text) + '</div>'; break;
+      case "price": h += '<div class="n" style="' + st + 'font-size:14px;color:#5F6368">' + esc(n.text) + '</div>'; break;
+      case "qty": h += '<div class="n" style="' + st + 'font-size:13px;color:#5F6368;text-align:right">' + esc(n.text) + '</div>'; break;
+      case "heart": h += '<div class="n" style="' + st + 'display:grid;place-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9AA0A6" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></div>'; break;
+      case "addbtn": h += '<div class="n" style="' + st + 'border-radius:22px;background:#1B1F24;color:#fff;font-size:13.5px;font-weight:500;display:grid;place-items:center">' + esc(n.text) + '</div>'; break;
+      case "snack": h += '<div class="n" style="' + st + 'border-radius:8px;background:#2E3338;color:#fff;font-size:14px;display:flex;align-items:center;padding:0 16px;box-shadow:0 4px 12px rgba(0,0,0,.25)">' + esc(n.text) + '</div>'; break;
+      case "nav": h += '<div class="n" style="' + st + 'background:#F1F2F4;display:grid;place-items:center;align-content:center;gap:2px;font-size:12px;font-weight:' + (n.sel ? 600 : 400) + ';color:' + (n.sel ? "#1B1F24" : "#5F6368") + '"><span style="width:44px;height:26px;border-radius:13px;background:' + (n.sel ? "#DDE1E6" : "transparent") + '"></span>' + esc(n.text) + '</div>'; break;
+      case "up": h += '<div class="n" style="' + st + 'display:grid;place-items:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B1F24" stroke-width="2" stroke-linecap="round"><path d="M19 12H5m6-6l-6 6 6 6"/></svg></div>'; break;
+      case "emptytext": h += '<div class="n" style="' + st + 'font-size:15px;color:#5F6368">' + esc(n.text) + '</div>'; break;
+      case "tlabel": h += '<div class="n" style="' + st + 'font-size:16px;font-weight:500">' + esc(n.text) + '</div>'; break;
+      case "total": h += '<div class="n" style="' + st + 'font-size:16px;font-weight:600;text-align:right">' + esc(n.text) + '</div>'; break;
+      case "checkout": case "continue": h += '<div class="n" style="' + st + 'border-radius:26px;background:' + (n.enabled === false ? "#C9CCD1" : "#E2462B") + ';color:#fff;font-size:15px;font-weight:600;display:grid;place-items:center">' + esc(n.text) + '</div>'; break;
+      case "check": h += '<div class="n" style="' + st + 'border-radius:50%;background:#E6F4EA;display:grid;place-items:center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#1E8E3E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></div>'; break;
+      case "big": h += '<div class="n" style="' + st + 'font-size:24px;font-weight:600;text-align:center">' + esc(n.text) + '</div>'; break;
+      case "sub": h += '<div class="n" style="' + st + 'font-size:14px;color:#5F6368;text-align:center">' + esc(n.text) + '</div>'; break;
+    }
+  }
+  h += '<div class="n" style="left:0;top:760px;width:360px;height:40px;background:' + (S.screen === "launcher" ? "transparent" : "#F1F1F1") + ';display:flex;justify-content:center;align-items:center"><span style="width:110px;height:4px;border-radius:2px;background:' + (S.screen === "launcher" ? "#fff" : "#3C4043") + '"></span></div>';
+  el.innerHTML = h;
+}
+
+function overlayNodes() {
+  if (S.overlay === "none") return [];
+  return NODES.filter((n) => n.ui !== "wall" && n.ui !== "root" && (S.overlay === "all" || n.interactive));
+}
+function drawOverlay() {
+  const ov = $("overlay");
+  const list = overlayNodes();
+  // containers first so leaves sit on top
+  list.sort((a, b) => a.depth - b.depth);
+  ov.innerHTML = list.map((n) => {
+    const [x, y, w, h] = n.b; const pref = preferred(n.cands);
+    const cls = ["ob"]; if (!n.interactive) cls.push("passive"); if (!pref) cls.push("gap"); if (S.selected === n.ref) cls.push("sel");
+    const label = (n.text || n.desc || n.res || n.cls.split(".").pop());
+    return '<button class="' + cls.join(" ") + '" data-ref="' + n.ref + '" style="left:' + x + "px;top:" + y + "px;width:" + w + "px;height:" + h + 'px" aria-label="' + esc(label) + ' (' + n.ref + ')"></button>';
+  }).join("");
+  $("phone").parentElement.classList.toggle("provisional", S.moving);
+  $("phoneBox").className = "phone-box mode-" + S.mode + (S.moving ? " provisional" : "");
+}
+
+/* ---------- scaling the phone to the column ---------- */
+let K = 1;
+function fit() {
+  const box = $("phoneBox"); const w = box.clientWidth - 24;
+  K = Math.max(0.42, Math.min(1, w / 360));
+  const p = $("phone");
+  p.style.transform = "scale(" + K + ")";
+  p.style.left = ((box.clientWidth - 360 * K) / 2) + "px";
+  p.style.top = (10 * K) + "px";
+  box.style.height = (800 * K + 20 * K) + "px";
+}
+new ResizeObserver(fit).observe($("phoneBox"));
+
+/* ---------- inspector ---------- */
+function drawInspector() {
+  const el = $("inspector");
+  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === S.tab)));
+  if (S.tab === "tree") { drawTree(el); return; }
+  const n = S.selected && nodeByRef(S.selected);
+  if (!n) { el.innerHTML = '<div class="empty">Hover the screen to see each element\'s selector. Click to act on it, or right-click to inspect it without acting.</div>'; return; }
+  const cur = chosenCand(n);
+  let h = '<div class="node-head"><span class="cls">' + esc(n.cls.split(".").pop()) + '</span><span class="ref">@' + n.ref + '</span>';
+  if (n.interactive) h += '<span class="tag">interactive</span>';
+  if (n.scrollable) h += '<span class="tag">scrollable</span>';
+  if (n.editable) h += '<span class="tag">editable</span>';
+  if (n.win !== AUT) h += '<span class="tag">window: ' + esc(n.win) + '</span>';
+  h += '</div>';
+
+  h += '<div class="section"><h4>Selector</h4>';
+  if (!n.cands.some((c) => c.ok)) {
+    h += '<div class="gapnote"><b>No selector finds only this element.</b> It has no resource id, text or content description, so Tap cannot act on it. Give it a <code>contentDescription</code> (Views) or a <code>testTag</code> with <code>testTagsAsResourceId</code> (Compose).</div>';
+  } else {
+    h += '<div class="cands" role="radiogroup" aria-label="Selector used for this element">';
+    for (const c of n.cands) {
+      const r = renderSel(c); const chosen = cur && renderSel(cur) === r;
+      const chips = [];
+      chips.push(c.ok ? '<span class="chip ok">1 match</span>' : '<span class="chip bad">' + c.count + ' matches</span>');
+      if (c.rel) chips.push('<span class="chip info">by row</span>');
+      if (c.byIndex) chips.push('<span class="chip warn" title="Correct now; breaks if the list reorders">by index</span>');
+      if (c.dynamic) chips.push('<span class="chip warn" title="Contains digits: prices, counts and dates usually change between runs">dynamic text</span>');
+      h += '<button class="cand' + (chosen ? " chosen" : "") + (c.ok ? "" : " nope") + '" role="radio" aria-checked="' + chosen + '" data-cand="' + esc(r) + '"' + (c.ok ? "" : ' aria-disabled="true"') + '><span class="radio"></span><code>' + esc(r) + '</code><span class="chips">' + chips.join("") + '</span></button>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  if (cur) {
+    h += '<div class="section"><h4>Act</h4><div class="actions">';
+    h += '<button class="btn primary" data-act="tap">Tap</button><button class="btn" data-act="long_tap">Long tap</button>';
+    if (n.scrollable) h += '<button class="btn" data-act="scroll_down">Scroll ↓</button><button class="btn" data-act="scroll_up">Scroll ↑</button><button class="btn" data-act="swipe_left">Swipe ←</button>';
+    if (n.editable) h += '<button class="btn" data-act="clear">Clear</button>';
+    h += '</div>';
+    if (n.editable) h += '<div class="textact"><input type="text" id="inlineText" aria-label="Text to enter" placeholder="Text to enter" value=""><button class="btn" data-act="set_text">Set text</button><button class="btn" data-act="type_text" title="Tap, wait for focus, then type key by key">Type keys</button><label class="chk" style="display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="inlineSecret"> Secret</label></div>';
+    h += '</div>';
+    h += '<div class="section"><h4>Assert</h4><div class="actions">';
+    for (const a of assertOptions(n)) h += '<button class="btn assert" data-assert="' + a.id + '">' + esc(a.label) + '</button>';
+    h += '</div></div>';
+  }
+
+  h += '<div class="section"><h4>Properties</h4><dl class="props">';
+  const row = (k, v) => { h += '<dt>' + k + '</dt>' + (v ? '<dd>' + esc(v) + '</dd>' : '<dd class="none">—</dd>'); };
+  row("resource-id", n.res ? (n.win === AUT ? AUT + ":id/" + n.res : n.res) : "");
+  row("text", n.showingHint ? n.text + "  (hint shown)" : n.text);
+  row("content-desc", n.desc); row("hint", n.hint); row("class", n.cls); row("package", n.pkg);
+  row("bounds", "[" + n.b[0] * 3 + "," + n.b[1] * 3 + "][" + (n.b[0] + n.b[2]) * 3 + "," + (n.b[1] + n.b[3]) * 3 + "]");
+  h += '<dt>flags</dt><dd><span class="flags">' + (n.flags.length ? n.flags.map((f) => '<span class="tag">' + f + '</span>').join("") : '<span class="none">none</span>') + '</span></dd>';
+  h += '</dl></div>';
+  el.innerHTML = h;
+}
+function assertOptions(n) {
+  const o = [{ id: "visible", label: "Visible" }, { id: "one", label: "Exactly one" }, { id: "gone", label: "Gone" }];
+  if (n.text && !n.showingHint) o.push({ id: "text", label: "Text is “" + n.text + "”" });
+  if (n.flags.includes("enabled") || n.enabled === false) o.push({ id: n.enabled === false ? "disabled" : "enabled", label: n.enabled === false ? "Disabled" : "Enabled" });
+  if (n.checkable) o.push({ id: n.checked ? "checked" : "unchecked", label: n.checked ? "Checked" : "Unchecked" });
+  return o;
+}
+function drawTree(el) {
+  const f = S.treeFilter.toLowerCase();
+  let h = '<input class="filter" id="treeFilter" type="search" placeholder="Filter by text, id or class" aria-label="Filter nodes" value="' + esc(S.treeFilter) + '"><div class="tree">';
+  for (const n of NODES) {
+    if (n.ui === "wall") continue;
+    const lab = n.text ? "“" + n.text + "”" : n.desc ? "desc=" + n.desc : "";
+    const hay = [n.text, n.desc, n.res, n.cls].join(" ").toLowerCase();
+    if (f && !hay.includes(f)) continue;
+    h += '<button class="' + (S.selected === n.ref ? "sel" : "") + '" data-tree="' + n.ref + '" style="padding-left:' + (6 + n.depth * 14) + 'px"><span class="r">@' + n.ref + '</span><span class="k">' + esc(n.cls.split(".").pop()) + '</span><span class="l">' + esc(lab) + (n.res ? ' <span class="k">id=' + esc(n.res) + '</span>' : "") + '</span>' + (n.interactive && !preferred(n.cands) ? '<span class="x">no selector</span>' : "") + '</button>';
+  }
+  el.innerHTML = h + '</div>';
+  const tf = $("treeFilter"); tf.addEventListener("input", () => { S.treeFilter = tf.value; drawTree(el); const t = $("treeFilter"); t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
+}
+
+/* ---------- steps ---------- */
+function stepCode(s) {
+  if (s.kind === "app") return "app()." + ({ cold_launch: "coldLaunch()", launch: "launch()", force_stop: "forceStop()", clear_data: "clearData()", grant_permission: 'grantPermission("android.permission.CAMERA")' })[s.op];
+  if (s.kind === "key") return s.op === "BACK" ? "pressBack()" : s.op === "HOME" ? "pressHome()" : "pressKey(" + s.op + ")";
+  const sel = renderSel(s.sel);
+  if (s.kind === "assert") return "await(" + sel + ")." + ({ visible: "visible()", one: "one()", gone: "gone()", text: "textEquals(" + q(s.value) + ")", enabled: "enabled()", disabled: "disabled()", checked: "checked()", unchecked: "unchecked()" })[s.op];
+  const v = s.secret ? "${" + s.secret + "}" : q(s.value);
+  return "element(" + sel + ")." + ({ tap: "tap()", long_tap: "longTap()", set_text: "setText(" + v + ")", type_text: "typeText(" + v + ")", clear: "clearText()", scroll_down: "scroll(DOWN)", scroll_up: "scroll(UP)", swipe_left: "swipe(LEFT)" })[s.op];
+}
+function drawSteps(flashLast) {
+  const el = $("steps");
+  $("stepCount").textContent = S.steps.length + (S.steps.length === 1 ? " step" : " steps");
+  if (!S.steps.length) { el.innerHTML = '<li class="empty">Act on the screen to record steps.</li>'; return; }
+  el.innerHTML = S.steps.map((s, i) => {
+    const warns = [];
+    if (s.sel && s.sel.byIndex) warns.push('<span class="chip warn">by index</span>');
+    if (s.sel && s.sel.dynamic) warns.push('<span class="chip warn">dynamic text</span>');
+    if (s.secret) warns.push('<span class="chip info">secret</span>');
+    const res = s.state === "run" ? '<span class="res run">running…</span>' : s.state === "fail" ? '<span class="res fail">✗ ' + s.err + '</span>' : '<span class="res">✓ ' + s.ms + ' ms</span>';
+    return '<li class="step' + (flashLast && i === S.steps.length - 1 ? " new" : "") + '"><span class="num">' + (i + 1) + '</span><div><div class="kind k-' + s.kind + '">' + ({ command: "action", assert: "assert", app: "app", key: "key" })[s.kind] + '</div><code>' + esc(stepCode(s)) + '</code>' + (s.kind === "command" ? '<div class="wait">after <code>await(' + esc(renderSel(s.sel)) + ').one()</code></div>' : "") + (warns.length ? '<div class="chips" style="justify-content:flex-start;margin-top:4px">' + warns.join("") + '</div>' : "") + '</div><div class="meta">' + res + '<span class="tools"><button class="iconbtn" data-up="' + i + '" aria-label="Move step ' + (i + 1) + ' up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 15l6-6 6 6"/></svg></button><button class="iconbtn" data-del="' + i + '" aria-label="Delete step ' + (i + 1) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></span></div></li>';
+  }).join("");
+  if (flashLast) el.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+function record(step) {
+  if (!S.recording) return;
+  step.ms = step.ms || Math.round(60 + Math.random() * 180);
+  step.state = "ok";
+  S.steps.push(step); drawSteps(true);
+}
+
+/* ---------- performing things ---------- */
+function newFrame(settleMs) {
+  S.moving = true; drawOverlay(); updateFrameStatus();
+  setTimeout(() => { S.frame += 1 + Math.floor(Math.random() * 2); S.frameAt = Date.now(); S.moving = false; refresh(); render(); }, settleMs == null ? 520 : settleMs);
+}
+function actOn(n, op, extra) {
+  const cand = chosenCand(n);
+  if (!cand) { S.selected = n.ref; render(); toast("No selector finds only this element; see the Element panel"); return; }
+  const sel = Object.assign(plain(cand), { byIndex: !!cand.byIndex, dynamic: !!cand.dynamic });
+  const st = { kind: "command", op, sel };
+  if (op === "set_text" || op === "type_text") { st.value = extra.value; if (extra.secret) st.secret = extra.secret; }
+  // effects on the mock app
+  if (op === "tap" || op === "long_tap") { if (n.onTap && n.enabled !== false) n.onTap(); }
+  if (op === "set_text" || op === "type_text") { if (n.res === "search") { S.query = extra.value; S.scroll = 0; } }
+  if (op === "clear") { if (n.res === "search") { S.query = ""; S.scroll = 0; } }
+  if (op === "scroll_down" || op === "scroll_up") { const max = n.maxScroll || 0; S.scroll = Math.max(0, Math.min(max, S.scroll + (op === "scroll_down" ? 192 : -192))); }
+  if (S.snack && op !== "tap") S.snack = false;
+  if (op === "tap" && n.res !== "add_to_cart") S.snack = false;
+  record(st);
+  S.selected = n.ref; closePop(); newFrame();
+}
+function assertOn(n, op) {
+  const cand = chosenCand(n); if (!cand) return;
+  record({ kind: "assert", op, sel: Object.assign(plain(cand), { byIndex: !!cand.byIndex, dynamic: !!cand.dynamic }), value: n.text, ms: op === "text" || op === "enabled" ? 110 : 64 });
+  closePop(); toast("Assertion recorded");
+}
+function appOp(op) {
+  $("appMenu").hidden = true; $("appBtn").setAttribute("aria-expanded", "false");
+  if (op === "cold_launch" || op === "launch") { S.screen = "home"; if (op === "cold_launch") { S.query = ""; S.chip = "All"; S.scroll = 0; S.snack = false; } }
+  if (op === "force_stop") S.screen = "launcher";
+  if (op === "clear_data") { S.screen = "launcher"; S.cart = []; S.query = ""; S.chip = "All"; }
+  record({ kind: "app", op, ms: op === "cold_launch" ? 1830 : op === "launch" ? 940 : 410 });
+  S.selected = null; newFrame(op.includes("launch") ? 900 : 500);
+}
+function key(k) {
+  if (k === "BACK") { if (S.screen === "cart" || S.screen === "order") S.screen = "home"; else if (S.screen === "home") S.screen = "launcher"; }
+  if (k === "HOME") S.screen = "launcher";
+  S.snack = false; record({ kind: "key", op: k }); S.selected = null; newFrame();
+}
+
+/* ---------- popovers over the device ---------- */
+function openPop(n, kind) {
+  const pop = $("pop"); const box = $("phoneBox"); const p = $("phone");
+  const left = parseFloat(p.style.left) + n.b[0] * K; const top = parseFloat(p.style.top) + (n.b[1] + n.b[3]) * K + 6;
+  const cur = chosenCand(n);
+  let h = "";
+  if (kind === "text") {
+    const secretDefault = /password|pin/i.test(n.hint || n.res || "");
+    h = '<h3>Text for <code>' + esc(renderSel(cur)) + '</code></h3><input type="text" id="popText" aria-label="Text to enter" value="' + esc(n.showingHint ? "" : n.text) + '"><label class="chk"><input type="checkbox" id="popSecret"' + (secretDefault ? " checked" : "") + '> Secret: record a placeholder, not the value</label><div class="row"><button class="btn primary" id="popSet">Set text</button><button class="btn" id="popType" title="Tap, wait for focus, then type key by key">Type keys</button><span class="spacer" style="flex:1"></span><button class="btn ghost" id="popCancel">Cancel</button></div>';
+  } else {
+    h = '<h3>Check <code>' + esc(renderSel(cur)) + '</code></h3><div class="opts">' + assertOptions(n).map((a) => '<button data-assert="' + a.id + '"><span>' + esc(a.label) + '</span></button>').join("") + '</div>';
+  }
+  pop.innerHTML = h; pop.hidden = false;
+  const w = 260; const maxLeft = box.clientWidth - w - 4;
+  pop.style.left = Math.max(4, Math.min(maxLeft, left)) + "px";
+  pop.style.top = Math.min(top, box.clientHeight - 150) + "px";
+  pop.dataset.ref = n.ref;
+  if (kind === "text") {
+    const t = $("popText"); t.focus(); t.select();
+    const go = (op) => { const v = t.value; if (!v) { t.focus(); return; } const secret = $("popSecret").checked ? "secret" + (S.steps.filter((s) => s.secret).length + 1) : null; actOn(n, op, { value: v, secret }); };
+    $("popSet").onclick = () => go("set_text"); $("popType").onclick = () => go("type_text"); $("popCancel").onclick = closePop;
+    t.addEventListener("keydown", (e) => { if (e.key === "Enter") go("set_text"); if (e.key === "Escape") closePop(); });
+  } else {
+    pop.querySelectorAll("[data-assert]").forEach((b) => b.onclick = () => assertOn(n, b.dataset.assert));
+    pop.querySelector("button").focus();
+  }
+}
+function closePop() { $("pop").hidden = true; }
+
+/* ---------- events ---------- */
+const ov = $("overlay"); const tip = $("tip");
+ov.addEventListener("mousemove", (e) => {
+  const b = e.target.closest(".ob"); if (!b) { tip.hidden = true; return; }
+  const n = nodeByRef(b.dataset.ref); if (!n) return;
+  const c = chosenCand(n); const box = $("phoneBox").getBoundingClientRect();
+  tip.innerHTML = c ? '<b>@' + n.ref + '</b> ' + esc(renderSel(c)) + ' <span class="c">· 1 match</span>' + (c.byIndex ? ' <span class="c bad">· by index</span>' : "") : '<b>@' + n.ref + '</b> ' + esc(n.cls.split(".").pop()) + ' <span class="c bad">· no selector</span>';
+  tip.hidden = false;
+  const x = e.clientX - box.left + 14, y = e.clientY - box.top + 16;
+  tip.style.left = Math.min(x, box.width - tip.offsetWidth - 4) + "px"; tip.style.top = y + "px";
+});
+ov.addEventListener("mouseleave", () => { tip.hidden = true; });
+ov.addEventListener("contextmenu", (e) => { const b = e.target.closest(".ob"); if (!b) return; e.preventDefault(); S.selected = b.dataset.ref; S.tab = "element"; closePop(); render(); });
+ov.addEventListener("click", (e) => {
+  const b = e.target.closest(".ob"); if (!b || S.moving) return;
+  const n = nodeByRef(b.dataset.ref); if (!n) return;
+  tip.hidden = true; S.tab = "element";
+  if (S.mode === "inspect") { S.selected = n.ref; closePop(); render(); return; }
+  S.selected = n.ref; render();
+  if (!chosenCand(n)) { toast("No selector finds only this element; see the Element panel"); return; }
+  if (S.mode === "assert") { openPop(n, "assert"); return; }
+  if (n.editable) { openPop(n, "text"); return; }
+  if (n.scrollable && !e.altKey) { toast("Scroll with the wheel over the list, or use the Element panel"); return; }
+  actOn(n, e.altKey ? "long_tap" : "tap");
+});
+let wheelLock = 0;
+ov.addEventListener("wheel", (e) => {
+  const list = NODES.find((n) => n.scrollable); if (!list || S.mode !== "act") return;
+  const r = $("phone").getBoundingClientRect(); const y = (e.clientY - r.top) / K;
+  if (y < list.b[1] || y > list.b[1] + list.b[3]) return;
+  e.preventDefault(); const now = Date.now(); if (now - wheelLock < 700 || S.moving) return; wheelLock = now;
+  const op = e.deltaY > 0 ? "scroll_down" : "scroll_up";
+  if ((op === "scroll_down" && S.scroll >= (list.maxScroll || 0)) || (op === "scroll_up" && S.scroll <= 0)) { toast("Nothing more to scroll"); return; }
+  actOn(list, op);
+}, { passive: false });
+
+$("inspector").addEventListener("click", (e) => {
+  const cb = e.target.closest("[data-cand]"); const n = S.selected && nodeByRef(S.selected);
+  if (cb && n) { if (cb.getAttribute("aria-disabled") === "true") { toast("That selector matches more than one element"); return; } S.chosen[n.ref] = cb.dataset.cand; drawInspector(); drawOverlay(); return; }
+  const tb = e.target.closest("[data-tree]"); if (tb) { S.selected = tb.dataset.tree; drawOverlay(); drawTree($("inspector")); return; }
+  const ab = e.target.closest("[data-act]");
+  if (ab && n) {
+    const op = ab.dataset.act;
+    if (op === "set_text" || op === "type_text") { const v = $("inlineText").value; if (!v) { $("inlineText").focus(); return; } actOn(n, op, { value: v, secret: $("inlineSecret").checked ? "secret" + (S.steps.filter((s) => s.secret).length + 1) : null }); }
+    else actOn(n, op);
+    return;
+  }
+  const as = e.target.closest("[data-assert]"); if (as && n) assertOn(n, as.dataset.assert);
+});
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => { S.tab = b.dataset.tab; drawInspector(); });
+function setMode(m) { S.mode = m; document.querySelectorAll("#modes button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === m))); closePop(); drawOverlay(); }
+document.querySelectorAll("#modes button").forEach((b) => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll("[data-ov]").forEach((b) => b.onclick = () => { S.overlay = b.dataset.ov; document.querySelectorAll("[data-ov]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); drawOverlay(); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, textarea")) return;
+  if (e.key === "1") setMode("act"); if (e.key === "2") setMode("assert"); if (e.key === "3") setMode("inspect");
+  if (e.key === "Escape") { closePop(); $("drawer").hidden = true; $("appMenu").hidden = true; }
+});
+$("rec").onclick = () => { S.recording = !S.recording; $("rec").classList.toggle("on", S.recording); $("rec").setAttribute("aria-pressed", String(S.recording)); $("recLabel").textContent = S.recording ? "Recording" : "Paused"; $("pausedNote").hidden = S.recording; };
+$("kBack").onclick = () => key("BACK"); $("kHome").onclick = () => key("HOME");
+$("refresh").onclick = () => newFrame(300);
+$("appBtn").onclick = () => { const m = $("appMenu"); m.hidden = !m.hidden; $("appBtn").setAttribute("aria-expanded", String(!m.hidden)); };
+$("appMenu").addEventListener("click", (e) => { const b = e.target.closest("[data-app]"); if (b) appOp(b.dataset.app); });
+document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) { $("appMenu").hidden = true; } if (!e.target.closest("#pop") && !e.target.closest(".ob")) closePop(); });
+$("steps").addEventListener("click", (e) => {
+  const d = e.target.closest("[data-del]"); if (d) { S.steps.splice(+d.dataset.del, 1); drawSteps(); return; }
+  const u = e.target.closest("[data-up]"); if (u) { const i = +u.dataset.up; if (i > 0) { [S.steps[i - 1], S.steps[i]] = [S.steps[i], S.steps[i - 1]]; drawSteps(); } }
+});
+$("replay").onclick = () => {
+  if (!S.steps.length) return; let i = 0; S.steps.forEach((s) => s.state = "wait");
+  const tick = () => { if (i > 0) S.steps[i - 1].state = "ok"; if (i >= S.steps.length) { drawSteps(); toast("Replayed " + S.steps.length + " steps from a cold launch: all passed (demo)"); return; } S.steps[i].state = "run"; drawSteps(); i++; setTimeout(tick, 380); };
+  tick();
+};
+function exportJson() {
+  const steps = S.steps.map((s, i) => {
+    const o = { seq: i + 1, kind: s.kind };
+    if (s.kind === "app") o.app = { operation: s.op, package_name: AUT };
+    else if (s.kind === "key") o.command = { press_key: { key_code: s.op === "BACK" ? 4 : 3 } };
+    else {
+      const sel = selJson(s.sel);
+      o.selector_source = s.sel.byIndex ? "synthesised_by_index" : "synthesised";
+      if (s.kind === "assert") {
+        const map = { visible: { wait_visible: { selector: sel } }, one: { wait_visible: { selector: sel, exactly_one: true } }, gone: { wait_gone: { selector: sel } } };
+        o.assert = map[s.op] || { property: s.op, selector: sel, expected: s.op === "text" ? s.value : true };
+      } else {
+        o.wait = { wait_visible: { selector: sel, exactly_one: true } };
+        const cmd = {};
+        if (s.op === "tap") cmd.tap = { selector: sel };
+        else if (s.op === "long_tap") cmd.long_tap = { selector: sel };
+        else if (s.op === "set_text") cmd.set_text = { selector: sel, text: s.secret ? "${" + s.secret + "}" : s.value };
+        else if (s.op === "type_text") { o.wait = { wait_visible: { selector: sel, exactly_one: true } }; cmd.type_text = { text: s.secret ? "${" + s.secret + "}" : s.value }; o.focus = { tap: { selector: sel } }; }
+        else if (s.op === "clear") cmd.clear_text = { selector: sel };
+        else if (s.op.startsWith("scroll")) cmd.scroll = { selector: sel, direction: s.op === "scroll_down" ? "DOWN" : "UP" };
+        else if (s.op === "swipe_left") cmd.swipe = { selector: sel, direction: "LEFT" };
+        o.command = cmd;
+        if (s.secret) o.secret = s.secret;
+      }
+    }
+    o.outcome = { ok: true, duration_ms: s.ms };
+    return o;
+  });
+  return JSON.stringify({ format: "tap-recording/1", recorded_at: new Date(S.recStart).toISOString().replace(/\.\d+Z/, "Z"), device: { serial: "emulator-5554", api_level: 34 }, aut_package: AUT, secrets: S.steps.filter((s) => s.secret).map((s) => s.secret), steps }, null, 2);
+}
+$("exportBtn").onclick = () => { $("json").textContent = exportJson(); $("drawer").hidden = false; $("drawerClose").focus(); };
+$("drawerClose").onclick = () => { $("drawer").hidden = true; };
+$("drawer").addEventListener("click", (e) => { if (e.target === $("drawer")) $("drawer").hidden = true; });
+$("copyJson").onclick = () => {
+  const txt = $("json").textContent;
+  navigator.clipboard.writeText(txt).then(() => toast("Copied"), () => { const r = document.createRange(); r.selectNodeContents($("json")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Selected: press Ctrl+C to copy"); });
+};
+
+let toastT; function toast(m) { const t = $("toast"); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+function updateFrameStatus() {
+  const p = $("framePill"); p.className = "pill " + (S.moving ? "moving" : "settled"); p.textContent = S.moving ? "changing…" : "settled";
+  const ago = ((Date.now() - S.frameAt) / 1000).toFixed(1);
+  $("frameInfo").textContent = "frame " + S.frame + " · " + ago + " s ago · " + NODES.filter((n) => n.interactive).length + " interactive / " + NODES.length + " nodes";
+  const sec = Math.floor((Date.now() - S.recStart) / 1000); $("recTime").textContent = String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0");
+}
+setInterval(updateFrameStatus, 500);
+
+function render() { drawScreen(); drawOverlay(); drawInspector(); updateFrameStatus(); }
+
+/* ---------- a realistic starting point ---------- */
+refresh();
+S.steps = [
+  { kind: "app", op: "cold_launch", ms: 1830, state: "ok" },
+  { kind: "command", op: "set_text", sel: { res: "search" }, value: "wool", ms: 212, state: "ok" },
+  { kind: "assert", op: "visible", sel: { text: "Wool socks" }, ms: 58, state: "ok" },
+];
+S.selected = NODES.find((n) => n.res === "add_to_cart").ref;
+render(); drawSteps(); fit();
+})();
+</script>

@@ -1,0 +1,165 @@
+// tap.studio.v1 — Tap Studio: the page's API (served by `tap-studio` over Connect) and the
+// `tap-recording/1` document.
+//
+// The one contract between the studio's Python back end and its TypeScript page: both sides are
+// generated from this file (clients/studio/scripts/gen_protos.py). It imports tap.v1 from
+// contracts/proto, so selectors, commands and errors are the daemon's own messages, typed on both
+// sides. This is a client's contract, not the daemon's: nothing under host/ reads it.
+syntax = "proto3";
+
+package tap.studio.v1;
+
+import "command.proto";
+import "event_log.proto";
+import "failure.proto";
+import "google/protobuf/timestamp.proto";
+import "selector.proto";
+
+service StudioService {
+  // What this studio is.
+  rpc Info(InfoRequest) returns (InfoResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The recording in progress. NOT_FOUND before anything is recorded.
+  rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  // The tool and its version, as a recording's `recorder`.
+  string recorder = 1;
+  // The recording format this studio writes: "tap-recording/1".
+  string format = 2;
+}
+
+message GetRecordingRequest {}
+
+message GetRecordingResponse {
+  Recording recording = 1;
+}
+
+// ---- tap-recording/1 ----------------------------------------------------------------------------
+//
+// The document is this message in proto3 JSON with the original (snake_case) field names, as
+// `tap-events/1`. Readers ignore unknown fields: additive changes keep `/1`. Rules proto cannot
+// state are checked by tap_studio.recording.validate and listed on each field.
+
+message Recording {
+  // Exactly "tap-recording/1".
+  string format = 1;
+  // When recording started.
+  google.protobuf.Timestamp recorded_at = 2;
+  // The tool and its version, e.g. "tap-studio 0.0.1".
+  string recorder = 3;
+  // Provenance only: a replay may use any device.
+  RecordedDevice device = 4;
+  // Required.
+  string aut_package = 5;
+  // Every secret name the steps use, each once, so a replayer can ask for all of them up front.
+  repeated string secrets = 6;
+  repeated Step steps = 7;
+}
+
+message RecordedDevice {
+  string serial = 1;
+  optional int32 api_level = 2;
+  optional string manufacturer = 3;
+  optional string model = 4;
+}
+
+// Where a step's selector came from.
+enum SelectorOrigin {
+  SELECTOR_ORIGIN_UNSPECIFIED = 0;
+  SELECTOR_ORIGIN_SYNTHESIZED = 1; // the daemon's first choice
+  SELECTOR_ORIGIN_ALTERNATIVE = 2; // another candidate the user picked
+  SELECTOR_ORIGIN_EDITED = 3; // typed in by the user
+}
+
+message Step {
+  // Required; unique within the recording and stable across edits; ≤ 64 chars.
+  string id = 1;
+  optional string note = 2;
+  // How the step went the last time it ran; absent if it never ran.
+  Outcome outcome = 3;
+  // Required.
+  oneof kind {
+    // An app lifecycle call: cold_launch, launch, force_stop, clear_data or grant_permission
+    // (`permission` with grant_permission only; `activity` with the launches only).
+    tap.v1.AppCall app = 10;
+    ActionStep action = 11;
+    TypeStep type = 12;
+    AssertionStep assertion = 13;
+  }
+}
+
+// One command; a command with a selector is preceded by the wait that proved it could run.
+message ActionStep {
+  // tap, long_tap, set_text, clear_text, scroll, swipe or press_key.
+  tap.v1.Command command = 1;
+  // For every op but press_key (and only then): `wait_visible` of the command's selector with
+  // `exactly_one`. A replayer sends `wait` then `command`, unchanged.
+  tap.v1.Command wait = 2;
+  // set_text only: the name of the secret whose value is the text; `set_text.text` is then empty.
+  optional string secret = 3;
+  // Unspecified for press_key.
+  SelectorOrigin selector_origin = 4;
+}
+
+// The element typeText flow, three commands: tap `selector`, await it focused (unless
+// `skip_focus_wait`), then `type_text`. The exactly-one wait before the tap is implied.
+message TypeStep {
+  // Required.
+  tap.v1.Selector selector = 1;
+  // Required.
+  oneof input {
+    string text = 2;
+    // The name of the secret whose value is typed.
+    string secret = 3;
+  }
+  // The SDKs' `await_focus = false`: for fields whose focus lands elsewhere.
+  bool skip_focus_wait = 4;
+  SelectorOrigin selector_origin = 5;
+}
+
+// The SDKs' element waits.
+enum Condition {
+  CONDITION_UNSPECIFIED = 0;
+  CONDITION_VISIBLE = 1;
+  CONDITION_ONE = 2;
+  CONDITION_GONE = 3;
+  CONDITION_ENABLED = 4;
+  CONDITION_DISABLED = 5;
+  CONDITION_CHECKED = 6;
+  CONDITION_UNCHECKED = 7;
+  CONDITION_FOCUSED = 8;
+  CONDITION_TEXT_EQUALS = 9; // value: text
+  CONDITION_TEXT_CONTAINS = 10; // value: text
+  CONDITION_COUNT = 11; // value: count
+}
+
+// A check: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
+// wait of the same name.
+message AssertionStep {
+  // Required.
+  tap.v1.Selector selector = 1;
+  // Required.
+  Condition condition = 2;
+  // Set exactly for the conditions that take one.
+  oneof value {
+    string text = 3;
+    int32 count = 4; // ≥ 0
+  }
+  SelectorOrigin selector_origin = 5;
+}
+
+// At most one of `error` and `failure`; neither means the step passed.
+message Outcome {
+  int32 duration_ms = 1;
+  // The driver's error when a command failed.
+  tap.v1.Error error = 2;
+  // The call failed as an RPC (an app call, a lost device).
+  tap.v1.Failure failure = 3;
+}

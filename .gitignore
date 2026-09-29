@@ -34,3 +34,7 @@ docs/reference/kotlin/
 docs/reference/kotlin-api/
 docs/reference/grpc.md
 build/site/
+
+# tap-studio: the built page (npm run build in clients/studio/web) and Node modules
+clients/studio/tap_studio/static/
+node_modules/

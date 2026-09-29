@@ -1,0 +1,67 @@
+/* Tap brand tokens (docs/stylesheets/brand.css), light and dark, as in .docs/studio-demo.html. */
+:root {
+  --bg: #eef0f3;
+  --surface: #ffffff;
+  --ink: #17202a;
+  --muted: #5b6673;
+  --line: #d9dde3;
+  --accent: #d9481c;
+  --accent-fill: #ff6a3d;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c1117;
+    --surface: #141c25;
+    --ink: #e6eaef;
+    --muted: #9aa6b4;
+    --line: #273341;
+    --accent: #ff8a62;
+  }
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 var(--sans);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.app {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 0;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.brand svg {
+  width: 26px;
+  height: 26px;
+}
+.status {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+.placeholder {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  color: var(--muted);
+}

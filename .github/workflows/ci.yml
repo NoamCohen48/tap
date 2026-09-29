@@ -157,6 +157,51 @@ jobs:
           name: python-dists
           path: dist/*
 
+  # tap-studio: its generated code matches proto/studio.proto, the page (Bun, TypeScript 7)
+  # type-checks, passes its tests and builds, the back end passes its tests, and the wheel
+  # carries the built page.
+  studio:
+    name: tap-studio (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          (cd clients/studio/web && bun install --frozen-lockfile)
+          python -m pip install --quiet build clients/python \
+            "clients/studio[dev]"
+      - name: Generated code is current
+        run: python clients/studio/scripts/gen_protos.py --check
+      - name: Page (type check, tests, build)
+        working-directory: clients/studio/web
+        run: |
+          bun run test
+          bun run build
+      - name: Back-end unit tests
+        run: python -m pytest -q clients/studio/tests
+      - name: Wheel carries the page
+        run: |
+          python -m build --outdir dist clients/studio
+          python -m zipfile -l dist/tap_studio-*.whl | \
+            grep -q "tap_studio/static/index.html"
+          python -m pip install --quiet --force-reinstall --no-deps \
+            dist/tap_studio-*.whl
+          tap-studio --version
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.13'
+        with:
+          name: studio-dists
+          path: dist/*
+
   # Real-device proof on an API 34 emulator: the fixture-test sample suites
   # (Kotlin + Python) through an auto-started daemon, then a tap-agent session
   # (attach, snapshot, tap by ref, export) checked against its JSON export.

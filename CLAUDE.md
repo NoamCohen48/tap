@@ -44,6 +44,12 @@ See `CONTRIBUTING.md` for build/run commands.
   verification evidence.
 - `.docs/agent-surface.md` — decision record + phase plan: the agent surface (held connections,
   screen snapshots with refs, event log, and `tap-agent` — CLI + MCP in Python on `tap-e2e`).
+- `.docs/recorder.md` — decision record (proposed): Tap Studio (`clients/studio`), a browser
+  inspector + action recorder (React front end, Python back end on `tap-e2e`); element
+  interactions, never coordinates; `tap-recording/1`. `.docs/studio-demo.html` is the clickable
+  UI demo (mock app, no device) the UI section describes.
+- `.docs/screen-streaming.md` — research + decision: how to show a device screen live (Maestro,
+  Appium MJPEG, scrcpy, `screenrecord`); v1 = paired snapshot + screenshot frames, video later.
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /
@@ -137,6 +143,12 @@ Rules when doing so:
   -e clients/python[dev]`). `TAP_BIN=<native tap> TAP_MANAGE_DAEMON=1 TAP_SERIALS=emulator-5554,85e49002
   pytest clients/python/tests` validates the server + client on the local matrix (starts and
   stops the server; without `TAP_MANAGE_DAEMON` a running one is required).
+- `tap-studio` (`clients/studio`, experimental): `proto/studio.proto` (`tap.studio.v1`, imports
+  `tap.v1`) is the page ↔ back-end contract and the `tap-recording/1` format; after editing it run
+  `.venv/bin/python clients/studio/scripts/gen_protos.py` (Python + TypeScript, committed; needs
+  `bun install` in `clients/studio/web`). Back end: `uv pip install --python .venv/bin/python -e
+  clients/python -e "clients/studio[dev]"`, `pytest clients/studio/tests`. Page (Bun, TypeScript 7,
+  Vite): `bun run test`, `bun run build` in `clients/studio/web` (writes `tap_studio/static/`).
 - `tap-agent` (`clients/agent`): install with `uv pip install --python .venv/bin/python -e
   clients/python -e clients/agent` (the venv has no pip); unit tests `pytest clients/agent/tests`
   reuse the Python client's in-process fake daemon.

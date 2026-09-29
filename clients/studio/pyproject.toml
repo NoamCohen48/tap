@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tap-studio"
+version = "0.0.1"
+description = "Browser inspector and action recorder for Android apps, on the Tap daemon"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+# tap-e2e: screen snapshots, screenshots, refs and held connections (0.0.1, the first release),
+# and the tap.v1 messages the studio's generated code imports (tap_e2e._gen).
+# connect-python serves StudioService (proto/studio.proto) to the page; it is beta, so pinned to
+# the minor release the generated code (scripts/gen_protos.py) was made with.
+dependencies = [
+    "tap-e2e>=0.0.1",
+    "protobuf>=7.35.1",
+    "connect-python>=0.9,<0.10",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
+]
+classifiers = ["Development Status :: 3 - Alpha", "License :: OSI Approved :: Apache Software License"]
+
+[project.urls]
+Homepage = "https://github.com/NoamCohen48/tap"
+Documentation = "https://noamcohen48.github.io/tap/"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "grpcio-tools==1.84.0", "protoc-gen-connect-python==0.9.0"]
+
+[project.scripts]
+tap-studio = "tap_studio.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tap_studio", "tap_studio.*"]
+
+# static/ is the built page (clients/studio/web, `bun run build`); CI builds it before the wheel.
+[tool.setuptools.package-data]
+tap_studio = ["py.typed", "static/*", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
