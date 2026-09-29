@@ -2,9 +2,13 @@
 # the Kotlin, Python, and gRPC references before the hand-written pages.
 site_name: Tap
 site_description: >-
-  Host-driven Android end-to-end testing — one daemon per machine, with
-  thin Kotlin and Python clients.
+  Host-driven end-to-end testing for Android, in Kotlin or Python: one server
+  per machine, a separate on-device driver, thin JUnit 5 and pytest clients.
+site_author: Noam Cohen
+site_url: https://noamcohen48.github.io/tap/
 repo_url: https://github.com/NoamCohen48/tap
+repo_name: NoamCohen48/tap
+copyright: Copyright &copy; 2026 Noam Cohen. Licensed under the Apache License 2.0.
 edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: build/site
@@ -14,13 +18,21 @@ theme:
   name: material
   logo: assets/logo.svg
   favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
   features:
+    - navigation.tabs
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
     - content.code.copy
     - content.tabs.link
+    - content.action.edit
     - search.suggest
+    - search.highlight
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -33,12 +45,19 @@ theme:
       accent: custom
       toggle: {icon: material/brightness-4, name: Light mode}
 
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/NoamCohen48/tap
+      name: Tap on GitHub
+
 extra_css:
   - stylesheets/brand.css
 
 markdown_extensions:
   - admonition
   - attr_list
+  - md_in_html
   - tables
   - toc: {permalink: true}
   - pymdownx.details
@@ -70,7 +89,6 @@ nav:
   - Home: index.md
   - Guide:
       - Getting started: guide/getting-started.md
-      - How it works: guide/how-it-works.md
       - Selectors: guide/selectors.md
       - Actions and waits: guide/actions-and-waits.md
       - App lifecycle and sync: guide/app-lifecycle.md
@@ -85,3 +103,13 @@ nav:
       - Python client: reference/python.md
       - gRPC server API (tap.v1): reference/grpc.md
       - Releases and versions: reference/releases.md
+  - Development:
+      - development/index.md
+      - Architecture: development/architecture.md
+      - Building and testing: development/building-and-testing.md
+  - Project:
+      - Changelog: https://github.com/NoamCohen48/tap/blob/main/CHANGELOG.md
+      - Contributing: https://github.com/NoamCohen48/tap/blob/main/CONTRIBUTING.md
+      - Code of conduct: https://github.com/NoamCohen48/tap/blob/main/CODE_OF_CONDUCT.md
+      - Security: https://github.com/NoamCohen48/tap/blob/main/SECURITY.md
+      - Releases: https://github.com/NoamCohen48/tap/releases

@@ -125,9 +125,15 @@ Runs on changes to `docs/`, `mkdocs.yml`, the clients or the API proto: `scripts
 (Dokka → `docs/reference/kotlin/`, protoc-gen-doc → `docs/reference/grpc.md`, mkdocstrings at
 build time, `mkdocs build --strict`; then Dokka GFM + lazydocs into `build/docs-md/`) and
 uploads `build/site` as the `site` artifact and `tap-docs-md.zip` as `docs-md`. Deploy to
-GitHub Pages is gated on the `DEPLOY_DOCS=true` repository variable (Pages must be enabled with
-"GitHub Actions" as the source; on a private repository it needs a plan that allows private
-Pages, otherwise the artifact is the deliverable).
+GitHub Pages is gated on the `DEPLOY_DOCS=true` repository variable, with "GitHub Actions" as
+the Pages source. Both were set on 2026-09-29, when the repository went public: the site is
+https://noamcohen48.github.io/tap/ and redeploys from every docs change on `main`.
+
+Repository settings since going public (2026-09-29): secret scanning with push protection,
+Dependabot alerts, private vulnerability reporting, a read-only default `GITHUB_TOKEN`
+(workflows that write declare it), approval required before workflows run for outside
+contributors, and two rulesets: `main` cannot be deleted or force-pushed, and release tags
+(`*/v*`) cannot be deleted, moved or force-pushed. Status checks are not required on `main`.
 
 ## Releases (`release.yml`, on tags)
 

@@ -1,4 +1,8 @@
-# How it works
+# Architecture
+
+Tap has three parts: a **driver** on each device, one **server** per machine, and thin
+**clients** in each test language. This page explains what each part does, how a command
+travels between them, and the rules the whole design is built around.
 
 ```
  your test process(es)                 one per machine                       per device
@@ -31,6 +35,37 @@ by a test runner told to manage it); clients only ever connect to a running one.
 the Kotlin `Device`/`Element` and the Python `Device`/`Element` build the same protobuf
 `Selector` and `Command` messages, so a selector that works in one works in the other.
 
+**`tap-agent`** is a client too, built on the Python one. It adds what a coding agent needs on
+top: sessions that outlive a single command, screen snapshots whose refs name selectors the
+server has checked, and an export of everything the session did.
+
+## Where each part lives
+
+| Part | Directory | Gradle modules / packages |
+|---|---|---|
+| Contracts | `contracts/` | `contracts/proto` is the one protobuf schema. `:contracts:schema` (messages), `:contracts:api` (gRPC stubs), `:contracts:protocol` (TAP1 framing, handshake, validation) |
+| Driver | `device/driver/` | `:device:driver` (the instrumentation APKs), `:device:driver:core` (Android code), `:device:driver:command-engine` (pure-JVM command pipeline) |
+| App library | `device/sync-sdk/` | `:device:sync-sdk`, an optional library an app can ship to report when it is busy (experimental) |
+| Server | `host/` | `:host:core` (ADB, sessions, journals, driver client, app lifecycle), `:host:daemon` (the `tap` server and CLI), `:host:validation` (device fault-injection suite) |
+| Clients | `clients/` | `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `clients/python` (`tap-e2e`), `clients/agent` (`tap-agent`) |
+| Test app | `fixture-app/`, `samples/` | `:fixture-app`, the app the suites run against; `:samples:fixture-tests`, the Kotlin client suite |
+
+Dependencies only point one way: clients depend on `:contracts:api` and nothing else, and
+nothing under `host/` depends on `clients/`.
+
+## Two protocols
+
+- **`tap.v1`** is the gRPC API between clients and the server, defined in
+  `contracts/proto/*.proto`. It is the contract every client implements; see the
+  [gRPC reference](../reference/grpc.md). A client in another language needs only this.
+- **TAP1** is the framed protocol between the server and the driver, over a socket that ADB
+  forwards to the device. Its payloads (`tap.wire.v1`) live in `contracts/proto/wire/`. Each
+  connection starts with an authenticated handshake that checks the protocol version, the
+  driver build and its capabilities.
+
+Both are versioned and only grow: fields and values are added, never removed, renumbered or
+retyped, and CI checks that with `buf breaking`.
+
 ## Client connections, roles, and attached devices
 
 - A **client connection** is a test process's identity at the server. It keeps an `Observe`
@@ -56,7 +91,7 @@ cooperative cancellation. The important rules:
 | Rule | Why |
 |---|---|
 | Mutations (`tap`, `setText`, `swipe`, …) need **exactly one** match; `AMBIGUOUS`/`NOT_FOUND` are returned before any input. | A test that "happens to hit the first button" is not a test. |
-| **No implicit waits.** Actions do not wait for animations, idleness or "the screen to settle". | Those waits cost time on every step and never converge on live screens (tickers, spinners). Ask for the wait you mean: [Actions and waits](actions-and-waits.md). |
+| **No implicit waits.** Actions do not wait for animations, idleness or "the screen to settle". | Those waits cost time on every step and never converge on live screens (tickers, spinners). Ask for the wait you mean: [Actions and waits](../guide/actions-and-waits.md). |
 | **No retries, ever.** | A retried tap is a double tap. If the transport drops after a mutation was accepted, you get `INDETERMINATE`, not a guess. |
 | Selectors are **scoped to the app under test** by default. | A stray system dialog cannot be tapped by accident; a selector opts in to another package (`inPackage`) or to every window (`inAnyWindow`) explicitly. |
 | No hierarchy dump on the hot path. | Dumps are diagnostic (`dumpHierarchy()`, failure artifacts); matching runs on the device with window-scoped UiAutomator lookups. |
@@ -66,7 +101,7 @@ cooperative cancellation. The important rules:
 UiAutomator normally waits up to 10 s for the UI to go idle before *every* interaction; on a
 screen that never idles (a progress spinner) that stalls every command. The Tap driver caps
 that to 1 s, so a busy screen slows a command by at most one second, and gives you the
-explicit [`awaitAppSettled()` / `awaitAnimationEnd()`](actions-and-waits.md#waiting-for-the-app-or-the-screen)
+explicit [`awaitAppSettled()` / `awaitAnimationEnd()`](../guide/actions-and-waits.md#waiting-for-the-app-or-the-screen)
 when you actually want to wait for quiet.
 
 ## Failure handling
@@ -75,7 +110,7 @@ When a test fails, the client captures — while the device is still attached �
 the accessibility hierarchy as XML, device info and the driver's own log, into a per-test
 directory. Exceptions carry the typed error code, its stable sub-reason, the rendered selector
 and the request identity, so a log line is enough to know *what* failed without re-running.
-See [Errors and artifacts](errors.md).
+See [Errors and artifacts](../guide/errors.md).
 
 ## What Tap is not
 

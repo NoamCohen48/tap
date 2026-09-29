@@ -18,7 +18,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/NoamCohen48/tap"
-Documentation = "https://github.com/NoamCohen48/tap/tree/main/docs"
+Documentation = "https://noamcohen48.github.io/tap/"
 
 [project.optional-dependencies]
 # typing_extensions: `Self` for type checkers on 3.10 (imported under TYPE_CHECKING only).
