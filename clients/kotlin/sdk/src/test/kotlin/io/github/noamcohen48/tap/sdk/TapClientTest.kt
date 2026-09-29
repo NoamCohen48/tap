@@ -258,6 +258,10 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             connection.close()
+            // The fake sees the cancellation on its own thread, possibly after close returned.
+            withTimeout(5_000) {
+                while (!fakeConnections.order.contains("observe-cancelled")) delay(10)
+            }
             assertEquals(listOf("disconnect", "observe-cancelled"), fakeConnections.order.toList())
         }
     }
