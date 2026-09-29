@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest something Tap should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: The test you are trying to write, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What the API or behaviour could look like.
+  - type: textarea
+    id: prior-art
+    attributes:
+      label: Other tools
+      description: How Maestro, Appium, uiautomator2 or others handle this, if you know.

@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in Tap does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For security issues, use **Security → Report a vulnerability** instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The smallest test or command sequence that shows the problem.
+      render: kotlin
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: The exception or error code, and relevant lines from the failure artifacts or `tap status`.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Tap versions
+      description: "`tap version`, and the client version (tap-client / tap-e2e / tap-agent)."
+      placeholder: "tap 0.0.1, tap-e2e 0.0.1"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Model, Android API level, emulator or physical.
+      placeholder: "Pixel 7, API 34, physical"
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options: [Kotlin / JUnit 5, Python / pytest, tap-agent, gRPC directly, Not client-specific]
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host OS and server build
+      placeholder: "Linux x86-64, native binary"

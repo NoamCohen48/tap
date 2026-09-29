@@ -1,7 +1,13 @@
 # Getting started
 
-You need three things: an ADB-visible Android device (API 26+, emulator or physical), the
-`tap` server on the machine, and one of the clients in your test project.
+This page takes you from nothing to a passing test in Kotlin or Python.
+
+!!! info "Before you start"
+
+    - An Android device or emulator with **API 26 or newer**, visible to `adb devices`.
+    - **Linux x86-64 or macOS on Apple silicon** for the native `tap` binary, or any OS with
+      **JDK 17+** for the JVM build.
+    - For Kotlin: a Gradle project with JUnit 5. For Python: **Python 3.10+** and pytest.
 
 ## 1. The server
 
@@ -99,11 +105,13 @@ class SmokeTest {
 }
 ```
 
-Every test body runs inside `tapTest { ... }` (`fun x(device: Device) = tapTest { ... }` works
-too, since `tapTest` returns `Unit`), the real-time bridge onto the extension-owned per-test coroutine scope.
-All `Device`/`App`/`Element` calls are `suspend`; building selectors
-(`text(...)`, `res(...)`) is not. Calls outside `tapTest` — or from `GlobalScope` — fail with
-`TapUsageException`, so timeouts and failing siblings cancel in-flight RPCs.
+!!! note "Why `tapTest { ... }`"
+
+    Every test body runs inside `tapTest { ... }`, the bridge onto the per-test coroutine
+    scope the extension owns. `Device`, `App` and `Element` calls are `suspend`; building
+    selectors (`text(...)`, `res(...)`) is not. Calls outside `tapTest`, or from `GlobalScope`,
+    fail with `TapUsageException`, so a JUnit timeout or a failing sibling cancels in-flight
+    calls. `fun x(device: Device) = tapTest { ... }` works too, since `tapTest` returns `Unit`.
 
 ```bash
 ./gradlew test -Ptap.serials=emulator-5554

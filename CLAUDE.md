@@ -11,7 +11,7 @@ Nothing under `host/` may depend on `clients/`; clients depend only on `:contrac
 Synchronization (`device/sync-sdk`, the sync provider path, `awaitIdle`) is work in progress:
 ignore it for now — do not fix, extend or redesign it unless asked (its review items are
 Deferred in `.docs/code-review-status.md`).
-See `README.md` for build/run commands.
+See `CONTRIBUTING.md` for build/run commands.
 
 ## Documents
 
