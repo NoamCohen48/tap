@@ -1,3 +1,4 @@
+import { clone } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { StudioClient } from "./api";
@@ -5,10 +6,25 @@ import { describeStep } from "./describe";
 import { DevicePicker } from "./DevicePicker";
 import { errorMessage, useFrames } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
-import type { InfoResponse, PerformRequest, Session, Step } from "./gen/studio_pb";
+import { ChoiceDialog, SecretsDialog } from "./Dialogs";
+import { nodeFor, stepSelector, stepText } from "./edit";
+import {
+  PerformRequestSchema,
+  SelectorOrigin,
+  StepSchema,
+  type InfoResponse,
+  type Outcome,
+  type PerformRequest,
+  type Recording,
+  type Session,
+  type Step,
+} from "./gen/studio_pb";
 import { Eject, Logo } from "./icons";
 import { Inspector } from "./Inspector";
 import { ScreenView, type Mode, type OverlayFilter } from "./ScreenView";
+import { useReplay, type ReplayRequest } from "./replay";
+import * as stepsApi from "./steps";
+import { synthesized, type Target } from "./steps";
 import { StepsPanel, type LastRun } from "./StepsPanel";
 
 type Status = { kind: "loading" } | { kind: "ready"; info: InfoResponse } | { kind: "failed"; message: string };
@@ -70,6 +86,10 @@ function TopBar({ status, children }: { status: Status; children?: ReactNode }) 
   );
 }
 
+type RecordingState = { steps: Step[]; missingSecrets: string[] };
+
+type Dialog = { kind: "launch"; request: ReplayRequest } | { kind: "secrets"; names: string[]; request: ReplayRequest };
+
 function Workspace({
   client,
   session,
@@ -86,29 +106,46 @@ function Workspace({
   const [mode, setMode] = useState<Mode>("act");
   const [overlay, setOverlay] = useState<OverlayFilter>("interactive");
   const [selected, setSelected] = useState<ScreenNode | null>(null);
-  const [steps, setSteps] = useState<Step[]>([]);
+  // The candidate picked in the inspector for one node; steps on other nodes use their first.
+  const [chosen, setChosen] = useState<{ ref: string; index: number } | null>(null);
+  const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [] });
+  const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false); // set at once, so a second click cannot start another step
   const [lastRun, setLastRun] = useState<LastRun>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const { steps } = recording;
+
+  const onOutcome = useCallback((stepId: string, outcome: Outcome) => {
+    setRecording((r) => ({ ...r, steps: r.steps.map((s) => (s.id === stepId ? withOutcome(s, outcome) : s)) }));
+  }, []);
+  const replay = useReplay(client, onOutcome);
+
+  const apply = useCallback((r: { recording?: Recording; missingSecrets: string[] }) => {
+    const next = r.recording?.steps ?? [];
+    setRecording({ steps: next, missingSecrets: r.missingSecrets });
+    setSelectedStep((id) => (id && next.some((s) => s.id === id) ? id : null));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     client.getRecording({}).then(
-      (r) => !cancelled && setSteps(r.recording?.steps ?? []),
-      (e: unknown) => !cancelled && !(e instanceof ConnectError && e.code === Code.NotFound) && setLastRun({ tone: "fail", text: errorMessage(e) }),
+      (r) => !cancelled && apply(r),
+      (e: unknown) =>
+        !cancelled && !(e instanceof ConnectError && e.code === Code.NotFound) && setLastRun({ tone: "fail", text: errorMessage(e) }),
     );
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, apply]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]")) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      const chosen = MODES.find((m) => m.key === e.key);
-      if (chosen) setMode(chosen.mode);
+      const chosenMode = MODES.find((m) => m.key === e.key);
+      if (chosenMode) setMode(chosenMode.mode);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -120,30 +157,53 @@ function Workspace({
     return () => clearTimeout(timer);
   }, [notice]);
 
+  const targetOf = useCallback(
+    (node: ScreenNode): Target | null => {
+      const candidate = chosen?.ref === node.ref ? node.candidates[chosen.index]?.selector : undefined;
+      if (candidate && chosen)
+        return { selector: candidate, origin: chosen.index === 0 ? SelectorOrigin.SYNTHESIZED : SelectorOrigin.ALTERNATIVE };
+      return node.selector ? synthesized(node.selector) : null;
+    },
+    [chosen],
+  );
+
+  /** Runs a step and records it after the selected step (or at the end). Resolves whether it passed. */
   const perform = useCallback(
-    async (request: PerformRequest) => {
-      if (running.current) return;
+    async (request: PerformRequest, beforeStepId?: string): Promise<boolean> => {
+      if (running.current || replay.running) return false;
       running.current = true;
       setBusy(true);
+      replay.clearSummary();
+      const index = selectedStep ? steps.findIndex((s) => s.id === selectedStep) : -1;
+      const before = beforeStepId ?? (index >= 0 ? (steps[index + 1]?.id ?? "") : "");
+      const sent = clone(PerformRequestSchema, request);
+      sent.beforeStepId = before;
       try {
-        const response = await client.perform(request);
+        const response = await client.perform(sent);
         const step = response.step!;
         if (response.recorded) {
-          setSteps((s) => [...s, step]);
+          setRecording((r) => {
+            const at = before ? r.steps.findIndex((s) => s.id === before) : -1;
+            const next = at >= 0 ? [...r.steps.slice(0, at), step, ...r.steps.slice(at)] : [...r.steps, step];
+            return { ...r, steps: next };
+          });
+          if (selectedStep && beforeStepId === undefined) setSelectedStep(step.id);
           setLastRun(null);
         } else if (response.message) {
           setLastRun({ tone: "fail", text: `Not recorded: ${describeStep(step)} failed. ${response.message}` });
         } else {
           setLastRun({ tone: "info", text: `Ran ${describeStep(step)} (${step.outcome?.durationMs ?? 0} ms), not recorded.` });
         }
+        return !response.message;
       } catch (e) {
         setLastRun({ tone: "fail", text: errorMessage(e) });
+        return false;
       } finally {
         running.current = false;
         setBusy(false);
       }
     },
-    [client],
+    [client, replay, selectedStep, steps],
   );
 
   const change = async (call: () => Promise<{ session?: Session }>) => {
@@ -155,9 +215,63 @@ function Workspace({
     }
   };
 
+  const edit = async (call: () => Promise<{ recording?: Recording; missingSecrets: string[] }>) => {
+    replay.clearSummary();
+    try {
+      apply(await call());
+      setLastRun(null);
+    } catch (e) {
+      setLastRun({ tone: "fail", text: errorMessage(e) });
+    }
+  };
+
+  const number = (stepId: string) => steps.findIndex((s) => s.id === stepId) + 1;
+
+  /** Replays, first offering a cold launch (from the first step) and asking for missing secrets. */
+  const startReplay = (request: ReplayRequest, checked: { launch?: boolean } = {}) => {
+    setLastRun(null);
+    if (!request.fromStepId && !checked.launch && steps[0]?.kind.case !== "app") {
+      setDialog({ kind: "launch", request });
+      return;
+    }
+    const from = request.fromStepId ? steps.findIndex((s) => s.id === request.fromStepId) : 0;
+    const range = steps.slice(from, request.only ? from + 1 : undefined);
+    const names = [
+      ...new Set(
+        range.flatMap((s) => {
+          const text = stepText(s);
+          return text && "secret" in text && recording.missingSecrets.includes(text.secret) && !request.secretValues?.[text.secret]
+            ? [text.secret]
+            : [];
+        }),
+      ),
+    ];
+    if (names.length) {
+      setDialog({ kind: "secrets", names, request });
+      return;
+    }
+    setDialog(null);
+    void replay.start(request, number).then(() => client.getRecording({}).then(apply, () => undefined));
+  };
+
+  const launchFirst = async (request: ReplayRequest) => {
+    setDialog(null);
+    const first = steps[0]!.id;
+    if (await perform(stepsApi.app("cold_launch", device.autPackage), first))
+      startReplay({ ...request, fromStepId: first }, { launch: true });
+  };
+
   const nodes = frame?.nodes ?? [];
   const current = selected ? (nodes.find((n) => n.ref === selected.ref) ?? null) : null;
   const inspected = current ?? selected;
+  const locked = busy || replay.running;
+
+  const selectStep = (stepId: string | null) => {
+    setSelectedStep(stepId);
+    const step = steps.find((s) => s.id === stepId);
+    const node = step && nodeFor(nodes, stepSelector(step));
+    if (node) setSelected(node);
+  };
 
   return (
     <>
@@ -169,14 +283,28 @@ function Workspace({
           <span>API {device.apiLevel}</span>
           <span className="sep">·</span>
           <span className="mono">{device.autPackage}</span>
-          <button type="button" className="iconbtn" aria-label="Release the device" title="Release the device" onClick={() => change(() => client.release({}))}>
+          <button
+            type="button"
+            className="iconbtn"
+            aria-label="Release the device"
+            title="Release the device"
+            disabled={replay.running}
+            onClick={() => change(() => client.release({}))}
+          >
             <Eject />
           </button>
         </div>
         <span className="spacer" />
         <div className="modes" role="group" aria-label="Click mode">
           {MODES.map((m) => (
-            <button key={m.mode} type="button" data-mode={m.mode} aria-pressed={mode === m.mode} title={`${m.title} (${m.key})`} onClick={() => setMode(m.mode)}>
+            <button
+              key={m.mode}
+              type="button"
+              data-mode={m.mode}
+              aria-pressed={mode === m.mode}
+              title={`${m.title} (${m.key})`}
+              onClick={() => setMode(m.mode)}
+            >
               {m.label} <kbd>{m.key}</kbd>
             </button>
           ))}
@@ -201,8 +329,9 @@ function Workspace({
           overlay={overlay}
           onOverlay={setOverlay}
           selectedRef={inspected?.ref ?? null}
-          busy={busy}
+          busy={locked}
           onSelect={setSelected}
+          targetOf={targetOf}
           onPerform={perform}
           onNotice={setNotice}
         />
@@ -211,25 +340,75 @@ function Workspace({
           onScreen={current !== null}
           nodes={nodes}
           autPackage={device.autPackage}
-          busy={busy}
+          busy={locked}
           onSelect={setSelected}
+          targetOf={targetOf}
+          onChoose={(node, index) => setChosen({ ref: node.ref, index })}
           onPerform={perform}
         />
         <StepsPanel
           client={client}
           steps={steps}
+          missingSecrets={recording.missingSecrets}
           recording={session.recording}
-          lastRun={lastRun}
+          lastRun={replay.running ? { tone: "info", text: "Replaying…" } : (replay.summary ?? lastRun)}
+          selectedId={selectedStep}
+          states={replay.states}
+          replaying={replay.running}
+          busy={busy}
+          nodes={nodes}
+          onSelect={selectStep}
           onNewRecording={() =>
             change(async () => {
               const response = await client.newRecording({});
-              setSteps([]);
+              setRecording({ steps: [], missingSecrets: [] });
+              setSelectedStep(null);
               setLastRun(null);
+              replay.clearSummary();
               return response;
             })
           }
+          onReplay={(request) => startReplay(request)}
+          onStop={replay.stop}
+          onOpen={(document) =>
+            edit(async () => {
+              const response = await client.openRecording({ document });
+              if (response.session) onSession(response.session);
+              setSelectedStep(null);
+              return response;
+            })
+          }
+          onUpdate={(step, secretValue) => edit(() => client.updateStep({ step, secretValue }))}
+          onDelete={(stepId) => edit(() => client.deleteStep({ stepId }))}
+          onMove={(stepId, beforeStepId) => edit(() => client.moveStep({ stepId, beforeStepId }))}
         />
       </main>
+      {dialog?.kind === "launch" && (
+        <ChoiceDialog
+          title="Start from a cold launch?"
+          body={
+            <p>
+              The recording does not start with an app step, so a replay starts from whatever screen the device shows now. A cold launch of{" "}
+              <code>{device.autPackage}</code> first makes it reproducible
+              {session.recording ? "; it is added as step 1" : " (not recorded: recording is paused)"}.
+            </p>
+          }
+          choices={[
+            { label: "Replay as it is", onChoose: () => startReplay(dialog.request, { launch: true }) },
+            { label: "Cold launch first", primary: true, onChoose: () => void launchFirst(dialog.request) },
+          ]}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "secrets" && (
+        <SecretsDialog
+          names={dialog.names}
+          onSubmit={(values) =>
+            startReplay({ ...dialog.request, secretValues: { ...dialog.request.secretValues, ...values } }, { launch: true })
+          }
+          onCancel={() => setDialog(null)}
+        />
+      )}
       {notice && (
         <div className="toast" role="status">
           {notice}
@@ -237,4 +416,10 @@ function Workspace({
       )}
     </>
   );
+}
+
+function withOutcome(step: Step, outcome: Outcome): Step {
+  const copy = clone(StepSchema, step);
+  copy.outcome = outcome;
+  return copy;
 }

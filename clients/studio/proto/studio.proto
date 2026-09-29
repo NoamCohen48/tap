@@ -44,8 +44,23 @@ service StudioService {
   rpc Count(CountRequest) returns (CountResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
-  // Runs one step on the attached device and, while recording, appends it when it passed.
+  // Runs one step on the attached device and, while recording, adds it when it passed.
   rpc Perform(PerformRequest) returns (PerformResponse);
+  // Replaces a recorded step without running it. NOT_FOUND for an unknown id.
+  rpc UpdateStep(UpdateStepRequest) returns (UpdateStepResponse);
+  // Removes a recorded step.
+  rpc DeleteStep(DeleteStepRequest) returns (DeleteStepResponse);
+  // Moves a recorded step.
+  rpc MoveStep(MoveStepRequest) returns (MoveStepResponse);
+  // Replaces the recording with a tap-recording/1 document to continue or replay it.
+  // INVALID_ARGUMENT lists every rule the document breaks.
+  rpc OpenRecording(OpenRecordingRequest) returns (OpenRecordingResponse);
+  // Runs recorded steps in order on the attached device, stopping after the first that fails; each
+  // step's outcome is kept in the recording. Cancelling the call stops after the running step
+  // (a sent command is never interrupted). While it runs, Perform, the step edits, OpenRecording
+  // and NewRecording are FAILED_PRECONDITION, and so is a replay for another app than the one
+  // attached, or with a secret whose value the studio does not have.
+  rpc Replay(ReplayRequest) returns (stream ReplayResponse);
   // Record or pause: paused, Perform still runs steps but records nothing.
   rpc SetRecording(SetRecordingRequest) returns (SetRecordingResponse);
   // Discards the recording and starts an empty one.
@@ -170,14 +185,82 @@ message PerformRequest {
   // The value of the step's `secret` (a secret set_text or type step, and only then): sent to the
   // device, never written to the recording.
   optional string secret_value = 2;
+  // Where a recorded step goes: before this step; empty for the end. NOT_FOUND (and nothing runs)
+  // for an unknown id.
+  string before_step_id = 3;
 }
 
 message PerformResponse {
   // The step as run, with its outcome; its `id` is set when it was recorded.
   Step step = 1;
-  // Appended to the recording: recording is on and the step passed.
+  // Added to the recording: recording is on and the step passed.
   bool recorded = 2;
   // Why it failed, for a person; empty when it passed.
+  string message = 3;
+}
+
+message UpdateStepRequest {
+  // The step with the same id is replaced. Checked as Perform's step, except that an action's
+  // `wait` is ignored and inferred again from its selector and the id is kept. The outcome is kept
+  // when only the note changed and cleared otherwise: the step as edited has not run.
+  Step step = 1;
+  // The value of the step's secret, remembered for this process. It may be left out: Replay then
+  // asks for it (`missing_secrets`).
+  optional string secret_value = 2;
+}
+
+message UpdateStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message DeleteStepRequest {
+  string step_id = 1;
+}
+
+message DeleteStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message MoveStepRequest {
+  string step_id = 1;
+  // Moves it before this step; empty for the end.
+  string before_step_id = 2;
+}
+
+message MoveStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message OpenRecordingRequest {
+  // A tap-recording/1 file. Its secrets have no values until UpdateStep or Replay gives them.
+  string document = 1;
+}
+
+message OpenRecordingResponse {
+  Session session = 1;
+  Recording recording = 2;
+  repeated string missing_secrets = 3;
+}
+
+message ReplayRequest {
+  // The first step to run; empty for the first of the recording.
+  string from_step_id = 1;
+  // Run only that step.
+  bool only = 2;
+  // Values for secrets, remembered for this process as UpdateStep's.
+  map<string, string> secret_values = 3;
+}
+
+// Two per step: when it starts (no outcome), and when it ends (its outcome). The stream ends after
+// the last step or the first failure.
+message ReplayResponse {
+  string step_id = 1;
+  // Absent while the step runs.
+  Outcome outcome = 2;
+  // Why it failed, for a person; empty when it passed or runs.
   string message = 3;
 }
 
@@ -202,6 +285,9 @@ message GetRecordingResponse {
   // The same recording as its tap-recording/1 file (tap_studio.recording.dumps), so the page
   // exports exactly what the back end writes and validates.
   string document = 2;
+  // Secrets the steps use whose values the studio does not have (an opened recording): Replay
+  // needs them.
+  repeated string missing_secrets = 3;
 }
 
 // ---- tap-recording/1 ----------------------------------------------------------------------------

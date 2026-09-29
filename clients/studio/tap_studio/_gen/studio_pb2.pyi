@@ -191,12 +191,14 @@ class CountResponse(_message.Message):
     def __init__(self, count: _Optional[int] = ...) -> None: ...
 
 class PerformRequest(_message.Message):
-    __slots__ = ("step", "secret_value")
+    __slots__ = ("step", "secret_value", "before_step_id")
     STEP_FIELD_NUMBER: _ClassVar[int]
     SECRET_VALUE_FIELD_NUMBER: _ClassVar[int]
+    BEFORE_STEP_ID_FIELD_NUMBER: _ClassVar[int]
     step: Step
     secret_value: str
-    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ...) -> None: ...
+    before_step_id: str
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ..., before_step_id: _Optional[str] = ...) -> None: ...
 
 class PerformResponse(_message.Message):
     __slots__ = ("step", "recorded", "message")
@@ -207,6 +209,95 @@ class PerformResponse(_message.Message):
     recorded: bool
     message: str
     def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., recorded: _Optional[bool] = ..., message: _Optional[str] = ...) -> None: ...
+
+class UpdateStepRequest(_message.Message):
+    __slots__ = ("step", "secret_value")
+    STEP_FIELD_NUMBER: _ClassVar[int]
+    SECRET_VALUE_FIELD_NUMBER: _ClassVar[int]
+    step: Step
+    secret_value: str
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ...) -> None: ...
+
+class UpdateStepResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class DeleteStepRequest(_message.Message):
+    __slots__ = ("step_id",)
+    STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    step_id: str
+    def __init__(self, step_id: _Optional[str] = ...) -> None: ...
+
+class DeleteStepResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class MoveStepRequest(_message.Message):
+    __slots__ = ("step_id", "before_step_id")
+    STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    BEFORE_STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    step_id: str
+    before_step_id: str
+    def __init__(self, step_id: _Optional[str] = ..., before_step_id: _Optional[str] = ...) -> None: ...
+
+class MoveStepResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class OpenRecordingRequest(_message.Message):
+    __slots__ = ("document",)
+    DOCUMENT_FIELD_NUMBER: _ClassVar[int]
+    document: str
+    def __init__(self, document: _Optional[str] = ...) -> None: ...
+
+class OpenRecordingResponse(_message.Message):
+    __slots__ = ("session", "recording", "missing_secrets")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ..., recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class ReplayRequest(_message.Message):
+    __slots__ = ("from_step_id", "only", "secret_values")
+    class SecretValuesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    FROM_STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    ONLY_FIELD_NUMBER: _ClassVar[int]
+    SECRET_VALUES_FIELD_NUMBER: _ClassVar[int]
+    from_step_id: str
+    only: bool
+    secret_values: _containers.ScalarMap[str, str]
+    def __init__(self, from_step_id: _Optional[str] = ..., only: _Optional[bool] = ..., secret_values: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
+class ReplayResponse(_message.Message):
+    __slots__ = ("step_id", "outcome", "message")
+    STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    OUTCOME_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    step_id: str
+    outcome: Outcome
+    message: str
+    def __init__(self, step_id: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., message: _Optional[str] = ...) -> None: ...
 
 class SetRecordingRequest(_message.Message):
     __slots__ = ("recording",)
@@ -235,12 +326,14 @@ class GetRecordingRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class GetRecordingResponse(_message.Message):
-    __slots__ = ("recording", "document")
+    __slots__ = ("recording", "document", "missing_secrets")
     RECORDING_FIELD_NUMBER: _ClassVar[int]
     DOCUMENT_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
     recording: Recording
     document: str
-    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., document: _Optional[str] = ...) -> None: ...
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., document: _Optional[str] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Recording(_message.Message):
     __slots__ = ("format", "recorded_at", "recorder", "device", "aut_package", "secrets", "steps")

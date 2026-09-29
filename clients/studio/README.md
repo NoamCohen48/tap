@@ -8,8 +8,10 @@ coordinates. The design is `.docs/recorder.md` in the repository.
 So far: pick a device and the app under test, see its screen with the element overlay, record
 by clicking (Act, Assert and Inspect modes; text and secrets; wheel scrolls; drags swipe; Back,
 Home and app steps), inspect an element's selector candidates and properties or the screen tree,
-and export the recording. Editing steps, choosing another candidate, import and replay arrive
-next. It needs a running daemon (`tap start`).
+choose which selector candidate a step uses or type one in the SDK's DSL (with a live match
+count), edit, insert, reorder and delete steps, replay all or part of the recording (it stops at
+the first failure), and export and reopen `tap-recording/1` files. It needs a running daemon
+(`tap start`).
 
 ```bash
 tap-studio              # serves on a free loopback port and opens the page
@@ -32,9 +34,12 @@ anything else (loopback hosts only, same-origin only).
   generated.
 - `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, modes, the three
   areas), `ScreenView.tsx` (frame, overlay, pointer handling), `Inspector.tsx`, `StepsPanel.tsx`
-  (steps, export), `frames.ts` (the `Frames` stream), `describe.ts` (steps and selectors as SDK
-  calls), `geometry.ts` (hit-testing), `steps.ts` (`Perform` requests); `src/gen/` is generated. `bun run build`
-  writes it into `tap_studio/static/`, which the wheel ships.
+  (steps, replay controls, open, export), `StepEditor.tsx` (a step's selector, value, secret and
+  note), `Dialogs.tsx`, `frames.ts` (the `Frames` stream), `replay.ts` (the `Replay` stream),
+  `describe.ts` (steps and selectors as SDK calls), `parse.ts` (a typed selector back into the
+  proto), `edit.ts` (reading and rewriting a step, its warnings), `geometry.ts` (hit-testing),
+  `steps.ts` (`Perform` requests); `src/gen/` is generated. `bun run build` writes it into
+  `tap_studio/static/`, which the wheel ships.
 - `scripts/gen_protos.py`: regenerates both `_gen/` and `web/src/gen/` from the proto
   (`--check` verifies them; needs `bun install` in `web/` first).
 

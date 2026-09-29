@@ -47,3 +47,39 @@ export const Eject = () => (
     <path d="M12 5l7 8H5zM5 19h14" />
   </svg>
 );
+
+export const Play = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+    <path d="M8 5v14l11-7z" />
+  </svg>
+);
+
+export const Stop = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+  </svg>
+);
+
+export const Upload = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
+  </svg>
+);
+
+export const Up = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M6 15l6-6 6 6" />
+  </svg>
+);
+
+export const Down = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
+export const Trash = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+  </svg>
+);

@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { create, equals } from "@bufbuild/protobuf";
+import { useId, useState } from "react";
 import { describeSelector } from "./describe";
 import { Direction } from "./gen/command_pb";
-import type { ScreenNode } from "./gen/device_pb";
-import { NodeFlag } from "./gen/selector_pb";
+import { SelectorCandidateSchema, type ScreenNode } from "./gen/device_pb";
+import { NodeFlag, SelectorSchema } from "./gen/selector_pb";
 import type { PerformRequest } from "./gen/studio_pb";
 import { isEditable, isScrollable, label, shortClass } from "./geometry";
 import { candidateChips, checksFor, looksDynamic } from "./nodes";
 import * as steps from "./steps";
+import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
 
 type Tab = "element" | "tree";
@@ -30,6 +32,8 @@ export function Inspector({
   autPackage,
   busy,
   onSelect,
+  targetOf,
+  onChoose,
   onPerform,
 }: {
   /** The selected node, as on the newest frame that had it. */
@@ -40,6 +44,10 @@ export function Inspector({
   autPackage: string;
   busy: boolean;
   onSelect: (node: ScreenNode) => void;
+  /** What a step on the node targets: its first candidate, or the one picked here. */
+  targetOf: (node: ScreenNode) => Target | null;
+  /** Picks the candidate steps on the node use. */
+  onChoose: (node: ScreenNode, index: number) => void;
   onPerform: (request: PerformRequest) => void;
 }) {
   const [tab, setTab] = useState<Tab>("element");
@@ -59,7 +67,15 @@ export function Inspector({
         {tab === "tree" ? (
           <Tree nodes={nodes} selectedRef={node?.ref ?? null} onSelect={onSelect} />
         ) : node ? (
-          <Element node={node} onScreen={onScreen} autPackage={autPackage} busy={busy} onPerform={onPerform} />
+          <Element
+            node={node}
+            onScreen={onScreen}
+            autPackage={autPackage}
+            busy={busy}
+            target={targetOf(node)}
+            onChoose={(index) => onChoose(node, index)}
+            onPerform={onPerform}
+          />
         ) : (
           <div className="empty">
             Hover the screen to see each element's selector. Click to act on it, or right-click to inspect it without acting.
@@ -75,17 +91,26 @@ function Element({
   onScreen,
   autPackage,
   busy,
+  target,
+  onChoose,
   onPerform,
 }: {
   node: ScreenNode;
   onScreen: boolean;
   autPackage: string;
   busy: boolean;
+  target: Target | null;
+  onChoose: (index: number) => void;
   onPerform: (request: PerformRequest) => void;
 }) {
-  const selector = node.selector;
-  const usable = !!selector && onScreen && !busy;
-  const candidates = node.candidates.length ? node.candidates : selector ? [{ selector, kind: 0 } as (typeof node.candidates)[number]] : [];
+  const id = useId();
+  const usable = !!target && onScreen && !busy;
+  const candidates = node.candidates.length
+    ? node.candidates
+    : node.selector
+      ? [create(SelectorCandidateSchema, { selector: node.selector })]
+      : [];
+  const selector = target?.selector;
   return (
     <>
       <div className="node-head">
@@ -102,38 +127,44 @@ function Element({
         <h4>Selector</h4>
         {candidates.length === 0 ? (
           <div className="gapnote">
-            <b>No selector finds only this element.</b> It has no resource id, text or content description that tells it apart,
-            so Tap cannot act on it. Give it a <code>contentDescription</code> (Views) or a <code>testTag</code> with{" "}
+            <b>No selector finds only this element.</b> It has no resource id, text or content description that tells it apart, so Tap
+            cannot act on it. Give it a <code>contentDescription</code> (Views) or a <code>testTag</code> with{" "}
             <code>testTagsAsResourceId</code> (Compose).
           </div>
         ) : (
-          <ul className="cands" aria-label="Selector candidates, the first is used">
-            {candidates.map((candidate, i) => (
-              <li key={i} className={`cand${i === 0 ? " first" : ""}`}>
-                <code>{describeSelector(candidate.selector)}</code>
-                <span className="chips">
-                  {i === 0 && <span className="chip ok">used</span>}
-                  {candidateChips(candidate).map((chip) => (
-                    <span key={chip.text} className={`chip ${chip.tone}`} title={chip.title}>
-                      {chip.text}
-                    </span>
-                  ))}
-                </span>
-              </li>
-            ))}
+          <ul className="cands choose" aria-label="Selector candidates">
+            {candidates.map((candidate, i) => {
+              const used = !!selector && !!candidate.selector && equals(SelectorSchema, candidate.selector, selector);
+              return (
+                <li key={i} className={`cand${used ? " first" : ""}`}>
+                  <label>
+                    <input type="radio" name={`${id}-candidate`} checked={used} onChange={() => onChoose(i)} />
+                    <code>{describeSelector(candidate.selector)}</code>
+                  </label>
+                  <span className="chips">
+                    {used && <span className="chip ok">used</span>}
+                    {candidateChips(candidate).map((chip) => (
+                      <span key={chip.text} className={`chip ${chip.tone}`} title={chip.title}>
+                        {chip.text}
+                      </span>
+                    ))}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
 
-      {selector && (
+      {target && (
         <>
           <div className="section">
             <h4>Act</h4>
             <div className="actions">
-              <button type="button" className="btn primary" disabled={!usable} onClick={() => onPerform(steps.gesture(selector, "tap"))}>
+              <button type="button" className="btn primary" disabled={!usable} onClick={() => onPerform(steps.gesture(target, "tap"))}>
                 Tap
               </button>
-              <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(selector, "longTap"))}>
+              <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(target, "longTap"))}>
                 Long tap
               </button>
               {isScrollable(node) &&
@@ -143,7 +174,13 @@ function Element({
                     ["Scroll ↑", Direction.DIR_UP],
                   ] as const
                 ).map(([text, direction]) => (
-                  <button key={text} type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.scroll(selector, direction))}>
+                  <button
+                    key={text}
+                    type="button"
+                    className="btn"
+                    disabled={!usable}
+                    onClick={() => onPerform(steps.scroll(target, direction))}
+                  >
                     {text}
                   </button>
                 ))}
@@ -153,12 +190,18 @@ function Element({
                   ["Swipe →", Direction.DIR_RIGHT],
                 ] as const
               ).map(([text, direction]) => (
-                <button key={text} type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.swipe(selector, direction))}>
+                <button
+                  key={text}
+                  type="button"
+                  className="btn"
+                  disabled={!usable}
+                  onClick={() => onPerform(steps.swipe(target, direction))}
+                >
                   {text}
                 </button>
               ))}
               {isEditable(node) && (
-                <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(selector, "clearText"))}>
+                <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(target, "clearText"))}>
                   Clear
                 </button>
               )}
@@ -167,7 +210,7 @@ function Element({
               <TextEntry
                 key={node.ref}
                 node={node}
-                onSubmit={(how, input) => onPerform(how === "set" ? steps.setText(selector, input) : steps.typeText(selector, input))}
+                onSubmit={(how, input) => onPerform(how === "set" ? steps.setText(target, input) : steps.typeText(target, input))}
               />
             )}
           </div>
@@ -180,7 +223,7 @@ function Element({
                   type="button"
                   className="btn assert"
                   disabled={!usable}
-                  onClick={() => onPerform(steps.assertion(selector, option.check))}
+                  onClick={() => onPerform(steps.assertion(target, option.check))}
                 >
                   {option.label}
                 </button>
@@ -206,7 +249,13 @@ function Element({
           <dt>flags</dt>
           <dd>
             <span className="flags">
-              {node.flags.length ? node.flags.map((f) => <span key={f} className="tag">{FLAG_NAMES[f] ?? f}</span>) : "none"}
+              {node.flags.length
+                ? node.flags.map((f) => (
+                    <span key={f} className="tag">
+                      {FLAG_NAMES[f] ?? f}
+                    </span>
+                  ))
+                : "none"}
               {node.password && <span className="tag">password</span>}
             </span>
           </dd>
@@ -228,7 +277,15 @@ function Property({ name, value }: { name: string; value: string | undefined }) 
   );
 }
 
-function Tree({ nodes, selectedRef, onSelect }: { nodes: readonly ScreenNode[]; selectedRef: string | null; onSelect: (node: ScreenNode) => void }) {
+function Tree({
+  nodes,
+  selectedRef,
+  onSelect,
+}: {
+  nodes: readonly ScreenNode[];
+  selectedRef: string | null;
+  onSelect: (node: ScreenNode) => void;
+}) {
   const [filter, setFilter] = useState("");
   const wanted = filter.trim().toLowerCase();
   const shown = wanted

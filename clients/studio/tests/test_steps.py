@@ -9,7 +9,7 @@ from tap_e2e import CommandError, WaitTimeoutError
 from tap_e2e import proto as tap
 from tap_studio._gen import studio_pb2 as studio
 from tap_studio.recording import RecordingError
-from tap_studio.steps import outcome, prepare, run
+from tap_studio.steps import outcome, prepare, revise, run
 
 SEARCH = {"node": {"resource": {"name": "search", "aut_package": True}}}
 ONE = {"wait_visible": {"selector": SEARCH, "exactly_one": True}}
@@ -40,6 +40,23 @@ def test_an_action_on_a_node_gets_its_wait_and_loses_id_and_outcome():
     assert prepared.id == "" and not prepared.HasField("outcome")
     assert prepared.action.wait == command(ONE)
     assert request.action.HasField("wait") is False  # the request is not changed
+
+
+def test_a_revised_action_waits_for_its_new_selector_with_the_old_timeout():
+    go = {"node": {"resource": {"name": "go", "aut_package": True}}}
+    edited = step(
+        id="s4",
+        outcome={"duration_ms": 3},
+        action={"command": {"tap": {"selector": go}}, "wait": {**ONE, "timeout_ms": "20000"}, "secret": "pin"},
+    )
+    with pytest.raises(RecordingError, match="set_text only"):
+        revise(edited, None)
+    edited.action.ClearField("secret")
+    revised = revise(edited, None)
+    assert (revised.id, revised.outcome.duration_ms) == ("s4", 3)
+    assert revised.action.wait == command({"wait_visible": {"selector": go, "exactly_one": True}, "timeout_ms": "20000"})
+    with pytest.raises(RecordingError, match="secret_value is only"):
+        revise(edited, "1234")
 
 
 def test_gestures_get_the_default_distance_and_keys_no_wait():

@@ -1,14 +1,15 @@
 // How the page shows selectors and steps: in the Kotlin SDK's DSL (`res("search").andText("Go")`,
-// `element(...).tap()`), the form a test would write. Display only: what is sent and recorded is
-// the message itself.
+// `element(...).tap()`), the form a test would write. What is sent and recorded is the message
+// itself; `parse.ts` reads a typed selector back.
 
 import { Condition, type Step } from "./gen/studio_pb";
 import { Direction, type Command } from "./gen/command_pb";
 import { MatchMode, NodeFlag, Relation, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
 
-const quote = (value: string) => JSON.stringify(value);
+/** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
+export const quote = (value: string) => JSON.stringify(value).replace(/\$/g, "\\$");
 
-const FACTORY: Record<TextProperty, string> = {
+export const FACTORY: Record<TextProperty, string> = {
   [TextProperty.PROPERTY_UNSPECIFIED]: "text",
   [TextProperty.PROPERTY_TEXT]: "text",
   [TextProperty.PROPERTY_CONTENT_DESCRIPTION]: "desc",
@@ -16,13 +17,13 @@ const FACTORY: Record<TextProperty, string> = {
   [TextProperty.PROPERTY_CLASS_NAME]: "className",
 };
 
-const TEXT_MODES: Partial<Record<MatchMode, string>> = {
+export const TEXT_MODES: Partial<Record<MatchMode, string>> = {
   [MatchMode.MATCH_CONTAINS]: "textContains",
   [MatchMode.MATCH_STARTS_WITH]: "textStartsWith",
   [MatchMode.MATCH_REGEX]: "textMatches",
 };
 
-const MODE_NAMES: Record<MatchMode, string> = {
+export const MODE_NAMES: Record<MatchMode, string> = {
   [MatchMode.MATCH_UNSPECIFIED]: "EXACT",
   [MatchMode.MATCH_EXACT]: "EXACT",
   [MatchMode.MATCH_CONTAINS]: "CONTAINS",
@@ -31,7 +32,7 @@ const MODE_NAMES: Record<MatchMode, string> = {
   [MatchMode.MATCH_REGEX]: "REGEX",
 };
 
-const FLAGS: Record<NodeFlag, string> = {
+export const FLAGS: Record<NodeFlag, string> = {
   [NodeFlag.FLAG_UNSPECIFIED]: "flag",
   [NodeFlag.FLAG_ENABLED]: "enabled",
   [NodeFlag.FLAG_CHECKED]: "checked",
@@ -44,7 +45,7 @@ const FLAGS: Record<NodeFlag, string> = {
   [NodeFlag.FLAG_SELECTED]: "selected",
 };
 
-const RELATIONS: Record<Relation, string> = {
+export const RELATIONS: Record<Relation, string> = {
   [Relation.UNSPECIFIED]: "related",
   [Relation.PARENT]: "hasParent",
   [Relation.ANCESTOR]: "hasAncestor",
@@ -57,7 +58,7 @@ function match(m: Match): string {
   if (m.property === TextProperty.PROPERTY_TEXT && !exact && TEXT_MODES[m.mode]) {
     return `${TEXT_MODES[m.mode]}(${quote(m.value)})`;
   }
-  const mode = exact ? "" : `, ${MODE_NAMES[m.mode]}`;
+  const mode = exact ? "" : `, MatchMode.${MODE_NAMES[m.mode]}`;
   return `${FACTORY[m.property]}(${quote(m.value)}${mode})`;
 }
 
@@ -90,7 +91,7 @@ function chained(node: Node): string {
       const m = node.kind.value;
       const name = FACTORY[m.property];
       const exact = m.mode === MatchMode.MATCH_EXACT || m.mode === MatchMode.MATCH_UNSPECIFIED;
-      return `.and${name[0]!.toUpperCase()}${name.slice(1)}(${quote(m.value)}${exact ? "" : `, ${MODE_NAMES[m.mode]}`})`;
+      return `.and${name[0]!.toUpperCase()}${name.slice(1)}(${quote(m.value)}${exact ? "" : `, MatchMode.${MODE_NAMES[m.mode]}`})`;
     }
     case "resource":
       return node.kind.value.autPackage ? `.andRes(${quote(node.kind.value.name)})` : `.and(${base(node)})`;
@@ -113,7 +114,13 @@ function expression(node: Node): string {
     // Only flags and relations, which the DSL has no factory for (except two flags).
     return `allOf(${all.map((operand) => chained(operand).slice(1)).join(", ")})`;
   }
-  return base(all[first]!) + all.filter((_, i) => i !== first).map(chained).join("");
+  return (
+    base(all[first]!) +
+    all
+      .filter((_, i) => i !== first)
+      .map(chained)
+      .join("")
+  );
 }
 
 export function describeSelector(selector: Selector | undefined): string {

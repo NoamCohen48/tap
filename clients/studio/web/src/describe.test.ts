@@ -18,14 +18,21 @@ describe("describeSelector", () => {
     [selector(match(TextProperty.PROPERTY_TEXT, "Log in")), 'text("Log in")'],
     [selector(match(TextProperty.PROPERTY_TEXT, "Wool", MatchMode.MATCH_CONTAINS)), 'textContains("Wool")'],
     [selector(match(TextProperty.PROPERTY_CONTENT_DESCRIPTION, "Cart")), 'desc("Cart")'],
-    [selector(match(TextProperty.PROPERTY_HINT, "Search", MatchMode.MATCH_ENDS_WITH)), 'hint("Search", ENDS_WITH)'],
+    [selector(match(TextProperty.PROPERTY_HINT, "Search", MatchMode.MATCH_ENDS_WITH)), 'hint("Search", MatchMode.ENDS_WITH)'],
     [selector(all(res("name"), match(TextProperty.PROPERTY_TEXT, "Wool socks"))), 'res("name").andText("Wool socks")'],
     [
       selector(
-        all(
-          res("add"),
-          { kind: { case: "related", value: { relation: Relation.ANCESTOR, node: all(res("row"), { kind: { case: "related", value: { relation: Relation.DESCENDANT, node: match(TextProperty.PROPERTY_TEXT, "Wool") } } } as Node) } } } as Node,
-        ),
+        all(res("add"), {
+          kind: {
+            case: "related",
+            value: {
+              relation: Relation.ANCESTOR,
+              node: all(res("row"), {
+                kind: { case: "related", value: { relation: Relation.DESCENDANT, node: match(TextProperty.PROPERTY_TEXT, "Wool") } },
+              } as Node),
+            },
+          },
+        } as Node),
       ),
       'res("add").hasAncestor(res("row").hasDescendant(text("Wool")))',
     ],
@@ -36,16 +43,25 @@ describe("describeSelector", () => {
       }),
       'resId("android", "button1").inPackage("android")',
     ],
-    [selector(all({ kind: { case: "flag", value: { property: NodeFlag.FLAG_ENABLED, value: false } } } as Node, match(TextProperty.PROPERTY_CLASS_NAME, "android.widget.Button"))), 'className("android.widget.Button").enabled(false)'],
+    [
+      selector(
+        all(
+          { kind: { case: "flag", value: { property: NodeFlag.FLAG_ENABLED, value: false } } } as Node,
+          match(TextProperty.PROPERTY_CLASS_NAME, "android.widget.Button"),
+        ),
+      ),
+      'className("android.widget.Button").enabled(false)',
+    ],
   ])("%#: %s", (given, expected) => {
     expect(describeSelector(given)).toBe(expected);
   });
 });
 
 const recorded = (request: PerformRequest) => request.step!;
+const target = (node: Node) => steps.synthesized(selector(node));
 
 describe("describeStep", () => {
-  const search = selector(res("search"));
+  const search = steps.synthesized(selector(res("search")));
 
   it("shows each kind as the SDK call it replays as", () => {
     expect(describeStep(recorded(steps.gesture(search, "tap")))).toBe('element(res("search")).tap()');
@@ -80,8 +96,8 @@ describe("describeStep", () => {
       kind: {
         case: "action",
         value: {
-          command: { op: { case: "tap", value: { selector: search } } },
-          wait: { op: { case: "waitVisible", value: { selector: search, exactlyOne: true } } },
+          command: { op: { case: "tap", value: { selector: search.selector } } },
+          wait: { op: { case: "waitVisible", value: { selector: search.selector, exactlyOne: true } } },
         },
       },
     });
@@ -92,7 +108,7 @@ describe("describeStep", () => {
 
 describe("steps", () => {
   it("sends a secret's value beside the step and keeps it out of the step", () => {
-    const request = steps.setText(selector(res("pin")), { secret: "pin", value: "1234" });
+    const request = steps.setText(target(res("pin")), { secret: "pin", value: "1234" });
     expect(request.secretValue).toBe("1234");
     const action = request.step!.kind.case === "action" ? request.step!.kind.value : null;
     expect(action?.secret).toBe("pin");
@@ -101,8 +117,10 @@ describe("steps", () => {
   });
 
   it("leaves the wait and the gesture distance to the studio", () => {
-    const action = steps.swipe(selector(res("pager")), Direction.DIR_LEFT).step!.kind;
+    const action = steps.swipe(target(res("pager")), Direction.DIR_LEFT).step!.kind;
     expect(action.case === "action" && action.value.wait).toBeUndefined();
-    expect(action.case === "action" && action.value.command?.op.case === "swipe" && action.value.command.op.value.distancePercent).toBeUndefined();
+    expect(
+      action.case === "action" && action.value.command?.op.case === "swipe" && action.value.command.op.value.distancePercent,
+    ).toBeUndefined();
   });
 });

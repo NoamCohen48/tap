@@ -1,0 +1,146 @@
+// Editing recorded steps: what a step targets and types, changed copies of it, and the warnings
+// it carries. The studio re-infers an edited action's wait (UpdateStep), so only the command's
+// selector changes here.
+
+import { clone, equals } from "@bufbuild/protobuf";
+import type { Command } from "./gen/command_pb";
+import type { ScreenNode } from "./gen/device_pb";
+import { SelectorSchema, type Selector } from "./gen/selector_pb";
+import { SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
+import { looksDynamic, type Chip } from "./nodes";
+import type { Target } from "./steps";
+
+/** The command message of an action on an element (every recorded op but press_key). */
+function elementOp(command: Command | undefined) {
+  const op = command?.op;
+  switch (op?.case) {
+    case "tap":
+    case "longTap":
+    case "setText":
+    case "clearText":
+    case "scroll":
+    case "swipe":
+      return op.value;
+    default:
+      return undefined;
+  }
+}
+
+/** The selector a step acts on or checks; `undefined` for app steps and keys. */
+export function stepSelector(step: Step): Selector | undefined {
+  switch (step.kind.case) {
+    case "action":
+      return elementOp(step.kind.value.command)?.selector;
+    case "type":
+    case "assertion":
+      return step.kind.value.selector;
+    default:
+      return undefined;
+  }
+}
+
+export function stepOrigin(step: Step): SelectorOrigin {
+  switch (step.kind.case) {
+    case "action":
+    case "type":
+    case "assertion":
+      return step.kind.value.selectorOrigin;
+    default:
+      return SelectorOrigin.UNSPECIFIED;
+  }
+}
+
+/** A copy of the step on another selector. */
+export function withSelector(step: Step, { selector, origin }: Target): Step {
+  const copy = clone(StepSchema, step);
+  switch (copy.kind.case) {
+    case "action": {
+      const op = elementOp(copy.kind.value.command);
+      if (op) op.selector = selector;
+      copy.kind.value.selectorOrigin = origin;
+      break;
+    }
+    case "type":
+    case "assertion":
+      copy.kind.value.selector = selector;
+      copy.kind.value.selectorOrigin = origin;
+      break;
+  }
+  return copy;
+}
+
+/** The text a step enters or checks: typed text, or the name of the secret it enters. */
+export type StepText = { text: string } | { secret: string };
+
+export function stepText(step: Step): StepText | null {
+  switch (step.kind.case) {
+    case "action": {
+      const { command, secret } = step.kind.value;
+      if (command?.op.case !== "setText") return null;
+      return secret !== undefined ? { secret } : { text: command.op.value.text };
+    }
+    case "type": {
+      const input = step.kind.value.input;
+      if (input.case === "secret") return { secret: input.value };
+      return { text: input.value ?? "" };
+    }
+    case "assertion":
+      return step.kind.value.value.case === "text" ? { text: step.kind.value.value.value } : null;
+    default:
+      return null;
+  }
+}
+
+/** A copy of the step entering or checking other text. Only set_text and type steps take a secret. */
+export function withText(step: Step, value: StepText): Step {
+  const copy = clone(StepSchema, step);
+  switch (copy.kind.case) {
+    case "action": {
+      const op = copy.kind.value.command?.op;
+      if (op?.case !== "setText") break;
+      op.value.text = "text" in value ? value.text : "";
+      copy.kind.value.secret = "secret" in value ? value.secret : undefined;
+      break;
+    }
+    case "type":
+      copy.kind.value.input = "secret" in value ? { case: "secret", value: value.secret } : { case: "text", value: value.text };
+      break;
+    case "assertion":
+      if ("text" in value && copy.kind.value.value.case === "text") copy.kind.value.value.value = value.text;
+      break;
+  }
+  return copy;
+}
+
+export const takesSecret = (step: Step) =>
+  (step.kind.case === "action" && step.kind.value.command?.op.case === "setText") || step.kind.case === "type";
+
+/** The node on this frame a selector was synthesized for, so its other candidates can be offered. */
+export function nodeFor(nodes: readonly ScreenNode[], selector: Selector | undefined): ScreenNode | null {
+  if (!selector) return null;
+  const same = (other: Selector | undefined) => !!other && equals(SelectorSchema, other, selector);
+  return nodes.find((n) => same(n.selector) || n.candidates.some((c) => same(c.selector))) ?? null;
+}
+
+/** The warnings a recorded step carries: fragile selectors, a secret without its value. */
+export function stepChips(step: Step, missingSecrets: readonly string[]): Chip[] {
+  const chips: Chip[] = [];
+  const selector = stepSelector(step);
+  if (selector?.pick.case === "at") {
+    chips.push({ text: "by index", tone: "warn", title: "Correct when recorded; breaks when the order of matching nodes changes" });
+  }
+  if (looksDynamic(selector)) {
+    chips.push({ text: "dynamic text", tone: "warn", title: "Contains digits: prices, counts and dates usually change between runs" });
+  }
+  if (stepOrigin(step) === SelectorOrigin.EDITED) chips.push({ text: "typed selector", tone: "info" });
+  const text = stepText(step);
+  if (text && "secret" in text) {
+    const missing = missingSecrets.includes(text.secret);
+    chips.push(
+      missing
+        ? { text: `\${${text.secret}} needs a value`, tone: "warn", title: "Opened from a file: a replay asks for the value" }
+        : { text: "secret", tone: "info" },
+    );
+  }
+  return chips;
+}

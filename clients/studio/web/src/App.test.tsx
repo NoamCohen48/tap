@@ -1,11 +1,12 @@
-import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
+import { clone, create, fromJsonString, toJsonString, type MessageInitShape } from "@bufbuild/protobuf";
 import { Code, ConnectError, createClient, createRouterTransport, type HandlerContext } from "@connectrpc/connect";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { describeSelector } from "./describe";
 import { ScreenNodeSchema, DeviceState, SelectorKind, type ScreenNode } from "./gen/device_pb";
 import { BoundsSchema } from "./gen/command_pb";
-import { NodeFlag, SelectorSchema } from "./gen/selector_pb";
+import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
   OutcomeSchema,
@@ -13,9 +14,13 @@ import {
   RecordingSchema,
   SessionSchema,
   StepSchema,
+  SelectorOrigin,
   StudioService,
   type PerformRequest,
+  type ReplayRequest,
   type Session,
+  type Step,
+  type UpdateStepRequest,
 } from "./gen/studio_pb";
 
 const WIDTH = 1080;
@@ -23,30 +28,58 @@ const HEIGHT = 2400;
 
 const resSelector = (name: string) => create(SelectorSchema, { node: { kind: { case: "resource", value: { name, autPackage: true } } } });
 
-function node(ref: string, [left, top, right, bottom]: [number, number, number, number], extra: MessageInitShape<typeof ScreenNodeSchema> = {}): ScreenNode {
+function node(
+  ref: string,
+  [left, top, right, bottom]: [number, number, number, number],
+  extra: MessageInitShape<typeof ScreenNodeSchema> = {},
+): ScreenNode {
   const made = create(ScreenNodeSchema, { ref, windowPackage: "com.example", interactive: true, depth: 1, ...extra });
   made.bounds = create(BoundsSchema, { left, top, right, bottom });
   return made;
 }
 
-const SEARCH = node("e2", [100, 200, 980, 320], { className: "android.widget.EditText", resourceName: "com.example:id/search", selector: resSelector("search") });
+const SEARCH = node("e2", [100, 200, 980, 320], {
+  className: "android.widget.EditText",
+  resourceName: "com.example:id/search",
+  selector: resSelector("search"),
+});
 const BUTTON = node("e3", [100, 400, 500, 520], {
   className: "android.widget.Button",
   text: "Go",
   resourceName: "com.example:id/go",
   flags: [NodeFlag.FLAG_ENABLED, NodeFlag.FLAG_CLICKABLE],
   selector: resSelector("go"),
-  candidates: [{ selector: resSelector("go"), kind: SelectorKind.PLAIN }],
+  candidates: [
+    { selector: resSelector("go"), kind: SelectorKind.PLAIN },
+    {
+      selector: create(SelectorSchema, { node: { kind: { case: "match", value: { property: TextProperty.PROPERTY_TEXT, value: "Go" } } } }),
+      kind: SelectorKind.PLAIN,
+    },
+  ],
 });
 const GAP = node("e4", [600, 400, 700, 520], { className: "android.view.View" });
 
-/** A fake StudioService: one device, frames on demand, performs recorded in order. */
+/** A fake StudioService: one device, frames on demand, a recording kept as the studio keeps it. */
 function fakeStudio() {
   const state = {
     session: create(SessionSchema, { recording: true }) as Session,
     performed: [] as PerformRequest[],
-    steps: 0,
+    steps: [] as Step[],
+    missing: [] as string[],
+    nextId: 1,
     failNext: null as string | null,
+    updates: [] as UpdateStepRequest[],
+    replays: [] as ReplayRequest[],
+    counted: [] as string[],
+    /** While set, each replayed step waits for it (or for the call to be cancelled). */
+    replayGate: null as Promise<void> | null,
+  };
+  const recording = () => create(RecordingSchema, { autPackage: "com.example", steps: state.steps, secrets: secretsOf(state.steps) });
+  const edited = () => ({ recording: recording(), missingSecrets: state.missing.filter((name) => secretsOf(state.steps).includes(name)) });
+  const index = (stepId: string) => {
+    const at = state.steps.findIndex((s) => s.id === stepId);
+    if (at < 0) throw new ConnectError(`no step ${stepId}`, Code.NotFound);
+    return at;
   };
   const transport = createRouterTransport(({ service }) => {
     service(StudioService, {
@@ -70,8 +103,18 @@ function fakeStudio() {
         return { session: state.session };
       },
       async *frames(_request, context: HandlerContext) {
-        yield create(FramesResponseSchema, { sequence: 1n, png: new Uint8Array([1]), width: WIDTH, height: HEIGHT, nodes: [SEARCH, BUTTON, GAP] });
+        yield create(FramesResponseSchema, {
+          sequence: 1n,
+          png: new Uint8Array([1]),
+          width: WIDTH,
+          height: HEIGHT,
+          nodes: [SEARCH, BUTTON, GAP],
+        });
         await new Promise((resolve) => context.signal.addEventListener("abort", resolve));
+      },
+      count: (request) => {
+        state.counted.push(describeSelector(request.selector));
+        return { count: describeSelector(request.selector).startsWith("className") ? 3 : 1 };
       },
       perform: (request) => {
         state.performed.push(request);
@@ -81,23 +124,86 @@ function fakeStudio() {
           state.failNext = null;
           return create(PerformResponseSchema, { step, recorded: false, message });
         }
-        step.id = `s${++state.steps}`;
         step.outcome = create(OutcomeSchema, { durationMs: 42 });
-        return create(PerformResponseSchema, { step, recorded: state.session.recording });
+        if (!state.session.recording) return create(PerformResponseSchema, { step, recorded: false });
+        step.id = `s${state.nextId++}`;
+        const at = request.beforeStepId ? index(request.beforeStepId) : state.steps.length;
+        state.steps.splice(at, 0, step);
+        return create(PerformResponseSchema, { step, recorded: true });
+      },
+      updateStep: (request) => {
+        state.updates.push(request);
+        state.steps[index(request.step!.id)] = clone(StepSchema, request.step!);
+        return edited();
+      },
+      deleteStep: (request) => {
+        state.steps.splice(index(request.stepId), 1);
+        return edited();
+      },
+      moveStep: (request) => {
+        const [moved] = state.steps.splice(index(request.stepId), 1);
+        state.steps.splice(request.beforeStepId ? index(request.beforeStepId) : state.steps.length, 0, moved!);
+        return edited();
+      },
+      openRecording: (request) => {
+        const opened = fromJsonString(RecordingSchema, request.document, { ignoreUnknownFields: true });
+        state.steps = opened.steps;
+        state.missing = [...opened.secrets];
+        state.session = create(SessionSchema, {
+          recording: state.session.recording,
+          device: state.session.device,
+          steps: opened.steps.length,
+        });
+        return { session: state.session, ...edited() };
+      },
+      async *replay(request, context: HandlerContext) {
+        state.replays.push(request);
+        for (const name of Object.keys(request.secretValues)) state.missing = state.missing.filter((m) => m !== name);
+        const from = request.fromStepId ? index(request.fromStepId) : 0;
+        for (const step of state.steps.slice(from, request.only ? from + 1 : undefined)) {
+          yield { stepId: step.id };
+          if (state.replayGate) {
+            await Promise.race([state.replayGate, new Promise((resolve) => context.signal.addEventListener("abort", resolve))]);
+            if (context.signal.aborted) return;
+          }
+          const failed = state.failNext;
+          state.failNext = null;
+          const outcome = create(OutcomeSchema, failed ? { durationMs: 7, error: { message: failed } } : { durationMs: 5 });
+          step.outcome = outcome;
+          yield { stepId: step.id, outcome, message: failed ?? "" };
+          if (failed) return;
+        }
       },
       setRecording: (request) => {
         state.session = clone(SessionSchema, state.session);
         state.session.recording = request.recording;
         return { session: state.session };
       },
-      newRecording: () => ({ session: state.session }),
+      newRecording: () => {
+        state.steps = [];
+        return { session: state.session };
+      },
       getRecording: () => {
-        if (!state.steps) throw new ConnectError("nothing recorded yet", Code.NotFound);
-        return { recording: create(RecordingSchema, { autPackage: "com.example" }), document: '{\n  "format": "tap-recording/1"\n}\n' };
+        if (!state.steps.length) throw new ConnectError("nothing recorded yet", Code.NotFound);
+        return { ...edited(), document: toJsonString(RecordingSchema, recording(), { prettySpaces: 2 }) };
       },
     });
   });
   return { state, client: createClient(StudioService, transport) };
+}
+
+function secretsOf(steps: readonly Step[]): string[] {
+  return [
+    ...new Set(
+      steps.flatMap((s) =>
+        s.kind.case === "action" && s.kind.value.secret
+          ? [s.kind.value.secret]
+          : s.kind.case === "type" && s.kind.value.input.case === "secret"
+            ? [s.kind.value.input.value]
+            : [],
+      ),
+    ),
+  ];
 }
 
 beforeEach(() => {
@@ -261,7 +367,7 @@ describe("App", () => {
     act(() => click(300, 450));
     await screen.findByText("1 step");
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
-    expect((await screen.findByTestId("recording-json")).textContent).toContain('"format": "tap-recording/1"');
+    expect((await screen.findByTestId("recording-json")).textContent).toContain('"autPackage": "com.example"');
   });
 
   it("the Back button records a key press", async () => {
@@ -274,5 +380,142 @@ describe("App", () => {
     await attached();
     fireEvent.click(screen.getByRole("button", { name: "Release the device" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "Attach a device" })).toBeTruthy());
+  });
+
+  describe("editing and replaying", () => {
+    const listed = () =>
+      within(screen.getByRole("region", { name: "Steps" }))
+        .getAllByRole("listitem")
+        .map((item) => item.querySelector(".step-main code")?.textContent);
+
+    async function recordTwo() {
+      const fake = await attached();
+      act(() => click(300, 450));
+      await screen.findByText('element(res("go")).tap()');
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await screen.findByText("pressBack()");
+      return fake;
+    }
+
+    it("a candidate picked in the inspector is what the next step uses", async () => {
+      const fake = await attached();
+      fireEvent.contextMenu(screen.getByTestId("overlay"), { clientX: 300, clientY: 450 });
+      const inspector = screen.getByRole("region", { name: "Inspector" });
+      fireEvent.click(within(inspector).getByRole("radio", { name: 'text("Go")' }));
+      act(() => click(300, 450));
+      await screen.findByText('element(text("Go")).tap()');
+      const step = fake.state.performed[0]!.step!;
+      expect(step.kind.case === "action" && step.kind.value.selectorOrigin).toBe(SelectorOrigin.ALTERNATIVE);
+    });
+
+    it("new steps go after the selected step", async () => {
+      const fake = await recordTwo();
+      fireEvent.click(screen.getByRole("button", { name: /element\(res\("go"\)\)\.tap\(\)/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Home" }));
+      await screen.findByText("pressHome()");
+      expect(fake.state.performed[2]!.beforeStepId).toBe("s2");
+      expect(listed()).toEqual(['element(res("go")).tap()', "pressHome()", "pressBack()"]);
+      expect(screen.getByText(/New steps go after step 2/)).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Add at the end" }));
+      expect(screen.queryByText(/New steps go after/)).toBeNull();
+    });
+
+    it("a typed selector is counted live and saved without running the step", async () => {
+      const fake = await recordTwo();
+      fireEvent.click(screen.getByRole("button", { name: /element\(res\("go"\)\)\.tap\(\)/ }));
+      const editor = screen.getByRole("form", { name: "Edit the step" });
+      const input = within(editor).getByLabelText("Or type one");
+      fireEvent.change(input, { target: { value: 'res("go"' } });
+      expect(within(editor).getByText(/“,” or “\)” was expected/)).toBeTruthy();
+      fireEvent.change(input, { target: { value: 'className("android.widget.Button")' } });
+      expect(await within(editor).findByText(/Matches 3 elements now/, {}, { timeout: 2000 })).toBeTruthy();
+      fireEvent.change(input, { target: { value: 'res("go").andText("Go")' } });
+      expect(await within(editor).findByText("Matches 1 element now.", {}, { timeout: 2000 })).toBeTruthy();
+      fireEvent.change(within(editor).getByLabelText("Note"), { target: { value: "the search button" } });
+      fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+      await screen.findByText('element(res("go").andText("Go")).tap()');
+      const saved = fake.state.updates[0]!.step!;
+      expect(saved.note).toBe("the search button");
+      expect(saved.kind.case === "action" && saved.kind.value.selectorOrigin).toBe(SelectorOrigin.EDITED);
+      expect(fake.state.performed).toHaveLength(2); // saving ran nothing
+      expect(screen.getByText("typed selector")).toBeTruthy();
+    });
+
+    it("another candidate of the step's element can be picked", async () => {
+      const fake = await recordTwo();
+      fireEvent.click(screen.getByRole("button", { name: /element\(res\("go"\)\)\.tap\(\)/ }));
+      const editor = screen.getByRole("form", { name: "Edit the step" });
+      fireEvent.click(within(editor).getByRole("radio", { name: 'text("Go")' }));
+      fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+      await screen.findByText('element(text("Go")).tap()');
+      const saved = fake.state.updates[0]!.step!;
+      expect(saved.kind.case === "action" && saved.kind.value.selectorOrigin).toBe(SelectorOrigin.ALTERNATIVE);
+    });
+
+    it("steps move and are deleted", async () => {
+      await recordTwo();
+      fireEvent.click(screen.getByRole("button", { name: /pressBack/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Move up" }));
+      await waitFor(() => expect(listed()).toEqual(["pressBack()", 'element(res("go")).tap()']));
+      fireEvent.click(screen.getByRole("button", { name: "Delete the step" }));
+      await waitFor(() => expect(listed()).toEqual(['element(res("go")).tap()']));
+      expect(screen.getByText("1 step")).toBeTruthy();
+    });
+
+    it("a replay offers a cold launch first and shows how it went", async () => {
+      const fake = await recordTwo();
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      const dialog = await screen.findByRole("dialog", { name: "Start from a cold launch?" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cold launch first" }));
+      expect(await screen.findByText("All 2 steps passed.")).toBeTruthy();
+      const launch = fake.state.performed[2]!;
+      expect(launch.step?.kind.case === "app" && launch.step.kind.value.operation).toBe("cold_launch");
+      expect(launch.beforeStepId).toBe("s1");
+      expect(fake.state.replays[0]!.fromStepId).toBe("s1"); // the launch is not run twice
+      expect(listed()[0]).toBe('app("com.example").coldLaunch()');
+      expect(screen.getAllByText("✓ 5 ms")).toHaveLength(2);
+    });
+
+    it("a replay stops at the first failure, and Stop ends it", async () => {
+      const fake = await recordTwo();
+      fake.state.failNext = "no node matches res(go)";
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Replay as it is" }));
+      expect((await screen.findByRole("alert")).textContent).toBe("Step 1 failed. no node matches res(go)");
+      expect(screen.getByText("✗ failed")).toBeTruthy();
+
+      fake.state.replayGate = new Promise(() => undefined);
+      fireEvent.click(screen.getByRole("button", { name: /pressBack/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Run from here" }));
+      await screen.findByText("running…");
+      expect(fake.state.replays[1]).toMatchObject({ fromStepId: "s2", only: false });
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+      expect(await screen.findByText("Stopped after 0 steps.")).toBeTruthy();
+      expect(screen.queryByText("running…")).toBeNull();
+    });
+
+    it("an opened recording asks for its secret values before replaying", async () => {
+      const fake = await attached();
+      const opened = create(RecordingSchema, {
+        format: "tap-recording/1",
+        autPackage: "com.example",
+        secrets: ["pin"],
+        steps: [
+          { id: "a1", kind: { case: "app", value: { operation: "cold_launch", packageName: "com.example" } } },
+          { id: "a2", kind: { case: "type", value: { selector: resSelector("search"), input: { case: "secret", value: "pin" } } } },
+        ],
+      });
+      const file = new File([toJsonString(RecordingSchema, opened)], "flow.tap-recording.json", { type: "application/json" });
+      fireEvent.change(screen.getByLabelText("Recording file"), { target: { files: [file] } });
+      await screen.findByText('element(res("search")).typeText(${pin})');
+      expect(screen.getByText("${pin} needs a value")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      const dialog = await screen.findByRole("dialog", { name: "Values for the secrets" });
+      fireEvent.change(within(dialog).getByLabelText("${pin}"), { target: { value: "1234" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replay" }));
+      expect(await screen.findByText("All 2 steps passed.")).toBeTruthy();
+      expect(fake.state.replays[0]!.secretValues).toEqual({ pin: "1234" });
+      expect(screen.queryByText("${pin} needs a value")).toBeNull();
+    });
   });
 });

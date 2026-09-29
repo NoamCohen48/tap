@@ -241,6 +241,7 @@ code,
 }
 .panel-h {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
@@ -254,6 +255,7 @@ code,
 .panel-h .count {
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
 }
 .panel-b {
   padding: 12px;
@@ -882,6 +884,138 @@ code,
   color: var(--ok);
   white-space: nowrap;
 }
+.step.sel {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent-fill);
+}
+.step-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.step-main:focus-visible {
+  outline: 2px solid var(--accent-fill);
+  outline-offset: 2px;
+}
+.step .note {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+.step .chips {
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+.step .res.run {
+  color: var(--warn);
+}
+.step .res.fail {
+  color: var(--bad);
+}
+.step .res.none {
+  color: var(--faint);
+}
+.step-open {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+.step-tools {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.step-editor {
+  display: grid;
+  gap: 10px;
+}
+.step-editor fieldset {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.step-editor legend {
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.field > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.field input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+.step-editor .row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.count-line {
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 1.45em;
+}
+.count-line.warn {
+  color: var(--warn);
+}
+.step-editor .actions {
+  align-items: center;
+}
+.step-editor .hint {
+  font-size: 12px;
+  color: var(--faint);
+}
+.cands.choose label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+  cursor: pointer;
+}
+.linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}
 .step.new {
   animation: flash 1.2s ease-out;
 }
@@ -925,6 +1059,10 @@ code,
 .last-run.info {
   background: var(--surface-2);
   color: var(--muted);
+}
+.last-run.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
 /* device picker */
@@ -1033,6 +1171,49 @@ code,
 .iconbtn svg {
   width: 15px;
   height: 15px;
+}
+.iconbtn[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.modal-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 16, 0.45);
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.modal {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+}
+.modal h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.modal-body {
+  display: grid;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.modal-body p {
+  margin: 0;
+  color: var(--muted);
+}
+.modal-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 .toast {
   position: fixed;

@@ -6,14 +6,7 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { AppCallSchema } from "./gen/event_log_pb";
 import { CommandSchema, type Direction } from "./gen/command_pb";
 import type { Selector } from "./gen/selector_pb";
-import {
-  Condition,
-  PerformRequestSchema,
-  SelectorOrigin,
-  StepSchema,
-  type PerformRequest,
-  type Step,
-} from "./gen/studio_pb";
+import { Condition, PerformRequestSchema, SelectorOrigin, StepSchema, type PerformRequest, type Step } from "./gen/studio_pb";
 
 export type Gesture = "tap" | "longTap" | "clearText";
 
@@ -21,7 +14,11 @@ export type Gesture = "tap" | "longTap" | "clearText";
  *  never recorded. */
 export type TextInput = { text: string } | { secret: string; value: string };
 
-const origin = SelectorOrigin.SYNTHESIZED;
+/** What a step acts on: a selector, and where it came from (the daemon's first candidate unless
+ *  the user picked another or typed one). */
+export type Target = { selector: Selector; origin: SelectorOrigin };
+
+export const synthesized = (selector: Selector): Target => ({ selector, origin: SelectorOrigin.SYNTHESIZED });
 
 function request(step: Step, secretValue?: string): PerformRequest {
   return create(PerformRequestSchema, { step, secretValue });
@@ -29,40 +26,42 @@ function request(step: Step, secretValue?: string): PerformRequest {
 
 type Op = NonNullable<MessageInitShape<typeof CommandSchema>["op"]>;
 
-function action(op: Op, secret?: string): Step {
+function action(op: Op, origin: SelectorOrigin, secret?: string): Step {
   return create(StepSchema, {
     kind: { case: "action", value: { command: create(CommandSchema, { op }), secret, selectorOrigin: origin } },
   });
 }
 
-export function gesture(selector: Selector, kind: Gesture): PerformRequest {
-  return request(action({ case: kind, value: { selector } }));
+export function gesture({ selector, origin }: Target, kind: Gesture): PerformRequest {
+  return request(action({ case: kind, value: { selector } }, origin));
 }
 
-export function scroll(selector: Selector, direction: Direction): PerformRequest {
-  return request(action({ case: "scroll", value: { selector, direction } }));
+export function scroll({ selector, origin }: Target, direction: Direction): PerformRequest {
+  return request(action({ case: "scroll", value: { selector, direction } }, origin));
 }
 
-export function swipe(selector: Selector, direction: Direction): PerformRequest {
-  return request(action({ case: "swipe", value: { selector, direction } }));
+export function swipe({ selector, origin }: Target, direction: Direction): PerformRequest {
+  return request(action({ case: "swipe", value: { selector, direction } }, origin));
 }
 
 export function pressKey(keyCode: number): PerformRequest {
   return create(PerformRequestSchema, {
-    step: create(StepSchema, { kind: { case: "action", value: { command: create(CommandSchema, { op: { case: "pressKey", value: { keyCode } } }) } } }),
+    step: create(StepSchema, {
+      kind: { case: "action", value: { command: create(CommandSchema, { op: { case: "pressKey", value: { keyCode } } }) } },
+    }),
   });
 }
 
 /** `set_text`: one command, no keyboard, no focus needed. */
-export function setText(selector: Selector, input: TextInput): PerformRequest {
+export function setText({ selector, origin }: Target, input: TextInput): PerformRequest {
   if ("secret" in input) {
-    return request(action({ case: "setText", value: { selector, text: "" } }, input.secret), input.value);
+    return request(action({ case: "setText", value: { selector, text: "" } }, origin, input.secret), input.value);
   }
-  return request(action({ case: "setText", value: { selector, text: input.text } }));
+  return request(action({ case: "setText", value: { selector, text: input.text } }, origin));
 }
 
 /** The SDKs' element `typeText`: tap, await focus, then `type_text`, for fields that react to keys. */
-export function typeText(selector: Selector, input: TextInput): PerformRequest {
+export function typeText({ selector, origin }: Target, input: TextInput): PerformRequest {
   const step = create(StepSchema, {
     kind: {
       case: "type",
@@ -87,8 +86,13 @@ export type Check =
   | { condition: Condition.TEXT_EQUALS | Condition.TEXT_CONTAINS; text: string }
   | { condition: Condition.COUNT; count: number };
 
-export function assertion(selector: Selector, check: Check): PerformRequest {
-  const value = "text" in check ? { case: "text" as const, value: check.text } : "count" in check ? { case: "count" as const, value: check.count } : undefined;
+export function assertion({ selector, origin }: Target, check: Check): PerformRequest {
+  const value =
+    "text" in check
+      ? { case: "text" as const, value: check.text }
+      : "count" in check
+        ? { case: "count" as const, value: check.count }
+        : undefined;
   return request(
     create(StepSchema, {
       kind: { case: "assertion", value: { selector, condition: check.condition, value, selectorOrigin: origin } },

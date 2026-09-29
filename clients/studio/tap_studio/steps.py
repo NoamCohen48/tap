@@ -43,11 +43,10 @@ def prepare(step: studio.Step, secret_value: str | None) -> studio.Step:
     prepared.ClearField("outcome")
     problems: list[str] = []
     if prepared.WhichOneof("kind") == "action":
+        if prepared.action.HasField("wait"):
+            problems.append("action.wait is inferred by the studio: leave it out")
         problems += _complete_action(prepared.action)
-    try:
-        validate_step(prepared)
-    except RecordingError as error:
-        problems += error.problems
+    problems += _problems(prepared)
     name = secret_name(prepared)
     if name is not None and secret_value is None:
         problems.append(f"the step types the secret {name!r}: send its value in secret_value")
@@ -58,9 +57,37 @@ def prepare(step: studio.Step, secret_value: str | None) -> studio.Step:
     return prepared
 
 
+def revise(step: studio.Step, secret_value: str | None) -> studio.Step:
+    """An edited step completed as ``prepare`` does, keeping its id and outcome: an action's wait
+    is inferred again from its (possibly new) selector, keeping the wait's timeout, and a secret may come without its value
+    (a replay asks for it). Raises ``RecordingError`` as ``prepare``."""
+    revised = studio.Step()
+    revised.CopyFrom(step)
+    problems: list[str] = []
+    if revised.WhichOneof("kind") == "action":
+        action = revised.action
+        timeout = action.wait.timeout_ms if action.wait.HasField("timeout_ms") else None
+        action.ClearField("wait")
+        problems += _complete_action(action)
+        if timeout is not None and action.HasField("wait"):
+            action.wait.timeout_ms = timeout
+    problems += _problems(revised)
+    if secret_name(revised) is None and secret_value is not None:
+        problems.append("secret_value is only for a step that names a secret")
+    if problems:
+        raise RecordingError(problems)
+    return revised
+
+
+def _problems(step: studio.Step) -> list[str]:
+    try:
+        validate_step(step)
+    except RecordingError as error:
+        return error.problems
+    return []
+
+
 def _complete_action(action: studio.ActionStep) -> list[str]:
-    if action.HasField("wait"):
-        return ["action.wait is inferred by the studio: leave it out"]
     command = action.command
     op = command.WhichOneof("op")
     if op == "press_key":
@@ -70,7 +97,7 @@ def _complete_action(action: studio.ActionStep) -> list[str]:
         gesture = getattr(command, op)
         if not gesture.HasField("distance_percent"):
             gesture.distance_percent = DEFAULT_GESTURE_PERCENT
-    if op is not None and getattr(command, op).HasField("selector"):
+    if op is not None and not action.HasField("wait") and getattr(command, op).HasField("selector"):
         selector = getattr(command, op).selector
         action.wait.CopyFrom(tap.Command(wait_visible=tap.WaitVisible(selector=selector, exactly_one=True)))
     return []

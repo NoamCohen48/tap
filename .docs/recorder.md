@@ -277,7 +277,8 @@ back end (Python, Starlette + connect-python, on tap-e2e)
   /tap.studio.v1.StudioService/*      Connect: Info, GetRecording (phase 1); GetSession,
                                       ListDevices, Attach, Release, Frames (server stream),
                                       Count, Perform, SetRecording, NewRecording (phase 3);
-                                      replay (phase 5)
+                                      UpdateStep, DeleteStep, MoveStep, OpenRecording,
+                                      Replay (server stream) (phase 5)
   /                                   the built page
 
 daemon
@@ -376,9 +377,37 @@ daemon
      writes it, so there is one serializer; Download names it
      `<package>-<time>.tap-recording.json`.
    - No Refresh button: the frame loop already follows the screen.
-   - Left for phase 5: choosing another candidate, warnings on the steps, editing, import and
-     replay.
 5. Recording model: candidate choice and warnings, step editing, import; replay from the page.
+   **Done 2026-09-29.** New RPCs `UpdateStep`, `DeleteStep`, `MoveStep`, `OpenRecording` and
+   `Replay` (server stream: a response when each step starts and one with its outcome);
+   `Perform` takes `before_step_id` and `GetRecording` reports `missing_secrets`. 128 back-end
+   and 68 page tests; checked in a browser against a fake daemon (no device). Settled while
+   building it:
+   - A typed selector is Kotlin SDK DSL, the same language the page shows (`parse.ts` reads what
+     `describe.ts` writes, round-trip tested): infix `and`/`or`, `descendant`/`child`, match
+     modes as `MatchMode.X`, Kotlin strings with `$` escaped. A parse error points at its
+     column; a valid selector shows a debounced `Count` ("Matches 1 element now.").
+   - The origin follows the choice: the node's first candidate is `SYNTHESIZED`, another
+     candidate `ALTERNATIVE`, anything typed `EDITED`. Choosing a candidate in the inspector
+     applies to the next step recorded on that node; in the step editor it rewrites the step.
+   - An edit that changes what runs clears the step's outcome and re-infers its wait, keeping
+     the wait's `timeout_ms`; an edit to the note alone keeps the outcome. Saving never runs the
+     step: the editor says to replay it.
+   - Warnings are derived chips on the step, never stored: *by index*, *dynamic text* (a
+     text selector with digits: prices, counts and dates change between runs), *typed*, *secret*, and *`name` needs a value* for a
+     secret whose value this process does not hold (an opened file has names only).
+   - New steps go after the selected step (`before_step_id`), and the selection moves to the new
+     step, so a run of insertions stays in order; *Add at the end* clears the selection.
+   - Replay runs on the attached device only for the recording's own package, stops at the
+     first failure and stores each outcome. While it runs, every call that changes the
+     recording or its steps is refused (`FAILED_PRECONDITION`); Stop cancels the stream; a
+     step already sent to the device finishes, and nothing after it runs. Values for the secrets in range are asked for up front, once.
+   - Replaying from the start when the first step is not an app step offers to prepend a cold
+     launch: it is performed (and so recorded) as step 1, then the replay continues from the old
+     first step, so the launch does not run twice.
+   - Open reads a `tap-recording/1` file through `OpenRecording`, which validates it with the
+     same `loads` as everything else and reports every problem; it replaces the recording and
+     forgets the secret values.
 6. Device run on the local matrix and docs (`docs/guide/`, release family).
 
 ## Verification

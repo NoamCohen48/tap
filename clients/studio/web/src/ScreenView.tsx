@@ -8,12 +8,13 @@ import { box, dragDirection, hit, isEditable, label, scrollableAt, shortClass, t
 import { AppIcon, Back, Home } from "./icons";
 import { checksFor } from "./nodes";
 import * as steps from "./steps";
+import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
 
 export type Mode = "act" | "assert" | "inspect";
 export type OverlayFilter = "interactive" | "all" | "off";
 
-type Popover = { kind: "text" | "assert"; node: ScreenNode };
+type Popover = { kind: "text" | "assert"; node: ScreenNode; target: Target };
 
 /** A drag shorter than this share of the frame's width is a click. */
 const DRAG_MINIMUM = 0.04;
@@ -33,6 +34,8 @@ type Props = {
   selectedRef: string | null;
   busy: boolean;
   onSelect: (node: ScreenNode) => void;
+  /** What a step on the node targets: its first candidate, or the one picked in the inspector. */
+  targetOf: (node: ScreenNode) => Target | null;
   onPerform: (request: PerformRequest) => void;
   onNotice: (text: string) => void;
 };
@@ -84,13 +87,14 @@ export function ScreenView(props: Props) {
   const click = (node: ScreenNode, alt: boolean) => {
     props.onSelect(node);
     if (mode === "inspect") return;
-    if (!node.selector) {
+    const target = props.targetOf(node);
+    if (!target) {
       props.onNotice("No selector finds only this element: see the Element panel");
       return;
     }
-    if (mode === "assert") return setPopover({ kind: "assert", node });
-    if (isEditable(node) && !alt) return setPopover({ kind: "text", node });
-    perform(steps.gesture(node.selector, alt ? "longTap" : "tap"));
+    if (mode === "assert") return setPopover({ kind: "assert", node, target });
+    if (isEditable(node) && !alt) return setPopover({ kind: "text", node, target });
+    perform(steps.gesture(target, alt ? "longTap" : "tap"));
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -115,9 +119,10 @@ export function ScreenView(props: Props) {
     }
     if (mode !== "act") return;
     const node = scrollableAt(nodes, start.frame) ?? hit(pool, start.frame);
-    if (!node?.selector) return props.onNotice("Nothing with a selector to swipe there");
+    const target = node && props.targetOf(node);
+    if (!node || !target) return props.onNotice("Nothing with a selector to swipe there");
     props.onSelect(node);
-    perform(steps.swipe(node.selector, direction));
+    perform(steps.swipe(target, direction));
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -136,7 +141,8 @@ export function ScreenView(props: Props) {
       if (mode !== "act" || !frame) return;
       const at = pointOf({ x: e.clientX, y: e.clientY });
       const node = at && scrollableAt(frame.nodes, at);
-      if (!node?.selector) return;
+      const target = node && props.targetOf(node);
+      if (!node || !target) return;
       e.preventDefault();
       const time = Date.now();
       if (busy || time - lastWheel.current < WHEEL_QUIET_MS) return;
@@ -150,11 +156,13 @@ export function ScreenView(props: Props) {
             ? Direction.DIR_DOWN
             : Direction.DIR_UP;
       props.onSelect(node);
-      perform(steps.scroll(node.selector, direction));
+      perform(steps.scroll(target, direction));
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
   });
+
+  const hoverTarget = hover ? props.targetOf(hover.node) : null;
 
   const onContextMenu = (e: ReactMouseEvent) => {
     e.preventDefault();
@@ -183,7 +191,9 @@ export function ScreenView(props: Props) {
               no frames
             </span>
           ) : (
-            <span className={`pill ${frame?.moving ? "moving" : "settled"}`}>{frame ? (frame.moving ? "changing…" : "settled") : "waiting…"}</span>
+            <span className={`pill ${frame?.moving ? "moving" : "settled"}`}>
+              {frame ? (frame.moving ? "changing…" : "settled") : "waiting…"}
+            </span>
           )}
           {frame && (
             <span className="mono">
@@ -236,10 +246,10 @@ export function ScreenView(props: Props) {
             {hover && !popover && (
               <div className="tip" role="tooltip" style={{ left: Math.max(4, hover.at.x - 40), top: hover.at.y + 18 }}>
                 <b>@{hover.node.ref}</b>{" "}
-                {hover.node.selector ? (
+                {hoverTarget ? (
                   <>
-                    {describeSelector(hover.node.selector)}
-                    {hover.node.byIndex && <span className="bad"> · by index</span>}
+                    {describeSelector(hoverTarget.selector)}
+                    {hoverTarget.selector.pick.case === "at" && <span className="bad"> · by index</span>}
                   </>
                 ) : (
                   <>
@@ -248,9 +258,7 @@ export function ScreenView(props: Props) {
                 )}
               </div>
             )}
-            {popover && frame && (
-              <PopoverView popover={popover} frame={frame} onClose={() => setPopover(null)} onPerform={perform} />
-            )}
+            {popover && frame && <PopoverView popover={popover} frame={frame} onClose={() => setPopover(null)} onPerform={perform} />}
           </div>
         </div>
         <DeviceBar autPackage={props.autPackage} busy={busy} onPerform={perform} />
@@ -270,29 +278,33 @@ function PopoverView({
   onClose: () => void;
   onPerform: (request: PerformRequest) => void;
 }) {
-  const { node } = popover;
-  const selector = node.selector!;
+  const { node, target } = popover;
   const b = box(node, frame.width, frame.height) ?? { left: 0, top: 0, width: 0, height: 0 };
   // Below the node, or above it when the node is low on the screen.
   const place = b.top + b.height > 60 ? { bottom: `calc(${100 - b.top}% + 6px)` } : { top: `calc(${b.top + b.height}% + 6px)` };
   const style = { left: `max(4px, min(${b.left}%, calc(100% - 274px)))`, ...place };
   return (
-    <div className="pop" role="dialog" aria-label={popover.kind === "text" ? `Text for ${label(node)}` : `Check ${label(node)}`} style={style}>
+    <div
+      className="pop"
+      role="dialog"
+      aria-label={popover.kind === "text" ? `Text for ${label(node)}` : `Check ${label(node)}`}
+      style={style}
+    >
       <h3>
         {popover.kind === "text" ? "Text for " : "Check "}
-        <code>{describeSelector(selector)}</code>
+        <code>{describeSelector(target.selector)}</code>
       </h3>
       {popover.kind === "text" ? (
         <TextEntry
           node={node}
           autoFocus
           onCancel={onClose}
-          onSubmit={(how, input) => onPerform(how === "set" ? steps.setText(selector, input) : steps.typeText(selector, input))}
+          onSubmit={(how, input) => onPerform(how === "set" ? steps.setText(target, input) : steps.typeText(target, input))}
         />
       ) : (
         <div className="opts">
           {checksFor(node).map((option, i) => (
-            <button key={option.label} type="button" autoFocus={i === 0} onClick={() => onPerform(steps.assertion(selector, option.check))}>
+            <button key={option.label} type="button" autoFocus={i === 0} onClick={() => onPerform(steps.assertion(target, option.check))}>
               {option.label}
             </button>
           ))}

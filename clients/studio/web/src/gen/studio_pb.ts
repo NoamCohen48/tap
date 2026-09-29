@@ -30,7 +30,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file studio.proto.
  */
 export const file_studio: GenFile = /*@__PURE__*/
-  fileDesc("CgxzdHVkaW8ucHJvdG8SDXRhcC5zdHVkaW8udjEiDQoLSW5mb1JlcXVlc3QiMAoMSW5mb1Jlc3BvbnNlEhAKCHJlY29yZGVyGAEgASgJEg4KBmZvcm1hdBgCIAEoCSKcAQoOQXR0YWNoZWREZXZpY2USDgoGc2VyaWFsGAEgASgJEhMKC2F1dF9wYWNrYWdlGAIgASgJEhEKCWFwaV9sZXZlbBgDIAEoBRIUCgxtYW51ZmFjdHVyZXIYBCABKAkSDQoFbW9kZWwYBSABKAkSFQoNZGlzcGxheV93aWR0aBgGIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgHIAEoBSJ1CgdTZXNzaW9uEi0KBmRldmljZRgBIAEoCzIdLnRhcC5zdHVkaW8udjEuQXR0YWNoZWREZXZpY2USEQoJcmVjb3JkaW5nGAIgASgIEg0KBXN0ZXBzGAMgASgFEhkKEXJlY29yZGluZ19wYWNrYWdlGAQgASgJIhMKEUdldFNlc3Npb25SZXF1ZXN0Ij0KEkdldFNlc3Npb25SZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCJvCgxEZXZpY2VDaG9pY2USDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEhAKCGF0dGFjaGVkGAMgASgIEhkKEXF1YXJhbnRpbmVfcmVhc29uGAQgASgJIkMKE0xpc3REZXZpY2VzUmVzcG9uc2USLAoHZGV2aWNlcxgBIAMoCzIbLnRhcC5zdHVkaW8udjEuRGV2aWNlQ2hvaWNlIjQKDUF0dGFjaFJlcXVlc3QSDgoGc2VyaWFsGAEgASgJEhMKC2F1dF9wYWNrYWdlGAIgASgJIjkKDkF0dGFjaFJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iEAoOUmVsZWFzZVJlcXVlc3QiOgoPUmVsZWFzZVJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iDwoNRnJhbWVzUmVxdWVzdCLWAQoORnJhbWVzUmVzcG9uc2USEAoIc2VxdWVuY2UYASABKAMSLAoIdGFrZW5fYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3BuZxgDIAEoDBINCgV3aWR0aBgEIAEoBRIOCgZoZWlnaHQYBSABKAUSEAoIcm90YXRpb24YBiABKAUSEwoLc25hcHNob3RfaWQYByABKAMSIQoFbm9kZXMYCCADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIOCgZtb3ZpbmcYCSABKAgiMgoMQ291bnRSZXF1ZXN0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIh4KDUNvdW50UmVzcG9uc2USDQoFY291bnQYASABKAUiXwoOUGVyZm9ybVJlcXVlc3QSIQoEc3RlcBgBIAEoCzITLnRhcC5zdHVkaW8udjEuU3RlcBIZCgxzZWNyZXRfdmFsdWUYAiABKAlIAIgBAUIPCg1fc2VjcmV0X3ZhbHVlIlcKD1BlcmZvcm1SZXNwb25zZRIhCgRzdGVwGAEgASgLMhMudGFwLnN0dWRpby52MS5TdGVwEhAKCHJlY29yZGVkGAIgASgIEg8KB21lc3NhZ2UYAyABKAkiKAoTU2V0UmVjb3JkaW5nUmVxdWVzdBIRCglyZWNvcmRpbmcYASABKAgiPwoUU2V0UmVjb3JkaW5nUmVzcG9uc2USJwoHc2Vzc2lvbhgBIAEoCzIWLnRhcC5zdHVkaW8udjEuU2Vzc2lvbiIVChNOZXdSZWNvcmRpbmdSZXF1ZXN0Ij8KFE5ld1JlY29yZGluZ1Jlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iFQoTR2V0UmVjb3JkaW5nUmVxdWVzdCJVChRHZXRSZWNvcmRpbmdSZXNwb25zZRIrCglyZWNvcmRpbmcYASABKAsyGC50YXAuc3R1ZGlvLnYxLlJlY29yZGluZxIQCghkb2N1bWVudBgCIAEoCSLXAQoJUmVjb3JkaW5nEg4KBmZvcm1hdBgBIAEoCRIvCgtyZWNvcmRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEAoIcmVjb3JkZXIYAyABKAkSLQoGZGV2aWNlGAQgASgLMh0udGFwLnN0dWRpby52MS5SZWNvcmRlZERldmljZRITCgthdXRfcGFja2FnZRgFIAEoCRIPCgdzZWNyZXRzGAYgAygJEiIKBXN0ZXBzGAcgAygLMhMudGFwLnN0dWRpby52MS5TdGVwIpABCg5SZWNvcmRlZERldmljZRIOCgZzZXJpYWwYASABKAkSFgoJYXBpX2xldmVsGAIgASgFSACIAQESGQoMbWFudWZhY3R1cmVyGAMgASgJSAGIAQESEgoFbW9kZWwYBCABKAlIAogBAUIMCgpfYXBpX2xldmVsQg8KDV9tYW51ZmFjdHVyZXJCCAoGX21vZGVsIogCCgRTdGVwEgoKAmlkGAEgASgJEhEKBG5vdGUYAiABKAlIAYgBARInCgdvdXRjb21lGAMgASgLMhYudGFwLnN0dWRpby52MS5PdXRjb21lEh4KA2FwcBgKIAEoCzIPLnRhcC52MS5BcHBDYWxsSAASKwoGYWN0aW9uGAsgASgLMhkudGFwLnN0dWRpby52MS5BY3Rpb25TdGVwSAASJwoEdHlwZRgMIAEoCzIXLnRhcC5zdHVkaW8udjEuVHlwZVN0ZXBIABIxCglhc3NlcnRpb24YDSABKAsyHC50YXAuc3R1ZGlvLnYxLkFzc2VydGlvblN0ZXBIAEIGCgRraW5kQgcKBV9ub3RlIqUBCgpBY3Rpb25TdGVwEiAKB2NvbW1hbmQYASABKAsyDy50YXAudjEuQ29tbWFuZBIdCgR3YWl0GAIgASgLMg8udGFwLnYxLkNvbW1hbmQSEwoGc2VjcmV0GAMgASgJSACIAQESNgoPc2VsZWN0b3Jfb3JpZ2luGAQgASgOMh0udGFwLnN0dWRpby52MS5TZWxlY3Rvck9yaWdpbkIJCgdfc2VjcmV0IqoBCghUeXBlU3RlcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIOCgR0ZXh0GAIgASgJSAASEAoGc2VjcmV0GAMgASgJSAASFwoPc2tpcF9mb2N1c193YWl0GAQgASgIEjYKD3NlbGVjdG9yX29yaWdpbhgFIAEoDjIdLnRhcC5zdHVkaW8udjEuU2VsZWN0b3JPcmlnaW5CBwoFaW5wdXQiwgEKDUFzc2VydGlvblN0ZXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISKwoJY29uZGl0aW9uGAIgASgOMhgudGFwLnN0dWRpby52MS5Db25kaXRpb24SDgoEdGV4dBgDIAEoCUgAEg8KBWNvdW50GAQgASgFSAASNgoPc2VsZWN0b3Jfb3JpZ2luGAUgASgOMh0udGFwLnN0dWRpby52MS5TZWxlY3Rvck9yaWdpbkIHCgV2YWx1ZSJeCgdPdXRjb21lEhMKC2R1cmF0aW9uX21zGAEgASgFEhwKBWVycm9yGAIgASgLMg0udGFwLnYxLkVycm9yEiAKB2ZhaWx1cmUYAyABKAsyDy50YXAudjEuRmFpbHVyZSqPAQoOU2VsZWN0b3JPcmlnaW4SHwobU0VMRUNUT1JfT1JJR0lOX1VOU1BFQ0lGSUVEEAASHwobU0VMRUNUT1JfT1JJR0lOX1NZTlRIRVNJWkVEEAESHwobU0VMRUNUT1JfT1JJR0lOX0FMVEVSTkFUSVZFEAISGgoWU0VMRUNUT1JfT1JJR0lOX0VESVRFRBADKqcCCglDb25kaXRpb24SGQoVQ09ORElUSU9OX1VOU1BFQ0lGSUVEEAASFQoRQ09ORElUSU9OX1ZJU0lCTEUQARIRCg1DT05ESVRJT05fT05FEAISEgoOQ09ORElUSU9OX0dPTkUQAxIVChFDT05ESVRJT05fRU5BQkxFRBAEEhYKEkNPTkRJVElPTl9ESVNBQkxFRBAFEhUKEUNPTkRJVElPTl9DSEVDS0VEEAYSFwoTQ09ORElUSU9OX1VOQ0hFQ0tFRBAHEhUKEUNPTkRJVElPTl9GT0NVU0VEEAgSGQoVQ09ORElUSU9OX1RFWFRfRVFVQUxTEAkSGwoXQ09ORElUSU9OX1RFWFRfQ09OVEFJTlMQChITCg9DT05ESVRJT05fQ09VTlQQCzKKBwoNU3R1ZGlvU2VydmljZRJECgRJbmZvEhoudGFwLnN0dWRpby52MS5JbmZvUmVxdWVzdBobLnRhcC5zdHVkaW8udjEuSW5mb1Jlc3BvbnNlIgOQAgESVgoKR2V0U2Vzc2lvbhIgLnRhcC5zdHVkaW8udjEuR2V0U2Vzc2lvblJlcXVlc3QaIS50YXAuc3R1ZGlvLnYxLkdldFNlc3Npb25SZXNwb25zZSIDkAIBElkKC0xpc3REZXZpY2VzEiEudGFwLnN0dWRpby52MS5MaXN0RGV2aWNlc1JlcXVlc3QaIi50YXAuc3R1ZGlvLnYxLkxpc3REZXZpY2VzUmVzcG9uc2UiA5ACARJFCgZBdHRhY2gSHC50YXAuc3R1ZGlvLnYxLkF0dGFjaFJlcXVlc3QaHS50YXAuc3R1ZGlvLnYxLkF0dGFjaFJlc3BvbnNlEkgKB1JlbGVhc2USHS50YXAuc3R1ZGlvLnYxLlJlbGVhc2VSZXF1ZXN0Gh4udGFwLnN0dWRpby52MS5SZWxlYXNlUmVzcG9uc2USTAoGRnJhbWVzEhwudGFwLnN0dWRpby52MS5GcmFtZXNSZXF1ZXN0Gh0udGFwLnN0dWRpby52MS5GcmFtZXNSZXNwb25zZSIDkAIBMAESRwoFQ291bnQSGy50YXAuc3R1ZGlvLnYxLkNvdW50UmVxdWVzdBocLnRhcC5zdHVkaW8udjEuQ291bnRSZXNwb25zZSIDkAIBEkgKB1BlcmZvcm0SHS50YXAuc3R1ZGlvLnYxLlBlcmZvcm1SZXF1ZXN0Gh4udGFwLnN0dWRpby52MS5QZXJmb3JtUmVzcG9uc2USVwoMU2V0UmVjb3JkaW5nEiIudGFwLnN0dWRpby52MS5TZXRSZWNvcmRpbmdSZXF1ZXN0GiMudGFwLnN0dWRpby52MS5TZXRSZWNvcmRpbmdSZXNwb25zZRJXCgxOZXdSZWNvcmRpbmcSIi50YXAuc3R1ZGlvLnYxLk5ld1JlY29yZGluZ1JlcXVlc3QaIy50YXAuc3R1ZGlvLnYxLk5ld1JlY29yZGluZ1Jlc3BvbnNlElwKDEdldFJlY29yZGluZxIiLnRhcC5zdHVkaW8udjEuR2V0UmVjb3JkaW5nUmVxdWVzdBojLnRhcC5zdHVkaW8udjEuR2V0UmVjb3JkaW5nUmVzcG9uc2UiA5ACAWIGcHJvdG8z", [file_command, file_device, file_event_log, file_failure, file_google_protobuf_timestamp, file_selector]);
+  fileDesc("CgxzdHVkaW8ucHJvdG8SDXRhcC5zdHVkaW8udjEiDQoLSW5mb1JlcXVlc3QiMAoMSW5mb1Jlc3BvbnNlEhAKCHJlY29yZGVyGAEgASgJEg4KBmZvcm1hdBgCIAEoCSKcAQoOQXR0YWNoZWREZXZpY2USDgoGc2VyaWFsGAEgASgJEhMKC2F1dF9wYWNrYWdlGAIgASgJEhEKCWFwaV9sZXZlbBgDIAEoBRIUCgxtYW51ZmFjdHVyZXIYBCABKAkSDQoFbW9kZWwYBSABKAkSFQoNZGlzcGxheV93aWR0aBgGIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgHIAEoBSJ1CgdTZXNzaW9uEi0KBmRldmljZRgBIAEoCzIdLnRhcC5zdHVkaW8udjEuQXR0YWNoZWREZXZpY2USEQoJcmVjb3JkaW5nGAIgASgIEg0KBXN0ZXBzGAMgASgFEhkKEXJlY29yZGluZ19wYWNrYWdlGAQgASgJIhMKEUdldFNlc3Npb25SZXF1ZXN0Ij0KEkdldFNlc3Npb25SZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCJvCgxEZXZpY2VDaG9pY2USDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEhAKCGF0dGFjaGVkGAMgASgIEhkKEXF1YXJhbnRpbmVfcmVhc29uGAQgASgJIkMKE0xpc3REZXZpY2VzUmVzcG9uc2USLAoHZGV2aWNlcxgBIAMoCzIbLnRhcC5zdHVkaW8udjEuRGV2aWNlQ2hvaWNlIjQKDUF0dGFjaFJlcXVlc3QSDgoGc2VyaWFsGAEgASgJEhMKC2F1dF9wYWNrYWdlGAIgASgJIjkKDkF0dGFjaFJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iEAoOUmVsZWFzZVJlcXVlc3QiOgoPUmVsZWFzZVJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iDwoNRnJhbWVzUmVxdWVzdCLWAQoORnJhbWVzUmVzcG9uc2USEAoIc2VxdWVuY2UYASABKAMSLAoIdGFrZW5fYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3BuZxgDIAEoDBINCgV3aWR0aBgEIAEoBRIOCgZoZWlnaHQYBSABKAUSEAoIcm90YXRpb24YBiABKAUSEwoLc25hcHNob3RfaWQYByABKAMSIQoFbm9kZXMYCCADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIOCgZtb3ZpbmcYCSABKAgiMgoMQ291bnRSZXF1ZXN0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIh4KDUNvdW50UmVzcG9uc2USDQoFY291bnQYASABKAUidwoOUGVyZm9ybVJlcXVlc3QSIQoEc3RlcBgBIAEoCzITLnRhcC5zdHVkaW8udjEuU3RlcBIZCgxzZWNyZXRfdmFsdWUYAiABKAlIAIgBARIWCg5iZWZvcmVfc3RlcF9pZBgDIAEoCUIPCg1fc2VjcmV0X3ZhbHVlIlcKD1BlcmZvcm1SZXNwb25zZRIhCgRzdGVwGAEgASgLMhMudGFwLnN0dWRpby52MS5TdGVwEhAKCHJlY29yZGVkGAIgASgIEg8KB21lc3NhZ2UYAyABKAkiYgoRVXBkYXRlU3RlcFJlcXVlc3QSIQoEc3RlcBgBIAEoCzITLnRhcC5zdHVkaW8udjEuU3RlcBIZCgxzZWNyZXRfdmFsdWUYAiABKAlIAIgBAUIPCg1fc2VjcmV0X3ZhbHVlIloKElVwZGF0ZVN0ZXBSZXNwb25zZRIrCglyZWNvcmRpbmcYASABKAsyGC50YXAuc3R1ZGlvLnYxLlJlY29yZGluZxIXCg9taXNzaW5nX3NlY3JldHMYAiADKAkiJAoRRGVsZXRlU3RlcFJlcXVlc3QSDwoHc3RlcF9pZBgBIAEoCSJaChJEZWxldGVTdGVwUmVzcG9uc2USKwoJcmVjb3JkaW5nGAEgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSFwoPbWlzc2luZ19zZWNyZXRzGAIgAygJIjoKD01vdmVTdGVwUmVxdWVzdBIPCgdzdGVwX2lkGAEgASgJEhYKDmJlZm9yZV9zdGVwX2lkGAIgASgJIlgKEE1vdmVTdGVwUmVzcG9uc2USKwoJcmVjb3JkaW5nGAEgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSFwoPbWlzc2luZ19zZWNyZXRzGAIgAygJIigKFE9wZW5SZWNvcmRpbmdSZXF1ZXN0EhAKCGRvY3VtZW50GAEgASgJIoYBChVPcGVuUmVjb3JkaW5nUmVzcG9uc2USJwoHc2Vzc2lvbhgBIAEoCzIWLnRhcC5zdHVkaW8udjEuU2Vzc2lvbhIrCglyZWNvcmRpbmcYAiABKAsyGC50YXAuc3R1ZGlvLnYxLlJlY29yZGluZxIXCg9taXNzaW5nX3NlY3JldHMYAyADKAkirwEKDVJlcGxheVJlcXVlc3QSFAoMZnJvbV9zdGVwX2lkGAEgASgJEgwKBG9ubHkYAiABKAgSRQoNc2VjcmV0X3ZhbHVlcxgDIAMoCzIuLnRhcC5zdHVkaW8udjEuUmVwbGF5UmVxdWVzdC5TZWNyZXRWYWx1ZXNFbnRyeRozChFTZWNyZXRWYWx1ZXNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIlsKDlJlcGxheVJlc3BvbnNlEg8KB3N0ZXBfaWQYASABKAkSJwoHb3V0Y29tZRgCIAEoCzIWLnRhcC5zdHVkaW8udjEuT3V0Y29tZRIPCgdtZXNzYWdlGAMgASgJIigKE1NldFJlY29yZGluZ1JlcXVlc3QSEQoJcmVjb3JkaW5nGAEgASgIIj8KFFNldFJlY29yZGluZ1Jlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iFQoTTmV3UmVjb3JkaW5nUmVxdWVzdCI/ChROZXdSZWNvcmRpbmdSZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhUKE0dldFJlY29yZGluZ1JlcXVlc3QibgoUR2V0UmVjb3JkaW5nUmVzcG9uc2USKwoJcmVjb3JkaW5nGAEgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSEAoIZG9jdW1lbnQYAiABKAkSFwoPbWlzc2luZ19zZWNyZXRzGAMgAygJItcBCglSZWNvcmRpbmcSDgoGZm9ybWF0GAEgASgJEi8KC3JlY29yZGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIQCghyZWNvcmRlchgDIAEoCRItCgZkZXZpY2UYBCABKAsyHS50YXAuc3R1ZGlvLnYxLlJlY29yZGVkRGV2aWNlEhMKC2F1dF9wYWNrYWdlGAUgASgJEg8KB3NlY3JldHMYBiADKAkSIgoFc3RlcHMYByADKAsyEy50YXAuc3R1ZGlvLnYxLlN0ZXAikAEKDlJlY29yZGVkRGV2aWNlEg4KBnNlcmlhbBgBIAEoCRIWCglhcGlfbGV2ZWwYAiABKAVIAIgBARIZCgxtYW51ZmFjdHVyZXIYAyABKAlIAYgBARISCgVtb2RlbBgEIAEoCUgCiAEBQgwKCl9hcGlfbGV2ZWxCDwoNX21hbnVmYWN0dXJlckIICgZfbW9kZWwiiAIKBFN0ZXASCgoCaWQYASABKAkSEQoEbm90ZRgCIAEoCUgBiAEBEicKB291dGNvbWUYAyABKAsyFi50YXAuc3R1ZGlvLnYxLk91dGNvbWUSHgoDYXBwGAogASgLMg8udGFwLnYxLkFwcENhbGxIABIrCgZhY3Rpb24YCyABKAsyGS50YXAuc3R1ZGlvLnYxLkFjdGlvblN0ZXBIABInCgR0eXBlGAwgASgLMhcudGFwLnN0dWRpby52MS5UeXBlU3RlcEgAEjEKCWFzc2VydGlvbhgNIAEoCzIcLnRhcC5zdHVkaW8udjEuQXNzZXJ0aW9uU3RlcEgAQgYKBGtpbmRCBwoFX25vdGUipQEKCkFjdGlvblN0ZXASIAoHY29tbWFuZBgBIAEoCzIPLnRhcC52MS5Db21tYW5kEh0KBHdhaXQYAiABKAsyDy50YXAudjEuQ29tbWFuZBITCgZzZWNyZXQYAyABKAlIAIgBARI2Cg9zZWxlY3Rvcl9vcmlnaW4YBCABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgkKB19zZWNyZXQiqgEKCFR5cGVTdGVwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEg4KBHRleHQYAiABKAlIABIQCgZzZWNyZXQYAyABKAlIABIXCg9za2lwX2ZvY3VzX3dhaXQYBCABKAgSNgoPc2VsZWN0b3Jfb3JpZ2luGAUgASgOMh0udGFwLnN0dWRpby52MS5TZWxlY3Rvck9yaWdpbkIHCgVpbnB1dCLCAQoNQXNzZXJ0aW9uU3RlcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIrCgljb25kaXRpb24YAiABKA4yGC50YXAuc3R1ZGlvLnYxLkNvbmRpdGlvbhIOCgR0ZXh0GAMgASgJSAASDwoFY291bnQYBCABKAVIABI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBXZhbHVlIl4KB091dGNvbWUSEwoLZHVyYXRpb25fbXMYASABKAUSHAoFZXJyb3IYAiABKAsyDS50YXAudjEuRXJyb3ISIAoHZmFpbHVyZRgDIAEoCzIPLnRhcC52MS5GYWlsdXJlKo8BCg5TZWxlY3Rvck9yaWdpbhIfChtTRUxFQ1RPUl9PUklHSU5fVU5TUEVDSUZJRUQQABIfChtTRUxFQ1RPUl9PUklHSU5fU1lOVEhFU0laRUQQARIfChtTRUxFQ1RPUl9PUklHSU5fQUxURVJOQVRJVkUQAhIaChZTRUxFQ1RPUl9PUklHSU5fRURJVEVEEAMqpwIKCUNvbmRpdGlvbhIZChVDT05ESVRJT05fVU5TUEVDSUZJRUQQABIVChFDT05ESVRJT05fVklTSUJMRRABEhEKDUNPTkRJVElPTl9PTkUQAhISCg5DT05ESVRJT05fR09ORRADEhUKEUNPTkRJVElPTl9FTkFCTEVEEAQSFgoSQ09ORElUSU9OX0RJU0FCTEVEEAUSFQoRQ09ORElUSU9OX0NIRUNLRUQQBhIXChNDT05ESVRJT05fVU5DSEVDS0VEEAcSFQoRQ09ORElUSU9OX0ZPQ1VTRUQQCBIZChVDT05ESVRJT05fVEVYVF9FUVVBTFMQCRIbChdDT05ESVRJT05fVEVYVF9DT05UQUlOUxAKEhMKD0NPTkRJVElPTl9DT1VOVBALMqIKCg1TdHVkaW9TZXJ2aWNlEkQKBEluZm8SGi50YXAuc3R1ZGlvLnYxLkluZm9SZXF1ZXN0GhsudGFwLnN0dWRpby52MS5JbmZvUmVzcG9uc2UiA5ACARJWCgpHZXRTZXNzaW9uEiAudGFwLnN0dWRpby52MS5HZXRTZXNzaW9uUmVxdWVzdBohLnRhcC5zdHVkaW8udjEuR2V0U2Vzc2lvblJlc3BvbnNlIgOQAgESWQoLTGlzdERldmljZXMSIS50YXAuc3R1ZGlvLnYxLkxpc3REZXZpY2VzUmVxdWVzdBoiLnRhcC5zdHVkaW8udjEuTGlzdERldmljZXNSZXNwb25zZSIDkAIBEkUKBkF0dGFjaBIcLnRhcC5zdHVkaW8udjEuQXR0YWNoUmVxdWVzdBodLnRhcC5zdHVkaW8udjEuQXR0YWNoUmVzcG9uc2USSAoHUmVsZWFzZRIdLnRhcC5zdHVkaW8udjEuUmVsZWFzZVJlcXVlc3QaHi50YXAuc3R1ZGlvLnYxLlJlbGVhc2VSZXNwb25zZRJMCgZGcmFtZXMSHC50YXAuc3R1ZGlvLnYxLkZyYW1lc1JlcXVlc3QaHS50YXAuc3R1ZGlvLnYxLkZyYW1lc1Jlc3BvbnNlIgOQAgEwARJHCgVDb3VudBIbLnRhcC5zdHVkaW8udjEuQ291bnRSZXF1ZXN0GhwudGFwLnN0dWRpby52MS5Db3VudFJlc3BvbnNlIgOQAgESSAoHUGVyZm9ybRIdLnRhcC5zdHVkaW8udjEuUGVyZm9ybVJlcXVlc3QaHi50YXAuc3R1ZGlvLnYxLlBlcmZvcm1SZXNwb25zZRJRCgpVcGRhdGVTdGVwEiAudGFwLnN0dWRpby52MS5VcGRhdGVTdGVwUmVxdWVzdBohLnRhcC5zdHVkaW8udjEuVXBkYXRlU3RlcFJlc3BvbnNlElEKCkRlbGV0ZVN0ZXASIC50YXAuc3R1ZGlvLnYxLkRlbGV0ZVN0ZXBSZXF1ZXN0GiEudGFwLnN0dWRpby52MS5EZWxldGVTdGVwUmVzcG9uc2USSwoITW92ZVN0ZXASHi50YXAuc3R1ZGlvLnYxLk1vdmVTdGVwUmVxdWVzdBofLnRhcC5zdHVkaW8udjEuTW92ZVN0ZXBSZXNwb25zZRJaCg1PcGVuUmVjb3JkaW5nEiMudGFwLnN0dWRpby52MS5PcGVuUmVjb3JkaW5nUmVxdWVzdBokLnRhcC5zdHVkaW8udjEuT3BlblJlY29yZGluZ1Jlc3BvbnNlEkcKBlJlcGxheRIcLnRhcC5zdHVkaW8udjEuUmVwbGF5UmVxdWVzdBodLnRhcC5zdHVkaW8udjEuUmVwbGF5UmVzcG9uc2UwARJXCgxTZXRSZWNvcmRpbmcSIi50YXAuc3R1ZGlvLnYxLlNldFJlY29yZGluZ1JlcXVlc3QaIy50YXAuc3R1ZGlvLnYxLlNldFJlY29yZGluZ1Jlc3BvbnNlElcKDE5ld1JlY29yZGluZxIiLnRhcC5zdHVkaW8udjEuTmV3UmVjb3JkaW5nUmVxdWVzdBojLnRhcC5zdHVkaW8udjEuTmV3UmVjb3JkaW5nUmVzcG9uc2USXAoMR2V0UmVjb3JkaW5nEiIudGFwLnN0dWRpby52MS5HZXRSZWNvcmRpbmdSZXF1ZXN0GiMudGFwLnN0dWRpby52MS5HZXRSZWNvcmRpbmdSZXNwb25zZSIDkAIBYgZwcm90bzM", [file_command, file_device, file_event_log, file_failure, file_google_protobuf_timestamp, file_selector]);
 
 /**
  * @generated from message tap.studio.v1.InfoRequest
@@ -468,6 +468,14 @@ export type PerformRequest = Message<"tap.studio.v1.PerformRequest"> & {
    * @generated from field: optional string secret_value = 2;
    */
   secretValue?: string | undefined;
+
+  /**
+   * Where a recorded step goes: before this step; empty for the end. NOT_FOUND (and nothing runs)
+   * for an unknown id.
+   *
+   * @generated from field: string before_step_id = 3;
+   */
+  beforeStepId: string;
 };
 
 /**
@@ -489,7 +497,7 @@ export type PerformResponse = Message<"tap.studio.v1.PerformResponse"> & {
   step?: Step | undefined;
 
   /**
-   * Appended to the recording: recording is on and the step passed.
+   * Added to the recording: recording is on and the step passed.
    *
    * @generated from field: bool recorded = 2;
    */
@@ -511,6 +519,255 @@ export const PerformResponseSchema: GenMessage<PerformResponse> = /*@__PURE__*/
   messageDesc(file_studio, 18);
 
 /**
+ * @generated from message tap.studio.v1.UpdateStepRequest
+ */
+export type UpdateStepRequest = Message<"tap.studio.v1.UpdateStepRequest"> & {
+  /**
+   * The step with the same id is replaced. Checked as Perform's step, except that an action's
+   * `wait` is ignored and inferred again from its selector and the id is kept. The outcome is kept
+   * when only the note changed and cleared otherwise: the step as edited has not run.
+   *
+   * @generated from field: tap.studio.v1.Step step = 1;
+   */
+  step?: Step | undefined;
+
+  /**
+   * The value of the step's secret, remembered for this process. It may be left out: Replay then
+   * asks for it (`missing_secrets`).
+   *
+   * @generated from field: optional string secret_value = 2;
+   */
+  secretValue?: string | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.UpdateStepRequest.
+ * Use `create(UpdateStepRequestSchema)` to create a new message.
+ */
+export const UpdateStepRequestSchema: GenMessage<UpdateStepRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 19);
+
+/**
+ * @generated from message tap.studio.v1.UpdateStepResponse
+ */
+export type UpdateStepResponse = Message<"tap.studio.v1.UpdateStepResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Recording recording = 1;
+   */
+  recording?: Recording | undefined;
+
+  /**
+   * @generated from field: repeated string missing_secrets = 2;
+   */
+  missingSecrets: string[];
+};
+
+/**
+ * Describes the message tap.studio.v1.UpdateStepResponse.
+ * Use `create(UpdateStepResponseSchema)` to create a new message.
+ */
+export const UpdateStepResponseSchema: GenMessage<UpdateStepResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 20);
+
+/**
+ * @generated from message tap.studio.v1.DeleteStepRequest
+ */
+export type DeleteStepRequest = Message<"tap.studio.v1.DeleteStepRequest"> & {
+  /**
+   * @generated from field: string step_id = 1;
+   */
+  stepId: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.DeleteStepRequest.
+ * Use `create(DeleteStepRequestSchema)` to create a new message.
+ */
+export const DeleteStepRequestSchema: GenMessage<DeleteStepRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 21);
+
+/**
+ * @generated from message tap.studio.v1.DeleteStepResponse
+ */
+export type DeleteStepResponse = Message<"tap.studio.v1.DeleteStepResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Recording recording = 1;
+   */
+  recording?: Recording | undefined;
+
+  /**
+   * @generated from field: repeated string missing_secrets = 2;
+   */
+  missingSecrets: string[];
+};
+
+/**
+ * Describes the message tap.studio.v1.DeleteStepResponse.
+ * Use `create(DeleteStepResponseSchema)` to create a new message.
+ */
+export const DeleteStepResponseSchema: GenMessage<DeleteStepResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 22);
+
+/**
+ * @generated from message tap.studio.v1.MoveStepRequest
+ */
+export type MoveStepRequest = Message<"tap.studio.v1.MoveStepRequest"> & {
+  /**
+   * @generated from field: string step_id = 1;
+   */
+  stepId: string;
+
+  /**
+   * Moves it before this step; empty for the end.
+   *
+   * @generated from field: string before_step_id = 2;
+   */
+  beforeStepId: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.MoveStepRequest.
+ * Use `create(MoveStepRequestSchema)` to create a new message.
+ */
+export const MoveStepRequestSchema: GenMessage<MoveStepRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 23);
+
+/**
+ * @generated from message tap.studio.v1.MoveStepResponse
+ */
+export type MoveStepResponse = Message<"tap.studio.v1.MoveStepResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Recording recording = 1;
+   */
+  recording?: Recording | undefined;
+
+  /**
+   * @generated from field: repeated string missing_secrets = 2;
+   */
+  missingSecrets: string[];
+};
+
+/**
+ * Describes the message tap.studio.v1.MoveStepResponse.
+ * Use `create(MoveStepResponseSchema)` to create a new message.
+ */
+export const MoveStepResponseSchema: GenMessage<MoveStepResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 24);
+
+/**
+ * @generated from message tap.studio.v1.OpenRecordingRequest
+ */
+export type OpenRecordingRequest = Message<"tap.studio.v1.OpenRecordingRequest"> & {
+  /**
+   * A tap-recording/1 file. Its secrets have no values until UpdateStep or Replay gives them.
+   *
+   * @generated from field: string document = 1;
+   */
+  document: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.OpenRecordingRequest.
+ * Use `create(OpenRecordingRequestSchema)` to create a new message.
+ */
+export const OpenRecordingRequestSchema: GenMessage<OpenRecordingRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 25);
+
+/**
+ * @generated from message tap.studio.v1.OpenRecordingResponse
+ */
+export type OpenRecordingResponse = Message<"tap.studio.v1.OpenRecordingResponse"> & {
+  /**
+   * @generated from field: tap.studio.v1.Session session = 1;
+   */
+  session?: Session | undefined;
+
+  /**
+   * @generated from field: tap.studio.v1.Recording recording = 2;
+   */
+  recording?: Recording | undefined;
+
+  /**
+   * @generated from field: repeated string missing_secrets = 3;
+   */
+  missingSecrets: string[];
+};
+
+/**
+ * Describes the message tap.studio.v1.OpenRecordingResponse.
+ * Use `create(OpenRecordingResponseSchema)` to create a new message.
+ */
+export const OpenRecordingResponseSchema: GenMessage<OpenRecordingResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 26);
+
+/**
+ * @generated from message tap.studio.v1.ReplayRequest
+ */
+export type ReplayRequest = Message<"tap.studio.v1.ReplayRequest"> & {
+  /**
+   * The first step to run; empty for the first of the recording.
+   *
+   * @generated from field: string from_step_id = 1;
+   */
+  fromStepId: string;
+
+  /**
+   * Run only that step.
+   *
+   * @generated from field: bool only = 2;
+   */
+  only: boolean;
+
+  /**
+   * Values for secrets, remembered for this process as UpdateStep's.
+   *
+   * @generated from field: map<string, string> secret_values = 3;
+   */
+  secretValues: { [key: string]: string };
+};
+
+/**
+ * Describes the message tap.studio.v1.ReplayRequest.
+ * Use `create(ReplayRequestSchema)` to create a new message.
+ */
+export const ReplayRequestSchema: GenMessage<ReplayRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 27);
+
+/**
+ * Two per step: when it starts (no outcome), and when it ends (its outcome). The stream ends after
+ * the last step or the first failure.
+ *
+ * @generated from message tap.studio.v1.ReplayResponse
+ */
+export type ReplayResponse = Message<"tap.studio.v1.ReplayResponse"> & {
+  /**
+   * @generated from field: string step_id = 1;
+   */
+  stepId: string;
+
+  /**
+   * Absent while the step runs.
+   *
+   * @generated from field: tap.studio.v1.Outcome outcome = 2;
+   */
+  outcome?: Outcome | undefined;
+
+  /**
+   * Why it failed, for a person; empty when it passed or runs.
+   *
+   * @generated from field: string message = 3;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message tap.studio.v1.ReplayResponse.
+ * Use `create(ReplayResponseSchema)` to create a new message.
+ */
+export const ReplayResponseSchema: GenMessage<ReplayResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 28);
+
+/**
  * @generated from message tap.studio.v1.SetRecordingRequest
  */
 export type SetRecordingRequest = Message<"tap.studio.v1.SetRecordingRequest"> & {
@@ -525,7 +782,7 @@ export type SetRecordingRequest = Message<"tap.studio.v1.SetRecordingRequest"> &
  * Use `create(SetRecordingRequestSchema)` to create a new message.
  */
 export const SetRecordingRequestSchema: GenMessage<SetRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 19);
+  messageDesc(file_studio, 29);
 
 /**
  * @generated from message tap.studio.v1.SetRecordingResponse
@@ -542,7 +799,7 @@ export type SetRecordingResponse = Message<"tap.studio.v1.SetRecordingResponse">
  * Use `create(SetRecordingResponseSchema)` to create a new message.
  */
 export const SetRecordingResponseSchema: GenMessage<SetRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 20);
+  messageDesc(file_studio, 30);
 
 /**
  * @generated from message tap.studio.v1.NewRecordingRequest
@@ -555,7 +812,7 @@ export type NewRecordingRequest = Message<"tap.studio.v1.NewRecordingRequest"> &
  * Use `create(NewRecordingRequestSchema)` to create a new message.
  */
 export const NewRecordingRequestSchema: GenMessage<NewRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 21);
+  messageDesc(file_studio, 31);
 
 /**
  * @generated from message tap.studio.v1.NewRecordingResponse
@@ -572,7 +829,7 @@ export type NewRecordingResponse = Message<"tap.studio.v1.NewRecordingResponse">
  * Use `create(NewRecordingResponseSchema)` to create a new message.
  */
 export const NewRecordingResponseSchema: GenMessage<NewRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 22);
+  messageDesc(file_studio, 32);
 
 /**
  * @generated from message tap.studio.v1.GetRecordingRequest
@@ -585,7 +842,7 @@ export type GetRecordingRequest = Message<"tap.studio.v1.GetRecordingRequest"> &
  * Use `create(GetRecordingRequestSchema)` to create a new message.
  */
 export const GetRecordingRequestSchema: GenMessage<GetRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 23);
+  messageDesc(file_studio, 33);
 
 /**
  * @generated from message tap.studio.v1.GetRecordingResponse
@@ -603,6 +860,14 @@ export type GetRecordingResponse = Message<"tap.studio.v1.GetRecordingResponse">
    * @generated from field: string document = 2;
    */
   document: string;
+
+  /**
+   * Secrets the steps use whose values the studio does not have (an opened recording): Replay
+   * needs them.
+   *
+   * @generated from field: repeated string missing_secrets = 3;
+   */
+  missingSecrets: string[];
 };
 
 /**
@@ -610,7 +875,7 @@ export type GetRecordingResponse = Message<"tap.studio.v1.GetRecordingResponse">
  * Use `create(GetRecordingResponseSchema)` to create a new message.
  */
 export const GetRecordingResponseSchema: GenMessage<GetRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 24);
+  messageDesc(file_studio, 34);
 
 /**
  * @generated from message tap.studio.v1.Recording
@@ -669,7 +934,7 @@ export type Recording = Message<"tap.studio.v1.Recording"> & {
  * Use `create(RecordingSchema)` to create a new message.
  */
 export const RecordingSchema: GenMessage<Recording> = /*@__PURE__*/
-  messageDesc(file_studio, 25);
+  messageDesc(file_studio, 35);
 
 /**
  * @generated from message tap.studio.v1.RecordedDevice
@@ -701,7 +966,7 @@ export type RecordedDevice = Message<"tap.studio.v1.RecordedDevice"> & {
  * Use `create(RecordedDeviceSchema)` to create a new message.
  */
 export const RecordedDeviceSchema: GenMessage<RecordedDevice> = /*@__PURE__*/
-  messageDesc(file_studio, 26);
+  messageDesc(file_studio, 36);
 
 /**
  * @generated from message tap.studio.v1.Step
@@ -766,7 +1031,7 @@ export type Step = Message<"tap.studio.v1.Step"> & {
  * Use `create(StepSchema)` to create a new message.
  */
 export const StepSchema: GenMessage<Step> = /*@__PURE__*/
-  messageDesc(file_studio, 27);
+  messageDesc(file_studio, 37);
 
 /**
  * One command; a command with a selector is preceded by the wait that proved it could run.
@@ -809,7 +1074,7 @@ export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
  * Use `create(ActionStepSchema)` to create a new message.
  */
 export const ActionStepSchema: GenMessage<ActionStep> = /*@__PURE__*/
-  messageDesc(file_studio, 28);
+  messageDesc(file_studio, 38);
 
 /**
  * The element typeText flow, three commands: tap `selector`, await it focused (unless
@@ -864,7 +1129,7 @@ export type TypeStep = Message<"tap.studio.v1.TypeStep"> & {
  * Use `create(TypeStepSchema)` to create a new message.
  */
 export const TypeStepSchema: GenMessage<TypeStep> = /*@__PURE__*/
-  messageDesc(file_studio, 29);
+  messageDesc(file_studio, 39);
 
 /**
  * A check: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
@@ -919,7 +1184,7 @@ export type AssertionStep = Message<"tap.studio.v1.AssertionStep"> & {
  * Use `create(AssertionStepSchema)` to create a new message.
  */
 export const AssertionStepSchema: GenMessage<AssertionStep> = /*@__PURE__*/
-  messageDesc(file_studio, 30);
+  messageDesc(file_studio, 40);
 
 /**
  * At most one of `error` and `failure`; neither means the step passed.
@@ -952,7 +1217,7 @@ export type Outcome = Message<"tap.studio.v1.Outcome"> & {
  * Use `create(OutcomeSchema)` to create a new message.
  */
 export const OutcomeSchema: GenMessage<Outcome> = /*@__PURE__*/
-  messageDesc(file_studio, 31);
+  messageDesc(file_studio, 41);
 
 /**
  * Where a step's selector came from.
@@ -1150,7 +1415,7 @@ export const StudioService: GenService<{
     output: typeof CountResponseSchema;
   },
   /**
-   * Runs one step on the attached device and, while recording, appends it when it passed.
+   * Runs one step on the attached device and, while recording, adds it when it passed.
    *
    * @generated from rpc tap.studio.v1.StudioService.Perform
    */
@@ -1158,6 +1423,61 @@ export const StudioService: GenService<{
     methodKind: "unary";
     input: typeof PerformRequestSchema;
     output: typeof PerformResponseSchema;
+  },
+  /**
+   * Replaces a recorded step without running it. NOT_FOUND for an unknown id.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.UpdateStep
+   */
+  updateStep: {
+    methodKind: "unary";
+    input: typeof UpdateStepRequestSchema;
+    output: typeof UpdateStepResponseSchema;
+  },
+  /**
+   * Removes a recorded step.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.DeleteStep
+   */
+  deleteStep: {
+    methodKind: "unary";
+    input: typeof DeleteStepRequestSchema;
+    output: typeof DeleteStepResponseSchema;
+  },
+  /**
+   * Moves a recorded step.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.MoveStep
+   */
+  moveStep: {
+    methodKind: "unary";
+    input: typeof MoveStepRequestSchema;
+    output: typeof MoveStepResponseSchema;
+  },
+  /**
+   * Replaces the recording with a tap-recording/1 document to continue or replay it.
+   * INVALID_ARGUMENT lists every rule the document breaks.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.OpenRecording
+   */
+  openRecording: {
+    methodKind: "unary";
+    input: typeof OpenRecordingRequestSchema;
+    output: typeof OpenRecordingResponseSchema;
+  },
+  /**
+   * Runs recorded steps in order on the attached device, stopping after the first that fails; each
+   * step's outcome is kept in the recording. Cancelling the call stops after the running step
+   * (a sent command is never interrupted). While it runs, Perform, the step edits, OpenRecording
+   * and NewRecording are FAILED_PRECONDITION, and so is a replay for another app than the one
+   * attached, or with a secret whose value the studio does not have.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.Replay
+   */
+  replay: {
+    methodKind: "server_streaming";
+    input: typeof ReplayRequestSchema;
+    output: typeof ReplayResponseSchema;
   },
   /**
    * Record or pause: paused, Perform still runs steps but records nothing.
