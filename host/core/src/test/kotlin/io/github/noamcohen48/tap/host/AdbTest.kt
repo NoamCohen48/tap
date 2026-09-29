@@ -534,11 +534,19 @@ class AdbTest {
             }
             assertEquals(1, starts.get(), "gated calls must not start new processes")
             // Release the residual: the gate clears, the old executor terminates, reuse succeeds.
+            // The released drain completes asynchronously, so the first calls after release may
+            // still be gated: poll until one is admitted.
             blocked.releaseStdout()
             blocked.forceExit()
             val reused =
                 withTimeout(10_000) {
-                    adb.devices(timeoutMs = 5_000)
+                    var attempt = runCatching { adb.devices(timeoutMs = 5_000) }
+                    while (attempt.isFailure) {
+                        check(attempt.exceptionOrNull() is AdbRunnerGatedException)
+                        delay(10)
+                        attempt = runCatching { adb.devices(timeoutMs = 5_000) }
+                    }
+                    attempt.getOrThrow()
                 }
             assertEquals(emptyList(), reused)
             assertEquals(2, starts.get())
