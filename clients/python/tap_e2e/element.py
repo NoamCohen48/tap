@@ -33,8 +33,10 @@ class Element:
     """
 
     def __init__(self, device: Device, selector: Selector):
-        self.device = device
-        self.selector = selector
+        self.device: Device = device
+        """The device this element is looked up on."""
+        self.selector: Selector = selector
+        """The selector resolved again by every action."""
 
     def _run(self, timeout: float | None, **op) -> pb.CommandResult:
         return self.device._execute_or_raise(timeout, self.selector, **op)
@@ -221,9 +223,12 @@ class ElementWait:
     in a single RPC; property waits poll snapshots from the host."""
 
     def __init__(self, device: Device, selector: Selector, timeout: float):
-        self.device = device
-        self.selector = selector
-        self.timeout = timeout
+        self.device: Device = device
+        """The device the wait runs on."""
+        self.selector: Selector = selector
+        """The selector being waited for."""
+        self.timeout: float = timeout
+        """How long each wait may take, in seconds."""
 
     def visible(self) -> Element:
         """Wait until at least one node matches; polled on the device in one RPC. A timeout's
