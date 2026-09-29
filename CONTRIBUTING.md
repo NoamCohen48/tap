@@ -41,8 +41,8 @@ issues privately as described in [SECURITY.md](SECURITY.md), not in a public iss
   reference is generated from them. Update the guide in `docs/` with any user-visible change,
   and add a line under `## Unreleased` in `CHANGELOG.md`.
 - **Borrowed code.** Tap learns from Appium UiAutomator2, Maestro, uiautomator2 and AndroidX.
-  Anything copied or closely adapted must be recorded in `THIRD_PARTY_NOTICES.md` with the
-  repository, commit, paths, license and what was changed.
+  Take ideas freely; if you copy code, keep its license header and a comment naming the
+  source repository and commit.
 
 ## Pull requests
 

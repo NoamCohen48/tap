@@ -84,8 +84,8 @@ Rules when doing so:
   persistent element handles, WebDriver surface, YAML flows, retry-by-default) are
   deliberately DO NOT COPY.
 - Adapt narrowly, behind a regression test for the affected API/device family.
-- Any copied or substantially adapted code must be recorded in `THIRD_PARTY_NOTICES.md`
-  with repo, commit, source/destination path, license, and modification summary.
+- Copied code (none so far) keeps its license header and a comment naming the source repo and
+  commit.
   Independently written protocol/session/security code stays separate from borrowed code.
 
 ## Invariants that must not regress

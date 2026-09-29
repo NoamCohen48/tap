@@ -79,7 +79,6 @@ tap/
 +-- gradle.properties, gradlew*, gradle/wrapper/
 +-- CLAUDE.md                    working rules for agents/contributors
 +-- README.md                    overview and quick start (build/test: CONTRIBUTING.md, docs/development/)
-+-- THIRD_PARTY_NOTICES.md       copied/adapted upstream code (currently none)
 +-- .docs/                       design, plan, contract, progress, audits (internal)
 +-- archive/                     code removed from the product but kept for reference; never on a build path (pool-roles/: the server-side role/constraint matcher; pool-leases/: the Acquire/Release lease table)
 +-- docs/, mkdocs.yml            public documentation site: guide/ + reference/ (Kotlin via Dokka,
