@@ -147,7 +147,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | DR-3 | H | Fixed | Text verification re-resolves the selector after the edit → false `TEXT_MISMATCH`/`FOCUS_TIMEOUT`. Resolved by the decision above | M |
 | DR-5 | H | Backlog | `NodePredicate` reads node info once per node, but traversal still walks `UiObject2` (unverified cost). TODO plan in decisions above | M–L |
 | DR-4 | M | Fixed | Password fields can never match expected text. Resolved by the decision above | S |
-| DR-6 | M | Fixed | Verification removed; key-up events carry the press's `downTime` (`KeyInputTest`) | S |
+| DR-6 | M | Fixed | Verification removed; key-up events carry the press's `downTime` (`KeyInputTest`). BACK/HOME are plain `pressKeyCode` too (2026-09-29): `UiDevice.pressBack`/`pressHome` waited for idle and returned false without a content-change event within 1 s, so the CI emulator got `ACTION_REJECTED` for a Back that happened | S |
 | DR-10 | M | Fixed | Snapshot text is raw like the selectors, plus `showing_hint` (`InputTest`, `MainScreenTest`) | S |
 | DR-13 | M | Deferred | Signature permission defined only in sync-sdk; install order can drop the grant (unverified) | S |
 | DR-14 | M | Deferred | One provider timeout poisons sync for the session; call thread leaks; `SecurityException` in the generic catch | S |

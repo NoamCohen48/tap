@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 
 @TapTest
 class LifecycleTest {
@@ -32,7 +31,8 @@ class LifecycleTest {
             app.clearData()
             assertFalse(app.isRunning())
             app.launch(".MainActivity")
-            assertTrue(device.element(res("view_button")).exists())
+            // launch does not wait for the window; the test does.
+            device.await(res("view_button")).visible()
 
             val info = device.info()
             assertEquals(Fixture.PACKAGE, info.currentPackage)

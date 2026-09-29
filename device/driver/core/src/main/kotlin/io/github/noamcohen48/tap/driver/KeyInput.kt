@@ -1,29 +1,6 @@
 package io.github.noamcohen48.tap.driver
 
 import android.view.KeyEvent
-import io.github.noamcohen48.tap.protocol.KEYCODE_BACK
-import io.github.noamcohen48.tap.protocol.KEYCODE_HOME
-
-/**
- * How `press_key` injects a key code: BACK and HOME go through `UiDevice`'s dedicated calls
- * (they handle the system navigation quirks); everything else is a plain key code press.
- */
-internal sealed interface KeyPress {
-    data object Back : KeyPress
-
-    data object Home : KeyPress
-
-    data class Code(val keyCode: Int) : KeyPress
-
-    companion object {
-        fun of(keyCode: Int): KeyPress =
-            when (keyCode) {
-                KEYCODE_BACK -> Back
-                KEYCODE_HOME -> Home
-                else -> Code(keyCode)
-            }
-    }
-}
 
 /**
  * Keys `type_text` has pressed but not yet released, with the time each went down. Whatever

@@ -60,7 +60,13 @@ internal class GestureCommands(
         Unit
     }
 
-    /** Key injection is a mutation: it passes the gate and is never replayed. */
+    /**
+     * Key injection is a mutation: it passes the gate and is never replayed. Every key, BACK and
+     * HOME included, is a plain key code press: `UiDevice.pressBack`/`pressHome` wait for idle
+     * first and report false when no window-content event follows within a second, which is
+     * effect verification (a slow device got `ACTION_REJECTED` for a Back that happened). The
+     * result is only whether the key events were injected; the test waits for the effect.
+     */
     fun pressKey(
         context: CommandContext,
         command: PressKey,
@@ -68,12 +74,7 @@ internal class GestureCommands(
         val keyCode = command.keyCode
         context.checkpoint()
         context.markMutationStarted()
-        val injected =
-            when (val press = KeyPress.of(keyCode)) {
-                KeyPress.Back -> device.pressBack()
-                KeyPress.Home -> device.pressHome()
-                is KeyPress.Code -> device.pressKeyCode(press.keyCode)
-            }
+        val injected = device.pressKeyCode(keyCode)
         if (!injected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Key $keyCode was not injected")
     }
 
