@@ -445,7 +445,9 @@ daemon
    kept the loop at full rate; and the frame status line wrapped differently for *changing…*
    than for *settled*, so the screen jumped under the pointer. A frame is now `moving` only when
    nodes were added, removed or moved (bounds compared by ref), which is what can put the
-   overlay out of place; the status line is one line of fixed height.
+   overlay out of place; the status line has a fixed height. On wide screens (three columns)
+   the page is now exactly the window and never scrolls: the phone scales to the free height of
+   its column and the inspector and steps scroll inside their panels.
 
 ## Verification
 

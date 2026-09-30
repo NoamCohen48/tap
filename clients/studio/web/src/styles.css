@@ -226,6 +226,60 @@ code,
   grid-template-columns: minmax(300px, 420px) minmax(320px, 1fr) minmax(300px, 400px);
   align-items: start;
 }
+/* Three columns: the page is exactly the window and never scrolls. The phone is as large as
+   the screen column's free height allows (a size container, so its width follows from the
+   height and the frame's aspect ratio, --ar); the inspector and the steps scroll inside
+   their panels. Narrower layouts stack panels and scroll the page as usual. */
+@media (min-width: 1181px) {
+  .app:has(> .cols) {
+    height: 100dvh;
+    box-sizing: border-box;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .cols {
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .cols > .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .cols > .panel > .panel-b {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  .cols .tree {
+    max-height: none;
+    overflow: visible;
+  }
+  .cols .steps {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    align-content: start;
+  }
+  .device-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .phone-fit {
+    height: 100%;
+    container-type: size;
+    display: grid;
+    justify-items: center;
+    align-items: start;
+  }
+  /* 16px: the phone's padding around the screen. (Scoped to win over the base .phone rule,
+     which comes later in the file.) */
+  .phone-fit > .phone {
+    width: min(100cqw, (100cqh - 16px) * var(--ar) + 16px);
+  }
+}
 @media (max-width: 1180px) {
   .cols {
     grid-template-columns: minmax(280px, 400px) 1fr;
@@ -327,6 +381,10 @@ code,
   white-space: nowrap;
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
+}
+.phone-fit {
+  width: 100%;
+  min-height: 0;
 }
 .phone {
   position: relative;

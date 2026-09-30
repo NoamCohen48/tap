@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { describeSelector } from "./describe";
 import type { Frame } from "./frames";
 import { Direction } from "./gen/command_pb";
@@ -207,56 +207,60 @@ export function ScreenView(props: Props) {
             ))}
           </span>
         </div>
-        <div className="phone">
-          <div className={`screen mode-${mode}${frame?.moving ? " provisional" : ""}`} ref={screen}>
-            {frame ? (
-              <img src={frame.url} width={frame.width} height={frame.height} alt="The device's screen" draggable={false} />
-            ) : (
-              <div className="waiting">{props.error ?? "Waiting for the first frame…"}</div>
-            )}
-            {frame && (
-              <div
-                className={`overlay${busy ? " busy" : ""}`}
-                data-testid="overlay"
-                onPointerDown={onPointerDown}
-                onPointerUp={onPointerUp}
-                onPointerMove={onPointerMove}
-                onPointerLeave={() => setHover(null)}
-                onContextMenu={onContextMenu}
-              >
-                {boxes.map(({ node, box: b }) => (
-                  <div
-                    key={node.ref}
-                    className={[
-                      "ob",
-                      node.interactive ? "" : "passive",
-                      node.selector ? "" : "gap",
-                      node.ref === props.selectedRef ? "sel" : "",
-                      node.ref === hover?.node.ref ? "hover" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    style={{ left: `${b!.left}%`, top: `${b!.top}%`, width: `${b!.width}%`, height: `${b!.height}%` }}
-                  />
-                ))}
-              </div>
-            )}
-            {hover && !popover && (
-              <div className="tip" role="tooltip" style={{ left: Math.max(4, hover.at.x - 40), top: hover.at.y + 18 }}>
-                <b>@{hover.node.ref}</b>{" "}
-                {hoverTarget ? (
-                  <>
-                    {describeSelector(hoverTarget.selector)}
-                    {hoverTarget.selector.pick.case === "at" && <span className="bad"> · by index</span>}
-                  </>
-                ) : (
-                  <>
-                    {shortClass(hover.node)} <span className="bad">· no selector</span>
-                  </>
-                )}
-              </div>
-            )}
-            {popover && frame && <PopoverView popover={popover} frame={frame} onClose={() => setPopover(null)} onPerform={perform} />}
+        {/* The phone fits the space left in the panel (the page does not scroll on wide
+            screens): its aspect ratio is the frame's. */}
+        <div className="phone-fit" style={{ "--ar": frame ? frame.width / frame.height : 9 / 19 } as CSSProperties}>
+          <div className="phone">
+            <div className={`screen mode-${mode}${frame?.moving ? " provisional" : ""}`} ref={screen}>
+              {frame ? (
+                <img src={frame.url} width={frame.width} height={frame.height} alt="The device's screen" draggable={false} />
+              ) : (
+                <div className="waiting">{props.error ?? "Waiting for the first frame…"}</div>
+              )}
+              {frame && (
+                <div
+                  className={`overlay${busy ? " busy" : ""}`}
+                  data-testid="overlay"
+                  onPointerDown={onPointerDown}
+                  onPointerUp={onPointerUp}
+                  onPointerMove={onPointerMove}
+                  onPointerLeave={() => setHover(null)}
+                  onContextMenu={onContextMenu}
+                >
+                  {boxes.map(({ node, box: b }) => (
+                    <div
+                      key={node.ref}
+                      className={[
+                        "ob",
+                        node.interactive ? "" : "passive",
+                        node.selector ? "" : "gap",
+                        node.ref === props.selectedRef ? "sel" : "",
+                        node.ref === hover?.node.ref ? "hover" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={{ left: `${b!.left}%`, top: `${b!.top}%`, width: `${b!.width}%`, height: `${b!.height}%` }}
+                    />
+                  ))}
+                </div>
+              )}
+              {hover && !popover && (
+                <div className="tip" role="tooltip" style={{ left: Math.max(4, hover.at.x - 40), top: hover.at.y + 18 }}>
+                  <b>@{hover.node.ref}</b>{" "}
+                  {hoverTarget ? (
+                    <>
+                      {describeSelector(hoverTarget.selector)}
+                      {hoverTarget.selector.pick.case === "at" && <span className="bad"> · by index</span>}
+                    </>
+                  ) : (
+                    <>
+                      {shortClass(hover.node)} <span className="bad">· no selector</span>
+                    </>
+                  )}
+                </div>
+              )}
+              {popover && frame && <PopoverView popover={popover} frame={frame} onClose={() => setPopover(null)} onPerform={perform} />}
+            </div>
           </div>
         </div>
         <DeviceBar autPackage={props.autPackage} busy={busy} onPerform={perform} />
