@@ -181,6 +181,7 @@ export function ScreenView(props: Props) {
   }, [frame, nodes, shown, props.selectedRef, hover]);
 
   const age = frame ? Math.max(0, Math.round((now - frame.takenAt.getTime()) / 1000)) : 0;
+  const details = frame ? `frame ${frame.sequence} · ${age} s ago · ${interactive.length} interactive / ${nodes.length} nodes` : "";
 
   return (
     <div className="panel">
@@ -195,12 +196,9 @@ export function ScreenView(props: Props) {
               {frame ? (frame.moving ? "changing…" : "settled") : "waiting…"}
             </span>
           )}
-          {frame && (
-            <span className="mono" title={`frame ${frame.sequence} · ${age} s ago · ${interactive.length} interactive / ${nodes.length} nodes`}>
-              frame {String(frame.sequence)} · {age} s ago · {interactive.length} interactive / {nodes.length} nodes
-            </span>
-          )}
-          <span className="spacer" />
+          <span className="mono" title={details}>
+            {details || "\u00a0"}
+          </span>
           <span className="seg" role="group" aria-label="Overlay">
             {(["interactive", "all", "off"] as const).map((o) => (
               <button key={o} type="button" aria-pressed={overlay === o} onClick={() => props.onOverlay(o)}>

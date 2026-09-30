@@ -271,16 +271,23 @@ code,
 .device-stage {
   padding: 12px;
   display: grid;
+  /* The panel's width, never its content's: the status line's text would otherwise widen the
+     column (and the phone with it) past the panel. */
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   gap: 10px;
 }
-/* One line whatever the frame's state: a status that changes width or wraps would move the
-   screen under the pointer. The frame details give way (ellipsis) before anything wraps. */
+/* Fixed shape whatever the frame's state: a status that changes width or wraps would move the
+   screen under the pointer. The state and the overlay switch share the first line; the frame
+   details have the second to themselves and give way (ellipsis) rather than wrap. */
 .frame-status {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "state . overlay"
+    "details details details";
   align-items: center;
-  gap: 12px;
+  gap: 6px 12px;
   font-size: 12px;
   color: var(--muted);
   width: 100%;
@@ -306,15 +313,14 @@ code,
   color: var(--bad);
 }
 .frame-status > .pill {
-  flex: none;
-  justify-content: center;
-  min-width: 10ch;
+  grid-area: state;
+  justify-self: start;
 }
 .frame-status > .seg {
-  flex: none;
+  grid-area: overlay;
 }
 .frame-status .mono {
-  flex: 0 1 auto;
+  grid-area: details;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
