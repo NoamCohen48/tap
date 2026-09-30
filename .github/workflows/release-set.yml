@@ -1,0 +1,168 @@
+name: Release set
+
+# One button that ships a set of packages: give it the tags, it releases
+# them in dependency order (the daemon first, since the Kotlin client
+# refuses to publish until the daemon's tap-api is out), waits for every
+# family, then checks the expected Release and its assets exist.
+#
+# Use it when a user-visible release spans families (e.g. engine 0.0.2
+# plus tap-studio 0.0.1): tag each family, then run this once instead of
+# shepherding one Release run per family by hand. Each family still
+# builds through the Release workflow above, from its own tag; this only
+# starts those runs in order and reports the combined result.
+#
+# Tags must already exist on the remote
+# (git tag <family>/v<version> on the version-bump commit,
+# git push origin <tag>). A dry run validates the tags and prints the
+# plan without starting anything.
+
+on:
+  workflow_dispatch:
+    inputs:
+      daemon:
+        description: "Daemon tag, e.g. daemon/v0.0.2"
+        required: false
+        default: ""
+      client_kotlin:
+        description: "Kotlin tag, e.g. client-kotlin/v0.0.2"
+        required: false
+        default: ""
+      client_python:
+        description: "Python tag, e.g. client-python/v0.0.2"
+        required: false
+        default: ""
+      client_agent:
+        description: "Agent tag, e.g. client-agent/v0.0.2"
+        required: false
+        default: ""
+      client_studio:
+        description: "Studio tag, e.g. client-studio/v0.0.1"
+        required: false
+        default: ""
+      dry_run:
+        description: "Validate only, start nothing"
+        required: false
+        default: "false"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  ship:
+    name: Ship the set
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Resolve the plan
+        id: plan
+        run: |
+          tags=""
+          inputs="daemon client_kotlin client_python"
+          inputs="$inputs client_agent client_studio"
+          for input in $inputs; do
+            case "$input" in
+              daemon) tag="${{ inputs.daemon }}" ;;
+              client_kotlin) tag="${{ inputs.client_kotlin }}" ;;
+              client_python) tag="${{ inputs.client_python }}" ;;
+              client_agent) tag="${{ inputs.client_agent }}" ;;
+              client_studio) tag="${{ inputs.client_studio }}" ;;
+            esac
+            [ -n "$tag" ] || continue
+            url="https://github.com/${{ github.repository }}.git"
+            if ! git ls-remote --exit-code "$url" "refs/tags/$tag" \
+              > /dev/null; then
+              echo "::error::tag $tag is not on the remote"
+              exit 1
+            fi
+            tags="$tags $tag"
+          done
+          tags="${tags# }"
+          if [ -z "$tags" ]; then
+            echo "::error::no tags given, nothing to ship"
+            exit 1
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "Plan: $tags"
+
+      - name: Release the set in order
+        run: |
+          dry_run="${{ inputs.dry_run }}"
+          waited=""
+          # The daemon first: client-kotlin checks tap-api.
+          ordered=""
+          for tag in ${{ steps.plan.outputs.tags }}; do
+            case "$tag" in
+              daemon/*) ordered=" $tag$ordered" ;;
+              *) ordered="$ordered $tag" ;;
+            esac
+          done
+          for tag in $ordered; do
+            if [ "$dry_run" = "true" ]; then
+              echo "would dispatch Release for $tag"
+              continue
+            fi
+            echo "Dispatching Release for $tag"
+            before=$(date -u +%FT%TZ)
+            gh workflow run Release --ref main -f tag="$tag"
+            # The dispatch prints only a URL; find the run by time.
+            id=""
+            for i in $(seq 1 30); do
+              sleep 20
+              id=$(gh api \
+                "repos/${{ github.repository }}/actions/runs" \
+                --method GET -f event=workflow_dispatch \
+                -f per_page=10 \
+                --jq "[.workflow_runs[] | select(.name == \"Release\" \
+                and .created_at > \"$before\") | .id] | first // empty")
+              [ -n "$id" ] && break
+            done
+            if [ -z "$id" ]; then
+              echo "::error::no Release run appeared for $tag"
+              exit 1
+            fi
+            echo "$tag -> run $id"
+            waited="$waited $id:$tag"
+          done
+          [ "$dry_run" = "true" ] && exit 0
+          failed=""
+          for pair in $waited; do
+            id="${pair%%:*}"; tag="${pair#*:}"
+            # Native builds take up to ~1 h; poll until done.
+            if gh run watch "$id" --exit-status --interval 60; then
+              echo "OK $tag (run $id)"
+            else
+              echo "::error::release failed for $tag (run $id)"
+              failed="$failed $tag"
+            fi
+          done
+          [ -z "$failed" ] || exit 1
+
+      - name: Verify every Release and its assets
+        if: inputs.dry_run != 'true'
+        run: |
+          missing=""
+          for tag in ${{ steps.plan.outputs.tags }}; do
+            case "$tag" in
+              daemon/*) need="tap-" ;;
+              client-kotlin/*) need="tap-docs-" ;;
+              client-python/*) need="tap_e2e-" ;;
+              client-agent/*) need="tap_agent-" ;;
+              client-studio/*) need="tap_studio-" ;;
+            esac
+            assets=$(gh release view "$tag" \
+              --json assets --jq '.assets[].name')
+            echo "== $tag =="; echo "$assets"
+            if ! echo "$assets" | grep -q "$need"; then
+              echo "::error::$tag has no $need* asset"
+              missing="$missing $tag"
+            fi
+            if ! echo "$assets" | grep -q "tap-docs-"; then
+              echo "::error::$tag has no docs bundle"
+              missing="$missing $tag"
+            fi
+          done
+          [ -z "$missing" ] || exit 1
+          echo "Every Release in the set is up with its assets."

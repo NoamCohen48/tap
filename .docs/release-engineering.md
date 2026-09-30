@@ -140,7 +140,82 @@ contributors, and two rulesets: `main` cannot be deleted or force-pushed, and re
 ## Releases (`release.yml`, on tags)
 
 `resolve` maps the tag to a family and checks the version; then one job set per family (see
-the table above). `docs-bundle` runs for every family: `.github/actions/build-docs` (shared
+the table above). If GitHub drops a tag-push event and no run starts (seen 2026-09-30),
+dispatch the workflow manually with the tag name (`gh workflow run Release --ref main -f
+tag=<family>/v<version>`): checkouts, the version check, release assets and install URLs
+all follow the input tag, never the dispatch branch.
+
+Shipping a user-visible set (e.g. engine 0.0.2 plus tap-studio 0.0.1) is one manual run
+of `Release set` (`.github/workflows/release-set.yml`): give it the tags, it dispatches
+one Release run per family in dependency order (daemon first), waits for all of them,
+then checks every Release page carries its assets. A dry run validates the tags and
+prints the plan without starting anything.
+
+### Shipping a release: step by step
+
+Each family has its own version line (engine 0.0.2 and studio 0.0.1 can ship
+together), so a user-visible release is a *set* of per-family releases. The
+full flow, using the 0.0.2 set as the example:
+
+1. **Bump versions and docs.** Edit the version (`gradle.properties`
+   `tap.version.*`, or the family's `pyproject.toml`), add a `CHANGELOG.md`
+   section, point the install links in `README.md` and the guides at the new
+   tag names. Commit and push to `main`.
+2. **Wait for CI green.** The device lane takes ~22 min. Never tag on red:
+   a tag on a broken commit ships broken artifacts, and a published version
+   can never be replaced (registries refuse republishes), so a bad release
+   means a whole new patch version.
+3. **Tag each family on the green commit** and push the tags:
+
+   ```bash
+   git tag daemon/v0.0.2
+   git push origin daemon/v0.0.2
+   ```
+
+   One tag per family (`daemon/v*`, `client-kotlin/v*`, `client-python/v*`,
+   `client-agent/v*`, `client-studio/v*`). Each tag push starts one Release
+   run automatically. Tags cannot be deleted or moved (ruleset), so a typo
+   means a new version, not a re-push — double-check the name.
+4. **Ship the set with one action** instead of watching runs one by one:
+   Actions tab → `Release set` → `Run workflow`, fill in the tags (leave a
+   family empty to skip it), or the same from the CLI:
+
+   ```bash
+   gh workflow run "Release set" --ref main -f daemon=daemon/v0.0.2 \
+     -f client_kotlin=client-kotlin/v0.0.2 -f client_python=client-python/v0.0.2 \
+     -f client_agent=client-agent/v0.0.2 -f client_studio=client-studio/v0.0.1
+   ```
+
+   It releases the daemon first (the Kotlin client refuses to publish until
+   the daemon's `tap-api` is out), then the rest, waits for all of them
+   (native builds take up to ~1 h), and finally checks every Release page
+   carries its assets — wheels/sdist for the Python families, binaries +
+   `SHA256SUMS` for the daemon, the `tap-docs-<version>` bundle everywhere.
+   Not sure about the tags? Run it first with `-f dry_run=true`: it only
+   validates the tags exist and prints the plan.
+5. **If a tag push starts no run** (seen 2026-09-30: four tags pushed, zero
+   runs), don't re-push — dispatch that family directly:
+
+   ```bash
+   gh workflow run Release --ref main -f tag=client-studio/v0.0.1
+   ```
+
+   Same code path as a tag push (version check, checkouts, assets all follow
+   the tag). Then run the set for the rest, or let the set cover it next time.
+6. **Finish the Release pages.** Mark each as a pre-release (alpha) and make
+   sure none is flagged latest, as was done by hand for 0.0.1:
+
+   ```bash
+   for t in daemon/v0.0.2 client-kotlin/v0.0.2 client-python/v0.0.2 \
+     client-agent/v0.0.2 client-studio/v0.0.1; do
+     gh release edit "$t" --prerelease --latest=false
+   done
+   ```
+
+   Then open one Release page and confirm the assets a user needs are there
+   (e.g. `tap_studio-0.0.1-py3-none-any.whl` on `client-studio/v0.0.1`).
+
+`docs-bundle` runs for every family: `.github/actions/build-docs` (shared
 with `docs.yml`) builds the Markdown edition from the tagged commit, and the family's release
 attaches it as `tap-docs-<version>.zip` and `.tar.gz` (guide, Kotlin/Python/gRPC references,
 tap-agent README and skill, changelog; not `.docs/`). For the Python families the bundle stays

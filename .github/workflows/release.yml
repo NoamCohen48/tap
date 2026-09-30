@@ -22,6 +22,15 @@ on:
       - "client-agent/v*"
       - "client-studio/v*"
       - "sync-sdk/v*"
+  # Manual fallback: tag pushes normally trigger the run above, but when
+  # GitHub drops the event (seen 2026-09-30: four tags pushed, no runs),
+  # dispatch with the tag name instead. Checked-out code and release assets
+  # always follow the tag, never the branch the dispatch runs from.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. client-studio/v0.0.1"
+        required: true
 
 permissions:
   contents: write
@@ -39,12 +48,17 @@ jobs:
       family: ${{ steps.tag.outputs.family }}
       version: ${{ steps.tag.outputs.version }}
       engine: ${{ steps.tag.outputs.engine }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - id: tag
         run: |
-          python3 .github/scripts/release_version.py "${GITHUB_REF_NAME}" | \
+          TAG="${{ inputs.tag || github.ref_name }}"
+          python3 .github/scripts/release_version.py "$TAG" | \
           tee -a "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "engine=$(sed -n 's/^tap.version.engine=//p' \
           gradle.properties)" >> "$GITHUB_OUTPUT"
 
@@ -56,6 +70,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: ./.github/actions/build-docs
       - name: Archive
         run: |
@@ -86,6 +102,8 @@ jobs:
             label: macos-aarch64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: 21
@@ -124,6 +142,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -176,6 +196,7 @@ jobs:
         run: cd release && sha256sum * > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
           name: tap daemon ${{ needs.resolve.outputs.version }}
           files: release/*
           body: |
@@ -203,6 +224,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -239,6 +262,7 @@ jobs:
           path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
           name: tap Kotlin client ${{ needs.resolve.outputs.version }}
           files: docs-bundle/*
           body: |
@@ -262,6 +286,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -282,6 +308,7 @@ jobs:
           path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
           name: tap Python client ${{ needs.resolve.outputs.version }}
           # The docs stay out of dist/, which the PyPI step uploads whole.
           files: |
@@ -290,7 +317,7 @@ jobs:
           body: |
             ```bash
             pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ github.ref_name }}/tap_e2e-${{
+            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_e2e-${{
             needs.resolve.outputs.version }}-py3-none-any.whl
             ```
             Requires a `tap` daemon of engine version ${{
@@ -313,6 +340,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -333,6 +362,7 @@ jobs:
           path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
           name: tap-agent ${{ needs.resolve.outputs.version }}
           files: |
             dist/*
@@ -346,7 +376,7 @@ jobs:
 
             ```bash
             pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ github.ref_name }}/tap_agent-${{
+            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_agent-${{
             needs.resolve.outputs.version }}-py3-none-any.whl
             ```
             Requires a `tap` daemon of engine version ${{
@@ -368,6 +398,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.11"
@@ -396,6 +428,7 @@ jobs:
           path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
           name: tap-studio ${{ needs.resolve.outputs.version }}
           files: |
             dist/*
@@ -410,7 +443,7 @@ jobs:
 
             ```bash
             pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ github.ref_name }}/tap_studio-${{
+            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_studio-${{
             needs.resolve.outputs.version }}-py3-none-any.whl
             tap-studio
             ```
@@ -433,6 +466,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -454,6 +489,7 @@ jobs:
           path: docs-bundle
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
           name: tap sync-sdk ${{ needs.resolve.outputs.version }}
           files: docs-bundle/*
           body: |

@@ -13,7 +13,7 @@ import kotlin.test.assertNotEquals
 @TapTest
 class LifecycleTest {
     @Test
-    fun coldLaunchProducesANewProcessAndSurvivesClearData(device: Device): Unit {
+    fun coldLaunchProducesANewProcessAndSurvivesClearData(device: Device) {
         tapTest {
             val app = Fixture.launch(device)
             val first = app.process()
