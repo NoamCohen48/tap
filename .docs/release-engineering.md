@@ -140,7 +140,10 @@ contributors, and two rulesets: `main` cannot be deleted or force-pushed, and re
 ## Releases (`release.yml`, on tags)
 
 `resolve` maps the tag to a family and checks the version; then one job set per family (see
-the table above). `docs-bundle` runs for every family: `.github/actions/build-docs` (shared
+the table above). If GitHub drops a tag-push event and no run starts (seen 2026-09-30),
+dispatch the workflow manually with the tag name (`gh workflow run Release --ref main -f
+tag=<family>/v<version>`): checkouts, the version check, release assets and install URLs
+all follow the input tag, never the dispatch branch. `docs-bundle` runs for every family: `.github/actions/build-docs` (shared
 with `docs.yml`) builds the Markdown edition from the tagged commit, and the family's release
 attaches it as `tap-docs-<version>.zip` and `.tar.gz` (guide, Kotlin/Python/gRPC references,
 tap-agent README and skill, changelog; not `.docs/`). For the Python families the bundle stays
