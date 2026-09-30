@@ -11,12 +11,14 @@ import io.github.noamcohen48.tap.api.v1.Match
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlin.test.Test
@@ -62,6 +64,9 @@ class CommandValidationTest {
                 "scroll direction" to Commands.scroll(list, Direction.DIR_UNSPECIFIED),
                 "scroll percent" to Commands.scroll(list, Direction.DIR_DOWN, distancePercent = 101),
                 "at index" to Commands.tap(button.pickAt(-1)),
+                "system panel" to Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_UNSPECIFIED),
+                "unknown system panel" to
+                    Command.newBuilder().setOpenSystemPanel(OpenSystemPanel.newBuilder().setPanelValue(99)).build(),
             )
         invalid.forEach { (name, command) ->
             assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
@@ -81,6 +86,8 @@ class CommandValidationTest {
             Commands.swipe(button, Direction.DIR_LEFT, distancePercent = 1),
             Commands.scroll(list, Direction.DIR_RIGHT, distancePercent = 100),
             Commands.tap(button.pickAt(0)),
+            Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS),
+            Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS),
         ).forEach { CommandValidation.validate(it) }
     }
 

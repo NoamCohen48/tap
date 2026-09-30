@@ -347,16 +347,16 @@ message Step {
 
 // One command; a command with a selector is preceded by the wait that proved it could run.
 message ActionStep {
-  // tap, long_tap, set_text, clear_text, scroll, swipe or press_key.
+  // tap, long_tap, set_text, clear_text, scroll, swipe, press_key or open_system_panel.
   tap.v1.Command command = 1;
-  // For every op but press_key (and only then): `wait_visible` of the command's selector, with
+  // For every op but press_key and open_system_panel (and only then): `wait_visible` of the command's selector, with
   // `exactly_one` unless the selector has a `first` or `at` pick (waits count every match, so a
   // picked selector waits for at least one and the command picks). A replayer sends `wait` then
   // `command`, unchanged.
   tap.v1.Command wait = 2;
   // set_text only: the name of the secret whose value is the text; `set_text.text` is then empty.
   optional string secret = 3;
-  // Unspecified for press_key.
+  // Unspecified for press_key and open_system_panel.
   SelectorOrigin selector_origin = 4;
 }
 

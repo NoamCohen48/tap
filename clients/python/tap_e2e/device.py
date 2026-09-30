@@ -198,6 +198,18 @@ class Device:
         """Injects one Android key code (a mutation: never replayed on transport loss)."""
         self._execute_or_raise(press_key=pb.PressKey(key_code=key_code))
 
+    def open_notifications(self) -> None:
+        """Open the notification shade (the system's accessibility action).
+
+        Only whether the system accepted it is reported: wait for what the test needs in the
+        shade, and ``press_back`` closes it.
+        """
+        self._execute_or_raise(open_system_panel=pb.OpenSystemPanel(panel=pb.SYSTEM_PANEL_NOTIFICATIONS))
+
+    def open_quick_settings(self) -> None:
+        """Open the quick settings panel; otherwise as ``open_notifications``."""
+        self._execute_or_raise(open_system_panel=pb.OpenSystemPanel(panel=pb.SYSTEM_PANEL_QUICK_SETTINGS))
+
     def type_text(self, value: str, timeout: float | None = None) -> None:
         """Type ``value`` as real key events into whatever has input focus now.
 

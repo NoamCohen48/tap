@@ -21,8 +21,10 @@ FORMAT = "tap-recording/1"
 APP_OPERATIONS = ("cold_launch", "launch", "force_stop", "clear_data", "grant_permission")
 """The app calls a recording holds (``tap.v1.AppCall.operation``)."""
 
-ACTION_OPS = ("tap", "long_tap", "set_text", "clear_text", "scroll", "swipe", "press_key")
-"""The ``tap.v1.Command`` ops an action step holds; all but ``press_key`` take a selector."""
+ACTION_OPS = ("tap", "long_tap", "set_text", "clear_text", "scroll", "swipe", "press_key", "open_system_panel")
+"""The ``tap.v1.Command`` ops an action step holds; all but the ``UNTARGETED_OPS`` take a selector."""
+UNTARGETED_OPS = ("press_key", "open_system_panel")
+"""The action ops without a selector, so without a wait or a selector origin."""
 
 _TEXT_CONDITIONS = (studio.CONDITION_TEXT_EQUALS, studio.CONDITION_TEXT_CONTAINS)
 _MAX_ID = 64
@@ -157,9 +159,12 @@ def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
     if op not in ACTION_OPS:
         return [f"action.command must be one of {', '.join(ACTION_OPS)}, not {op or 'empty'}"]
     problems = []
-    if op == "press_key":
+    if op in UNTARGETED_OPS:
         if action.HasField("wait") or action.selector_origin:
-            problems.append("press_key has no selector, so no wait or selector_origin")
+            problems.append(f"{op} has no selector, so no wait or selector_origin")
+        panel = action.command.open_system_panel.panel
+        if op == "open_system_panel" and panel not in (tap.SYSTEM_PANEL_NOTIFICATIONS, tap.SYSTEM_PANEL_QUICK_SETTINGS):
+            problems.append("open_system_panel.panel must be SYSTEM_PANEL_NOTIFICATIONS or SYSTEM_PANEL_QUICK_SETTINGS")
     else:
         selector = getattr(action.command, op).selector
         if not selector.HasField("node"):

@@ -147,6 +147,9 @@ wire types:
   waits for focus, then sends it. It added the
   `AnyWindowScope any_window` selector scope and `ElementSnapshot.showing_hint`. The clients'
   `scrollUntil` / `scroll_until` are client-side loops of `Exists` + `Scroll`.
+- `OpenSystemPanel` (`Command` field 24, `SystemPanel` enum) opens the notification shade or
+  quick settings; `SYSTEM_PANEL_UNSPECIFIED` is `INVALID_ARGUMENT`. Added within protocol 4.0
+  (additive; a driver without it does not advertise `open_system_panel`).
 
 ### AppService: AUT lifecycle
 

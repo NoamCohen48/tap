@@ -14,12 +14,14 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MatchMode
+import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
@@ -66,7 +68,7 @@ class OperationsTest {
 
     @Test
     fun mutationsAreExactlyTheInputCommands() {
-        val mutations = setOf("press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll")
+        val mutations = setOf("press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel")
         sampleCommands.forEach { (name, command) ->
             assertEquals(name in mutations, command.isMutation, name)
             assertEquals(name in mutations, command.toRequest().isMutation, name)
@@ -86,7 +88,7 @@ class OperationsTest {
         assertNull(Requests.health().targetSelector)
         assertEquals(target, Requests.of(Commands.tap(target)).targetSelector)
         val targeted = sampleCommands.filterValues { it.targetSelector != null }.keys
-        assertEquals(sampleCommands.keys - setOf("device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable"), targeted)
+        assertEquals(sampleCommands.keys - setOf("device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable", "open_system_panel"), targeted)
     }
 
     @Test
@@ -272,6 +274,8 @@ class OperationsTest {
         override fun swipe(command: Swipe) = record("swipe", Unit)
 
         override fun scroll(command: Scroll) = record("scroll", Unit)
+
+        override fun openSystemPanel(command: OpenSystemPanel) = record("open_system_panel", Unit)
     }
 
     companion object {
@@ -298,6 +302,7 @@ class OperationsTest {
                 "clear_text" to Commands.clearText(button),
                 "swipe" to Commands.swipe(list, Direction.DIR_LEFT, distancePercent = 60),
                 "scroll" to Commands.scroll(list, Direction.DIR_DOWN),
+                "open_system_panel" to Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS),
             )
 
         /** One valid request per host-internal operation. */

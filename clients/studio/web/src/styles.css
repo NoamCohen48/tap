@@ -232,14 +232,22 @@ code,
    their panels. Narrower layouts stack panels and scroll the page as usual. */
 @media (min-width: 1181px) {
   .app:has(> .cols) {
+    max-width: none;
     height: 100dvh;
     box-sizing: border-box;
     grid-template-rows: auto minmax(0, 1fr);
   }
+  /* The device column is as wide as the phone at the window's full height needs, and the
+     inspector takes what is left. 184px: the top bar, the frame status and the paddings above
+     and below the phone; 96px: the rail, its gap, the paddings and the phone's bezel. */
   .cols {
+    grid-template-columns: auto minmax(320px, 1fr) minmax(300px, 400px);
     height: 100%;
     min-height: 0;
     align-items: stretch;
+  }
+  .device-panel {
+    width: clamp(300px, (100dvh - 184px) * var(--ar) + 96px, 50vw);
   }
   .cols > .panel {
     display: flex;
@@ -265,19 +273,18 @@ code,
   .device-stage {
     flex: 1 1 auto;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .phone-fit {
     height: 100%;
     container-type: size;
-    display: grid;
-    justify-items: center;
-    align-items: start;
+    justify-content: center;
   }
-  /* 16px: the phone's padding around the screen. (Scoped to win over the base .phone rule,
-     which comes later in the file.) */
+  /* 16px: the phone's padding around the screen; the rail and the gap take the rest of the
+     width. (Scoped to win over the base .phone rule, which comes later in the file.) */
   .phone-fit > .phone {
-    width: min(100cqw, (100cqh - 16px) * var(--ar) + 16px);
+    flex: none;
+    width: min(100cqw - var(--rail-w) - var(--rail-gap), (100cqh - 16px) * var(--ar) + 16px);
   }
 }
 @media (max-width: 1180px) {
@@ -382,9 +389,73 @@ code,
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
+/* The phone, and the device rail beside it (as the emulator's side toolbar). */
 .phone-fit {
+  --rail-w: 44px;
+  --rail-gap: 10px;
   width: 100%;
   min-height: 0;
+  display: flex;
+  gap: var(--rail-gap);
+  align-items: flex-start;
+}
+/* Low specificity: the wide-screen rule (earlier in the file) sizes the phone to fit. */
+:where(.phone-fit) > .phone {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.rail {
+  flex: none;
+}
+.rail {
+  width: var(--rail-w);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.rail-group {
+  display: grid;
+  gap: 2px;
+}
+.rail-group + .rail-group {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.railbtn {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.railbtn:hover {
+  background: var(--surface);
+}
+.railbtn[aria-expanded="true"] {
+  background: var(--surface);
+  color: var(--accent);
+}
+.railbtn svg {
+  width: 18px;
+  height: 18px;
+}
+.railbtn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* The app menu opens beside the rail, over the phone, growing up from its button. */
+.rail .menu {
+  bottom: 0;
+  left: calc(100% + 8px);
 }
 .phone {
   position: relative;
@@ -498,13 +569,6 @@ code,
 }
 .tip .bad {
   color: #ff9c95;
-}
-.devbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-  justify-content: center;
 }
 .btn {
   display: inline-flex;
@@ -946,7 +1010,8 @@ code,
   color: var(--assert);
 }
 .kind.k-app,
-.kind.k-key {
+.kind.k-key,
+.kind.k-system {
   color: var(--muted);
 }
 .step code {

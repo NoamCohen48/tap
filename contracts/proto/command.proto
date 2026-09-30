@@ -68,10 +68,19 @@ enum StabilitySignal {
   STABILITY_ALL = 3;
 }
 
+// A panel System UI draws over every app, opened with `open_system_panel`.
+enum SystemPanel {
+  SYSTEM_PANEL_UNSPECIFIED = 0;
+  SYSTEM_PANEL_NOTIFICATIONS = 1; // the notification shade
+  SYSTEM_PANEL_QUICK_SETTINGS = 2; // the quick settings panel
+}
+
 // ---- commands: one message per operation, each carrying only its own arguments -----------------
 
 message DeviceInfoQuery {}
 message PressKey { int32 key_code = 1; } // an Android KeyEvent key code, ≥ 0
+// Opens `panel` (the accessibility global action); no target. Back or Home close it.
+message OpenSystemPanel { SystemPanel panel = 1; } // not UNSPECIFIED
 message DumpHierarchy {}
 
 message Exists { Selector selector = 1; }
@@ -140,6 +149,7 @@ message Command {
     ClearText clear_text = 18;
     Swipe swipe = 19;
     Scroll scroll = 20;
+    OpenSystemPanel open_system_panel = 24;
   }
 }
 

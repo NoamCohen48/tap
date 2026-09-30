@@ -76,6 +76,10 @@ def test_gestures_get_the_default_distance_and_keys_no_wait():
     prepared = prepare(step(action={"command": {"swipe": {"selector": SEARCH, "direction": "DIR_LEFT"}}}), None)
     assert prepared.action.command.swipe.distance_percent == 80
     assert not prepare(step(action={"command": {"press_key": {"key_code": 4}}}), None).action.HasField("wait")
+    panel = {"open_system_panel": {"panel": "SYSTEM_PANEL_QUICK_SETTINGS"}}
+    assert not prepare(step(action={"command": panel}), None).action.HasField("wait")
+    with pytest.raises(RecordingError, match="open_system_panel takes no timeout_ms"):
+        prepare(step(action={"command": {**panel, "timeout_ms": 1000}}), None)
 
 
 @pytest.mark.parametrize(
@@ -113,8 +117,17 @@ def test_an_action_sends_its_wait_then_its_command_unchanged(daemon, device, op)
     assert sent(daemon) == [prepared.action.wait, prepared.action.command]
 
 
-def test_a_key_is_one_command(daemon, device):
-    prepared = prepare(step(action={"command": {"press_key": {"key_code": 4}}}), None)
+@pytest.mark.parametrize(
+    "op",
+    [
+        {"press_key": {"key_code": 4}},
+        {"open_system_panel": {"panel": "SYSTEM_PANEL_NOTIFICATIONS"}},
+        {"open_system_panel": {"panel": "SYSTEM_PANEL_QUICK_SETTINGS"}},
+    ],
+    ids=["press_key", "notifications", "quick_settings"],
+)
+def test_an_untargeted_action_is_one_command(daemon, device, op):
+    prepared = prepare(step(action={"command": op}), None)
     daemon.devices.commands.clear()
     run(device, prepared)
     assert sent(daemon) == [prepared.action.command]

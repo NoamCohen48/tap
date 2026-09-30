@@ -12,7 +12,7 @@ import { StepEditor } from "./StepEditor";
 
 export type LastRun = { tone: "fail" | "info" | "ok"; text: string } | null;
 
-const KIND_LABELS = { app: "app", action: "action", key: "key", type: "type", assertion: "assert" } as const;
+const KIND_LABELS = { app: "app", action: "action", key: "key", system: "system", type: "type", assertion: "assert" } as const;
 
 export function StepsPanel({
   client,

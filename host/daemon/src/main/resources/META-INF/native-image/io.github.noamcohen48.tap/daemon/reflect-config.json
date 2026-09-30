@@ -377,6 +377,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.OpenSystemPanel",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.PressKey",
     "allDeclaredFields": true
   },

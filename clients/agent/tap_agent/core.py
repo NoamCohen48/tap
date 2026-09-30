@@ -41,6 +41,8 @@ DEFAULT_IDLE = 15 * 60.0
 DEFAULT_WAIT = 10.0
 SETTLE_STABLE_FOR = 0.5
 SETTLE_TIMEOUT = 10.0
+PANELS = ("notifications", "quick-settings")
+"""The system panels `panel` opens."""
 
 # Exit codes shared by the CLI and reported in MCP error results.
 EXIT_OK = 0
@@ -396,6 +398,23 @@ class Agent:
             d = self._device(device)
             d.press_key(code)
             return f"pressed {name}\n{self._settled(d)}" if settle else f"pressed {name}"
+
+        return self._run(step)
+
+    def panel(self, name: str, device: str | None = None, settle: bool = False) -> str:
+        """Opens the notification shade (``notifications``) or ``quick-settings``; ``key back``
+        closes it. Its nodes belong to ``com.android.systemui``."""
+        panel = name.strip().lower().replace("_", "-")
+        if panel not in PANELS:
+            raise AgentError(f"panel must be {' or '.join(PANELS)}, not {name!r}", EXIT_USAGE)
+
+        def step() -> str:
+            d = self._device(device)
+            if panel == "quick-settings":
+                d.open_quick_settings()
+            else:
+                d.open_notifications()
+            return f"opened {panel}\n{self._settled(d)}" if settle else f"opened {panel}"
 
         return self._run(step)
 

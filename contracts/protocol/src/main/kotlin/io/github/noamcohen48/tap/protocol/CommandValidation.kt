@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.wire.v1.Request.BodyCase
@@ -125,6 +126,11 @@ object CommandValidation {
             OpCase.SCROLL -> {
                 requireDirection(command.scroll.direction)
                 if (command.scroll.hasDistancePercent()) checkPercent(command.scroll.distancePercent)
+            }
+
+            OpCase.OPEN_SYSTEM_PANEL -> {
+                val panel = command.openSystemPanel.panel
+                if (panel == SystemPanel.SYSTEM_PANEL_UNSPECIFIED || panel == SystemPanel.UNRECOGNIZED) invalidRequest("A panel is required")
             }
 
 

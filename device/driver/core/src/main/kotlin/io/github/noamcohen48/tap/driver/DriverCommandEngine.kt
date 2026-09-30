@@ -10,6 +10,7 @@ import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
@@ -54,7 +55,7 @@ internal class DriverCommandEngine(
 ) {
     private val compiler = SelectorCompiler(expectedAut)
     private val objects = UiObjectAccess(device)
-    private val gestures = GestureCommands(device, objects, faults)
+    private val gestures = GestureCommands(instrumentation, device, objects, faults)
     private val textInput = TextInputCommands(instrumentation, objects)
     private val waits = WaitCommands(device, objects)
     private val queries = QueryCommands(device, objects)
@@ -134,6 +135,8 @@ internal class DriverCommandEngine(
         override fun deviceInfo(command: DeviceInfoQuery): DeviceInfo = queries.deviceInfo()
 
         override fun pressKey(command: PressKey) = gestures.pressKey(context, command)
+
+        override fun openSystemPanel(command: OpenSystemPanel) = gestures.openSystemPanel(context, command)
 
         override fun dumpHierarchy(command: DumpHierarchy): String = artifacts.dumpHierarchy()
 

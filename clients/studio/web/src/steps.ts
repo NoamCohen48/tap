@@ -4,7 +4,7 @@
 
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { AppCallSchema } from "./gen/event_log_pb";
-import { CommandSchema, type Direction } from "./gen/command_pb";
+import { CommandSchema, type Direction, type SystemPanel } from "./gen/command_pb";
 import type { Selector } from "./gen/selector_pb";
 import { Condition, PerformRequestSchema, SelectorOrigin, StepSchema, type PerformRequest, type Step } from "./gen/studio_pb";
 
@@ -48,6 +48,15 @@ export function pressKey(keyCode: number): PerformRequest {
   return create(PerformRequestSchema, {
     step: create(StepSchema, {
       kind: { case: "action", value: { command: create(CommandSchema, { op: { case: "pressKey", value: { keyCode } } }) } },
+    }),
+  });
+}
+
+/** `open_system_panel`: the notification shade or quick settings, no target. */
+export function openSystemPanel(panel: SystemPanel): PerformRequest {
+  return create(PerformRequestSchema, {
+    step: create(StepSchema, {
+      kind: { case: "action", value: { command: create(CommandSchema, { op: { case: "openSystemPanel", value: { panel } } }) } },
     }),
   });
 }

@@ -10,7 +10,7 @@ import { SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
 import { looksDynamic, type Chip } from "./nodes";
 import type { Target } from "./steps";
 
-/** The command message of an action on an element (every recorded op but press_key). */
+/** The command message of an action on an element (every recorded op but press_key and open_system_panel). */
 function elementOp(command: Command | undefined) {
   const op = command?.op;
   switch (op?.case) {

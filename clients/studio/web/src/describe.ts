@@ -3,7 +3,7 @@
 // itself; `parse.ts` reads a typed selector back.
 
 import { Condition, type Step } from "./gen/studio_pb";
-import { Direction, type Command } from "./gen/command_pb";
+import { Direction, SystemPanel, type Command } from "./gen/command_pb";
 import { MatchMode, NodeFlag, Relation, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
@@ -143,6 +143,11 @@ const DIRECTIONS: Record<Direction, string> = {
 
 const KEYS: Record<number, string> = { 3: "pressHome()", 4: "pressBack()" };
 
+const PANELS: Partial<Record<SystemPanel, string>> = {
+  [SystemPanel.NOTIFICATIONS]: "openNotifications()",
+  [SystemPanel.QUICK_SETTINGS]: "openQuickSettings()",
+};
+
 const APP: Record<string, string> = {
   cold_launch: "coldLaunch",
   launch: "launch",
@@ -175,6 +180,8 @@ function command(c: Command | undefined, secret: string | undefined): string {
   switch (c.op.case) {
     case "pressKey":
       return KEYS[c.op.value.keyCode] ?? `pressKey(${c.op.value.keyCode})`;
+    case "openSystemPanel":
+      return PANELS[c.op.value.panel] ?? `openSystemPanel(${c.op.value.panel})`;
     case "tap":
       return `element(${describeSelector(c.op.value.selector)}).tap()`;
     case "longTap":
@@ -192,10 +199,13 @@ function command(c: Command | undefined, secret: string | undefined): string {
   }
 }
 
-export type StepKind = "app" | "action" | "key" | "type" | "assertion";
+export type StepKind = "app" | "action" | "key" | "system" | "type" | "assertion";
 
 export function stepKind(step: Step): StepKind | null {
-  if (step.kind.case === "action") return step.kind.value.command?.op.case === "pressKey" ? "key" : "action";
+  if (step.kind.case === "action") {
+    const op = step.kind.value.command?.op.case;
+    return op === "pressKey" ? "key" : op === "openSystemPanel" ? "system" : "action";
+  }
   return step.kind.case ?? null;
 }
 

@@ -24,9 +24,34 @@ export const Home = () => (
   </svg>
 );
 
+export const Recents = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+  </svg>
+);
+
+export const Bell = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+    <path d="M10 20.5a2 2 0 0 0 4 0" />
+  </svg>
+);
+
+export const Toggles = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <rect x="3" y="4.5" width="18" height="6" rx="3" />
+    <circle cx="15" cy="7.5" r="1.2" />
+    <rect x="3" y="13.5" width="18" height="6" rx="3" />
+    <circle cx="9" cy="16.5" r="1.2" />
+  </svg>
+);
+
 export const AppIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
-    <rect x="4" y="4" width="16" height="16" rx="3" />
+    <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+    <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
+    <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
+    <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
   </svg>
 );
 

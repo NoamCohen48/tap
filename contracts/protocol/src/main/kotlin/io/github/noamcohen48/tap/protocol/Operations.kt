@@ -14,6 +14,7 @@ import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
@@ -21,6 +22,7 @@ import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
@@ -78,7 +80,7 @@ val Command.isMutation: Boolean
     get() =
         when (opCase) {
             OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
-            OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL,
+            OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL, OpCase.OPEN_SYSTEM_PANEL,
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
@@ -106,7 +108,7 @@ val Command.targetSelector: Selector?
             OpCase.SWIPE -> swipe.selector
             OpCase.SCROLL -> scroll.selector
             OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.TYPE_TEXT, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
-            OpCase.WAIT_SCREEN_STABLE, OpCase.OP_NOT_SET, null,
+            OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.OP_NOT_SET, null,
             -> null
         }
 
@@ -120,6 +122,9 @@ object Commands {
     fun deviceInfo(): Command = Command.newBuilder().setDeviceInfo(DeviceInfoQuery.getDefaultInstance()).build()
 
     fun pressKey(keyCode: Int): Command = Command.newBuilder().setPressKey(PressKey.newBuilder().setKeyCode(keyCode)).build()
+
+    fun openSystemPanel(panel: SystemPanel): Command =
+        Command.newBuilder().setOpenSystemPanel(OpenSystemPanel.newBuilder().setPanel(panel)).build()
 
     fun dumpHierarchy(): Command = Command.newBuilder().setDumpHierarchy(DumpHierarchy.getDefaultInstance()).build()
 
@@ -332,6 +337,8 @@ interface CommandHandler {
     fun swipe(command: Swipe)
 
     fun scroll(command: Scroll)
+
+    fun openSystemPanel(command: OpenSystemPanel)
 }
 
 /**
@@ -393,6 +400,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.CLEAR_TEXT -> result.setDone(done).also { handler.clearText(clearText) }
         OpCase.SWIPE -> result.setDone(done).also { handler.swipe(swipe) }
         OpCase.SCROLL -> result.setDone(done).also { handler.scroll(scroll) }
+        OpCase.OPEN_SYSTEM_PANEL -> result.setDone(done).also { handler.openSystemPanel(openSystemPanel) }
         OpCase.OP_NOT_SET, null -> throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "No command op this driver knows is set")
     }
     return result

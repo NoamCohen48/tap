@@ -185,6 +185,8 @@ def action(command: dict, wait: dict | None = None, **extra) -> dict:
          "wait's selector differs"),
         (action({"press_key": {"key_code": 4}}, ONE), "press_key has no selector"),
         (action({"press_key": {"key_code": 4}}, selector_origin="SELECTOR_ORIGIN_EDITED"), "press_key has no selector"),
+        (action({"open_system_panel": {"panel": "SYSTEM_PANEL_NOTIFICATIONS"}}, ONE), "open_system_panel has no selector"),
+        (action({"open_system_panel": {}}), "open_system_panel.panel must be"),
         (action({"tap": {"selector": SEARCH}}, ONE, secret="pw"), "secret applies to set_text only"),
         (action({"set_text": {"selector": SEARCH, "text": "x"}}, ONE, secret="pw"), "carries no text"),
     ],
