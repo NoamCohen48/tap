@@ -196,7 +196,7 @@ export function ScreenView(props: Props) {
             </span>
           )}
           {frame && (
-            <span className="mono">
+            <span className="mono" title={`frame ${frame.sequence} · ${age} s ago · ${interactive.length} interactive / ${nodes.length} nodes`}>
               frame {String(frame.sequence)} · {age} s ago · {interactive.length} interactive / {nodes.length} nodes
             </span>
           )}

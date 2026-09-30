@@ -339,7 +339,8 @@ daemon
      Only `Perform` wakes a settled loop; `Count` cannot change the screen, and waking the loop
      put the next count behind a screenshot (263 → 98 ms median on 85e49002).
    - The loop resumes at once after a user call instead of after a separate post-action
-     settle: frames are `moving` (new picture hash, or added/removed nodes) until the screen
+     settle: frames are `moving` (nodes added, removed or moved; not picture-only changes, see
+     below) until the screen
      settles, then the delay doubles from 0.25 s to 2 s; a `Perform` resets it. It runs only
      while a page reads `Frames`.
    - The wait is always inferred (`wait_visible exactly_one` on the action's selector); a
@@ -436,8 +437,15 @@ daemon
    `window.confirm`; they use the page's own dialog now, with Cancel focused. On 85e49002 the
    same flow (with the `.at(1)` step) was recorded, exported with Download, reopened after New,
    and replayed from a cold launch (6 steps passed); the downloaded file replayed through
-   `tap-e2e` in a fresh connection passed too. Copy JSON could not be checked: the test
-   browser's clipboard reads back empty even for its own writes.
+   `tap-e2e` in a fresh connection passed too. Copy JSON could not be checked here (the test
+   browser's clipboard reads back empty even for its own writes); the owner confirmed it works
+   in a real browser (2026-09-30).
+   The owner's own use (2026-09-30) found two more: with a focused text field the frame stayed
+   *changing…* forever, because the blinking cursor gave every screenshot a new hash, which also
+   kept the loop at full rate; and the frame status line wrapped differently for *changing…*
+   than for *settled*, so the screen jumped under the pointer. A frame is now `moving` only when
+   nodes were added, removed or moved (bounds compared by ref), which is what can put the
+   overlay out of place; the status line is one line of fixed height.
 
 ## Verification
 

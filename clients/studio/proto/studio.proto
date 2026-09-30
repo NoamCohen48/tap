@@ -162,8 +162,9 @@ message FramesResponse {
   // The daemon's snapshot: every node with its ref, bounds and selector candidates.
   int64 snapshot_id = 7;
   repeated tap.v1.ScreenNode nodes = 8;
-  // The nodes or the picture differ from the previous frame: the screen may still be changing, so
-  // the overlay is provisional.
+  // A node was added, removed or moved since the previous frame: the screen may still be changing,
+  // so the overlay is provisional. Picture-only changes (a blinking cursor, the clock, a spinner)
+  // leave the elements where they are and do not count.
   bool moving = 9;
 }
 

@@ -31,6 +31,7 @@ class ScriptedDevice:
         self.calls: list[str] = []
         self.picture = png(100)
         self.change = NodeChange.UNCHANGED
+        self.top = 0
         self.fail: TapError | None = None
         self.snapshots = 0
         self.lock = threading.Lock()
@@ -42,7 +43,8 @@ class ScriptedDevice:
             raise self.fail
         self.snapshots += 1
         node = model_node(tap.ScreenNode(ref="e1", window_package="com.example", change=tap.NODE_UNCHANGED))
-        node = dataclasses.replace(node, change=self.change)
+        bounds = dataclasses.replace(node.bounds, top=self.top, bottom=self.top + 50)
+        node = dataclasses.replace(node, change=self.change, bounds=bounds)
         return ScreenSnapshot(self.snapshots, (node,), (), 0)
 
     def screenshot(self) -> Screenshot:
@@ -86,14 +88,26 @@ async def test_frames_pair_a_snapshot_with_the_picture_taken_after_it(worker):
     assert not first.moving and not second.moving  # nothing changed
 
 
-async def test_a_new_picture_or_new_nodes_mark_the_frame_moving(worker):
+async def test_new_or_moved_nodes_mark_the_frame_moving(worker):
+    stream = worker.frames()
+    await asyncio.wait_for(take(stream, 1), 5)
+    worker.device.change = NodeChange.ADDED
+    assert (await asyncio.wait_for(anext(stream), 5)).moving
+    worker.device.change = NodeChange.UNCHANGED
+    assert not (await asyncio.wait_for(anext(stream), 5)).moving  # settled again
+    worker.device.top = 10  # scrolled: the same node, elsewhere
+    assert (await asyncio.wait_for(anext(stream), 5)).moving
+    assert not (await asyncio.wait_for(anext(stream), 5)).moving
+    await stream.aclose()
+
+
+async def test_a_picture_only_change_is_not_moving(worker):
+    """A blinking cursor or the clock changes the picture, not where the elements are."""
     stream = worker.frames()
     await asyncio.wait_for(take(stream, 1), 5)
     worker.device.picture = png(100, 1)
-    assert (await asyncio.wait_for(anext(stream), 5)).moving
-    assert not (await asyncio.wait_for(anext(stream), 5)).moving  # settled again
-    worker.device.change = NodeChange.ADDED
-    assert (await asyncio.wait_for(anext(stream), 5)).moving
+    frame = await asyncio.wait_for(anext(stream), 5)
+    assert frame.png == worker.device.picture and not frame.moving
     await stream.aclose()
 
 

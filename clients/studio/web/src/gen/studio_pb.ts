@@ -398,8 +398,9 @@ export type FramesResponse = Message<"tap.studio.v1.FramesResponse"> & {
   nodes: ScreenNode[];
 
   /**
-   * The nodes or the picture differ from the previous frame: the screen may still be changing, so
-   * the overlay is provisional.
+   * A node was added, removed or moved since the previous frame: the screen may still be changing,
+   * so the overlay is provisional. Picture-only changes (a blinking cursor, the clock, a spinner)
+   * leave the elements where they are and do not count.
    *
    * @generated from field: bool moving = 9;
    */

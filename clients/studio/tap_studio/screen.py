@@ -8,7 +8,8 @@ and the screenshot taken right after it; a snapshot taken while a user call came
 because the picture after it would show another screen.
 
 The loop runs only while a page reads frames. It takes the next frame at once while the screen
-changes (a node added or removed, or another picture), backs off to ``slow`` seconds while it
+changes (a node added, removed or moved; a picture-only change such as a blinking cursor does
+not count), backs off to ``slow`` seconds while it
 does not, and starts over at once after a user call that may change the screen (Perform). A
 read-only call (Count) does not wake it: the inspector counts as the user browses, and waking
 the loop would put each next count behind a screenshot.
@@ -17,13 +18,12 @@ the loop would put each next count behind a screenshot.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import TypeVar
 
 from google.protobuf.timestamp_pb2 import Timestamp
-from tap_e2e import Device, NodeChange, ScreenNode, ScreenSnapshot, Screenshot, SelectorKind, TapError
+from tap_e2e import Bounds, Device, NodeChange, ScreenNode, ScreenSnapshot, Screenshot, SelectorKind, TapError
 from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
@@ -125,7 +125,7 @@ class DeviceWorker:
         device = self.device
         assert device is not None, "frames before attach"
         delay = 0.0
-        previous: bytes | None = None
+        previous: dict[str, Bounds] | None = None
         while self._readers and not self._closed:
             await self._calm.wait()
             self._kick.clear()
@@ -141,9 +141,9 @@ class DeviceWorker:
                 async with self._published:
                     self._published.notify_all()
                 return
-            digest = hashlib.sha256(shot.bytes).digest()
-            moving = previous is not None and (digest != previous or changed(snapshot))
-            previous = digest
+            layout = {node.ref: node.bounds for node in snapshot.nodes}
+            moving = previous is not None and (changed(snapshot) or layout != previous)
+            previous = layout
             async with self._published:
                 self._sequence += 1
                 self._frame = frame(self._sequence, taken_at, snapshot, shot, moving)
@@ -159,7 +159,12 @@ class DeviceWorker:
 
 
 def changed(snapshot: ScreenSnapshot) -> bool:
-    """The snapshot differs from the device's previous one."""
+    """Nodes appeared or went since the device's previous snapshot.
+
+    With moved bounds (compared by ref in ``_run``), this is what makes a frame ``moving``: the
+    overlay could be out of place. The picture is not compared: a blinking text cursor, the
+    status bar clock or a spinner change it without moving any element, and would keep the frame
+    loop at full rate and the overlay provisional for as long as they run."""
     return bool(snapshot.removed) or any(node.change is NodeChange.ADDED for node in snapshot.nodes)
 
 
