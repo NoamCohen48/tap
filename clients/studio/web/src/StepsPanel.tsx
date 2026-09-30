@@ -5,6 +5,7 @@ import { stepChips } from "./edit";
 import { errorMessage } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
 import type { Outcome, Step } from "./gen/studio_pb";
+import { ChoiceDialog } from "./Dialogs";
 import { Close, Down, Download, Play, Stop, Trash, Up, Upload } from "./icons";
 import { passed, type ReplayRequest, type StepState } from "./replay";
 import { StepEditor } from "./StepEditor";
@@ -56,6 +57,8 @@ export function StepsPanel({
   onMove: (stepId: string, beforeStepId: string) => void;
 }) {
   const [exporting, setExporting] = useState(false);
+  // Replacing recorded steps asks first, in the page's own dialog (not a blocking `confirm`).
+  const [replacing, setReplacing] = useState<{ kind: "new" } | { kind: "open"; name: string; document: string } | null>(null);
   const list = useRef<HTMLOListElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const locked = replaying || busy;
@@ -67,8 +70,9 @@ export function StepsPanel({
 
   const open = async (chosen: File | undefined) => {
     if (!chosen) return;
-    if (steps.length && !window.confirm(`Replace the ${plural(steps.length, "recorded step")} with ${chosen.name}?`)) return;
-    onOpen(await chosen.text());
+    const document = await chosen.text();
+    if (steps.length) setReplacing({ kind: "open", name: chosen.name, document });
+    else onOpen(document);
   };
 
   const selectedIndex = steps.findIndex((s) => s.id === selectedId);
@@ -121,9 +125,7 @@ export function StepsPanel({
           type="button"
           className="btn small"
           disabled={steps.length === 0 || locked}
-          onClick={() => {
-            if (window.confirm(`Discard the ${plural(steps.length, "recorded step")}?`)) onNewRecording();
-          }}
+          onClick={() => setReplacing({ kind: "new" })}
         >
           New
         </button>
@@ -241,6 +243,30 @@ export function StepsPanel({
           "Each action is recorded after the wait that proves it can run: its element was on screen and matched once."
         )}
       </div>
+      {replacing && (
+        <ChoiceDialog
+          title={replacing.kind === "new" ? "Start a new recording?" : `Open ${replacing.name}?`}
+          body={
+            <p>
+              {replacing.kind === "new"
+                ? `The ${plural(steps.length, "recorded step")} will be discarded. Export them first to keep them.`
+                : `It replaces the ${plural(steps.length, "recorded step")}. Export them first to keep them.`}
+            </p>
+          }
+          choices={[
+            {
+              label: replacing.kind === "new" ? "Discard and start new" : "Replace",
+              primary: true,
+              onChoose: () => {
+                setReplacing(null);
+                if (replacing.kind === "new") onNewRecording();
+                else onOpen(replacing.document);
+              },
+            },
+          ]}
+          onCancel={() => setReplacing(null)}
+        />
+      )}
       {exporting && <ExportDrawer client={client} onClose={() => setExporting(false)} />}
     </section>
   );
@@ -290,8 +316,12 @@ function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () =
     const a = window.document.createElement("a");
     a.href = url;
     a.download = name;
+    // In the document (Firefox ignores a detached link), and the URL outlives the click: the
+    // browser fetches it after `click()` returns, so revoking it at once cancels the download.
+    window.document.body.append(a);
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   return (

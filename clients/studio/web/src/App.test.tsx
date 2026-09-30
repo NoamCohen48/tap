@@ -369,6 +369,23 @@ describe("App", () => {
     await screen.findByText("1 step");
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     expect((await screen.findByTestId("recording-json")).textContent).toContain('"autPackage": "com.example"');
+
+    // The link is in the document when clicked, and its URL outlives the click: the browser
+    // fetches it afterwards, so revoking it at once cancels the download.
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.isConnected).toBe(true);
+      expect(this.download).toMatch(/^com\.example-\d{8}-\d{4}\.tap-recording\.json$/);
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Download" }));
+      expect(clicked).toHaveBeenCalledOnce();
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      expect(URL.revokeObjectURL).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("the Back button records a key press", async () => {
@@ -476,6 +493,32 @@ describe("App", () => {
       expect(fake.state.replays[0]!.fromStepId).toBe("s1"); // the launch is not run twice
       expect(listed()[0]).toBe('app("com.example").coldLaunch()');
       expect(screen.getAllByText("✓ 5 ms")).toHaveLength(2);
+    });
+
+    it("asks in its own dialog before New or Open replaces the steps", async () => {
+      const fake = await recordTwo();
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      let dialog = await screen.findByRole("dialog", { name: "Start a new recording?" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(listed()).toHaveLength(2);
+
+      const opened = create(RecordingSchema, {
+        format: "tap-recording/1",
+        autPackage: "com.example",
+        steps: [{ id: "a1", kind: { case: "app", value: { operation: "cold_launch", packageName: "com.example" } } }],
+      });
+      const file = new File([toJsonString(RecordingSchema, opened)], "flow.tap-recording.json", { type: "application/json" });
+      fireEvent.change(screen.getByLabelText("Recording file"), { target: { files: [file] } });
+      dialog = await screen.findByRole("dialog", { name: "Open flow.tap-recording.json?" });
+      expect(dialog.textContent).toContain("It replaces the 2 recorded steps.");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+      await waitFor(() => expect(listed()).toEqual(['app("com.example").coldLaunch()']));
+
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      dialog = await screen.findByRole("dialog", { name: "Start a new recording?" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Discard and start new" }));
+      await waitFor(() => expect(screen.getByText("0 steps")).toBeTruthy());
+      expect(fake.state.steps).toHaveLength(0);
     });
 
     it("names a failed step by its place after a prepended cold launch", async () => {

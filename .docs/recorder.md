@@ -412,7 +412,7 @@ daemon
      same `loads` as everything else and reports every problem; it replaces the recording and
      forgets the secret values.
 6. Device run on the local matrix and docs (`docs/guide/`, release family).
-   **Device run on emulator-5554 (API 34), 2026-09-29; 85e49002 not yet.** On the fixture app,
+   **Device run on emulator-5554 (API 34), 2026-09-29, and 85e49002 (Samsung, API 29), 2026-09-30.** On the fixture app,
    in the browser, with the frame loop running: a tap, a set text with `$` in it, a tap retargeted
    to a typed `text("AMBIGUOUS TAP").at(1)`, a wheel scroll of the Compose list and two text
    assertions. Replay with the cold launch prepended passed (7 steps); the exported file,
@@ -429,6 +429,15 @@ daemon
    - A replay that failed after a prepended cold launch named the step by its old number, and
      the summary did not count the launch.
    - The mode switch's shortcut numbers read as counts; they are keycaps now.
+   The second pass (export through the UI, then 85e49002) found more: Download never produced
+   a file (the blob URL was revoked as soon as the link was clicked, and the link was not in the
+   document), and with a real recording the export drawer's JSON pushed Copy and Download below
+   the window (its grid row grew with the content). New and Open asked through a blocking
+   `window.confirm`; they use the page's own dialog now, with Cancel focused. On 85e49002 the
+   same flow (with the `.at(1)` step) was recorded, exported with Download, reopened after New,
+   and replayed from a cold launch (6 steps passed); the downloaded file replayed through
+   `tap-e2e` in a fresh connection passed too. Copy JSON could not be checked: the test
+   browser's clipboard reads back empty even for its own writes.
 
 ## Verification
 

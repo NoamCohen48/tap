@@ -1130,6 +1130,7 @@ code,
   background: rgba(8, 12, 16, 0.45);
   z-index: 20;
   display: grid;
+  grid-template-rows: 100%;
   justify-items: end;
 }
 .drawer {
@@ -1138,7 +1139,8 @@ code,
   background: var(--surface);
   border-left: 1px solid var(--line);
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  /* minmax(0, …): the JSON scrolls inside its row instead of pushing the buttons off screen. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 .drawer pre {
   margin: 0;
