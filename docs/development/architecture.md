@@ -39,6 +39,10 @@ the Kotlin `Device`/`Element` and the Python `Device`/`Element` build the same p
 top: sessions that outlive a single command, screen snapshots whose refs name selectors the
 server has checked, and an export of everything the session did.
 
+**`tap-studio`** is another client on the Python one: a local web server and a browser page
+(React) that show the device's screen with its elements and record what the user does as
+`tap-recording/1` steps. Page and back end share one schema, `clients/studio/proto/studio.proto`.
+
 ## Where each part lives
 
 | Part | Directory | Gradle modules / packages |
@@ -47,7 +51,7 @@ server has checked, and an export of everything the session did.
 | Driver | `device/driver/` | `:device:driver` (the instrumentation APKs), `:device:driver:core` (Android code), `:device:driver:command-engine` (pure-JVM command pipeline) |
 | App library | `device/sync-sdk/` | `:device:sync-sdk`, an optional library an app can ship to report when it is busy (experimental) |
 | Server | `host/` | `:host:core` (ADB, sessions, journals, driver client, app lifecycle), `:host:daemon` (the `tap` server and CLI), `:host:validation` (device fault-injection suite) |
-| Clients | `clients/` | `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `clients/python` (`tap-e2e`), `clients/agent` (`tap-agent`) |
+| Clients | `clients/` | `:clients:kotlin:sdk`, `:clients:kotlin:junit5`, `clients/python` (`tap-e2e`), `clients/agent` (`tap-agent`), `clients/studio` (`tap-studio`) |
 | Test app | `fixture-app/`, `samples/` | `:fixture-app`, the app the suites run against; `:samples:fixture-tests`, the Kotlin client suite |
 
 Dependencies only point one way: clients depend on `:contracts:api` and nothing else, and

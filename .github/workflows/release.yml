@@ -7,6 +7,8 @@ name: Release
 #   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when enabled)
 #   client-agent/v1.2.3   tap-agent (agent CLI + MCP server) wheel + sdist on a GitHub Release
 #                         (PyPI when enabled)
+#   client-studio/v1.2.3  tap-studio (browser inspector + recorder, page built in) wheel + sdist
+#                         on a GitHub Release (PyPI when enabled)
 #   sync-sdk/v1.2.3       tap-sync-sdk (AAR) to GitHub Packages
 # Every release also carries the complete documentation as Markdown, built from the tagged
 # commit: tap-docs-<version>.zip and tap-docs-<version>.tar.gz (docs-bundle job).
@@ -18,6 +20,7 @@ on:
       - "client-kotlin/v*"
       - "client-python/v*"
       - "client-agent/v*"
+      - "client-studio/v*"
       - "sync-sdk/v*"
 
 permissions:
@@ -349,6 +352,71 @@ jobs:
             Requires a `tap` daemon of engine version ${{
             needs.resolve.outputs.engine }} or later (tag `daemon/v${{
             needs.resolve.outputs.engine }}`).
+      # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
+      - name: Publish to PyPI
+        if: vars.PUBLISH_TO_PYPI == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  # ---- client-studio/v* ---------------------------------------------------------------------
+  client-studio:
+    name: tap-studio
+    needs: [resolve, docs-bundle]
+    if: needs.resolve.outputs.family == 'client-studio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The page is built into the package (tap_studio/static) before the wheel.
+      - name: Test and build
+        run: |
+          (cd clients/studio/web && bun install --frozen-lockfile)
+          python -m pip install --quiet build "clients/python[dev]" \
+          "clients/studio[dev]"
+          python clients/studio/scripts/gen_protos.py --check
+          (cd clients/studio/web && bun run test && bun run build)
+          python -m pytest -q clients/studio/tests
+          python -m build --outdir dist clients/studio
+          version="${{ needs.resolve.outputs.version }}"
+          wheel="dist/tap_studio-${version}-py3-none-any.whl"
+          python -m zipfile -l "$wheel" | grep -q "tap_studio/static/index.html"
+          python -m pip install --quiet --force-reinstall --no-deps "$wheel"
+          python -c "import tap_studio, sys; sys.exit(tap_studio.__version__ != '${version}')"
+          tap-studio --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: tap-studio ${{ needs.resolve.outputs.version }}
+          files: |
+            dist/*
+            docs-bundle/*
+          body: |
+            Tap Studio (experimental): a browser inspector and action
+            recorder for Android apps, run on a device through a running
+            `tap` daemon. It records element interactions as
+            `tap-recording/1` files you replay or turn into tests. It
+            depends on `tap-e2e`, which is not on PyPI yet: install the
+            `tap-e2e` wheel from its `client-python/v*` release first, then
+
+            ```bash
+            pip install https://github.com/${{ github.repository
+            }}/releases/download/${{ github.ref_name }}/tap_studio-${{
+            needs.resolve.outputs.version }}-py3-none-any.whl
+            tap-studio
+            ```
+            Requires a `tap` daemon of engine version ${{
+            needs.resolve.outputs.engine }} or later (tag `daemon/v${{
+            needs.resolve.outputs.engine }}`), started with `tap start`.
       # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
       - name: Publish to PyPI
         if: vars.PUBLISH_TO_PYPI == 'true'

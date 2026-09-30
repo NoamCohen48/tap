@@ -107,6 +107,11 @@ pytest, and run them on real phones and emulators. You don't need to change your
     `tap-agent`, a CLI and MCP server that lets Claude Code or another agent drive a device and
     export what it did as a test.
 
+-   **[Tap Studio](guide/studio.md)**
+
+    A browser inspector and recorder: see the device's screen with its elements, act on them,
+    and get the steps as a file you replay or turn into a test.
+
 -   **[API reference](reference/index.md)**
 
     Kotlin, Python and gRPC references, generated from the source.

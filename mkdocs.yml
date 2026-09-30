@@ -106,6 +106,7 @@ nav:
       - Configuration and the tap CLI: guide/configuration.md
       - Errors and failure artifacts: guide/errors.md
       - Coding agents (tap-agent): guide/agents.md
+      - Tap Studio (inspect and record): guide/studio.md
       - Coming from Maestro or Appium: guide/coming-from.md
   - Reference:
       - Overview: reference/index.md

@@ -9,6 +9,12 @@ experimental may change in any release.
 - Licensed under Apache-2.0 (`LICENSE`; the wheels and POMs carry it).
 - Every GitHub Release carries the complete documentation as Markdown
   (`tap-docs-<version>.zip` / `.tar.gz`).
+- **Tap Studio** (experimental, new family `client-studio`: `tap-studio`): a browser inspector
+  and action recorder on a running server. It shows the live screen with its elements. Act,
+  Assert and Inspect modes record element steps (taps, text and secrets, scrolls, swipes, keys,
+  app calls, checks), never coordinates. Steps can be edited (another selector candidate, or
+  one typed in the Kotlin DSL with a live match count), reordered and replayed. Recordings are
+  exported and reopened as `tap-recording/1` JSON. Guide: `docs/guide/studio.md`.
 
 ## 0.0.1 — 2026-09-29 (alpha)
 

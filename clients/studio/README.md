@@ -22,6 +22,20 @@ tap-studio --serial emulator-5554 --package com.example   # also attaches the de
 The link carries a one-time launch token; the page signs in with it and the server refuses
 anything else (loopback hosts only, same-origin only).
 
+User guide: `docs/guide/studio.md` (published at
+<https://noamcohen48.github.io/tap/guide/studio/>).
+
+## CI and releases
+
+- CI `studio` job: `gen_protos.py --check`, the page's tests and build, the back end's tests,
+  and a wheel that must carry the built page (`studio-dists`).
+- CI `device-tests`: `.github/scripts/studio_smoke.py` runs that wheel on an API 34 emulator
+  through the studio's own API: record, export, New, Open, Replay, SIGTERM frees the device,
+  and the exported file replays through `tap-e2e`. Run it locally with
+  `TAP_BIN=<tap> SERIAL=<serial> .venv/bin/python .github/scripts/studio_smoke.py`.
+- Releases: tag `client-studio/vX.Y.Z` matching `version` in `pyproject.toml`
+  (`.github/workflows/release.yml`); the wheel and sdist go on a GitHub Release.
+
 ## Layout
 
 - `proto/studio.proto`: the one contract, `tap.studio.v1`: the page's API (`StudioService`,
