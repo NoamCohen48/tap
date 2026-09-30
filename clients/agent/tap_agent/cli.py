@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from importlib import resources
 
 from . import render
-from .core import EXIT_OK, EXIT_USAGE, Agent, AgentError, APP_ACTIONS
+from .core import EXIT_OK, EXIT_USAGE, PANELS, Agent, AgentError, APP_ACTIONS
 from .targets import SELECTOR_KEYS, UsageError, parse_duration
 
 DESCRIPTION = """\
@@ -92,8 +92,11 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("target", help=TARGET_HELP)
         p.add_argument("direction", choices=("up", "down", "left", "right"))
 
-    p = verb("key", "press a key: back, home, enter, tab, delete, … or a key code", on_device, settle)
+    p = verb("key", "press a key: back, home, recents, enter, tab, delete, … or a key code", on_device, settle)
     p.add_argument("name")
+
+    p = verb("panel", "open the notification shade or quick settings (key back closes it)", on_device, settle)
+    p.add_argument("name", choices=PANELS)
 
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
@@ -154,6 +157,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.swipe(args.target, args.direction, device, settle=settle)
     if v == "key":
         return agent.key(args.name, device, settle=settle)
+    if v == "panel":
+        return agent.panel(args.name, device, settle=settle)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout)
     if v == "settle":

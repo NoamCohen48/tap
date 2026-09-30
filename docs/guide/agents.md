@@ -60,6 +60,10 @@ tap-agent release                                   # frees the device
   (contains), `desc=`, `desc~=`, `hint=`, `class=`, `pkg=` (another app's window), `index=`.
   As in tests, every action needs exactly one match and fails before touching the device
   otherwise.
+- **System panels**: `panel notifications` / `panel quick-settings` (MCP `open_panel`) open the
+  notification shade or quick settings; target their nodes with `pkg=com.android.systemui`, and
+  `key back` closes them (twice from quick settings on newer Android). `key recents` opens the
+  recent apps.
 - **`--settle`** after an action waits for the screen to stop changing and prints the
   difference (`+` added, `-` removed nodes), which is usually enough to pick the next step.
 - **Evidence**: `screenshot` and `capture` (screenshot, hierarchy, device info, driver log)

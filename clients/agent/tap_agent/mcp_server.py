@@ -186,13 +186,27 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="press_key")
     async def press_key(
-        key: Annotated[str, Field(description="back, home, enter, tab, delete, escape, ... or an Android key code.")],
+        key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Press a key."""
         return await call(session, lambda a: a.key(key, device or None, settle=settle))
+
+    @mcp.tool(name="open_panel")
+    async def open_panel(
+        panel: Annotated[
+            Literal["notifications", "quick_settings"],
+            Field(description="The notification shade, or the quick settings panel."),
+        ],
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Open a system panel, as a swipe down from the status bar would. Its nodes belong to
+        com.android.systemui (target them with pkg=com.android.systemui); press_key back closes it."""
+        return await call(session, lambda a: a.panel(panel, device or None, settle=settle))
 
     @mcp.tool(name="wait_for", annotations=READ_ONLY)
     async def wait_for(

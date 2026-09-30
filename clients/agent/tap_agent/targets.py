@@ -156,6 +156,7 @@ KEYS = {
     "escape": 111,
     "forward-delete": 112,
     "app-switch": 187,
+    "recents": 187,
 }
 
 

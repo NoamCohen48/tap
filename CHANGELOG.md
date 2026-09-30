@@ -20,7 +20,8 @@ experimental may change in any release.
   settings with the system's accessibility action. The clients expose it as
   `device.openNotifications()` / `openQuickSettings()` (`open_notifications()` /
   `open_quick_settings()`). Tap Studio records it from the device rail beside the screen, which
-  also has Back, Home and Recent apps.
+  also has Back, Home and Recent apps. `tap-agent` has `panel notifications|quick-settings`
+  (MCP `open_panel`) and the `recents` key.
 
 ## 0.0.1 — 2026-09-29 (alpha)
 

@@ -53,7 +53,10 @@ the device, and says so.
 
 `tap`, `tap --long`, `fill <target> <text>` (replaces the text), `type <text>` (key events into
 the focused field), `clear`, `scroll <target> up|down|left|right` (`down` reveals content
-below), `swipe <target> <direction>`, `key back|home|enter|tab|delete|…`, and
+below), `swipe <target> <direction>`, `key back|home|recents|enter|tab|delete|…`,
+`panel notifications|quick-settings` (the status bar's panels: their nodes are in
+`pkg=com.android.systemui`; `key back` closes them, twice from quick settings on newer
+Android; use `--settle` before opening another), and
 `app launch|cold-launch|stop|clear|install APK|grant PERMISSION|running`.
 
 Add `--settle` to an action to wait until the screen stops changing and print the difference:

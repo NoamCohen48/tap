@@ -5,7 +5,8 @@
 
 Installs the fixture app, starts `tap-studio --serial … --package …`, signs in with the launch
 link, checks the page is served and frames arrive, records a cold launch, a tap, two text
-assertions, a set text and a tap picked by index, exports the recording, reopens it after
+assertions, a set text, a tap picked by index, and the notification shade opened and closed
+with Back (the device rail's steps) with the checks that it covered the app and then did not, exports the recording, reopens it after
 NewRecording and replays it. Then stops the studio with SIGTERM (the device must be released
 at once) and replays the exported file through tap-e2e in a fresh connection.
 
@@ -27,7 +28,7 @@ import time
 
 from tap_e2e import TapClient
 from tap_e2e import proto as tap
-from tap_e2e.selectors import res, text
+from tap_e2e.selectors import res, text_matches
 from tap_studio import steps
 from tap_studio._gen import studio_pb2 as studio
 from tap_studio._gen.studio_connect import StudioServiceClientSync
@@ -41,13 +42,14 @@ APK = os.environ.get("TAP_FIXTURE_APK", str(ROOT / "fixture-app/build/outputs/ap
 OUT = pathlib.Path(os.environ.get("OUT", ROOT / "build/studio-smoke"))
 STUDIO = os.environ.get("TAP_STUDIO", "tap-studio")
 PACKAGE = "io.github.noamcohen48.tap.fixture"
+STEPS = 10
 
 
 def act(command: tap.Command) -> studio.Step:
     return studio.Step(action=studio.ActionStep(command=command))
 
 
-def expect(selector, condition: int, value: str) -> studio.Step:
+def expect(selector, condition: int, value: str | None = None) -> studio.Step:
     return studio.Step(assertion=studio.AssertionStep(selector=selector.to_proto(), condition=condition, text=value))
 
 
@@ -137,23 +139,30 @@ def run() -> None:
         s.perform(act(tap.Command(tap=tap.Tap(selector=res("view_button").to_proto()))))
         s.perform(expect(res("view_status"), studio.CONDITION_TEXT_EQUALS, "View tapped"))
         s.perform(act(tap.Command(set_text=tap.SetText(selector=res("view_input").to_proto(), text="wool $5"))))
-        right = act(tap.Command(tap=tap.Tap(selector=text("Ambiguous tap").at(1).to_proto())))
+        right = act(tap.Command(tap=tap.Tap(selector=text_matches("(?i)ambiguous tap").at(1).to_proto())))
         picked = s.perform(right)
         check(not picked.action.wait.wait_visible.exactly_one, "a picked selector must wait for any match")
         s.perform(expect(res("ambiguous_status"), studio.CONDITION_TEXT_CONTAINS, "right=1"))
+        # The shade covers the app (its nodes are gone) before Back, and Back gives it back: a
+        # replay sends the steps back to back, and a Back sent while the shade is still opening
+        # can be ignored.
+        s.perform(act(tap.Command(open_system_panel=tap.OpenSystemPanel(panel=tap.SYSTEM_PANEL_NOTIFICATIONS))))
+        s.perform(expect(res("view_button"), studio.CONDITION_GONE))
+        s.perform(act(tap.Command(press_key=tap.PressKey(key_code=4))))
+        s.perform(expect(res("view_button"), studio.CONDITION_VISIBLE))
 
         document = s.client.get_recording(studio.GetRecordingRequest(), headers=s.headers).document
         (OUT / "flow.tap-recording.json").write_text(document)
-        check(len(loads(document).steps) == 6, "the export has 6 steps")
+        check(len(loads(document).steps) == STEPS, f"the export has {STEPS} steps")
 
         s.client.new_recording(studio.NewRecordingRequest(), headers=s.headers)
         opened = s.client.open_recording(studio.OpenRecordingRequest(document=document), headers=s.headers)
-        check(len(opened.recording.steps) == 6, "reopened with 6 steps")
+        check(len(opened.recording.steps) == STEPS, f"reopened with {STEPS} steps")
         events = list(s.client.replay(studio.ReplayRequest(), headers=s.headers, timeout_ms=180_000))
         outcomes = [e for e in events if e.HasField("outcome")]
         for e in outcomes:
             print(f"replayed {e.step_id}: {'ok' if not e.message else e.message} ({e.outcome.duration_ms} ms)")
-        check(len(outcomes) == 6 and not any(e.message for e in outcomes), "the replay passed every step")
+        check(len(outcomes) == STEPS and not any(e.message for e in outcomes), "the replay passed every step")
     finally:
         took = s.stop()
     print(f"tap-studio stopped {took:.1f} s after SIGTERM")

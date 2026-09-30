@@ -135,6 +135,19 @@ def test_keys_waits_and_app_actions(fake, agent):
     assert info.value.exit_code == EXIT_USAGE
 
 
+def test_panels_open_the_shade_and_quick_settings(fake, agent):
+    agent.attach("emulator-5554", "com.example")
+    assert agent.panel("notifications") == "opened notifications"
+    assert fake.devices.commands[-1].open_system_panel.panel == pb.SYSTEM_PANEL_NOTIFICATIONS
+    assert agent.panel("quick_settings") == "opened quick-settings"
+    assert fake.devices.commands[-1].open_system_panel.panel == pb.SYSTEM_PANEL_QUICK_SETTINGS
+    assert agent.key("recents") == "pressed recents"
+    assert fake.devices.commands[-1].press_key.key_code == 187
+    with pytest.raises(AgentError) as info:
+        agent.panel("settings")
+    assert info.value.exit_code == EXIT_USAGE
+
+
 def test_screenshot_is_saved_under_the_out_dir(fake, agent, tmp_path):
     agent.attach("emulator-5554", "com.example")
     path = agent.screenshot()
@@ -171,6 +184,12 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     with pytest.raises(SystemExit) as info:
         cli.main(["scroll", "@e1", "sideways"])
     assert info.value.code == EXIT_USAGE
+    capsys.readouterr()
+    assert cli.main(["panel", "quick-settings", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "opened quick-settings\n"
+    with pytest.raises(SystemExit) as info:
+        cli.main(["panel", "settings"])
+    assert info.value.code == EXIT_USAGE
     assert cli.main(["skill"]) == 0
     assert capsys.readouterr().out.startswith("---\nname: tap-android")
 
@@ -200,7 +219,7 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
 
 EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
-    "scroll", "swipe", "press_key", "wait_for", "settle", "screenshot", "capture", "app", "export",
+    "scroll", "swipe", "press_key", "open_panel", "wait_for", "settle", "screenshot", "capture", "app", "export",
 }
 
 
@@ -245,5 +264,7 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert result.is_error and "run `snapshot`" in result.content[0].text
         result = await client.call_tool("screenshot", {})
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
+        result = await client.call_tool("open_panel", {"panel": "quick_settings"})
+        assert not result.is_error and result.content[0].text == "opened quick-settings"
         result = await client.call_tool("export", {})
         assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text
