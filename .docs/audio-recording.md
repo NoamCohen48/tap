@@ -1,6 +1,6 @@
-# Device audio recording — research and scrcpy trial
+# Device media recording — scrcpy research, verification and capability audit
 
-Date: 2026-09-29. Research and implementation record. The owner chose a **scrcpy trial** first and subsequently approved testing. Other agents share the devices: any future device run must respect Tap's per-serial lock. This is audio *media* recording, not the Tap Studio action recorder (`recorder.md`), the daemon event log, or the deferred screen-video stream (`screen-streaming.md`).
+Date: 2026-09-29. Research and implementation record. The owner chose a **scrcpy trial** first and subsequently approved testing. Other agents share the devices: any future device run must respect Tap's per-serial lock. This is device *media* recording, not the Tap Studio action recorder (`recorder.md`), the daemon event log, or the deferred live screen-video stream (`screen-streaming.md`).
 
 ## What is being captured
 
@@ -89,8 +89,34 @@ or change its paired screenshot+snapshot overlay decision (`screen-streaming.md`
 Video frames are variable-rate: on the API 34 emulator a static display produced a ~1.1 s
 MP4 after a 3 s capture because the encoder emitted no further frames. That file remains a
 valid video of the unchanged screen but **its duration does not necessarily equal wall time**.
-Combined media, which includes continuous audio samples, preserved the 12.6 s timeline in
-the test below; do not use video-only file duration as a timer assertion.
+Combined media, which includes continuous audio samples, preserved the 12.6 s **container**
+timeline in the test below, but its last video packet ended around 11.75 s. Do not use a
+video-only file's duration as a timer assertion.
+
+### Deferred: start readiness and video duration (tested, no fix)
+
+A controlled native-daemon/API 34 run isolated two issues, not just a missing final frame:
+
+| Scenario | Start RPC | Time from Start return to Stop call | Video timeline | Finding |
+|---|---:|---:|---:|---|
+| Unchanged fixture screen | 0.503 s | 6.00 s | 11 packets, PTS 0–1.0 s, MP4 duration 1.1 s | No frame marks the remaining static period. |
+| Home at +2 s, fixture relaunched at +4.07 s | 0.508 s | 6.27 s | 51 packets, MP4 duration 5.587 s | An internal 1.158 s gap **is preserved** in packet timestamps; end time still differs. |
+| Stop at +0.1 s | 0.505 s | 0.10 s | No usable file | Stop fails with `FAILED_PRECONDITION`: Start returned before scrcpy was ready. |
+
+A separate probe saw the empty MP4 appear ~0.6 s **after** Start returned and a 48-byte
+header at ~1 s; file existence or `process.isAlive` is not a readiness signal. First video
+PTS is rebased to zero, so the clip does not account for startup latency either. scrcpy
+[pins an encoder repeat-frame request of 100 ms](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/server/src/main/java/com/genymobile/scrcpy/video/SurfaceEncoder.java),
+but the tested emulator ceased emitting frames on a static screen. The combined MKV's
+continuous audio keeps its container duration longer than its video stream.
+
+The owner chose **not to fix this now**. A robust fix needs a real media-ready condition
+(never a larger fixed sleep), defined semantics for short Stop calls, and a bounded final-
+frame hold/remux or transcode to cover the video tail. `ffmpeg`'s `tpad=stop_mode=clone`
+produced a 3.0 s file from the prior 1.1 s MP4 in a local, two-thread trial, but would add
+an executable dependency, CPU/disk work, output-size checks and cleanup. Neither padding
+alone nor editing container duration solves the early-Stop case. No product source was
+changed by this investigation; the Tap daemon was stopped afterward.
 
 ### Video extension verification
 
@@ -106,6 +132,23 @@ the test below; do not use video-only file duration as a timer assertion.
   54,071 bytes). Its server was stopped and no recording process/file remained under the
   daemon state dir.
 
+## scrcpy capability audit (research only; no new feature approved)
+
+Reviewed the [v3.3.4 pinned reference](https://github.com/Genymobile/scrcpy/tree/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3) rather than a moving branch. The installed 4.1 executable was used for the above device tests, **not** as the contract for new features. This is a selection of relevant capabilities, not permission to add scrcpy's entire CLI to Tap.
+
+| scrcpy capability | Tap fit / decision | Evidence and boundary |
+|---|---|---|
+| `--no-power-on` | **Next small hardening candidate:** avoid waking a locked/asleep device merely because a caller starts recording. Currently Tap supplies `--no-control --no-playback --no-window`, but not this flag. Check behavior on an asleep device before changing it. | [Device power behavior](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/device.md#power-on-on-start). Do not enable `--stay-awake`, `--show-touches`, `--turn-screen-off` or `--power-off-on-close` by default: they change device state, and `--show-touches` documents **physical** touches only, not Tap-injected input. |
+| Encoded video stream, independent of playback window | **Most useful new product feature if Studio's ~2.3 paired frames/s are inadequate:** daemon-owned low-latency ScreenStream for motion. Requires an owned stream of codec config/frames, per-device sharing with file recording, bounded backpressure and cleanup; the CLI's `--record` is a file muxer, **not** a streaming RPC. Keep screenshot+accessibility snapshots for overlay/clicks. | [Video](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/video.md#no-playback), [architecture](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/develop.md), `screen-streaming.md`. Starting a competing scrcpy process while recording is not the design. |
+| Codec, encoder, frame cap, bitrate, crop and recording orientation | **Useful narrow compatibility/evidence knobs** when an encoder fails, a landscape capture is awkward, or artifacts exceed budget; default remains H.264, 1024 px, 15 fps and 2 Mbps. Validate formats, rotation and size on devices rather than forwarding arbitrary `--video-codec-options` from clients. | [Video configuration/rotation](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/video.md#codec). `--max-fps` is a cap, **not** a constant-frame-rate/timing fix. |
+| Per-display `--display-id`, `--new-display` | **Niche, defer.** A secondary display capture might aid multi-display apps, but Tap's screenshot, node bounds, selector/window scope, actions and ownership would all need to refer to the *same* display. A virtual display may be empty and is destroyed on exit; it is not a shortcut to concurrent device leases. | [Display selection](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/video.md#display), [virtual display](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/virtual_display.md). |
+| `--video-source=camera`, camera selection | **Only if camera hardware diagnostics become a requirement.** API 31+ camera video can be saved, optionally with mic, but it depicts the *camera feed*, not the AUT's camera preview. Concurrent camera use may compete with the AUT and the mic raises privacy concerns. | [Camera](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/camera.md). Not a general solution for camera app tests. |
+| Audio formats/sources, muxing, timed recording | **Already used where relevant** (Opus, `output`/`playback`/`mic`, one muxed video+audio file, `--time-limit`). AAC/FLAC could be opt-in for player compatibility/lossless evidence if requested, but would require matching artifact/size contracts; changing the codec does not fix screen-video timestamps. | [Audio](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/audio.md), [recording formats](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/recording.md). |
+| HID controls, gestures, clipboard sync, file drop/app install, gamepad | **Do not route Tap actions through these.** They are scrcpy's human input surface; bypass Tap's exact-one selector precondition, driver generation/command lane and event log. Clipboard sync could leak sensitive host/device data; keeping `--no-control` is intentional. | [Control and clipboard warning](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/control.md). |
+| V4L2 loopback, OTG, remote ADB tunnel | **No current testing benefit.** Linux webcam loopback needs a kernel module, OTG changes the transport/input model, and exposing an ADB server remotely is unencrypted; none is a shortcut to Tap's authenticated daemon stream or serial-specific lease. | [V4L2](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/v4l2.md), [tunnels warning](https://github.com/Genymobile/scrcpy/blob/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3/doc/tunnels.md). |
+
+Priority if revisited: (1) prevent unexpected power-on after a device test, with a regression check; (2) measure a Studio motion-stream spike only if paired frames fall short; (3) consider narrow encoder/orientation overrides after specific failures. **None** is part of this documentation-only change. Automatic rotating failure video and reliable duration/start readiness remain separate deferred work; scrcpy supplies neither as a ready-made Tap feature.
+
 ## Longer-term direction and limits
 
-Clients never invoke ADB or scrcpy; capture belongs to the attached device and its owning connection. The host starts scrcpy only on request, keeps the recording file temporary, returns a bounded Opus artifact on Stop, and tears down scrcpy on detach and connection loss. This is independent of Tap's one-command driver executor. A future long-running pipeline would need streamed delivery, disk quotas, automatic failure-artifact policy, and AV synchronization rather than these short bounded unary artifacts. A sudden daemon `SIGKILL` can leave an external scrcpy child until its `--time-limit` expires; the session lock is then OS-released, so crash recovery of that child remains a follow-up. This work does not alter Tap Studio's `screen-streaming.md` decision or imply video recording.
+Clients never invoke ADB or scrcpy; capture belongs to the attached device and its owning connection. The host starts scrcpy only on request, keeps the recording file temporary, returns a bounded Opus/MP4/MKV artifact on Stop, and tears down scrcpy on detach and connection loss. This is independent of Tap's one-command driver executor. A future long-running pipeline would need streamed delivery, disk quotas, automatic failure-artifact policy, and AV synchronization rather than these short bounded unary artifacts. A sudden daemon `SIGKILL` can leave an external scrcpy child until its `--time-limit` expires; the session lock is then OS-released, so crash recovery of that child remains a follow-up. This work does not alter Tap Studio's `screen-streaming.md` decision.
