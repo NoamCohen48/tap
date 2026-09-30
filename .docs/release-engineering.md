@@ -156,13 +156,13 @@ Consuming:
 
 ```kotlin
 repositories { maven("https://maven.pkg.github.com/NoamCohen48/tap") { credentials { … } } }
-testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.1")
+testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.2")
 ```
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.1/tap_agent-0.0.1-py3-none-any.whl
-curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.0.1/tap-0.0.1-linux-x86_64 && chmod +x tap
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.2/tap_agent-0.0.2-py3-none-any.whl
+curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.0.2/tap-0.0.2-linux-x86_64 && chmod +x tap
 ```
 
 ## Open points

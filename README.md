@@ -57,13 +57,13 @@ class CheckoutTest {
 You need an Android phone or emulator connected through `adb`.
 
 1. Download the Tap server for your system from the
-   [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.0.1):
-   `tap-0.0.1-linux-x86_64` (Linux), `tap-0.0.1-macos-aarch64` (macOS on Apple silicon) or
-   `tap-0.0.1-jvm.zip` (any system with Java 17).
+   [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.0.2):
+   `tap-0.0.2-linux-x86_64` (Linux), `tap-0.0.2-macos-aarch64` (macOS on Apple silicon) or
+   `tap-0.0.2-jvm.zip` (any system with Java 17).
 2. Start it:
 
    ```bash
-   mv tap-0.0.1-linux-x86_64 tap && chmod +x tap
+   mv tap-0.0.2-linux-x86_64 tap && chmod +x tap
    ./tap start
    ```
 
@@ -85,7 +85,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.1")
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.2")
 }
 
 tasks.test {
@@ -99,7 +99,7 @@ Write a test like the one above, then run `./gradlew test`.
 ### Python
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
 ```
 
 Tell the pytest plugin which app to test in `pytest.ini`:
@@ -126,8 +126,8 @@ Run it with `pytest`.
 device. It needs Python 3.10+ and a running Tap server:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl \
-            https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.1/tap_agent-0.0.1-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl \
+            https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.2/tap_agent-0.0.2-py3-none-any.whl
 claude mcp add tap -- tap-agent mcp      # register it with Claude Code
 ```
 

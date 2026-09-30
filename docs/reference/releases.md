@@ -35,7 +35,7 @@ version`, `ENGINE_VERSION`, the driver's `versionName`). They are never mixed.
 
 ## Stability
 
-Tap is in **alpha**: the first release is 0.0.1 for every family.
+Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-09-30) is the current one.
 
 - **0.x (now):** any release may change the client API, the `tap.v1` API or the CLI. Release
   notes say what changed. The wire stays additive where it can (`buf breaking` runs in CI), so
@@ -63,7 +63,7 @@ Tap is in **alpha**: the first release is 0.0.1 for every family.
 ## Checking what you have
 
 ```bash
-tap version                      # tap daemon 0.0.1
+tap version                      # tap daemon 0.0.2
 python -c "import tap_e2e; print(tap_e2e.__version__)"
 ```
 

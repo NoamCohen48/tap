@@ -16,8 +16,8 @@ It needs the `tap` server ([Getting started](getting-started.md#1-the-server)) a
 Install the Python client first, then the agent tools, from the GitHub releases:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.1/tap_agent-0.0.1-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.0.2/tap_agent-0.0.2-py3-none-any.whl
 tap start
 ```
 

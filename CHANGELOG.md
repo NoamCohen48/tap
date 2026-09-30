@@ -4,7 +4,10 @@ Each artifact family is versioned on its own (`docs/reference/releases.md`); ent
 families they cover. Tap is in alpha: any 0.x release may change the API, and parts marked
 experimental may change in any release.
 
-## Unreleased
+## 0.0.2 — 2026-09-30 (alpha)
+
+`daemon/v0.0.2`, `client-kotlin/v0.0.2`, `client-python/v0.0.2`, `client-agent/v0.0.2`, and the
+first `client-studio/v0.0.1`. `tap-agent` and `tap-studio` need `tap-e2e` 0.0.2.
 
 - Licensed under Apache-2.0 (`LICENSE`; the wheels and POMs carry it).
 - Every GitHub Release carries the complete documentation as Markdown
@@ -22,6 +25,9 @@ experimental may change in any release.
   `open_quick_settings()`). Tap Studio records it from the device rail beside the screen, which
   also has Back, Home and Recent apps. `tap-agent` has `panel notifications|quick-settings`
   (MCP `open_panel`) and the `recents` key.
+- **Selector candidates** (engine, Python client): `ScreenSnapshot(selector_candidates=true)`
+  gives each node every selector that matched only it, best first
+  (`device.screen_snapshot(selector_candidates=True)`), for inspectors such as Tap Studio.
 
 ## 0.0.1 — 2026-09-29 (alpha)
 
