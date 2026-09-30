@@ -143,7 +143,13 @@ contributors, and two rulesets: `main` cannot be deleted or force-pushed, and re
 the table above). If GitHub drops a tag-push event and no run starts (seen 2026-09-30),
 dispatch the workflow manually with the tag name (`gh workflow run Release --ref main -f
 tag=<family>/v<version>`): checkouts, the version check, release assets and install URLs
-all follow the input tag, never the dispatch branch. `docs-bundle` runs for every family: `.github/actions/build-docs` (shared
+all follow the input tag, never the dispatch branch.
+
+Shipping a user-visible set (e.g. engine 0.0.2 plus tap-studio 0.0.1) is one manual run
+of `Release set` (`.github/workflows/release-set.yml`): give it the tags, it dispatches
+one Release run per family in dependency order (daemon first), waits for all of them,
+then checks every Release page carries its assets. A dry run validates the tags and
+prints the plan without starting anything. `docs-bundle` runs for every family: `.github/actions/build-docs` (shared
 with `docs.yml`) builds the Markdown edition from the tagged commit, and the family's release
 attaches it as `tap-docs-<version>.zip` and `.tar.gz` (guide, Kotlin/Python/gRPC references,
 tap-agent README and skill, changelog; not `.docs/`). For the Python families the bundle stays
