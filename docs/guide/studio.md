@@ -15,12 +15,12 @@ It needs the `tap` server ([Getting started](getting-started.md#1-the-server)), 
 a browser. Install the Python client first, then the studio:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.1/tap_e2e-0.0.1-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
 pip install https://github.com/NoamCohen48/tap/releases/download/client-studio/v0.0.1/tap_studio-0.0.1-py3-none-any.whl
 ```
 
-Until `client-studio/v0.0.1` is released, install it from a checkout of the repository. The page
-is built with [Bun](https://bun.sh). Run these from the repository root:
+Or install it from a checkout of the repository. The page is built with [Bun](https://bun.sh).
+Run these from the repository root:
 
 ```bash
 (cd clients/studio/web && bun install && bun run build)

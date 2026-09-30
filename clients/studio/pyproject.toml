@@ -14,7 +14,7 @@ license = { text = "Apache-2.0" }
 # connect-python serves StudioService (proto/studio.proto) to the page; it is beta, so pinned to
 # the minor release the generated code (scripts/gen_protos.py) was made with.
 dependencies = [
-    "tap-e2e>=0.0.1",
+    "tap-e2e>=0.0.2",
     "protobuf>=7.35.1",
     "connect-python>=0.9,<0.10",
     "starlette>=0.40",
