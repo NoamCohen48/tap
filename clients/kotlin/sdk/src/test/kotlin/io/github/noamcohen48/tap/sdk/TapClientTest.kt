@@ -28,6 +28,7 @@ import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
 import io.grpc.MethodDescriptor
@@ -749,6 +750,32 @@ class TapClientTest {
                         assertTrue(ops.filter { it.hasScroll() }.all { it.scroll.selector == rawRes("list").proto && it.scroll.direction == Direction.DIR_DOWN })
                         // A picked container cannot be carried into a relation: the bare target is used.
                         assertEquals(text("row 40"), list.first().scrollUntil(text("row 40")).selector)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `openNotifications and openQuickSettings send the system panel command`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                if (request.command.hasOpenSystemPanel()) CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build() else null
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    try {
+                        device.openNotifications()
+                        device.openQuickSettings()
+                        val panels = fakeDevices.executeRequests.map { it.command }.filter { it.hasOpenSystemPanel() }.map { it.openSystemPanel.panel }
+                        assertEquals(listOf(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS, SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS), panels)
                     } finally {
                         device.detach()
                     }

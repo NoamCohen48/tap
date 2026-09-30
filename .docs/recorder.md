@@ -137,7 +137,9 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
      await focused, `type_text`);
    - wheel or drag over a scrollable node → `scroll` on that node; a swipe gesture on a node →
      `swipe`;
-   - back / home / enter → `press_key`;
+   - back / home / recent apps / enter → `press_key`; the rail's notifications and quick
+     settings buttons → `open_system_panel` (the status bar is not swipeable in the screen: a
+     drag records a `swipe` on an element, and the status bar has no app element to hold it);
    - app lifecycle buttons → launch, cold launch, force stop, clear data, grant permission.
    Nothing takes a coordinate.
 
@@ -243,7 +245,7 @@ strings (proto3 JSON).
   - `app`: a `tap.v1.AppCall` (the event log's message): cold_launch, launch, force_stop,
     clear_data, grant_permission.
   - `action`: one `tap.v1.Command` in `command` (tap, long_tap, set_text, clear_text, scroll,
-    swipe, press_key) and, for every op but press_key, the recorded precondition in `wait` (a
+    swipe, press_key, open_system_panel) and, for every op but press_key and open_system_panel, the recorded precondition in `wait` (a
     `Command` holding `wait_visible` of the same selector, with `exactly_one` unless the selector
     has a `first` / `at` pick, decision 6). A
     replayer sends `wait` then `command`, unchanged. With `secret` (set_text only),

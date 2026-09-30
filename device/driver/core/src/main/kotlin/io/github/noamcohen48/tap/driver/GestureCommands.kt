@@ -1,18 +1,23 @@
 package io.github.noamcohen48.tap.driver
 
+import android.accessibilityservice.AccessibilityService
+import android.app.Instrumentation
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Swipe
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.DEFAULT_GESTURE_PERCENT
 
-/** Single-target gestures (`tap`, `long_tap`, `swipe`, `scroll`) and `press_key`. */
+/** Single-target gestures (`tap`, `long_tap`, `swipe`, `scroll`), `press_key` and `open_system_panel`. */
 internal class GestureCommands(
+    private val instrumentation: Instrumentation,
     private val device: UiDevice,
     private val objects: UiObjectAccess,
     private val faults: FaultHooks,
@@ -76,6 +81,27 @@ internal class GestureCommands(
         context.markMutationStarted()
         val injected = device.pressKeyCode(keyCode)
         if (!injected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Key $keyCode was not injected")
+    }
+
+    /**
+     * Opens the notification shade or quick settings with the accessibility global action, as
+     * `UiDevice.openNotification`/`openQuickSettings` do but without their `waitForIdle` first.
+     * The result is only whether the system accepted the action; the test waits for the panel.
+     */
+    fun openSystemPanel(
+        context: CommandContext,
+        command: OpenSystemPanel,
+    ) {
+        val action =
+            when (command.panel) {
+                SystemPanel.SYSTEM_PANEL_NOTIFICATIONS -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+                SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS -> AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+                else -> throw CommandFailure(ErrorCode.ERR_INVALID_REQUEST, message = "A panel is required")
+            }
+        context.checkpoint()
+        context.markMutationStarted()
+        val performed = instrumentation.uiAutomation.performGlobalAction(action)
+        if (!performed) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "The system refused to open ${command.panel}")
     }
 
     /**

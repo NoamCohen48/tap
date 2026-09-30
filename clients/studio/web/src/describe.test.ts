@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import { describeSelector, describeStep, describeWait, stepKind } from "./describe";
-import { Direction } from "./gen/command_pb";
+import { Direction, SystemPanel } from "./gen/command_pb";
 import { MatchMode, NodeFlag, Relation, SelectorSchema, TextProperty, type Node } from "./gen/selector_pb";
 import { Condition, PerformRequestSchema, StepSchema, type PerformRequest } from "./gen/studio_pb";
 import * as steps from "./steps";
@@ -75,6 +75,8 @@ describe("describeStep", () => {
     expect(describeStep(recorded(steps.typeText(search, { text: "jo" })))).toBe('element(res("search")).typeText("jo")');
     expect(describeStep(recorded(steps.pressKey(4)))).toBe("pressBack()");
     expect(describeStep(recorded(steps.pressKey(66)))).toBe("pressKey(66)");
+    expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.NOTIFICATIONS)))).toBe("openNotifications()");
+    expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.QUICK_SETTINGS)))).toBe("openQuickSettings()");
     expect(describeStep(recorded(steps.app("cold_launch", "com.example")))).toBe('app("com.example").coldLaunch()');
     expect(describeStep(recorded(steps.app("grant_permission", "com.example", "android.permission.CAMERA")))).toBe(
       'app("com.example").grantPermission("android.permission.CAMERA")',
@@ -87,6 +89,7 @@ describe("describeStep", () => {
 
   it("names the step kinds", () => {
     expect(stepKind(recorded(steps.pressKey(4)))).toBe("key");
+    expect(stepKind(recorded(steps.openSystemPanel(SystemPanel.QUICK_SETTINGS)))).toBe("system");
     expect(stepKind(recorded(steps.gesture(search, "tap")))).toBe("action");
     expect(stepKind(recorded(steps.assertion(search, { condition: Condition.VISIBLE })))).toBe("assertion");
   });
@@ -103,6 +106,7 @@ describe("describeStep", () => {
     });
     expect(describeWait(step)).toBe('await(res("search")).one()');
     expect(describeWait(recorded(steps.pressKey(4)))).toBeNull();
+    expect(describeWait(recorded(steps.openSystemPanel(SystemPanel.NOTIFICATIONS)))).toBeNull();
   });
 });
 

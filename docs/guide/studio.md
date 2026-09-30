@@ -52,8 +52,11 @@ until the studio releases it.
 - **Screen:** the latest frame with an overlay of the elements. The frame follows the device.
   While the screen is changing, the overlay turns dashed until it settles. Hovering shows the
   selector a step would use and how many elements it matches. A red hatched box marks an
-  element with no unique selector, an accessibility gap in the app. Below the screen: **Back**,
-  **Home** and the **App** menu (cold launch, launch, force stop, clear data, grant permission).
+  element with no unique selector, an accessibility gap in the app. The rail on the screen's
+  left, like the emulator's side toolbar: **Back**, **Home**, **Recent apps**,
+  **Notifications**, **Quick settings** (`openNotifications()` / `openQuickSettings()`) and the
+  **App** menu (cold launch, launch, force stop, clear data, grant permission). Each button
+  runs on the device and records its step.
 - **Inspector:** the selected element's class, its selector candidates (the first is what gets
   recorded), the actions and checks that fit it, and its properties. **Screen tree** lists every
   element.

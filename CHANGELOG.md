@@ -15,6 +15,12 @@ experimental may change in any release.
   app calls, checks), never coordinates. Steps can be edited (another selector candidate, or
   one typed in the Kotlin DSL with a live match count), reordered and replayed. Recordings are
   exported and reopened as `tap-recording/1` JSON. Guide: `docs/guide/studio.md`.
+- **Notifications and quick settings** (engine, Kotlin and Python clients, Tap Studio): the
+  `open_system_panel` command (`tap.v1.OpenSystemPanel`) opens the notification shade or quick
+  settings with the system's accessibility action. The clients expose it as
+  `device.openNotifications()` / `openQuickSettings()` (`open_notifications()` /
+  `open_quick_settings()`). Tap Studio records it from the device rail beside the screen, which
+  also has Back, Home and Recent apps.
 
 ## 0.0.1 — 2026-09-29 (alpha)
 

@@ -26,7 +26,7 @@ from tap_e2e import (
 from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
-from .recording import RecordingError, picks, secret_name, validate_step
+from .recording import UNTARGETED_OPS, RecordingError, picks, secret_name, validate_step
 
 DEFAULT_GESTURE_PERCENT = 80
 """The distance ``scroll`` and ``swipe`` get when the page leaves it out, as the SDKs' default."""
@@ -90,9 +90,10 @@ def _problems(step: studio.Step) -> list[str]:
 def _complete_action(action: studio.ActionStep) -> list[str]:
     command = action.command
     op = command.WhichOneof("op")
-    if op == "press_key":
-        # Device.press_key takes no timeout, so a recorded one could not be replayed as sent.
-        return ["press_key takes no timeout_ms"] if command.HasField("timeout_ms") else []
+    if op in UNTARGETED_OPS:
+        # Device.press_key and open_notifications take no timeout, so a recorded one could not
+        # be replayed as sent.
+        return [f"{op} takes no timeout_ms"] if command.HasField("timeout_ms") else []
     if op in ("scroll", "swipe"):
         gesture = getattr(command, op)
         if not gesture.HasField("distance_percent"):
@@ -150,6 +151,12 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
     op = command.WhichOneof("op")
     if op == "press_key":
         device.press_key(command.press_key.key_code)
+        return
+    if op == "open_system_panel":
+        if command.open_system_panel.panel == tap.SYSTEM_PANEL_QUICK_SETTINGS:
+            device.open_quick_settings()
+        else:
+            device.open_notifications()
         return
     message = getattr(command, op)
     timeout = _seconds(command)

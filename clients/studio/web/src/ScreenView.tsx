@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { describeSelector } from "./describe";
 import type { Frame } from "./frames";
-import { Direction } from "./gen/command_pb";
+import { Direction, SystemPanel } from "./gen/command_pb";
 import type { ScreenNode } from "./gen/device_pb";
 import type { PerformRequest } from "./gen/studio_pb";
 import { box, dragDirection, hit, isEditable, label, scrollableAt, shortClass, toFrame, type Point } from "./geometry";
-import { AppIcon, Back, Home } from "./icons";
+import { AppIcon, Back, Bell, Home, Recents, Toggles } from "./icons";
 import { checksFor } from "./nodes";
 import * as steps from "./steps";
 import type { Target } from "./steps";
@@ -23,6 +23,20 @@ const WHEEL_QUIET_MS = 700;
 
 const KEY_HOME = 3;
 const KEY_BACK = 4;
+const KEY_APP_SWITCH = 187;
+
+/** The rail's device buttons, as the emulator's side toolbar: each records its step. */
+const DEVICE_BUTTONS: { label: string; call: string; icon: ComponentType; request: () => PerformRequest }[][] = [
+  [
+    { label: "Back", call: "pressBack()", icon: Back, request: () => steps.pressKey(KEY_BACK) },
+    { label: "Home", call: "pressHome()", icon: Home, request: () => steps.pressKey(KEY_HOME) },
+    { label: "Recent apps", call: `pressKey(${KEY_APP_SWITCH})`, icon: Recents, request: () => steps.pressKey(KEY_APP_SWITCH) },
+  ],
+  [
+    { label: "Notifications", call: "openNotifications()", icon: Bell, request: () => steps.openSystemPanel(SystemPanel.NOTIFICATIONS) },
+    { label: "Quick settings", call: "openQuickSettings()", icon: Toggles, request: () => steps.openSystemPanel(SystemPanel.QUICK_SETTINGS) },
+  ],
+];
 
 type Props = {
   frame: Frame | null;
@@ -184,7 +198,7 @@ export function ScreenView(props: Props) {
   const details = frame ? `frame ${frame.sequence} · ${age} s ago · ${interactive.length} interactive / ${nodes.length} nodes` : "";
 
   return (
-    <div className="panel">
+    <div className="panel device-panel" style={{ "--ar": frame ? frame.width / frame.height : 9 / 19 } as CSSProperties}>
       <div className="device-stage">
         <div className="frame-status">
           {props.error ? (
@@ -208,8 +222,9 @@ export function ScreenView(props: Props) {
           </span>
         </div>
         {/* The phone fits the space left in the panel (the page does not scroll on wide
-            screens): its aspect ratio is the frame's. */}
-        <div className="phone-fit" style={{ "--ar": frame ? frame.width / frame.height : 9 / 19 } as CSSProperties}>
+            screens): its aspect ratio is the frame's. The device rail sits on its left. */}
+        <div className="phone-fit">
+          <DeviceRail autPackage={props.autPackage} busy={busy} onPerform={perform} />
           <div className="phone">
             <div className={`screen mode-${mode}${frame?.moving ? " provisional" : ""}`} ref={screen}>
               {frame ? (
@@ -263,7 +278,6 @@ export function ScreenView(props: Props) {
             </div>
           </div>
         </div>
-        <DeviceBar autPackage={props.autPackage} busy={busy} onPerform={perform} />
       </div>
     </div>
   );
@@ -323,7 +337,7 @@ const APP_OPERATIONS: { operation: steps.AppOperation; label: string; note?: str
   { operation: "clear_data", label: "Clear data", note: "also revokes permissions" },
 ];
 
-function DeviceBar({ autPackage, busy, onPerform }: { autPackage: string; busy: boolean; onPerform: (request: PerformRequest) => void }) {
+function DeviceRail({ autPackage, busy, onPerform }: { autPackage: string; busy: boolean; onPerform: (request: PerformRequest) => void }) {
   const [open, setOpen] = useState(false);
   const [permission, setPermission] = useState("");
   const wrap = useRef<HTMLDivElement>(null);
@@ -347,19 +361,28 @@ function DeviceBar({ autPackage, busy, onPerform }: { autPackage: string; busy: 
   };
 
   return (
-    <div className="devbar">
-      <button type="button" className="btn" disabled={busy} title="press_key BACK" onClick={() => run(steps.pressKey(KEY_BACK))}>
-        <Back />
-        Back
-      </button>
-      <button type="button" className="btn" disabled={busy} title="press_key HOME" onClick={() => run(steps.pressKey(KEY_HOME))}>
-        <Home />
-        Home
-      </button>
-      <div className="menu-wrap" ref={wrap}>
-        <button type="button" className="btn" disabled={busy} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <div className="rail" role="toolbar" aria-orientation="vertical" aria-label="Device">
+      {DEVICE_BUTTONS.map((group, i) => (
+        <div className="rail-group" key={i}>
+          {group.map(({ label, call, icon: Icon, request }) => (
+            <button key={label} type="button" className="railbtn" disabled={busy} aria-label={label} title={`${label}: ${call}`} onClick={() => run(request())}>
+              <Icon />
+            </button>
+          ))}
+        </div>
+      ))}
+      <div className="rail-group menu-wrap" ref={wrap}>
+        <button
+          type="button"
+          className="railbtn"
+          disabled={busy}
+          aria-label="App"
+          title={`App ${autPackage}: launch, stop, clear data, grant a permission`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
           <AppIcon />
-          App
         </button>
         {open && (
           <div className="menu" role="menu" aria-label={`App ${autPackage}`}>

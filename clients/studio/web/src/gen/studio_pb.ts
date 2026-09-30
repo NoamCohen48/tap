@@ -1041,14 +1041,14 @@ export const StepSchema: GenMessage<Step> = /*@__PURE__*/
  */
 export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
   /**
-   * tap, long_tap, set_text, clear_text, scroll, swipe or press_key.
+   * tap, long_tap, set_text, clear_text, scroll, swipe, press_key or open_system_panel.
    *
    * @generated from field: tap.v1.Command command = 1;
    */
   command?: Command | undefined;
 
   /**
-   * For every op but press_key (and only then): `wait_visible` of the command's selector, with
+   * For every op but press_key and open_system_panel (and only then): `wait_visible` of the command's selector, with
    * `exactly_one` unless the selector has a `first` or `at` pick (waits count every match, so a
    * picked selector waits for at least one and the command picks). A replayer sends `wait` then
    * `command`, unchanged.
@@ -1065,7 +1065,7 @@ export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
   secret?: string | undefined;
 
   /**
-   * Unspecified for press_key.
+   * Unspecified for press_key and open_system_panel.
    *
    * @generated from field: tap.studio.v1.SelectorOrigin selector_origin = 4;
    */

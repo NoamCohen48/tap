@@ -21,7 +21,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file command.proto.
  */
 export const file_command: GenFile = /*@__PURE__*/
-  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIg8KDUR1bXBIaWVyYXJjaHkiLAoGRXhpc3RzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIisKBUNvdW50EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi4KCFNuYXBzaG90EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkYKC1dhaXRWaXNpYmxlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhMKC2V4YWN0bHlfb25lGAIgASgIIi4KCFdhaXRHb25lEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIiYKDldhaXRBcHBWaXNpYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSJ/ChBXYWl0U2NyZWVuU3RhYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRIaCg1zdGFibGVfZm9yX21zGAIgASgDSACIAQESJwoGc2lnbmFsGAMgASgOMhcudGFwLnYxLlN0YWJpbGl0eVNpZ25hbEIQCg5fc3RhYmxlX2Zvcl9tcyIpCgNUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiLQoHTG9uZ1RhcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciI7CgdTZXRUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEgwKBHRleHQYAiABKAkiKAoIVHlwZVRleHQSDAoEdGV4dBgCIAEoCUoECAEQAlIIc2VsZWN0b3IiLwoJQ2xlYXJUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIoUBCgVTd2lwZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIkCglkaXJlY3Rpb24YAiABKA4yES50YXAudjEuRGlyZWN0aW9uEh0KEGRpc3RhbmNlX3BlcmNlbnQYAyABKAVIAIgBAUITChFfZGlzdGFuY2VfcGVyY2VudCKGAQoGU2Nyb2xsEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IosGCgdDb21tYW5kEhcKCnRpbWVvdXRfbXMYASABKANIAYgBARIuCgtkZXZpY2VfaW5mbxgDIAEoCzIXLnRhcC52MS5EZXZpY2VJbmZvUXVlcnlIABIlCglwcmVzc19rZXkYBCABKAsyEC50YXAudjEuUHJlc3NLZXlIABIvCg5kdW1wX2hpZXJhcmNoeRgGIAEoCzIVLnRhcC52MS5EdW1wSGllcmFyY2h5SAASIAoGZXhpc3RzGAcgASgLMg4udGFwLnYxLkV4aXN0c0gAEh4KBWNvdW50GAggASgLMg0udGFwLnYxLkNvdW50SAASJAoIc25hcHNob3QYCSABKAsyEC50YXAudjEuU25hcHNob3RIABIrCgx3YWl0X3Zpc2libGUYCiABKAsyEy50YXAudjEuV2FpdFZpc2libGVIABIlCgl3YWl0X2dvbmUYCyABKAsyEC50YXAudjEuV2FpdEdvbmVIABIyChB3YWl0X2FwcF92aXNpYmxlGAwgASgLMhYudGFwLnYxLldhaXRBcHBWaXNpYmxlSAASNgoSd2FpdF9zY3JlZW5fc3RhYmxlGA0gASgLMhgudGFwLnYxLldhaXRTY3JlZW5TdGFibGVIABIaCgN0YXAYDiABKAsyCy50YXAudjEuVGFwSAASIwoIbG9uZ190YXAYDyABKAsyDy50YXAudjEuTG9uZ1RhcEgAEiMKCHNldF90ZXh0GBAgASgLMg8udGFwLnYxLlNldFRleHRIABIlCgl0eXBlX3RleHQYESABKAsyEC50YXAudjEuVHlwZVRleHRIABInCgpjbGVhcl90ZXh0GBIgASgLMhEudGFwLnYxLkNsZWFyVGV4dEgAEh4KBXN3aXBlGBMgASgLMg0udGFwLnYxLlN3aXBlSAASIAoGc2Nyb2xsGBQgASgLMg4udGFwLnYxLlNjcm9sbEgAQgQKAm9wQg0KC190aW1lb3V0X21zSgQIAhADSgQIBRAGSgQIFhAXSgQIFxAYSgQIFRAWUgxzY3JvbGxfdW50aWwiQgoGQm91bmRzEgwKBGxlZnQYASABKAUSCwoDdG9wGAIgASgFEg0KBXJpZ2h0GAMgASgFEg4KBmJvdHRvbRgEIAEoBSL6AwoPRWxlbWVudFNuYXBzaG90EhcKCmNsYXNzX25hbWUYASABKAlIAIgBARIZCgxwYWNrYWdlX25hbWUYAiABKAlIAYgBARIaCg1yZXNvdXJjZV9uYW1lGAMgASgJSAKIAQESEQoEdGV4dBgEIAEoCUgDiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YBSABKAlIBIgBARIRCgRoaW50GAYgASgJSAWIAQESHgoGYm91bmRzGAcgASgLMg4udGFwLnYxLkJvdW5kcxIRCgljaGVja2FibGUYCCABKAgSDwoHY2hlY2tlZBgJIAEoCBIRCgljbGlja2FibGUYCiABKAgSDwoHZW5hYmxlZBgLIAEoCBIRCglmb2N1c2FibGUYDCABKAgSDwoHZm9jdXNlZBgNIAEoCBIWCg5sb25nX2NsaWNrYWJsZRgOIAEoCBISCgpzY3JvbGxhYmxlGA8gASgIEhAKCHNlbGVjdGVkGBAgASgIEhMKC2NoaWxkX2NvdW50GBEgASgFEhQKDHNob3dpbmdfaGludBgSIAEoCEINCgtfY2xhc3NfbmFtZUIPCg1fcGFja2FnZV9uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50ItABCgpEZXZpY2VJbmZvEhEKCWFwaV9sZXZlbBgBIAEoBRIUCgxtYW51ZmFjdHVyZXIYAiABKAkSDQoFbW9kZWwYAyABKAkSDwoHcHJvZHVjdBgEIAEoCRIVCg1kaXNwbGF5X3dpZHRoGAUgASgFEhYKDmRpc3BsYXlfaGVpZ2h0GAYgASgFEhgKEGRpc3BsYXlfcm90YXRpb24YByABKAUSHAoPY3VycmVudF9wYWNrYWdlGAggASgJSACIAQFCEgoQX2N1cnJlbnRfcGFja2FnZSIGCgREb25lIpQBCgVFcnJvchIfCgRjb2RlGAEgASgOMhEudGFwLnYxLkVycm9yQ29kZRITCgZkZXRhaWwYAiABKAlIAIgBARIUCgdtZXNzYWdlGAMgASgJSAGIAQESGAoLbWF0Y2hfY291bnQYBCABKAVIAogBAUIJCgdfZGV0YWlsQgoKCF9tZXNzYWdlQg4KDF9tYXRjaF9jb3VudCK/AgoNQ29tbWFuZFJlc3VsdBITCgtkdXJhdGlvbl9tcxgBIAEoAxISCgpyZXF1ZXN0X2lkGAIgASgDEhoKEnNlc3Npb25fZ2VuZXJhdGlvbhgDIAEoAxIcCgRkb25lGAQgASgLMgwudGFwLnYxLkRvbmVIABIOCgRib29sGAUgASgISAASDwoFY291bnQYByABKAVIABIOCgR0ZXh0GAggASgJSAASKwoIc25hcHNob3QYCSABKAsyFy50YXAudjEuRWxlbWVudFNuYXBzaG90SAASKQoLZGV2aWNlX2luZm8YCiABKAsyEi50YXAudjEuRGV2aWNlSW5mb0gAEh4KBWVycm9yGA0gASgLMg0udGFwLnYxLkVycm9ySABCCQoHb3V0Y29tZUoECAsQDEoECAwQDUoECAYQB1IFbW92ZWQqqQUKCUVycm9yQ29kZRITCg9FUlJfVU5TUEVDSUZJRUQQABIXChNFUlJfSU5WQUxJRF9SRVFVRVNUEAESGAoURVJSX0lOVkFMSURfU0VMRUNUT1IQAhITCg9FUlJfVU5TVVBQT1JURUQQAxIXChNFUlJfVU5BVVRIRU5USUNBVEVEEAQSGAoURVJSX1NFU1NJT05fTUlTTUFUQ0gQBRIaChZFUlJfRFVQTElDQVRFX09SX1NUQUxFEAYSEgoORVJSX09WRVJMT0FERUQQBxIUChBFUlJfQVVUX01JU01BVENIEAgSEQoNRVJSX05PVF9GT1VORBAJEhEKDUVSUl9BTUJJR1VPVVMQChIYChRFUlJfTk9UX0lOVEVSQUNUQUJMRRALEhwKGEVSUl9TVEFMRV9EVVJJTkdfQ09NTUFORBAMEhcKE0VSUl9BQ1RJT05fUkVKRUNURUQQDRIUChBFUlJfV0FJVF9USU1FT1VUEA4SEQoNRVJSX0NBTkNFTExFRBAPEhkKFUVSUl9ERUFETElORV9FWENFRURFRBAQEhkKFUVSUl9BVVRfTk9UX0lOU1RBTExFRBAREhMKD0VSUl9BVVRfQ1JBU0hFRBASEg8KC0VSUl9BVVRfQU5SEBMSIQodRVJSX1NZTkNfUFJPVklERVJfVU5BVkFJTEFCTEUQFBIYChRFUlJfRFJJVkVSX1VOSEVBTFRIWRAVEhYKEkVSUl9UUkFOU1BPUlRfTE9TVBAWEhUKEUVSUl9JTkRFVEVSTUlOQVRFEBcSIAocRVJSX0FSVElGQUNUX1RSQU5TRkVSX0ZBSUxFRBAYEhkKFUVSUl9QQVlMT0FEX1RPT19MQVJHRRAZEhAKDEVSUl9JTlRFUk5BTBAaEg8KC0VSUl9VTktOT1dOEBsqVwoJRGlyZWN0aW9uEhMKD0RJUl9VTlNQRUNJRklFRBAAEgoKBkRJUl9VUBABEgwKCERJUl9ET1dOEAISDAoIRElSX0xFRlQQAxINCglESVJfUklHSFQQBCppCg9TdGFiaWxpdHlTaWduYWwSGQoVU1RBQklMSVRZX1VOU1BFQ0lGSUVEEAASEgoOU1RBQklMSVRZX1RSRUUQARIUChBTVEFCSUxJVFlfUElYRUxTEAISEQoNU1RBQklMSVRZX0FMTBADQjIKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgxDb21tYW5kUHJvdG9QAWIGcHJvdG8z", [file_selector]);
+  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCIPCg1EdW1wSGllcmFyY2h5IiwKBkV4aXN0cxIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciIrCgVDb3VudBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciIuCghTbmFwc2hvdBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciJGCgtXYWl0VmlzaWJsZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchITCgtleGFjdGx5X29uZRgCIAEoCCIuCghXYWl0R29uZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciImCg5XYWl0QXBwVmlzaWJsZRIUCgxwYWNrYWdlX25hbWUYASABKAkifwoQV2FpdFNjcmVlblN0YWJsZRIUCgxwYWNrYWdlX25hbWUYASABKAkSGgoNc3RhYmxlX2Zvcl9tcxgCIAEoA0gAiAEBEicKBnNpZ25hbBgDIAEoDjIXLnRhcC52MS5TdGFiaWxpdHlTaWduYWxCEAoOX3N0YWJsZV9mb3JfbXMiKQoDVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi0KB0xvbmdUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiOwoHU2V0VGV4dBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIMCgR0ZXh0GAIgASgJIigKCFR5cGVUZXh0EgwKBHRleHQYAiABKAlKBAgBEAJSCHNlbGVjdG9yIi8KCUNsZWFyVGV4dBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciKFAQoFU3dpcGUSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbhIdChBkaXN0YW5jZV9wZXJjZW50GAMgASgFSACIAQFCEwoRX2Rpc3RhbmNlX3BlcmNlbnQihgEKBlNjcm9sbBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIkCglkaXJlY3Rpb24YAiABKA4yES50YXAudjEuRGlyZWN0aW9uEh0KEGRpc3RhbmNlX3BlcmNlbnQYAyABKAVIAIgBAUITChFfZGlzdGFuY2VfcGVyY2VudCLBBgoHQ29tbWFuZBIXCgp0aW1lb3V0X21zGAEgASgDSAGIAQESLgoLZGV2aWNlX2luZm8YAyABKAsyFy50YXAudjEuRGV2aWNlSW5mb1F1ZXJ5SAASJQoJcHJlc3Nfa2V5GAQgASgLMhAudGFwLnYxLlByZXNzS2V5SAASLwoOZHVtcF9oaWVyYXJjaHkYBiABKAsyFS50YXAudjEuRHVtcEhpZXJhcmNoeUgAEiAKBmV4aXN0cxgHIAEoCzIOLnRhcC52MS5FeGlzdHNIABIeCgVjb3VudBgIIAEoCzINLnRhcC52MS5Db3VudEgAEiQKCHNuYXBzaG90GAkgASgLMhAudGFwLnYxLlNuYXBzaG90SAASKwoMd2FpdF92aXNpYmxlGAogASgLMhMudGFwLnYxLldhaXRWaXNpYmxlSAASJQoJd2FpdF9nb25lGAsgASgLMhAudGFwLnYxLldhaXRHb25lSAASMgoQd2FpdF9hcHBfdmlzaWJsZRgMIAEoCzIWLnRhcC52MS5XYWl0QXBwVmlzaWJsZUgAEjYKEndhaXRfc2NyZWVuX3N0YWJsZRgNIAEoCzIYLnRhcC52MS5XYWl0U2NyZWVuU3RhYmxlSAASGgoDdGFwGA4gASgLMgsudGFwLnYxLlRhcEgAEiMKCGxvbmdfdGFwGA8gASgLMg8udGFwLnYxLkxvbmdUYXBIABIjCghzZXRfdGV4dBgQIAEoCzIPLnRhcC52MS5TZXRUZXh0SAASJQoJdHlwZV90ZXh0GBEgASgLMhAudGFwLnYxLlR5cGVUZXh0SAASJwoKY2xlYXJfdGV4dBgSIAEoCzIRLnRhcC52MS5DbGVhclRleHRIABIeCgVzd2lwZRgTIAEoCzINLnRhcC52MS5Td2lwZUgAEiAKBnNjcm9sbBgUIAEoCzIOLnRhcC52MS5TY3JvbGxIABI0ChFvcGVuX3N5c3RlbV9wYW5lbBgYIAEoCzIXLnRhcC52MS5PcGVuU3lzdGVtUGFuZWxIAEIECgJvcEINCgtfdGltZW91dF9tc0oECAIQA0oECAUQBkoECBYQF0oECBcQGEoECBUQFlIMc2Nyb2xsX3VudGlsIkIKBkJvdW5kcxIMCgRsZWZ0GAEgASgFEgsKA3RvcBgCIAEoBRINCgVyaWdodBgDIAEoBRIOCgZib3R0b20YBCABKAUi+gMKD0VsZW1lbnRTbmFwc2hvdBIXCgpjbGFzc19uYW1lGAEgASgJSACIAQESGQoMcGFja2FnZV9uYW1lGAIgASgJSAGIAQESGgoNcmVzb3VyY2VfbmFtZRgDIAEoCUgCiAEBEhEKBHRleHQYBCABKAlIA4gBARIgChNjb250ZW50X2Rlc2NyaXB0aW9uGAUgASgJSASIAQESEQoEaGludBgGIAEoCUgFiAEBEh4KBmJvdW5kcxgHIAEoCzIOLnRhcC52MS5Cb3VuZHMSEQoJY2hlY2thYmxlGAggASgIEg8KB2NoZWNrZWQYCSABKAgSEQoJY2xpY2thYmxlGAogASgIEg8KB2VuYWJsZWQYCyABKAgSEQoJZm9jdXNhYmxlGAwgASgIEg8KB2ZvY3VzZWQYDSABKAgSFgoObG9uZ19jbGlja2FibGUYDiABKAgSEgoKc2Nyb2xsYWJsZRgPIAEoCBIQCghzZWxlY3RlZBgQIAEoCBITCgtjaGlsZF9jb3VudBgRIAEoBRIUCgxzaG93aW5nX2hpbnQYEiABKAhCDQoLX2NsYXNzX25hbWVCDwoNX3BhY2thZ2VfbmFtZUIQCg5fcmVzb3VyY2VfbmFtZUIHCgVfdGV4dEIWChRfY29udGVudF9kZXNjcmlwdGlvbkIHCgVfaGludCLQAQoKRGV2aWNlSW5mbxIRCglhcGlfbGV2ZWwYASABKAUSFAoMbWFudWZhY3R1cmVyGAIgASgJEg0KBW1vZGVsGAMgASgJEg8KB3Byb2R1Y3QYBCABKAkSFQoNZGlzcGxheV93aWR0aBgFIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgGIAEoBRIYChBkaXNwbGF5X3JvdGF0aW9uGAcgASgFEhwKD2N1cnJlbnRfcGFja2FnZRgIIAEoCUgAiAEBQhIKEF9jdXJyZW50X3BhY2thZ2UiBgoERG9uZSKUAQoFRXJyb3ISHwoEY29kZRgBIAEoDjIRLnRhcC52MS5FcnJvckNvZGUSEwoGZGV0YWlsGAIgASgJSACIAQESFAoHbWVzc2FnZRgDIAEoCUgBiAEBEhgKC21hdGNoX2NvdW50GAQgASgFSAKIAQFCCQoHX2RldGFpbEIKCghfbWVzc2FnZUIOCgxfbWF0Y2hfY291bnQivwIKDUNvbW1hbmRSZXN1bHQSEwoLZHVyYXRpb25fbXMYASABKAMSEgoKcmVxdWVzdF9pZBgCIAEoAxIaChJzZXNzaW9uX2dlbmVyYXRpb24YAyABKAMSHAoEZG9uZRgEIAEoCzIMLnRhcC52MS5Eb25lSAASDgoEYm9vbBgFIAEoCEgAEg8KBWNvdW50GAcgASgFSAASDgoEdGV4dBgIIAEoCUgAEisKCHNuYXBzaG90GAkgASgLMhcudGFwLnYxLkVsZW1lbnRTbmFwc2hvdEgAEikKC2RldmljZV9pbmZvGAogASgLMhIudGFwLnYxLkRldmljZUluZm9IABIeCgVlcnJvchgNIAEoCzINLnRhcC52MS5FcnJvckgAQgkKB291dGNvbWVKBAgLEAxKBAgMEA1KBAgGEAdSBW1vdmVkKqkFCglFcnJvckNvZGUSEwoPRVJSX1VOU1BFQ0lGSUVEEAASFwoTRVJSX0lOVkFMSURfUkVRVUVTVBABEhgKFEVSUl9JTlZBTElEX1NFTEVDVE9SEAISEwoPRVJSX1VOU1VQUE9SVEVEEAMSFwoTRVJSX1VOQVVUSEVOVElDQVRFRBAEEhgKFEVSUl9TRVNTSU9OX01JU01BVENIEAUSGgoWRVJSX0RVUExJQ0FURV9PUl9TVEFMRRAGEhIKDkVSUl9PVkVSTE9BREVEEAcSFAoQRVJSX0FVVF9NSVNNQVRDSBAIEhEKDUVSUl9OT1RfRk9VTkQQCRIRCg1FUlJfQU1CSUdVT1VTEAoSGAoURVJSX05PVF9JTlRFUkFDVEFCTEUQCxIcChhFUlJfU1RBTEVfRFVSSU5HX0NPTU1BTkQQDBIXChNFUlJfQUNUSU9OX1JFSkVDVEVEEA0SFAoQRVJSX1dBSVRfVElNRU9VVBAOEhEKDUVSUl9DQU5DRUxMRUQQDxIZChVFUlJfREVBRExJTkVfRVhDRUVERUQQEBIZChVFUlJfQVVUX05PVF9JTlNUQUxMRUQQERITCg9FUlJfQVVUX0NSQVNIRUQQEhIPCgtFUlJfQVVUX0FOUhATEiEKHUVSUl9TWU5DX1BST1ZJREVSX1VOQVZBSUxBQkxFEBQSGAoURVJSX0RSSVZFUl9VTkhFQUxUSFkQFRIWChJFUlJfVFJBTlNQT1JUX0xPU1QQFhIVChFFUlJfSU5ERVRFUk1JTkFURRAXEiAKHEVSUl9BUlRJRkFDVF9UUkFOU0ZFUl9GQUlMRUQQGBIZChVFUlJfUEFZTE9BRF9UT09fTEFSR0UQGRIQCgxFUlJfSU5URVJOQUwQGhIPCgtFUlJfVU5LTk9XThAbKlcKCURpcmVjdGlvbhITCg9ESVJfVU5TUEVDSUZJRUQQABIKCgZESVJfVVAQARIMCghESVJfRE9XThACEgwKCERJUl9MRUZUEAMSDQoJRElSX1JJR0hUEAQqaQoPU3RhYmlsaXR5U2lnbmFsEhkKFVNUQUJJTElUWV9VTlNQRUNJRklFRBAAEhIKDlNUQUJJTElUWV9UUkVFEAESFAoQU1RBQklMSVRZX1BJWEVMUxACEhEKDVNUQUJJTElUWV9BTEwQAypsCgtTeXN0ZW1QYW5lbBIcChhTWVNURU1fUEFORUxfVU5TUEVDSUZJRUQQABIeChpTWVNURU1fUEFORUxfTk9USUZJQ0FUSU9OUxABEh8KG1NZU1RFTV9QQU5FTF9RVUlDS19TRVRUSU5HUxACQjIKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgxDb21tYW5kUHJvdG9QAWIGcHJvdG8z", [file_selector]);
 
 /**
  * @generated from message tap.v1.DeviceInfoQuery
@@ -54,6 +54,25 @@ export const PressKeySchema: GenMessage<PressKey> = /*@__PURE__*/
   messageDesc(file_command, 1);
 
 /**
+ * Opens `panel` (the accessibility global action); no target. Back or Home close it.
+ *
+ * @generated from message tap.v1.OpenSystemPanel
+ */
+export type OpenSystemPanel = Message<"tap.v1.OpenSystemPanel"> & {
+  /**
+   * @generated from field: tap.v1.SystemPanel panel = 1;
+   */
+  panel: SystemPanel;
+};
+
+/**
+ * Describes the message tap.v1.OpenSystemPanel.
+ * Use `create(OpenSystemPanelSchema)` to create a new message.
+ */
+export const OpenSystemPanelSchema: GenMessage<OpenSystemPanel> = /*@__PURE__*/
+  messageDesc(file_command, 2);
+
+/**
  * @generated from message tap.v1.DumpHierarchy
  */
 export type DumpHierarchy = Message<"tap.v1.DumpHierarchy"> & {
@@ -64,7 +83,7 @@ export type DumpHierarchy = Message<"tap.v1.DumpHierarchy"> & {
  * Use `create(DumpHierarchySchema)` to create a new message.
  */
 export const DumpHierarchySchema: GenMessage<DumpHierarchy> = /*@__PURE__*/
-  messageDesc(file_command, 2);
+  messageDesc(file_command, 3);
 
 /**
  * @generated from message tap.v1.Exists
@@ -81,7 +100,7 @@ export type Exists = Message<"tap.v1.Exists"> & {
  * Use `create(ExistsSchema)` to create a new message.
  */
 export const ExistsSchema: GenMessage<Exists> = /*@__PURE__*/
-  messageDesc(file_command, 3);
+  messageDesc(file_command, 4);
 
 /**
  * @generated from message tap.v1.Count
@@ -98,7 +117,7 @@ export type Count = Message<"tap.v1.Count"> & {
  * Use `create(CountSchema)` to create a new message.
  */
 export const CountSchema: GenMessage<Count> = /*@__PURE__*/
-  messageDesc(file_command, 4);
+  messageDesc(file_command, 5);
 
 /**
  * @generated from message tap.v1.Snapshot
@@ -115,7 +134,7 @@ export type Snapshot = Message<"tap.v1.Snapshot"> & {
  * Use `create(SnapshotSchema)` to create a new message.
  */
 export const SnapshotSchema: GenMessage<Snapshot> = /*@__PURE__*/
-  messageDesc(file_command, 5);
+  messageDesc(file_command, 6);
 
 /**
  * @generated from message tap.v1.WaitVisible
@@ -139,7 +158,7 @@ export type WaitVisible = Message<"tap.v1.WaitVisible"> & {
  * Use `create(WaitVisibleSchema)` to create a new message.
  */
 export const WaitVisibleSchema: GenMessage<WaitVisible> = /*@__PURE__*/
-  messageDesc(file_command, 6);
+  messageDesc(file_command, 7);
 
 /**
  * @generated from message tap.v1.WaitGone
@@ -156,7 +175,7 @@ export type WaitGone = Message<"tap.v1.WaitGone"> & {
  * Use `create(WaitGoneSchema)` to create a new message.
  */
 export const WaitGoneSchema: GenMessage<WaitGone> = /*@__PURE__*/
-  messageDesc(file_command, 7);
+  messageDesc(file_command, 8);
 
 /**
  * @generated from message tap.v1.WaitAppVisible
@@ -173,7 +192,7 @@ export type WaitAppVisible = Message<"tap.v1.WaitAppVisible"> & {
  * Use `create(WaitAppVisibleSchema)` to create a new message.
  */
 export const WaitAppVisibleSchema: GenMessage<WaitAppVisible> = /*@__PURE__*/
-  messageDesc(file_command, 8);
+  messageDesc(file_command, 9);
 
 /**
  * @generated from message tap.v1.WaitScreenStable
@@ -204,7 +223,7 @@ export type WaitScreenStable = Message<"tap.v1.WaitScreenStable"> & {
  * Use `create(WaitScreenStableSchema)` to create a new message.
  */
 export const WaitScreenStableSchema: GenMessage<WaitScreenStable> = /*@__PURE__*/
-  messageDesc(file_command, 9);
+  messageDesc(file_command, 10);
 
 /**
  * @generated from message tap.v1.Tap
@@ -221,7 +240,7 @@ export type Tap = Message<"tap.v1.Tap"> & {
  * Use `create(TapSchema)` to create a new message.
  */
 export const TapSchema: GenMessage<Tap> = /*@__PURE__*/
-  messageDesc(file_command, 10);
+  messageDesc(file_command, 11);
 
 /**
  * @generated from message tap.v1.LongTap
@@ -238,7 +257,7 @@ export type LongTap = Message<"tap.v1.LongTap"> & {
  * Use `create(LongTapSchema)` to create a new message.
  */
 export const LongTapSchema: GenMessage<LongTap> = /*@__PURE__*/
-  messageDesc(file_command, 11);
+  messageDesc(file_command, 12);
 
 /**
  * @generated from message tap.v1.SetText
@@ -260,7 +279,7 @@ export type SetText = Message<"tap.v1.SetText"> & {
  * Use `create(SetTextSchema)` to create a new message.
  */
 export const SetTextSchema: GenMessage<SetText> = /*@__PURE__*/
-  messageDesc(file_command, 12);
+  messageDesc(file_command, 13);
 
 /**
  * Key events for `text` (≤ 256 chars) into whatever has input focus; no target, no click.
@@ -280,7 +299,7 @@ export type TypeText = Message<"tap.v1.TypeText"> & {
  * Use `create(TypeTextSchema)` to create a new message.
  */
 export const TypeTextSchema: GenMessage<TypeText> = /*@__PURE__*/
-  messageDesc(file_command, 13);
+  messageDesc(file_command, 14);
 
 /**
  * @generated from message tap.v1.ClearText
@@ -297,7 +316,7 @@ export type ClearText = Message<"tap.v1.ClearText"> & {
  * Use `create(ClearTextSchema)` to create a new message.
  */
 export const ClearTextSchema: GenMessage<ClearText> = /*@__PURE__*/
-  messageDesc(file_command, 14);
+  messageDesc(file_command, 15);
 
 /**
  * @generated from message tap.v1.Swipe
@@ -326,7 +345,7 @@ export type Swipe = Message<"tap.v1.Swipe"> & {
  * Use `create(SwipeSchema)` to create a new message.
  */
 export const SwipeSchema: GenMessage<Swipe> = /*@__PURE__*/
-  messageDesc(file_command, 15);
+  messageDesc(file_command, 16);
 
 /**
  * @generated from message tap.v1.Scroll
@@ -355,7 +374,7 @@ export type Scroll = Message<"tap.v1.Scroll"> & {
  * Use `create(ScrollSchema)` to create a new message.
  */
 export const ScrollSchema: GenMessage<Scroll> = /*@__PURE__*/
-  messageDesc(file_command, 16);
+  messageDesc(file_command, 17);
 
 /**
  * One protocol request minus session identity (the server owns session id, generation and
@@ -476,6 +495,12 @@ export type Command = Message<"tap.v1.Command"> & {
      */
     value: Scroll;
     case: "scroll";
+  } | {
+    /**
+     * @generated from field: tap.v1.OpenSystemPanel open_system_panel = 24;
+     */
+    value: OpenSystemPanel;
+    case: "openSystemPanel";
   } | { case: undefined; value?: undefined };
 };
 
@@ -484,7 +509,7 @@ export type Command = Message<"tap.v1.Command"> & {
  * Use `create(CommandSchema)` to create a new message.
  */
 export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
-  messageDesc(file_command, 17);
+  messageDesc(file_command, 18);
 
 /**
  * Screen-pixel rectangle.
@@ -518,7 +543,7 @@ export type Bounds = Message<"tap.v1.Bounds"> & {
  * Use `create(BoundsSchema)` to create a new message.
  */
 export const BoundsSchema: GenMessage<Bounds> = /*@__PURE__*/
-  messageDesc(file_command, 18);
+  messageDesc(file_command, 19);
 
 /**
  * State of one matched node at the instant of `snapshot`.
@@ -625,7 +650,7 @@ export type ElementSnapshot = Message<"tap.v1.ElementSnapshot"> & {
  * Use `create(ElementSnapshotSchema)` to create a new message.
  */
 export const ElementSnapshotSchema: GenMessage<ElementSnapshot> = /*@__PURE__*/
-  messageDesc(file_command, 19);
+  messageDesc(file_command, 20);
 
 /**
  * Static facts about the device plus the package currently owning the focused window.
@@ -679,7 +704,7 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
  * Use `create(DeviceInfoSchema)` to create a new message.
  */
 export const DeviceInfoSchema: GenMessage<DeviceInfo> = /*@__PURE__*/
-  messageDesc(file_command, 20);
+  messageDesc(file_command, 21);
 
 /**
  * The command ran to completion and has nothing else to report.
@@ -694,7 +719,7 @@ export type Done = Message<"tap.v1.Done"> & {
  * Use `create(DoneSchema)` to create a new message.
  */
 export const DoneSchema: GenMessage<Done> = /*@__PURE__*/
-  messageDesc(file_command, 21);
+  messageDesc(file_command, 22);
 
 /**
  * A failed command. Driver-side failures and driver-transport loss are data (including
@@ -736,7 +761,7 @@ export type Error = Message<"tap.v1.Error"> & {
  * Use `create(ErrorSchema)` to create a new message.
  */
 export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
-  messageDesc(file_command, 22);
+  messageDesc(file_command, 23);
 
 /**
  * One protocol response: exactly one `outcome`, named like the protocol result `kind`.
@@ -820,7 +845,7 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
  * Use `create(CommandResultSchema)` to create a new message.
  */
 export const CommandResultSchema: GenMessage<CommandResult> = /*@__PURE__*/
-  messageDesc(file_command, 23);
+  messageDesc(file_command, 24);
 
 /**
  * Closed error taxonomy shared with the device protocol; `Error.detail` refines it with a
@@ -1049,4 +1074,36 @@ export enum StabilitySignal {
  */
 export const StabilitySignalSchema: GenEnum<StabilitySignal> = /*@__PURE__*/
   enumDesc(file_command, 2);
+
+/**
+ * A panel System UI draws over every app, opened with `open_system_panel`.
+ *
+ * @generated from enum tap.v1.SystemPanel
+ */
+export enum SystemPanel {
+  /**
+   * @generated from enum value: SYSTEM_PANEL_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * the notification shade
+   *
+   * @generated from enum value: SYSTEM_PANEL_NOTIFICATIONS = 1;
+   */
+  NOTIFICATIONS = 1,
+
+  /**
+   * the quick settings panel
+   *
+   * @generated from enum value: SYSTEM_PANEL_QUICK_SETTINGS = 2;
+   */
+  QUICK_SETTINGS = 2,
+}
+
+/**
+ * Describes the enum tap.v1.SystemPanel.
+ */
+export const SystemPanelSchema: GenEnum<SystemPanel> = /*@__PURE__*/
+  enumDesc(file_command, 3);
 

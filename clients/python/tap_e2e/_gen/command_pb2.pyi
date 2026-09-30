@@ -53,6 +53,12 @@ class StabilitySignal(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     STABILITY_TREE: _ClassVar[StabilitySignal]
     STABILITY_PIXELS: _ClassVar[StabilitySignal]
     STABILITY_ALL: _ClassVar[StabilitySignal]
+
+class SystemPanel(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    SYSTEM_PANEL_UNSPECIFIED: _ClassVar[SystemPanel]
+    SYSTEM_PANEL_NOTIFICATIONS: _ClassVar[SystemPanel]
+    SYSTEM_PANEL_QUICK_SETTINGS: _ClassVar[SystemPanel]
 ERR_UNSPECIFIED: ErrorCode
 ERR_INVALID_REQUEST: ErrorCode
 ERR_INVALID_SELECTOR: ErrorCode
@@ -90,6 +96,9 @@ STABILITY_UNSPECIFIED: StabilitySignal
 STABILITY_TREE: StabilitySignal
 STABILITY_PIXELS: StabilitySignal
 STABILITY_ALL: StabilitySignal
+SYSTEM_PANEL_UNSPECIFIED: SystemPanel
+SYSTEM_PANEL_NOTIFICATIONS: SystemPanel
+SYSTEM_PANEL_QUICK_SETTINGS: SystemPanel
 
 class DeviceInfoQuery(_message.Message):
     __slots__ = ()
@@ -100,6 +109,12 @@ class PressKey(_message.Message):
     KEY_CODE_FIELD_NUMBER: _ClassVar[int]
     key_code: int
     def __init__(self, key_code: _Optional[int] = ...) -> None: ...
+
+class OpenSystemPanel(_message.Message):
+    __slots__ = ("panel",)
+    PANEL_FIELD_NUMBER: _ClassVar[int]
+    panel: SystemPanel
+    def __init__(self, panel: _Optional[_Union[SystemPanel, str]] = ...) -> None: ...
 
 class DumpHierarchy(_message.Message):
     __slots__ = ()
@@ -206,7 +221,7 @@ class Scroll(_message.Message):
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[Direction, str]] = ..., distance_percent: _Optional[int] = ...) -> None: ...
 
 class Command(_message.Message):
-    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll")
+    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel")
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     PRESS_KEY_FIELD_NUMBER: _ClassVar[int]
@@ -225,6 +240,7 @@ class Command(_message.Message):
     CLEAR_TEXT_FIELD_NUMBER: _ClassVar[int]
     SWIPE_FIELD_NUMBER: _ClassVar[int]
     SCROLL_FIELD_NUMBER: _ClassVar[int]
+    OPEN_SYSTEM_PANEL_FIELD_NUMBER: _ClassVar[int]
     timeout_ms: int
     device_info: DeviceInfoQuery
     press_key: PressKey
@@ -243,7 +259,8 @@ class Command(_message.Message):
     clear_text: ClearText
     swipe: Swipe
     scroll: Scroll
-    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ...) -> None: ...
+    open_system_panel: OpenSystemPanel
+    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ...) -> None: ...
 
 class Bounds(_message.Message):
     __slots__ = ("left", "top", "right", "bottom")

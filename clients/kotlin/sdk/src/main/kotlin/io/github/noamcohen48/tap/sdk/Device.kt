@@ -9,8 +9,10 @@ import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
+import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
@@ -214,6 +216,20 @@ class Device internal constructor(
     /** Injects one Android key code (a mutation: never replayed on transport loss). */
     suspend fun pressKey(keyCode: Int) {
         executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
+    }
+
+    /**
+     * Opens the notification shade (the system's accessibility action, as a swipe down from the
+     * status bar would). Only whether the system accepted it is reported: wait for what the test
+     * needs in the shade, and [pressBack] closes it.
+     */
+    suspend fun openNotifications() = openSystemPanel(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS)
+
+    /** Opens the quick settings panel; otherwise as [openNotifications]. */
+    suspend fun openQuickSettings() = openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS)
+
+    private suspend fun openSystemPanel(panel: SystemPanel) {
+        executeOrThrow { openSystemPanel = OpenSystemPanel.newBuilder().setPanel(panel).build() }
     }
 
     /**

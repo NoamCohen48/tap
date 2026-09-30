@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
 import io.github.noamcohen48.tap.wire.v1.Authentication
 import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
@@ -106,6 +107,9 @@ class GoldenWireTest {
             ),
             "request-tap-aut-resource" to (envelope(Requests.of(Commands.tap(Selectors.of(Nodes.autResource("login"))))) to Request::parseFrom),
             "request-press-key" to (envelope(Requests.of(Commands.pressKey(KEYCODE_BACK))) to Request::parseFrom),
+            "request-open-system-panel" to (
+                envelope(Requests.of(Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS))) to Request::parseFrom
+            ),
             "request-type-text" to (envelope(Requests.of(Commands.typeText("keys 42"))) to Request::parseFrom),
             "request-set-text" to (
                 envelope(Requests.of(Commands.setText(Selectors.androidResource(AUT, "email"), "user@example.com"))) to Request::parseFrom

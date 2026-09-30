@@ -250,6 +250,21 @@ def test_type_text_taps_waits_for_focus_then_types_into_the_focus(fake, device):
     assert [c.WhichOneof("op") for c in ops] == ["tap", "type_text"]
 
 
+def test_open_notifications_and_quick_settings_send_the_system_panel_command(fake, device):
+    panels: list[int] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if not command.HasField("open_system_panel"):
+            return None
+        panels.append(command.open_system_panel.panel)
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    device.open_notifications()
+    device.open_quick_settings()
+    assert panels == [pb.SYSTEM_PANEL_NOTIFICATIONS, pb.SYSTEM_PANEL_QUICK_SETTINGS]
+
+
 def test_scroll_until_gives_up_after_max_scrolls(fake, device):
     ops: list[str] = []
 

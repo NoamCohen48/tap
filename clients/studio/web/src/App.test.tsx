@@ -394,6 +394,19 @@ describe("App", () => {
     await screen.findByText("pressBack()");
   });
 
+  it("the device rail records the system panels and recent apps", async () => {
+    const fake = await attached();
+    const rail = screen.getByRole("toolbar", { name: "Device" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Notifications" }));
+    await screen.findByText("openNotifications()");
+    fireEvent.click(within(rail).getByRole("button", { name: "Quick settings" }));
+    await screen.findByText("openQuickSettings()");
+    fireEvent.click(within(rail).getByRole("button", { name: "Recent apps" }));
+    await screen.findByText("pressKey(187)");
+    const ops = fake.state.performed.map((r) => (r.step?.kind.case === "action" ? r.step.kind.value.command?.op : undefined));
+    expect(ops.map((op) => op?.case)).toEqual(["openSystemPanel", "openSystemPanel", "pressKey"]);
+  });
+
   it("releasing the device returns to the picker", async () => {
     await attached();
     fireEvent.click(screen.getByRole("button", { name: "Release the device" }));

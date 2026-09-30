@@ -166,6 +166,7 @@ result type.
 | `health` | `Health` (host-internal) | – | `done` |
 | `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, display size and rotation, focused package |
 | `press_key` | `PressKey` (mutation) | `key_code` ≥ 0 | `done` after one key press (every code, HOME `3` and BACK `4` included, is `UiDevice.pressKeyCode`: no idle wait, no check that the screen changed); `ACTION_REJECTED` if the platform refused to inject it |
+| `open_system_panel` | `OpenSystemPanel` (mutation) | `panel` = `SYSTEM_PANEL_NOTIFICATIONS` or `SYSTEM_PANEL_QUICK_SETTINGS` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | `done` once `UiAutomation.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS / _QUICK_SETTINGS)` returned true (not `UiDevice.openNotification`/`openQuickSettings`, which wait for idle first; no check that the panel opened); `ACTION_REJECTED` if the system refused the action |
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
 | `count` | `Count` | `selector` | `count` = matches in the selector's scope, capped at 1 000 (ignores the match limit) |
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count |
