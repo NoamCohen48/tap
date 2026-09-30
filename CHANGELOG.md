@@ -28,6 +28,10 @@ first `client-studio/v0.0.1`. `tap-agent` and `tap-studio` need `tap-e2e` 0.0.2.
 - **Selector candidates** (engine, Python client): `ScreenSnapshot(selector_candidates=true)`
   gives each node every selector that matched only it, best first
   (`device.screen_snapshot(selector_candidates=True)`), for inspectors such as Tap Studio.
+- **Fix** (engine): `forceStop` and `clearData` (so also `coldLaunch`) now return only once
+  Android has destroyed the app's activities, not just its process. On API 34 a launch right
+  after `clearData` could otherwise be killed with the old task and hang on its splash screen
+  until `am start -W` timed out.
 
 ## 0.0.1 — 2026-09-29 (alpha)
 

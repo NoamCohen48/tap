@@ -568,6 +568,19 @@ open class Adb internal constructor(
         exec(serial, "shell", "am", "force-stop", shellQuote(packageName))
     }
 
+    /**
+     * Whether any activity of [packageName] is still in the activity manager's hierarchy
+     * (`dumpsys activity activities`, its `* Hist #n: ActivityRecord{… u0 <package>/…}` lines),
+     * including one that is only exiting. The process can be gone while one still is.
+     */
+    open suspend fun hasActivities(
+        serial: String,
+        packageName: String,
+    ): Boolean {
+        val record = Regex("""^\s*\* Hist\s+#\d+: ActivityRecord\{\S+ u\d+ ${Regex.escape(packageName)}/""")
+        return exec(serial, "shell", "dumpsys", "activity", "activities").lineSequence().any { record.containsMatchIn(it) }
+    }
+
     /** `am start -W -n component`; returns the raw output (`AmStartOutput` reads its `Status:`/`Error:` lines). */
     open suspend fun startActivity(
         serial: String,

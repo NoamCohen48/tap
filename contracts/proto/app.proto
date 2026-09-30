@@ -17,8 +17,8 @@ service AppService {
   rpc Install(stream InstallRequest) returns (InstallResponse);
   rpc Uninstall(UninstallRequest) returns (UninstallResponse); // `pm uninstall`, verified.
   rpc IsInstalled(IsInstalledRequest) returns (IsInstalledResponse);
-  rpc ForceStop(ForceStopRequest) returns (ForceStopResponse); // `am force-stop` plus proof that no process remains.
-  rpc ClearData(ClearDataRequest) returns (ClearDataResponse); // `pm clear`; data, cache and runtime permissions gone, app left stopped.
+  rpc ForceStop(ForceStopRequest) returns (ForceStopResponse); // `am force-stop` plus proof that no process and no activity of the package remain.
+  rpc ClearData(ClearDataRequest) returns (ClearDataResponse); // `pm clear`; data, cache and runtime permissions gone, app left stopped (no process, no activity).
   rpc GrantPermission(GrantPermissionRequest) returns (GrantPermissionResponse); // `pm grant` a runtime permission.
   rpc Launch(LaunchRequest) returns (LaunchResponse); // Start the activity (or the launcher) and wait for the package to own the focused window.
   rpc ColdLaunch(ColdLaunchRequest) returns (ColdLaunchResponse); // Verified force-stop, launch, then a new process identity in the foreground.

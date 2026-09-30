@@ -1022,6 +1022,46 @@ class DeviceSessionTest {
     }
 
     @Test
+    fun `clearData returns only once the app's activity is destroyed too`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-clear-data", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val session = openSession(adb, fake)
+                val exiting = "    * Hist  #0: ActivityRecord{1017c6d u0 com.example/.Main t794 f} isExiting}"
+                val priorResponder = adb.responder
+                adb.responder = { serial, command ->
+                    when (command) {
+                        "shell pm clear com.example" -> ok("Success")
+                        "shell pidof com.example" -> Adb.Result(1, "")
+                        // The process is gone at once; the record outlives it for two polls.
+                        "shell dumpsys activity activities" ->
+                            ok(if (adb.calls.count { "dumpsys activity" in it } <= 2) exiting else "")
+                        else -> priorResponder?.invoke(serial, command)
+                    }
+                }
+                withTimeout(5_000) { session.app().clearData(timeoutMs = 2_000) }
+                assertEquals(3, adb.calls.count { "dumpsys activity activities" in it })
+
+                // A record that never goes is a timeout naming it, not a silent return.
+                adb.responder = { serial, command ->
+                    when (command) {
+                        "shell am force-stop com.example" -> ok("")
+                        "shell pidof com.example" -> Adb.Result(1, "")
+                        "shell dumpsys activity activities" -> ok(exiting)
+                        else -> priorResponder?.invoke(serial, command)
+                    }
+                }
+                val timeout = assertFailsWith<HostWaitTimeoutException> { session.app().forceStop(timeoutMs = 300) }
+                assertTrue("an activity still exiting" in timeout.message.orEmpty(), timeout.message)
+                session.close(timeoutMs = 5_000)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
     fun `launch returns after am start without waiting on the driver`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)

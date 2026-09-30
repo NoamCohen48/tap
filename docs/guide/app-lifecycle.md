@@ -12,8 +12,8 @@ state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 | `uninstall()` | `pm uninstall` | package gone |
 | `launch(activity = null)` | `am start -W` the given or the launcher activity | Android reports the launch complete (nothing about the UI: wait for it yourself) |
 | `coldLaunch(activity = null)` | force-stop, launch | **a new process identity** (PID + start token) is in the foreground; returned as an `AppProcess` |
-| `forceStop()` | `am force-stop` | no process of the package remains |
-| `clearData()` | `pm clear` | data, cache and runtime permissions gone; app left stopped |
+| `forceStop()` | `am force-stop` | no process of the package remains, and Android has destroyed its activities |
+| `clearData()` | `pm clear` | data, cache and runtime permissions gone; app left stopped, as after `forceStop()` |
 | `grantPermission(name)` | `pm grant` | `dumpsys package` lists it as granted |
 | `process()` | | the single current `AppProcess` |
 | `isRunning()` | | any process of the package |

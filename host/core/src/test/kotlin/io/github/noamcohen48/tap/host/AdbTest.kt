@@ -90,6 +90,31 @@ class AdbTest {
         }
 
     @Test
+    fun `an exiting activity still counts until its record is gone`() =
+        runBlocking {
+            // API 34 after `pm clear`: the process is dead, the task and its record linger.
+            val exiting =
+                """
+                ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)
+                Display #0 (activities from top to bottom):
+                  * Task{ad960a2 #794 type=standard A=10198:com.example U=0 visible=false sz=1}
+                    * Hist  #0: ActivityRecord{1017c6d u0 com.example/.MainActivity t794 f} isExiting}
+                  * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
+                    * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
+                """.trimIndent()
+            assertTrue(scriptedAdb(exiting).hasActivities(serial, "com.example"))
+            // Gone: only other packages' records and non-record mentions remain.
+            val gone =
+                """
+                  * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
+                    * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
+                  mLastFocusedRootTask=Task{ad960a2 #794 type=standard A=10198:com.example}
+                    source=ActivityRecord{416ef61 u0 com.example/.MainActivity t793} SCREEN_ORIENTATION_UNSPECIFIED
+                """.trimIndent()
+            assertFalse(scriptedAdb(gone).hasActivities(serial, "com.example"))
+        }
+
+    @Test
     fun `shell arguments from callers are quoted`() =
         runBlocking {
             val commands = mutableListOf<List<String>>()
