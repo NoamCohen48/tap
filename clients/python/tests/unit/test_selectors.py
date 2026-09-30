@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import _gen as pb
-from tap_e2e import all_of, any_of, clickable, raw_res, res, text
+from tap_e2e import Selector, all_of, any_of, clickable, proto, raw_res, res, text
 
 SYSTEM = "com.google.android.permissioncontroller"
 
@@ -93,3 +93,15 @@ def test_and_res_matches_kotlin_and_res():
     qualified = text("a").and_res("com.pkg", "login")
     node = qualified._proto.node.all_of.nodes[1].resource
     assert (node.package_name, node.name, node.aut_package) == ("com.pkg", "login", False)
+
+
+def test_selectors_convert_to_and_from_their_proto_as_copies():
+    selector = res("login").at(1)
+    message = selector.to_proto()
+    assert isinstance(message, proto.Selector) and message == selector._proto
+    message.at.index = 5  # a copy: the selector is unchanged
+    assert selector == res("login").at(1)
+    again = Selector.from_proto(message)
+    message.at.index = 6
+    assert again == res("login").at(5)
+    assert proto.selector_pb2.Selector is proto.Selector

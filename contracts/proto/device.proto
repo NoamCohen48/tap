@@ -126,6 +126,28 @@ message ScreenSnapshotRequest {
   string attached_device_id = 2;
   // For the hierarchy dump; absent = the attached device's default command timeout.
   optional int64 timeout_ms = 3;
+  // Also fill ScreenNode.candidates (an inspector offering the user a choice of selectors).
+  bool selector_candidates = 4;
+}
+
+// How a synthesised selector singles out its node.
+enum SelectorKind {
+  SELECTOR_KIND_UNSPECIFIED = 0;
+  // One predicate: resource id, text, description or hint.
+  SELECTOR_KIND_PLAIN = 1;
+  // Two predicates of the node itself (resource and text, text and class, ...).
+  SELECTOR_KIND_COMBINED = 2;
+  // The node's own predicate plus an `ancestor` relation to an addressable ancestor.
+  SELECTOR_KIND_ANCESTOR = 3;
+  // All of the node's predicates plus an `At` pick: correct for this dump, fragile if the
+  // screen reorders.
+  SELECTOR_KIND_BY_INDEX = 4;
+}
+
+// A selector that matched only its node in the dump.
+message SelectorCandidate {
+  Selector selector = 1;
+  SelectorKind kind = 2;
 }
 
 // A node against the previous snapshot of the same attached device.
@@ -159,6 +181,10 @@ message ScreenNode {
   // The selector ends in an `At` pick: correct for this dump, fragile if the screen reorders.
   bool by_index = 14;
   NodeChange change = 15;
+  // Only with ScreenSnapshotRequest.selector_candidates: every selector that matched only this
+  // node, best first (the first is `selector`). A candidate that merely adds predicates to an
+  // earlier one is left out, and a BY_INDEX pick is offered only when nothing else is unique.
+  repeated SelectorCandidate candidates = 16;
 }
 
 message ScreenSnapshotResponse {

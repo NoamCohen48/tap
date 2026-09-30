@@ -437,6 +437,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.SelectorCandidate",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.SetText",
     "allDeclaredFields": true
   },

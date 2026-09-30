@@ -48,6 +48,12 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 
 ::: tap_e2e.errors
 
+## Protocol messages
+
+::: tap_e2e.proto
+    options:
+      members: false
+
 ## pytest plugin
 
 ::: tap_e2e.pytest_plugin

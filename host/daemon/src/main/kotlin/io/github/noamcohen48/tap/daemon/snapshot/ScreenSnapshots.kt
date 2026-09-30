@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.daemon.snapshot
 import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.ScreenNode
+import io.github.noamcohen48.tap.api.v1.SelectorCandidate
 
 /** One parsed screen before ref alignment: [nodes] have no `ref` and no `change` yet. */
 internal class Screen(
@@ -10,20 +11,27 @@ internal class Screen(
     val nodes: List<ScreenNode>,
 )
 
-/** Dump XML → [Screen]: parse, synthesise a selector per node, convert to `ScreenNode`s. */
+/**
+ * Dump XML → [Screen]: parse, synthesise a selector per node (every candidate with
+ * [candidates]), convert to `ScreenNode`s.
+ */
 internal object ScreenSnapshots {
     fun screen(
         xml: String,
         autPackage: String,
+        candidates: Boolean = false,
     ): Screen {
         val hierarchy = HierarchyParser.parse(xml)
-        val selectors = SelectorSynthesis(hierarchy, autPackage).synthesise()
-        return Screen(hierarchy.rotation, hierarchy.nodes.map { screenNode(it, selectors[it.index]) })
+        val synthesis = SelectorSynthesis(hierarchy, autPackage)
+        val selectors = if (candidates) synthesis.candidates() else synthesis.synthesise().map(::listOfNotNull)
+        return Screen(hierarchy.rotation, hierarchy.nodes.map { screenNode(it, selectors[it.index], candidates) })
     }
 
+    /** [synthesised] ranked, best first; with [candidates] all of them go into the node. */
     fun screenNode(
         node: DumpNode,
-        synthesised: Synthesised?,
+        synthesised: List<Synthesised>,
+        candidates: Boolean = false,
     ): ScreenNode =
         ScreenNode
             .newBuilder()
@@ -39,11 +47,23 @@ internal object ScreenSnapshots {
                 addAllFlags(flags(node))
                 password = node.password
                 interactive = node.clickable || node.longClickable || node.checkable || node.scrollable || node.editable
-                synthesised?.let {
+                synthesised.firstOrNull()?.let {
                     selector = it.selector
                     byIndex = it.byIndex
                 }
+                if (candidates) {
+                    synthesised.forEach { addCandidates(SelectorCandidate.newBuilder().setSelector(it.selector).setKind(it.kind.proto)) }
+                }
             }.build()
+
+    private val SelectorKind.proto: io.github.noamcohen48.tap.api.v1.SelectorKind
+        get() =
+            when (this) {
+                SelectorKind.PLAIN -> io.github.noamcohen48.tap.api.v1.SelectorKind.SELECTOR_KIND_PLAIN
+                SelectorKind.COMBINED -> io.github.noamcohen48.tap.api.v1.SelectorKind.SELECTOR_KIND_COMBINED
+                SelectorKind.ANCESTOR -> io.github.noamcohen48.tap.api.v1.SelectorKind.SELECTOR_KIND_ANCESTOR
+                SelectorKind.BY_INDEX -> io.github.noamcohen48.tap.api.v1.SelectorKind.SELECTOR_KIND_BY_INDEX
+            }
 
     private val DumpNode.editable: Boolean get() = className?.endsWith("EditText") == true
 

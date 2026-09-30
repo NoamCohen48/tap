@@ -241,14 +241,16 @@ class Device:
             ).text
         )
 
-    def screen_snapshot(self, timeout: float | None = None) -> ScreenSnapshot:
+    def screen_snapshot(self, timeout: float | None = None, *, selector_candidates: bool = False) -> ScreenSnapshot:
         """The visible screen as ref-addressed ``ScreenNode``s, each with a selector the daemon
         found to match only that node — for exploring an app, not for tests (it is built from
         the diagnostic hierarchy dump). Refs stay stable across snapshots of this attached
         device, and each node says whether it was added since the previous snapshot; nodes
         that are gone are in ``removed``. Act on a node through its selector
         (``device.element(node.selector)``) or ``resolve_ref``: the device still requires
-        exactly one match at action time.
+        exactly one match at action time. With ``selector_candidates`` each node also lists every
+        selector that matched only it (``ScreenNode.candidates``), for an inspector that lets a
+        person choose.
 
         Experimental: not covered by the compatibility promise; it may change in any release."""
         self._ensure_usable("screen_snapshot")
@@ -256,6 +258,7 @@ class Device:
             client_connection_id=self.owner_connection.id,
             attached_device_id=self.attached_device_id,
             timeout_ms=int(_or(timeout, self.timeouts.lifecycle) * 1000),
+            selector_candidates=selector_candidates,
         )
         with mapped_errors(self.serial):
             return _proto.screen_snapshot(

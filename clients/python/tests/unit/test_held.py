@@ -9,10 +9,12 @@ from tap_e2e import (
     FailureReason,
     NodeChange,
     NodeFlag,
+    SelectorKind,
     ServerError,
     TapClient,
     TapError,
     res,
+    text,
 )
 from tap_e2e import _gen as pb
 from tap_e2e import _proto
@@ -132,6 +134,26 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
         assert hello.content_description is None and hello.change is NodeChange.UNCHANGED
         assert [n.ref for n in snapshot.removed] == ["e1"]
         assert snapshot.node("e1") is None
+        assert not fake.devices.snapshot_requests[-1].selector_candidates and login.candidates == ()
+
+
+def test_screen_snapshot_asks_for_and_maps_selector_candidates(fake, client):
+    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as device:
+        candidates = [
+            pb.SelectorCandidate(selector=res("login")._proto, kind=pb.SELECTOR_KIND_PLAIN),
+            pb.SelectorCandidate(selector=text("Log in")._proto, kind=pb.SELECTOR_KIND_PLAIN),
+            pb.SelectorCandidate(selector=text("Log in")._proto, kind=99),
+        ]
+        fake.devices.snapshot = pb.ScreenSnapshotResponse(
+            snapshot_id=1, nodes=[_node("e1", selector=res("login")._proto, candidates=candidates)]
+        )
+        node = device.screen_snapshot(selector_candidates=True).nodes[0]
+        assert fake.devices.snapshot_requests[-1].selector_candidates
+        assert [(c.selector.render(), c.kind) for c in node.candidates] == [
+            (res("login").render(), SelectorKind.PLAIN),
+            (text("Log in").render(), SelectorKind.PLAIN),
+            (text("Log in").render(), SelectorKind.UNKNOWN),
+        ]
 
 
 def test_resolve_ref_returns_the_selector_or_unknown_ref(fake, client):

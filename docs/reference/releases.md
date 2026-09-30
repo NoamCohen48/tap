@@ -1,6 +1,6 @@
 # Releases and versions
 
-Tap ships as five independently versioned artifact families. Each has its own tag prefix; a
+Tap ships as six independently versioned artifact families. Each has its own tag prefix; a
 push of the tag builds and publishes that family from the tagged commit.
 
 | Family | Tag | Artifacts | Where |
@@ -9,6 +9,7 @@ push of the tag builds and publishes that family from the tagged commit.
 | **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | GitHub Packages |
 | **Python client** | `client-python/vX.Y.Z` | `tap_e2e-X.Y.Z-py3-none-any.whl`, sdist | GitHub Release (PyPI when enabled) |
 | **Agent tools** (experimental) | `client-agent/vX.Y.Z` | `tap_agent-X.Y.Z-py3-none-any.whl`, sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
+| **Tap Studio** (experimental, not released yet) | `client-studio/vX.Y.Z` | `tap_studio-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **sync-sdk** (experimental, not released yet) | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | GitHub Packages |
 
 Every release also carries the complete documentation as Markdown (`tap-docs-X.Y.Z.zip` and
@@ -49,7 +50,8 @@ Tap is in **alpha**: the first release is 0.0.1 for every family.
       `tap-sync-sdk`;
     - the agent surface: `tap-agent`, held connections (`connect(..., hold=...)`, `resume`),
       screen snapshots and refs (`screen_snapshot`, `resolve_ref`), the event log
-      (`event_log`, the `Events` RPC) and the `tap-events/1` export format.
+      (`event_log`, the `Events` RPC) and the `tap-events/1` export format;
+    - Tap Studio: `tap-studio`, its page and the `tap-recording/1` format.
 - A published version is never replaced: a fix is a new patch release.
 
 ## Where things are published

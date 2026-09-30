@@ -133,6 +133,21 @@ claude mcp add tap -- tap-agent mcp      # register it with Claude Code
 
 Other agents can use the CLI directly: `tap-agent skill` prints the instructions to give them.
 
+### Tap Studio
+
+`tap-studio` (experimental) shows a device's screen in your browser with its elements overlaid.
+You act on them to record steps: taps, text, scrolls and checks, each on an element's selector,
+never a coordinate. Edit and replay the steps, then export them as a `tap-recording/1` file to
+turn into a test. It needs Python 3.10+ and a running Tap server. Until its first release,
+install it from a checkout, which needs [Bun](https://bun.sh) to build the page. From the
+repository root:
+
+```bash
+(cd clients/studio/web && bun install && bun run build)
+pip install -e clients/python -e clients/studio
+tap-studio                                # opens the page; Ctrl-C frees the device
+```
+
 ## Documentation
 
 | | |
@@ -145,6 +160,7 @@ Other agents can use the CLI directly: `tap-agent skill` prints the instructions
 | [Configuration](https://noamcohen48.github.io/tap/guide/configuration/) | settings and the `tap` command |
 | [Errors and artifacts](https://noamcohen48.github.io/tap/guide/errors/) | what failures mean and what to look at |
 | [Coding agents](https://noamcohen48.github.io/tap/guide/agents/) | using `tap-agent` |
+| [Tap Studio](https://noamcohen48.github.io/tap/guide/studio/) | inspecting a screen and recording steps in the browser |
 | [Coming from Maestro or Appium](https://noamcohen48.github.io/tap/guide/coming-from/) | how the concepts map |
 | [API reference](https://noamcohen48.github.io/tap/reference/) | every Kotlin, Python and server API |
 | [Development](https://noamcohen48.github.io/tap/development/) | how Tap is built, and how to work on it |

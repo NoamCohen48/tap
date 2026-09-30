@@ -137,6 +137,86 @@ class SelectorSynthesisTest {
     }
 
     @Test
+    fun `candidates start with the selector and are all unique and minimal`() {
+        for (name in Dumps.names) {
+            val hierarchy = Dumps.hierarchy(name)
+            val matcher = DumpMatcher(hierarchy, AUT)
+            val synthesis = SelectorSynthesis(hierarchy, AUT)
+            val primary = synthesis.synthesise()
+            val candidates = synthesis.candidates()
+            var alternatives = 0
+            hierarchy.nodes.forEach { node ->
+                val ranked = candidates[node.index]
+                val first = primary[node.index]
+                assertEquals(first?.selector, ranked.firstOrNull()?.selector, "$name node ${node.index}")
+                assertEquals(first?.kind, ranked.firstOrNull()?.kind, "$name node ${node.index}")
+                assertEquals(ranked.size, ranked.map { it.selector }.toSet().size, "$name node ${node.index}")
+                if (ranked.any { it.byIndex }) assertEquals(1, ranked.size, "$name: an index pick only when nothing else is unique")
+                ranked.filterNot { it.byIndex }.forEach { candidate ->
+                    assertEquals(SelectorPlanKind.NATIVE, CommandValidation.validateSelector(candidate.selector))
+                    assertEquals(listOf(node), matcher.matches(candidate.selector), "$name ${candidate.selector.render()}")
+                }
+                ranked.forEachIndexed { i, later ->
+                    ranked.take(i).forEach { earlier ->
+                        assertTrue(!later.operands.containsAll(earlier.operands), "$name: ${later.selector.render()} only adds to ${earlier.selector.render()}")
+                    }
+                }
+                alternatives += (ranked.size - 1).coerceAtLeast(0)
+            }
+            assertTrue(alternatives > 0, "$name offers no alternative selector")
+        }
+    }
+
+    @Test
+    fun `candidates list every minimal way to single out a node`() {
+        val hierarchy =
+            HierarchyParser.parse(
+                wrap(
+                    node(
+                        className = "Root",
+                        children =
+                            node(resourceId = "$AUT:id/go", text = "Go", desc = "Start") +
+                                node(resourceId = "$AUT:id/a", children = node(text = "Row")) +
+                                node(resourceId = "$AUT:id/b", children = node(text = "Row")) +
+                                node(className = "Same", children = node(text = "Clone") + node(text = "Clone")),
+                    ),
+                ),
+            )
+        val candidates = SelectorSynthesis(hierarchy, AUT).candidates()
+
+        fun of(text: String, occurrence: Int = 0) = candidates[hierarchy.nodes.filter { it.text == text }[occurrence].index]
+
+        // Each property alone is unique, so no pair of them is offered.
+        assertEquals(
+            listOf(Nodes.autResource("go"), Nodes.text("Go"), Nodes.contentDescription("Start")).map { aut(it) to SelectorKind.PLAIN },
+            of("Go").map { it.selector to it.kind },
+        )
+        // Only the row's ancestor tells it apart, with its text or its class.
+        assertEquals(
+            listOf(
+                Nodes.allOf(Nodes.text("Row"), Nodes.ancestor(Nodes.autResource("b"))),
+                Nodes.allOf(Nodes.className("android.widget.TextView"), Nodes.ancestor(Nodes.autResource("b"))),
+            ).map { aut(it) to SelectorKind.ANCESTOR },
+            of("Row", 1).map { it.selector to it.kind },
+        )
+        assertEquals(listOf(SelectorKind.BY_INDEX), of("Clone", 1).map { it.kind })
+    }
+
+    @Test
+    fun `snapshots carry the candidates only when asked`() {
+        val xml = Dumps.xml("emulator-5554-MainActivity")
+        val plain = ScreenSnapshots.screen(xml, AUT)
+        val withCandidates = ScreenSnapshots.screen(xml, AUT, candidates = true)
+        assertTrue(plain.nodes.all { it.candidatesCount == 0 })
+        assertEquals(plain.nodes.map { it.selector }, withCandidates.nodes.map { it.selector })
+        withCandidates.nodes.forEach { node ->
+            assertEquals(node.hasSelector(), node.candidatesCount > 0)
+            if (node.hasSelector()) assertEquals(node.selector, node.candidatesList.first().selector)
+        }
+        assertTrue(withCandidates.nodes.any { it.candidatesCount > 1 })
+    }
+
+    @Test
     fun `nodes the driver could never match alone get no selector`() {
         val tooLong = "x".repeat(2_000)
         val hierarchy =
