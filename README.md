@@ -139,7 +139,8 @@ Other agents can use the CLI directly: `tap-agent skill` prints the instructions
 You act on them to record steps: taps, text, scrolls and checks, each on an element's selector,
 never a coordinate. Edit and replay the steps, then export them as a `tap-recording/1` file to
 turn into a test. It needs Python 3.10+ and a running Tap server. Until its first release,
-install it from a checkout, which needs [Bun](https://bun.sh) to build the page:
+install it from a checkout, which needs [Bun](https://bun.sh) to build the page. From the
+repository root:
 
 ```bash
 (cd clients/studio/web && bun install && bun run build)

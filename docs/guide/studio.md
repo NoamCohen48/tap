@@ -20,7 +20,7 @@ pip install https://github.com/NoamCohen48/tap/releases/download/client-studio/v
 ```
 
 Until `client-studio/v0.0.1` is released, install it from a checkout of the repository. The page
-is built with [Bun](https://bun.sh):
+is built with [Bun](https://bun.sh). Run these from the repository root:
 
 ```bash
 (cd clients/studio/web && bun install && bun run build)
