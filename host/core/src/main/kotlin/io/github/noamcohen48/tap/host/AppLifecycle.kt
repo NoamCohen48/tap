@@ -68,18 +68,18 @@ class AppLifecycle internal constructor(
         syncIdentity = null
     }
 
-    /** `am force-stop` plus proof that no process of the package remains. */
+    /** `am force-stop` plus proof that no process and no activity of the package remain. */
     suspend fun forceStop(timeoutMs: Long) {
         session.guardAdb { adb.forceStop(serial, packageName) }
-        awaitNoProcess(timeoutMs, "force-stop")
+        awaitStopped(timeoutMs, "force-stop")
         syncIdentity = null
     }
 
-    /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped. */
+    /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped, as after [forceStop]. */
     suspend fun clearData(timeoutMs: Long) {
         val output = session.guardAdb { adb.clearData(serial, packageName) }
         if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
-        awaitNoProcess(timeoutMs, "pm clear")
+        awaitStopped(timeoutMs, "pm clear")
         syncIdentity = null
     }
 
@@ -240,7 +240,13 @@ class AppLifecycle internal constructor(
         return component.substringAfter('/')
     }
 
-    private suspend fun awaitNoProcess(
+    /**
+     * Waits until the package has no process and Android has also destroyed its activities.
+     * The process dies first; the task goes later, and on API 34 a task whose removal times out
+     * is killed by package — taking down a process started for a launch in the meantime and
+     * leaving that launch on its splash screen until `am start -W` times out (seen on CI).
+     */
+    private suspend fun awaitStopped(
         timeoutMs: Long,
         action: String,
     ) {
@@ -250,14 +256,15 @@ class AppLifecycle internal constructor(
         while (true) {
             polls++
             val pids = session.guardAdb { adb.processIds(serial, packageName) }
-            if (pids.isEmpty()) return
+            val activities = pids.isEmpty() && session.guardAdb { adb.hasActivities(serial, packageName) }
+            if (pids.isEmpty() && !activities) return
             if (System.nanoTime() >= deadline) {
                 throw HostWaitTimeoutException(
-                    "$packageName to have no process after $action",
+                    "$packageName to have no process and no activity after $action",
                     serial,
                     (System.nanoTime() - started) / 1_000_000,
                     polls,
-                    "pids=$pids",
+                    if (activities) "an activity still exiting" else "pids=$pids",
                 )
             }
             delay(pollIntervalMs)

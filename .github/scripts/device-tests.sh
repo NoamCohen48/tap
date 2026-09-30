@@ -10,6 +10,15 @@ set -euo pipefail
 
 SERIAL=emulator-5554
 adb -s "$SERIAL" wait-for-device
+# The emulator's own view of a failure (ANRs, a launch that never draws): a large log buffer,
+# dumped with the activity state into the uploaded artifacts however the lane ends.
+adb -s "$SERIAL" logcat -G 16M || true
+dump_device_state() {
+  mkdir -p build/device-logs
+  adb -s "$SERIAL" logcat -d -b main,system,crash >build/device-logs/logcat.txt 2>&1 || true
+  adb -s "$SERIAL" shell dumpsys activity activities >build/device-logs/activities.txt 2>&1 || true
+}
+trap dump_device_state EXIT
 # A 2-vCPU swiftshader emulator throws "Process system isn't responding" ANR dialogs (package
 # android) over the AUT, which then never owns the focused window.
 adb -s "$SERIAL" shell settings put global hide_error_dialogs 1

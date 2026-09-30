@@ -553,7 +553,7 @@ export const AppService: GenService<{
     output: typeof IsInstalledResponseSchema;
   },
   /**
-   * `am force-stop` plus proof that no process remains.
+   * `am force-stop` plus proof that no process and no activity of the package remain.
    *
    * @generated from rpc tap.v1.AppService.ForceStop
    */
@@ -563,7 +563,7 @@ export const AppService: GenService<{
     output: typeof ForceStopResponseSchema;
   },
   /**
-   * `pm clear`; data, cache and runtime permissions gone, app left stopped.
+   * `pm clear`; data, cache and runtime permissions gone, app left stopped (no process, no activity).
    *
    * @generated from rpc tap.v1.AppService.ClearData
    */

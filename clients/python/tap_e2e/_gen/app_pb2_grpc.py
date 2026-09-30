@@ -116,14 +116,14 @@ class AppServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def ForceStop(self, request, context):
-        """`am force-stop` plus proof that no process remains.
+        """`am force-stop` plus proof that no process and no activity of the package remain.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ClearData(self, request, context):
-        """`pm clear`; data, cache and runtime permissions gone, app left stopped.
+        """`pm clear`; data, cache and runtime permissions gone, app left stopped (no process, no activity).
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

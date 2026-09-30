@@ -88,7 +88,7 @@ class App:
         self._call(self._apps.Uninstall, pb.UninstallRequest(app=self._target()), 120)
 
     def force_stop(self, timeout: float | None = None) -> None:
-        """``am force-stop`` plus proof that no process of the package remains."""
+        """``am force-stop`` plus proof that no process and no activity of the package remain."""
         timeout = self._or(timeout, self.device.timeouts.action)
         request = pb.ForceStopRequest(app=self._target(), timeout_ms=self._ms(timeout))
         self._call(self._apps.ForceStop, request, timeout)

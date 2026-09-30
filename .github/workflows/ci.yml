@@ -278,6 +278,7 @@ jobs:
             tap-artifacts
             build/agent-smoke
             build/studio-smoke
+            build/device-logs
             samples/fixture-tests/build/reports/tests
           if-no-files-found: ignore
 

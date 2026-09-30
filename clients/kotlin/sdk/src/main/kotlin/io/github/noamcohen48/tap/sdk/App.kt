@@ -120,14 +120,14 @@ class App internal constructor(
         call(120.seconds) { it.uninstall(UninstallRequest.newBuilder().setApp(target).build()) }
     }
 
-    /** `am force-stop` plus proof that no process of the package remains. */
+    /** `am force-stop` plus proof that no process and no activity of the package remain. */
     suspend fun forceStop(timeout: Duration = device.timeouts.action) {
         call(timeout) {
             it.forceStop(ForceStopRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
         }
     }
 
-    /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped. */
+    /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped, as after [forceStop]. */
     suspend fun clearData(timeout: Duration = device.timeouts.action) {
         call(timeout) {
             it.clearData(ClearDataRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())

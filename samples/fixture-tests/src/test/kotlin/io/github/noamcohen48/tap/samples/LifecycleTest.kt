@@ -18,6 +18,9 @@ class LifecycleTest {
             val app = Fixture.launch(device)
             val first = app.process()
 
+            // A launch returns on the new process identity, not on content: on a slow
+            // first boot the hierarchy still lays out after that (seen on CI).
+            device.await(res("fault_button")).visible()
             device.element(res("fault_button")).tap()
             device.await(text("Fault taps: 1")).visible()
 
