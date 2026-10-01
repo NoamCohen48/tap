@@ -178,7 +178,29 @@ Hardening in the same change:
   executable fails Start with the OS reason (`Cannot run program …`) and leaves no temp files.
 - The changelog entry moved out of the released 0.0.2 section into *Unreleased*.
 
-## scrcpy capability audit (research only; no new feature approved)
+## Post-merge device smoke and the quiet `output` finding (2026-10-01)
+
+Merged daemon (JVM dist, own state dir) + Python client on emulator-5554 (API 34, scrcpy 4.1),
+holding the shared `~/.tap/sessions` lock for the run because another agent's daemon was using
+the emulator. Passed: video-only MP4 (H.264); video + audio Matroska (H.264 + Opus); `playback`
+audio with the played 440 → 660 → 880 → 523 Hz sequence at −17.6 dB peak; `mic` Opus (silent:
+the emulator has no microphone input); scrcpy launched with `ADB=adb`; a second Start rejected;
+detach mid-recording clean in 1.2 s with no scrcpy child or temp file left. The static-screen
+video was 1.1 s again (the deferred duration issue above).
+
+`output` recordings first looked silent (−50 dB peak). They are not: they contain the full tone
+sequence, attenuated by the **media volume of the remote-submix route**. While an `output`
+capture runs, the audio policy routes `STRATEGY_MEDIA` to `AUDIO_DEVICE_OUT_REMOTE_SUBMIX @0`
+(the player reported `deviceId` 130 = "Remote Submix Out", output thread active), and
+`STREAM_MUSIC` has a separate index for that device (`8000 (remote_submix): 5` of 15 here). The
+−18 dBFS test tone at index 5 (≈ −32 dB on the default media curve) gives the measured −50 dB.
+Raising the remote-submix index to 15 with volume keys *during* an `output` capture produced
+−17.8 dB; the indexes were restored to 5. Raw `scrcpy --audio-source=output` gives the same
+result, so this is Android behaviour, not Tap. `playback` (AudioPlaybackCapture) is pre-volume
+and unaffected. The pi-era "output works" evidence used a louder setting. Documented in the
+guide and `server-api.md`; Tap does not change device volume (the driver assumes nothing).
+
+ (research only; no new feature approved)
 
 Reviewed the [v3.3.4 pinned reference](https://github.com/Genymobile/scrcpy/tree/fb6381f5b9bb96f3fa823d899f4c32de2ec84ab3) rather than a moving branch. The installed 4.1 executable was used for the above device tests, **not** as the contract for new features. This is a selection of relevant capabilities, not permission to add scrcpy's entire CLI to Tap.
 

@@ -175,6 +175,10 @@ or write it where you like. They share one artifact shape: `bytes` (the serializ
     - Audio sources: `output` (Android 11+) records device playback but redirects it away from
       the device speakers; `playback` (Android 13+) keeps local playback but apps may opt out;
       `mic` records the device microphone. Android 10 and earlier can record video only.
+      `output` records *after* the device's media volume, and that route has its own volume
+      (at the default 5 of 15 a test tone comes out about 32 dB quieter); `playback` records
+      the app's sound before volume. Use `playback` on Android 13+ when levels matter, or set
+      the media volume while an `output` recording runs.
     - The daemon host needs [scrcpy](https://github.com/Genymobile/scrcpy)
       (`tap start --scrcpy PATH`, default `scrcpy` on `PATH`). One recording per attached
       device; detach discards an unfinished one.
