@@ -52,6 +52,7 @@ import java.lang.ref.WeakReference
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -147,6 +148,41 @@ private class FakeOpener : DeviceSessionOpener {
     }
 }
 
+/** A scrcpy child that takes [exitAfterMs] to exit once asked to stop. */
+private class SlowExitProcess(
+    private val exitAfterMs: Long,
+) : Process() {
+    @Volatile private var stopRequestedAt = 0L
+
+    override fun getOutputStream() = java.io.ByteArrayOutputStream()
+
+    override fun getInputStream() = java.io.ByteArrayInputStream(ByteArray(0))
+
+    override fun getErrorStream() = java.io.ByteArrayInputStream(ByteArray(0))
+
+    override fun destroy() {
+        if (stopRequestedAt == 0L) stopRequestedAt = System.nanoTime()
+    }
+
+    override fun isAlive(): Boolean = stopRequestedAt == 0L || System.nanoTime() - stopRequestedAt < exitAfterMs * 1_000_000L
+
+    override fun waitFor(): Int {
+        while (isAlive) Thread.sleep(10)
+        return 0
+    }
+
+    override fun waitFor(
+        timeout: Long,
+        unit: TimeUnit,
+    ): Boolean {
+        val end = System.nanoTime() + unit.toNanos(timeout)
+        while (isAlive && System.nanoTime() < end) Thread.sleep(10)
+        return !isAlive
+    }
+
+    override fun exitValue(): Int = if (isAlive) throw IllegalThreadStateException() else 0
+}
+
 class TapDaemonLifecycleTest {
     @Test
     fun `only the owning connection can use or detach an attached device`() =
@@ -162,6 +198,23 @@ class TapDaemonLifecycleTest {
             assertEquals(attached, daemon.attachedDevice(attached.id, owner.id))
             daemon.detachDevice(attached.id, owner.id)
             assertTrue(daemon.attachedDeviceIds().isEmpty())
+        }
+
+    @Test
+    fun `a slow scrcpy stop on detach leaves the driver close its full budget`() =
+        runBlocking {
+            val device = FakeDevice(serial = "recording-serial")
+            val opener = FakeOpener().apply { queue.add(device) }
+            val scrcpy = SlowExitProcess(exitAfterMs = 700)
+            val daemon = TapDaemon(testConfig(), DaemonDeps(opener, scrcpyLaunch = { _, _ -> scrcpy }))
+            val owner = daemon.connectClient("owner")
+            val attached = daemon.attachDevice(owner.id, "recording-serial", "com.test", testOptions())
+            attached.recording.start(video = true, audioSource = null, maxSeconds = 5)
+            // The scrcpy stop alone outlasts the 500 ms detach budget; the session is still clean
+            // and its close gets the whole budget (less the core margin), not what scrcpy left.
+            assertNull(daemon.detachDevice(attached.id, owner.id, timeoutMs = 500))
+            assertFalse(scrcpy.isAlive)
+            assertEquals(listOf(450L), device.closeTimeouts.toList())
         }
 
     @Test

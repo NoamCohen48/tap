@@ -36,6 +36,8 @@ class DaemonConfig(
     /** The driver APKs attach installs (bundled in this build, or `tap serve --driver-apk`); null = none. */
     val driver: DriverApks?,
     val log: (String) -> Unit = ::println,
+    /** The scrcpy executable recordings launch (`tap serve --scrcpy`); only run on request. */
+    val scrcpy: String = "scrcpy",
 )
 
 class UnknownClientConnectionException(
@@ -225,6 +227,8 @@ internal class DaemonDeps(
     val shutdownTotalMs: Long = DAEMON_SHUTDOWN_TOTAL_MS,
     val shutdownAttachedDeviceMs: Long = DAEMON_SHUTDOWN_ATTACHED_DEVICE_MS,
     val observeGraceMs: Long = OBSERVE_GRACE_MS,
+    /** Starts a recording's scrcpy child; null launches the configured executable. */
+    val scrcpyLaunch: ((List<String>, Path) -> Process)? = null,
 )
 
 /** Total bound for [TapDaemon.close]: every connection is still attempted within it. */
@@ -710,7 +714,8 @@ class TapDaemon internal constructor(
                     val attachedDevice =
                         AttachedDevice(
                             UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events,
-                            ScrcpyRecorder(serial, config.stateDir),
+                            deps.scrcpyLaunch?.let { ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable, it) }
+                                ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
                         )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     attachedDevice

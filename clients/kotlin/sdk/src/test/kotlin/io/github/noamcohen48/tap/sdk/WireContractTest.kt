@@ -50,6 +50,7 @@ import kotlin.io.path.writeBytes
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -217,20 +218,21 @@ class WireContractTest {
         }
 
     @Test
-    fun `audio start and stop preserve ownership and verify checksum`() =
+    fun `audio-only recording sends no video and the audio limit, and bad arguments never reach the server`() =
         runBlocking {
             val connection = client().connect("test")
             try {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554", "com.test")
-                    device.startAudioRecording("playback", 12)
-                    assertEquals("conn-1", devices.audioStart?.clientConnectionId)
-                    assertEquals("playback", devices.audioStart?.source)
-                    assertEquals(12, devices.audioStart?.maxSeconds)
-                    assertEquals("opus", device.stopAudioRecording().extension)
-                    assertEquals("conn-1", devices.audioStop?.clientConnectionId)
-                    devices.corruptAudio = true
-                    assertFailsWith<IllegalStateException> { device.stopAudioRecording() }
+                    device.startRecording(video = false, audioSource = "mic")
+                    assertFalse(devices.mediaStart!!.video)
+                    assertEquals("mic", devices.mediaStart!!.audioSource)
+                    assertEquals(60, devices.mediaStart!!.maxSeconds)
+                    devices.mediaStart = null
+                    assertFailsWith<IllegalArgumentException> { device.startRecording(video = false) }
+                    assertFailsWith<IllegalArgumentException> { device.startRecording(audioSource = "call") }
+                    assertFailsWith<IllegalArgumentException> { device.startRecording(maxSeconds = 31) }
+                    assertNull(devices.mediaStart)
                     device.detach()
                 }
             } finally {
@@ -294,9 +296,6 @@ class WireContractTest {
         @Volatile var denyExecute = false
 
         @Volatile var corruptScreenshot = false
-        @Volatile var corruptAudio = false
-        @Volatile var audioStart: io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest? = null
-        @Volatile var audioStop: io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest? = null
         @Volatile var corruptMedia = false
         @Volatile var mediaStart: io.github.noamcohen48.tap.api.v1.StartRecordingRequest? = null
         @Volatile var mediaStop: io.github.noamcohen48.tap.api.v1.StopRecordingRequest? = null
@@ -316,24 +315,6 @@ class WireContractTest {
             return io.github.noamcohen48.tap.api.v1.StopRecordingResponse.newBuilder()
                 .setData(ByteString.copyFrom(bytes)).setFormat("mkv")
                 .setSha256(if (corruptMedia) "bad" else sha256Hex(bytes)).build()
-        }
-
-        override suspend fun startAudioRecording(
-            request: io.github.noamcohen48.tap.api.v1.StartAudioRecordingRequest,
-        ): io.github.noamcohen48.tap.api.v1.StartAudioRecordingResponse {
-            audioStart = request
-            return io.github.noamcohen48.tap.api.v1.StartAudioRecordingResponse.getDefaultInstance()
-        }
-
-        override suspend fun stopAudioRecording(
-            request: io.github.noamcohen48.tap.api.v1.StopAudioRecordingRequest,
-        ): io.github.noamcohen48.tap.api.v1.StopAudioRecordingResponse {
-            audioStop = request
-            val bytes = byteArrayOf(1, 2, 3)
-            return io.github.noamcohen48.tap.api.v1.StopAudioRecordingResponse.newBuilder()
-                .setOpus(ByteString.copyFrom(bytes))
-                .setSha256(if (corruptAudio) "bad" else sha256Hex(bytes))
-                .build()
         }
 
         override suspend fun attach(request: AttachRequest): AttachResponse {

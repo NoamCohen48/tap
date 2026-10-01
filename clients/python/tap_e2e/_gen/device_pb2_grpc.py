@@ -64,16 +64,6 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.DriverLogRequest.SerializeToString,
                 response_deserializer=device__pb2.DriverLogResponse.FromString,
                 _registered_method=True)
-        self.StartAudioRecording = channel.unary_unary(
-                '/tap.v1.DeviceService/StartAudioRecording',
-                request_serializer=device__pb2.StartAudioRecordingRequest.SerializeToString,
-                response_deserializer=device__pb2.StartAudioRecordingResponse.FromString,
-                _registered_method=True)
-        self.StopAudioRecording = channel.unary_unary(
-                '/tap.v1.DeviceService/StopAudioRecording',
-                request_serializer=device__pb2.StopAudioRecordingRequest.SerializeToString,
-                response_deserializer=device__pb2.StopAudioRecordingResponse.FromString,
-                _registered_method=True)
         self.StartRecording = channel.unary_unary(
                 '/tap.v1.DeviceService/StartRecording',
                 request_serializer=device__pb2.StartRecordingRequest.SerializeToString,
@@ -135,21 +125,9 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StartAudioRecording(self, request, context):
-        """Host-managed scrcpy audio; never occupies the driver's command executor. One capture per attachment.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def StopAudioRecording(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def StartRecording(self, request, context):
-        """One optional scrcpy session, shared across video-only, audio-only and combined capture.
+        """One optional host-managed scrcpy capture per attachment (video, audio or both); the driver
+        never encodes media. Requires scrcpy on the daemon host.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -209,16 +187,6 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.DriverLog,
                     request_deserializer=device__pb2.DriverLogRequest.FromString,
                     response_serializer=device__pb2.DriverLogResponse.SerializeToString,
-            ),
-            'StartAudioRecording': grpc.unary_unary_rpc_method_handler(
-                    servicer.StartAudioRecording,
-                    request_deserializer=device__pb2.StartAudioRecordingRequest.FromString,
-                    response_serializer=device__pb2.StartAudioRecordingResponse.SerializeToString,
-            ),
-            'StopAudioRecording': grpc.unary_unary_rpc_method_handler(
-                    servicer.StopAudioRecording,
-                    request_deserializer=device__pb2.StopAudioRecordingRequest.FromString,
-                    response_serializer=device__pb2.StopAudioRecordingResponse.SerializeToString,
             ),
             'StartRecording': grpc.unary_unary_rpc_method_handler(
                     servicer.StartRecording,
@@ -403,60 +371,6 @@ class DeviceService:
             '/tap.v1.DeviceService/DriverLog',
             device__pb2.DriverLogRequest.SerializeToString,
             device__pb2.DriverLogResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StartAudioRecording(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/tap.v1.DeviceService/StartAudioRecording',
-            device__pb2.StartAudioRecordingRequest.SerializeToString,
-            device__pb2.StartAudioRecordingResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StopAudioRecording(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/tap.v1.DeviceService/StopAudioRecording',
-            device__pb2.StopAudioRecordingRequest.SerializeToString,
-            device__pb2.StopAudioRecordingResponse.FromString,
             options,
             channel_credentials,
             insecure,

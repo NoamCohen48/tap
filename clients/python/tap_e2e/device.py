@@ -17,7 +17,6 @@ from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
 from .models import (
     AttachedDeviceEntry,
-    AudioRecording,
     Capture,
     DeviceInfo,
     DriverLog,
@@ -246,55 +245,19 @@ class Device:
                 )
         return Screenshot._png(png)
 
-    def start_audio_recording(self, source: str = "output", max_seconds: int = 60) -> None:
-        """Start an optional scrcpy Opus capture (Android 11+, scrcpy on the server PATH).
-
-        ``output`` captures device audio but mutes its speakers; ``playback`` duplicates
-        locally on Android 13+ but the AUT may opt out; ``mic`` captures the microphone.
-        One recording per device; it ends automatically after at most 60 seconds, but call
-        ``stop_audio_recording`` to retrieve it. Detach discards an unfinished recording.
-        """
-        self._ensure_usable("start_audio_recording")
-        if source not in ("output", "playback", "mic") or not 1 <= max_seconds <= 60:
-            raise ValueError("source must be output/playback/mic and max_seconds must be 1..60")
-        with mapped_errors(self.serial):
-            self.client.device_stub.StartAudioRecording(
-                pb.StartAudioRecordingRequest(
-                    client_connection_id=self.owner_connection.id,
-                    attached_device_id=self.attached_device_id,
-                    source=source,
-                    max_seconds=max_seconds,
-                ),
-                timeout=30,
-            )
-
-    def stop_audio_recording(self) -> AudioRecording:
-        """Stop the recording and return a verified, bounded Opus artifact. No implicit retry."""
-        self._ensure_usable("stop_audio_recording")
-        with mapped_errors(self.serial):
-            response = self.client.device_stub.StopAudioRecording(
-                pb.StopAudioRecordingRequest(
-                    client_connection_id=self.owner_connection.id,
-                    attached_device_id=self.attached_device_id,
-                ),
-                timeout=30,
-            )
-        actual = hashlib.sha256(response.opus).hexdigest()
-        if actual != response.sha256:
-            raise TapError(f"audio recording of {self.serial} failed its checksum")
-        return AudioRecording(response.opus)
-
     def start_recording(
         self, *, video: bool = True, audio_source: str | None = None, max_seconds: int | None = None
     ) -> None:
-        """Begin one scrcpy recording (server needs scrcpy on PATH).
+        """Begin recording this device with scrcpy on the server host.
 
-        Defaults to silent H.264 MP4 video (Android 21+). Set ``audio_source`` to
-        ``output`` (Android 11+, mutes device playback), ``playback`` (Android 13+,
-        retains local audio but apps may opt out) or ``mic``. With both tracks the
-        result is Matroska; use ``video=False`` for Opus-only audio. Video is limited
-        to 30 seconds/16 MiB; audio-only to 60 seconds/3 MiB. One active recording
-        per attachment, including ``start_audio_recording``; detach discards it.
+        The server runs ``tap start --scrcpy PATH`` (default ``scrcpy`` on its ``PATH``).
+        Defaults to silent H.264 MP4 video. Set ``audio_source`` to ``output`` (Android 11+,
+        mutes device playback), ``playback`` (Android 13+, retains local audio but apps may
+        opt out) or ``mic``. With both tracks the result is Matroska; ``video=False`` records
+        Opus audio only. Video is limited to 30 seconds/16 MiB, audio only to 60 seconds/3 MiB,
+        and ``max_seconds`` ends the capture early. One recording per attached device; detach
+        discards an unfinished one. Capture begins shortly after this returns, and a capture
+        the device refuses is reported by ``stop_recording``.
         """
         self._ensure_usable("start_recording")
         limit = 30 if video else 60

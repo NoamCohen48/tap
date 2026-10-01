@@ -26,9 +26,9 @@ class ScrcpyRecorder(
     private val serial: String,
     private val stateDir: Path,
     private val executable: String = "scrcpy",
-    private val launch: (List<String>, Path) -> Process = { command, log ->
-        ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start()
-    },
+    /** Tap's adb, exported to scrcpy as `ADB`: a different adb on `PATH` would restart the shared adb server. */
+    private val adb: String? = null,
+    private val launch: (List<String>, Path) -> Process = { command, log -> scrcpyProcess(command, log, adb).start() },
 ) {
     private data class Active(
         val process: Process,
@@ -42,9 +42,6 @@ class ScrcpyRecorder(
     private val mutex = Mutex()
     private var active: Active? = null
     private var closed = false
-
-    /** The existing audio-only API, kept as a thin adapter over the shared capture slot. */
-    suspend fun start(source: String, maxSeconds: Int) = start(video = false, audioSource = source, maxSeconds = maxSeconds)
 
     /**
      * Start one bounded capture. Video-only works on Android 21+; scrcpy audio requires 11+,
@@ -94,19 +91,13 @@ class ScrcpyRecorder(
                 try { active?.let { reap(it.process) } } finally { active = null; clean(directory, file) }
             }
             if (error is CancellationException) throw error
-            throw if (error is RecordingException) error else RecordingException("Cannot start scrcpy recording on $serial", error)
+            throw if (error is RecordingException) error else RecordingException("Cannot start scrcpy recording on $serial: ${error.message}", error)
         }
     }
 
-    /** Stop an audio-only capture and return its Opus data (legacy RPC). */
-    suspend fun stop(): ByteArray = stopRecording(audioOnly = true).bytes
-
-    /** Stop any capture and return encoded bytes plus its file format. */
-    suspend fun stopMedia(): RecordedMedia = stopRecording(audioOnly = false)
-
-    private suspend fun stopRecording(audioOnly: Boolean): RecordedMedia = mutex.withLock {
+    /** Stop the capture and return its encoded bytes and file format. */
+    suspend fun stop(): RecordedMedia = mutex.withLock {
         val current = active ?: throw RecordingException("No recording on $serial")
-        if (audioOnly && current.format != "opus") throw RecordingException("Current recording is not audio-only on $serial")
         active = null
         try {
             withContext(NonCancellable + Dispatchers.IO) {
@@ -159,3 +150,8 @@ class ScrcpyRecorder(
         const val MAX_VIDEO_BYTES = 16L * 1024 * 1024
     }
 }
+
+internal fun scrcpyProcess(command: List<String>, log: Path, adb: String?): ProcessBuilder =
+    ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).also { builder ->
+        if (adb != null) builder.environment()["ADB"] = adb
+    }

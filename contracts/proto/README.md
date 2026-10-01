@@ -23,7 +23,7 @@ top-level files only.
 | `failure.proto` | `FailureReason`, `Failure` — the `tap-failure-bin` trailer on every non-OK status |
 | `client_connection.proto` | `ClientConnectionService` — Connect / Observe / Disconnect / Info (with the daemon's `Defaults`) / ListConnections / Events |
 | `event_log.proto` | `LoggedEvent`, `AppCall` — a connection's device calls as `Events` returns them |
-| `device.proto` | `DeviceService` — ListDevices / Attach / Detach / Execute / Screenshot / DriverLog / ScreenSnapshot / ResolveRef / StartAudioRecording / StopAudioRecording / StartRecording / StopRecording |
+| `device.proto` | `DeviceService` — ListDevices / Attach / Detach / Execute / Screenshot / DriverLog / ScreenSnapshot / ResolveRef / StartRecording / StopRecording |
 | `app.proto` | `AppService` — streamed install, uninstall, launch, cold launch, force-stop, clear-data, permissions, process, idle |
 | `wire/wire.proto` | handshake (`Hello`, `Challenge`, `Negotiation`, `Authentication`, `AuthenticationResult`), `Request`, `Response`, host-internal operations, `SyncState`, `ArtifactInfo`, `BlobStart`, `BlobEnd` |
 

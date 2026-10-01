@@ -37,7 +37,7 @@ const val DAEMON_SHUTDOWN_HOOK_TIMEOUT_MS = DAEMON_SHUTDOWN_TOTAL_MS
 private const val STOP_SLACK_MS = 5_000L
 
 /**
- * `tap start  [--port N] [--state-dir DIR] [--adb PATH] [--driver-apk APK --driver-test-apk APK]` — background
+ * `tap start  [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--driver-apk APK --driver-test-apk APK]` — background
  * `tap serve  (same options)` — run in the foreground
  * `tap status [--state-dir DIR]`
  * `tap stop   [--state-dir DIR]`
@@ -104,7 +104,7 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
 private fun usage(): Nothing {
     System.err.println(
         """
-        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--driver-apk APK --driver-test-apk APK]
+        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--driver-apk APK --driver-test-apk APK]
                            (background; reuses a running daemon)
                tap serve   (same options as start; foreground)
                tap status  [--state-dir DIR]
@@ -115,7 +115,7 @@ private fun usage(): Nothing {
     exitProcess(2)
 }
 
-private val SERVE_OPTIONS = setOf("--port", "--state-dir", "--adb", "--driver-apk", "--driver-test-apk")
+private val SERVE_OPTIONS = setOf("--port", "--state-dir", "--adb", "--scrcpy", "--driver-apk", "--driver-test-apk")
 private val COMMAND_OPTIONS =
     mapOf(
         "start" to SERVE_OPTIONS,
@@ -172,7 +172,8 @@ private fun serve(
     if (driver == null) log("no driver in this build and no --driver-apk; attach needs skip_driver_install")
 
     val token = DaemonDescriptor.newToken()
-    val daemon = TapDaemon(DaemonConfig(adb, stateDir, driver = driver, log = log))
+    val scrcpy = options["--scrcpy"] ?: System.getenv("TAP_SCRCPY") ?: "scrcpy"
+    val daemon = TapDaemon(DaemonConfig(adb, stateDir, driver = driver, log = log, scrcpy = scrcpy))
     val server: Server =
         NettyServerBuilder
             .forAddress(InetSocketAddress("127.0.0.1", port))

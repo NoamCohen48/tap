@@ -26,7 +26,6 @@ from .errors import (
 from .models import (
     AppProcess,
     Artifact,
-    AudioRecording,
     AttachedDeviceEntry,
     Bounds,
     Capture,
@@ -106,7 +105,6 @@ __all__ = [
     "AppLifecycleError",
     "AppProcess",
     "Artifact",
-    "AudioRecording",
     "AttachedDeviceEntry",
     "Bounds",
     "CommandError",

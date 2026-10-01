@@ -4,14 +4,19 @@ Each artifact family is versioned on its own (`docs/reference/releases.md`); ent
 families they cover. Tap is in alpha: any 0.x release may change the API, and parts marked
 experimental may change in any release.
 
+## Unreleased
+
+- **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
+  `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on
+  the daemon host: video (MP4), audio (Opus) or both (Matroska), bounded to 30 s with video and
+  60 s audio only, checksummed, and discarded on detach. Audio needs Android 11+. scrcpy is an
+  external dependency: `tap start --scrcpy PATH` (or `TAP_SCRCPY`), default `scrcpy` on `PATH`;
+  it runs with Tap's own ADB. Guide: `docs/guide/actions-and-waits.md`.
+
 ## 0.0.2 — 2026-09-30 (alpha)
 
 `daemon/v0.0.2`, `client-kotlin/v0.0.2`, `client-python/v0.0.2`, `client-agent/v0.0.2`, and the
 first `client-studio/v0.0.1`. `tap-agent` and `tap-studio` need `tap-e2e` 0.0.2.
-
-- **Daemon / Kotlin / Python clients:** opt-in scrcpy recording of audio, video or both in one
-  per-device session; bounded Opus/MP4/Matroska artifacts, checksum validation and cleanup
-  on detach. scrcpy is an external daemon-host dependency.
 
 - Licensed under Apache-2.0 (`LICENSE`; the wheels and POMs carry it).
 - Every GitHub Release carries the complete documentation as Markdown

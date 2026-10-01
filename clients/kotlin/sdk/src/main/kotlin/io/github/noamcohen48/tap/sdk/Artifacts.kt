@@ -28,16 +28,6 @@ interface Artifact {
     }
 }
 
-/** A bounded Opus capture returned by [Device.stopAudioRecording]. */
-class AudioRecording(override val bytes: ByteArray) : Artifact {
-    override val mediaType: String = "audio/ogg"
-    override val extension: String = "opus"
-
-    override fun equals(other: Any?): Boolean = other is AudioRecording && bytes.contentEquals(other.bytes)
-    override fun hashCode(): Int = bytes.contentHashCode()
-    override fun toString(): String = "AudioRecording(${bytes.size} bytes)"
-}
-
 /** A bounded device recording ([Device.stopRecording]): MP4, Matroska, or Opus. */
 class Recording(override val bytes: ByteArray, override val extension: String) : Artifact {
     init { require(extension in setOf("mp4", "mkv", "opus")) { "Unknown recording format: $extension" } }

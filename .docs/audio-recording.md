@@ -59,7 +59,9 @@ The manual trial alone validated feasibility. Product integration and its device
 
 ## Product integration (this branch)
 
-The daemon now exposes `DeviceService.StartAudioRecording` and `StopAudioRecording` with a
+*Superseded API, kept as history:* the first cut exposed `DeviceService.StartAudioRecording`
+and `StopAudioRecording`; before merge they were folded into `StartRecording(video=false, …)`
+(see "Review and hardening" below). The first cut ran a
 single external scrcpy process per attached device, a 60-second limit and ≤3 MiB returned
 Opus artifact. Kotlin and Python clients offer matching start/stop calls. This requires a
 host-installed scrcpy binary; it is **not bundled** in the daemon or its native image. Each
@@ -78,8 +80,8 @@ bounded first product version, not the future long-running streaming/video pipel
 
 The same `ScrcpyRecorder` now owns audio-only, video-only and combined tracks. The new
 `StartRecording` / `StopRecording` RPC pair adds MP4 for silent H.264 video and Matroska
-for H.264 + Opus; the original audio RPCs remain thin adapters over the same one-child
-slot. Video is bounded to 1024 px, 15 fps and 2 Mbps, up to 30 seconds/16 MiB;
+for H.264 + Opus; the original audio RPCs were thin adapters over the same one-child
+slot until they were removed before merge. Video is bounded to 1024 px, 15 fps and 2 Mbps, up to 30 seconds/16 MiB;
 audio-only remains up to 60 seconds/3 MiB. Video-only does not require the Android 11 audio path and works on
 Android 10. A second Start (audio or video) fails instead of spawning another scrcpy
 instance. Every Stop returns a checksummed, bounded file; there is no implicit capture.
@@ -131,6 +133,50 @@ changed by this investigation; the Tap daemon was stopped afterward.
   native daemon returned a valid H.264 MP4 from the API 34 emulator (460×1024 frame,
   54,071 bytes). Its server was stopped and no recording process/file remained under the
   daemon state dir.
+
+## Review and hardening before merge (2026-10-01)
+
+A code review of the branch (`main...feat/audio-recording`) found two defects; the branch was
+then rebased onto `main` (0.0.2 + Tap Studio) and hardened.
+
+- **Detach budget (fixed outside shutdown).** `closeAttachedDevice` ran `recording.close()`
+  unbounded and gave the driver close only the *remaining* budget. A scrcpy child slow to honour
+  SIGTERM (reap = SIGTERM, ≤5 s, SIGKILL, ≤2 s, plus the recorder mutex) therefore made the
+  driver close get ~1 ms and reported a healthy session as `SESSION_CLEANUP_TIMEOUT` /
+  `AUDIO_CLEANUP_TIMEOUT`. Detach, owner loss and idle reaping now stop scrcpy first (it always
+  ends: SIGKILL) and then give the driver close its **full** bound, so a slow scrcpy only makes
+  detach slower, never quarantines the session. Regression test:
+  `TapDaemonLifecycleTest` "a slow scrcpy stop on detach leaves the driver close its full
+  budget" (fails with `AUDIO_CLEANUP_TIMEOUT` without the fix).
+- **Deferred: the same overrun during daemon shutdown.** `TapDaemon.close` keeps one shared
+  budget, so there a stuck scrcpy can still overrun the advertised hook budget and starve that
+  device's driver close. The owner chose to leave it: it needs scrcpy to ignore SIGTERM at the
+  moment of shutdown, and the next attach already recovers a non-terminal journal. Planned fix
+  if it is ever seen: in shutdown mode run `recording.close()` on `cleanupScope` under
+  `withTimeoutOrNull` with a capped share of the device budget; on timeout return
+  `RECORDING_CLEANUP_TIMEOUT` and launch the driver close *after* scrcpy ends (the lease must
+  not release while scrcpy still records), off the shutdown clock — the same fallback
+  `launchDetachedCleanup` already uses. Cost ≈ 20 lines plus a slow-recorder test using the
+  `DaemonDeps.scrcpyLaunch` seam that now exists.
+- **Known: start failures surface at Stop.** Start returns after a fixed 500 ms check, while
+  scrcpy usually needs longer to push its server and open the stream. A capture the device
+  refuses (`--require-audio`, capture policy, unauthorized device) therefore fails at
+  `StopRecording` ("scrcpy exited N"), not at Start. Same root cause as the deferred start
+  readiness above; documented in `server-api.md` and the user guide, fixed together with it.
+
+Hardening in the same change:
+
+- **One API.** `StartAudioRecording` / `StopAudioRecording` (and the clients'
+  `startAudioRecording` / `AudioRecording`) were removed before any release; audio only is
+  `StartRecording(video=false, audio_source=…)`, returning an Opus `Recording`. Nothing shipped
+  them, so this is not a breaking change.
+- **scrcpy uses Tap's ADB.** scrcpy resolves `adb` from `ADB` or `PATH`; a different adb than
+  the daemon's `--adb` / `TAP_ADB` would restart the shared adb server and drop every device.
+  The child now runs with `ADB=<daemon adb>`.
+- **Configurable executable.** `tap start|serve --scrcpy PATH` (or `TAP_SCRCPY`), default
+  `scrcpy` on `PATH` — the explicit override the bundling discussion asked for. A missing
+  executable fails Start with the OS reason (`Cannot run program …`) and leaves no temp files.
+- The changelog entry moved out of the released 0.0.2 section into *Unreleased*.
 
 ## scrcpy capability audit (research only; no new feature approved)
 

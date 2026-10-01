@@ -172,7 +172,7 @@ tap/
 |   |   |   |   +-- ScreenSnapshotState.kt per-device latest snapshot, ref counter (`eN`, never reused), ResolveRef; UnknownRef/RefNotAddressable exceptions
 |   |   |   +-- daemon/grpc/
 |   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info/ListConnections/Events + exactly-one Observe (observing/heartbeat/closing)
-|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartAudioRecording/StopAudioRecording/StartRecording/StopRecording
+|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- EventRecording.kt          records an Execute / app call and its outcome into the owner's EventLog
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
@@ -201,7 +201,7 @@ tap/
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
 |   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the (internal) proto Selector
 |   |   |       +-- Models.kt            SDK-owned value types: MatchMode, Direction, StabilitySignal, ErrorCode, FailureReason, DeviceState, Bounds, ElementSnapshot, AppProcess, DeviceEntry, ServerInfo/ServerDefaults
-|   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, AudioRecording, Recording, Hierarchy, DeviceInfo, DriverLog
+|   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, Recording, Hierarchy, DeviceInfo, DriverLog
 |   |   |       +-- Capture.kt           Device.capture(): the four artifacts in parallel, bounded, never throws; Capture.saveTo
 |   |   |       +-- ProtoMapping.kt      internal proto <-> model mappers (enums by name after the proto prefix)
 |   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
