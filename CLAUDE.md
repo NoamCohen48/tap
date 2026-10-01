@@ -109,6 +109,22 @@ Rules when doing so:
 - Layering: `clients/*` → `:contracts:api` only; `host/*` never references `clients/`; all
   ADB/journal/lease/driver/app lifecycle lives in `:host:core` and is reached through the server.
 
+## Git workflow
+
+Work happens on a branch in a worktree; `main` changes only through squash-merged PRs (the
+"Protect main" ruleset requires a PR, the CI checks API contract / JVM / Python / tap-studio on
+an up-to-date branch, and linear history). Agents never check out, merge into or push `main`, and
+never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
+
+- When a task is done: `git fetch origin && git rebase origin/main` (resolve conflicts here;
+  regenerate proto stubs instead of hand-merging them), run the relevant local checks, then
+  `git push -u origin HEAD --force-with-lease` and `gh pr create` (or push again to update an
+  open PR). One task per PR; the PR title becomes the squash commit title.
+- PR body: what changed and why, the checks run, and a `Device matrix: run / not run` line
+  (device tests only when the user asked). No co-author or "Generated with" lines.
+- When asked to update a PR because `main` moved: rebase onto `origin/main` again and
+  force-push with `--force-with-lease`.
+
 ## Build notes
 
 - Gradle runs on JDK 17 via `gradle/gradle-daemon-jvm.properties` (discovered in `~/.gradle/jdks`),
