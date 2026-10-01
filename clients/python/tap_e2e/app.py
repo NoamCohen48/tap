@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING
 from . import _gen as pb
 from . import _proto
 from .client import mapped_errors
-from .models import AppProcess
+from .models import AppProcess, StabilitySignal
+from .element import Element, ElementWait
+from .selectors import Selector
 
 # Size of each streamed ``InstallRequest.chunk``.
 INSTALL_CHUNK_BYTES = 1 << 20
@@ -23,8 +25,21 @@ if TYPE_CHECKING:
 
 
 class App:
-    """Lifecycle of one package, executed by the server over ADB and verified against a
-    postcondition; failures are ``AppLifecycleError``. Obtain with ``Device.app()``.
+    """One app on a device: its elements, its lifecycle and the waits on it. Obtain with
+    ``device.app(package_name)``, which performs no I/O.
+
+    ``element`` and ``wait`` add the package as one more selector predicate, so only this app's
+    nodes match (in any of its windows); ``device.screen`` matches anywhere. Lifecycle calls are
+    executed by the server over ADB and verified against a postcondition; failures are
+    ``AppLifecycleError``.
+
+    Example::
+
+        app = device.app("com.example.shop")
+        app.cold_launch()
+        app.element(res("search")).set_text("socks")
+        app.wait(text("3 results")).visible()
+
     Timeouts left as None use the device's client-side defaults (``Timeouts``) where the call
     has one, else the server's default.
     """
@@ -35,6 +50,20 @@ class App:
         self.package_name: str = package_name
         """The app's package name."""
         self._apps = device.client.apps
+
+    def element(self, selector: Selector) -> Element:
+        """A lazy element: ``selector`` restricted to this package's nodes. Nothing is looked
+        up until an action or query runs."""
+        return Element(self.device, selector._in_package(self.package_name))
+
+    def wait(self, selector: Selector, timeout: float | None = None) -> ElementWait:
+        """A wait on ``selector`` restricted to this package's nodes; ``timeout`` (seconds)
+        defaults to ``device.timeouts.wait``."""
+        return ElementWait(
+            self.device,
+            selector._in_package(self.package_name),
+            self.device.timeouts.wait if timeout is None else timeout,
+        )
 
     def _target(self) -> pb.AppTarget:
         return pb.AppTarget(
@@ -107,12 +136,45 @@ class App:
     def launch(self, activity: str | None = None, timeout: float | None = None) -> None:
         """Starts the activity with ``am start -W`` and returns when Android reports the launch
         complete. Nothing about the UI is assumed: wait for what the test needs
-        (``Device.await_app_visible``, ``Device.await_screen_stable``, an element wait)."""
+        (``await_visible``, ``await_screen_stable``, an element wait)."""
         timeout = self._or(timeout, self.device.timeouts.lifecycle)
         request = pb.LaunchRequest(app=self._target(), timeout_ms=self._ms(timeout))
         if activity:
             request.activity = activity
         self._call(self._apps.Launch, request, timeout)
+
+    def await_visible(self, timeout: float | None = None) -> None:
+        """Waits on the device until this package owns the focused window. Raises
+        ``WaitTimeoutError`` only when the device reports ``WAIT_TIMEOUT``; any other failure
+        (driver unhealthy, transport lost, ...) is a ``CommandError``."""
+        self.device._await_app_visible(self.package_name, timeout)
+
+    def await_screen_stable(
+        self,
+        stable_for: float = 0.5,
+        timeout: float | None = None,
+        signal: StabilitySignal = StabilitySignal.ALL,
+    ) -> None:
+        """Waits on the device until this package's focused window has stopped changing for
+        ``stable_for`` seconds according to ``signal``: the accessibility tree
+        (``StabilitySignal.TREE``), the window pixels (``StabilitySignal.PIXELS``, 0.5 %
+        tolerance) or both (default). Call it explicitly after an action that starts an animation
+        or transition; nothing waits for this implicitly. A screen that keeps changing times out
+        with detail ``SCREEN_CHANGING``. ``await_settled`` / ``await_animation_end`` are the
+        shorthands. Only a device ``WAIT_TIMEOUT`` becomes ``WaitTimeoutError``; other failures
+        are ``CommandError``."""
+        self.device._await_screen_stable(self.package_name, stable_for, timeout, signal)
+
+    def await_settled(self, stable_for: float = 0.5, timeout: float | None = None) -> None:
+        """Maestro's ``waitForAppToSettle``, on request only: this package's accessibility
+        hierarchy has not changed for ``stable_for`` seconds. Cheap (no screenshots); misses pure
+        drawing."""
+        self.await_screen_stable(stable_for, timeout, StabilitySignal.TREE)
+
+    def await_animation_end(self, stable_for: float = 0.5, timeout: float | None = None) -> None:
+        """Maestro's ``waitForAnimationToEnd``, on request only: this package's window pixels
+        have not changed (beyond 0.5 %) for ``stable_for`` seconds. One screenshot per 100 ms."""
+        self.await_screen_stable(stable_for, timeout, StabilitySignal.PIXELS)
 
     def cold_launch(
         self, activity: str | None = None, timeout: float | None = None

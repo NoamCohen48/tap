@@ -78,14 +78,14 @@ class Studio:
         )
 
     async def attach(self, request: studio.AttachRequest, ctx: RequestContext) -> studio.AttachResponse:
-        if not request.serial or not request.aut_package:
-            raise ConnectError(Code.INVALID_ARGUMENT, "serial and aut_package are required")
+        if not request.serial:
+            raise ConnectError(Code.INVALID_ARGUMENT, "serial is required")
         async with self._attaching:
             await self._release()
             connection = await self._live_connection()
             worker = DeviceWorker(request.serial, **self._worker_options)
             try:
-                device = await worker.call(lambda: connection.attach_device(request.serial, request.aut_package))
+                device = await worker.call(lambda: connection.attach_device(request.serial))
             except TapError as error:
                 await worker.close()
                 raise _connect_error(error) from None
@@ -98,7 +98,6 @@ class Studio:
             self._worker = worker
             self._attached = studio.AttachedDevice(
                 serial=device.serial,
-                aut_package=request.aut_package,
                 api_level=info.api_level,
                 manufacturer=info.manufacturer,
                 model=info.model,
@@ -155,7 +154,6 @@ class Studio:
             session.device.CopyFrom(self._attached)
         if self.recording is not None:
             session.steps = len(self.recording.steps)
-            session.recording_package = self.recording.aut_package
         return session
 
     def _require_device(self) -> DeviceWorker:
@@ -181,7 +179,7 @@ class Studio:
         assert device is not None
         selector = Selector.from_proto(request.selector)
         try:
-            count = await worker.call(lambda: device.element(selector).count(), changes_screen=False)
+            count = await worker.call(lambda: device.screen.element(selector).count(), changes_screen=False)
         except TapError as error:
             raise _connect_error(error) from None
         return studio.CountResponse(count=count)
@@ -200,13 +198,6 @@ class Studio:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
         if request.before_step_id:
             self._index(request.before_step_id)
-        package = self._attached.aut_package
-        if self._recording_on and self.recording is not None and self.recording.steps and self.recording.aut_package != package:
-            raise ConnectError(
-                Code.FAILED_PRECONDITION,
-                f"the recording is for {self.recording.aut_package}, the device is attached for {package}: "
-                "pause recording or start a new one",
-            )
         started = time.monotonic()
         failure: TapError | None = None
         try:
@@ -331,11 +322,6 @@ class Studio:
         self._require_idle()
         if self.recording is None or not self.recording.steps:
             raise ConnectError(Code.FAILED_PRECONDITION, "nothing to replay")
-        if self.recording.aut_package != self._attached.aut_package:
-            raise ConnectError(
-                Code.FAILED_PRECONDITION,
-                f"the recording is for {self.recording.aut_package}, the device is attached for {self._attached.aut_package}",
-            )
         start = self._index(request.from_step_id) if request.from_step_id else 0
         chosen = [step.id for step in self.recording.steps[start : start + 1 if request.only else None]]
         for name, value in request.secret_values.items():
@@ -397,7 +383,6 @@ def _new_recording(attached: studio.AttachedDevice) -> studio.Recording:
             manufacturer=attached.manufacturer,
             model=attached.model,
         ),
-        aut_package=attached.aut_package,
     )
 
 

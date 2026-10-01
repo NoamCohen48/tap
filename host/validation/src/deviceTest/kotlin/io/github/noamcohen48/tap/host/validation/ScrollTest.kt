@@ -23,8 +23,8 @@ class ScrollTest {
             device.withSession { session ->
                 val client = session.client
                 device.openFixtureMain(client)
-                val composeList = Selectors.rawResource("composeList")
-                check(scrollUntilExists(client, composeList, Selectors.rawResource("item-100"), maxScrolls = 30)) {
+                val composeList = Selectors.resource("composeList")
+                check(scrollUntilExists(client, composeList, Selectors.resource("item-100"), maxScrolls = 30)) {
                     "Compose list never showed item-100"
                 }
             }

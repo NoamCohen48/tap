@@ -15,7 +15,8 @@ DESCRIPTION = """\
 Drive an Android device through a running Tap daemon (`tap start`), one step per call.
 
   tap-agent devices
-  tap-agent attach emulator-5554 com.example.app --cold
+  tap-agent attach emulator-5554
+  tap-agent app cold-launch com.example.app
   tap-agent snapshot                 # one line per node: @e3  [Button] "Log in"  id=login
   tap-agent tap @e3 --settle         # act on a ref; --settle prints what changed
   tap-agent fill id=email me@example.com
@@ -54,11 +55,7 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("attach", "attach a device to the session (created if needed)", common)
     p.add_argument("serial")
-    p.add_argument("package", help="the app under test")
     p.add_argument("--idle", type=_duration, default=None, help="end the session after this long unused (default 15m)")
-    launch = p.add_mutually_exclusive_group()
-    launch.add_argument("--launch", dest="launch", action="store_const", const="launch", help="launch the app")
-    launch.add_argument("--cold", dest="launch", action="store_const", const="cold", help="force-stop, then launch the app")
     p.add_argument("--wait-for-device", type=_duration, default=0, metavar="DURATION", help="wait this long for a device another session holds")
 
     verb("sessions", "list sessions with their devices", common)
@@ -117,8 +114,8 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device)
     p.add_argument("action", choices=APP_ACTIONS)
+    p.add_argument("package")
     p.add_argument("argument", nargs="?", help="activity (launch), APK path (install) or permission (grant)")
-    p.add_argument("--package", help="another package than the session's app")
 
     p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
     p.add_argument("-o", "--out", help="write it to this file instead")
@@ -134,7 +131,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     settle = getattr(args, "settle", False)
     if v == "attach":
         kwargs = {} if args.idle is None else {"idle": args.idle}
-        return agent.attach(args.serial, args.package, launch=args.launch, wait_for_device=args.wait_for_device, **kwargs)
+        return agent.attach(args.serial, wait_for_device=args.wait_for_device, **kwargs)
     if v == "sessions":
         return agent.sessions()
     if v == "release":
@@ -170,7 +167,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "export":
         return agent.export(args.out)
     if v == "app":
-        return agent.app(args.action, args.argument, device, args.package)
+        return agent.app(args.action, args.package, args.argument, device)
     raise AssertionError(v)
 
 

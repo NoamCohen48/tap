@@ -6,14 +6,15 @@ description: Drive an Android device or emulator to explore an app, reproduce a 
 # Driving Android with tap-agent
 
 `tap-agent` runs one step per call against the Tap daemon, which must already be running
-(`tap start`; exit code 3 means it is not). The session (a device attached to your app) stays
+(`tap start`; exit code 3 means it is not). The session (the devices you attached) stays
 in the daemon between calls and ends after 15 idle minutes or on `release`.
 
 ## Flow
 
 ```sh
 tap-agent devices                                   # serials and whether they are free
-tap-agent attach emulator-5554 com.example.app --cold
+tap-agent attach emulator-5554
+tap-agent app cold-launch com.example.app            # force-stop, then start the app
 tap-agent snapshot                                  # read the screen
 tap-agent tap @e12 --settle                         # act; --settle prints what changed
 tap-agent fill id=email me@example.com
@@ -41,10 +42,12 @@ dialogs).
 
 - A ref from the latest snapshot: `@e3`. A ref keeps naming the same node while it stays on
   screen; once the node is gone the ref fails with "not on the screen any more".
-- Or a selector, key=value terms joined by commas, all of which must match: `id=login_button`,
+- Or a selector, key=value terms joined by commas, all of which must match: `id=login_button`
+  (that id in any package; `id=com.example.app:id/login_button` names the package),
   `text=Log in`, `text~=Log` (contains), `desc=Close`, `desc~=â€¦`, `hint=Email`, `class=Button`,
-  `pkg=com.android.permissioncontroller` (search that app's window), `index=1` (the second of
-  several matches). Write `\,` for a comma inside a value.
+  `pkg=com.android.permissioncontroller` (only that app's nodes), `index=1` (the second of
+  several matches). Write `\,` for a comma inside a value. Without `pkg` a selector searches
+  the whole screen, other apps' windows included; add `pkg=` when another window has a match too.
 
 Every action needs exactly one matching node; with none or several it fails before touching
 the device, and says so.
@@ -57,7 +60,10 @@ below), `swipe <target> <direction>`, `key back|home|recents|enter|tab|delete|â€
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in
 `pkg=com.android.systemui`; `key back` closes them, twice from quick settings on newer
 Android; use `--settle` before opening another), and
-`app launch|cold-launch|stop|clear|install APK|grant PERMISSION|running`.
+`app launch|cold-launch|stop|clear|install|uninstall|grant|running <package> [activity|APK|PERMISSION]`.
+A node that another window covers completely is not found; an action on a node it covers
+partly fails as not interactable (OBSCURED) instead of tapping whatever is on top. Either way,
+close the covering window (often `key back`) first.
 
 Add `--settle` to an action to wait until the screen stops changing and print the difference:
 `+` added nodes, `-` removed ones. That is usually enough to decide the next step without a

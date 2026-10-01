@@ -20,7 +20,7 @@ class SystemPanelTest {
     @Test
     fun opensNotificationsAndQuickSettingsAndBackClosesThem(device: Device): Unit {
         tapTest {
-            Fixture.launch(device)
+            val app = Fixture.launch(device)
             val panels = listOf<Pair<String, suspend () -> Unit>>(
                 "notifications" to { device.openNotifications() },
                 "quick settings" to { device.openQuickSettings() },
@@ -39,7 +39,7 @@ class SystemPanelTest {
                     device.awaitUntil("the app focused after closing $name", observe = { device.info().currentPackage }, condition = appFocused)
                 }
                 // The panel is still sliding away: an action sent now may be accepted and ignored.
-                device.awaitAnimationEnd()
+                app.awaitAnimationEnd()
             }
         }
     }

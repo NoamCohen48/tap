@@ -2,7 +2,6 @@
 
 Configuration (ini option, or environment variable):
 
-    tap_aut       / TAP_AUT        AUT package (required)
     tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
                                    order, starting one device further on for each test
                                    (wrapping). Unset = whatever the server's device list offers.
@@ -66,7 +65,6 @@ DEFAULT_ACQUIRE_TIMEOUT = 300.0
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addini("tap_aut", "AUT package name")
     parser.addini("tap_serials", "comma-separated device serials")
     parser.addini(
         "tap_artifacts", "failure artifact directory", default="tap-artifacts"
@@ -105,7 +103,6 @@ class TapConfig:
     variables; the environment wins.
 
     Attributes:
-        aut: Package of the app under test (``tap_aut`` / ``TAP_AUT``). Required.
         serials: Devices to use, in order (``tap_serials`` / ``TAP_SERIALS``, comma-separated).
             Empty means every device the server lists.
         artifacts: Where failure artifacts are written (``tap_artifacts`` / ``TAP_ARTIFACTS``,
@@ -122,7 +119,6 @@ class TapConfig:
             ``module`` or ``session`` (``tap_device_scope`` / ``TAP_DEVICE_SCOPE``).
     """
 
-    aut: str
     serials: list[str]
     artifacts: pathlib.Path
     server: str | None
@@ -143,7 +139,6 @@ class TapConfig:
             if s.strip()
         ]
         return cls(
-            aut=option("tap_aut", "TAP_AUT"),
             serials=serials,
             artifacts=pathlib.Path(
                 option("tap_artifacts", "TAP_ARTIFACTS", "tap-artifacts")
@@ -272,12 +267,8 @@ _STATE = pytest.StashKey[TestDevices]()
 
 @pytest.fixture(scope="session")
 def tap_config(pytestconfig: pytest.Config) -> TapConfig:
-    """The plugin's [TapConfig][tap_e2e.pytest_plugin.TapConfig] for the session. Fails the
-    run if no app under test is configured."""
-    config = TapConfig.from_pytest(pytestconfig)
-    if not config.aut:
-        pytest.fail("tap_aut (or TAP_AUT) must name the AUT package", pytrace=False)
-    return config
+    """The plugin's [TapConfig][tap_e2e.pytest_plugin.TapConfig] for the session."""
+    return TapConfig.from_pytest(pytestconfig)
 
 
 @pytest.fixture(scope="session")
@@ -337,11 +328,11 @@ def _attach_single(
     if len(candidates) > 1:
         for serial in candidates:
             try:
-                return connection.attach_device(serial, config.aut)
+                return connection.attach_device(serial)
             except DeviceBusyError:
                 continue  # held by another session right now: try the next device
     return connection.attach_device(
-        candidates[0], config.aut, wait_for_device=config.acquire_timeout
+        candidates[0], wait_for_device=config.acquire_timeout
     )
 
 
@@ -355,7 +346,7 @@ def _attach_all(
     try:
         for role, serial in sorted(assignment.items(), key=lambda item: item[1]):
             opened[role] = connection.attach_device(
-                serial, config.aut, wait_for_device=config.acquire_timeout
+                serial, wait_for_device=config.acquire_timeout
             )
     except BaseException:
         for device in opened.values():

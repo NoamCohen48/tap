@@ -41,7 +41,9 @@ const DEVICE_BUTTONS: { label: string; call: string; icon: ComponentType; reques
 type Props = {
   frame: Frame | null;
   error: string | null;
-  autPackage: string;
+  /** The package the App menu acts on, chosen in the menu (empty until one is). */
+  appPackage: string;
+  onAppPackage: (pkg: string) => void;
   mode: Mode;
   overlay: OverlayFilter;
   onOverlay: (overlay: OverlayFilter) => void;
@@ -224,7 +226,7 @@ export function ScreenView(props: Props) {
         {/* The phone fits the space left in the panel (the page does not scroll on wide
             screens): its aspect ratio is the frame's. The device rail sits on its left. */}
         <div className="phone-fit">
-          <DeviceRail autPackage={props.autPackage} busy={busy} onPerform={perform} />
+          <DeviceRail appPackage={props.appPackage} onAppPackage={props.onAppPackage} busy={busy} onPerform={perform} />
           <div className="phone">
             <div className={`screen mode-${mode}${frame?.moving ? " provisional" : ""}`} ref={screen}>
               {frame ? (
@@ -337,7 +339,17 @@ const APP_OPERATIONS: { operation: steps.AppOperation; label: string; note?: str
   { operation: "clear_data", label: "Clear data", note: "also revokes permissions" },
 ];
 
-function DeviceRail({ autPackage, busy, onPerform }: { autPackage: string; busy: boolean; onPerform: (request: PerformRequest) => void }) {
+function DeviceRail({
+  appPackage,
+  onAppPackage,
+  busy,
+  onPerform,
+}: {
+  appPackage: string;
+  onAppPackage: (pkg: string) => void;
+  busy: boolean;
+  onPerform: (request: PerformRequest) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [permission, setPermission] = useState("");
   const wrap = useRef<HTMLDivElement>(null);
@@ -377,7 +389,7 @@ function DeviceRail({ autPackage, busy, onPerform }: { autPackage: string; busy:
           className="railbtn"
           disabled={busy}
           aria-label="App"
-          title={`App ${autPackage}: launch, stop, clear data, grant a permission`}
+          title={`App${appPackage ? ` ${appPackage}` : ""}: launch, stop, clear data, grant a permission`}
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
@@ -385,9 +397,17 @@ function DeviceRail({ autPackage, busy, onPerform }: { autPackage: string; busy:
           <AppIcon />
         </button>
         {open && (
-          <div className="menu" role="menu" aria-label={`App ${autPackage}`}>
+          <div className="menu" role="menu" aria-label="App">
+            <input
+              aria-label="App package"
+              placeholder="com.example.app"
+              value={appPackage}
+              onChange={(e) => onAppPackage(e.target.value)}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
             {APP_OPERATIONS.map(({ operation, label, note }) => (
-              <button key={operation} type="button" role="menuitem" onClick={() => run(steps.app(operation, autPackage))}>
+              <button key={operation} type="button" role="menuitem" disabled={!appPackage} onClick={() => run(steps.app(operation, appPackage))}>
                 {label}
                 {note && <small>{note}</small>}
               </button>
@@ -395,7 +415,7 @@ function DeviceRail({ autPackage, busy, onPerform }: { autPackage: string; busy:
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (permission.trim()) run(steps.app("grant_permission", autPackage, permission.trim()));
+                if (appPackage && permission.trim()) run(steps.app("grant_permission", appPackage, permission.trim()));
               }}
             >
               <input
@@ -404,7 +424,7 @@ function DeviceRail({ autPackage, busy, onPerform }: { autPackage: string; busy:
                 value={permission}
                 onChange={(e) => setPermission(e.target.value)}
               />
-              <button type="submit" className="btn small">
+              <button type="submit" className="btn small" disabled={!appPackage}>
                 Grant
               </button>
             </form>

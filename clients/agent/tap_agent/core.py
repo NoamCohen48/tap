@@ -22,9 +22,8 @@ from tap_e2e import (
     Direction,
     ErrorCode,
     FailureReason,
-    Selector,
+    Element,
     ServerError,
-    StabilitySignal,
     TapClient,
     TapConnection,
     TapError,
@@ -72,6 +71,8 @@ def _hint(error: TapError) -> str:
             return f"{message}\nnothing matches now; run `snapshot` to see the screen"
         if error.code is ErrorCode.AMBIGUOUS:
             return f"{message}\nseveral nodes match; use a ref from `snapshot` or a narrower selector"
+        if error.code is ErrorCode.NOT_INTERACTABLE and error.detail == "OBSCURED":
+            return f"{message}\nanother window covers the node; close it (often `key back`) or scroll the node clear"
     if isinstance(error, ServerError):
         if error.reason is FailureReason.UNKNOWN_REF:
             return f"{message}\nthat ref is not on the screen any more; run `snapshot` for current refs"
@@ -149,7 +150,7 @@ class Agent:
     def _connection(self) -> TapConnection:
         entry = self._held()
         if entry is None:
-            raise AgentError(f"no session {self.session!r}; start one with `attach <serial> <package>`")
+            raise AgentError(f"no session {self.session!r}; start one with `attach <serial>`")
         return TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold)
 
     def _device(self, serial: str | None) -> Device:
@@ -158,29 +159,32 @@ class Agent:
             for device in devices:
                 if device.serial == serial:
                     return device
-            raise AgentError(f"{serial} is not attached to session {self.session!r}; `attach {serial} <package>`")
+            raise AgentError(f"{serial} is not attached to session {self.session!r}; `attach {serial}`")
         if not devices:
-            raise AgentError(f"session {self.session!r} has no device; `attach <serial> <package>`")
+            raise AgentError(f"session {self.session!r} has no device; `attach <serial>`")
         if len(devices) > 1:
             serials = ", ".join(d.serial for d in devices)
             raise AgentError(f"session {self.session!r} has several devices ({serials}); pass --device", EXIT_USAGE)
         return devices[0]
 
     @staticmethod
-    def _selector(device: Device, target: str | Target) -> tuple[Selector, str]:
+    def _element(device: Device, target: str | Target) -> tuple[Element, str]:
+        """The target as an element: a ref's selector on the whole screen (it already names the
+        node's package when that is needed), a written selector in ``pkg``'s nodes or else on
+        the whole screen."""
         parsed = parse_target(target) if isinstance(target, str) else target
         if parsed.ref:
-            return device.resolve_ref(parsed.ref), parsed.describe()
+            return device.screen.element(device.resolve_ref(parsed.ref)), parsed.describe()
         assert parsed.selector is not None
-        return parsed.selector, parsed.describe()
+        scope = device.app(parsed.package) if parsed.package else device.screen
+        return scope.element(parsed.selector), parsed.describe()
 
     def _settled(self, device: Device, level: str = render.DEFAULT, full: bool = False, timeout: float = SETTLE_TIMEOUT) -> str:
         """Waits for the focused window's hierarchy to stop changing, then diffs a new snapshot
         against the previous one. A screen that keeps changing is reported, not an error."""
         note = ""
         try:
-            package = device.info().current_package
-            device.await_screen_stable(SETTLE_STABLE_FOR, timeout, package_name=package, signal=StabilitySignal.TREE)
+            device.app(device.info().current_package).await_settled(SETTLE_STABLE_FOR, timeout)
         except WaitTimeoutError:
             note = f"(screen still changing after {format_duration(timeout)})\n"
         return note + render.diff_text(device.screen_snapshot(), level, full)
@@ -188,8 +192,8 @@ class Agent:
     def _act(self, device_serial: str | None, target: str, verb: str, action: Callable, settle: bool) -> str:
         def step() -> str:
             device = self._device(device_serial)
-            selector, described = self._selector(device, target)
-            action(device.element(selector))
+            element, described = self._element(device, target)
+            action(element)
             text = f"{verb} {described}"
             return f"{text}\n{self._settled(device)}" if settle else text
 
@@ -197,19 +201,9 @@ class Agent:
 
     # --- sessions -------------------------------------------------------------------------------
 
-    def attach(
-        self,
-        serial: str,
-        package: str,
-        idle: float = DEFAULT_IDLE,
-        launch: str | None = None,
-        wait_for_device: float = 0,
-    ) -> str:
-        """Attaches ``serial`` for ``package`` to the session, creating the session (a held
-        connection with an ``idle`` timeout) when it does not exist. ``launch``: None, "launch"
-        or "cold" (force-stop first)."""
-        if launch not in (None, "launch", "cold"):
-            raise AgentError(f"launch must be launch or cold, not {launch!r}", EXIT_USAGE)
+    def attach(self, serial: str, idle: float = DEFAULT_IDLE, wait_for_device: float = 0) -> str:
+        """Attaches ``serial`` to the session, creating the session (a held connection with an
+        ``idle`` timeout) when it does not exist."""
 
         def step() -> str:
             entry = self._held()
@@ -220,30 +214,18 @@ class Agent:
                 connection = TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold)
                 attached = next((d for d in entry.attached_devices if d.serial == serial), None)
                 if attached is not None:
-                    if attached.aut_package != package:
-                        raise AgentError(
-                            f"{serial} is attached to session {self.session!r} for {attached.aut_package}; "
-                            "`release` first to change the app"
-                        )
-                    return f"{serial} is already attached to session {self.session!r} ({package})"
+                    return f"{serial} is already attached to session {self.session!r}"
             try:
-                device = connection.attach_device(serial, package, wait_for_device=wait_for_device)
+                connection.attach_device(serial, wait_for_device=wait_for_device)
             except BaseException:
                 if created:  # leave no empty session behind
                     with contextlib.suppress(Exception):
                         connection.close()
                 raise
-            lines = [
-                f"attached {serial} ({package}) to session {self.session!r}, "
+            return (
+                f"attached {serial} to session {self.session!r}, "
                 f"idle timeout {format_duration(connection.hold or idle)}"
-            ]
-            if launch == "launch":
-                device.app().launch()
-                lines.append(f"launched {package}")
-            elif launch == "cold":
-                device.app().cold_launch()
-                lines.append(f"cold-launched {package}")
-            return "\n".join(lines)
+            )
 
         return self._run(step)
 
@@ -255,7 +237,7 @@ class Agent:
             held = sorted((c for c in entries if c.hold is not None), key=lambda c: c.name)
             lines = []
             for c in held:
-                devices = ", ".join(f"{d.serial} ({d.aut_package})" for d in c.attached_devices) or "no device"
+                devices = ", ".join(d.serial for d in c.attached_devices) or "no device"
                 lines.append(
                     f"{c.name}  idle {format_duration(round(c.idle))} of {format_duration(c.hold or 0)}  {devices}"
                 )
@@ -425,22 +407,16 @@ class Agent:
 
         def step() -> str:
             d = self._device(device)
-            selector, described = self._selector(d, target)
-            waiting = d.wait(selector, timeout)
+            element, described = self._element(d, target)
+            waiting = element.wait(timeout)
             {"visible": waiting.visible, "gone": waiting.gone, "one": waiting.one}[state]()
             return f"{described} is {'exactly one node' if state == 'one' else state}"
 
         return self._run(step)
 
-    def app(
-        self,
-        action: str,
-        argument: str | None = None,
-        device: str | None = None,
-        package: str | None = None,
-    ) -> str:
-        """App lifecycle for the session's app (or ``package``): launch [activity], cold-launch
-        [activity], stop, clear, install APK, uninstall, grant PERMISSION, running."""
+    def app(self, action: str, package: str, argument: str | None = None, device: str | None = None) -> str:
+        """App lifecycle for ``package``: launch [activity], cold-launch [activity], stop, clear,
+        install APK, uninstall, grant PERMISSION, running."""
         if action not in APP_ACTIONS:
             raise AgentError(f"unknown app action {action!r} (known: {', '.join(APP_ACTIONS)})", EXIT_USAGE)
         if action in ("install", "grant") and not argument:

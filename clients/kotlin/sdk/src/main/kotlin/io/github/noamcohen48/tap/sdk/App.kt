@@ -32,9 +32,20 @@ import kotlin.time.Duration.Companion.seconds
 internal const val INSTALL_CHUNK_BYTES = 1 shl 20
 
 /**
- * Lifecycle of one package on one device, executed by the host server (ADB plus verified
- * postconditions). The client only names the package and the timeouts; [install] uploads the
- * APK from this machine.
+ * One app on a device: its elements, its lifecycle and the waits on it. Obtain with
+ * [Device.app], which performs no I/O.
+ *
+ * [element] and [await] add the package as one more selector predicate, so only this app's
+ * nodes match (in any of its windows); [Device.screen] matches anywhere. Lifecycle calls are
+ * executed by the host server (ADB plus verified postconditions); the client only names the
+ * package and the timeouts, and [install] uploads the APK from this machine.
+ *
+ * ```kotlin
+ * val app = device.app("com.example.shop")
+ * app.coldLaunch()
+ * app.element(res("search")).setText("socks")
+ * app.await(text("3 results")).visible()
+ * ```
  *
  * All I/O methods are `suspend` and require an owning scope (`tapScope`/`tapTest`); the
  * constructor ([Device.app]) only binds values, so it stays non-suspend. Per-call
@@ -48,6 +59,15 @@ class App internal constructor(
     val packageName: String,
 ) {
     private val apps get() = device.ownerConnection.client.apps
+
+    /** A lazy element: [selector] restricted to this package's nodes. Performs no I/O. */
+    fun element(selector: Selector): Element = Element(device, selector.inPackage(packageName))
+
+    /** A wait on [selector] restricted to this package's nodes. */
+    fun await(
+        selector: Selector,
+        timeout: Duration = device.timeouts.wait,
+    ): ElementWait = ElementWait(device, selector.inPackage(packageName), timeout)
 
     private val target: AppTarget
         get() =
@@ -144,7 +164,7 @@ class App internal constructor(
     /**
      * Starts [activity] (or the launcher activity) with `am start -W` and returns when Android
      * reports the launch complete. Nothing about the UI is assumed: wait for what the test needs
-     * ([Device.awaitAppVisible], [Device.awaitScreenStable], an element wait).
+     * ([awaitVisible], [awaitScreenStable], an element wait).
      */
     suspend fun launch(
         activity: String? = null,
@@ -161,6 +181,48 @@ class App internal constructor(
             )
         }
     }
+
+    /**
+     * Waits on the device until this package owns the focused window. Throws
+     * [WaitTimeoutException] only when the device reports `WAIT_TIMEOUT`; any other failure
+     * (driver unhealthy, transport lost, ...) is a [CommandException].
+     */
+    suspend fun awaitVisible(timeout: Duration = device.timeouts.wait) = device.awaitAppVisible(packageName, timeout)
+
+    /**
+     * Waits on the device until this package's focused window has stopped changing for
+     * [stableFor] according to [signal]: the accessibility tree ([StabilitySignal.TREE]), the
+     * window pixels ([StabilitySignal.PIXELS], 0.5 % tolerance) or both (default).
+     * Content-changed events restart the quiet period. Use it explicitly after an action that
+     * starts an animation or a transition; no command waits for this implicitly. A screen that
+     * keeps changing (indeterminate spinner, ticker, video) times out with `SCREEN_CHANGING`.
+     * [awaitSettled] and [awaitAnimationEnd] are the two single-signal shorthands. Only a
+     * device `WAIT_TIMEOUT` becomes [WaitTimeoutException]; other failures are [CommandException]s.
+     */
+    suspend fun awaitScreenStable(
+        stableFor: Duration = 500.milliseconds,
+        timeout: Duration = device.timeouts.wait,
+        signal: StabilitySignal = StabilitySignal.ALL,
+    ) = device.awaitScreenStable(packageName, stableFor, timeout, signal)
+
+    /**
+     * Maestro's `waitForAppToSettle`, on request only: this package's accessibility hierarchy
+     * has not changed for [stableFor]. Cheap (no screenshots); sees layout, text and state
+     * changes but not pure drawing (a canvas animation, video).
+     */
+    suspend fun awaitSettled(
+        stableFor: Duration = 500.milliseconds,
+        timeout: Duration = device.timeouts.wait,
+    ) = awaitScreenStable(stableFor, timeout, StabilitySignal.TREE)
+
+    /**
+     * Maestro's `waitForAnimationToEnd`, on request only: this package's window pixels have not
+     * changed (beyond 0.5 %) for [stableFor]. Costs one screenshot per 100 ms while waiting.
+     */
+    suspend fun awaitAnimationEnd(
+        stableFor: Duration = 500.milliseconds,
+        timeout: Duration = device.timeouts.wait,
+    ) = awaitScreenStable(stableFor, timeout, StabilitySignal.PIXELS)
 
     /** Verified force-stop, [launch], then the *new* process identity. */
     suspend fun coldLaunch(

@@ -41,7 +41,7 @@ class Direction(enum.Enum):
 
 
 class StabilitySignal(enum.Enum):
-    """What ``Device.await_screen_stable`` watches: the accessibility tree, the window pixels
+    """What ``App.await_screen_stable`` watches: the accessibility tree, the window pixels
     (0.5 % tolerance) or both."""
 
     TREE = "TREE"
@@ -123,7 +123,7 @@ class WaitReason(enum.Enum):
     SCREEN_CHANGING = "SCREEN_CHANGING"
     """``await_screen_stable``: the screen kept changing."""
     APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
-    """``await_app_visible`` / ``await_screen_stable``: the package never owned the focused
+    """``App.await_visible`` / ``App.await_screen_stable``: the package never owned the focused
     window."""
 
 
@@ -279,7 +279,6 @@ class AttachedDeviceEntry:
 
     attached_device_id: str
     serial: str
-    aut_package: str
     generation: int
 
 
@@ -311,7 +310,6 @@ class LoggedEvent:
     at: float
     duration: float
     serial: str
-    aut_package: str
     command: dict | None
     app: dict | None
     error: dict | None
@@ -332,7 +330,6 @@ class LoggedEvent:
             "at": at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "duration_ms": round(self.duration * 1000),
             "serial": self.serial,
-            "aut_package": self.aut_package,
             "ok": self.ok,
         }
         for key in ("command", "app", "error", "failure"):

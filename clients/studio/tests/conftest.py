@@ -60,7 +60,7 @@ def client(daemon):
 
 @pytest.fixture
 def device(client):
-    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as attached:
+    with client.connect("t") as connection, connection.attach_device("emulator-5554") as attached:
         yield attached
 
 

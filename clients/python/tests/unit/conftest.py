@@ -52,7 +52,6 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
                 at_epoch_ms=1_790_000_000_000 + len(log),
                 duration_ms=5,
                 serial=serial,
-                aut_package="com.example",
                 **call,
             )
         )
@@ -97,7 +96,6 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
                 entry.attached_devices.add(
                     attached_device_id=f"attached-{attach.serial}",
                     serial=attach.serial,
-                    aut_package=attach.aut_package,
                     generation=1,
                 )
             entries.append(entry)

@@ -38,7 +38,7 @@ Android driver instrumentation  (package io.github.noamcohen48.tap.driver, own U
 +-- DriverConnection    handshake, framing, reader lane, heartbeat
 +-- CommandPipeline     bounded queue -> single executor -> writer, watchdog   (pure JVM, device/driver/command-engine)
 +-- DriverCommandEngine request/selector validation, dispatch
-+-- SelectorCompiler    AST -> window-scoped BySelector | traversal predicate
++-- SelectorCompiler    AST -> BySelector | traversal predicate (all windows)
 +-- UiObjectAccess      limit-aware resolution, no retained handles
 +-- UiAutomationCommands taps, gestures, text, waits, scroll, screenshot
 +-- SyncProviderClient  reads AUT busy state over ContentResolver.call
@@ -99,7 +99,7 @@ tap/
 |   |   +-- src/main/kotlin/io/github/noamcohen48/tap/protocol/
 |   |   |   +-- Protocol.kt          limits, build ids, protocol version 4.0, capabilities, FrameType/Frame, driver-side defaults, key codes
 |   |   |   +-- Operations.kt        operation catalogue (public + host-internal), isMutation/targetSelector, Commands/Requests/Responses factories, CommandHandler + exhaustive Request.dispatch
-|   |   |   +-- Selectors.kt         Nodes/Selectors builders, and/or, children/conjunction, scope/pick helpers, aut_package resolution, render()
+|   |   |   +-- Selectors.kt         Nodes/Selectors builders, and/or, children/conjunction, pick helpers, render()
 |   |   |   +-- CommandValidation.kt shared argument + selector validation (InvalidCommandException) -> NATIVE | TRAVERSAL plan kind
 |   |   |   +-- ErrorCode.kt         mayHaveMutated/retryable/normalized/label over tap.v1.ErrorCode, ErrorDetail sub-reasons, CommandFailure
 |   |   |   +-- Authentication.kt    nonces, HMAC domains over the sent bytes, transcript, negotiation over proto Hello/Challenge
@@ -116,9 +116,10 @@ tap/
 |   |   |   +-- TapDriverServerTest.kt   instrumentation entry point (keeps the process alive)
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers
 |   |   |   +-- DriverConnection.kt      per-connection handshake, frame reader, blob writer
-|   |   |   +-- DriverCommandEngine.kt   CommandHandler: scope policy compile + Request.dispatch; defaults applied here
-|   |   |   +-- SelectorCompiler.kt      AST -> CompiledSelector.Native | .Traversal, with a SearchScope (FocusedWindow(pkg) | AllWindows)
+|   |   |   +-- DriverCommandEngine.kt   CommandHandler: selector compile + Request.dispatch; defaults applied here
+|   |   |   +-- SelectorCompiler.kt      AST -> CompiledSelector.Native | .Traversal (no scope; every window)
 |   |   |   +-- UiObjectAccess.kt        resolve/hasObject/count/containerHasObject per MatchLimit
+|   |   |   +-- TouchReachability.kt     OBSCURED check (touch point in the target's window) + TouchPoints
 |   |   |   +-- GestureCommands.kt, TextInputCommands.kt, KeyInput.kt, QueryCommands.kt, WaitCommands.kt, ScreenStability.kt, ArtifactCommands.kt
 |   |   |   |                        tap, longTap, swipe, scroll / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
 |   |   |   +-- SyncProviderClient.kt    signature-checked ContentProvider reads with timeout
@@ -165,7 +166,7 @@ tap/
 |   |   |   |   +-- EventLog.kt        per-connection bounded event log (`Events`, `.docs/agent-surface.md` decision 3)
 |   |   |   +-- daemon/snapshot/       screen snapshots with refs (`.docs/agent-surface.md` decision 2); diagnostic only, never on the action path
 |   |   |   |   +-- HierarchyParser.kt   hand XML parser for the UiAutomator dump (no DTD/entities: XXE-safe, no JAXP in the native image) → pre-order DumpNodes
-|   |   |   |   +-- DumpMatcher.kt       the driver's native-plan selector semantics (scope + `pkg` filter, resources, relations) evaluated over a dump
+|   |   |   |   +-- DumpMatcher.kt       the driver's native-plan selector semantics (package predicate, resources, relations) evaluated over a dump
 |   |   |   |   +-- SelectorSynthesis.kt per-node selector: resource/text/desc/pairs/hint → + ancestor → `At(index)` (by_index); uniqueness via DumpMatcher
 |   |   |   |   +-- ScreenSnapshots.kt   dump XML → ScreenNodes (flags, interactive, selector)
 |   |   |   |   +-- RefAlignment.kt      node signatures (no bounds) and LCS alignment with a greedy fallback above a size budget
@@ -199,7 +200,7 @@ tap/
 |   |   |       +-- App.kt               install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitIdle over AppService
 |   |   |       +-- Element.kt           lazy element: exists/count/snapshot/text, tap/longTap/setText/clearText/swipe/scroll, typeText (tap + await focused + Device.typeText) and scrollUntil (exists + scroll loop) client-side, first/at/descendant/child
 |   |   |       +-- ElementWait.kt       visible()/gone() (driver-side) and enabled/checked/focused/textEquals/count (host-polled)
-|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/resId/rawRes/className + refinements, relations, infix and/or, over the (internal) proto Selector
+|   |   |       +-- Selectors.kt         text/textContains/textMatches/desc/hint/res/resId/className + refinements, relations, infix and/or, over the (internal) proto Selector
 |   |   |       +-- Models.kt            SDK-owned value types: MatchMode, Direction, StabilitySignal, ErrorCode, FailureReason, DeviceState, Bounds, ElementSnapshot, AppProcess, DeviceEntry, ServerInfo/ServerDefaults
 |   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, Recording, Hierarchy, DeviceInfo, DriverLog
 |   |   |       +-- Capture.kt           Device.capture(): the four artifacts in parallel, bounded, never throws; Capture.saveTo
@@ -210,7 +211,7 @@ tap/
 |   |           +-- Annotations.kt       @TapTest(deviceLifetime), DeviceLifetime, @TapDevice(role), @TapDevices(roles), Devices
 |   |           +-- TapTest.kt           tapTest bridge: binding/nesting enforcement, root job, interrupt consumed so teardown runs
 |   |           +-- DeviceBarrier.kt     reusable/one-shot coroutine barrier, cancellation-safe; one-shot waiting() resets on release
-|   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), autPackage, artifactsDir, acquire timeout, pinned roles, capture mode (tap.capture)
+|   |           +-- TapConfig.kt         tap.* system properties / TAP_* env: serials (optional), artifactsDir, acquire timeout, pinned roles, capture mode (tap.capture)
 |   |           +-- ConnectionMemo.kt    ConnectionMemo + the JVM-wide SharedConnection: one TapClient + TapConnection per JVM generation (managed sequential generations: teardown gate with cancelled-shutdown NonCancellable re-await of captured flights, single-flight shares, transactional hook install before publish with close+stop rollback, creation rollback with suppressed cleanup, NonCancellable ownership with original cancellation rethrown), closed by launcher listener/shutdown hook
 |   |           +-- TapExtension.kt      BeforeEach/AfterEach/ParameterResolver/ExceptionHandler; roles→serials, opens in sorted serial order; failure artifacts
 |   +-- python/                  tap-e2e: Python client + pytest plugin (thin layer over the daemon)
@@ -241,6 +242,7 @@ tap/
     |   +-- AmbiguityActivity.kt     duplicate buttons/fields/scroll views, gesture target, prefilled field
     |   +-- PermissionActivity.kt    real runtime permission dialog
     |   +-- MotionActivity.kt        2 s handler-driven animation and an endless 100 ms ticker (screen-stability waits)
+    |   +-- OcclusionActivity.kt     a popup over half a button and a button under the keyboard (adjustNothing) for OBSCURED
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults
     |   +-- FixtureFaultProvider.kt  delayed-mutation hook for the late-work fault (authority ...fixture.fault)
     |   +-- FixtureApplication.kt    Application + FaultTapCounter
@@ -327,15 +329,15 @@ Key types (generated unless noted):
 ### Selector AST
 
 ```text
-Selector { node, oneof scope { aut (default) | system{package_name} }, oneof pick { exactly_one (default) | first | at{index} } }
-Node.kind = match{property, value, mode (default EXACT)} | flag{property, value}
-          | resource{name, package_name? | aut_package} | related{relation, node}
+Selector { node, oneof pick { exactly_one (default) | first | at{index} } }   (no scope: every window)
+Node.kind = match{property (TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME | PACKAGE_NAME), value, mode (default EXACT)}
+          | flag{property, value}
+          | resource{name, package_name?} | related{relation, node}
           | all_of{nodes >= 2} | any_of{nodes >= 2}
 ```
 
-Builders (`Selectors.kt`): `Selectors.text(v, mode)`, `.contentDescription(v)`, `.rawResource(name)`,
-`.androidResource(pkg, name)`, `Selector.inPackage(pkg)`, `Selector.inAnyWindow()`, `.pickFirst()`, `.pickAt(i)`;
-`Nodes.text/…/child/descendant/autResource`, `Nodes.allOf`/`anyOf` and infix `and`/`or`
+Builders (`Selectors.kt`): `Selectors.text(v, mode)`, `.contentDescription(v)`,
+`.pickFirst()`, `.pickAt(i)`; `Nodes.text/…/packageName/resource(name)/androidResource(pkg, name)/child/descendant`, `Nodes.allOf`/`anyOf` and infix `and`/`or`
 (flattening, single operand returned as is). `CommandValidation.validate(command)` checks the
 arguments and the selector a command carries. The device uses `CommandValidation.validateSelector(selector)` to get `NATIVE`
 (everything expressible in one `BySelector`) or `TRAVERSAL` (any `REGEX`, any `any_of`, or a
@@ -349,7 +351,7 @@ conjunction repeating a single-valued `BySelector` slot); failures are
 The driver is an instrumentation test (`TapDriverServerTest`) that never finishes: it binds a
 loopback socket, prints `TAP_READY` with session/generation/port/instance, and serves one
 authenticated connection at a time. Instrumentation arguments (`tapSessionId`,
-`tapGeneration`, `tapSecret`, `tapExpectedAut`, `tapSyncAuthority`, `tapFaultAuthority`,
+`tapGeneration`, `tapSecret`, `tapFaultAuthority`,
 `tapUninterruptibleGraceMs`, `tapHeartbeatTimeoutMs`,
 `tapFaultPoint`) become an immutable `SessionConfig`.
 
@@ -381,27 +383,30 @@ socket -> DriverConnection.reader ---enqueue---> CommandPipeline.queue(16)
 ### Selector execution
 
 ```text
-Selector ---SelectorCompiler.compile---> CompiledSelector.Native(scopePackage, BySelector)
-                                       | CompiledSelector.Traversal(scopePackage, NodePredicate)
-UiObjectAccess.findObjects:
-  window = device.findWindow(By.Window.pkg(scopePackage).focused(true))
-  Native    -> window.findObjects(by)            (UiAutomator 2.4 window-scoped search)
-  Traversal -> walk window.rootObject once, evaluate predicate per node (reads AccessibilityNodeInfo once)
+Selector ---SelectorCompiler.compile---> CompiledSelector.Native(pick, BySelector)
+                                       | CompiledSelector.Traversal(pick, NodePredicate)
+UiObjectAccess.findObjects (every window; PACKAGE_NAME is By.pkg / a node predicate):
+  Native    -> device.findObjects(by)
+  Traversal -> walk the roots of device.findObjects(By.depth(0)) once, evaluate predicate per node
+               (reads AccessibilityNodeInfo once)
 UiObjectAccess.resolve(pick):
   ExactlyOne -> fetch up to 2 -> 0: NOT_FOUND, 2: AMBIGUOUS
   First      -> first in accessibility order
   At(n)      -> nth or NOT_FOUND
 ```
 
-Scope rules: `aut` selectors resolve in the AUT's focused window and may name only AUT
-resources (`SCOPE_DENIED` otherwise); `system` selectors resolve in the focused window of the
-package they name, any package; `any_window` selectors search every window
-(`UiDevice.findObjects`, or the roots of `findObjects(By.depth(0))` for the traversal plan).
+There are no scopes (protocol 5.0): "this app's node" is a `PROPERTY_PACKAGE_NAME` predicate the
+clients add for `app(pkg).element`. Before a gesture's mutation gate, `TouchReachability` checks
+that the touch point (`TouchPoints`: a click's visible centre, a swipe's or scroll's start) lies in
+the target's own window by the accessibility window list (topmost touchable window by layer);
+otherwise `NOT_INTERACTABLE` / `OBSCURED`, before any input.
 
 ### Synchronization
 
-`SyncProviderClient` calls `content://<syncAuthority>` method `state` on a daemon thread with
-a timeout, verifies the provider's package matches the expected AUT and shares the driver's
+`SyncProviderClient` calls `content://<authority>` method `state` on a daemon thread with a
+timeout, both named by the request (`SyncBootstrap` / `SyncPoll` carry `package_name` and
+`authority`; the host sends `<package>.tap-sync`), verifies the provider belongs to that package
+and shares the driver's
 signing certificate, and validates every field of the returned bundle. `SYNC_BOOTSTRAP`
 records identity; `SYNC_STATE` fails with `AUT_MISMATCH/PROCESS_RESTARTED` when the process
 start UUID or session identity changes.
@@ -539,12 +544,12 @@ lifecycle code; the language-facing shape is the same in Kotlin and Python.
 val client = TapClient.create()                    // explicit address or resolved server
 val connection = client.connect("checkout")         // Observe stream = liveness (owned scope)
 val serial = connection.availableSerials().first()   // the server leases nothing; DeviceSession holds the device lock
-val device = connection.attachDevice(serial, autPackage)
-val app = device.app()                        // autPackage by default
+val device = connection.attachDevice(serial)       // names no app
+val app = device.app(pkg)
 app.install(apk); app.coldLaunch(".MainActivity")
-device.element(resId(pkg, "view_button")).tap()           // exactly one match or AMBIGUOUS/NOT_FOUND
-device.await(text("View tapped")).visible()               // one driver-side wait RPC
-device.element(rawRes("composeList")).scrollUntil(rawRes("item-40"))
+app.element(res("view_button")).tap()                     // + PACKAGE_NAME = pkg; exactly one match or AMBIGUOUS/NOT_FOUND
+device.screen.await(text("View tapped")).visible()        // any window; one driver-side wait RPC
+app.element(res("composeList")).scrollUntil(res("item-40"))
 app.awaitIdle()                                           // sync-sdk busy state, identity-guarded
 device.detach(); connection.close(); client.close()   // all suspend; try/finally in tapScope/tapTest
 ```
@@ -611,7 +616,7 @@ binding/nesting enforced, timeout/sibling cancellation via the root job); on a t
 <role>-<serial>.png|.xml|.device-info.txt|.driver.log` plus `failure.txt` while devices are
 attached; then detaches the devices. Cleanup failures are attached to the
 primary failure, or rethrown when the test itself passed. `TapConfig.current` reads
-`tap.serials` (optional), `tap.device.<role>` (pinning), `tap.autPackage`,
+`tap.serials` (optional), `tap.device.<role>` (pinning),
 `tap.artifactsDir`, `tap.acquireTimeoutSeconds`, `tap.server`, `tap.manageDaemon`, `tap.bin` (system property
 first, then `TAP_*` environment). Driver APKs come from the server's bundle.
 
@@ -654,7 +659,8 @@ The fixture exists only to exercise the driver. It covers Views and Compose
 direct and key-event text fields with an `OnKeyListener` proof, a Compose `LazyColumn` and a
 native `ListView` with end-of-content, a real runtime permission dialog, a port occupier for
 startup-retry faults, `AmbiguityActivity` (duplicate buttons/fields/scroll views, a
-long-press-aware gesture target, a prefilled field), and the delayed-mutation fault provider.
+long-press-aware gesture target, a prefilled field), `OcclusionActivity` (a popup window over
+half a button, a button under the keyboard) and the delayed-mutation fault provider.
 
 ## 10. Test strategy
 

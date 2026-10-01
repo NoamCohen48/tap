@@ -71,7 +71,6 @@ class ClientConnectionService(
                                         .newBuilder()
                                         .setAttachedDeviceId(device.id)
                                         .setSerial(device.deviceSession.serial)
-                                        .setAutPackage(device.deviceSession.autPackage)
                                         .setGeneration(device.deviceSession.generation)
                                         .build()
                                 },

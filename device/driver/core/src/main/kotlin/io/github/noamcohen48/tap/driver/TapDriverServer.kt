@@ -54,9 +54,8 @@ class TapDriverServer(
         DriverCommandEngine(
             instrumentation,
             device,
-            config.expectedAut,
             faults,
-            SyncProviderClient(instrumentation, config.expectedAut, config.syncAuthority),
+            SyncProviderClient(instrumentation),
         )
 
     /** Blocks until the one authenticated connection ends (or the process is killed). */

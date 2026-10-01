@@ -29,10 +29,10 @@ class AutLifecycleTest {
                 device.shell("input", "keyevent", "KEYCODE_BACK")
                 device.launchFixture("MainActivity")
 
-                val composeButton = Selectors.rawResource("composeButton")
+                val composeButton = Selectors.resource("composeButton")
                 check(client.send(Commands.waitVisible(composeButton), timeoutMs = 10_000).ok)
                 val processBeforeBootstrap = observeProcess(device.adb, serial, FIXTURE_PACKAGE)
-                val firstSyncIdentity = callSync(device, client) { pid, token -> Requests.syncBootstrap(pid, token) }.getOrThrow()
+                val firstSyncIdentity = callSync(device, client) { pid, token -> Requests.syncBootstrap(pid, token, FIXTURE_PACKAGE, SYNC_AUTHORITY) }.getOrThrow()
                 check(client.send(Commands.tap(composeButton)).ok)
                 check(client.send(Commands.waitVisible(Selectors.text("Compose tapped")), timeoutMs = 5_000).ok)
 
@@ -43,7 +43,7 @@ class AutLifecycleTest {
                 check(client.send(Commands.tap(syncButton)).ok)
                 val busyState =
                     callSync(device, client) { pid, token ->
-                        Requests.syncPoll(pid, token, firstSyncIdentity.processStartUuid, firstSyncIdentity.sessionIdentity)
+                        Requests.syncPoll(pid, token, firstSyncIdentity.processStartUuid, firstSyncIdentity.sessionIdentity, FIXTURE_PACKAGE, SYNC_AUTHORITY)
                     }.getOrThrow()
                 check(busyState.busyCount != 0) { "Busy state was not observed: $busyState" }
                 awaitSyncIdle(device, client, firstSyncIdentity, timeoutMs = 10_000)
@@ -62,13 +62,13 @@ class AutLifecycleTest {
                 check(restartedProcess != processBeforeBootstrap) { "AUT process identity did not change" }
                 val staleSync =
                     callSync(device, client) { pid, token ->
-                        Requests.syncPoll(pid, token, firstSyncIdentity.processStartUuid, firstSyncIdentity.sessionIdentity)
+                        Requests.syncPoll(pid, token, firstSyncIdentity.processStartUuid, firstSyncIdentity.sessionIdentity, FIXTURE_PACKAGE, SYNC_AUTHORITY)
                     }.exceptionOrNull()
                 check(
                     staleSync is RemoteCommandException && staleSync.code == ErrorCode.ERR_AUT_MISMATCH &&
                         staleSync.detail == ErrorDetail.PROCESS_RESTARTED,
                 ) { "Synchronization restart was not detected: $staleSync" }
-                val restartedBootstrap = callSync(device, client) { pid, token -> Requests.syncBootstrap(pid, token) }.getOrThrow()
+                val restartedBootstrap = callSync(device, client) { pid, token -> Requests.syncBootstrap(pid, token, FIXTURE_PACKAGE, SYNC_AUTHORITY) }.getOrThrow()
                 check(restartedBootstrap.processStartUuid != firstSyncIdentity.processStartUuid)
             }
         }
@@ -101,7 +101,7 @@ class AutLifecycleTest {
             check(remainingMs > 0) { "Synchronization idle wait timed out" }
             val state =
                 callSync(device, client, timeoutMs = minOf(5_000, remainingMs)) { pid, token ->
-                    Requests.syncPoll(pid, token, expectedIdentity.processStartUuid, expectedIdentity.sessionIdentity)
+                    Requests.syncPoll(pid, token, expectedIdentity.processStartUuid, expectedIdentity.sessionIdentity, FIXTURE_PACKAGE, SYNC_AUTHORITY)
                 }.getOrThrow()
             val now = System.nanoTime()
             check(now < deadline) { "Synchronization idle wait timed out" }

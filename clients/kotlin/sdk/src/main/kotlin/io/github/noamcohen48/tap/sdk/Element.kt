@@ -72,7 +72,7 @@ class Element internal constructor(
      * Accessibility text replacement (`ACTION_SET_TEXT`) on the one matching node. Fails with
      * `ACTION_REJECTED` only when the node refuses the action; the field is not read back, so
      * assert the effect yourself with a selector that survives the edit:
-     * `element(resourceId("email")).waitUntil.textEquals("new")`.
+     * `app.await(res("email")).textEquals("new")`.
      */
     suspend fun setText(
         value: String,

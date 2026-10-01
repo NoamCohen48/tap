@@ -80,7 +80,8 @@ retyped, and CI checks that with `buf breaking`.
   `"sender"`/`"receiver"`) exist only in the clients: the JUnit extension and pytest plugin
   decide which serial plays which role and attach devices in sorted serial order, which makes
   concurrent multi-device tests deadlock-free.
-- An **attached device** is the server-facing handle for one device and app under test. The
+- An **attached device** is the server-facing handle for one device; it names no app, each
+  app call and selector names its package. The
   JUnit extension and pytest plugin attach one per role before each test and detach it after —
   an attachment never outlives a test. Its underlying device session carries a *generation*:
   after any loss or restart the driver is rebuilt under a new generation and requests from the
@@ -97,7 +98,7 @@ cooperative cancellation. The important rules:
 | Mutations (`tap`, `setText`, `swipe`, …) need **exactly one** match; `AMBIGUOUS`/`NOT_FOUND` are returned before any input. | A test that "happens to hit the first button" is not a test. |
 | **No implicit waits.** Actions do not wait for animations, idleness or "the screen to settle". | Those waits cost time on every step and never converge on live screens (tickers, spinners). Ask for the wait you mean: [Actions and waits](../guide/actions-and-waits.md). |
 | **No retries, ever.** | A retried tap is a double tap. If the transport drops after a mutation was accepted, you get `INDETERMINATE`, not a guess. |
-| Selectors are **scoped to the app under test** by default. | A stray system dialog cannot be tapped by accident; a selector opts in to another package (`inPackage`) or to every window (`inAnyWindow`) explicitly. |
+| Every lookup searches **all visible windows**; `app("pkg").element(…)` adds a package predicate, `screen.element(…)` adds none. A touch point another window covers fails as `NOT_INTERACTABLE` / `OBSCURED` before any input. | A test says which app's node it means; a dialog, keyboard or shade over the node is reported instead of receiving the tap. |
 | No hierarchy dump on the hot path. | Dumps are diagnostic (`dumpHierarchy()`, failure artifacts); matching runs on the device with window-scoped UiAutomator lookups. |
 
 ## What the driver bounds for you
@@ -105,7 +106,7 @@ cooperative cancellation. The important rules:
 UiAutomator normally waits up to 10 s for the UI to go idle before *every* interaction; on a
 screen that never idles (a progress spinner) that stalls every command. The Tap driver caps
 that to 1 s, so a busy screen slows a command by at most one second, and gives you the
-explicit [`awaitAppSettled()` / `awaitAnimationEnd()`](../guide/actions-and-waits.md#waiting-for-the-app-or-the-screen)
+explicit [`app.awaitSettled()` / `app.awaitAnimationEnd()`](../guide/actions-and-waits.md#waiting-for-the-app-or-the-screen)
 when you actually want to wait for quiet.
 
 ## Failure handling

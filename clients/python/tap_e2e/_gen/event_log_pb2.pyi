@@ -9,12 +9,11 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class LoggedEvent(_message.Message):
-    __slots__ = ("seq", "at_epoch_ms", "duration_ms", "serial", "aut_package", "command", "app", "error", "failure")
+    __slots__ = ("seq", "at_epoch_ms", "duration_ms", "serial", "command", "app", "error", "failure")
     SEQ_FIELD_NUMBER: _ClassVar[int]
     AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     COMMAND_FIELD_NUMBER: _ClassVar[int]
     APP_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
@@ -23,12 +22,11 @@ class LoggedEvent(_message.Message):
     at_epoch_ms: int
     duration_ms: int
     serial: str
-    aut_package: str
     command: _command_pb2.Command
     app: AppCall
     error: _command_pb2.Error
     failure: _failure_pb2.Failure
-    def __init__(self, seq: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., duration_ms: _Optional[int] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., app: _Optional[_Union[AppCall, _Mapping]] = ..., error: _Optional[_Union[_command_pb2.Error, _Mapping]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ...) -> None: ...
+    def __init__(self, seq: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., duration_ms: _Optional[int] = ..., serial: _Optional[str] = ..., command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., app: _Optional[_Union[AppCall, _Mapping]] = ..., error: _Optional[_Union[_command_pb2.Error, _Mapping]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ...) -> None: ...
 
 class AppCall(_message.Message):
     __slots__ = ("operation", "package_name", "activity", "permission", "timeout_ms")

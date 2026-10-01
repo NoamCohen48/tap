@@ -21,7 +21,7 @@ See `CONTRIBUTING.md` for build/run commands.
   note in the relevant decision record. Never silently "correct" code back to the plan.
 - `.docs/pool-and-leases.md` — decision record: the server leases nothing; exclusive device
   use is the per-serial journal lock, roles and device choice are client-side.
-- `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 4.0). Update it in
+- `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 5.0). Update it in
   the same change as any protocol edit.
 - `.docs/project-architecture.md` — current module/file layout.
 - `.docs/phase-1-progress.md` — Phase 1 checklist. Keep it honest: only tick items that are
@@ -48,6 +48,9 @@ See `CONTRIBUTING.md` for build/run commands.
   inspector + action recorder (React front end, Python back end on `tap-e2e`); element
   interactions, never coordinates; `tap-recording/1`. `.docs/studio-demo.html` is the clickable
   UI demo (mock app, no device) the UI section describes.
+- `.docs/app-and-screen.md` — decision record: an attached device names no app; selectors have
+  no scope (package ownership is a `PROPERTY_PACKAGE_NAME` predicate, `app(pkg)` / `screen` are
+  client-side), and gestures refuse a covered touch point (`OBSCURED`).
 - `.docs/screen-streaming.md` — research + decision: how to show a device screen live (Maestro,
   Appium MJPEG, scrcpy, `screenrecord`); v1 = paired snapshot + screenshot frames, video later.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
@@ -152,7 +155,10 @@ never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
   `:host:daemon:test`, regenerate the committed Python stubs
   with `clients/python/scripts/gen_stubs.py` (needs `grpcio-tools` at the version pinned in
   the script), and update `.docs/server-api.md`. CI also runs `buf lint`/`buf breaking`
-  (`contracts/proto/buf.yaml`): only add fields/values; never remove, renumber or retype.
+  (`contracts/proto/buf.yaml`). While Tap is 0.x a deliberate breaking change is fine: delete
+  what is no longer needed outright (no `reserved` placeholders, no do-nothing fields) and set
+  `contracts/proto/BREAKING_BASELINE` to the last main commit before it, so CI skips
+  `buf breaking` once; otherwise only add fields/values.
 - Native image: `GRAALVM_HOME=~/.local/share/graalvm/graalvm-community-openjdk-21.0.2+13.1
   ./gradlew :host:daemon:nativeCompile`. If a new dependency uses
   reflection, re-record `host/daemon/src/main/resources/META-INF/native-image` with the

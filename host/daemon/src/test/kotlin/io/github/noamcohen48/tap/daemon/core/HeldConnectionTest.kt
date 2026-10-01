@@ -31,7 +31,6 @@ class HeldConnectionTest {
     ) : DaemonDeviceSession {
         val closes = AtomicInteger()
         override val generation = 1L
-        override val autPackage = "com.test"
         override val client: DriverClient get() = error("no client")
 
         override fun app(packageName: String): AppLifecycle = error("no app")
@@ -48,7 +47,7 @@ class HeldConnectionTest {
         object : DeviceSessionOpener {
             override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession = Session(config.serial).also { synchronized(opened) { opened += it } }
         }
-    private val options = TapDaemon.AttachDeviceOptions(skipDriverInstall = true, syncAuthority = null, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0)
+    private val options = TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0)
 
     private fun daemon(observeGraceMs: Long = OBSERVE_GRACE_MS) =
         TapDaemon(
@@ -70,7 +69,7 @@ class HeldConnectionTest {
         runBlocking {
             val daemon = daemon(observeGraceMs = 50)
             val held = daemon.connectClient("agent", holdIdleMs = 400)
-            call { daemon.attachDevice(held.id, "serial-a", "com.test", options) }
+            call { daemon.attachDevice(held.id, "serial-a", options) }
             delay(200)
             assertTrue(daemon.clientConnectionExists(held.id), "the observe grace must not reap a held connection")
             awaitGone(daemon, held.id)
@@ -84,7 +83,7 @@ class HeldConnectionTest {
         runBlocking {
             val daemon = daemon()
             val held = daemon.connectClient("agent", holdIdleMs = 300)
-            val device = call { daemon.attachDevice(held.id, "serial-a", "com.test", options) }
+            val device = call { daemon.attachDevice(held.id, "serial-a", options) }
             repeat(6) {
                 delay(150)
                 call { daemon.attachedDevice(device.id, held.id) }
@@ -98,7 +97,7 @@ class HeldConnectionTest {
         runBlocking {
             val daemon = daemon()
             val held = daemon.connectClient("agent", holdIdleMs = 200)
-            val device = call { daemon.attachDevice(held.id, "serial-a", "com.test", options) }
+            val device = call { daemon.attachDevice(held.id, "serial-a", options) }
             val release = CompletableDeferred<Unit>()
             val running =
                 async(Dispatchers.Default) {
@@ -138,7 +137,7 @@ class HeldConnectionTest {
         runBlocking {
             val daemon = daemon()
             val held = daemon.connectClient("agent", holdIdleMs = 60_000)
-            val device = call { daemon.attachDevice(held.id, "serial-a", "com.test", options) }
+            val device = call { daemon.attachDevice(held.id, "serial-a", options) }
             val observed = daemon.connectClient("test")
             val rows = daemon.connections().associateBy { it.id }
             assertEquals(60_000L, rows.getValue(held.id).holdIdleMs)
@@ -152,7 +151,7 @@ class HeldConnectionTest {
         runBlocking {
             val daemon = daemon()
             val held = daemon.connectClient("agent", holdIdleMs = 300)
-            val device = call { daemon.attachDevice(held.id, "serial-a", "com.test", options) }
+            val device = call { daemon.attachDevice(held.id, "serial-a", options) }
             val name = InProcessServerBuilder.generateName()
             val server = InProcessServerBuilder.forName(name).addService(DeviceService(daemon)).build().start()
             val channel = InProcessChannelBuilder.forName(name).build()

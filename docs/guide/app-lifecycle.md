@@ -1,7 +1,9 @@
 # App lifecycle and sync
 
-`device.app()` returns an `App` bound to the app under test (`device.app("other.pkg")` for
-another package). Every lifecycle operation is executed by the server over ADB and **verified
+`device.app(packageName)` returns an `App` for that package; a test can hold several, one per
+app it drives. Besides [finding its elements](selectors.md#app-or-screen) (`app.element`,
+`app.await`) and [waiting for its window](actions-and-waits.md#waiting-for-the-app-or-the-screen),
+an `App` owns the package's lifecycle. Every lifecycle operation is executed by the server over ADB and **verified
 against a postcondition** — the method returns when the device is provably in the requested
 state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 
@@ -23,13 +25,13 @@ state, or fails with `AppLifecycleException` / `AppLifecycleError`.
 @Test
 fun survivesAKill(device: Device) {
     tapTest {
-        val app = device.app()
+        val app = device.app("com.shop")
         val first = app.coldLaunch()
-        device.element(text("Add to cart")).tap()
+        app.element(text("Add to cart")).tap()
         app.forceStop()
         val second = app.coldLaunch()
         assertNotEquals(first.pid, second.pid)
-        device.await(text("1 item")).visible()
+        app.await(text("1 item")).visible()
     }
 }
 ```
@@ -37,7 +39,7 @@ fun survivesAKill(device: Device) {
 All `App` calls are `suspend` inside `tapTest` (or `tapScope` in scripts).
 
 Because the driver is its own package, none of this disturbs the attached device: you can
-force-stop, clear and reinstall the app under test in the middle of a test and keep issuing
+force-stop, clear and reinstall the app in the middle of a test and keep issuing
 commands. The server also owns the driver's lifecycle — if the driver dies, the next command
 fails with `DRIVER_UNHEALTHY`; the client must detach and attach the device again to create a
 fresh device session under a new generation. It is never rebuilt silently.
@@ -48,17 +50,17 @@ Two options, in order of preference:
 
 1. `app.grantPermission("android.permission.CAMERA")` before the flow reaches the prompt. No
    dialog, no timing.
-2. Tap the system dialog through the scope opt-in described in
-   [Selectors → Scope](selectors.md#scope). Use this only when the dialog itself is what you
-   are testing.
+2. Tap the system dialog through the permission controller's `App` (or `device.screen`), as in
+   [Selectors → App or screen](selectors.md#app-or-screen). Use this only when the dialog
+   itself is what you are testing.
 
 `clearData()` revokes runtime permissions, so grant again after it.
 
 ## App-owned idle: `sync-sdk`
 
 !!! warning "Experimental, not released yet"
-    App synchronization is still being designed. `awaitIdle` / `await_idle` and
-    `DeviceOptions.syncAuthority` are marked experimental (Kotlin: opt in with
+    App synchronization is still being designed. `awaitIdle` / `await_idle` is marked
+    experimental (Kotlin: opt in with
     `@OptIn(ExperimentalTapApi::class)`) and may change in any release, and `tap-sync-sdk` has
     no published release yet. On Android 11+ the driver can currently see only the sync
     provider of Tap's own fixture app, so `awaitIdle` against your app fails with a `SYNC_*`
@@ -89,12 +91,12 @@ scope.launch {
 Then in the test:
 
 ```kotlin
-device.element(text("Place order")).tap()
-device.app().awaitIdle()                      // busy count 0 and stable for 200 ms
-device.await(text("Order placed")).visible()
+app.element(text("Place order")).tap()
+app.awaitIdle()                               // busy count 0 and stable for 200 ms
+app.await(text("Order placed")).visible()
 ```
 
-(inside `tapTest`; the AUT-side `busy()`/`close()` is ordinary app code, not suspend).
+(inside `tapTest`; the app-side `busy()`/`close()` is ordinary app code, not suspend).
 
 The provider (`<applicationId>.tap-sync`) is protected by a signature-level permission, so the
 driver must be signed with the same certificate as the E2E build of the app; a mismatch is

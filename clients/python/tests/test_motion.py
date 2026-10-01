@@ -7,12 +7,12 @@ from tap_e2e import WaitReason, WaitTimeoutError, res
 
 
 def test_waits_for_animation_to_end(tap_device):
-    launch(tap_device, ".MotionActivity")
-    status = tap_device.element(res("motion_status"))
+    app = launch(tap_device, ".MotionActivity")
+    status = app.element(res("motion_status"))
 
-    tap_device.element(res("motion_button")).tap()
+    app.element(res("motion_button")).tap()
     started = time.monotonic()
-    tap_device.await_animation_end(stable_for=0.5, timeout=10)
+    app.await_animation_end(stable_for=0.5, timeout=10)
     waited = time.monotonic() - started
 
     # The box moves for 2 s; the explicit pixel wait must outlive it without any status wait.
@@ -21,12 +21,12 @@ def test_waits_for_animation_to_end(tap_device):
 
 
 def test_settles_after_the_hierarchy_stops_moving(tap_device):
-    launch(tap_device, ".MotionActivity")
-    status = tap_device.element(res("motion_status"))
+    app = launch(tap_device, ".MotionActivity")
+    status = app.element(res("motion_status"))
 
-    tap_device.element(res("motion_button")).tap()
+    app.element(res("motion_button")).tap()
     started = time.monotonic()
-    tap_device.await_app_settled(stable_for=0.5, timeout=10)
+    app.await_settled(stable_for=0.5, timeout=10)
     waited = time.monotonic() - started
 
     # The moving box changes its accessibility bounds every frame; no screenshots involved.
@@ -35,15 +35,15 @@ def test_settles_after_the_hierarchy_stops_moving(tap_device):
 
 
 def test_screen_that_keeps_changing_times_out(tap_device):
-    launch(tap_device, ".MotionActivity")
-    ticker = tap_device.element(res("ticker_button"))
+    app = launch(tap_device, ".MotionActivity")
+    ticker = app.element(res("ticker_button"))
     ticker.tap()
     try:
         with pytest.raises(WaitTimeoutError) as failure:
-            tap_device.await_app_settled(stable_for=0.5, timeout=3)
+            app.await_settled(stable_for=0.5, timeout=3)
         assert failure.value.reason is WaitReason.SCREEN_CHANGING
         assert failure.value.elapsed_ms >= 3000
     finally:
         ticker.tap()
-    tap_device.await_screen_stable(timeout=5)
-    assert tap_device.element(res("ticker_status")).text() == "Ticker stopped"
+    app.await_screen_stable(timeout=5)
+    assert app.element(res("ticker_status")).text() == "Ticker stopped"

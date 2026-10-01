@@ -117,16 +117,14 @@ class ListConnectionsRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class AttachedDeviceEntry(_message.Message):
-    __slots__ = ("attached_device_id", "serial", "aut_package", "generation")
+    __slots__ = ("attached_device_id", "serial", "generation")
     ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     GENERATION_FIELD_NUMBER: _ClassVar[int]
     attached_device_id: str
     serial: str
-    aut_package: str
     generation: int
-    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., generation: _Optional[int] = ...) -> None: ...
+    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., generation: _Optional[int] = ...) -> None: ...
 
 class ConnectionEntry(_message.Message):
     __slots__ = ("client_connection_id", "name", "hold", "idle_ms", "attached_devices")

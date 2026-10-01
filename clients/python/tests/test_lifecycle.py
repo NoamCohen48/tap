@@ -7,20 +7,20 @@ def test_cold_launch_produces_a_new_process_and_survives_clear_data(tap_device):
     app = launch(tap_device)
     first = app.process()
 
-    tap_device.element(res("fault_button")).tap()
-    tap_device.wait(text("Fault taps: 1")).visible()
+    app.element(res("fault_button")).tap()
+    app.wait(text("Fault taps: 1")).visible()
 
     app.force_stop()
     assert not app.is_running()
     second = app.cold_launch(".MainActivity")
     assert first != second
     # The in-process counter is gone with the old process.
-    assert tap_device.element(res("fault_status")).text() == "Fault taps: 0"
+    assert app.element(res("fault_status")).text() == "Fault taps: 0"
 
     app.clear_data()
     assert not app.is_running()
     app.launch(".MainActivity")
     # launch does not wait for the window; the test does.
-    tap_device.wait(res("view_button")).visible()
+    app.wait(res("view_button")).visible()
 
     assert tap_device.info().current_package == "io.github.noamcohen48.tap.fixture"

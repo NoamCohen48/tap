@@ -60,11 +60,10 @@ Set `TAP_STATE_DIR` for both the daemon and the clients if you want it anywhere 
 ## Kotlin + JUnit 5
 
 Read once per JVM from system properties, falling back to environment variables with the same
-name with camelCase and dots turned into underscores, upper-cased (`tap.autPackage` → `TAP_AUT_PACKAGE`, `tap.device.sender` → `TAP_DEVICE_SENDER`):
+name with camelCase and dots turned into underscores, upper-cased (`tap.artifactsDir` → `TAP_ARTIFACTS_DIR`, `tap.device.sender` → `TAP_DEVICE_SENDER`):
 
 | Property | Meaning | Default |
 |---|---|---|
-| `tap.autPackage` (or `tap.aut`) | the application under test | **required** |
 | `tap.serials` | comma-separated serials to use; roles map to them in order, starting one device further on per test ([details](multi-device.md#which-serial-plays-which-role)) | any device the server lists |
 | `tap.device.<role>` | pin one role to a serial (must be in `tap.serials` when that is set) | — |
 | `tap.artifactsDir` | failure artifacts root | `build/tap-artifacts` |
@@ -81,7 +80,6 @@ Gradle passes them with `systemProperty(...)` on the test task; a common pattern
 ```kotlin
 tasks.test {
     useJUnitPlatform()
-    systemProperty("tap.autPackage", "com.shop")
     listOf("tap.serials", "tap.server", "tap.manageDaemon", "tap.bin").forEach { key ->
         providers.gradleProperty(key).orNull?.let { systemProperty(key, it) }
     }
@@ -91,7 +89,7 @@ tasks.test {
 Timeouts are per device, not global: `Timeouts(action = 10.seconds, wait = 10.seconds,
 lifecycle = 30.seconds, pollInterval = 100.milliseconds)` is the default, and every method also
 takes an explicit `timeout`. With the SDK directly, pass `Timeouts` and `DeviceOptions` to
-`connection.attach(serial, aut, timeouts, options) { device -> ... }` or
+`connection.attach(serial, timeouts, options) { device -> ... }` or
 `connection.attachDevice(...)` (both `suspend`; `attachDevice` handles live inside `tapScope`,
 `tapTest` in JUnit).
 
@@ -102,7 +100,6 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 
 | ini | Environment | Meaning | Default |
 |---|---|---|---|
-| `tap_aut` | `TAP_AUT` | the application under test | **required** |
 | `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, starting one device further on per test | any device the server lists |
 | `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
 | `tap_device_scope` | `TAP_DEVICE_SCOPE` | `function` = attach before each test, detach after it; `class` / `module` / `session` = keep the devices for the next test of the same class / module / run ([Reusing devices](#reusing-devices)) | `function` |
@@ -164,7 +161,7 @@ from tap_e2e import TapClient
 # first process
 client = TapClient.create()
 connection = client.connect("explore", hold=15 * 60)
-connection.attach_device("emulator-5554", "com.example.app")
+connection.attach_device("emulator-5554")
 
 # any later process
 connection = TapClient.create().resume("explore")
@@ -172,7 +169,7 @@ connection = TapClient.create().resume("explore")
 snapshot = device.screen_snapshot()
 for node in snapshot.nodes:
     print(node.ref, node.class_name, node.text, node.selector)
-device.element(device.resolve_ref("e7")).tap()
+device.screen.element(device.resolve_ref("e7")).tap()
 connection.close()  # ends it for everyone; leave it open for the next process
 ```
 
@@ -213,7 +210,7 @@ Both `connection.attachDevice(...)` / `connection.attach_device(...)` accept (`s
 | Option | Meaning |
 |---|---|
 | `skipDriverInstall` | assume the daemon's driver is already installed (CI images with a pre-provisioned driver) |
-| `syncAuthority` | the app's sync provider authority when it is not `<package>.tap-sync` |
+| `waitForDevice` (`wait_for_device`) | how long to wait for a device another session holds; zero fails at once |
 
 The JUnit extension and the pytest plugin use the defaults; override them only from a script or
 a custom fixture. The driver itself is the daemon's: the one bundled in the executable, or a

@@ -93,9 +93,6 @@ data class Timeouts(
 data class DeviceOptions(
     /** Skip installing the daemon's driver: the device already has the right one. */
     val skipDriverInstall: Boolean = false,
-    /** Content-provider authority of the AUT's `sync-sdk`, when it is not the default. Experimental. */
-    @property:ExperimentalTapApi
-    val syncAuthority: String? = null,
     /** How long to wait for a device another session holds before failing; zero fails at once. */
     val waitForDevice: Duration = Duration.ZERO,
 )
@@ -105,7 +102,7 @@ data class DeviceOptions(
  * `suspend`. The client does not serialize calls on one device: issue them sequentially (the
  * normal test style), and use `coroutineScope` + `async` for concurrency across devices
  * (sibling failure cancels the other's in-flight RPC). Nothing here caches UI
- * state: [element] returns a lazy selector that every action resolves again, and mutations
+ * state: [App.element] and [Screen.element] return a lazy selector that every action resolves again, and mutations
  * fail with `AMBIGUOUS`/`NOT_FOUND` before any input when the selector does not match exactly
  * one node.
  *
@@ -130,8 +127,6 @@ class Device internal constructor(
     val attachedDeviceId: String,
     val serial: String,
     val generation: Long,
-    /** The AUT package the device was attached for; AUT-scoped selectors resolve in it. */
-    val autPackage: String,
     val timeouts: Timeouts,
     private val bounds: DeviceBounds = DeviceBounds(),
 ) {
@@ -193,19 +188,13 @@ class Device internal constructor(
         }
     }
 
-    // --- Elements and waits -------------------------------------------------------------------------
+    // --- Selector contexts --------------------------------------------------------------------------
 
-    /** A lazy [Element] for [selector]. Performs no I/O, so it is not suspend. */
-    fun element(selector: Selector): Element = Element(this, selector)
+    /** Elements of any window, of any app or the system UI; see [Screen]. */
+    val screen: Screen = Screen(this)
 
-    /** An [ElementWait] on [selector]. Performs no I/O, so it is not suspend. */
-    fun await(
-        selector: Selector,
-        timeout: Duration = timeouts.wait,
-    ): ElementWait = ElementWait(this, selector, timeout)
-
-    /** The [App] for [packageName] (default: the app under test). Performs no I/O, so it is not suspend. */
-    fun app(packageName: String = autPackage): App = App(this, packageName)
+    /** The app [packageName] on this device: its elements, lifecycle and waits; see [App]. Performs no I/O. */
+    fun app(packageName: String): App = App(this, packageName)
 
     /** API level, model, display size and the package owning the focused window. */
     suspend fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo.toModel()
@@ -348,17 +337,13 @@ class Device internal constructor(
         }
     }
 
-    /**
-     * Waits on the device until [packageName] owns the focused window. Throws
-     * [WaitTimeoutException] only when the device reports `WAIT_TIMEOUT`; any other failure
-     * (driver unhealthy, transport lost, ...) is a [CommandException].
-     */
-    suspend fun awaitAppVisible(
-        packageName: String = autPackage,
-        timeout: Duration = timeouts.wait,
+    /** [App.awaitVisible]. */
+    internal suspend fun awaitAppVisible(
+        packageName: String,
+        timeout: Duration,
     ) {
-        ensureTapBound("Device.awaitAppVisible")
-        admitted("Device.awaitAppVisible") {
+        ensureTapBound("App.awaitVisible")
+        admitted("App.awaitVisible") {
             val result =
                 rpcExecute(timeout) {
                     waitAppVisible = WaitAppVisible.newBuilder().setPackageName(packageName).build()
@@ -377,24 +362,15 @@ class Device internal constructor(
         }
     }
 
-    /**
-     * Waits on the device until the AUT's focused window has stopped changing for [stableFor]
-     * according to [signal]: the accessibility tree ([StabilitySignal.TREE]), the
-     * window pixels ([StabilitySignal.PIXELS], 0.5 % tolerance) or both (default).
-     * Content-changed events restart the quiet period. Use it explicitly after an action that
-     * starts an animation or a transition; no command waits for this implicitly. A screen that
-     * keeps changing (indeterminate spinner, ticker, video) times out with `SCREEN_CHANGING`.
-     * [awaitAppSettled] and [awaitAnimationEnd] are the two single-signal shorthands. Only a
-     * device `WAIT_TIMEOUT` becomes [WaitTimeoutException]; other failures are [CommandException]s.
-     */
-    suspend fun awaitScreenStable(
-        stableFor: Duration = 500.milliseconds,
-        timeout: Duration = timeouts.wait,
-        packageName: String = autPackage,
-        signal: StabilitySignal = StabilitySignal.ALL,
+    /** [App.awaitScreenStable] and its single-signal shorthands. */
+    internal suspend fun awaitScreenStable(
+        packageName: String,
+        stableFor: Duration,
+        timeout: Duration,
+        signal: StabilitySignal,
     ) {
-        ensureTapBound("Device.awaitScreenStable")
-        admitted("Device.awaitScreenStable") {
+        ensureTapBound("App.awaitScreenStable")
+        admitted("App.awaitScreenStable") {
             val result =
                 rpcExecute(timeout) {
                     waitScreenStable =
@@ -421,29 +397,8 @@ class Device internal constructor(
     }
 
     /**
-     * Maestro's `waitForAppToSettle`, on request only: the accessibility hierarchy of the AUT's
-     * window has not changed for [stableFor]. Cheap (no screenshots); sees layout, text and
-     * state changes but not pure drawing (a canvas animation, video).
-     */
-    suspend fun awaitAppSettled(
-        stableFor: Duration = 500.milliseconds,
-        timeout: Duration = timeouts.wait,
-        packageName: String = autPackage,
-    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.TREE)
-
-    /**
-     * Maestro's `waitForAnimationToEnd`, on request only: the AUT's window pixels have not
-     * changed (beyond 0.5 %) for [stableFor]. Costs one screenshot per 100 ms while waiting.
-     */
-    suspend fun awaitAnimationEnd(
-        stableFor: Duration = 500.milliseconds,
-        timeout: Duration = timeouts.wait,
-        packageName: String = autPackage,
-    ) = awaitScreenStable(stableFor, timeout, packageName, StabilitySignal.PIXELS)
-
-    /**
      * Host-side polling for conditions the driver cannot evaluate in one command (cross-device,
-     * backend state). Prefer [await] for UI conditions: it polls on the device in one RPC.
+     * backend state). Prefer [App.await] / [Screen.await] for UI conditions: they poll on the device in one RPC.
      * Uses [delay], so test-root cancellation and sibling failure cancel the poll promptly.
      * Admitted like any command, so [detachAndReport] waits for an in-flight poll and rejects
      * new polls once close starts; the [condition] runs inside the admission (reentrant), so
@@ -731,11 +686,9 @@ class Device internal constructor(
         }
 
     companion object {
-        @OptIn(ExperimentalTapApi::class) // passes DeviceOptions.syncAuthority through
         internal suspend fun attachDevice(
             connection: TapConnection,
             serial: String,
-            autPackage: String,
             timeouts: Timeouts,
             options: DeviceOptions,
             bounds: DeviceBounds = DeviceBounds(),
@@ -747,13 +700,11 @@ class Device internal constructor(
                     .newBuilder()
                     .setClientConnectionId(connection.id)
                     .setSerial(serial)
-                    .setAutPackage(autPackage)
                     .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
                     .apply {
                         // Absent = fail at once when another session holds the device.
                         if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                         if (options.skipDriverInstall) setSkipDriverInstall(true)
-                        options.syncAuthority?.let { setSyncAuthority(it) }
                     }.build()
             val response =
                 mapped(serial) {
@@ -761,7 +712,7 @@ class Device internal constructor(
                         .withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS)
                         .attach(request)
                 }
-            return Device(connection, response.attachedDeviceId, response.serial, response.generation, autPackage, timeouts, bounds)
+            return Device(connection, response.attachedDeviceId, response.serial, response.generation, timeouts, bounds)
         }
     }
 }

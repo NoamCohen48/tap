@@ -1,7 +1,7 @@
 // tap.v1 — element selectors.
 //
 // Part of the Tap host server API (see README.md for the file map) and of the device wire
-// protocol. Every sum type is a `oneof` (`Node.kind`, `Selector.scope`, `Selector.pick`), so
+// protocol. Every sum type is a `oneof` (`Node.kind`, `Selector.pick`), so
 // each variant carries exactly its own fields. Validated by the same code
 // (:contracts:protocol CommandValidation) on the server and on the driver.
 
@@ -17,7 +17,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file selector.proto.
  */
 export const file_selector: GenFile = /*@__PURE__*/
-  fileDesc("Cg5zZWxlY3Rvci5wcm90bxIGdGFwLnYxIl8KBU1hdGNoEiYKCHByb3BlcnR5GAEgASgOMhQudGFwLnYxLlRleHRQcm9wZXJ0eRINCgV2YWx1ZRgCIAEoCRIfCgRtb2RlGAMgASgOMhEudGFwLnYxLk1hdGNoTW9kZSI5CgRGbGFnEiIKCHByb3BlcnR5GAEgASgOMhAudGFwLnYxLk5vZGVGbGFnEg0KBXZhbHVlGAIgASgIIlsKClJlc291cmNlSWQSDAoEbmFtZRgBIAEoCRIZCgxwYWNrYWdlX25hbWUYAiABKAlIAIgBARITCgthdXRfcGFja2FnZRgDIAEoCEIPCg1fcGFja2FnZV9uYW1lIkkKB1JlbGF0ZWQSIgoIcmVsYXRpb24YASABKA4yEC50YXAudjEuUmVsYXRpb24SGgoEbm9kZRgCIAEoCzIMLnRhcC52MS5Ob2RlIiQKBUFsbE9mEhsKBW5vZGVzGAEgAygLMgwudGFwLnYxLk5vZGUiJAoFQW55T2YSGwoFbm9kZXMYASADKAsyDC50YXAudjEuTm9kZSLaAQoETm9kZRIeCgVtYXRjaBgBIAEoCzINLnRhcC52MS5NYXRjaEgAEhwKBGZsYWcYAiABKAsyDC50YXAudjEuRmxhZ0gAEiYKCHJlc291cmNlGAMgASgLMhIudGFwLnYxLlJlc291cmNlSWRIABIiCgdyZWxhdGVkGAQgASgLMg8udGFwLnYxLlJlbGF0ZWRIABIfCgZhbGxfb2YYBSABKAsyDS50YXAudjEuQWxsT2ZIABIfCgZhbnlfb2YYBiABKAsyDS50YXAudjEuQW55T2ZIAEIGCgRraW5kIgoKCEF1dFNjb3BlIiMKC1N5c3RlbVNjb3BlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSIQCg5BbnlXaW5kb3dTY29wZSIMCgpFeGFjdGx5T25lIgcKBUZpcnN0IhMKAkF0Eg0KBWluZGV4GAEgASgFIpICCghTZWxlY3RvchIaCgRub2RlGAEgASgLMgwudGFwLnYxLk5vZGUSHwoDYXV0GAIgASgLMhAudGFwLnYxLkF1dFNjb3BlSAASJQoGc3lzdGVtGAMgASgLMhMudGFwLnYxLlN5c3RlbVNjb3BlSAASLAoKYW55X3dpbmRvdxgHIAEoCzIWLnRhcC52MS5BbnlXaW5kb3dTY29wZUgAEikKC2V4YWN0bHlfb25lGAQgASgLMhIudGFwLnYxLkV4YWN0bHlPbmVIARIeCgVmaXJzdBgFIAEoCzINLnRhcC52MS5GaXJzdEgBEhgKAmF0GAYgASgLMgoudGFwLnYxLkF0SAFCBwoFc2NvcGVCBgoEcGljayqEAQoJTWF0Y2hNb2RlEhUKEU1BVENIX1VOU1BFQ0lGSUVEEAASDwoLTUFUQ0hfRVhBQ1QQARISCg5NQVRDSF9DT05UQUlOUxACEhUKEU1BVENIX1NUQVJUU19XSVRIEAMSEwoPTUFUQ0hfRU5EU19XSVRIEAQSDwoLTUFUQ0hfUkVHRVgQBSqJAQoMVGV4dFByb3BlcnR5EhgKFFBST1BFUlRZX1VOU1BFQ0lGSUVEEAASEQoNUFJPUEVSVFlfVEVYVBABEiAKHFBST1BFUlRZX0NPTlRFTlRfREVTQ1JJUFRJT04QAhIRCg1QUk9QRVJUWV9ISU5UEAMSFwoTUFJPUEVSVFlfQ0xBU1NfTkFNRRAEKtMBCghOb2RlRmxhZxIUChBGTEFHX1VOU1BFQ0lGSUVEEAASEAoMRkxBR19FTkFCTEVEEAESEAoMRkxBR19DSEVDS0VEEAISEgoORkxBR19DSEVDS0FCTEUQAxISCg5GTEFHX0NMSUNLQUJMRRAEEhAKDEZMQUdfRk9DVVNFRBAFEhIKDkZMQUdfRk9DVVNBQkxFEAYSFwoTRkxBR19MT05HX0NMSUNLQUJMRRAHEhMKD0ZMQUdfU0NST0xMQUJMRRAIEhEKDUZMQUdfU0VMRUNURUQQCSp9CghSZWxhdGlvbhIYChRSRUxBVElPTl9VTlNQRUNJRklFRBAAEhMKD1JFTEFUSU9OX1BBUkVOVBABEhUKEVJFTEFUSU9OX0FOQ0VTVE9SEAISEgoOUkVMQVRJT05fQ0hJTEQQAxIXChNSRUxBVElPTl9ERVNDRU5EQU5UEARCMwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDVNlbGVjdG9yUHJvdG9QAWIGcHJvdG8z");
+  fileDesc("Cg5zZWxlY3Rvci5wcm90bxIGdGFwLnYxIl8KBU1hdGNoEiYKCHByb3BlcnR5GAEgASgOMhQudGFwLnYxLlRleHRQcm9wZXJ0eRINCgV2YWx1ZRgCIAEoCRIfCgRtb2RlGAMgASgOMhEudGFwLnYxLk1hdGNoTW9kZSI5CgRGbGFnEiIKCHByb3BlcnR5GAEgASgOMhAudGFwLnYxLk5vZGVGbGFnEg0KBXZhbHVlGAIgASgIIkYKClJlc291cmNlSWQSDAoEbmFtZRgBIAEoCRIZCgxwYWNrYWdlX25hbWUYAiABKAlIAIgBAUIPCg1fcGFja2FnZV9uYW1lIkkKB1JlbGF0ZWQSIgoIcmVsYXRpb24YASABKA4yEC50YXAudjEuUmVsYXRpb24SGgoEbm9kZRgCIAEoCzIMLnRhcC52MS5Ob2RlIiQKBUFsbE9mEhsKBW5vZGVzGAEgAygLMgwudGFwLnYxLk5vZGUiJAoFQW55T2YSGwoFbm9kZXMYASADKAsyDC50YXAudjEuTm9kZSLaAQoETm9kZRIeCgVtYXRjaBgBIAEoCzINLnRhcC52MS5NYXRjaEgAEhwKBGZsYWcYAiABKAsyDC50YXAudjEuRmxhZ0gAEiYKCHJlc291cmNlGAMgASgLMhIudGFwLnYxLlJlc291cmNlSWRIABIiCgdyZWxhdGVkGAQgASgLMg8udGFwLnYxLlJlbGF0ZWRIABIfCgZhbGxfb2YYBSABKAsyDS50YXAudjEuQWxsT2ZIABIfCgZhbnlfb2YYBiABKAsyDS50YXAudjEuQW55T2ZIAEIGCgRraW5kIgwKCkV4YWN0bHlPbmUiBwoFRmlyc3QiEwoCQXQSDQoFaW5kZXgYASABKAUikwEKCFNlbGVjdG9yEhoKBG5vZGUYASABKAsyDC50YXAudjEuTm9kZRIpCgtleGFjdGx5X29uZRgEIAEoCzISLnRhcC52MS5FeGFjdGx5T25lSAASHgoFZmlyc3QYBSABKAsyDS50YXAudjEuRmlyc3RIABIYCgJhdBgGIAEoCzIKLnRhcC52MS5BdEgAQgYKBHBpY2sqhAEKCU1hdGNoTW9kZRIVChFNQVRDSF9VTlNQRUNJRklFRBAAEg8KC01BVENIX0VYQUNUEAESEgoOTUFUQ0hfQ09OVEFJTlMQAhIVChFNQVRDSF9TVEFSVFNfV0lUSBADEhMKD01BVENIX0VORFNfV0lUSBAEEg8KC01BVENIX1JFR0VYEAUqpAEKDFRleHRQcm9wZXJ0eRIYChRQUk9QRVJUWV9VTlNQRUNJRklFRBAAEhEKDVBST1BFUlRZX1RFWFQQARIgChxQUk9QRVJUWV9DT05URU5UX0RFU0NSSVBUSU9OEAISEQoNUFJPUEVSVFlfSElOVBADEhcKE1BST1BFUlRZX0NMQVNTX05BTUUQBBIZChVQUk9QRVJUWV9QQUNLQUdFX05BTUUQBSrTAQoITm9kZUZsYWcSFAoQRkxBR19VTlNQRUNJRklFRBAAEhAKDEZMQUdfRU5BQkxFRBABEhAKDEZMQUdfQ0hFQ0tFRBACEhIKDkZMQUdfQ0hFQ0tBQkxFEAMSEgoORkxBR19DTElDS0FCTEUQBBIQCgxGTEFHX0ZPQ1VTRUQQBRISCg5GTEFHX0ZPQ1VTQUJMRRAGEhcKE0ZMQUdfTE9OR19DTElDS0FCTEUQBxITCg9GTEFHX1NDUk9MTEFCTEUQCBIRCg1GTEFHX1NFTEVDVEVEEAkqfQoIUmVsYXRpb24SGAoUUkVMQVRJT05fVU5TUEVDSUZJRUQQABITCg9SRUxBVElPTl9QQVJFTlQQARIVChFSRUxBVElPTl9BTkNFU1RPUhACEhIKDlJFTEFUSU9OX0NISUxEEAMSFwoTUkVMQVRJT05fREVTQ0VOREFOVBAEQjMKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQg1TZWxlY3RvclByb3RvUAFiBnByb3RvMw");
 
 /**
  * A string property compared against `value` under `mode`.
@@ -73,10 +73,9 @@ export const FlagSchema: GenMessage<Flag> = /*@__PURE__*/
   messageDesc(file_selector, 1);
 
 /**
- * A resource id. With `package_name`: the View id `package_name:id/name`. With `aut_package`:
- * the same, with the session's app under test filled in by the driver (so the selector stays
- * session-free); mutually exclusive with `package_name`. With neither: the exact, unqualified
- * resource name, which is how a Compose testTag appears under testTagsAsResourceId.
+ * A View resource id. With `package_name`: exactly `package_name:id/name`. Without: `name` in any
+ * package (`<any>:id/name`) or the bare `name`, which is how a Compose testTag appears under
+ * testTagsAsResourceId. `name` never contains `:id/`; put the package in `package_name`.
  *
  * @generated from message tap.v1.ResourceId
  */
@@ -90,11 +89,6 @@ export type ResourceId = Message<"tap.v1.ResourceId"> & {
    * @generated from field: optional string package_name = 2;
    */
   packageName?: string | undefined;
-
-  /**
-   * @generated from field: bool aut_package = 3;
-   */
-  autPackage: boolean;
 };
 
 /**
@@ -224,56 +218,6 @@ export const NodeSchema: GenMessage<Node> = /*@__PURE__*/
   messageDesc(file_selector, 6);
 
 /**
- * Scope variants: where a selector searches.
- * - aut (default): the focused window of the app under test.
- * - system: the focused window of `package_name`, any package (a system dialog, another app).
- *   The name is historical; there is no allowlist.
- * - any_window: every window on screen, of any package, in the order the accessibility
- *   service reports them.
- *
- * @generated from message tap.v1.AutScope
- */
-export type AutScope = Message<"tap.v1.AutScope"> & {
-};
-
-/**
- * Describes the message tap.v1.AutScope.
- * Use `create(AutScopeSchema)` to create a new message.
- */
-export const AutScopeSchema: GenMessage<AutScope> = /*@__PURE__*/
-  messageDesc(file_selector, 7);
-
-/**
- * @generated from message tap.v1.SystemScope
- */
-export type SystemScope = Message<"tap.v1.SystemScope"> & {
-  /**
-   * @generated from field: string package_name = 1;
-   */
-  packageName: string;
-};
-
-/**
- * Describes the message tap.v1.SystemScope.
- * Use `create(SystemScopeSchema)` to create a new message.
- */
-export const SystemScopeSchema: GenMessage<SystemScope> = /*@__PURE__*/
-  messageDesc(file_selector, 8);
-
-/**
- * @generated from message tap.v1.AnyWindowScope
- */
-export type AnyWindowScope = Message<"tap.v1.AnyWindowScope"> & {
-};
-
-/**
- * Describes the message tap.v1.AnyWindowScope.
- * Use `create(AnyWindowScopeSchema)` to create a new message.
- */
-export const AnyWindowScopeSchema: GenMessage<AnyWindowScope> = /*@__PURE__*/
-  messageDesc(file_selector, 9);
-
-/**
  * Pick variants: exactly one match (default; more is AMBIGUOUS), the first in accessibility
  * order, or the zero-based `index`-th in accessibility order (NOT_FOUND when absent).
  *
@@ -287,7 +231,7 @@ export type ExactlyOne = Message<"tap.v1.ExactlyOne"> & {
  * Use `create(ExactlyOneSchema)` to create a new message.
  */
 export const ExactlyOneSchema: GenMessage<ExactlyOne> = /*@__PURE__*/
-  messageDesc(file_selector, 10);
+  messageDesc(file_selector, 7);
 
 /**
  * @generated from message tap.v1.First
@@ -300,7 +244,7 @@ export type First = Message<"tap.v1.First"> & {
  * Use `create(FirstSchema)` to create a new message.
  */
 export const FirstSchema: GenMessage<First> = /*@__PURE__*/
-  messageDesc(file_selector, 11);
+  messageDesc(file_selector, 8);
 
 /**
  * @generated from message tap.v1.At
@@ -317,10 +261,11 @@ export type At = Message<"tap.v1.At"> & {
  * Use `create(AtSchema)` to create a new message.
  */
 export const AtSchema: GenMessage<At> = /*@__PURE__*/
-  messageDesc(file_selector, 12);
+  messageDesc(file_selector, 9);
 
 /**
- * A complete selector: the node tree, its scope and how an action picks among matches.
+ * A complete selector: the node tree and how an action picks among matches. Package ownership
+ * is an ordinary PROPERTY_PACKAGE_NAME predicate; there is no separate execution scope.
  * Built by the client DSLs and validated identically by the server and the driver.
  *
  * @generated from message tap.v1.Selector
@@ -330,29 +275,6 @@ export type Selector = Message<"tap.v1.Selector"> & {
    * @generated from field: tap.v1.Node node = 1;
    */
   node?: Node | undefined;
-
-  /**
-   * @generated from oneof tap.v1.Selector.scope
-   */
-  scope: {
-    /**
-     * @generated from field: tap.v1.AutScope aut = 2;
-     */
-    value: AutScope;
-    case: "aut";
-  } | {
-    /**
-     * @generated from field: tap.v1.SystemScope system = 3;
-     */
-    value: SystemScope;
-    case: "system";
-  } | {
-    /**
-     * @generated from field: tap.v1.AnyWindowScope any_window = 7;
-     */
-    value: AnyWindowScope;
-    case: "anyWindow";
-  } | { case: undefined; value?: undefined };
 
   /**
    * @generated from oneof tap.v1.Selector.pick
@@ -383,7 +305,7 @@ export type Selector = Message<"tap.v1.Selector"> & {
  * Use `create(SelectorSchema)` to create a new message.
  */
 export const SelectorSchema: GenMessage<Selector> = /*@__PURE__*/
-  messageDesc(file_selector, 13);
+  messageDesc(file_selector, 10);
 
 /**
  * How a Match compares; REGEX is RE2 syntax, full match.
@@ -462,6 +384,11 @@ export enum TextProperty {
    * @generated from enum value: PROPERTY_CLASS_NAME = 4;
    */
   PROPERTY_CLASS_NAME = 4,
+
+  /**
+   * @generated from enum value: PROPERTY_PACKAGE_NAME = 5;
+   */
+  PROPERTY_PACKAGE_NAME = 5,
 }
 
 /**

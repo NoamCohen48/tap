@@ -53,26 +53,25 @@ def test_a_taken_held_name_is_a_precondition_failure(client):
 
 def test_connections_list_holds_idleness_and_devices(client):
     held = client.connect("agent", hold=60)
-    held.attach_device("emulator-5554", "com.example")
+    held.attach_device("emulator-5554")
     with client.connect("test") as observed:
         rows = {c.id: c for c in client.connections()}
         assert rows[held.id].hold == 60 and rows[held.id].idle == 1.5
         (device,) = rows[held.id].attached_devices
-        assert (device.serial, device.aut_package, device.generation) == ("emulator-5554", "com.example", 1)
+        assert (device.serial, device.generation) == ("emulator-5554", 1)
         assert rows[observed.id].hold is None and rows[observed.id].attached_devices == ()
 
 
 def test_another_client_resumes_a_held_connection_and_its_devices(fake, client):
     held = client.connect("agent", hold=60)
-    attached = held.attach_device("emulator-5554", "com.example")
+    attached = held.attach_device("emulator-5554")
     with TapClient.create(fake.address, TOKEN) as later:
         resumed = later.resume("agent")
         assert (resumed.id, resumed.hold) == (held.id, 60)
         (device,) = resumed.attached_devices()
-        assert (device.attached_device_id, device.serial, device.aut_package, device.generation) == (
+        assert (device.attached_device_id, device.serial, device.generation) == (
             attached.attached_device_id,
             "emulator-5554",
-            "com.example",
             1,
         )
         device.press_back()
@@ -99,7 +98,7 @@ def _node(ref: str, **fields) -> pb.ScreenNode:
 
 
 def test_screen_snapshot_maps_nodes_and_changes(fake, client):
-    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as device:
+    with client.connect("t") as connection, connection.attach_device("emulator-5554") as device:
         fake.devices.snapshot = pb.ScreenSnapshotResponse(
             snapshot_id=4,
             rotation=1,
@@ -138,7 +137,7 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
 
 
 def test_screen_snapshot_asks_for_and_maps_selector_candidates(fake, client):
-    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as device:
+    with client.connect("t") as connection, connection.attach_device("emulator-5554") as device:
         candidates = [
             pb.SelectorCandidate(selector=res("login")._proto, kind=pb.SELECTOR_KIND_PLAIN),
             pb.SelectorCandidate(selector=text("Log in")._proto, kind=pb.SELECTOR_KIND_PLAIN),
@@ -157,7 +156,7 @@ def test_screen_snapshot_asks_for_and_maps_selector_candidates(fake, client):
 
 
 def test_resolve_ref_returns_the_selector_or_unknown_ref(fake, client):
-    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as device:
+    with client.connect("t") as connection, connection.attach_device("emulator-5554") as device:
         fake.devices.refs["e3"] = res("login")._proto
         assert device.resolve_ref("@e3").render() == res("login").render()
         with pytest.raises(ServerError) as info:
@@ -177,12 +176,12 @@ def test_every_node_enum_value_maps_to_a_model_constant():
 
 
 def test_event_log_is_the_calls_as_proto_json(fake, client):
-    with client.connect("t") as connection, connection.attach_device("emulator-5554", "com.example") as device:
-        device.element(res("login")).tap()
+    with client.connect("t") as connection, connection.attach_device("emulator-5554") as device:
+        device.screen.element(res("login")).tap()
         device.info()  # a diagnostic query: not logged
         fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_FOUND, detail="0 matches"))
         with pytest.raises(TapError):
-            device.element(res("gone")).tap()
+            device.screen.element(res("gone")).tap()
         log = connection.event_log()
         assert log.dropped == 0 and [e.seq for e in log.events] == [1, 2]
         first, second = log.events
@@ -190,7 +189,7 @@ def test_event_log_is_the_calls_as_proto_json(fake, client):
         # Proto3 JSON: .proto field names, enums by name, int64 as a string.
         assert first.command == {
             "timeout_ms": "10000",
-            "tap": {"selector": {"node": {"resource": {"name": "login", "aut_package": True}}}},
+            "tap": {"selector": {"node": {"resource": {"name": "login"}}}},
         }
         assert not second.ok and second.error == {"code": "ERR_NOT_FOUND", "detail": "0 matches"}
         assert second.to_dict() == {
@@ -198,7 +197,6 @@ def test_event_log_is_the_calls_as_proto_json(fake, client):
             "at": "2026-09-21T14:13:20.001Z",
             "duration_ms": 5,
             "serial": "emulator-5554",
-            "aut_package": "com.example",
             "ok": False,
             "command": second.command,
             "error": second.error,

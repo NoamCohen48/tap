@@ -20,7 +20,7 @@ from .conftest import device_answers
 
 pytestmark = pytest.mark.anyio
 
-SEARCH = {"node": {"resource": {"name": "search", "aut_package": True}}}
+SEARCH = {"node": {"resource": {"name": "search"}}}
 
 
 def step(**kind) -> pb.Step:
@@ -33,13 +33,13 @@ def tap_search() -> pb.PerformRequest:
 
 @pytest.fixture
 async def attached(studio):
-    await studio.attach(attach_request("emulator-5554", "com.example"), None)
+    await studio.attach(attach_request("emulator-5554"), None)
     yield studio
     await studio.close()
 
 
-def attach_request(serial: str, package: str) -> pb.AttachRequest:
-    return pb.AttachRequest(serial=serial, aut_package=package)
+def attach_request(serial: str) -> pb.AttachRequest:
+    return pb.AttachRequest(serial=serial)
 
 
 async def refused(call, code: Code, message: str = "") -> None:
@@ -50,8 +50,8 @@ async def refused(call, code: Code, message: str = "") -> None:
 
 
 async def test_attach_describes_the_device_and_release_detaches_it(studio, daemon):
-    session = (await studio.attach(attach_request("emulator-5554", "com.example"), None)).session
-    assert (session.device.serial, session.device.aut_package, session.device.api_level) == ("emulator-5554", "com.example", 34)
+    session = (await studio.attach(attach_request("emulator-5554"), None)).session
+    assert (session.device.serial, session.device.api_level) == ("emulator-5554", 34)
     assert (session.device.model, session.device.display_width, session.recording) == ("sdk_gphone64", 1080, True)
     assert daemon.connections.live[daemon.devices.attach_requests[-1].client_connection_id].name == "tap-studio"
     released = (await studio.release(pb.ReleaseRequest(), None)).session
@@ -62,7 +62,7 @@ async def test_attach_describes_the_device_and_release_detaches_it(studio, daemo
 
 
 async def test_attaching_again_releases_the_device_before(attached, daemon):
-    await attached.attach(attach_request("emulator-5556", "com.example"), None)
+    await attached.attach(attach_request("emulator-5556"), None)
     assert daemon.devices.detaches == ["attached-emulator-5554"]
     assert (await attached.get_session(pb.GetSessionRequest(), None)).session.device.serial == "emulator-5556"
 
@@ -73,11 +73,11 @@ async def test_no_daemon_is_unavailable_and_nothing_attached_is_a_precondition(d
 
     lonely = Studio(no_server)
     await refused(lonely.list_devices(pb.ListDevicesRequest(), None), Code.UNAVAILABLE, "tap start")
-    await refused(lonely.attach(attach_request("emulator-5554", "com.example"), None), Code.UNAVAILABLE)
+    await refused(lonely.attach(attach_request("emulator-5554"), None), Code.UNAVAILABLE)
     await refused(lonely.perform(tap_search(), None), Code.FAILED_PRECONDITION, "no device attached")
     await refused(lonely.count(pb.CountRequest(), None), Code.FAILED_PRECONDITION)
     await refused(anext(lonely.frames(pb.FramesRequest(), None)), Code.FAILED_PRECONDITION)
-    await refused(lonely.attach(pb.AttachRequest(serial="x"), None), Code.INVALID_ARGUMENT)
+    await refused(lonely.attach(pb.AttachRequest(), None), Code.INVALID_ARGUMENT, "serial")
 
 
 async def test_list_devices_asks_the_daemon(studio):
@@ -92,9 +92,7 @@ async def test_a_passing_step_is_recorded_with_its_wait_and_the_header(attached,
     [first, second] = [c.WhichOneof("op") for c in daemon.devices.commands[-2:]]
     assert (first, second) == ("wait_visible", "tap")
     recording = (await attached.get_recording(pb.GetRecordingRequest(), None)).recording
-    assert (recording.format, recording.aut_package, recording.device.serial, recording.device.api_level) == (
-        "tap-recording/1", "com.example", "emulator-5554", 34
-    )
+    assert (recording.format, recording.device.serial, recording.device.api_level) == ("tap-recording/1", "emulator-5554", 34)
     assert recording.recorder.startswith("tap-studio ") and recording.recorded_at.seconds > 0
     assert [s.id for s in recording.steps] == ["s1"]
     document = (await attached.get_recording(pb.GetRecordingRequest(), None)).document
@@ -148,20 +146,21 @@ async def test_invalid_steps_are_refused_before_the_device_sees_them(attached, d
     assert len(daemon.devices.commands) == before
 
 
-async def test_a_recording_stays_with_its_app(attached):
+async def test_a_recording_outlives_a_re_attach(attached):
+    """A recording spans whatever apps its steps name, not an attach: attaching again keeps
+    recording into it."""
     await attached.perform(tap_search(), None)
-    await attached.attach(attach_request("emulator-5554", "com.other"), None)
+    await attached.attach(attach_request("emulator-5554"), None)
     session = (await attached.get_session(pb.GetSessionRequest(), None)).session
-    assert (session.device.aut_package, session.recording_package) == ("com.other", "com.example")
-    await refused(attached.perform(tap_search(), None), Code.FAILED_PRECONDITION, "the recording is for com.example")
+    assert (session.device.serial, session.steps) == ("emulator-5554", 1)
     await attached.set_recording(pb.SetRecordingRequest(recording=False), None)
     assert not (await attached.perform(tap_search(), None)).recorded  # runs, paused
     await attached.set_recording(pb.SetRecordingRequest(recording=True), None)
-    fresh = (await attached.new_recording(pb.NewRecordingRequest(), None)).session
-    assert fresh.steps == 0 and fresh.recording_package == ""
     assert (await attached.perform(tap_search(), None)).recorded
     recording = (await attached.get_recording(pb.GetRecordingRequest(), None)).recording
-    assert recording.aut_package == "com.other" and [s.id for s in recording.steps] == ["s2"]
+    assert [s.id for s in recording.steps] == ["s1", "s2"]
+    fresh = (await attached.new_recording(pb.NewRecordingRequest(), None)).session
+    assert fresh.steps == 0
 
 
 async def test_count_asks_the_device(attached, daemon):
@@ -190,7 +189,7 @@ async def test_frames_stream_the_screen_and_end_on_release(attached, daemon):
 
 # --- phase 5: editing, opening and replaying -------------------------------------------------------
 
-GO = {"node": {"resource": {"name": "go", "aut_package": True}}}
+GO = {"node": {"resource": {"name": "go"}}}
 
 
 def tap_on(selector: dict) -> pb.Step:
@@ -337,8 +336,5 @@ async def test_nothing_else_changes_the_recording_while_a_replay_runs(attached):
     assert (await attached.perform(back(), None)).recorded
 
 
-async def test_replay_refuses_another_app_and_an_empty_recording(attached):
+async def test_replay_refuses_an_empty_recording(attached):
     await refused(anext(attached.replay(pb.ReplayRequest(), None)), Code.FAILED_PRECONDITION, "nothing to replay")
-    await attached.perform(back(), None)
-    await attached.attach(attach_request("emulator-5554", "com.other"), None)
-    await refused(anext(attached.replay(pb.ReplayRequest(), None)), Code.FAILED_PRECONDITION, "com.example")

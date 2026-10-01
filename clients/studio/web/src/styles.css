@@ -660,6 +660,15 @@ code,
 .menu button:hover {
   background: var(--surface-2);
 }
+.menu button:disabled {
+  color: var(--muted);
+  background: transparent;
+  cursor: default;
+}
+.menu > input {
+  margin: 4px 6px;
+  font-family: var(--mono);
+}
 .menu small {
   color: var(--muted);
   display: block;

@@ -4,7 +4,7 @@ Package `tap-e2e`, imported as `tap_e2e`. Everything below is generated from the
 type hints of `clients/python/tap_e2e`.
 
 ```python
-from tap_e2e import TapClient, res_id, text, desc, CONTAINS, DOWN, StabilitySignal
+from tap_e2e import TapClient, res, res_id, text, desc, CONTAINS, DOWN, StabilitySignal
 from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError, DeviceBusyError, ServerError
 ```
 
@@ -28,9 +28,11 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 
 ::: tap_e2e.selectors
 
-## App lifecycle
+## App and screen
 
 ::: tap_e2e.app.App
+
+::: tap_e2e.screen.Screen
 
 ## Values and artifacts
 

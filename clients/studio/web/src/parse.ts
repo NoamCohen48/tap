@@ -1,14 +1,14 @@
 // A typed selector, read back into the message: the Kotlin SDK's selector DSL
 // (`res("row").andText("Wool socks").hasDescendant(desc("Add"))`, `text("Allow") or text("OK")`,
-// `.inPackage("android").at(2)`), which is also what `describeSelector` prints. It builds the tree
-// the SDK builds: conjunctions and disjunctions flattened, the same operand rules. Beyond the DSL it
-// accepts every flag and `has*` relation as a factory, which `describeSelector` needs for a selector
-// that has only those (`allOf(enabled(false), hasParent(res("row")))`).
+// `.at(2)`), which is also what `describeSelector` prints. It builds the tree the SDK builds:
+// conjunctions and disjunctions flattened, the same operand rules. Beyond the DSL it accepts every
+// flag and `has*` relation as a factory, which `describeSelector` needs for a selector that has
+// only those (`allOf(enabled(false), hasParent(res("row")))`), and `packageName("…")` /
+// `.andPackageName("…")` for the package predicate `App.element` adds.
 
-import { create, equals } from "@bufbuild/protobuf";
+import { create } from "@bufbuild/protobuf";
 import { FACTORY, FLAGS, MODE_NAMES, RELATIONS } from "./describe";
 import {
-  AnyWindowScopeSchema,
   AtSchema,
   FirstSchema,
   MatchMode,
@@ -16,7 +16,6 @@ import {
   NodeSchema,
   Relation,
   SelectorSchema,
-  SystemScopeSchema,
   TextProperty,
   type Node,
   type Selector,
@@ -24,9 +23,8 @@ import {
 
 export type Parsed = { selector: Selector } | { error: string; at: number };
 
-type Scope = Selector["scope"];
 type Pick = Selector["pick"];
-type Sel = { node: Node; scope: Scope; pick: Pick };
+type Sel = { node: Node; pick: Pick };
 type Value =
   | { kind: "selector"; value: Sel }
   | { kind: "string"; value: string }
@@ -49,7 +47,7 @@ export function parseSelector(text: string): Parsed {
     const parser = new Parser(tokenize(text));
     const sel = parser.expression();
     parser.expect("end");
-    return { selector: create(SelectorSchema, { node: sel.node, scope: sel.scope, pick: sel.pick }) };
+    return { selector: create(SelectorSchema, { node: sel.node, pick: sel.pick }) };
   } catch (error) {
     if (error instanceof ParseError) return { error: error.message, at: error.at };
     throw error;
@@ -128,7 +126,7 @@ function disjunction(...nodes: Node[]): Node {
   return flat.length === 1 ? flat[0]! : create(NodeSchema, { kind: { case: "anyOf", value: { nodes: flat } } });
 }
 
-const bare = (n: Node): Sel => ({ node: n, scope: { case: undefined }, pick: { case: undefined } });
+const bare = (n: Node): Sel => ({ node: n, pick: { case: undefined } });
 
 function match(property: TextProperty, value: string, mode = MatchMode.MATCH_EXACT): Node {
   return create(NodeSchema, { kind: { case: "match", value: { property, value, mode } } });
@@ -146,9 +144,13 @@ const reverse = <K extends number>(table: Record<K, string>) =>
   new Map(Object.entries(table).map(([k, v]) => [v as string, Number(k) as K]));
 
 const MATCH_FACTORIES = new Map<string, TextProperty>(
-  [TextProperty.PROPERTY_TEXT, TextProperty.PROPERTY_CONTENT_DESCRIPTION, TextProperty.PROPERTY_HINT, TextProperty.PROPERTY_CLASS_NAME].map(
-    (p) => [FACTORY[p], p],
-  ),
+  [
+    TextProperty.PROPERTY_TEXT,
+    TextProperty.PROPERTY_CONTENT_DESCRIPTION,
+    TextProperty.PROPERTY_HINT,
+    TextProperty.PROPERTY_CLASS_NAME,
+    TextProperty.PROPERTY_PACKAGE_NAME,
+  ].map((p) => [FACTORY[p], p]),
 );
 const TEXT_SHORTHANDS = new Map<string, MatchMode>([
   ["textContains", MatchMode.MATCH_CONTAINS],
@@ -278,10 +280,6 @@ class Parser {
     switch (name) {
       case "res": {
         const [resource] = this.take(name, args, at, ["string"]);
-        return bare(create(NodeSchema, { kind: { case: "resource", value: { name: resource as string, autPackage: true } } }));
-      }
-      case "rawRes": {
-        const [resource] = this.take(name, args, at, ["string"]);
         return bare(create(NodeSchema, { kind: { case: "resource", value: { name: resource as string } } }));
       }
       case "resId": {
@@ -305,7 +303,7 @@ class Parser {
     const relation = RELATION_NAMES.get(name);
     if (relation !== undefined) {
       const [other] = this.take(name, args, at, ["selector"]);
-      return bare(related(relation, this.operand(name, bare(create(NodeSchema)), other as Sel, at).node));
+      return bare(related(relation, this.operand(name, other as Sel, at).node));
     }
     throw new ParseError(`unknown selector ${name}(…)`, at);
   }
@@ -324,7 +322,7 @@ class Parser {
       case "andRes": {
         const [first, second] = this.take(name, args, at, ["string"], ["string"]);
         const value =
-          second === undefined ? { name: first as string, autPackage: true } : { name: second as string, packageName: first as string };
+          second === undefined ? { name: first as string } : { name: second as string, packageName: first as string };
         return also(create(NodeSchema, { kind: { case: "resource", value } }));
       }
       case "and":
@@ -336,17 +334,9 @@ class Parser {
         const [other] = this.take(name, args, at, ["selector"]);
         if (sel.pick.case) throw new ParseError(`${name}: the receiver picks a match (first()/at()); pick on the result instead`, at);
         const target = other as Sel;
-        this.sameScope(name, sel, target, at);
         const relation = name === "descendant" ? Relation.ANCESTOR : Relation.PARENT;
-        return { node: conjunction(target.node, related(relation, sel.node)), scope: sel.scope, pick: target.pick };
+        return { node: conjunction(target.node, related(relation, sel.node)), pick: target.pick };
       }
-      case "inPackage": {
-        const [packageName] = this.take(name, args, at, ["string"]);
-        return { ...sel, scope: { case: "system", value: create(SystemScopeSchema, { packageName: packageName as string }) } };
-      }
-      case "inAnyWindow":
-        this.take(name, args, at, []);
-        return { ...sel, scope: { case: "anyWindow", value: create(AnyWindowScopeSchema) } };
       case "first":
         this.take(name, args, at, []);
         return { ...sel, pick: { case: "first", value: create(FirstSchema) } };
@@ -364,33 +354,23 @@ class Parser {
     const relation = RELATION_NAMES.get(name);
     if (relation !== undefined) {
       const [other] = this.take(name, args, at, ["selector"]);
-      return also(related(relation, this.operand(name, sel, other as Sel, at).node));
+      return also(related(relation, this.operand(name, other as Sel, at).node));
     }
     throw new ParseError(`unknown call .${name}(…)`, at);
   }
 
   private and(left: Sel, right: Sel, at: number): Sel {
-    return { ...left, node: conjunction(left.node, this.operand("and", left, right, at).node) };
+    return { ...left, node: conjunction(left.node, this.operand("and", right, at).node) };
   }
 
   private or(left: Sel, right: Sel, at: number): Sel {
-    return { ...left, node: disjunction(left.node, this.operand("or", left, right, at).node) };
+    return { ...left, node: disjunction(left.node, this.operand("or", right, at).node) };
   }
 
-  /** An operand of and / or / has*: a bare predicate, so it can carry no pick or other scope. */
-  private operand(name: string, receiver: Sel, other: Sel, at: number): Sel {
+  /** An operand of and / or / has*: a bare predicate, so it can carry no pick. */
+  private operand(name: string, other: Sel, at: number): Sel {
     if (other.pick.case) throw new ParseError(`${name}: the operand picks a match (first()/at()), which a predicate cannot carry`, at);
-    this.sameScope(name, receiver, other, at);
     return other;
-  }
-
-  private sameScope(name: string, receiver: Sel, other: Sel, at: number): void {
-    if (
-      other.scope.case &&
-      !equals(SelectorSchema, create(SelectorSchema, { scope: other.scope }), create(SelectorSchema, { scope: receiver.scope }))
-    ) {
-      throw new ParseError(`${name}: the operand has another window scope`, at);
-    }
   }
 
   private selector(name: string, value: Value, at: number): Sel {

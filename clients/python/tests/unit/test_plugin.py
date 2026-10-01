@@ -42,7 +42,6 @@ def test_capture_mode_parses_on_failure_and_off_only():
 
 def test_single_role_moves_past_a_busy_device_and_waits_only_when_all_are(fake):
     config = TapConfig(
-        aut="com.test",
         serials=[],
         artifacts=pathlib.Path("tap-artifacts"),
         server=fake.address,
@@ -106,14 +105,14 @@ def test_held_devices_are_reused_only_while_they_answer(fake, pytestconfig):
     server = TapClient.create(fake.address, TOKEN)
     connection = server.connect("test")
     try:
-        device = connection.attach_device("serial-aaa", "com.test")
+        device = connection.attach_device("serial-aaa")
         pytestconfig.stash[_HELD] = _Held("module", "tests/test_a.py", ["device"], {"device": device})
         assert _reusable(pytestconfig, "tests/test_a.py", ["device"]) == {"device": device}
         # Another scope or other roles: the held device is detached, nothing is reused.
         assert _reusable(pytestconfig, "tests/test_b.py", ["device"]) is None
         assert device.detached and pytestconfig.stash[_HELD] is None
 
-        again = connection.attach_device("serial-aaa", "com.test")
+        again = connection.attach_device("serial-aaa")
         pytestconfig.stash[_HELD] = _Held("module", "tests/test_a.py", ["device"], {"device": again})
         fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_DRIVER_UNHEALTHY))
         assert _reusable(pytestconfig, "tests/test_a.py", ["device"]) is None

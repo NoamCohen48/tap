@@ -7,7 +7,7 @@ import io.github.noamcohen48.tap.api.v1.WaitVisible
 import kotlin.time.Duration
 
 /**
- * Wait builder returned by [Device.await] / [Element.await]. [visible], [one] and [gone] poll on the
+ * Wait builder returned by [App.await] / [Screen.await] / [Element.await]. [visible], [one] and [gone] poll on the
  * device in a single RPC; property waits poll snapshots from the host with [delay]-based
  * polling, so test-root cancellation and sibling failure cancel them promptly.
  *

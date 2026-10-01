@@ -50,7 +50,6 @@ class EventLogServiceTest {
     ) : DaemonDeviceSession {
         override val serial = "log-serial"
         override val generation = 3L
-        override val autPackage = "com.example"
 
         override fun app(packageName: String): AppLifecycle = error("no app in this fake")
 
@@ -76,8 +75,7 @@ class EventLogServiceTest {
                     daemon.attachDevice(
                         connection.id,
                         "log-serial",
-                        "com.example",
-                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, syncAuthority = null, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0),
+                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0),
                     )
                 val name = InProcessServerBuilder.generateName()
                 val server =
@@ -131,7 +129,6 @@ class EventLogServiceTest {
                     assertEquals(LoggedEvent.CallCase.COMMAND, first.callCase)
                     assertEquals(tap, first.command)
                     assertEquals("log-serial", first.serial)
-                    assertEquals("com.example", first.autPackage)
                     assertTrue(first.atEpochMs > 0)
                     assertFalse(first.hasError() || first.hasFailure())
                     assertEquals(missing, second.command)

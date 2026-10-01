@@ -115,11 +115,17 @@ class SelectorsTest {
                         "Host validation should reject an empty conjunction: $error"
                     }
                 }
+                // Package ownership is a predicate: another package's resource simply matches nothing here.
                 val foreignResource = client.send(Commands.exists(Selectors.androidResource("com.other.app", "duplicate_button")))
-                check(
-                    !foreignResource.ok && foreignResource.errorCode == ErrorCode.ERR_INVALID_SELECTOR &&
-                        foreignResource.detail == ErrorDetail.SCOPE_DENIED,
-                ) { "Foreign AUT resource should be SCOPE_DENIED: $foreignResource" }
+                check(foreignResource.ok && !foreignResource.result.bool) { "Another package's resource matched: $foreignResource" }
+                check(client.execute(Commands.count(Selectors.resource("duplicate_button"))).count == 2) {
+                    "a package-less id should match the fixture's duplicate buttons"
+                }
+                runCatching { client.send(Commands.exists(Selectors.resource("$FIXTURE_PACKAGE:id/duplicate_button"))) }.exceptionOrNull().let { error ->
+                    check(error is InvalidCommandException && error.detail == ErrorDetail.QUALIFIED_RESOURCE_NAME) {
+                        "A qualified resource name should be rejected: $error"
+                    }
+                }
 
                 // Gestures.
                 check(client.send(Commands.longTap(GESTURE_TARGET)).ok)

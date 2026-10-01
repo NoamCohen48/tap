@@ -26,7 +26,7 @@ import {
 const WIDTH = 1080;
 const HEIGHT = 2400;
 
-const resSelector = (name: string) => create(SelectorSchema, { node: { kind: { case: "resource", value: { name, autPackage: true } } } });
+const resSelector = (name: string) => create(SelectorSchema, { node: { kind: { case: "resource", value: { name } } } });
 
 function node(
   ref: string,
@@ -75,7 +75,7 @@ function fakeStudio() {
     /** While set, each replayed step waits for it (or for the call to be cancelled). */
     replayGate: null as Promise<void> | null,
   };
-  const recording = () => create(RecordingSchema, { autPackage: "com.example", steps: state.steps, secrets: secretsOf(state.steps) });
+  const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps) });
   const edited = () => ({ recording: recording(), missingSecrets: state.missing.filter((name) => secretsOf(state.steps).includes(name)) });
   const index = (stepId: string) => {
     const at = state.steps.findIndex((s) => s.id === stepId);
@@ -95,7 +95,7 @@ function fakeStudio() {
       attach: (request) => {
         state.session = create(SessionSchema, {
           recording: state.session.recording,
-          device: { serial: request.serial, autPackage: request.autPackage, apiLevel: 34, model: "sdk_gphone64" },
+          device: { serial: request.serial, apiLevel: 34, model: "sdk_gphone64" },
         });
         return { session: state.session };
       },
@@ -226,6 +226,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -235,15 +236,20 @@ function click(x: number, y: number, init: { altKey?: boolean } = {}) {
   fireEvent.pointerUp(overlay, { button: 0, clientX: x, clientY: y, pointerId: 1, ...init });
 }
 
-async function attached() {
+/** Attaches emulator-5554 and, unless `app` is null, picks the App menu's package. */
+async function attached(app: string | null = "com.example") {
   const fake = fakeStudio();
   render(<App client={fake.client} />);
   const picker = await screen.findByRole("region", { name: "Attach a device" });
   await within(picker).findByText("emulator-5554");
   expect((within(picker).getByRole("radio", { name: /85e49002/ }) as HTMLInputElement).disabled).toBe(true);
-  fireEvent.change(within(picker).getByLabelText(/App under test/), { target: { value: "com.example" } });
   fireEvent.click(within(picker).getByRole("button", { name: "Attach" }));
   await screen.findByRole("img", { name: "The device's screen" });
+  if (app !== null) {
+    fireEvent.click(screen.getByRole("button", { name: "App" }));
+    fireEvent.change(screen.getByLabelText("App package"), { target: { value: app } });
+    fireEvent.keyDown(document, { key: "Escape" });
+  }
   return fake;
 }
 
@@ -270,7 +276,7 @@ describe("App", () => {
 
   it("attaches a device and shows its screen with the overlay", async () => {
     const fake = await attached();
-    expect(fake.state.session.device?.autPackage).toBe("com.example");
+    expect(fake.state.session.device?.serial).toBe("emulator-5554");
     expect(screen.getByText(/2 interactive|3 interactive/)).toBeTruthy();
     const boxes = screen.getByTestId("overlay").querySelectorAll(".ob");
     expect(boxes).toHaveLength(3);
@@ -281,7 +287,7 @@ describe("App", () => {
   it("records a tap on the clicked node, with the step in the list", async () => {
     const fake = await attached();
     act(() => click(300, 450));
-    await screen.findByText('element(res("go")).tap()');
+    await screen.findByText('screen.element(res("go")).tap()');
     expect(fake.state.performed).toHaveLength(1);
     const step = fake.state.performed[0]!.step!;
     expect(step.kind.case === "action" && step.kind.value.command?.op.case).toBe("tap");
@@ -291,7 +297,7 @@ describe("App", () => {
   it("Alt-click long-taps, and a node without a selector is only selected", async () => {
     const fake = await attached();
     act(() => click(300, 450, { altKey: true }));
-    await screen.findByText('element(res("go")).longTap()');
+    await screen.findByText('screen.element(res("go")).longTap()');
     act(() => click(650, 450));
     const inspector = screen.getByRole("region", { name: "Inspector" });
     expect(await within(inspector).findByText("@e4")).toBeTruthy();
@@ -307,7 +313,7 @@ describe("App", () => {
     fireEvent.click(within(dialog).getByLabelText("Secret"));
     fireEvent.change(within(dialog).getByLabelText("Text to enter"), { target: { value: "hunter2" } });
     fireEvent.keyDown(within(dialog).getByLabelText("Text to enter"), { key: "Enter" });
-    await screen.findByText('element(res("search")).setText(${secret})');
+    await screen.findByText('screen.element(res("search")).setText(${secret})');
     const request = fake.state.performed[0]!;
     expect(request.secretValue).toBe("hunter2");
     expect(JSON.stringify(request.step, (_k, v) => (typeof v === "bigint" ? String(v) : v))).not.toContain("hunter2");
@@ -319,7 +325,7 @@ describe("App", () => {
     act(() => click(300, 450));
     const dialog = await screen.findByRole("dialog", { name: /Check/ });
     fireEvent.click(within(dialog).getByRole("button", { name: "Text is “Go”" }));
-    await screen.findByText('await(res("go")).textEquals("Go")');
+    await screen.findByText('screen.await(res("go")).textEquals("Go")');
     expect(fake.state.performed).toHaveLength(1);
   });
 
@@ -342,7 +348,7 @@ describe("App", () => {
       fireEvent.pointerDown(overlay, { button: 0, clientX: 450, clientY: 450, pointerId: 1 });
       fireEvent.pointerUp(overlay, { button: 0, clientX: 120, clientY: 460, pointerId: 1 });
     });
-    await screen.findByText('element(res("go")).swipe(LEFT)');
+    await screen.findByText('screen.element(res("go")).swipe(LEFT)');
     expect(fake.state.performed).toHaveLength(1);
   });
 
@@ -368,13 +374,13 @@ describe("App", () => {
     act(() => click(300, 450));
     await screen.findByText("1 step");
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
-    expect((await screen.findByTestId("recording-json")).textContent).toContain('"autPackage": "com.example"');
+    expect((await screen.findByTestId("recording-json")).textContent).toContain('"steps": [');
 
     // The link is in the document when clicked, and its URL outlives the click: the browser
     // fetches it afterwards, so revoking it at once cancels the download.
     const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       expect(this.isConnected).toBe(true);
-      expect(this.download).toMatch(/^com\.example-\d{8}-\d{4}\.tap-recording\.json$/);
+      expect(this.download).toMatch(/^recording-\d{8}-\d{4}\.tap-recording\.json$/);
     });
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
@@ -422,7 +428,7 @@ describe("App", () => {
     async function recordTwo() {
       const fake = await attached();
       act(() => click(300, 450));
-      await screen.findByText('element(res("go")).tap()');
+      await screen.findByText('screen.element(res("go")).tap()');
       fireEvent.click(screen.getByRole("button", { name: "Back" }));
       await screen.findByText("pressBack()");
       return fake;
@@ -434,7 +440,7 @@ describe("App", () => {
       const inspector = screen.getByRole("region", { name: "Inspector" });
       fireEvent.click(within(inspector).getByRole("radio", { name: 'text("Go")' }));
       act(() => click(300, 450));
-      await screen.findByText('element(text("Go")).tap()');
+      await screen.findByText('screen.element(text("Go")).tap()');
       const step = fake.state.performed[0]!.step!;
       expect(step.kind.case === "action" && step.kind.value.selectorOrigin).toBe(SelectorOrigin.ALTERNATIVE);
     });
@@ -445,7 +451,7 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Home" }));
       await screen.findByText("pressHome()");
       expect(fake.state.performed[2]!.beforeStepId).toBe("s2");
-      expect(listed()).toEqual(['element(res("go")).tap()', "pressHome()", "pressBack()"]);
+      expect(listed()).toEqual(['screen.element(res("go")).tap()', "pressHome()", "pressBack()"]);
       expect(screen.getByText(/New steps go after step 2/)).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Add at the end" }));
       expect(screen.queryByText(/New steps go after/)).toBeNull();
@@ -464,7 +470,7 @@ describe("App", () => {
       expect(await within(editor).findByText("Matches 1 element now.", {}, { timeout: 2000 })).toBeTruthy();
       fireEvent.change(within(editor).getByLabelText("Note"), { target: { value: "the search button" } });
       fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
-      await screen.findByText('element(res("go").andText("Go")).tap()');
+      await screen.findByText('screen.element(res("go").andText("Go")).tap()');
       const saved = fake.state.updates[0]!.step!;
       expect(saved.note).toBe("the search button");
       expect(saved.kind.case === "action" && saved.kind.value.selectorOrigin).toBe(SelectorOrigin.EDITED);
@@ -478,7 +484,7 @@ describe("App", () => {
       const editor = screen.getByRole("form", { name: "Edit the step" });
       fireEvent.click(within(editor).getByRole("radio", { name: 'text("Go")' }));
       fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
-      await screen.findByText('element(text("Go")).tap()');
+      await screen.findByText('screen.element(text("Go")).tap()');
       const saved = fake.state.updates[0]!.step!;
       expect(saved.kind.case === "action" && saved.kind.value.selectorOrigin).toBe(SelectorOrigin.ALTERNATIVE);
     });
@@ -487,10 +493,33 @@ describe("App", () => {
       await recordTwo();
       fireEvent.click(screen.getByRole("button", { name: /pressBack/ }));
       fireEvent.click(screen.getByRole("button", { name: "Move up" }));
-      await waitFor(() => expect(listed()).toEqual(["pressBack()", 'element(res("go")).tap()']));
+      await waitFor(() => expect(listed()).toEqual(["pressBack()", 'screen.element(res("go")).tap()']));
       fireEvent.click(screen.getByRole("button", { name: "Delete the step" }));
-      await waitFor(() => expect(listed()).toEqual(['element(res("go")).tap()']));
+      await waitFor(() => expect(listed()).toEqual(['screen.element(res("go")).tap()']));
       expect(screen.getByText("1 step")).toBeTruthy();
+    });
+
+    it("the App menu acts on the package chosen in it, and nothing before one is", async () => {
+      const fake = await attached(null);
+      fireEvent.click(screen.getByRole("button", { name: "App" }));
+      const menu = screen.getByRole("menu", { name: "App" });
+      expect((within(menu).getByRole("menuitem", { name: /Force stop/ }) as HTMLButtonElement).disabled).toBe(true);
+      expect((within(menu).getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(within(menu).getByLabelText("App package"), { target: { value: " com.example.shop " } });
+      fireEvent.click(within(menu).getByRole("menuitem", { name: /Force stop/ }));
+      await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+      const step = fake.state.performed[0]!.step!;
+      expect(step.kind.case === "app" && [step.kind.value.operation, step.kind.value.packageName]).toEqual(["force_stop", "com.example.shop"]);
+      expect(window.localStorage.getItem("tap-studio.package")).toBe("com.example.shop");
+    });
+
+    it("a replay without an app chosen does not offer a cold launch", async () => {
+      const fake = await attached(null);
+      act(() => click(300, 450));
+      await screen.findByText('screen.element(res("go")).tap()');
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      await waitFor(() => expect(fake.state.replays).toHaveLength(1));
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
 
     it("a replay offers a cold launch first and shows how it went", async () => {
@@ -517,7 +546,6 @@ describe("App", () => {
 
       const opened = create(RecordingSchema, {
         format: "tap-recording/1",
-        autPackage: "com.example",
         steps: [{ id: "a1", kind: { case: "app", value: { operation: "cold_launch", packageName: "com.example" } } }],
       });
       const file = new File([toJsonString(RecordingSchema, opened)], "flow.tap-recording.json", { type: "application/json" });
@@ -565,7 +593,6 @@ describe("App", () => {
       const fake = await attached();
       const opened = create(RecordingSchema, {
         format: "tap-recording/1",
-        autPackage: "com.example",
         secrets: ["pin"],
         steps: [
           { id: "a1", kind: { case: "app", value: { operation: "cold_launch", packageName: "com.example" } } },
@@ -574,7 +601,7 @@ describe("App", () => {
       });
       const file = new File([toJsonString(RecordingSchema, opened)], "flow.tap-recording.json", { type: "application/json" });
       fireEvent.change(screen.getByLabelText("Recording file"), { target: { files: [file] } });
-      await screen.findByText('element(res("search")).typeText(${pin})');
+      await screen.findByText('screen.element(res("search")).typeText(${pin})');
       expect(screen.getByText("${pin} needs a value")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Replay" }));
       const dialog = await screen.findByRole("dialog", { name: "Values for the secrets" });

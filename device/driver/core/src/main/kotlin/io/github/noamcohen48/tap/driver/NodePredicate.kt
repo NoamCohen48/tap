@@ -13,19 +13,17 @@ import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.MAX_SELECTOR_DEPTH
-import io.github.noamcohen48.tap.protocol.qualifyingPackage
+import io.github.noamcohen48.tap.protocol.matchesId
 
 /**
  * Traversal-plan predicate over one node. Reads each element's [AccessibilityNodeInfo] once per
  * evaluation, however many property predicates the tree holds; relations walk the live
- * `UiObject2` tree and recycle every intermediate object. [autPackage] qualifies
- * `ResourceId.aut_package` resources.
+ * `UiObject2` tree and recycle every intermediate object.
  */
 internal class NodePredicate(
     node: Node,
-    autPackage: String,
 ) {
-    private val root = Compiled.of(node, autPackage)
+    private val root = Compiled.of(node)
 
     fun matches(element: UiObject2): Boolean = root.matches(element, element.accessibilityNodeInfo)
 
@@ -51,6 +49,7 @@ internal class NodePredicate(
                         TextProperty.PROPERTY_CONTENT_DESCRIPTION -> info.contentDescription
                         TextProperty.PROPERTY_HINT -> info.hintText
                         TextProperty.PROPERTY_CLASS_NAME -> info.className
+                        TextProperty.PROPERTY_PACKAGE_NAME -> info.packageName
                         TextProperty.PROPERTY_UNSPECIFIED, TextProperty.UNRECOGNIZED, null -> null
                     }
                 return matcher.matches(actual?.toString())
@@ -82,15 +81,12 @@ internal class NodePredicate(
         }
 
         class Resource(
-            resource: ResourceId,
-            autPackage: String,
+            private val resource: ResourceId,
         ) : Compiled {
-            private val expected = resource.qualifyingPackage(autPackage)?.let { "$it:id/${resource.name}" } ?: resource.name
-
             override fun matches(
                 element: UiObject2,
                 info: AccessibilityNodeInfo,
-            ): Boolean = info.viewIdResourceName == expected
+            ): Boolean = resource.matchesId(info.viewIdResourceName)
         }
 
         class Related(
@@ -129,18 +125,15 @@ internal class NodePredicate(
         }
 
         companion object {
-            fun of(
-                node: Node,
-                autPackage: String,
-            ): Compiled {
+            fun of(node: Node): Compiled {
                 // Cheap property checks first so a relation walk only runs when they hold.
                 fun operands(nodes: List<Node>): List<Compiled> =
-                    nodes.sortedBy { it.kindCase == Node.KindCase.RELATED }.map { of(it, autPackage) }
+                    nodes.sortedBy { it.kindCase == Node.KindCase.RELATED }.map(::of)
                 return when (node.kindCase) {
                     Node.KindCase.MATCH -> Text(node.match)
                     Node.KindCase.FLAG -> FlagCheck(node.flag)
-                    Node.KindCase.RESOURCE -> Resource(node.resource, autPackage)
-                    Node.KindCase.RELATED -> Related(node.related.relation, NodePredicate(node.related.node, autPackage))
+                    Node.KindCase.RESOURCE -> Resource(node.resource)
+                    Node.KindCase.RELATED -> Related(node.related.relation, NodePredicate(node.related.node))
                     Node.KindCase.ALL_OF -> AllOf(operands(node.allOf.nodesList))
                     Node.KindCase.ANY_OF -> AnyOf(operands(node.anyOf.nodesList))
                     Node.KindCase.KIND_NOT_SET, null -> error("validation rejects an empty node")

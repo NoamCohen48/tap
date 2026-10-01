@@ -31,9 +31,9 @@ trap cleanup EXIT
 
 step() { echo "\$ tap-agent $*"; "$AGENT" "$@"; }
 
-step attach "$SERIAL" "$PACKAGE"
-step app install "$APK"
-step app cold-launch
+step attach "$SERIAL"
+step app install "$PACKAGE" "$APK"
+step app cold-launch "$PACKAGE"
 step snapshot -i | tee "$OUT/snapshot.txt"
 ref=$(sed -n 's/^\(@e[0-9]*\) .*id=view_button.*/\1/p' "$OUT/snapshot.txt" | head -1)
 [ -n "$ref" ] || { echo "no view_button in the snapshot"; exit 1; }
@@ -41,7 +41,7 @@ step tap "$ref" --settle
 step wait "text=View tapped"
 step export -o "$OUT/export.json"
 
-python3 - "$OUT/export.json" <<'EOF'
+python3 - "$OUT/export.json" "$PACKAGE" <<'EOF'
 import json, sys
 doc = json.load(open(sys.argv[1]))
 assert doc["format"] == "tap-events/1", doc["format"]
@@ -49,8 +49,10 @@ calls = [e.get("app", {}).get("operation") or next(iter(k for k in e["command"] 
 print("exported:", calls)
 assert calls[:2] == ["install", "cold_launch"], calls
 tap = next(e for e in doc["events"] if "command" in e and "tap" in e["command"])
-# The ref was logged as the selector it stood for.
-assert tap["ok"] and tap["command"]["tap"]["selector"]["node"]["resource"]["name"] == "view_button", tap
+# The ref was logged as the selector it stood for: the id, bound to the app's package.
+operands = tap["command"]["tap"]["selector"]["node"]["all_of"]["nodes"]
+assert tap["ok"] and {"resource": {"name": "view_button"}} in operands, tap
+assert {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": sys.argv[2], "mode": "MATCH_EXACT"}} in operands, tap
 assert all(e["ok"] for e in doc["events"]), doc["events"]
 EOF
 step release

@@ -14,7 +14,6 @@ import org.junit.jupiter.api.extension.ExtendWith
  * |---|---|
  * | `tap.serials` | serials roles map to, in order from a start device that rotates per test (optional; default any pool device) |
  * | `tap.device.<role>` | pin a role to one serial (optional) |
- * | `tap.autPackage` | the application under test (required) |
  * | `tap.artifactsDir` | failure artifacts root (default `build/tap-artifacts`) |
  * | `tap.capture` | `onFailure` (default) = `Device.capture()` every device of a failed test into the artifacts root; `off` = capture nothing |
  * | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds (default 300) |

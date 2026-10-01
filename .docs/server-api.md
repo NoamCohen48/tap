@@ -90,8 +90,8 @@ is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Resp
 | `Observe(client_connection_id)` → stream `ObserveResponse` | Liveness. Events are a `oneof`: `observing` first, then `heartbeat` every 15 s (idle-proxy traffic, not a death detector). A daemon-side disconnect (Disconnect, reaping, shutdown) sends `closing{reason}` and completes the stream normally. **When the stream ends for any reason, the client is disconnected** and every owned device is detached. A second concurrent Observe is `FAILED_PRECONDITION`. |
 | `Disconnect(client_connection_id)` → `{attached_devices_detached}` | Explicit teardown. |
 | `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
-| `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, AUT package, generation). How a later process (`tap` CLI) finds a held connection by name. |
-| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent), and install / uninstall / force-stop / clear-data / grant / launch / cold launch (`AppCall{operation, package_name, activity?, permission?, timeout_ms?}`), each with serial, AUT, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
+| `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, generation). How a later process (`tap` CLI) finds a held connection by name. |
+| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent), and install / uninstall / force-stop / clear-data / grant / launch / cold launch (`AppCall{operation, package_name, activity?, permission?, timeout_ms?}`), each with serial, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
 
 A connection whose Observe is not open 30 s after `Connect` is reaped. A client that crashes
 between Connect and Observe therefore cannot leak a connection.
@@ -108,7 +108,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 | RPC | Semantics |
 |---|---|
 | `ListDevices()` → `repeated DeviceEntry` | Every device ADB lists. Its `state` is one of: <br>• `DEVICE_FREE` <br>• `DEVICE_LEASED`, with `client_connection_id` when the holder is this daemon <br>• `DEVICE_QUARANTINED`, with `quarantine_reason`; an unreadable journal is quarantined with reason `journal unreadable: …` <br>• `DEVICE_UNAUTHORIZED` <br>• `DEVICE_OFFLINE`, which also covers any other non-`device` ADB state |
-| `Attach(client_connection_id, serial, aut_package, skip_driver_install?, sync_authority?, default_timeout_ms?, lease_timeout_ms?)` → `{attached_device_id, serial, generation, device_info}` | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
+| `Attach(client_connection_id, serial, skip_driver_install?, default_timeout_ms?, lease_timeout_ms?)` → `{attached_device_id, serial, generation, device_info}` | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. An attached device names no app: app calls carry their `package_name`, and selectors their package predicate. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
 | `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?, match_count?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. |
 | `Screenshot(…, timeout_ms?)` → `{png, sha256, width?, height?}` | The verified PNG bytes. Writing a file is the client's job; the server takes no host path. |
 | `DriverLog(…)` | The instrumentation's stdout ring buffer (last 2 000 lines). |
@@ -124,7 +124,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
   message per **public** protocol command.
 - The host-internal ops — `health`, `screenshot`, `sync_bootstrap`, `sync_poll` — are not
   `Command` cases: they exist only in the internal `tap.wire.v1.Request` body. Their old field
-  numbers are reserved, and the `artifact`/`sync` outcomes likewise. Screenshot has its own RPC,
+  numbers are free, and the `artifact`/`sync` outcomes likewise. Screenshot has its own RPC,
   and sync is driven by `AwaitIdle`.
 - `Command` and `CommandResult` are the device wire messages themselves
   (`.docs/protocol-contract.md`): `Execute` validates the command (`CommandValidation`, the same
@@ -142,12 +142,25 @@ wire types:
 - Enum values carry a prefix (`ERR_`, `DIR_`, …) plus a `*_UNSPECIFIED` zero value. Validation
   rejects that zero value (`INVALID_ARGUMENT`) where the field has no default, and any value this
   build does not know.
-- `ResourceId.aut_package = true` is resolved by the driver to the attached device's AUT package.
+- A selector has no scope: it matches every window, and `PROPERTY_PACKAGE_NAME` (a `Match`
+  property) restricts it to one app's nodes, which is what the SDKs' `app("pkg").element(…)`
+  adds. `ResourceId{name, package_name?}`: with a package exactly `pkg:id/name`, without it
+  `name` in any package or a bare testTag; a `name` containing `:id/` is `INVALID_ARGUMENT`
+  (`QUALIFIED_RESOURCE_NAME`).
+- A gesture (`Tap`, `LongTap`, `Swipe`, `Scroll`) whose touch point lies in a window above the
+  target's fails `ERR_NOT_INTERACTABLE` / `OBSCURED` before any input. That needs a partly
+  covered target: one covered completely is reported not visible, hence `ERR_NOT_FOUND`.
+- Protocol 5.0 (2026-10-01, deliberately incompatible, no `reserved` placeholders) removed the
+  selector scopes (`AutScope`/`SystemScope`/`AnyWindowScope`), `ResourceId.aut_package`,
+  `AttachRequest.aut_package`/`sync_authority`, `AttachedDeviceEntry.aut_package` and
+  `LoggedEvent.aut_package`, and added `PROPERTY_PACKAGE_NAME`, `QUALIFIED_RESOURCE_NAME` and
+  `OBSCURED`. `AwaitIdle` reaches the sync provider at `<package_name>.tap-sync` of its
+  `AppTarget`.
 - Protocol 4.0 (2026-09-28) removed `ScrollUntil` (`Command` field 21), `CommandResult.moved`
   (6), `AttachRequest.allowed_system_packages` (6) and `TypeText.selector` (1); all are
-  `reserved`. `TypeText` types into the current focus; the SDKs' element `typeText` taps,
+  since deleted. `TypeText` types into the current focus; the SDKs' element `typeText` taps,
   waits for focus, then sends it. It added the
-  `AnyWindowScope any_window` selector scope and `ElementSnapshot.showing_hint`. The clients'
+  `AnyWindowScope any_window` selector scope (gone in 5.0) and `ElementSnapshot.showing_hint`. The clients'
   `scrollUntil` / `scroll_until` are client-side loops of `Exists` + `Scroll`.
 - `OpenSystemPanel` (`Command` field 24, `SystemPanel` enum) opens the notification shade or
   quick settings; `SYSTEM_PANEL_UNSPECIFIED` is `INVALID_ARGUMENT`. Added within protocol 4.0

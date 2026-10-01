@@ -33,9 +33,10 @@ pytest, and run them on real phones and emulators. You don't need to change your
 class CheckoutTest {
     @Test
     fun buysAnItem(device: Device) = tapTest {
-        device.app().coldLaunch()
-        device.element(res("buy_button")).tap()
-        device.await(text("Order placed")).visible()
+        val shop = device.app("com.example.shop")
+        shop.coldLaunch()
+        shop.element(res("buy_button")).tap()
+        shop.await(text("Order placed")).visible()
     }
 }
 ```
@@ -90,7 +91,6 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    systemProperty("tap.autPackage", "com.example.shop")   // your app's package
 }
 ```
 
@@ -102,20 +102,14 @@ Write a test like the one above, then run `./gradlew test`.
 pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
 ```
 
-Tell the pytest plugin which app to test in `pytest.ini`:
-
-```ini
-[pytest]
-tap_aut = com.example.shop
-```
-
 ```python
 from tap_e2e import res, text
 
 def test_buys_an_item(tap_device):
-    tap_device.app().cold_launch()
-    tap_device.element(res("buy_button")).tap()
-    tap_device.wait(text("Order placed")).visible()
+    shop = tap_device.app("com.example.shop")
+    shop.cold_launch()
+    shop.element(res("buy_button")).tap()
+    shop.wait(text("Order placed")).visible()
 ```
 
 Run it with `pytest`.

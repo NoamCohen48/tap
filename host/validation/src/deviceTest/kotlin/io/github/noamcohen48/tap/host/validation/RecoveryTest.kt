@@ -159,12 +159,6 @@ class RecoveryTest {
                 "-e",
                 "tapPort",
                 DEVICE_PORT.toString(),
-                "-e",
-                "tapAutPackage",
-                FIXTURE_PACKAGE,
-                "-e",
-                "tapSyncAuthority",
-                SYNC_AUTHORITY,
                 DRIVER_TEST_RUNNER,
             ).redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)

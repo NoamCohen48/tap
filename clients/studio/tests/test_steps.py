@@ -11,7 +11,7 @@ from tap_studio._gen import studio_pb2 as studio
 from tap_studio.recording import RecordingError
 from tap_studio.steps import outcome, prepare, revise, run
 
-SEARCH = {"node": {"resource": {"name": "search", "aut_package": True}}}
+SEARCH = {"node": {"resource": {"name": "search"}}}
 ONE = {"wait_visible": {"selector": SEARCH, "exactly_one": True}}
 
 
@@ -43,7 +43,7 @@ def test_an_action_on_a_node_gets_its_wait_and_loses_id_and_outcome():
 
 
 def test_a_revised_action_waits_for_its_new_selector_with_the_old_timeout():
-    go = {"node": {"resource": {"name": "go", "aut_package": True}}}
+    go = {"node": {"resource": {"name": "go"}}}
     edited = step(
         id="s4",
         outcome={"duration_ms": 3},

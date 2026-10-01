@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { StudioClient } from "./api";
 import { describeStep } from "./describe";
 import { DevicePicker } from "./DevicePicker";
+import { useAppPackage } from "./appPackage";
 import { errorMessage, useFrames } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
 import { ChoiceDialog, SecretsDialog } from "./Dialogs";
@@ -61,7 +62,7 @@ export function App({ client }: { client: StudioClient }) {
       ) : (
         <>
           <TopBar status={status} />
-          {session && <DevicePicker client={client} session={session} onSession={setSession} />}
+          {session && <DevicePicker client={client} onSession={setSession} />}
         </>
       )}
     </div>
@@ -104,7 +105,9 @@ function Workspace({
   status: Status;
 }) {
   const device = session.device!;
-  const { frame, error } = useFrames(client, `${device.serial}/${device.autPackage}`);
+  const { frame, error } = useFrames(client, device.serial);
+  const [appPackage, setAppPackage] = useAppPackage();
+  const app = appPackage.trim();
   const [mode, setMode] = useState<Mode>("act");
   const [overlay, setOverlay] = useState<OverlayFilter>("interactive");
   const [selected, setSelected] = useState<ScreenNode | null>(null);
@@ -235,10 +238,11 @@ function Workspace({
       : replay.summary.text,
   };
 
-  /** Replays, first offering a cold launch (from the first step) and asking for missing secrets. */
+  /** Replays, first offering a cold launch of the App menu's app (from the first step) and asking
+   * for missing secrets. */
   const startReplay = (request: ReplayRequest, checked: Checked = {}) => {
     setLastRun(null);
-    if (!request.fromStepId && !checked.launch && steps[0]?.kind.case !== "app") {
+    if (app && !request.fromStepId && !checked.launch && steps[0]?.kind.case !== "app") {
       setDialog({ kind: "launch", request });
       return;
     }
@@ -265,7 +269,7 @@ function Workspace({
   const launchFirst = async (request: ReplayRequest) => {
     setDialog(null);
     const first = steps[0]!.id;
-    if (await perform(stepsApi.app("cold_launch", device.autPackage), first))
+    if (await perform(stepsApi.app("cold_launch", app), first))
       startReplay({ ...request, fromStepId: first }, { launch: true, launched: true });
   };
 
@@ -289,8 +293,6 @@ function Workspace({
           <span className="mono">{device.serial}</span>
           <span className="sep">·</span>
           <span>API {device.apiLevel}</span>
-          <span className="sep">·</span>
-          <span className="mono">{device.autPackage}</span>
           <button
             type="button"
             className="iconbtn"
@@ -333,7 +335,8 @@ function Workspace({
         <ScreenView
           frame={frame}
           error={error}
-          autPackage={device.autPackage}
+          appPackage={app}
+          onAppPackage={setAppPackage}
           mode={mode}
           overlay={overlay}
           onOverlay={setOverlay}
@@ -348,7 +351,7 @@ function Workspace({
           node={inspected}
           onScreen={current !== null}
           nodes={nodes}
-          autPackage={device.autPackage}
+          appPackage={app}
           busy={locked}
           onSelect={setSelected}
           targetOf={targetOf}
@@ -398,7 +401,7 @@ function Workspace({
           body={
             <p>
               The recording does not start with an app step, so a replay starts from whatever screen the device shows now. A cold launch of{" "}
-              <code>{device.autPackage}</code> first makes it reproducible
+              <code>{app}</code> (the App menu&apos;s app) first makes it reproducible
               {session.recording ? "; it is added as step 1" : " (not recorded: recording is paused)"}.
             </p>
           }

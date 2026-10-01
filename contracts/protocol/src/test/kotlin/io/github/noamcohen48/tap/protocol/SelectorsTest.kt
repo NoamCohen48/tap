@@ -7,7 +7,8 @@ import io.github.noamcohen48.tap.api.v1.ResourceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SelectorsTest {
     @Test
@@ -24,35 +25,36 @@ class SelectorsTest {
     }
 
     @Test
-    fun scopedPackageIsSetOnlyForAPackageScope() {
-        val selector = Selectors.text("OK")
-        assertNull(selector.scopedPackage)
-        assertEquals("android", selector.inPackage("android").scopedPackage)
-        assertNull(selector.inAnyWindow().scopedPackage)
-    }
+    fun resourceIdMatchesAQualifiedOrAPackageLessName() {
+        val anyPackage = ResourceId.newBuilder().setName("login").build()
+        assertTrue(anyPackage.matchesId("$AUT:id/login"))
+        assertTrue(anyPackage.matchesId("android:id/login"))
+        assertTrue(anyPackage.matchesId("login"), "a bare Compose testTag")
+        listOf(null, "", "Login", "$AUT:id/login2", "$AUT:id/xlogin", ":id/login", "a:b:id/login", "$AUT:string/login")
+            .forEach { assertFalse(anyPackage.matchesId(it), "$it") }
 
-    @Test
-    fun resourceQualificationResolvesTheAutPackage() {
-        assertEquals(AUT, ResourceId.newBuilder().setName("x").setAutPackage(true).build().qualifyingPackage(AUT))
-        assertEquals("other", ResourceId.newBuilder().setName("x").setPackageName("other").build().qualifyingPackage(AUT))
-        assertNull(ResourceId.newBuilder().setName("x").build().qualifyingPackage(AUT))
+        val qualified = ResourceId.newBuilder().setName("login").setPackageName(AUT).build()
+        assertTrue(qualified.matchesId("$AUT:id/login"))
+        assertFalse(qualified.matchesId("android:id/login"))
+        assertFalse(qualified.matchesId("login"))
     }
 
     @Test
     fun rendersCompactly() {
         assertEquals("text=\"OK\"", Selectors.text("OK").render())
         assertEquals(
-            "class^=\"android.\" & !enabled & parent(id=\"<aut>:id/row\") in android [2]",
+            "class^=\"android.\" & !enabled & parent(id=\"row\") & package=\"android\" [2]",
             Selectors.of(
                 Nodes.className("android.", MatchMode.MATCH_STARTS_WITH) and
                     Nodes.flag(NodeFlag.FLAG_ENABLED, false) and
-                    Nodes.parent(Nodes.autResource("row")),
-            ).inPackage("android").pickAt(2).render(),
+                    Nodes.parent(Nodes.resource("row")) and
+                    Nodes.packageName("android"),
+            ).pickAt(2).render(),
         )
-        assertEquals("text=\"OK\" in any window", Selectors.text("OK").inAnyWindow().render())
+        assertEquals("id=\"$AUT:id/login\"", Selectors.androidResource(AUT, "login").render())
         assertEquals(
             "(text~=\"a.*\" | desc*=\"b\") & id=\"tag\" [first]",
-            Selectors.of((Nodes.text("a.*", MatchMode.MATCH_REGEX) or Nodes.contentDescription("b", MatchMode.MATCH_CONTAINS)) and Nodes.rawResource("tag"))
+            Selectors.of((Nodes.text("a.*", MatchMode.MATCH_REGEX) or Nodes.contentDescription("b", MatchMode.MATCH_CONTAINS)) and Nodes.resource("tag"))
                 .pickFirst()
                 .render(),
         )

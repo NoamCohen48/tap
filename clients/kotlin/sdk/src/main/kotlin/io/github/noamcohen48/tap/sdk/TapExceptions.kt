@@ -69,7 +69,7 @@ class CommandException(
 /**
  * A wait ran out of time. Carries what was observed so the failure is diagnosable without a
  * rerun: [reason] and [matchCount] for the waits the device runs (`visible`, `one`, `gone`,
- * `awaitAppVisible`, `awaitScreenStable`), [lastObservation] and [polls] for the ones the client
+ * `App.awaitVisible`, `App.awaitScreenStable`), [lastObservation] and [polls] for the ones the client
  * polls.
  */
 class WaitTimeoutException(

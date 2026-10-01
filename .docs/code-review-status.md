@@ -52,8 +52,27 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     and no settle (`TypeText.selector` reserved, `DEADLINE_AFTER_FOCUS` gone). Element
     `typeText` in both SDKs is `tap` → `await().focused()` (opt out with `awaitFocus = false`)
     → `device.typeText`. `set_text` stays the accessibility action; both are kept.
+- **App and screen, no scopes; occlusion (2026-09-30, user; protocol 5.0).** Supersedes the
+  scope half of the pass above (record: `app-and-screen.md`):
+  - An attached device names no app. Selectors have no scope and every lookup searches all
+    windows; "this app's node" is a `PROPERTY_PACKAGE_NAME` predicate, which
+    `device.app(pkg).element(…)` / `.await(…)` add and `device.screen.element(…)` does not.
+    `ResourceId.aut_package` and `SCOPE_DENIED` are gone; `res(name)` matches any package,
+    `resId(pkg, name)` exactly one, and a `name` containing `:id/` is
+    `QUALIFIED_RESOURCE_NAME`. Removed fields were deleted, not reserved.
+  - `NOT_INTERACTABLE` is emitted again, for one reason only: `OBSCURED`, a gesture whose touch
+    point lies in a window above the target's (keyboard, dialog, shade, overlay). Searching
+    every window made a partly covered node findable, so without the check a tap would land on
+    the covering window and report success (a node covered completely is reported not visible
+    by Android and is `NOT_FOUND`). Checked before the mutation gate, so no input is sent;
+    enabled/scrollable are still not pre-checked. Device-checked by `OcclusionTest`.
 - **Synchronization is WIP (2026-09-28, user).** The sync SDK/provider path is ignored for
   now; its findings (DR-12, DR-13, DR-14, SY-1, SY-2, SY-4, H-15) are Deferred, not Open.
+  Protocol 5.0 only moved its inputs: the session no longer carries an AUT or sync authority
+  (`DeviceOptions.syncAuthority` / `sync_authority` removed); `SyncBootstrap` / `SyncPoll`
+  name `package_name` and `authority`, and the host sends `<package>.tap-sync` for the
+  `AwaitIdle` target. The driver manifest's fixed `<queries>` authority (DR-12) is unchanged,
+  so sync still works only for the fixture.
 - **Threat model: the host and the devices belong to the tester (2026-09-28, user).** Tap
   runs in a development or CI environment where the machine and every attached device are the
   user's own. The per-launch secret and HMAC handshake exist to bind a host to *its* driver
@@ -126,8 +145,9 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
   to the user first). Best done after the client API batch (it can use `one()` and the wait
   reasons):
   - Password field: does typing work, and what do `text()` and selectors see (`""`, bullets)?
-  - Popup / spinner dropdown: its items live in a separate window; can they be found and
-    tapped with the default scope, or is `inAnyWindow` needed (document it)?
+  - Popup / spinner dropdown: its items live in a separate window; since protocol 5.0 every
+    lookup searches all windows, so check they are found (with `app(pkg)`: is the popup
+    window's package the app's?) and that `OBSCURED` does not fire on them.
   - Text that changes after an action ("Save" → "Saved"): the action reports success and a
     follow-up wait sees the new text, per "the driver assumes nothing".
   - WebView (local page, no network): find and tap an HTML button by text once loaded.

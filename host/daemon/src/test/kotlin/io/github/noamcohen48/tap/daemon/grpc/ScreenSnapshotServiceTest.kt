@@ -43,7 +43,6 @@ class ScreenSnapshotServiceTest {
     ) : DaemonDeviceSession {
         override val serial = "snapshot-serial"
         override val generation = 3L
-        override val autPackage = Dumps.AUT
 
         override fun app(packageName: String): AppLifecycle = error("no app in this fake")
 
@@ -71,8 +70,7 @@ class ScreenSnapshotServiceTest {
                     daemon.attachDevice(
                         connection.id,
                         "snapshot-serial",
-                        Dumps.AUT,
-                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, syncAuthority = null, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0),
+                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0),
                     )
                 val name = InProcessServerBuilder.generateName()
                 val server = InProcessServerBuilder.forName(name).directExecutor().addService(DeviceService(daemon)).build().start()
@@ -135,9 +133,9 @@ class ScreenSnapshotServiceTest {
                         assertFailsWith<StatusException> { stub.resolveRef(resolve("@")) }.status.code,
                     )
 
-                    // A node the driver could never match alone: its own package is not its window's.
-                    val foreign = Dumps.wrap(Dumps.node(className = "Root", children = Dumps.node(text = "x", packageName = "com.other")))
-                    val second = snapshot(foreign)
+                    // A node no selector can single out: its only property is over the selector limits.
+                    val unaddressable = Dumps.wrap(Dumps.node(className = "Root", children = Dumps.node(className = "", text = "x".repeat(2_000))))
+                    val second = snapshot(unaddressable)
                     assertEquals(2, second.snapshotId)
                     assertEquals(71, second.removedCount)
                     assertTrue(second.nodesList.all { it.change == NodeChange.NODE_ADDED })

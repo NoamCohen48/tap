@@ -37,26 +37,26 @@ when `tap_manage_daemon = true` / `TAP_MANAGE_DAEMON=1`, stopping only a daemon 
 from tap_e2e import TapClient, text, res
 
 with TapClient.create() as client, client.connect("smoke") as connection:  # observing: if this process dies, the server detaches its devices
-    with connection.attach_device("emulator-5554", "io.github.noamcohen48.tap.fixture") as device:
-        device.app().cold_launch(".MainActivity")
-        device.element(res("view_button")).tap()
-        device.wait(text("View tapped")).visible()
+    with connection.attach_device("emulator-5554") as device:
+        app = device.app("io.github.noamcohen48.tap.fixture")
+        app.cold_launch(".MainActivity")
+        app.element(res("view_button")).tap()         # the app's nodes only
+        device.screen.wait(text("View tapped")).visible()  # any window
         png = device.screenshot()
 ```
 
 Driver failures are raised as `CommandError` with `.code` (an `ErrorCode`, e.g. `AMBIGUOUS`,
 `NOT_FOUND`, `INDETERMINATE`), `.detail` and the request id/generation; waits raise
 `WaitTimeoutError` (`.last_observation` carries the driver detail, e.g. `SCREEN_CHANGING` from
-`device.await_app_settled()` (hierarchy quiet), `device.await_animation_end()` (pixels quiet) or
-`device.await_screen_stable()` (both) — the explicit ways to wait out an animation; no command
+`app.await_settled()` (hierarchy quiet), `app.await_animation_end()` (pixels quiet) or
+`app.await_screen_stable()` (both) — the explicit ways to wait out an animation; no command
 settles implicitly); app lifecycle problems raise `AppLifecycleError`; server refusals raise
 `ServerError`. Cancelling a gRPC call (e.g. a thread interrupt) forwards a protocol `CANCEL`
 to the driver, which is honoured only before the mutation gate.
 
 ## pytest
 
-Configuration comes from ini options or environment variables: `tap_aut`/`TAP_AUT` (required),
-`tap_serials`/`TAP_SERIALS`, `tap_artifacts`/`TAP_ARTIFACTS`, `tap_server`/`TAP_SERVER`,
+Configuration comes from ini options or environment variables: `tap_serials`/`TAP_SERIALS`, `tap_artifacts`/`TAP_ARTIFACTS`, `tap_server`/`TAP_SERVER`,
 `tap_acquire_timeout`.
 
 ```python
@@ -64,11 +64,11 @@ import pytest
 from tap_e2e import text
 
 def test_login(tap_device):                      # one device, role "device"
-    tap_device.element(text("Login")).tap()
+    tap_device.app("com.shop").element(text("Login")).tap()
 
 @pytest.mark.tap_devices("caller", "callee")     # several roles, opened in serial order
 def test_call(tap_devices):
-    tap_devices["caller"].element(text("Call")).tap()
+    tap_devices["caller"].app("com.chat").element(text("Call")).tap()
 ```
 
 Each test gets fresh sessions (opened before, closed after); on failure the
