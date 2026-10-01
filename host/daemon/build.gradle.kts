@@ -62,6 +62,9 @@ graalvmNative {
             mainClass.set("io.github.noamcohen48.tap.daemon.cli.TapDaemonMainKt")
             buildArgs.addAll(
                 "--no-fallback",
+                // Native-image otherwise uses every available core; keep developer machines
+                // responsive while several agents/builds share them (independent of Gradle workers).
+                "--parallelism=2",
                 "-H:+ReportExceptionStackTraces",
                 "-march=compatibility",
                 "--initialize-at-build-time=kotlin",

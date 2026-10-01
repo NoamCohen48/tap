@@ -22,6 +22,10 @@ service DeviceService {
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
   rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
+  // One optional host-managed scrcpy capture per attachment (video, audio or both); the driver
+  // never encodes media. Requires scrcpy on the daemon host.
+  rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
+  rpc StopRecording(StopRecordingRequest) returns (StopRecordingResponse);
   // A compact, ref-addressed outline of the screen, parsed from the diagnostic hierarchy dump
   // (`.docs/agent-surface.md`). Refs name selectors the daemon synthesised, never node handles.
   rpc ScreenSnapshot(ScreenSnapshotRequest) returns (ScreenSnapshotResponse);
@@ -110,6 +114,32 @@ message ScreenshotResponse {
   string sha256 = 2;
   optional int32 width = 3;
   optional int32 height = 4;
+}
+
+// A bounded artifact: video is H.264 MP4, audio is Opus, combined is Matroska (H.264+Opus).
+// Clients select tracks at Start; Stop returns their one muxed file (never two scrcpy children).
+message StartRecordingRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  bool video = 3;
+  // Empty means no audio. "output" (Android 11+; mutes the device speakers), "playback"
+  // (Android 13+; keeps local playback, apps can opt out) or "mic" (the device microphone).
+  string audio_source = 4;
+  // Absent/zero = 30 s with video, 60 s audio only. Max 30 s video / 60 s audio.
+  int32 max_seconds = 5;
+}
+
+message StartRecordingResponse {}
+
+message StopRecordingRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+message StopRecordingResponse {
+  bytes data = 1; // ≤16 MiB video, ≤3 MiB audio-only
+  string format = 2; // mp4, mkv, opus
+  string sha256 = 3;
 }
 
 message DriverLogRequest {

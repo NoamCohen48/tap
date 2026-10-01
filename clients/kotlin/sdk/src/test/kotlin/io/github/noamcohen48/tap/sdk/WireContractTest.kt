@@ -50,6 +50,7 @@ import kotlin.io.path.writeBytes
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -216,6 +217,51 @@ class WireContractTest {
             }
         }
 
+    @Test
+    fun `audio-only recording sends no video and the audio limit, and bad arguments never reach the server`() =
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    device.startRecording(video = false, audioSource = "mic")
+                    assertFalse(devices.mediaStart!!.video)
+                    assertEquals("mic", devices.mediaStart!!.audioSource)
+                    assertEquals(60, devices.mediaStart!!.maxSeconds)
+                    devices.mediaStart = null
+                    assertFailsWith<IllegalArgumentException> { device.startRecording(video = false) }
+                    assertFailsWith<IllegalArgumentException> { device.startRecording(audioSource = "call") }
+                    assertFailsWith<IllegalArgumentException> { device.startRecording(maxSeconds = 31) }
+                    assertNull(devices.mediaStart)
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
+    @Test
+    fun `recording selects video and audio in one request and verifies the bytes`() = runBlocking {
+        val connection = client().connect("test")
+        try {
+            tapScope {
+                val device = connection.attachDevice("emulator-5554", "com.test")
+                device.startRecording(audioSource = "playback", maxSeconds = 12)
+                assertEquals("conn-1", devices.mediaStart?.clientConnectionId)
+                assertTrue(devices.mediaStart!!.video)
+                assertEquals("playback", devices.mediaStart!!.audioSource)
+                assertEquals(12, devices.mediaStart!!.maxSeconds)
+                assertEquals("mkv", device.stopRecording().extension)
+                assertEquals("conn-1", devices.mediaStop?.clientConnectionId)
+                devices.corruptMedia = true
+                assertFailsWith<IllegalStateException> { device.stopRecording() }
+                device.detach()
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
     // --- Fakes ----------------------------------------------------------------------------------
 
     private class Connections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
@@ -250,6 +296,26 @@ class WireContractTest {
         @Volatile var denyExecute = false
 
         @Volatile var corruptScreenshot = false
+        @Volatile var corruptMedia = false
+        @Volatile var mediaStart: io.github.noamcohen48.tap.api.v1.StartRecordingRequest? = null
+        @Volatile var mediaStop: io.github.noamcohen48.tap.api.v1.StopRecordingRequest? = null
+
+        override suspend fun startRecording(
+            request: io.github.noamcohen48.tap.api.v1.StartRecordingRequest,
+        ): io.github.noamcohen48.tap.api.v1.StartRecordingResponse {
+            mediaStart = request
+            return io.github.noamcohen48.tap.api.v1.StartRecordingResponse.getDefaultInstance()
+        }
+
+        override suspend fun stopRecording(
+            request: io.github.noamcohen48.tap.api.v1.StopRecordingRequest,
+        ): io.github.noamcohen48.tap.api.v1.StopRecordingResponse {
+            mediaStop = request
+            val bytes = byteArrayOf(4, 5, 6)
+            return io.github.noamcohen48.tap.api.v1.StopRecordingResponse.newBuilder()
+                .setData(ByteString.copyFrom(bytes)).setFormat("mkv")
+                .setSha256(if (corruptMedia) "bad" else sha256Hex(bytes)).build()
+        }
 
         override suspend fun attach(request: AttachRequest): AttachResponse {
             attaches.add(request)

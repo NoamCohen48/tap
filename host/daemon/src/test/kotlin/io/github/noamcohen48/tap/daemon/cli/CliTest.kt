@@ -15,6 +15,10 @@ class CliTest {
             CommandLine("start", mapOf("--port" to "0", "--state-dir" to "/tmp/tap", "--adb" to "/opt/adb")),
             parseCommandLine(listOf("start", "--port", "0", "--state-dir", "/tmp/tap", "--adb", "/opt/adb")),
         )
+        assertEquals(
+            CommandLine("serve", mapOf("--scrcpy" to "/opt/scrcpy")),
+            parseCommandLine(listOf("serve", "--scrcpy", "/opt/scrcpy")),
+        )
         assertEquals(CommandLine("version", emptyMap()), parseCommandLine(listOf("version")))
         assertEquals(CommandLine("stop", mapOf("--state-dir" to "d")), parseCommandLine(listOf("stop", "--state-dir", "d")))
 

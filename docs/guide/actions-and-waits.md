@@ -161,9 +161,31 @@ round trip per poll.
 ## Screenshots and dumps
 
 Each returns a typed value, not a file: keep it in memory, assert on it, attach it to a report
-or write it where you like. All four share one artifact shape: `bytes` (the serialized form),
+or write it where you like. They share one artifact shape: `bytes` (the serialized form),
 `mediaType` / `media_type`, `extension` and `save(path)` (creates parent directories).
 
+- Recordings: `device.startRecording()` / `device.stopRecording()` in Kotlin, or
+  `device.start_recording()` / `device.stop_recording()` in Python, return a `Recording`
+  artifact (`bytes`, `mediaType` / `media_type`, `extension`, `save(path)`). Nothing is recorded
+  unless you ask; this is not a live screen stream or an automatic failure artifact.
+    - Tracks: the default is video only (MP4, up to 30 seconds/16 MiB; 1024 px, at most 15 fps).
+      Add `audioSource = "output"` (Python: `audio_source="output"`) for video and audio in one
+      Matroska file, or `video = false` with an audio source for Opus audio only (up to 60
+      seconds/3 MiB). `maxSeconds` / `max_seconds` ends the capture early.
+    - Audio sources: `output` (Android 11+) records device playback but redirects it away from
+      the device speakers; `playback` (Android 13+) keeps local playback but apps may opt out;
+      `mic` records the device microphone. Android 10 and earlier can record video only.
+      `output` records *after* the device's media volume, and that route has its own volume
+      (at the default 5 of 15 a test tone comes out about 32 dB quieter); `playback` records
+      the app's sound before volume. Use `playback` on Android 13+ when levels matter, or set
+      the media volume while an `output` recording runs.
+    - The daemon host needs [scrcpy](https://github.com/Genymobile/scrcpy)
+      (`tap start --scrcpy PATH`, default `scrcpy` on `PATH`). One recording per attached
+      device; detach discards an unfinished one.
+    - Timing: the start call returns while scrcpy is still starting on the device (about half a
+      second), so the first moment can be missing, and a capture the device refuses is reported
+      by the stop call. Do not stop a recording immediately after starting it. A static screen
+      produces no new frames, so a video file can be shorter than the time it was recording.
 - `device.screenshot()` → `Screenshot`: the PNG `bytes` (checked against the server's
   SHA-256), its `format` and its `width` / `height`.
 - `device.dumpHierarchy()` → `Hierarchy`: the accessibility tree as `xml` (a string) and as

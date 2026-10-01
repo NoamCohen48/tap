@@ -6,8 +6,8 @@ devices to use, and where artifacts go.
 ## The `tap` CLI
 
 ```
-tap start   [--port N] [--state-dir DIR] [--adb PATH]
-tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--driver-apk APK --driver-test-apk APK]
+tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH]
+tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--driver-apk APK --driver-test-apk APK]
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
 tap version
@@ -20,6 +20,7 @@ tap version
 | both | bind loopback only, write `<state-dir>/daemon.json` (`port`, `pid`, `token`, `daemonVersion`, `adb`; readable only by you), and keep running until `tap stop`. One daemon per state dir: a second `serve` exits 3 |
 | `--state-dir` | where `daemon.json`, `sessions/` (leases and journals) and the extracted driver live; default `$TAP_STATE_DIR` or `~/.tap` |
 | `--adb` | the ADB executable; default `$TAP_ADB` or `adb` on `PATH` |
+| `--scrcpy` | the [scrcpy](https://github.com/Genymobile/scrcpy) executable used only by screen and audio recordings; default `$TAP_SCRCPY` or `scrcpy` on `PATH`. Tap runs it with its own ADB (`ADB=<--adb>`) |
 | `status` | prints `running 127.0.0.1:PORT pid=… version=… adb=…` (never the token); exit 1 when no daemon is running |
 | `stop` | terminates the daemon recorded in `daemon.json` after it answered an authenticated call; a stale file is removed and nothing is signalled |
 

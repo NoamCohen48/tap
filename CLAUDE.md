@@ -50,6 +50,9 @@ See `CONTRIBUTING.md` for build/run commands.
   UI demo (mock app, no device) the UI section describes.
 - `.docs/screen-streaming.md` — research + decision: how to show a device screen live (Maestro,
   Appium MJPEG, scrcpy, `screenrecord`); v1 = paired snapshot + screenshot frames, video later.
+- `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
+  host-owned scrcpy child (`StartRecording`), its measured timing limits, the pre-merge review,
+  and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /

@@ -28,6 +28,20 @@ interface Artifact {
     }
 }
 
+/** A bounded device recording ([Device.stopRecording]): MP4, Matroska, or Opus. */
+class Recording(override val bytes: ByteArray, override val extension: String) : Artifact {
+    init { require(extension in setOf("mp4", "mkv", "opus")) { "Unknown recording format: $extension" } }
+    override val mediaType: String get() = when (extension) {
+        "mp4" -> "video/mp4"
+        "mkv" -> "video/x-matroska"
+        else -> "audio/ogg"
+    }
+
+    override fun equals(other: Any?): Boolean = other is Recording && extension == other.extension && bytes.contentEquals(other.bytes)
+    override fun hashCode(): Int = 31 * extension.hashCode() + bytes.contentHashCode()
+    override fun toString(): String = "Recording($extension, ${bytes.size} bytes)"
+}
+
 /** The encoding of a [Screenshot]'s bytes. */
 enum class ImageFormat(
     val mediaType: String,

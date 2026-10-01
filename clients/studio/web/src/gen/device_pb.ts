@@ -20,7 +20,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file device.proto.
  */
 export const file_device: GenFile = /*@__PURE__*/
-  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnkixwIKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhMKC2F1dF9wYWNrYWdlGAMgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIbCg5zeW5jX2F1dGhvcml0eRgFIAEoCUgBiAEBEh8KEmRlZmF1bHRfdGltZW91dF9tcxgHIAEoA0gCiAEBEh0KEGxlYXNlX3RpbWVvdXRfbXMYCCABKANIA4gBAUIWChRfc2tpcF9kcml2ZXJfaW5zdGFsbEIRCg9fc3luY19hdXRob3JpdHlCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tc0oECAYQB1IXYWxsb3dlZF9zeXN0ZW1fcGFja2FnZXMieQoOQXR0YWNoUmVzcG9uc2USGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDEicKC2RldmljZV9pbmZvGAQgASgLMhIudGFwLnYxLkRldmljZUluZm8iSQoNRGV0YWNoUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiPwoORGV0YWNoUmVzcG9uc2USDQoFY2xlYW4YASABKAgSEwoGZGV0YWlsGAIgASgJSACIAQFCCQoHX2RldGFpbCJsCg5FeGVjdXRlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSIAoHY29tbWFuZBgDIAEoCzIPLnRhcC52MS5Db21tYW5kIjgKD0V4ZWN1dGVSZXNwb25zZRIlCgZyZXN1bHQYASABKAsyFS50YXAudjEuQ29tbWFuZFJlc3VsdCJ1ChFTY3JlZW5zaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBQg0KC190aW1lb3V0X21zIm8KElNjcmVlbnNob3RSZXNwb25zZRILCgNwbmcYASABKAwSDgoGc2hhMjU2GAIgASgJEhIKBXdpZHRoGAMgASgFSACIAQESEwoGaGVpZ2h0GAQgASgFSAGIAQFCCAoGX3dpZHRoQgkKB19oZWlnaHQiTAoQRHJpdmVyTG9nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiIgoRRHJpdmVyTG9nUmVzcG9uc2USDQoFbGluZXMYASADKAkilgEKFVNjcmVlblNuYXBzaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBEhsKE3NlbGVjdG9yX2NhbmRpZGF0ZXMYBCABKAhCDQoLX3RpbWVvdXRfbXMiWwoRU2VsZWN0b3JDYW5kaWRhdGUSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIgoEa2luZBgCIAEoDjIULnRhcC52MS5TZWxlY3RvcktpbmQiiwQKClNjcmVlbk5vZGUSCwoDcmVmGAEgASgJEg0KBWRlcHRoGAIgASgFEhYKDndpbmRvd19wYWNrYWdlGAMgASgJEhcKCmNsYXNzX25hbWUYBCABKAlIAIgBARIaCg1yZXNvdXJjZV9uYW1lGAUgASgJSAGIAQESEQoEdGV4dBgGIAEoCUgCiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YByABKAlIA4gBARIRCgRoaW50GAggASgJSASIAQESHgoGYm91bmRzGAkgASgLMg4udGFwLnYxLkJvdW5kcxIfCgVmbGFncxgKIAMoDjIQLnRhcC52MS5Ob2RlRmxhZxIQCghwYXNzd29yZBgLIAEoCBITCgtpbnRlcmFjdGl2ZRgMIAEoCBInCghzZWxlY3RvchgNIAEoCzIQLnRhcC52MS5TZWxlY3RvckgFiAEBEhAKCGJ5X2luZGV4GA4gASgIEiIKBmNoYW5nZRgPIAEoDjISLnRhcC52MS5Ob2RlQ2hhbmdlEi0KCmNhbmRpZGF0ZXMYECADKAsyGS50YXAudjEuU2VsZWN0b3JDYW5kaWRhdGVCDQoLX2NsYXNzX25hbWVCEAoOX3Jlc291cmNlX25hbWVCBwoFX3RleHRCFgoUX2NvbnRlbnRfZGVzY3JpcHRpb25CBwoFX2hpbnRCCwoJX3NlbGVjdG9yIocBChZTY3JlZW5TbmFwc2hvdFJlc3BvbnNlEhMKC3NuYXBzaG90X2lkGAEgASgDEiEKBW5vZGVzGAIgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSIwoHcmVtb3ZlZBgDIAMoCzISLnRhcC52MS5TY3JlZW5Ob2RlEhAKCHJvdGF0aW9uGAQgASgFIloKEVJlc29sdmVSZWZSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRILCgNyZWYYAyABKAkiXwoSUmVzb2x2ZVJlZlJlc3BvbnNlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhAKCGJ5X2luZGV4GAIgASgIEhMKC3NuYXBzaG90X2lkGAMgASgDKpQBCgtEZXZpY2VTdGF0ZRIcChhERVZJQ0VfU1RBVEVfVU5TUEVDSUZJRUQQABIPCgtERVZJQ0VfRlJFRRABEhEKDURFVklDRV9MRUFTRUQQAhIWChJERVZJQ0VfUVVBUkFOVElORUQQAxISCg5ERVZJQ0VfT0ZGTElORRAEEhcKE0RFVklDRV9VTkFVVEhPUklaRUQQBSqaAQoMU2VsZWN0b3JLaW5kEh0KGVNFTEVDVE9SX0tJTkRfVU5TUEVDSUZJRUQQABIXChNTRUxFQ1RPUl9LSU5EX1BMQUlOEAESGgoWU0VMRUNUT1JfS0lORF9DT01CSU5FRBACEhoKFlNFTEVDVE9SX0tJTkRfQU5DRVNUT1IQAxIaChZTRUxFQ1RPUl9LSU5EX0JZX0lOREVYEAQqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMqIECg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
+  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnkixwIKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhMKC2F1dF9wYWNrYWdlGAMgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIbCg5zeW5jX2F1dGhvcml0eRgFIAEoCUgBiAEBEh8KEmRlZmF1bHRfdGltZW91dF9tcxgHIAEoA0gCiAEBEh0KEGxlYXNlX3RpbWVvdXRfbXMYCCABKANIA4gBAUIWChRfc2tpcF9kcml2ZXJfaW5zdGFsbEIRCg9fc3luY19hdXRob3JpdHlCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tc0oECAYQB1IXYWxsb3dlZF9zeXN0ZW1fcGFja2FnZXMieQoOQXR0YWNoUmVzcG9uc2USGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDEicKC2RldmljZV9pbmZvGAQgASgLMhIudGFwLnYxLkRldmljZUluZm8iSQoNRGV0YWNoUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiPwoORGV0YWNoUmVzcG9uc2USDQoFY2xlYW4YASABKAgSEwoGZGV0YWlsGAIgASgJSACIAQFCCQoHX2RldGFpbCJsCg5FeGVjdXRlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSIAoHY29tbWFuZBgDIAEoCzIPLnRhcC52MS5Db21tYW5kIjgKD0V4ZWN1dGVSZXNwb25zZRIlCgZyZXN1bHQYASABKAsyFS50YXAudjEuQ29tbWFuZFJlc3VsdCJ1ChFTY3JlZW5zaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBQg0KC190aW1lb3V0X21zIm8KElNjcmVlbnNob3RSZXNwb25zZRILCgNwbmcYASABKAwSDgoGc2hhMjU2GAIgASgJEhIKBXdpZHRoGAMgASgFSACIAQESEwoGaGVpZ2h0GAQgASgFSAGIAQFCCAoGX3dpZHRoQgkKB19oZWlnaHQiiwEKFVN0YXJ0UmVjb3JkaW5nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSDQoFdmlkZW8YAyABKAgSFAoMYXVkaW9fc291cmNlGAQgASgJEhMKC21heF9zZWNvbmRzGAUgASgFIhgKFlN0YXJ0UmVjb3JkaW5nUmVzcG9uc2UiUAoUU3RvcFJlY29yZGluZ1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJIkUKFVN0b3BSZWNvcmRpbmdSZXNwb25zZRIMCgRkYXRhGAEgASgMEg4KBmZvcm1hdBgCIAEoCRIOCgZzaGEyNTYYAyABKAkiTAoQRHJpdmVyTG9nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiIgoRRHJpdmVyTG9nUmVzcG9uc2USDQoFbGluZXMYASADKAkilgEKFVNjcmVlblNuYXBzaG90UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSFwoKdGltZW91dF9tcxgDIAEoA0gAiAEBEhsKE3NlbGVjdG9yX2NhbmRpZGF0ZXMYBCABKAhCDQoLX3RpbWVvdXRfbXMiWwoRU2VsZWN0b3JDYW5kaWRhdGUSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIgoEa2luZBgCIAEoDjIULnRhcC52MS5TZWxlY3RvcktpbmQiiwQKClNjcmVlbk5vZGUSCwoDcmVmGAEgASgJEg0KBWRlcHRoGAIgASgFEhYKDndpbmRvd19wYWNrYWdlGAMgASgJEhcKCmNsYXNzX25hbWUYBCABKAlIAIgBARIaCg1yZXNvdXJjZV9uYW1lGAUgASgJSAGIAQESEQoEdGV4dBgGIAEoCUgCiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YByABKAlIA4gBARIRCgRoaW50GAggASgJSASIAQESHgoGYm91bmRzGAkgASgLMg4udGFwLnYxLkJvdW5kcxIfCgVmbGFncxgKIAMoDjIQLnRhcC52MS5Ob2RlRmxhZxIQCghwYXNzd29yZBgLIAEoCBITCgtpbnRlcmFjdGl2ZRgMIAEoCBInCghzZWxlY3RvchgNIAEoCzIQLnRhcC52MS5TZWxlY3RvckgFiAEBEhAKCGJ5X2luZGV4GA4gASgIEiIKBmNoYW5nZRgPIAEoDjISLnRhcC52MS5Ob2RlQ2hhbmdlEi0KCmNhbmRpZGF0ZXMYECADKAsyGS50YXAudjEuU2VsZWN0b3JDYW5kaWRhdGVCDQoLX2NsYXNzX25hbWVCEAoOX3Jlc291cmNlX25hbWVCBwoFX3RleHRCFgoUX2NvbnRlbnRfZGVzY3JpcHRpb25CBwoFX2hpbnRCCwoJX3NlbGVjdG9yIocBChZTY3JlZW5TbmFwc2hvdFJlc3BvbnNlEhMKC3NuYXBzaG90X2lkGAEgASgDEiEKBW5vZGVzGAIgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSIwoHcmVtb3ZlZBgDIAMoCzISLnRhcC52MS5TY3JlZW5Ob2RlEhAKCHJvdGF0aW9uGAQgASgFIloKEVJlc29sdmVSZWZSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRILCgNyZWYYAyABKAkiXwoSUmVzb2x2ZVJlZlJlc3BvbnNlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhAKCGJ5X2luZGV4GAIgASgIEhMKC3NuYXBzaG90X2lkGAMgASgDKpQBCgtEZXZpY2VTdGF0ZRIcChhERVZJQ0VfU1RBVEVfVU5TUEVDSUZJRUQQABIPCgtERVZJQ0VfRlJFRRABEhEKDURFVklDRV9MRUFTRUQQAhIWChJERVZJQ0VfUVVBUkFOVElORUQQAxISCg5ERVZJQ0VfT0ZGTElORRAEEhcKE0RFVklDRV9VTkFVVEhPUklaRUQQBSqaAQoMU2VsZWN0b3JLaW5kEh0KGVNFTEVDVE9SX0tJTkRfVU5TUEVDSUZJRUQQABIXChNTRUxFQ1RPUl9LSU5EX1BMQUlOEAESGgoWU0VMRUNUT1JfS0lORF9DT01CSU5FRBACEhoKFlNFTEVDVE9SX0tJTkRfQU5DRVNUT1IQAxIaChZTRUxFQ1RPUl9LSU5EX0JZX0lOREVYEAQqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMsEFCg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlN0YXJ0UmVjb3JkaW5nEh0udGFwLnYxLlN0YXJ0UmVjb3JkaW5nUmVxdWVzdBoeLnRhcC52MS5TdGFydFJlY29yZGluZ1Jlc3BvbnNlEkwKDVN0b3BSZWNvcmRpbmcSHC50YXAudjEuU3RvcFJlY29yZGluZ1JlcXVlc3QaHS50YXAudjEuU3RvcFJlY29yZGluZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
 
 /**
  * One listed device. Anything richer than the serial comes from DeviceInfo after attachment.
@@ -322,6 +322,117 @@ export const ScreenshotResponseSchema: GenMessage<ScreenshotResponse> = /*@__PUR
   messageDesc(file_device, 10);
 
 /**
+ * A bounded artifact: video is H.264 MP4, audio is Opus, combined is Matroska (H.264+Opus).
+ * Clients select tracks at Start; Stop returns their one muxed file (never two scrcpy children).
+ *
+ * @generated from message tap.v1.StartRecordingRequest
+ */
+export type StartRecordingRequest = Message<"tap.v1.StartRecordingRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: bool video = 3;
+   */
+  video: boolean;
+
+  /**
+   * Empty means no audio. "output" (Android 11+; mutes the device speakers), "playback"
+   * (Android 13+; keeps local playback, apps can opt out) or "mic" (the device microphone).
+   *
+   * @generated from field: string audio_source = 4;
+   */
+  audioSource: string;
+
+  /**
+   * Absent/zero = 30 s with video, 60 s audio only. Max 30 s video / 60 s audio.
+   *
+   * @generated from field: int32 max_seconds = 5;
+   */
+  maxSeconds: number;
+};
+
+/**
+ * Describes the message tap.v1.StartRecordingRequest.
+ * Use `create(StartRecordingRequestSchema)` to create a new message.
+ */
+export const StartRecordingRequestSchema: GenMessage<StartRecordingRequest> = /*@__PURE__*/
+  messageDesc(file_device, 11);
+
+/**
+ * @generated from message tap.v1.StartRecordingResponse
+ */
+export type StartRecordingResponse = Message<"tap.v1.StartRecordingResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.StartRecordingResponse.
+ * Use `create(StartRecordingResponseSchema)` to create a new message.
+ */
+export const StartRecordingResponseSchema: GenMessage<StartRecordingResponse> = /*@__PURE__*/
+  messageDesc(file_device, 12);
+
+/**
+ * @generated from message tap.v1.StopRecordingRequest
+ */
+export type StopRecordingRequest = Message<"tap.v1.StopRecordingRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+};
+
+/**
+ * Describes the message tap.v1.StopRecordingRequest.
+ * Use `create(StopRecordingRequestSchema)` to create a new message.
+ */
+export const StopRecordingRequestSchema: GenMessage<StopRecordingRequest> = /*@__PURE__*/
+  messageDesc(file_device, 13);
+
+/**
+ * @generated from message tap.v1.StopRecordingResponse
+ */
+export type StopRecordingResponse = Message<"tap.v1.StopRecordingResponse"> & {
+  /**
+   * ≤16 MiB video, ≤3 MiB audio-only
+   *
+   * @generated from field: bytes data = 1;
+   */
+  data: Uint8Array;
+
+  /**
+   * mp4, mkv, opus
+   *
+   * @generated from field: string format = 2;
+   */
+  format: string;
+
+  /**
+   * @generated from field: string sha256 = 3;
+   */
+  sha256: string;
+};
+
+/**
+ * Describes the message tap.v1.StopRecordingResponse.
+ * Use `create(StopRecordingResponseSchema)` to create a new message.
+ */
+export const StopRecordingResponseSchema: GenMessage<StopRecordingResponse> = /*@__PURE__*/
+  messageDesc(file_device, 14);
+
+/**
  * @generated from message tap.v1.DriverLogRequest
  */
 export type DriverLogRequest = Message<"tap.v1.DriverLogRequest"> & {
@@ -341,7 +452,7 @@ export type DriverLogRequest = Message<"tap.v1.DriverLogRequest"> & {
  * Use `create(DriverLogRequestSchema)` to create a new message.
  */
 export const DriverLogRequestSchema: GenMessage<DriverLogRequest> = /*@__PURE__*/
-  messageDesc(file_device, 11);
+  messageDesc(file_device, 15);
 
 /**
  * @generated from message tap.v1.DriverLogResponse
@@ -358,7 +469,7 @@ export type DriverLogResponse = Message<"tap.v1.DriverLogResponse"> & {
  * Use `create(DriverLogResponseSchema)` to create a new message.
  */
 export const DriverLogResponseSchema: GenMessage<DriverLogResponse> = /*@__PURE__*/
-  messageDesc(file_device, 12);
+  messageDesc(file_device, 16);
 
 /**
  * @generated from message tap.v1.ScreenSnapshotRequest
@@ -394,7 +505,7 @@ export type ScreenSnapshotRequest = Message<"tap.v1.ScreenSnapshotRequest"> & {
  * Use `create(ScreenSnapshotRequestSchema)` to create a new message.
  */
 export const ScreenSnapshotRequestSchema: GenMessage<ScreenSnapshotRequest> = /*@__PURE__*/
-  messageDesc(file_device, 13);
+  messageDesc(file_device, 17);
 
 /**
  * A selector that matched only its node in the dump.
@@ -418,7 +529,7 @@ export type SelectorCandidate = Message<"tap.v1.SelectorCandidate"> & {
  * Use `create(SelectorCandidateSchema)` to create a new message.
  */
 export const SelectorCandidateSchema: GenMessage<SelectorCandidate> = /*@__PURE__*/
-  messageDesc(file_device, 14);
+  messageDesc(file_device, 18);
 
 /**
  * One visible node, in dump (pre-order) order.
@@ -528,7 +639,7 @@ export type ScreenNode = Message<"tap.v1.ScreenNode"> & {
  * Use `create(ScreenNodeSchema)` to create a new message.
  */
 export const ScreenNodeSchema: GenMessage<ScreenNode> = /*@__PURE__*/
-  messageDesc(file_device, 15);
+  messageDesc(file_device, 19);
 
 /**
  * @generated from message tap.v1.ScreenSnapshotResponse
@@ -564,7 +675,7 @@ export type ScreenSnapshotResponse = Message<"tap.v1.ScreenSnapshotResponse"> & 
  * Use `create(ScreenSnapshotResponseSchema)` to create a new message.
  */
 export const ScreenSnapshotResponseSchema: GenMessage<ScreenSnapshotResponse> = /*@__PURE__*/
-  messageDesc(file_device, 16);
+  messageDesc(file_device, 20);
 
 /**
  * @generated from message tap.v1.ResolveRefRequest
@@ -593,7 +704,7 @@ export type ResolveRefRequest = Message<"tap.v1.ResolveRefRequest"> & {
  * Use `create(ResolveRefRequestSchema)` to create a new message.
  */
 export const ResolveRefRequestSchema: GenMessage<ResolveRefRequest> = /*@__PURE__*/
-  messageDesc(file_device, 17);
+  messageDesc(file_device, 21);
 
 /**
  * @generated from message tap.v1.ResolveRefResponse
@@ -620,7 +731,7 @@ export type ResolveRefResponse = Message<"tap.v1.ResolveRefResponse"> & {
  * Use `create(ResolveRefResponseSchema)` to create a new message.
  */
 export const ResolveRefResponseSchema: GenMessage<ResolveRefResponse> = /*@__PURE__*/
-  messageDesc(file_device, 18);
+  messageDesc(file_device, 22);
 
 /**
  * State of a listed device.
@@ -798,6 +909,25 @@ export const DeviceService: GenService<{
     methodKind: "unary";
     input: typeof DriverLogRequestSchema;
     output: typeof DriverLogResponseSchema;
+  },
+  /**
+   * One optional host-managed scrcpy capture per attachment (video, audio or both); the driver
+   * never encodes media. Requires scrcpy on the daemon host.
+   *
+   * @generated from rpc tap.v1.DeviceService.StartRecording
+   */
+  startRecording: {
+    methodKind: "unary";
+    input: typeof StartRecordingRequestSchema;
+    output: typeof StartRecordingResponseSchema;
+  },
+  /**
+   * @generated from rpc tap.v1.DeviceService.StopRecording
+   */
+  stopRecording: {
+    methodKind: "unary";
+    input: typeof StopRecordingRequestSchema;
+    output: typeof StopRecordingResponseSchema;
   },
   /**
    * A compact, ref-addressed outline of the screen, parsed from the diagnostic hierarchy dump

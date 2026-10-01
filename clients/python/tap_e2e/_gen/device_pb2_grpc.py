@@ -64,6 +64,16 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.DriverLogRequest.SerializeToString,
                 response_deserializer=device__pb2.DriverLogResponse.FromString,
                 _registered_method=True)
+        self.StartRecording = channel.unary_unary(
+                '/tap.v1.DeviceService/StartRecording',
+                request_serializer=device__pb2.StartRecordingRequest.SerializeToString,
+                response_deserializer=device__pb2.StartRecordingResponse.FromString,
+                _registered_method=True)
+        self.StopRecording = channel.unary_unary(
+                '/tap.v1.DeviceService/StopRecording',
+                request_serializer=device__pb2.StopRecordingRequest.SerializeToString,
+                response_deserializer=device__pb2.StopRecordingResponse.FromString,
+                _registered_method=True)
         self.ScreenSnapshot = channel.unary_unary(
                 '/tap.v1.DeviceService/ScreenSnapshot',
                 request_serializer=device__pb2.ScreenSnapshotRequest.SerializeToString,
@@ -110,6 +120,20 @@ class DeviceServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def DriverLog(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartRecording(self, request, context):
+        """One optional host-managed scrcpy capture per attachment (video, audio or both); the driver
+        never encodes media. Requires scrcpy on the daemon host.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopRecording(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -163,6 +187,16 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.DriverLog,
                     request_deserializer=device__pb2.DriverLogRequest.FromString,
                     response_serializer=device__pb2.DriverLogResponse.SerializeToString,
+            ),
+            'StartRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartRecording,
+                    request_deserializer=device__pb2.StartRecordingRequest.FromString,
+                    response_serializer=device__pb2.StartRecordingResponse.SerializeToString,
+            ),
+            'StopRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopRecording,
+                    request_deserializer=device__pb2.StopRecordingRequest.FromString,
+                    response_serializer=device__pb2.StopRecordingResponse.SerializeToString,
             ),
             'ScreenSnapshot': grpc.unary_unary_rpc_method_handler(
                     servicer.ScreenSnapshot,
@@ -337,6 +371,60 @@ class DeviceService:
             '/tap.v1.DeviceService/DriverLog',
             device__pb2.DriverLogRequest.SerializeToString,
             device__pb2.DriverLogResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/StartRecording',
+            device__pb2.StartRecordingRequest.SerializeToString,
+            device__pb2.StartRecordingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/StopRecording',
+            device__pb2.StopRecordingRequest.SerializeToString,
+            device__pb2.StopRecordingResponse.FromString,
             options,
             channel_credentials,
             insecure,
