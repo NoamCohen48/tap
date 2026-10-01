@@ -8,7 +8,6 @@ import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import io.github.noamcohen48.tap.protocol.Requests
 import io.github.noamcohen48.tap.protocol.Selectors
-import io.github.noamcohen48.tap.protocol.inPackage
 import io.github.noamcohen48.tap.protocol.withEnvelope
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.MAX_BLOB_CHUNK_BYTES
@@ -578,7 +577,7 @@ class CommandPipelineTest {
         val rejected =
             mapOf(
                 4L to Requests.of(Commands.tap(Selector.getDefaultInstance())).withEnvelope(SESSION, GENERATION, 5_000),
-                5L to Requests.of(Commands.tap(Selectors.text("OK").inPackage(" "))).withEnvelope(SESSION, GENERATION, 5_000),
+                5L to Requests.of(Commands.tap(Selectors.resource(""))).withEnvelope(SESSION, GENERATION, 5_000),
                 6L to Requests.health().withEnvelope(SESSION, GENERATION, MAX_REQUEST_TIMEOUT_MS + 1),
                 7L to Requests.health().withEnvelope(SESSION, GENERATION + 1, 5_000),
             )

@@ -75,7 +75,6 @@ internal suspend fun runProductProbe(arguments: List<String>) = withContext(Disp
                 sessionId = sessionId,
                 generation = generation,
                 encodedSecret = encodedSecret,
-                autPackage = autPackage,
             ) { devicePort ->
                 journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
                 store.write(journal)

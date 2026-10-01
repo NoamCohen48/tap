@@ -4,7 +4,6 @@ package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
-import io.github.noamcohen48.tap.api.v1.AnyWindowScope
 import io.github.noamcohen48.tap.api.v1.At
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
@@ -14,7 +13,6 @@ import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.ResourceId
-import io.github.noamcohen48.tap.api.v1.SystemScope
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
 
@@ -23,9 +21,8 @@ import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
  *
  * Build one with the top-level functions ([text], [res], [desc], ...), narrow it with the
  * methods below and combine selectors with [and] / [or]; each call returns a new selector. Bind
- * it with [Device.element]. Matching happens on the device, by default in the app under test's
- * focused window ([Selector.inPackage], [Selector.inAnyWindow] widen it), and mutations require
- * exactly one match.
+ * it with [App.element] for package ownership or [Screen.element] for whatever is visible.
+ * Mutations require exactly one match.
  *
  * A [Selector] builds the server API's `tap.v1.Selector`, a small expression tree that the
  * server forwards to the driver unchanged, so anything built here is validated identically by
@@ -74,8 +71,8 @@ class Selector internal constructor(
         name: String,
     ): Selector = also(resource(name, packageName))
 
-    /** Also require the app-under-test resource id `name` (see [res]). */
-    fun andRes(name: String): Selector = also(autResource(name))
+    /** Also require the resource id `name` of any package (see [res]). */
+    fun andRes(name: String): Selector = also(resource(name))
 
     /** Require `isCheckable == value`. */
     fun checkable(value: Boolean = true): Selector = also(flag(NodeFlag.FLAG_CHECKABLE, value))
@@ -130,7 +127,7 @@ class Selector internal constructor(
     // `has*` relation follows the same rules as [and].
 
     /**
-     * This element must have a descendant matching [other]: `rawRes("card").hasDescendant(text("Play"))`.
+     * This element must have a descendant matching [other]: `res("card").hasDescendant(text("Play"))`.
      *
      * @throws IllegalArgumentException when [other] has a match choice or a different scope.
      */
@@ -186,13 +183,8 @@ class Selector internal constructor(
             "$operation: the receiver ${render()} has a match choice (first()/at()), which a relation cannot carry; " +
                 "apply first()/at() to the result instead"
         }
-        requireSameScope(operation, other)
         return Selector(
-            other.proto
-                .toBuilder()
-                .setNode(conjunction(other.node, related(relation, node)))
-                .also(::copyScope)
-                .build(),
+            other.proto.toBuilder().setNode(conjunction(other.node, related(relation, node))).build(),
         )
     }
 
@@ -205,58 +197,19 @@ class Selector internal constructor(
             "$operation: the operand ${other.render()} has a match choice (first()/at()), which a node predicate cannot carry; " +
                 "apply first()/at() to the combined selector instead"
         }
-        requireSameScope(operation, other)
         return other.node
-    }
-
-    private fun requireSameScope(
-        operation: String,
-        other: Selector,
-    ) {
-        require(!other.hasExplicitScope || other.scopeKey == scopeKey) {
-            "$operation: the operand ${other.render()} has a different scope than ${render()}; " +
-                "set inPackage(...)/inAnyWindow() on the combined selector instead"
-        }
     }
 
     /** True when a non-default match choice (`first`/`at`) is set; `exactly_one` is the default. */
     internal val hasPick: Boolean
         get() = proto.pickCase == SelectorProto.PickCase.FIRST || proto.pickCase == SelectorProto.PickCase.AT
 
-    /** True when a non-default scope (a package, any window) is set; `aut` is the default. */
-    private val hasExplicitScope: Boolean get() = scopeKey != null
-
-    /** The effective scope: null for the app under test, else the package or any window. */
-    private val scopeKey: String?
-        get() =
-            when (proto.scopeCase) {
-                SelectorProto.ScopeCase.SYSTEM -> "package ${proto.system.packageName}"
-                SelectorProto.ScopeCase.ANY_WINDOW -> "any window"
-                SelectorProto.ScopeCase.AUT, SelectorProto.ScopeCase.SCOPE_NOT_SET, null -> null
-            }
-
-    private fun copyScope(target: SelectorProto.Builder) {
-        when (proto.scopeCase) {
-            SelectorProto.ScopeCase.SYSTEM -> target.system = proto.system
-            SelectorProto.ScopeCase.ANY_WINDOW -> target.anyWindow = proto.anyWindow
-            SelectorProto.ScopeCase.AUT, SelectorProto.ScopeCase.SCOPE_NOT_SET, null -> target.clearScope()
-        }
-    }
-
-    // --- Scope and match choice ---------------------------------------------------------------
-
     /**
-     * Search the focused window of [packageName] instead of the app under test's: any package,
-     * such as the permission controller's dialog or another app.
+     * This selector restricted to nodes of [packageName]: one more predicate on the node, so
+     * package ownership travels in the selector itself ([App.element]).
      */
-    fun inPackage(packageName: String): Selector =
-        Selector(proto.toBuilder().setSystem(SystemScope.newBuilder().setPackageName(packageName)).build())
-
-    /**
-     * Search every window on screen, of any package (dialogs, popups, the system UI, other
-     * apps), instead of only the app under test's focused window.
-     */
-    fun inAnyWindow(): Selector = Selector(proto.toBuilder().setAnyWindow(AnyWindowScope.getDefaultInstance()).build())
+    internal fun inPackage(packageName: String): Selector =
+        withNode(conjunction(node, match(TextProperty.PROPERTY_PACKAGE_NAME, packageName, MatchMode.EXACT)))
 
     /** Accept the first match in accessibility order instead of requiring exactly one. */
     fun first(): Selector = Selector(proto.toBuilder().setFirst(First.getDefaultInstance()).build())
@@ -304,9 +257,6 @@ private fun resource(
     packageName: String? = null,
 ): Node = Node.newBuilder().setResource(ResourceId.newBuilder().setName(name).apply { packageName?.let(::setPackageName) }).build()
 
-private fun autResource(name: String): Node =
-    Node.newBuilder().setResource(ResourceId.newBuilder().setName(name).setAutPackage(true)).build()
-
 private fun related(
     relation: Relation,
     node: Node,
@@ -349,21 +299,18 @@ fun desc(
     mode: MatchMode = MatchMode.EXACT,
 ): Selector = selector(match(TextProperty.PROPERTY_CONTENT_DESCRIPTION, value, mode))
 
-/** Compose `testTag` projected through `testTagsAsResourceId`; never package-qualified. */
-fun rawRes(name: String): Selector = selector(resource(name))
-
-/** Android View resource id `packageName:id/name`. */
+/** Exactly the Android View resource id `packageName:id/name`. */
 fun resId(
     packageName: String,
     name: String,
 ): Selector = selector(resource(name, packageName))
 
 /**
- * View resource id `name` of the **app under test**: `<aut>:id/name`, with the package filled in
- * on the device from the session, so the same selector works on every device and role. Use
- * [resId] for another package (a system dialog with [Selector.inPackage] or [Selector.inAnyWindow]).
+ * Resource id `name` in any package (`<package>:id/name`), or a Compose `testTag` `name` under
+ * `testTagsAsResourceId`. Under [App.element] only that app's nodes match; under
+ * [Screen.element] any visible package's. Use [resId] to name the id's package explicitly.
  */
-fun res(name: String): Selector = selector(autResource(name))
+fun res(name: String): Selector = selector(resource(name))
 
 /** Widget class name, e.g. `android.widget.EditText`. */
 fun className(
@@ -384,8 +331,8 @@ fun clickable(): Selector = selector(flag(NodeFlag.FLAG_CLICKABLE, true))
 fun scrollable(): Selector = selector(flag(NodeFlag.FLAG_SCROLLABLE, true))
 
 /**
- * Any of the selectors may match: `anyOf(text("OK"), text("Allow"), desc("Accept"))`. Scope and
- * match choice come from [first]; the others follow the operand rules of [Selector.or].
+ * Any of the selectors may match: `anyOf(text("OK"), text("Allow"), desc("Accept"))`. Match
+ * choice comes from [first]; the others follow the operand rules of [Selector.or].
  */
 fun anyOf(
     first: Selector,
@@ -393,7 +340,7 @@ fun anyOf(
 ): Selector = rest.fold(first) { acc, next -> acc or next }
 
 /**
- * All of the selectors must hold on one node. Scope and match choice come from [first]; the
+ * All of the selectors must hold on one node. Match choice comes from [first]; the
  * others follow the operand rules of [Selector.and].
  */
 fun allOf(

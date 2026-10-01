@@ -268,7 +268,6 @@ class AdbTest {
                     "session-1",
                     1,
                     "c2VjcmV0",
-                    "com.example",
                     driverArguments = mapOf("tapFault" to "x; reboot"),
                     processStarter = starter,
                     onStarting = {},
@@ -278,6 +277,7 @@ class AdbTest {
             assertEquals(listOf("fake-adb", "-s", serial, "shell", "am", "instrument"), command.take(6))
             assertTrue("'x; reboot'" in command, "unsafe value must be one quoted token: $command")
             assertEquals("c2VjcmV0", command[command.indexOf("tapSecret") + 1])
+            assertTrue(command.none { it.startsWith("tapAut") || it.startsWith("tapSync") }, "the driver is bound to no app: $command")
         }
 
     @Test

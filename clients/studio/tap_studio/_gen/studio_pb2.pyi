@@ -67,34 +67,30 @@ class InfoResponse(_message.Message):
     def __init__(self, recorder: _Optional[str] = ..., format: _Optional[str] = ...) -> None: ...
 
 class AttachedDevice(_message.Message):
-    __slots__ = ("serial", "aut_package", "api_level", "manufacturer", "model", "display_width", "display_height")
+    __slots__ = ("serial", "api_level", "manufacturer", "model", "display_width", "display_height")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     API_LEVEL_FIELD_NUMBER: _ClassVar[int]
     MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
     serial: str
-    aut_package: str
     api_level: int
     manufacturer: str
     model: str
     display_width: int
     display_height: int
-    def __init__(self, serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
+    def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
 
 class Session(_message.Message):
-    __slots__ = ("device", "recording", "steps", "recording_package")
+    __slots__ = ("device", "recording", "steps")
     DEVICE_FIELD_NUMBER: _ClassVar[int]
     RECORDING_FIELD_NUMBER: _ClassVar[int]
     STEPS_FIELD_NUMBER: _ClassVar[int]
-    RECORDING_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     device: AttachedDevice
     recording: bool
     steps: int
-    recording_package: str
-    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., recording_package: _Optional[str] = ...) -> None: ...
+    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ...) -> None: ...
 
 class GetSessionRequest(_message.Message):
     __slots__ = ()
@@ -129,12 +125,10 @@ class ListDevicesResponse(_message.Message):
     def __init__(self, devices: _Optional[_Iterable[_Union[DeviceChoice, _Mapping]]] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
-    __slots__ = ("serial", "aut_package")
+    __slots__ = ("serial",)
     SERIAL_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     serial: str
-    aut_package: str
-    def __init__(self, serial: _Optional[str] = ..., aut_package: _Optional[str] = ...) -> None: ...
+    def __init__(self, serial: _Optional[str] = ...) -> None: ...
 
 class AttachResponse(_message.Message):
     __slots__ = ("session",)
@@ -336,22 +330,20 @@ class GetRecordingResponse(_message.Message):
     def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., document: _Optional[str] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Recording(_message.Message):
-    __slots__ = ("format", "recorded_at", "recorder", "device", "aut_package", "secrets", "steps")
+    __slots__ = ("format", "recorded_at", "recorder", "device", "secrets", "steps")
     FORMAT_FIELD_NUMBER: _ClassVar[int]
     RECORDED_AT_FIELD_NUMBER: _ClassVar[int]
     RECORDER_FIELD_NUMBER: _ClassVar[int]
     DEVICE_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     SECRETS_FIELD_NUMBER: _ClassVar[int]
     STEPS_FIELD_NUMBER: _ClassVar[int]
     format: str
     recorded_at: _timestamp_pb2.Timestamp
     recorder: str
     device: RecordedDevice
-    aut_package: str
     secrets: _containers.RepeatedScalarFieldContainer[str]
     steps: _containers.RepeatedCompositeFieldContainer[Step]
-    def __init__(self, format: _Optional[str] = ..., recorded_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., recorder: _Optional[str] = ..., device: _Optional[_Union[RecordedDevice, _Mapping]] = ..., aut_package: _Optional[str] = ..., secrets: _Optional[_Iterable[str]] = ..., steps: _Optional[_Iterable[_Union[Step, _Mapping]]] = ...) -> None: ...
+    def __init__(self, format: _Optional[str] = ..., recorded_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., recorder: _Optional[str] = ..., device: _Optional[_Union[RecordedDevice, _Mapping]] = ..., secrets: _Optional[_Iterable[str]] = ..., steps: _Optional[_Iterable[_Union[Step, _Mapping]]] = ...) -> None: ...
 
 class RecordedDevice(_message.Message):
     __slots__ = ("serial", "api_level", "manufacturer", "model")

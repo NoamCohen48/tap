@@ -3,7 +3,7 @@
 
     TAP_BIN=<tap> SERIAL=emulator-5554 python .github/scripts/studio_smoke.py
 
-Installs the fixture app, starts `tap-studio --serial … --package …`, signs in with the launch
+Installs the fixture app, starts `tap-studio --serial …`, signs in with the launch
 link, checks the page is served and frames arrive, records a cold launch, a tap, two text
 assertions, a set text, a tap picked by index, and the notification shade opened and closed
 with Back (the device rail's steps) with the checks that it covered the app and then did not, exports the recording, reopens it after
@@ -64,7 +64,7 @@ class Studio:
     def __init__(self) -> None:
         self.log = (OUT / "studio.log").open("w")
         self.process = subprocess.Popen(
-            [STUDIO, "--no-open", "--serial", SERIAL, "--package", PACKAGE],
+            [STUDIO, "--no-open", "--serial", SERIAL],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -109,7 +109,7 @@ class Studio:
 
 def install_fixture() -> None:
     with TapClient.create() as client, client.connect("studio-smoke-setup") as connection:
-        connection.attach_device(SERIAL, PACKAGE).app(PACKAGE).install(APK)
+        connection.attach_device(SERIAL).app(PACKAGE).install(APK)
 
 
 def attached_to(serial: str) -> list[str]:
@@ -171,7 +171,7 @@ def run() -> None:
     # The exported file, replayed by another client in a fresh connection.
     recording = loads((OUT / "flow.tap-recording.json").read_text())
     with TapClient.create() as client, client.connect("studio-smoke-replay") as connection:
-        device = connection.attach_device(SERIAL, recording.aut_package)
+        device = connection.attach_device(SERIAL)
         for recorded in recording.steps:
             steps.run(device, recorded)
     print("the exported recording replays through tap-e2e")

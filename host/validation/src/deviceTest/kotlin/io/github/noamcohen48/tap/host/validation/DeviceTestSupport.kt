@@ -260,8 +260,6 @@ class DeviceHarness private constructor(
                     sessionId,
                     generation,
                     encodedSecret,
-                    autPackage = FIXTURE_PACKAGE,
-                    syncAuthority = SYNC_AUTHORITY,
                     overallDeadlineNanos = deadlineNanos,
                     driverArguments = fixtureDriverArguments(faultPoint) + driverArguments,
                     logSink = {},
@@ -534,4 +532,4 @@ suspend fun DeviceHarness.openFixtureMain(client: DriverClient) {
 }
 
 /** A Compose button on the fixture's main screen; visible once the screen is ready. */
-val FIXTURE_MAIN_READY: Selector = Selectors.rawResource("composeButton")
+val FIXTURE_MAIN_READY: Selector = Selectors.resource("composeButton")

@@ -9,24 +9,24 @@ deliberately different.
 
 | Maestro | Tap (Kotlin) | Note |
 |---|---|---|
-| `launchApp` | `device.app().coldLaunch()` | verified: new process identity, focused window |
+| `appId` + `launchApp` | `val app = device.app("com.shop")`; `app.coldLaunch()` | verified: new process identity, focused window |
 | `launchApp: { clearState: true }` | `app.clearData(); app.coldLaunch()` | |
 | `stopApp` | `app.forceStop()` | verified: no process left |
-| `tapOn: "Text"` | `device.element(text("Text")).tap()` | Maestro tries text *or* id; Tap is explicit |
-| `tapOn: { id: "x" }` | `device.element(res("x")).tap()` | |
-| `tapOn: { text: "Add", index: 1 }` | `device.element(text("Add").at(1)).tap()` | without `at`, two matches are `AMBIGUOUS` |
+| `tapOn: "Text"` | `app.element(text("Text")).tap()` | Maestro tries text *or* id; Tap is explicit |
+| `tapOn: { id: "x" }` | `app.element(res("x")).tap()` | |
+| `tapOn: { text: "Add", index: 1 }` | `app.element(text("Add").at(1)).tap()` | without `at`, two matches are `AMBIGUOUS` |
 | `tapOn: { point: "50%,50%" }` | — | no coordinates by design |
 | `longPressOn` | `element.longTap()` | |
-| `inputText` | `element.setText(v)` / `typeText(v)`; `device.typeText(v)` types into the current focus | neither reads the field back: assert with `await(...).textEquals(v)` |
+| `inputText` | `element.setText(v)` / `typeText(v)`; `device.typeText(v)` types into the current focus | neither reads the field back: assert with `app.await(...).textEquals(v)` |
 | `eraseText` | `element.clearText()` | |
 | `back` | `device.pressBack()` | |
 | `scroll` / `swipe` | `element.scroll(DOWN)` / `element.swipe(UP)` | always relative to an element |
 | `scrollUntilVisible` | `container.scrollUntil(target)` | a client-side loop of `exists` + `scroll`; gives up with `WaitTimeoutException` |
-| `assertVisible` | `device.await(sel).visible()` | Maestro's assert already waits; so does this |
-| `assertNotVisible` | `device.await(sel).gone()` | |
-| `assertTrue` / `extendedWaitUntil` | `device.await(sel).textEquals(...)`, `.enabled()`, `.count(n)`; `device.awaitUntil { … }` for anything else | |
-| `waitForAnimationToEnd` | `device.awaitAnimationEnd()` | pixel-based |
-| (settle before each command) | `device.awaitAppSettled()` | Maestro settles implicitly; Tap only when asked |
+| `assertVisible` | `app.await(sel).visible()` | Maestro's assert already waits; so does this |
+| `assertNotVisible` | `app.await(sel).gone()` | |
+| `assertTrue` / `extendedWaitUntil` | `app.await(sel).textEquals(...)`, `.enabled()`, `.count(n)`; `device.awaitUntil { … }` for anything else | |
+| `waitForAnimationToEnd` | `app.awaitAnimationEnd()` | pixel-based |
+| (settle before each command) | `app.awaitSettled()` | Maestro settles implicitly; Tap only when asked |
 | `runFlow` / `repeat` / `evalScript` | Kotlin / Python | the test language is the flow language |
 | `takeScreenshot` | `device.screenshot()` | also automatic on failure |
 | `openLink`, `setLocation`, `addMedia` | — | not in scope yet |
@@ -43,8 +43,8 @@ Kotlin note: every `tap()`/`setText()`/`await()` below is `suspend` inside `tapT
 | Appium | Tap | Note |
 |---|---|---|
 | `AppiumDriver(url, caps)` | `@TapTest` + `Device` parameter / `tap_device` fixture | no server URL, no capabilities: the server is found or started |
-| `findElement(By.id("x"))` | `device.element(res("x"))` | returns a lazy element, never a handle |
-| `findElement(AppiumBy.accessibilityId("x"))` | `device.element(desc("x"))` | |
+| `findElement(By.id("x"))` | `app.element(res("x"))` | returns a lazy element, never a handle |
+| `findElement(AppiumBy.accessibilityId("x"))` | `app.element(desc("x"))` | |
 | `findElement(AppiumBy.androidUIAutomator("…"))` | selector DSL | no string queries |
 | `findElement(By.xpath("…"))` | selector relations (`hasDescendant`, `descendant`, `child`, `hasParent`) | no XPath by design |
 | `findElements(...)` | `element.count()`, `element.at(n)` | |
@@ -54,14 +54,14 @@ Kotlin note: every `tap()`/`setText()`/`await()` below is `suspend` inside `tapT
 | `element.getText()` | `element.text()` | |
 | `element.isDisplayed()` | `element.exists()` | |
 | `element.getAttribute("checked")` | `element.isChecked()` / `element.snapshot()` | |
-| `WebDriverWait(...).until(visibilityOf(...))` | `device.await(sel).visible()` | polls on the device |
+| `WebDriverWait(...).until(visibilityOf(...))` | `app.await(sel).visible()` | polls on the device |
 | `driver.pressKey(new KeyEvent(BACK))` | `device.pressBack()` | |
 | `driver.getPageSource()` | `device.dumpHierarchy()` | diagnostic only |
 | `driver.getScreenshotAs(...)` | `device.screenshot()` | |
 | `driver.activateApp` / `terminateApp` | `app.launch()` / `app.forceStop()` | verified |
 | `driver.installApp` / `removeApp` | `app.install(path)` / `app.uninstall()` | |
 | `driver.resetApp` | `app.clearData()` | |
-| `mobile: acceptAlert` | tap the dialog through `inAnyWindow()` / `inPackage(...)` or `app.grantPermission(...)` | |
+| `mobile: acceptAlert` | tap the dialog through `device.screen.element(...)` or the dialog's `device.app(...)`, or `app.grantPermission(...)` | |
 | `StaleElementReferenceException` | — | there are no references to go stale |
 | implicit wait | — | none; write the wait |
 | Grid / parallel sessions | `@TapDevices("a", "b")`, per-device locks shared by every process | sessions opened in serial order, so no deadlocks |

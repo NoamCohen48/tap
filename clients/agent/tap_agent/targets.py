@@ -14,10 +14,12 @@ class UsageError(ValueError):
 
 @dataclass(frozen=True)
 class Target:
-    """What an action is aimed at: a snapshot ref, or a selector written by the agent."""
+    """What an action is aimed at: a snapshot ref, or a selector written by the agent and the
+    package whose nodes it searches (None: the whole screen)."""
 
     ref: str | None = None
     selector: Selector | None = None
+    package: str | None = None
     source: str = ""
 
     def describe(self) -> str:
@@ -73,10 +75,10 @@ def _term(key: str, value: str) -> Selector:
 def parse_target(spec: str) -> Target:
     """``@e7`` / ``e7`` → a ref; ``key=value[,key=value...]`` → a selector matching all terms.
 
-    Keys: ``id`` (the app's resource id, or ``pkg:id/name``), ``text``, ``desc``, ``hint``
-    (exact), ``text~`` / ``desc~`` (contains), ``class`` (full name, or a simple name such as
-    ``Button``), ``pkg`` (search that package's window instead of the app's) and ``index``
-    (the N-th match, 0-based, instead of requiring exactly one)."""
+    Keys: ``id`` (a resource id in any package, or ``pkg:id/name``), ``text``, ``desc``,
+    ``hint`` (exact), ``text~`` / ``desc~`` (contains), ``class`` (full name, or a simple name
+    such as ``Button``), ``pkg`` (only that package's nodes; without it, the whole screen) and
+    ``index`` (the N-th match, 0-based, instead of requiring exactly one)."""
     spec = spec.strip()
     ref = _REF.fullmatch(spec)
     if ref:
@@ -103,11 +105,9 @@ def parse_target(spec: str) -> Target:
     if not terms:
         raise UsageError(f"target {spec!r} has no property to match (keys: {SELECTOR_KEYS})")
     selector = all_of(*terms)
-    if package:
-        selector = selector.in_package(package)
     if index is not None:
         selector = selector.at(index)
-    return Target(selector=selector, source=spec)
+    return Target(selector=selector, package=package, source=spec)
 
 
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)?")

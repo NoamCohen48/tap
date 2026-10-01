@@ -18,11 +18,10 @@ internal class Screen(
 internal object ScreenSnapshots {
     fun screen(
         xml: String,
-        autPackage: String,
         candidates: Boolean = false,
     ): Screen {
         val hierarchy = HierarchyParser.parse(xml)
-        val synthesis = SelectorSynthesis(hierarchy, autPackage)
+        val synthesis = SelectorSynthesis(hierarchy)
         val selectors = if (candidates) synthesis.candidates() else synthesis.synthesise().map(::listOfNotNull)
         return Screen(hierarchy.rotation, hierarchy.nodes.map { screenNode(it, selectors[it.index], candidates) })
     }

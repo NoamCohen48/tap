@@ -1,7 +1,7 @@
 // tap.v1 — element selectors.
 //
 // Part of the Tap host server API (see README.md for the file map) and of the device wire
-// protocol. Every sum type is a `oneof` (`Node.kind`, `Selector.scope`, `Selector.pick`), so
+// protocol. Every sum type is a `oneof` (`Node.kind`, `Selector.pick`), so
 // each variant carries exactly its own fields. Validated by the same code
 // (:contracts:protocol CommandValidation) on the server and on the driver.
 
@@ -30,6 +30,7 @@ enum TextProperty {
   PROPERTY_CONTENT_DESCRIPTION = 2;
   PROPERTY_HINT = 3;
   PROPERTY_CLASS_NAME = 4;
+  PROPERTY_PACKAGE_NAME = 5;
 }
 
 // The boolean node properties a Flag can constrain.
@@ -68,14 +69,12 @@ message Flag {
   bool value = 2;
 }
 
-// A resource id. With `package_name`: the View id `package_name:id/name`. With `aut_package`:
-// the same, with the session's app under test filled in by the driver (so the selector stays
-// session-free); mutually exclusive with `package_name`. With neither: the exact, unqualified
-// resource name, which is how a Compose testTag appears under testTagsAsResourceId.
+// A View resource id. With `package_name`: exactly `package_name:id/name`. Without: `name` in any
+// package (`<any>:id/name`) or the bare `name`, which is how a Compose testTag appears under
+// testTagsAsResourceId. `name` never contains `:id/`; put the package in `package_name`.
 message ResourceId {
   string name = 1;
   optional string package_name = 2;
-  bool aut_package = 3;
 }
 
 // The `relation` of the node must satisfy `node`.
@@ -108,18 +107,6 @@ message Node {
   }
 }
 
-// Scope variants: where a selector searches.
-// - aut (default): the focused window of the app under test.
-// - system: the focused window of `package_name`, any package (a system dialog, another app).
-//   The name is historical; there is no allowlist.
-// - any_window: every window on screen, of any package, in the order the accessibility
-//   service reports them.
-message AutScope {}
-message SystemScope {
-  string package_name = 1;
-}
-message AnyWindowScope {}
-
 // Pick variants: exactly one match (default; more is AMBIGUOUS), the first in accessibility
 // order, or the zero-based `index`-th in accessibility order (NOT_FOUND when absent).
 message ExactlyOne {}
@@ -128,15 +115,11 @@ message At {
   int32 index = 1;
 }
 
-// A complete selector: the node tree, its scope and how an action picks among matches.
+// A complete selector: the node tree and how an action picks among matches. Package ownership
+// is an ordinary PROPERTY_PACKAGE_NAME predicate; there is no separate execution scope.
 // Built by the client DSLs and validated identically by the server and the driver.
 message Selector {
   Node node = 1;
-  oneof scope {
-    AutScope aut = 2;
-    SystemScope system = 3;
-    AnyWindowScope any_window = 7;
-  }
   oneof pick {
     ExactlyOne exactly_one = 4;
     First first = 5;

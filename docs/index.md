@@ -19,9 +19,10 @@ pytest, and run them on real phones and emulators. You don't need to change your
     class CheckoutTest {
         @Test
         fun buysAnItem(device: Device) = tapTest {
-            device.app().coldLaunch()
-            device.element(res("buy_button")).tap()
-            device.await(text("Order placed")).visible()
+            val shop = device.app("com.example.shop")
+            shop.coldLaunch()
+            shop.element(res("buy_button")).tap()
+            shop.await(text("Order placed")).visible()
         }
     }
     ```
@@ -32,9 +33,10 @@ pytest, and run them on real phones and emulators. You don't need to change your
     from tap_e2e import res, text
 
     def test_buys_an_item(tap_device):
-        tap_device.app().cold_launch()
-        tap_device.element(res("buy_button")).tap()
-        tap_device.wait(text("Order placed")).visible()
+        shop = tap_device.app("com.example.shop")
+        shop.cold_launch()
+        shop.element(res("buy_button")).tap()
+        shop.wait(text("Order placed")).visible()
     ```
 
 [Get started](guide/getting-started.md){ .md-button .md-button--primary }

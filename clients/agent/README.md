@@ -6,7 +6,8 @@ talks to the daemon only through the `tap-e2e` client library.
 
 ```sh
 pip install -e clients/python -e clients/agent
-tap-agent attach emulator-5554 com.example.app --cold
+tap-agent attach emulator-5554
+tap-agent app cold-launch com.example.app
 tap-agent snapshot
 tap-agent tap @e3 --settle
 tap-agent release

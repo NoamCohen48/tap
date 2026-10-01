@@ -179,7 +179,7 @@ class TapTestBridgeTest {
                     val failure =
                         assertFailsWith<AssertionError> {
                             tapTest {
-                                val device = connection.attachDevice("emulator-5554", "com.test")
+                                val device = connection.attachDevice("emulator-5554")
                                 try {
                                     // Accepted mutation before the scope: it must run exactly
                                     // once — the cancellation below must never replay it.
@@ -190,7 +190,7 @@ class TapTestBridgeTest {
                                         // after the fake servicer signals the wait's Execute
                                         // was accepted server-side.
                                         async(start = CoroutineStart.UNDISPATCHED) {
-                                            device.await(text("Never rendered ${System.nanoTime()}"), timeout = 20.seconds).visible()
+                                            device.screen.await(text("Never rendered ${System.nanoTime()}"), timeout = 20.seconds).visible()
                                         }
                                         async {
                                             withTimeout(5_000) { fakeDevices.enteredWait.await() }
@@ -222,7 +222,7 @@ class TapTestBridgeTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554") }
                 try {
                     // Bound to a test method, but outside tapTest: no TapContext marker.
                     val root = Job()
@@ -287,7 +287,6 @@ class TapTestBridgeTest {
                 val config =
                     TapConfig(
                         serials = emptyList(),
-                        autPackage = "com.test",
                         artifactsDir = Path.of("build/tap-test-artifacts"),
                         acquireTimeout = kotlin.time.Duration.ZERO,
                         pinnedRoles = emptyMap(),
@@ -325,8 +324,8 @@ class TapTestBridgeTest {
                 val devices =
                     tapScope {
                         mapOf(
-                            "a" to connection.attachDevice("serial-aaa", "com.test"),
-                            "b" to connection.attachDevice("serial-bbb", "com.test"),
+                            "a" to connection.attachDevice("serial-aaa"),
+                            "b" to connection.attachDevice("serial-bbb"),
                         )
                     }
                 val state = TestState(Job(), devices, mapOf("a" to "serial-aaa", "b" to "serial-bbb"), "teardown")
@@ -389,7 +388,6 @@ class TapTestBridgeTest {
                 val config =
                     TapConfig(
                         serials = emptyList(),
-                        autPackage = "com.test",
                         artifactsDir = Path.of("build/tap-test-artifacts"),
                         acquireTimeout = kotlin.time.Duration.ZERO,
                         pinnedRoles = emptyMap(),
@@ -412,66 +410,61 @@ class TapTestBridgeTest {
         // Exercises the real AfterEach path (artifacts + closeAll) on the same thread that
         // ran the interrupted test, like JUnit does: the interrupt must be consumed by
         // tapTest, or AfterEach's own runBlocking teardown aborts before closing devices.
-        System.setProperty("tap.autPackage", "com.test")
+        val connection = runBlocking { client().connect("test") }
         try {
-            val connection = runBlocking { client().connect("test") }
-            try {
-                fakeDevices.quarantineSerial = "serial-bbb"
-                val devices =
-                    runBlocking(
-                        io.github.noamcohen48.tap.sdk
-                            .TapContext("test:setup"),
-                    ) {
-                        mapOf(
-                            "a" to connection.attachDevice("serial-aaa", "com.test"),
-                            "b" to connection.attachDevice("serial-bbb", "com.test"),
-                        )
+            fakeDevices.quarantineSerial = "serial-bbb"
+            val devices =
+                runBlocking(
+                    io.github.noamcohen48.tap.sdk
+                        .TapContext("test:setup"),
+                ) {
+                    mapOf(
+                        "a" to connection.attachDevice("serial-aaa"),
+                        "b" to connection.attachDevice("serial-bbb"),
+                    )
+                }
+            val state = TestState(Job(), devices, mapOf("a" to "serial-aaa", "b" to "serial-bbb"), "interrupted-teardown")
+            val extension = TapExtension()
+            val backing = HashMap<Any, Any?>(mapOf("tap.devices" to state))
+            val testMethod = TapTestBridgeTest::class.java.getDeclaredMethod("metadata-only test stays possible")
+            var observed: Throwable? = null
+            val context = stubContext(stubStore(backing), TapTestBridgeTest::class.java, testMethod) { observed }
+            var flagAfterTest: Boolean? = null
+            var afterEachError: Throwable? = null
+            val thread =
+                Thread {
+                    bind(state)
+                    try {
+                        tapTest { awaitCancellation() }
+                    } catch (failure: Throwable) {
+                        observed = failure
+                    } finally {
+                        TapTestBinding.current.remove()
                     }
-                val state = TestState(Job(), devices, mapOf("a" to "serial-aaa", "b" to "serial-bbb"), "interrupted-teardown")
-                val extension = TapExtension()
-                val backing = HashMap<Any, Any?>(mapOf("tap.devices" to state))
-                val testMethod = TapTestBridgeTest::class.java.getDeclaredMethod("metadata-only test stays possible")
-                var observed: Throwable? = null
-                val context = stubContext(stubStore(backing), TapTestBridgeTest::class.java, testMethod) { observed }
-                var flagAfterTest: Boolean? = null
-                var afterEachError: Throwable? = null
-                val thread =
-                    Thread {
-                        bind(state)
-                        try {
-                            tapTest { awaitCancellation() }
-                        } catch (failure: Throwable) {
-                            observed = failure
-                        } finally {
-                            TapTestBinding.current.remove()
-                        }
-                        // tapTest must have consumed the interrupt: a set flag would abort
-                        // AfterEach's runBlocking teardown on this same callback thread.
-                        flagAfterTest = Thread.currentThread().isInterrupted
-                        try {
-                            extension.afterEach(context)
-                        } catch (failure: Throwable) {
-                            afterEachError = failure
-                        }
+                    // tapTest must have consumed the interrupt: a set flag would abort
+                    // AfterEach's runBlocking teardown on this same callback thread.
+                    flagAfterTest = Thread.currentThread().isInterrupted
+                    try {
+                        extension.afterEach(context)
+                    } catch (failure: Throwable) {
+                        afterEachError = failure
                     }
-                thread.start()
-                Thread.sleep(300)
-                thread.interrupt()
-                thread.join(15_000)
-                assertTrue(!thread.isAlive, "interrupted test plus AfterEach return")
-                assertTrue(afterEachError == null, "AfterEach itself must not throw: $afterEachError")
-                assertFalse(flagAfterTest ?: true, "tapTest consumes the interrupt flag")
-                val primary = observed
-                assertTrue(primary is CancellationException, "interruption stays the primary failure, was $primary")
-                assertTrue(primary.cause is InterruptedException, "original interruption preserved as the cause")
-                assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeDevices.closes.toSet(), "AfterEach closes every device")
-                assertEquals(1, primary.suppressed.size, "quarantine error suppressed, not replacing")
-                assertTrue(primary.suppressed[0].message!!.contains("serial-bbb"))
-            } finally {
-                runBlocking { connection.close() }
-            }
+                }
+            thread.start()
+            Thread.sleep(300)
+            thread.interrupt()
+            thread.join(15_000)
+            assertTrue(!thread.isAlive, "interrupted test plus AfterEach return")
+            assertTrue(afterEachError == null, "AfterEach itself must not throw: $afterEachError")
+            assertFalse(flagAfterTest ?: true, "tapTest consumes the interrupt flag")
+            val primary = observed
+            assertTrue(primary is CancellationException, "interruption stays the primary failure, was $primary")
+            assertTrue(primary.cause is InterruptedException, "original interruption preserved as the cause")
+            assertEquals(setOf("sess-serial-aaa", "sess-serial-bbb"), fakeDevices.closes.toSet(), "AfterEach closes every device")
+            assertEquals(1, primary.suppressed.size, "quarantine error suppressed, not replacing")
+            assertTrue(primary.suppressed[0].message!!.contains("serial-bbb"))
         } finally {
-            System.clearProperty("tap.autPackage")
+            runBlocking { connection.close() }
         }
     }
 
@@ -511,7 +504,6 @@ class TapTestBridgeTest {
                 val config =
                     TapConfig(
                         serials = emptyList(),
-                        autPackage = "com.test",
                         artifactsDir = Path.of("build/tap-test-artifacts"),
                         acquireTimeout = 7.seconds,
                         pinnedRoles = emptyMap(),

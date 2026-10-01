@@ -78,8 +78,6 @@ def validate(recording: studio.Recording) -> None:
         problems.append("recorder is required")
     if not recording.device.serial:
         problems.append("device.serial is required")
-    if not recording.aut_package:
-        problems.append("aut_package is required")
 
     ids: set[str] = set()
     used: set[str] = set()

@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from . import _gen as pb
 from . import _proto
 from .app import App
-from .element import Element, ElementWait
 from .errors import CommandError, TapError, WaitTimeoutError
 from .models import (
     AttachedDeviceEntry,
@@ -27,6 +26,7 @@ from .models import (
     StabilitySignal,
 )
 from .selectors import Selector
+from .screen import Screen
 from .client import TapConnection, mapped_errors
 
 if TYPE_CHECKING:
@@ -59,15 +59,15 @@ def _or(value: float | None, default: float) -> float:
 
 class Device:
     """All calls block. The client does not serialize calls on one device: issue them from one
-    thread, and use one thread per Device for concurrency across devices. Nothing here caches UI state: ``element`` returns a lazy
-    selector that every action resolves again, and mutations fail with AMBIGUOUS/NOT_FOUND
-    before any input when the selector does not match exactly one node."""
+    thread, and use one thread per Device for concurrency across devices. Nothing here caches
+    UI state: ``App.element`` / ``Screen.element`` return a lazy selector that every action
+    resolves again, and mutations fail with AMBIGUOUS/NOT_FOUND before any input when the
+    selector does not match exactly one node."""
 
     def __init__(
         self,
         owner_connection: TapConnection,
         response: pb.AttachResponse,
-        aut_package: str,
         timeouts: Timeouts,
     ):
         self.owner_connection = owner_connection
@@ -77,8 +77,8 @@ class Device:
         """The device's ADB serial, e.g. ``emulator-5554``."""
         self.generation: int = response.generation
         """The server's session generation for this device; it changes when the driver is rebuilt."""
-        self.aut_package: str = aut_package
-        """The package of the app under test that selectors are confined to by default."""
+        self.screen: Screen = Screen(self)
+        """Whatever is visible, without an implicit package predicate."""
         self.timeouts: Timeouts = timeouts
         """Default timeouts for actions, waits and app lifecycle calls on this device."""
         self._detached = False
@@ -88,13 +88,11 @@ class Device:
         cls,
         owner_connection: TapConnection,
         serial: str,
-        aut_package: str,
         timeouts: Timeouts | None = None,
         skip_driver_install: bool = False,
-        sync_authority: str | None = None,
         wait_for_device: float = 0,
     ) -> Device:
-        """Attach ``serial`` for ``aut_package`` (used by ``TapConnection.attach_device``).
+        """Attach ``serial`` (used by ``TapConnection.attach_device``).
         The attachment holds the device's per-serial lock until ``detach``; if another device session holds
         it, attachment raises ``DeviceBusyError`` — at once, or after ``wait_for_device`` seconds.
         The driver is always the daemon's (bundled, or ``tap serve --driver-apk X
@@ -103,20 +101,17 @@ class Device:
         request = pb.AttachRequest(
             client_connection_id=owner_connection.id,
             serial=serial,
-            aut_package=aut_package,
             default_timeout_ms=int(timeouts.action * 1000),
         )
         if wait_for_device > 0:  # absent = fail at once when another session holds it
             request.lease_timeout_ms = int(wait_for_device * 1000)
         if skip_driver_install:
             request.skip_driver_install = True
-        if sync_authority:
-            request.sync_authority = sync_authority
         with mapped_errors(serial):
             response = owner_connection.client.device_stub.Attach(
                 request, timeout=180 + wait_for_device
             )
-        return cls(owner_connection, response, aut_package, timeouts)
+        return cls(owner_connection, response, timeouts)
 
     @classmethod
     def _resume(
@@ -128,7 +123,7 @@ class Device:
             serial=entry.serial,
             generation=entry.generation,
         )
-        return cls(owner_connection, response, entry.aut_package, timeouts)
+        return cls(owner_connection, response, timeouts)
 
     # --- protocol commands (private: the public API is the typed methods) ------------------------
 
@@ -167,21 +162,11 @@ class Device:
             )
         return result
 
-    # --- elements and waits ---------------------------------------------------------------------
+    # --- selector contexts --------------------------------------------------------------------
 
-    def element(self, selector: Selector) -> Element:
-        """A lazy ``Element`` for ``selector``."""
-        return Element(self, selector)
-
-    def wait(self, selector: Selector, timeout: float | None = None) -> ElementWait:
-        """An ``ElementWait`` on ``selector`` (default timeout ``timeouts.wait``)."""
-        return ElementWait(
-            self, selector, self.timeouts.wait if timeout is None else timeout
-        )
-
-    def app(self, package_name: str | None = None) -> App:
-        """The ``App`` for ``package_name`` (default: the app under test)."""
-        return App(self, package_name or self.aut_package)
+    def app(self, package_name: str) -> App:
+        """Bind lifecycle and selectors to ``package_name``."""
+        return App(self, package_name)
 
     def info(self) -> DeviceInfo:
         """API level, model, display size and the package owning the focused window."""
@@ -306,7 +291,7 @@ class Device:
         the diagnostic hierarchy dump). Refs stay stable across snapshots of this attached
         device, and each node says whether it was added since the previous snapshot; nodes
         that are gone are in ``removed``. Act on a node through its selector
-        (``device.element(node.selector)``) or ``resolve_ref``: the device still requires
+        (``device.screen.element(node.selector)``) or ``resolve_ref``: the device still requires
         exactly one match at action time. With ``selector_candidates`` each node also lists every
         selector that matched only it (``ScreenNode.candidates``), for an inspector that lets a
         person choose.
@@ -396,13 +381,8 @@ class Device:
             failures,
         )
 
-    def await_app_visible(
-        self, package_name: str | None = None, timeout: float | None = None
-    ) -> None:
-        """Waits on the device until ``package_name`` owns the focused window. Raises
-        ``WaitTimeoutError`` only when the device reports ``WAIT_TIMEOUT``; any other failure
-        (driver unhealthy, transport lost, ...) is a ``CommandError``."""
-        package_name = package_name or self.aut_package
+    def _await_app_visible(self, package_name: str, timeout: float | None) -> None:
+        """``App.await_visible``."""
         timeout = self.timeouts.wait if timeout is None else timeout
         result = self._execute(
             timeout, wait_app_visible=pb.WaitAppVisible(package_name=package_name)
@@ -418,22 +398,14 @@ class Device:
                 result, f"package {package_name} to be in the foreground", self.serial, last
             )
 
-    def await_screen_stable(
+    def _await_screen_stable(
         self,
-        stable_for: float = 0.5,
-        timeout: float | None = None,
-        package_name: str | None = None,
-        signal: StabilitySignal = StabilitySignal.ALL,
+        package_name: str,
+        stable_for: float,
+        timeout: float | None,
+        signal: StabilitySignal,
     ) -> None:
-        """Waits on the device until the AUT's focused window has stopped changing for
-        ``stable_for`` seconds according to ``signal``: the accessibility tree
-        (``StabilitySignal.TREE``), the window pixels (``StabilitySignal.PIXELS``, 0.5 % tolerance) or both
-        (default). Call it explicitly after an action that starts an animation or transition;
-        nothing waits for this implicitly. A screen that keeps changing times out with detail
-        ``SCREEN_CHANGING``. ``await_app_settled`` / ``await_animation_end`` are the shorthands.
-        Only a device ``WAIT_TIMEOUT`` becomes ``WaitTimeoutError``; other failures are
-        ``CommandError``."""
-        package_name = package_name or self.aut_package
+        """``App.await_screen_stable`` and its single-signal shorthands."""
         timeout = self.timeouts.wait if timeout is None else timeout
         result = self._execute(
             timeout,
@@ -452,26 +424,6 @@ class Device:
             raise WaitTimeoutError._from_result(
                 result, f"the {package_name} {what} to stay unchanged for {stable_for:g}s", self.serial
             )
-
-    def await_app_settled(
-        self,
-        stable_for: float = 0.5,
-        timeout: float | None = None,
-        package_name: str | None = None,
-    ) -> None:
-        """Maestro's ``waitForAppToSettle``, on request only: the accessibility hierarchy has
-        not changed for ``stable_for`` seconds. Cheap (no screenshots); misses pure drawing."""
-        self.await_screen_stable(stable_for, timeout, package_name, StabilitySignal.TREE)
-
-    def await_animation_end(
-        self,
-        stable_for: float = 0.5,
-        timeout: float | None = None,
-        package_name: str | None = None,
-    ) -> None:
-        """Maestro's ``waitForAnimationToEnd``, on request only: the window pixels have not
-        changed (beyond 0.5 %) for ``stable_for`` seconds. One screenshot per 100 ms."""
-        self.await_screen_stable(stable_for, timeout, package_name, StabilitySignal.PIXELS)
 
     def await_until(
         self,

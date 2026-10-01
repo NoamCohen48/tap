@@ -20,6 +20,15 @@ Status: in progress.
   (`system`, no allowlist) or every window (`any_window`). Proven by the validation `deviceTest`
   suite (`ScrollTest`, `PermissionTest`, `InputTest`), the Kotlin fixture tests and the Python
   suite on emulator-5554 (API 34) and 85e49002 (API 29); entries below describe the behaviour of their time.
+- Protocol `5.0` (2026-10-01, `.docs/app-and-screen.md`): the session names no app and selectors
+  have no scope — every lookup searches all windows, package ownership is a
+  `PROPERTY_PACKAGE_NAME` predicate, `ResourceId{name, package_name?}` (a `:id/` name is
+  `QUALIFIED_RESOURCE_NAME`). Tap, long tap, swipe and scroll fail `NOT_INTERACTABLE` /
+  `OBSCURED` before any input when another window is topmost at the touch point (a partly
+  covered node; a fully covered one is `NOT_FOUND`). Proven by `OcclusionTest` (in-app popup
+  over a button; keyboard over a button), `PermissionTest`, the rest of the validation
+  `deviceTest` suite, the Kotlin fixture tests and the Python suite on emulator-5554 (API 34)
+  and 85e49002 (API 29).
 - The handshake MACs the payload bytes as sent (negotiation carried as serialized bytes), so no
   canonical encoding is needed; a payload that does not parse fails the handshake.
 - Authenticated HELLO/CHALLENGE/NEGOTIATION transcript with separate HMAC domains.

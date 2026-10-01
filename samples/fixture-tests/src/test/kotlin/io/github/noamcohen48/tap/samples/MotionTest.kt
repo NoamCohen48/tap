@@ -18,12 +18,12 @@ class MotionTest {
     @Test
     fun waitsForAnimationToEnd(device: Device): Unit {
         tapTest {
-            Fixture.launch(device, ".MotionActivity")
-            val status = device.element(res("motion_status"))
+            val app = Fixture.launch(device, ".MotionActivity")
+            val status = app.element(res("motion_status"))
 
-            device.element(res("motion_button")).tap()
+            app.element(res("motion_button")).tap()
             val started = System.nanoTime()
-            device.awaitAnimationEnd(stableFor = 500.milliseconds, timeout = 10.seconds)
+            app.awaitAnimationEnd(stableFor = 500.milliseconds, timeout = 10.seconds)
             val waitedMs = (System.nanoTime() - started) / 1_000_000
 
             // The box moves for 2 s; the pixel wait must have outlived it without any status wait.
@@ -35,12 +35,12 @@ class MotionTest {
     @Test
     fun settlesAfterTheHierarchyStopsMoving(device: Device): Unit {
         tapTest {
-            Fixture.launch(device, ".MotionActivity")
-            val status = device.element(res("motion_status"))
+            val app = Fixture.launch(device, ".MotionActivity")
+            val status = app.element(res("motion_status"))
 
-            device.element(res("motion_button")).tap()
+            app.element(res("motion_button")).tap()
             val started = System.nanoTime()
-            device.awaitAppSettled(stableFor = 500.milliseconds, timeout = 10.seconds)
+            app.awaitSettled(stableFor = 500.milliseconds, timeout = 10.seconds)
             val waitedMs = (System.nanoTime() - started) / 1_000_000
 
             // The moving box changes its accessibility bounds every frame; no screenshots involved.
@@ -52,21 +52,21 @@ class MotionTest {
     @Test
     fun screenThatKeepsChangingTimesOut(device: Device): Unit {
         tapTest {
-            Fixture.launch(device, ".MotionActivity")
-            val ticker = device.element(res("ticker_button"))
+            val app = Fixture.launch(device, ".MotionActivity")
+            val ticker = app.element(res("ticker_button"))
             ticker.tap()
             try {
                 val failure =
                     assertFailsSuspend<WaitTimeoutException> {
-                        device.awaitAppSettled(stableFor = 500.milliseconds, timeout = 3.seconds)
+                        app.awaitSettled(stableFor = 500.milliseconds, timeout = 3.seconds)
                     }
                 assertEquals(WaitReason.SCREEN_CHANGING, failure.reason)
                 assertTrue(failure.elapsedMs >= 3_000, "gave up after ${failure.elapsedMs}ms")
             } finally {
                 ticker.tap()
             }
-            device.awaitScreenStable(timeout = 5.seconds)
-            assertEquals("Ticker stopped", device.element(res("ticker_status")).text())
+            app.awaitScreenStable(timeout = 5.seconds)
+            assertEquals("Ticker stopped", app.element(res("ticker_status")).text())
         }
     }
 }

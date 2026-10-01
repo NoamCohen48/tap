@@ -290,9 +290,9 @@ class OperationsTest {
                 "dump_hierarchy" to Commands.dumpHierarchy(),
                 "exists" to Commands.exists(Selectors.text("Sign in")),
                 "count" to Commands.count(Selectors.text("Row", MatchMode.MATCH_STARTS_WITH)),
-                "snapshot" to Commands.snapshot(Selectors.of(Nodes.autResource("status"))),
+                "snapshot" to Commands.snapshot(Selectors.of(Nodes.resource("status"))),
                 "wait_visible" to Commands.waitVisible(Selectors.text("Welcome")),
-                "wait_gone" to Commands.waitGone(Selectors.rawResource("spinner")),
+                "wait_gone" to Commands.waitGone(Selectors.resource("spinner")),
                 "wait_app_visible" to Commands.waitAppVisible(AUT),
                 "wait_screen_stable" to Commands.waitScreenStable(AUT, stableForMs = 750, signal = StabilitySignal.STABILITY_PIXELS),
                 "tap" to Commands.tap(button),
@@ -310,8 +310,8 @@ class OperationsTest {
             mapOf(
                 "health" to Requests.health(),
                 "screenshot" to Requests.screenshot(),
-                "sync_bootstrap" to Requests.syncBootstrap(4242, "1234567"),
-                "sync_poll" to Requests.syncPoll(4242, "1234567", "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01", "session-identity"),
+                "sync_bootstrap" to Requests.syncBootstrap(4242, "1234567", AUT, AUTHORITY),
+                "sync_poll" to Requests.syncPoll(4242, "1234567", "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01", "session-identity", AUT, AUTHORITY),
             )
     }
 }

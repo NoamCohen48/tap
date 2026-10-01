@@ -535,13 +535,28 @@ class TapConnection:
         devices.sort(key=lambda d: d.state is not DeviceState.FREE)
         return [d.serial for d in devices]
 
-    def attach_device(self, serial: str, aut_package: str, **options) -> Device:
-        """Attach ``serial`` for ``aut_package``; additional options configure the attachment.
+    def attach_device(
+        self,
+        serial: str,
+        *,
+        timeouts: Timeouts | None = None,
+        skip_driver_install: bool = False,
+        wait_for_device: float = 0,
+    ) -> Device:
+        """Attach ``serial``: install and start the driver (unless ``skip_driver_install``) and
+        take the device's session. ``timeouts`` are this device's defaults;
+        ``wait_for_device`` > 0 waits that many seconds for another session to release it.
         Raises ``TapError`` without an RPC once the connection is closed or broken."""
         from .device import Device  # circular import at module load
 
         self.ensure_usable("attach_device")
-        return Device._attach_device(self, serial, aut_package, **options)
+        return Device._attach_device(
+            self,
+            serial,
+            timeouts=timeouts,
+            skip_driver_install=skip_driver_install,
+            wait_for_device=wait_for_device,
+        )
 
     def attached_devices(self, timeouts: Timeouts | None = None) -> list[Device]:
         """The devices attached to this connection now, as ``Device`` objects — including ones

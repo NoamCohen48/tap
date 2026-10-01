@@ -9,8 +9,8 @@ import pytest
 
 from tap_studio.recording import FORMAT, RecordingError, dump, dumps, load, loads, validate
 
-SEARCH = {"node": {"resource": {"name": "search", "aut_package": True}}}
-PASSWORD = {"node": {"resource": {"name": "password", "aut_package": True}}}
+SEARCH = {"node": {"resource": {"name": "search"}}}
+PASSWORD = {"node": {"resource": {"name": "password"}}}
 ONE = {"wait_visible": {"selector": SEARCH, "exactly_one": True}}
 SECOND = {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Add"}}, "at": {"index": 1}}
 
@@ -19,7 +19,6 @@ EXAMPLE = {
     "recorded_at": "2026-09-29T17:42:10Z",
     "recorder": "tap-studio 0.0.1",
     "device": {"serial": "emulator-5554", "api_level": 34, "manufacturer": "Google", "model": "sdk_gphone64_x86_64"},
-    "aut_package": "com.example.basket",
     "secrets": ["password"],
     "steps": [
         {"id": "s1", "outcome": {"duration_ms": 1830},
@@ -103,16 +102,15 @@ def test_malformed_json_and_wrong_types_are_recording_errors():
 def test_header_rules():
     document = copy.deepcopy(EXAMPLE)
     document["format"] = "tap-recording/2"
-    for key in ("recorded_at", "recorder", "device", "aut_package"):
+    for key in ("recorded_at", "recorder", "device"):
         del document[key]
     with pytest.raises(RecordingError) as caught:
         loads(text(document))
-    assert caught.value.problems[:5] == [
+    assert caught.value.problems[:4] == [
         f"format must be {FORMAT!r}, not 'tap-recording/2'",
         "recorded_at is required",
         "recorder is required",
         "device.serial is required",
-        "aut_package is required",
     ]
 
 

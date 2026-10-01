@@ -36,7 +36,7 @@ cp -r clients/kotlin/sdk/build/dokka/gfm "$MD/reference/kotlin/tap-client"
 cp -r clients/kotlin/junit5/build/dokka/gfm "$MD/reference/kotlin/tap-junit5"
 
 echo "== Python reference for the Markdown bundle (lazydocs)"
-lazy_log=$("$LAZYDOCS" tap_e2e.device tap_e2e.element tap_e2e.selectors tap_e2e.app tap_e2e.client tap_e2e.models tap_e2e.errors tap_e2e.pytest_plugin \
+lazy_log=$("$LAZYDOCS" tap_e2e.device tap_e2e.element tap_e2e.selectors tap_e2e.app tap_e2e.screen tap_e2e.client tap_e2e.models tap_e2e.errors tap_e2e.pytest_plugin \
   --output-path "$MD/reference/python" --overview-file index.md --no-watermark \
   --src-base-url https://github.com/NoamCohen48/tap/blob/main/ 2>&1) || { echo "$lazy_log" >&2; exit 1; }
 rm -f "$MD/reference/python/.pages"

@@ -12,8 +12,6 @@ internal class SessionConfig(
     val generation: Long,
     val secret: ByteArray,
     val port: Int,
-    val expectedAut: String,
-    val syncAuthority: String,
     val uninterruptibleGraceMs: Long,
     val heartbeatTimeoutMs: Long,
 ) {
@@ -32,8 +30,6 @@ internal class SessionConfig(
                 generation = required("tapGeneration").toLong(),
                 secret = Base64.getUrlDecoder().decode(required("tapSecret")),
                 port = required("tapPort").toInt(),
-                expectedAut = required("tapAutPackage"),
-                syncAuthority = required("tapSyncAuthority"),
                 uninterruptibleGraceMs = uninterruptibleGraceMs,
                 heartbeatTimeoutMs = heartbeatTimeoutMs,
             )

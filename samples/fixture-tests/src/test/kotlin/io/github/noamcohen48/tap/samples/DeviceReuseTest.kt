@@ -21,8 +21,7 @@ class DeviceReuseTest {
     @Order(1)
     fun firstTestAttaches(device: Device): Unit {
         tapTest {
-            Fixture.launch(device)
-            device.await(res("view_button")).visible()
+            Fixture.launch(device).await(res("view_button")).visible()
             first = device
         }
     }
@@ -33,7 +32,7 @@ class DeviceReuseTest {
         tapTest {
             assertSame(first, device)
             // The app keeps its state: nothing is reset between tests.
-            device.await(res("view_button")).visible()
+            device.app(Fixture.PACKAGE).await(res("view_button")).visible()
             device.detach()
         }
     }

@@ -2,6 +2,7 @@ package io.github.noamcohen48.tap.driver
 
 import android.accessibilityservice.AccessibilityService
 import android.app.Instrumentation
+import android.graphics.Point
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
@@ -20,6 +21,7 @@ internal class GestureCommands(
     private val instrumentation: Instrumentation,
     private val device: UiDevice,
     private val objects: UiObjectAccess,
+    private val reachability: TouchReachability,
     private val faults: FaultHooks,
 ) {
     /** Clicks the one matching node, whatever its state: what the app does with it is for the test. */
@@ -27,7 +29,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Tap,
         target: CompiledSelector,
-    ) = gesture(context, target) { element ->
+    ) = gesture(context, target, TouchPoints::center) { element ->
         faults.beforeTapClick(command, context.requestId)
         element.click()
         faults.afterTapClick(command, context.requestId)
@@ -37,7 +39,7 @@ internal class GestureCommands(
     fun longTap(
         context: CommandContext,
         target: CompiledSelector,
-    ) = gesture(context, target) { element ->
+    ) = gesture(context, target, TouchPoints::center) { element ->
         element.longClick()
     }
 
@@ -46,7 +48,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Swipe,
         target: CompiledSelector,
-    ) = gesture(context, target) { element ->
+    ) = gesture(context, target, { TouchPoints.swipeStart(it, uiDirection(command.direction)) }) { element ->
         val distance = if (command.hasDistancePercent()) command.distancePercent else DEFAULT_GESTURE_PERCENT
         element.swipe(uiDirection(command.direction), fraction(distance))
     }
@@ -59,7 +61,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Scroll,
         target: CompiledSelector,
-    ) = gesture(context, target) { element ->
+    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element ->
         val distance = if (command.hasDistancePercent()) command.distancePercent else DEFAULT_GESTURE_PERCENT
         element.scroll(uiDirection(command.direction), fraction(distance))
         Unit
@@ -105,17 +107,21 @@ internal class GestureCommands(
     }
 
     /**
-     * Shared shape of every single-target gesture: checkpoint, resolve exactly one target, pass
-     * the mutation gate, act, recycle. Everything after the gate is definitive.
+     * Shared shape of every single-target gesture: checkpoint, resolve exactly one target, check
+     * the finger would land in its window ([touchDown], [TouchReachability]), pass the mutation
+     * gate, act, recycle. Everything before the gate promises no input; everything after it is
+     * definitive.
      */
     private inline fun gesture(
         context: CommandContext,
         target: CompiledSelector,
+        touchDown: (UiObject2) -> Point,
         action: (UiObject2) -> Unit,
     ) {
         context.checkpoint()
         val element = objects.resolveTarget(target)
         try {
+            reachability.requireReachable(element, touchDown(element))
             // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
             // cancellation is ignored from here on and the gesture result is definitive.
             context.markMutationStarted()

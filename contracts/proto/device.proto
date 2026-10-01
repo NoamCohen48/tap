@@ -62,14 +62,9 @@ message ListDevicesResponse {
 message AttachRequest {
   string client_connection_id = 1;
   string serial = 2;
-  string aut_package = 3;
   // Skip installing the daemon's driver (bundled or `tap serve --driver-apk`): the device
   // already has the right one.
   optional bool skip_driver_install = 4;
-  optional string sync_authority = 5;
-  // allowed_system_packages: selectors may name any package; there is no allowlist.
-  reserved 6;
-  reserved "allowed_system_packages";
   optional int64 default_timeout_ms = 7;
   // How long to wait for another session's lock on the serial; absent = fail at once.
   optional int64 lease_timeout_ms = 8;

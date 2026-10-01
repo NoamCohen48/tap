@@ -14,8 +14,8 @@ the source.
     Artifact `io.github.noamcohen48.tap:tap-client`<br>
     Package `io.github.noamcohen48.tap.sdk`
 
-    Connect to the server, attach devices and drive them: selectors, actions, waits, the app
-    under test, errors and the values the server returns.
+    Connect to the server, attach devices and drive them: selectors, actions, waits, apps and
+    the whole screen, errors and the values the server returns.
 
 -   **[tap-junit5](kotlin-api/clients/kotlin/junit5/index.html)**
 
@@ -36,8 +36,9 @@ the source.
 | [`@TapTest`](kotlin-api/clients/kotlin/junit5/io.github.noamcohen48.tap.junit5/-tap-test/index.html) | Marks a JUnit 5 test class that uses devices. |
 | [`tapTest { }`](kotlin-api/clients/kotlin/junit5/io.github.noamcohen48.tap.junit5/tap-test.html) | Wraps every test body; device calls run inside it. |
 | [`@TapDevices`](kotlin-api/clients/kotlin/junit5/io.github.noamcohen48.tap.junit5/-tap-devices/index.html) · [`Devices`](kotlin-api/clients/kotlin/junit5/io.github.noamcohen48.tap.junit5/-devices/index.html) | Several devices in one test, by role. |
-| [`Device`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-device/index.html) | One attached device: find elements, wait, press keys, take screenshots. |
+| [`Device`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-device/index.html) | One attached device: its apps (`app(pkg)`), its `screen`, keys, system panels, screenshots. |
 | [`Element`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-element/index.html) · [`ElementWait`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-element-wait/index.html) | Act on an element; wait until it is visible, gone, enabled… |
 | [`Selector`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-selector/index.html) | How elements are found: `res(...)`, `text(...)`, `desc(...)` and refinements. |
-| [`App`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-app/index.html) | Install, launch, stop and reset the app under test. |
+| [`App`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-app/index.html) | One app on a device: its elements (`element`, `await`), install, launch, stop, reset, and app waits. |
+| [`Screen`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-screen/index.html) | Elements of any app or the system UI (`device.screen.element`, `.await`). |
 | [`TapClient`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-tap-client/index.html) · [`TapConnection`](kotlin-api/clients/kotlin/sdk/io.github.noamcohen48.tap.sdk/-tap-connection/index.html) | Using the client without JUnit: connect and attach devices yourself. |

@@ -282,14 +282,14 @@ class TapExtension :
         if (candidates.size > 1) {
             for (serial in candidates) {
                 try {
-                    return mapOf(role to connection.attachDevice(serial, config.autPackage, options = DeviceOptions()))
+                    return mapOf(role to connection.attachDevice(serial, options = DeviceOptions()))
                 } catch (_: DeviceBusyException) {
                     // Held by another session right now: try the next device.
                 }
             }
         }
         val options = DeviceOptions(waitForDevice = config.acquireTimeout)
-        return mapOf(role to connection.attachDevice(candidates.first(), config.autPackage, options = options))
+        return mapOf(role to connection.attachDevice(candidates.first(), options = options))
     }
 
     /**
@@ -313,7 +313,7 @@ class TapExtension :
         val options = DeviceOptions(waitForDevice = config.acquireTimeout)
         try {
             assignment.entries.sortedBy { it.value }.forEach { (role, serial) ->
-                opened[role] = connection.attachDevice(serial, config.autPackage, options = options)
+                opened[role] = connection.attachDevice(serial, options = options)
             }
         } catch (error: Throwable) {
             withContext(NonCancellable) {

@@ -78,7 +78,6 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    systemProperty("tap.autPackage", "com.shop")                                  // required
     providers.gradleProperty("tap.serials").orNull?.let { systemProperty("tap.serials", it) }
 }
 ```
@@ -97,11 +96,11 @@ class SmokeTest {
     @Test
     fun opensTheHomeScreen(device: Device) {
         tapTest {
-            val app = device.app()                       // the configured AUT package
+            val app = device.app("com.shop")
             app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
             app.coldLaunch()                             // resolves the launcher activity, waits for its window
-            device.await(text("Welcome")).visible()
-            device.element(res("search")).setText("socks")
+            app.await(text("Welcome")).visible()         // only com.shop's nodes count
+            app.element(res("search")).setText("socks")
         }
     }
 }
@@ -129,23 +128,17 @@ device info and driver log under `build/tap-artifacts/<class>/<method>/`.
 pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
 ```
 
-The package registers a pytest plugin. Configure the app under test in `pytest.ini` or the
-environment:
-
-```ini
-[pytest]
-tap_aut = com.shop
-```
+The package registers a pytest plugin that provides attached devices as fixtures:
 
 ```python
 from tap_e2e import text, res
 
 def test_opens_the_home_screen(tap_device):
-    app = tap_device.app()
+    app = tap_device.app("com.shop")
     app.install("build/outputs/apk/debug/shop-debug.apk")
     app.cold_launch()
-    tap_device.wait(text("Welcome")).visible()
-    tap_device.element(res("search")).set_text("socks")
+    app.wait(text("Welcome")).visible()
+    app.element(res("search")).set_text("socks")
 ```
 
 ```bash
@@ -166,16 +159,17 @@ server, then attaches each device it needs.
     runBlocking {
         TapClient.create().use { client ->           // resolves tap.server / daemon.json
             client.connect("smoke").use { connection ->
-                connection.attach("emulator-5554", "com.shop") { device ->
-                    device.app().coldLaunch()
-                    println(device.element(text("Welcome")).exists())
+                connection.attach("emulator-5554") { device ->
+                    val app = device.app("com.shop")
+                    app.coldLaunch()
+                    println(app.element(text("Welcome")).exists())
                 }
             }
         }
     }
     ```
 
-    `use { }` closes the client and the connection after the block; `attach(serial, aut) { }`
+    `use { }` closes the client and the connection after the block; `attach(serial) { }`
     attaches, runs the block and always detaches. A failure in the block wins, and a close or
     detach failure after it is added as suppressed. `attach` provides the `tapScope` device
     calls need. For handles that outlive one block, `connection.attachDevice(...)` inside
@@ -187,9 +181,10 @@ server, then attaches each device it needs.
     from tap_e2e import TapClient, text
 
     with TapClient.create().connect("smoke") as connection:
-        with connection.attach_device("emulator-5554", "com.shop") as device:
-            device.app().cold_launch()
-            print(device.element(text("Welcome")).exists())
+        with connection.attach_device("emulator-5554") as device:
+            app = device.app("com.shop")
+            app.cold_launch()
+            print(app.element(text("Welcome")).exists())
     ```
 
 `connect` opens the connection's liveness stream before it returns (in both clients), so if the

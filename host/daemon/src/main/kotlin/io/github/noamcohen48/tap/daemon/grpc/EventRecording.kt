@@ -21,7 +21,6 @@ internal suspend fun <T> AttachedDevice.recorded(
             .newBuilder()
             .setAtEpochMs(System.currentTimeMillis())
             .setSerial(deviceSession.serial)
-            .setAutPackage(deviceSession.autPackage)
             .apply(call)
     val started = System.nanoTime()
     val result =

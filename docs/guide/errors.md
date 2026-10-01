@@ -38,7 +38,8 @@ The codes, grouped by what they tell you:
 |---|---|
 | `NOT_FOUND` | zero matches |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()`/`at(n)` |
-| `INVALID_SELECTOR` | rejected before lookup: `SCOPE_DENIED`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
+| `NOT_INTERACTABLE` | the one match cannot take the gesture: `OBSCURED` when another window (a keyboard, a popup, another app's overlay) covers the point the gesture would touch while part of the node still shows (a node covered completely is `NOT_FOUND`). Nothing was sent; close or move what covers it |
+| `INVALID_SELECTOR` | rejected before lookup: `QUALIFIED_RESOURCE_NAME` (a `res` name with `:id/` in it — use `resId(pkg, name)`), `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
 | `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `typeText` has no key mapping for a character |
 
 **The action, after input started** — device state may have changed:
@@ -85,7 +86,7 @@ Timed out after 5003ms waiting for resId(com.shop:id/pay) to be enabled on emula
 `description`, `serial`, `elapsedMs`, `reason`, `matchCount`, `polls` and `lastObservation`
 are fields on the exception (Python: `elapsed_ms`, `match_count`, `last_observation`).
 `reason` is a `WaitReason` for the waits the device runs (`visible()`, `one()`, `gone()`,
-`awaitAppVisible`, `awaitScreenStable`) and null / None for the ones the client polls.
+`app.awaitVisible`, `app.awaitScreenStable`) and null / None for the ones the client polls.
 
 ## Failure artifacts
 
@@ -116,9 +117,13 @@ simply missing, and the test still fails with its real error. `tap.capture=off` 
 
 ## Reading the hierarchy dump
 
-The XML is UiAutomator's view of the focused window. The attributes that selectors match are
-`resource-id`, `text`, `content-desc`, `hint`, `class`, `package`, plus the boolean state
-flags. If the element you wanted is missing from the dump it is missing from the accessibility
+The XML is UiAutomator's view of every window on screen (each window's root under one
+`<hierarchy>`), which is what selectors search. The attributes that selectors match are
+`resource-id`, `text`, `content-desc`, `hint`, `class`, `package` (what `device.app(pkg)`
+checks), plus the boolean state flags. A node another window (a dialog, the keyboard) covers
+completely is left out, as Android reports it not visible; one covered partly is in the dump,
+and a gesture on it fails with `NOT_INTERACTABLE` / `OBSCURED` when its touch point is under
+the other window. If the element you wanted is missing from the dump it is missing from the accessibility
 tree — a Compose node without `testTag` + `testTagsAsResourceId`, a `View` with
 `importantForAccessibility="no"`, or content not yet laid out. Fix the app's semantics rather
 than reaching for coordinates.

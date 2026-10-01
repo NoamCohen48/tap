@@ -18,7 +18,7 @@ top-level files only.
 
 | File | Contents |
 | --- | --- |
-| `selector.proto` | `MatchMode`, `TextProperty`, `NodeFlag`, `Relation`, `Node` (`oneof kind`: `Match`, `Flag`, `ResourceId`, `Related`, `AllOf`, `AnyOf`), `Selector` (`oneof scope`, `oneof pick`) |
+| `selector.proto` | `MatchMode`, `TextProperty`, `NodeFlag`, `Relation`, `Node` (`oneof kind`: `Match`, `Flag`, `ResourceId`, `Related`, `AllOf`, `AnyOf`), `Selector` (`node`, `oneof pick`; no scope) |
 | `command.proto` | `ErrorCode`, `Direction`, `StabilitySignal`, one message per public command, `Command` (`oneof op`), result payloads, `Error`, `CommandResult` (`oneof outcome`) |
 | `failure.proto` | `FailureReason`, `Failure` — the `tap-failure-bin` trailer on every non-OK status |
 | `client_connection.proto` | `ClientConnectionService` — Connect / Observe / Disconnect / Info (with the daemon's `Defaults`) / ListConnections / Events |
@@ -32,10 +32,12 @@ Every `tap.v1` call must carry `authorization: Bearer <token>` (the token in
 
 Conventions: every RPC has its own `<Rpc>Request`/`<Rpc>Response` (buf `STANDARD` lint), enums
 carry a zero `UNSPECIFIED` value, optional arguments are `optional` and take their default on
-the driver only, and names are the protocol names in snake_case. Fields and enum values are
-append-only (`buf breaking` in CI); a number can be reserved, never reused. `wire/` follows the
-same rule even though the host and driver ship together, so a golden-bytes test failure always
-means a deliberate change.
+the driver only, and names are the protocol names in snake_case. Within an API line,
+fields and enum values are append-only (`buf breaking` in CI). While Tap is 0.x, a deliberate
+incompatible change deletes what it no longer needs outright (no `reserved` placeholders) and
+moves `BREAKING_BASELINE` to the last commit before it. `wire/` follows the same rule even
+though the host and driver ship together, so a golden-bytes test failure always means a
+deliberate change.
 
 `BREAKING_BASELINE` names the last commit before a deliberate incompatible change; CI skips
 `buf breaking` for base commits at or before it and enforces it against everything after.

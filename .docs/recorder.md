@@ -163,13 +163,13 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
 Three areas and a top bar, dense, light and dark themes, Tap brand (ink `#17202A`, coral
 `#FF6A3D`).
 
-- **Top bar:** device and app under test; the click mode — **Act** (1), **Assert** (2),
+- **Top bar:** the device; the click mode — **Act** (1), **Assert** (2),
   **Inspect** (3); Record / Pause (paused: actions still run, nothing is recorded).
 - **Screen:** the latest frame with its overlay. Frame status: *settled*, or *changing…* with a
   dashed, faded overlay (decision 4). Overlay filter: interactive / all nodes / off. Hover shows
   the selector that would be recorded and its match count. Nodes with no unique selector get a
   red hatched box: the app's accessibility gaps (decision 8). Below: Back, Home, the App menu
-  (cold launch, launch, force stop, clear data, grant permission). No Refresh: the frame loop
+  (its package — page state, remembered per browser, not part of the attach — then cold launch, launch, force stop, clear data, grant permission). No Refresh: the frame loop
   follows the screen.
 - **Inspector:** *Element* — class, `@ref`, the ranked selector candidates as a radio list (match
   count; *by row*, *by index*, *dynamic text* chips; candidates matching more than one node are
@@ -197,8 +197,8 @@ here if the owner disagrees):
    step* for iterating. If the recording does not start with an app step, the UI offers to
    prepend a cold launch, because a replay from an unknown screen is not reproducible.
 6. **Also needed** (not in the demo): device and app pickers; windows of other packages (a
-   system dialog over the app) shown with their package, and a click there records a `system`
-   scope selector; rotation (frames carry it; the overlay follows); saving and reopening a
+   system dialog over the app) shown with their package, and a click there records a selector
+   bound to that package; rotation (frames carry it; the overlay follows); saving and reopening a
    recording file to continue it.
 
 ## `tap-recording/1`
@@ -216,16 +216,15 @@ strings (proto3 JSON).
   "recorded_at": "2026-09-29T17:42:10Z",
   "recorder": "tap-studio 0.0.1",
   "device": {"serial": "emulator-5554", "api_level": 34, "manufacturer": "Google", "model": "sdk_gphone64_x86_64"},
-  "aut_package": "com.example.basket",
   "secrets": ["password"],
   "steps": [
     {"id": "s1", "outcome": {"duration_ms": 1830},
      "app": {"operation": "cold_launch", "package_name": "com.example.basket"}},
     {"id": "s2", "action": {
-      "command": {"set_text": {"selector": {"node": {"resource": {"name": "search", "aut_package": true}}}, "text": "wool"}},
-      "wait": {"wait_visible": {"selector": {"node": {"resource": {"name": "search", "aut_package": true}}}, "exactly_one": true}},
+      "command": {"set_text": {"selector": {"node": {"all_of": {"nodes": [{"resource": {"name": "search"}}, {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": "com.example.basket", "mode": "MATCH_EXACT"}}]}}}, "text": "wool"}},
+      "wait": {"wait_visible": {"selector": {"node": {"all_of": {"nodes": [{"resource": {"name": "search"}}, {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": "com.example.basket", "mode": "MATCH_EXACT"}}]}}}, "exactly_one": true}},
       "selector_origin": "SELECTOR_ORIGIN_SYNTHESIZED"}},
-    {"id": "s3", "type": {"selector": {"node": {"resource": {"name": "password", "aut_package": true}}},
+    {"id": "s3", "type": {"selector": {"node": {"all_of": {"nodes": [{"resource": {"name": "password"}}, {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": "com.example.basket", "mode": "MATCH_EXACT"}}]}}},
       "secret": "password", "selector_origin": "SELECTOR_ORIGIN_SYNTHESIZED"}},
     {"id": "s4", "action": {"command": {"press_key": {"key_code": 4}}}},
     {"id": "s5", "note": "the confirmation screen",
@@ -237,8 +236,12 @@ strings (proto3 JSON).
 ```
 
 - **Header:** `format` (exactly `tap-recording/1`), `recorded_at` (UTC), `recorder` (tool and
-  version), `device` (provenance only: a replay may use any device), `aut_package`, `secrets`
+  version), `device` (provenance only: a replay may use any device), `secrets`
   (exactly the names the steps use, each once, so a replayer can ask for all of them up front).
+  A recording names no app under test (protocol 5.0, 2026-10-01): each selector carries its
+  package predicate, so one recording can pass through a system dialog or a second app, and
+  code generation writes a bound selector as `app("pkg").element(…)` and an unbound one as
+  `screen.element(…)`.
 - **Steps** have a unique `id` (stable across edits, ≤ 64 chars), an optional `note`, once run an
   `outcome` (`duration_ms`, and a `tap.v1` `Error` or `Failure` when it failed; neither = passed),
   and exactly one kind:
@@ -268,11 +271,11 @@ strings (proto3 JSON).
 
 ```
 tap-studio [--port N] [--no-open] [--page-origin URL]      (phase 1)
-           [--serial S --package P]                         (phase 3: attach at start)
+           [--serial S]                                     (phase 3: attach at start)
   → prints and opens http://127.0.0.1:N/login?t=<launch token>
 
 page (React, clients/studio/web)
-  ├── device picker, attach / release, app package
+  ├── device picker, attach / release (no app); the App menu's package
   ├── screen: latest frame (screenshot) + its node overlay (provisional while the screen moves)
   ├── side panel: node properties, selector candidates + match count, action / assert buttons
   └── steps: recorded steps; reorder / delete / edit; replay; export tap-recording/1

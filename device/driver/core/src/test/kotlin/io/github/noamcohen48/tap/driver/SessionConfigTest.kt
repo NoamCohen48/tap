@@ -14,8 +14,6 @@ class SessionConfigTest {
             "tapGeneration" to "7",
             "tapSecret" to Base64.getUrlEncoder().encodeToString(byteArrayOf(1, 2, 3)),
             "tapPort" to "7912",
-            "tapAutPackage" to "com.example.app",
-            "tapSyncAuthority" to "com.example.app.tap-sync",
         )
 
     @Test

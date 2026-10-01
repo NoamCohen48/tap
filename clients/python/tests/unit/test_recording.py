@@ -31,7 +31,7 @@ def attached():
     owner = SimpleNamespace(
         id="owner", client=SimpleNamespace(device_stub=stub), ensure_usable=lambda _: None
     )
-    device = Device(owner, pb.AttachResponse(attached_device_id="device", serial="emulator-5554"), "aut", Timeouts())
+    device = Device(owner, pb.AttachResponse(attached_device_id="device", serial="emulator-5554"), Timeouts())
     return device, stub
 
 

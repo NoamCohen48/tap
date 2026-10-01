@@ -12,7 +12,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ScreenSnapshotStateTest {
-    private fun screen(name: String): Screen = ScreenSnapshots.screen(Dumps.xml(name), AUT)
+    private fun screen(name: String): Screen = ScreenSnapshots.screen(Dumps.xml(name))
 
     private fun Screen.without(index: Int): Screen = Screen(rotation, nodes.filterIndexed { i, _ -> i != index })
 

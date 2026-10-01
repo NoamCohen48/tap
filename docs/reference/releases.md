@@ -45,7 +45,7 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
   incompatibly only in a new major version; `tap.v1` only ever gains fields, and a breaking
   server API would be a new `tap.v2` package served alongside it.
 - **Experimental** parts are outside that promise and may change in any release:
-    - app synchronization: `App.awaitIdle` / `await_idle`, `DeviceOptions.syncAuthority`
+    - app synchronization: `App.awaitIdle` / `await_idle`
       (Kotlin: `@ExperimentalTapApi`, opt in with `@OptIn(ExperimentalTapApi::class)`) and
       `tap-sync-sdk`;
     - the agent surface: `tap-agent`, held connections (`connect(..., hold=...)`, `resume`),

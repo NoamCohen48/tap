@@ -113,7 +113,6 @@ class DeviceSessionTest {
     ): DeviceSessionConfig =
         DeviceSessionConfig(
             serial = serial,
-            autPackage = "com.example",
             journalRoot = tempDir.resolve("sessions"),
             adb = adb,
             processStarter = readyStarter(fake, processes),
@@ -190,7 +189,6 @@ class DeviceSessionTest {
                         "session-1",
                         1,
                         "secret",
-                        "com.example",
                         processStarter = starter,
                         onStarting = {},
                     )
@@ -236,7 +234,6 @@ class DeviceSessionTest {
                         "session-1",
                         1,
                         "secret",
-                        "com.example",
                         processStarter = starter,
                         onStarting = {},
                     )
@@ -282,7 +279,6 @@ class DeviceSessionTest {
                             "session-1",
                             1,
                             "secret",
-                            "com.example",
                             overallDeadlineNanos = System.nanoTime() + 100_000_000L,
                             processStarter = ProcessStarter { stubborn },
                             onStarting = { attempts++ },
@@ -605,10 +601,10 @@ class DeviceSessionTest {
                     }
                     priorResponder?.invoke(serial, command)
                 }
-                val app = session.app()
+                val app = session.app("com.example")
                 assertFailsWith<AdbReapUncertainException> { app.isRunning() }
                 assertFailsWith<DeviceQuarantinedException> { app.isRunning() }
-                assertFailsWith<DeviceQuarantinedException> { session.app() }
+                assertFailsWith<DeviceQuarantinedException> { session.app("com.example") }
                 assertFailsWith<DeviceQuarantinedException> { session.checkUsable() }
 
                 session.close(timeoutMs = 5_000)
@@ -657,7 +653,7 @@ class DeviceSessionTest {
                         true
                     }
                 assertTrue(noFrame, "poisoned submit emitted a frame")
-                assertFailsWith<DeviceQuarantinedException> { session.app() }
+                assertFailsWith<DeviceQuarantinedException> { session.app("com.example") }
             } finally {
                 fake.close()
             }
@@ -875,7 +871,7 @@ class DeviceSessionTest {
                     }
                     priorResponder?.invoke(serial, command)
                 }
-                val app = session.app()
+                val app = session.app("com.example")
                 val inFlight = async(Dispatchers.IO) { runCatching { app.isRunning() } }
                 withTimeout(5_000) { admitted.await() }
                 // Explicit barrier: the probe proves close entered its admitted-operation drain
@@ -931,7 +927,7 @@ class DeviceSessionTest {
                 assertEquals(callsBefore, adb.calls.size, "gated call must start no process")
                 // The session is still fully usable and closes CLOSED: temporary, never sticky.
                 session.checkUsable()
-                session.app()
+                session.app("com.example")
                 session.close(timeoutMs = 5_000)
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
                 journalStore().acquireLease(0).close()
@@ -1041,7 +1037,7 @@ class DeviceSessionTest {
                         else -> priorResponder?.invoke(serial, command)
                     }
                 }
-                withTimeout(5_000) { session.app().clearData(timeoutMs = 2_000) }
+                withTimeout(5_000) { session.app("com.example").clearData(timeoutMs = 2_000) }
                 assertEquals(3, adb.calls.count { "dumpsys activity activities" in it })
 
                 // A record that never goes is a timeout naming it, not a silent return.
@@ -1053,7 +1049,7 @@ class DeviceSessionTest {
                         else -> priorResponder?.invoke(serial, command)
                     }
                 }
-                val timeout = assertFailsWith<HostWaitTimeoutException> { session.app().forceStop(timeoutMs = 300) }
+                val timeout = assertFailsWith<HostWaitTimeoutException> { session.app("com.example").forceStop(timeoutMs = 300) }
                 assertTrue("an activity still exiting" in timeout.message.orEmpty(), timeout.message)
                 session.close(timeoutMs = 5_000)
             } finally {
@@ -1079,7 +1075,7 @@ class DeviceSessionTest {
                     }
                 }
                 // Nothing answers driver frames here: a visibility wait would time out and fail the launch.
-                withTimeout(5_000) { session.app().launch(".Main", timeoutMs = 2_000) }
+                withTimeout(5_000) { session.app("com.example").launch(".Main", timeoutMs = 2_000) }
                 session.close(timeoutMs = 5_000)
             } finally {
                 fake.close()
@@ -1094,7 +1090,7 @@ class DeviceSessionTest {
             try {
                 val adb = openAdb(fake.port)
                 val session = openSession(adb, fake)
-                val app = session.app()
+                val app = session.app("com.example")
 
                 val timingOut = async(Dispatchers.IO) { runCatching { app.awaitAppVisible(1_000) } }
                 fake.respond(
@@ -1135,7 +1131,7 @@ class DeviceSessionTest {
                 val unusable = assertFailsWith<SessionUnusableException> { session.checkUsable() }
                 assertTrue("Driver connection" in unusable.message.orEmpty(), unusable.message)
                 // ADB-only lifecycle work does not need the driver and stays admissible.
-                session.app()
+                session.app("com.example")
 
                 session.close(timeoutMs = 5_000)
                 val record = journalStore().read()
@@ -1166,7 +1162,6 @@ class DeviceSessionTest {
         assertFalse("getConfig" in methods, "DeviceSession.config must not be public")
         assertFalse("getAdb" in methods, "DeviceSession.adb must not be public")
         assertFalse("guardAdb" in methods, "DeviceSession.guardAdb must not be public")
-        assertTrue("getAutPackage" in methods, "cross-module users need the immutable autPackage")
         assertTrue("getClient" in methods)
         assertTrue("getSerial" in methods)
         assertTrue("checkUsable" in methods)
@@ -1183,8 +1178,7 @@ class DeviceSessionTest {
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
                 fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
-                assertEquals("com.example", session.autPackage)
-                val app = session.app()
+                val app = session.app("com.example")
                 // Park close inside exact forward removal, proving close began.
                 adb.hangOn += "forward --remove tcp:${fake.port}"
                 val closing = async(Dispatchers.IO) { runCatching { session.close(timeoutMs = 10_000) } }
@@ -1194,7 +1188,7 @@ class DeviceSessionTest {
                 val callsAtReject = adb.calls.size
                 // Later operations reject through the session gate before any FakeAdb call.
                 assertFailsWith<SessionClosingException> { app.isRunning() }
-                assertFailsWith<SessionClosingException> { session.app() }
+                assertFailsWith<SessionClosingException> { session.app("com.example") }
                 assertEquals(callsAtReject, adb.calls.size, "rejected operation must not touch ADB")
                 adb.hangOn -= "forward --remove tcp:${fake.port}"
                 withTimeout(15_000) { closing.await() }

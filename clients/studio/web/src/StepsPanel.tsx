@@ -299,7 +299,7 @@ function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () =
   useEffect(() => {
     let cancelled = false;
     client.getRecording({}).then(
-      (r) => !cancelled && setState({ document: r.document, name: fileName(r.recording?.autPackage ?? "recording") }),
+      (r) => !cancelled && setState({ document: r.document, name: fileName(firstApp(r.recording?.steps ?? []) ?? "recording") }),
       (e: unknown) => !cancelled && setState({ error: errorMessage(e) }),
     );
     close.current?.focus();
@@ -375,7 +375,13 @@ function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () =
   );
 }
 
-function fileName(autPackage: string): string {
+/** The package of the recording's first app step: what the file is named after. */
+function firstApp(steps: readonly Step[]): string | undefined {
+  for (const step of steps) if (step.kind.case === "app") return step.kind.value.packageName;
+  return undefined;
+}
+
+function fileName(prefix: string): string {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
-  return `${autPackage}-${stamp}.tap-recording.json`;
+  return `${prefix}-${stamp}.tap-recording.json`;
 }

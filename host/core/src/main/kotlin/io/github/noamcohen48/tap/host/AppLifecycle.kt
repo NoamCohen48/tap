@@ -202,7 +202,14 @@ class AppLifecycle internal constructor(
             polls++
             val state =
                 callSync(minOf(5_000, remaining)) { before ->
-                    Requests.syncPoll(before.pid, before.startToken, identity.processStartUuid, identity.sessionIdentity)
+                    Requests.syncPoll(
+                        before.pid,
+                        before.startToken,
+                        identity.processStartUuid,
+                        identity.sessionIdentity,
+                        packageName,
+                        "$packageName.tap-sync",
+                    )
                 }
             val now = System.nanoTime()
             if (state.busyCount == 0) {
@@ -219,7 +226,9 @@ class AppLifecycle internal constructor(
     }
 
     private suspend fun bootstrapSync(timeoutMs: Long): SyncState =
-        callSync(timeoutMs.coerceIn(1, 5_000)) { before -> Requests.syncBootstrap(before.pid, before.startToken) }
+        callSync(timeoutMs.coerceIn(1, 5_000)) { before ->
+            Requests.syncBootstrap(before.pid, before.startToken, packageName, "$packageName.tap-sync")
+        }
 
     /** The driver checks identity against the process the host observed around the call. */
     private suspend inline fun callSync(

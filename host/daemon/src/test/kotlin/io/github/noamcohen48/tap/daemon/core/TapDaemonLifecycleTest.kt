@@ -69,7 +69,6 @@ private fun testConfig(log: (String) -> Unit = {}): DaemonConfig {
 private fun testOptions() =
     TapDaemon.AttachDeviceOptions(
         skipDriverInstall = true,
-        syncAuthority = null,
         defaultTimeoutMs = 5_000,
         leaseTimeoutMs = 0,
     )
@@ -77,7 +76,6 @@ private fun testOptions() =
 private class FakeDevice(
     override val serial: String,
     override val generation: Long = 1,
-    override val autPackage: String = "com.test",
     var poisoned: Throwable? = null,
     var closeGate: CompletableDeferred<Unit>? = null,
     var closeError: Throwable? = null,
@@ -119,7 +117,6 @@ private class RealSessionDevice(
 ) : DaemonDeviceSession {
     override val serial: String get() = delegate.serial
     override val generation: Long get() = delegate.generation
-    override val autPackage: String get() = delegate.autPackage
     override val client: DriverClient get() = delegate.client
 
     override fun app(packageName: String): AppLifecycle = delegate.app(packageName)
@@ -144,7 +141,7 @@ private class FakeOpener : DeviceSessionOpener {
         synchronized(queue) {
             if (queue.isNotEmpty()) return queue.removeFirst()
         }
-        return FakeDevice(serial = config.serial, autPackage = config.autPackage)
+        return FakeDevice(serial = config.serial)
     }
 }
 
@@ -191,7 +188,7 @@ class TapDaemonLifecycleTest {
             val daemon = TapDaemon(testConfig(), opener)
             val owner = daemon.connectClient("owner")
             val intruder = daemon.connectClient("intruder")
-            val attached = daemon.attachDevice(owner.id, "owned-serial", "com.test", testOptions())
+            val attached = daemon.attachDevice(owner.id, "owned-serial", testOptions())
             assertFailsWith<NotOwnerException> { daemon.attachedDevice(attached.id, intruder.id) }
             assertFailsWith<NotOwnerException> { daemon.detachDevice(attached.id, intruder.id) }
             assertEquals(setOf(attached.id), daemon.attachedDeviceIds())
@@ -208,7 +205,7 @@ class TapDaemonLifecycleTest {
             val scrcpy = SlowExitProcess(exitAfterMs = 700)
             val daemon = TapDaemon(testConfig(), DaemonDeps(opener, scrcpyLaunch = { _, _ -> scrcpy }))
             val owner = daemon.connectClient("owner")
-            val attached = daemon.attachDevice(owner.id, "recording-serial", "com.test", testOptions())
+            val attached = daemon.attachDevice(owner.id, "recording-serial", testOptions())
             attached.recording.start(video = true, audioSource = null, maxSeconds = 5)
             // The scrcpy stop alone outlasts the 500 ms detach budget; the session is still clean
             // and its close gets the whole budget (less the core margin), not what scrcpy left.
@@ -245,7 +242,7 @@ class TapDaemonLifecycleTest {
         runBlocking {
             val daemon = TapDaemon(testConfig(), FakeOpener(), observeGraceMs = 100)
             val silent = daemon.connectClient("silent")
-            val device = daemon.attachDevice(silent.id, "serial-a", "com.test", testOptions()).deviceSession as FakeDevice
+            val device = daemon.attachDevice(silent.id, "serial-a", testOptions()).deviceSession as FakeDevice
             val observed = daemon.connectClient("observed")
             daemon.observeAcquire(observed.id, Any()) {}
             withTimeout(5_000) { device.closeCompleted.await() }
@@ -261,7 +258,7 @@ class TapDaemonLifecycleTest {
         val (connection, attached) =
             runBlocking {
                 val connection = daemon.connectClient("collectable")
-                val attached = daemon.attachDevice(connection.id, "serial-gc", "com.test", testOptions())
+                val attached = daemon.attachDevice(connection.id, "serial-gc", testOptions())
                 assertEquals(1, daemon.disconnectClient(connection.id, "test"))
                 WeakReference(connection) to WeakReference(attached)
             }
@@ -281,7 +278,7 @@ class TapDaemonLifecycleTest {
             val opener = FakeOpener().also { it.queue.add(device) }
             val daemon = TapDaemon(testConfig(), opener)
             val connection = daemon.connectClient("index-mismatch")
-            val session = daemon.attachDevice(connection.id, device.serial, "com.test", testOptions())
+            val session = daemon.attachDevice(connection.id, device.serial, testOptions())
 
             assertEquals(1, daemon.disconnectClient(connection.id, "test invariant mismatch"))
             assertTrue(daemon.attachedDeviceIds().isEmpty())
@@ -375,7 +372,7 @@ class TapDaemonLifecycleTest {
             opener.queue.add(device)
             val daemon = TapDaemon(testConfig(), opener)
             val connection = daemon.connectClient("detach-conn")
-            daemon.attachDevice(connection.id, "detach", "com.test", testOptions())
+            daemon.attachDevice(connection.id, "detach", testOptions())
             val servicer = ClientConnectionService(daemon, heartbeatIntervalMs = 50)
             val observed = CompletableDeferred<Unit>()
             val observeJob =
@@ -410,7 +407,7 @@ class TapDaemonLifecycleTest {
             val openJob =
                 launch {
                     openResult.complete(
-                        runCatching { daemon.attachDevice(connection.id, "serial-orphan", "com.test", testOptions()) },
+                        runCatching { daemon.attachDevice(connection.id, "serial-orphan", testOptions()) },
                     )
                 }
             // Barrier, not a delay race: the opener signals it is suspended inside open.
@@ -438,8 +435,8 @@ class TapDaemonLifecycleTest {
             val daemon = TapDaemon(testConfig(), opener)
             val connection = daemon.connectClient("t4")
 
-            val s1 = daemon.attachDevice(connection.id, "s-1", "com.test", testOptions())
-            val s2 = daemon.attachDevice(connection.id, "s-2", "com.test", testOptions())
+            val s1 = daemon.attachDevice(connection.id, "s-1", testOptions())
+            val s2 = daemon.attachDevice(connection.id, "s-2", testOptions())
             // One transaction: both maps agree after every transition.
             assertEquals(setOf(s1.id, s2.id), daemon.attachedDeviceIds())
             assertEquals(setOf(s1.id, s2.id), daemon.attachedDeviceIdsForConnection(connection.id))
@@ -472,7 +469,7 @@ class TapDaemonLifecycleTest {
             opener.queue.add(device)
             val daemon = TapDaemon(testConfig(), opener)
             val connection = daemon.connectClient("race-conn")
-            val session = daemon.attachDevice(connection.id, "race", "com.test", testOptions())
+            val session = daemon.attachDevice(connection.id, "race", testOptions())
 
             // Detach wins the atomic take, then suspends in cleanup.
             val sessionDisconnect = async { daemon.detachDevice(session.id, connection.id) }
@@ -504,8 +501,8 @@ class TapDaemonLifecycleTest {
             val daemon = TapDaemon(testConfig(), opener, shutdownTotalMs = 600, shutdownAttachedDeviceMs = 250)
             val c1 = daemon.connectClient("hang-conn")
             val c2 = daemon.connectClient("quick-conn")
-            daemon.attachDevice(c1.id, "hang", "com.test", testOptions())
-            daemon.attachDevice(c2.id, "quick", "com.test", testOptions())
+            daemon.attachDevice(c1.id, "hang", testOptions())
+            daemon.attachDevice(c2.id, "quick", testOptions())
 
             // Bounded shutdown: returns despite the hanging close, attempts the later session.
             withTimeout(5_000) { daemon.close() }
@@ -544,7 +541,7 @@ class TapDaemonLifecycleTest {
                     shutdownAttachedDeviceMs = sessionDeadlineMs,
                 )
             val connection = daemon.connectClient("conn-exhaust")
-            repeat(sessionCount) { daemon.attachDevice(connection.id, "conn-exhaust-$it", "com.test", testOptions()) }
+            repeat(sessionCount) { daemon.attachDevice(connection.id, "conn-exhaust-$it", testOptions()) }
             assertEquals(sessionCount, daemon.attachedDeviceIds().size)
 
             // Deterministic seam: already-exhausted connection-local deadline, no wall-clock race.
@@ -599,7 +596,7 @@ class TapDaemonLifecycleTest {
                     shutdownAttachedDeviceMs = sessionDeadlineMs,
                 )
             val connection = daemon.connectClient("exhaust-conn")
-            repeat(sessionCount) { daemon.attachDevice(connection.id, "exhaust-$it", "com.test", testOptions()) }
+            repeat(sessionCount) { daemon.attachDevice(connection.id, "exhaust-$it", testOptions()) }
             assertEquals(sessionCount, daemon.attachedDeviceIds().size)
 
             // Elapsed-bound integration coverage only: which exhaustion branch fires here is a
@@ -628,7 +625,7 @@ class TapDaemonLifecycleTest {
                 )
             val outerConnections = (0 until 3).map { outerService.connectClient("outer-conn-$it") }
             outerConnections.forEachIndexed { ci, outerConnection ->
-                repeat(4) { si -> outerService.attachDevice(outerConnection.id, "outer-${ci * 4 + si}", "com.test", testOptions()) }
+                repeat(4) { si -> outerService.attachDevice(outerConnection.id, "outer-${ci * 4 + si}", testOptions()) }
             }
             withTimeout(4_000) { outerService.close() }
             assertTrue(outerLogs.any { it.contains("daemon shutdown budget 0ms exhausted") }, "outer detach branch not proven: $outerLogs")
@@ -647,7 +644,7 @@ class TapDaemonLifecycleTest {
             val lateOpenJob =
                 launch {
                     lateOpenResult.complete(
-                        runCatching { lateService.attachDevice(lateConnection.id, "late", "com.test", testOptions()) },
+                        runCatching { lateService.attachDevice(lateConnection.id, "late", testOptions()) },
                     )
                 }
             withTimeout(2_000) { lateOpener.entered.receive() }
@@ -692,13 +689,12 @@ class TapDaemonLifecycleTest {
                         FakeDevice(
                             serial = "cancel-serial",
                             generation = generation,
-                            autPackage = "com.test",
                             realClient = client,
                         )
                     val opener = FakeOpener().apply { queue.add(device) }
                     val daemon = TapDaemon(testConfig(), opener)
                     val connection = daemon.connectClient("cancel-conn")
-                    val session = daemon.attachDevice(connection.id, "cancel-serial", "com.test", testOptions())
+                    val session = daemon.attachDevice(connection.id, "cancel-serial", testOptions())
                     val servicer = DeviceService(daemon)
                     val serverName = InProcessServerBuilder.generateName()
                     val grpcServer =
@@ -764,11 +760,11 @@ class TapDaemonLifecycleTest {
                 val client =
                     DriverClient.connect(server.port, sessionId, generation, secret, serial = "forward-serial", heartbeatIntervalMs = 0)
                 try {
-                    val device = FakeDevice(serial = "forward-serial", generation = generation, autPackage = "com.test", realClient = client)
+                    val device = FakeDevice(serial = "forward-serial", generation = generation, realClient = client)
                     val opener = FakeOpener().apply { queue.add(device) }
                     val daemon = TapDaemon(testConfig(), opener)
                     val connection = daemon.connectClient("forward-conn")
-                    val session = daemon.attachDevice(connection.id, "forward-serial", "com.test", testOptions())
+                    val session = daemon.attachDevice(connection.id, "forward-serial", testOptions())
                     val serverName = InProcessServerBuilder.generateName()
                     val grpcServer =
                         InProcessServerBuilder.forName(serverName).directExecutor().addService(DeviceService(daemon)).build().start()
@@ -782,10 +778,10 @@ class TapDaemonLifecycleTest {
                             .setCommand(command)
                             .build()
                     try {
-                        // aut_package and the absent optional fields reach the driver as sent.
+                        // The selector and the absent optional fields reach the driver as sent.
                         val command =
                             Commands
-                                .scroll(Nodes.autResource("list").toSelector(), Direction.DIR_DOWN)
+                                .scroll(Nodes.resource("list").toSelector(), Direction.DIR_DOWN)
                                 .toBuilder()
                                 .setTimeoutMs(4_000)
                                 .build()
@@ -794,7 +790,7 @@ class TapDaemonLifecycleTest {
                         val request = Request.parseFrom(frame.payload)
                         assertEquals(command, request.command)
                         assertEquals(4_000L, request.timeoutMs)
-                        assertTrue(request.command.scroll.selector.node.resource.autPackage)
+                        assertFalse(request.command.scroll.selector.node.resource.hasPackageName())
                         assertFalse(request.command.scroll.hasDistancePercent())
 
                         val driverResult =
@@ -809,7 +805,7 @@ class TapDaemonLifecycleTest {
                             listOf(
                                 Commands.tap(Selector.getDefaultInstance()),
                                 Command.getDefaultInstance(),
-                                Commands.swipe(Nodes.autResource("row").toSelector(), Direction.DIR_UNSPECIFIED),
+                                Commands.swipe(Nodes.resource("row").toSelector(), Direction.DIR_UNSPECIFIED),
                             )
                         invalid.forEach { bad ->
                             val status = assertFailsWith<io.grpc.StatusException> { stub.execute(execute(bad)) }
@@ -841,7 +837,7 @@ class TapDaemonLifecycleTest {
             val connection = daemon.connectClient("poison-conn")
             val device = FakeDevice(serial = "poison-serial")
             opener.queue.add(device)
-            val session = daemon.attachDevice(connection.id, "poison-serial", "com.test", testOptions())
+            val session = daemon.attachDevice(connection.id, "poison-serial", testOptions())
             device.poisoned =
                 io.github.noamcohen48.tap.host.AdbReapUncertainException(
                     "ADB process or output drain survived bounded reap",
@@ -898,7 +894,6 @@ class TapDaemonLifecycleTest {
                 val sessionConfig =
                     DeviceSessionConfig(
                         serial = serial,
-                        autPackage = "com.test",
                         journalRoot = tempDir.resolve("sessions"),
                         adb = adb,
                         processStarter =
@@ -930,7 +925,7 @@ class TapDaemonLifecycleTest {
                     }
                 val daemon = TapDaemon(testConfig(), opener)
                 val connection = daemon.connectClient("lookup-poison-conn")
-                val opening = async(Dispatchers.IO) { daemon.attachDevice(connection.id, serial, "com.test", testOptions()) }
+                val opening = async(Dispatchers.IO) { daemon.attachDevice(connection.id, serial, testOptions()) }
                 fake.respond(withTimeout(5_000) { fake.nextFrame() }.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
                 // Barrier, not a delay race: the lookup completes first, then the poison lands

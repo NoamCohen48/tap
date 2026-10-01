@@ -1,6 +1,6 @@
 """Steps: completing the page's request into a recordable step, running it, and its outcome.
 
-A step runs through ``tap-e2e``'s public API (``Device.wait(...).one()``, ``Element.tap``,
+A step runs through ``tap-e2e``'s public API (``Screen.wait(...).one()``, ``Element.tap``,
 ``App.cold_launch``, the ``ElementWait`` conditions), never through raw protocol calls. Each
 kind maps onto exactly the ``tap.v1`` commands the recording holds, so running a recording in
 the studio and replaying its commands elsewhere send the same messages
@@ -160,7 +160,7 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
         return
     message = getattr(command, op)
     timeout = _seconds(command)
-    wait = device.wait(Selector.from_proto(action.wait.wait_visible.selector), _seconds(action.wait))
+    wait = device.screen.wait(Selector.from_proto(action.wait.wait_visible.selector), _seconds(action.wait))
     element = wait.one() if action.wait.wait_visible.exactly_one else wait.visible()
     perform: dict[str, Callable[[], None]] = {
         "tap": lambda: element.tap(timeout),
@@ -175,13 +175,13 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
 
 def _type(device: Device, step: studio.TypeStep, secret_value: str | None) -> None:
     value = secret_value if step.WhichOneof("input") == "secret" else step.text
-    wait = device.wait(Selector.from_proto(step.selector))
+    wait = device.screen.wait(Selector.from_proto(step.selector))
     element = wait.visible() if picks(step.selector) else wait.one()
     element.type_text(value or "", await_focus=not step.skip_focus_wait)
 
 
 def _assertion(device: Device, step: studio.AssertionStep) -> None:
-    wait = device.wait(Selector.from_proto(step.selector))
+    wait = device.screen.wait(Selector.from_proto(step.selector))
     conditions: dict[int, Callable[[], object]] = {
         studio.CONDITION_VISIBLE: wait.visible,
         studio.CONDITION_ONE: wait.one,

@@ -206,9 +206,15 @@ object Requests {
     fun syncBootstrap(
         observedPid: Int,
         observedStartToken: String,
+        packageName: String,
+        authority: String,
     ): Request =
         Request.newBuilder().setSyncBootstrap(
-            SyncBootstrap.newBuilder().setObservedPid(observedPid).setObservedStartToken(observedStartToken),
+            SyncBootstrap.newBuilder()
+                .setObservedPid(observedPid)
+                .setObservedStartToken(observedStartToken)
+                .setPackageName(packageName)
+                .setAuthority(authority),
         ).build()
 
     fun syncPoll(
@@ -216,13 +222,17 @@ object Requests {
         observedStartToken: String,
         expectedProcessStartUuid: String,
         expectedSessionIdentity: String,
+        packageName: String,
+        authority: String,
     ): Request =
         Request.newBuilder().setSyncPoll(
             SyncPoll.newBuilder()
                 .setObservedPid(observedPid)
                 .setObservedStartToken(observedStartToken)
                 .setExpectedProcessStartUuid(expectedProcessStartUuid)
-                .setExpectedSessionIdentity(expectedSessionIdentity),
+                .setExpectedSessionIdentity(expectedSessionIdentity)
+                .setPackageName(packageName)
+                .setAuthority(authority),
         ).build()
 }
 

@@ -26,8 +26,6 @@ message LoggedEvent {
   int64 at_epoch_ms = 2;
   int64 duration_ms = 3;
   string serial = 4;
-  // The attached device's app under test.
-  string aut_package = 5;
   oneof call {
     Command command = 6;
     AppCall app = 7;

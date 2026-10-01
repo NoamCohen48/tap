@@ -120,7 +120,6 @@ message ListConnectionsRequest {}
 message AttachedDeviceEntry {
   string attached_device_id = 1;
   string serial = 2;
-  string aut_package = 3;
   int64 generation = 4;
 }
 

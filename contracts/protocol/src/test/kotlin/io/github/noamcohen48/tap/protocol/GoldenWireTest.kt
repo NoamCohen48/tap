@@ -102,10 +102,10 @@ class GoldenWireTest {
             "request-health" to (envelope(Requests.health()) to Request::parseFrom),
             "request-screenshot" to (envelope(Requests.screenshot()) to Request::parseFrom),
             "request-sync-poll" to (
-                envelope(Requests.syncPoll(4242, "1234567", "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01", "session-identity")) to
+                envelope(Requests.syncPoll(4242, "1234567", "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01", "session-identity", AUT, "$AUT.tap-sync")) to
                     Request::parseFrom
             ),
-            "request-tap-aut-resource" to (envelope(Requests.of(Commands.tap(Selectors.of(Nodes.autResource("login"))))) to Request::parseFrom),
+            "request-tap-resource" to (envelope(Requests.of(Commands.tap(Selectors.of(Nodes.resource("login"))))) to Request::parseFrom),
             "request-press-key" to (envelope(Requests.of(Commands.pressKey(KEYCODE_BACK))) to Request::parseFrom),
             "request-open-system-panel" to (
                 envelope(Requests.of(Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS))) to Request::parseFrom
@@ -119,13 +119,13 @@ class GoldenWireTest {
                     Request::parseFrom
             ),
             "request-swipe-default-distance" to (
-                envelope(Requests.of(Commands.swipe(Selectors.rawResource("pager"), Direction.DIR_LEFT))) to Request::parseFrom
+                envelope(Requests.of(Commands.swipe(Selectors.resource("pager"), Direction.DIR_LEFT))) to Request::parseFrom
             ),
-            "request-scroll-any-window" to (
+            "request-scroll" to (
                 envelope(
                     Requests.of(
                         Commands.scroll(
-                            Selectors.androidResource(AUT, "list").inAnyWindow(),
+                            Selectors.androidResource(AUT, "list"),
                             Direction.DIR_UP,
                             distancePercent = 50,
                         ).toBuilder().setTimeoutMs(9_000).build(),
@@ -152,8 +152,9 @@ class GoldenWireTest {
                         Commands.exists(
                             Selectors.of(
                                 (Nodes.text("Allow") or Nodes.text("While using the app", MatchMode.MATCH_CONTAINS)) and
-                                    Nodes.flag(NodeFlag.FLAG_ENABLED),
-                            ).inPackage(system).pickFirst(),
+                                    Nodes.flag(NodeFlag.FLAG_ENABLED) and
+                                    Nodes.packageName(system),
+                            ).pickFirst(),
                         ),
                     ),
                 ) to Request::parseFrom

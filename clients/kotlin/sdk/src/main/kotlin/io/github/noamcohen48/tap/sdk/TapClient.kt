@@ -350,19 +350,18 @@ class TapConnection internal constructor(
             .map { it.serial }
 
     /**
-     * Attach [serial] for [autPackage]. The underlying device session holds the device's
+     * Attach [serial]. The underlying device session holds the device's
      * per-serial lock until [Device.detach]; if another session holds it, attachment fails with
      * [DeviceBusyException] — at once, or after [DeviceOptions.waitForDevice]. Rejected locally
      * without an RPC once the connection is closed or its liveness stream ended unexpectedly.
      */
     suspend fun attachDevice(
         serial: String,
-        autPackage: String,
         timeouts: Timeouts = Timeouts(),
         options: DeviceOptions = DeviceOptions(),
     ): Device {
         ensureUsable("Device.attachDevice")
-        val device = Device.attachDevice(this, serial, autPackage, timeouts, options, deviceBounds)
+        val device = Device.attachDevice(this, serial, timeouts, options, deviceBounds)
         val terminal: Throwable? =
             stateMutex.withLock {
                 attachedDevices.add(device)
@@ -383,7 +382,7 @@ class TapConnection internal constructor(
     }
 
     /**
-     * Attaches [serial] for [autPackage] ([attachDevice]), runs [block] with the device and
+     * Attaches [serial] ([attachDevice]), runs [block] with the device and
      * always detaches it afterwards. Runs inside the caller's `tapTest` / `tapScope`, or installs
      * a [TapContext] of its own when there is none, so a script needs no `tapScope`. A [block]
      * failure wins and a detach failure after it is added as suppressed; when [block] succeeds,
@@ -391,13 +390,12 @@ class TapConnection internal constructor(
      */
     suspend fun <R> attach(
         serial: String,
-        autPackage: String,
         timeouts: Timeouts = Timeouts(),
         options: DeviceOptions = DeviceOptions(),
         block: suspend (Device) -> R,
     ): R {
         suspend fun run(): R {
-            val device = attachDevice(serial, autPackage, timeouts, options)
+            val device = attachDevice(serial, timeouts, options)
             return closing({ withContext(NonCancellable) { device.detach() } }) { block(device) }
         }
         return if (currentCoroutineContext()[TapContext] != null) run() else withContext(TapContext("attach:$serial")) { run() }

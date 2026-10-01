@@ -20,22 +20,22 @@ class LifecycleTest {
 
             // A launch returns on the new process identity, not on content: on a slow
             // first boot the hierarchy still lays out after that (seen on CI).
-            device.await(res("fault_button")).visible()
-            device.element(res("fault_button")).tap()
-            device.await(text("Fault taps: 1")).visible()
+            app.await(res("fault_button")).visible()
+            app.element(res("fault_button")).tap()
+            app.await(text("Fault taps: 1")).visible()
 
             app.forceStop()
             assertFalse(app.isRunning())
             val second = app.coldLaunch(".MainActivity")
             assertNotEquals(first, second)
             // The in-process counter is gone with the old process.
-            assertEquals("Fault taps: 0", device.element(res("fault_status")).text())
+            assertEquals("Fault taps: 0", app.element(res("fault_status")).text())
 
             app.clearData()
             assertFalse(app.isRunning())
             app.launch(".MainActivity")
             // launch does not wait for the window; the test does.
-            device.await(res("view_button")).visible()
+            app.await(res("view_button")).visible()
 
             val info = device.info()
             assertEquals(Fixture.PACKAGE, info.currentPackage)

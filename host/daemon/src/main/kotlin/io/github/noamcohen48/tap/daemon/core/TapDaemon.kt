@@ -150,7 +150,6 @@ class ConnectedClient internal constructor(
 internal interface DaemonDeviceSession {
     val serial: String
     val generation: Long
-    val autPackage: String
     val client: DriverClient
 
     fun app(packageName: String): AppLifecycle
@@ -176,7 +175,6 @@ private class CoreDeviceSessionAdapter(
 ) : DaemonDeviceSession {
     override val serial: String get() = delegate.serial
     override val generation: Long get() = delegate.generation
-    override val autPackage: String get() = delegate.autPackage
     override val client: DriverClient get() = delegate.client
 
     override fun app(packageName: String): AppLifecycle = delegate.app(packageName)
@@ -646,7 +644,6 @@ class TapDaemon internal constructor(
 
     data class AttachDeviceOptions(
         val skipDriverInstall: Boolean,
-        val syncAuthority: String?,
         val defaultTimeoutMs: Long,
         /** How long [attachDevice] may wait for another DeviceSession's lock on the serial. */
         val leaseTimeoutMs: Long,
@@ -655,7 +652,6 @@ class TapDaemon internal constructor(
     suspend fun attachDevice(
         ownerConnectionId: String,
         serial: String,
-        autPackage: String,
         options: AttachDeviceOptions,
     ): AttachedDevice {
         synchronized(lifecycleLock) {
@@ -679,7 +675,6 @@ class TapDaemon internal constructor(
         val deviceConfig =
             DeviceSessionConfig(
                 serial = serial,
-                autPackage = autPackage,
                 driverApk = config.driver?.driverApk?.takeIf { useBundled },
                 driverTestApk = config.driver?.driverTestApk?.takeIf { useBundled },
                 installDriver = {
@@ -689,7 +684,6 @@ class TapDaemon internal constructor(
                         synchronized(lifecycleLock) { driverInstalled.add(serial) }.also { installedBundled = it }
                     }
                 },
-                syncAuthority = options.syncAuthority ?: "$autPackage.tap-sync",
                 journalRoot = config.journalRoot,
                 adb = config.adb,
                 driverLog = log::append,

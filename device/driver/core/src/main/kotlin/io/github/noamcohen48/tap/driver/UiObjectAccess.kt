@@ -4,13 +4,12 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.UiWindow
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.MAX_MATCH_COUNT
 
 /**
- * Selector evaluation against the windows of the selector's [SearchScope]. Selectors arrive
- * compiled (once per request); objects are resolved per call and recycled by the caller, so
+ * Selector evaluation against all visible windows. Selectors arrive compiled (once per
+ * request); objects are resolved per call and recycled by the caller, so
  * nothing here outlives one command.
  */
 internal class UiObjectAccess(
@@ -39,12 +38,7 @@ internal class UiObjectAccess(
     fun presence(target: CompiledSelector): Boolean? =
         try {
             when (target) {
-                is CompiledSelector.Native -> {
-                    when (val scope = target.scope) {
-                        is SearchScope.FocusedWindow -> focusedWindow(scope)?.hasObject(target.by) == true
-                        SearchScope.AllWindows -> device.hasObject(target.by)
-                    }
-                }
+                is CompiledSelector.Native -> device.hasObject(target.by)
 
                 is CompiledSelector.Traversal -> findObjects(target, 1).onEach(UiObject2::recycle).isNotEmpty()
             }
@@ -94,22 +88,14 @@ internal class UiObjectAccess(
     ): List<UiObject2> {
         return when (compiled) {
             is CompiledSelector.Native -> {
-                val all =
-                    when (val scope = compiled.scope) {
-                        is SearchScope.FocusedWindow -> focusedWindow(scope)?.findObjects(compiled.by) ?: return emptyList()
-                        SearchScope.AllWindows -> device.findObjects(compiled.by)
-                    }
+                val all = device.findObjects(compiled.by)
                 all.drop(limit).forEach(UiObject2::recycle)
                 all.take(limit)
             }
 
             is CompiledSelector.Traversal -> {
-                val roots =
-                    when (val scope = compiled.scope) {
-                        is SearchScope.FocusedWindow -> listOfNotNull(focusedWindow(scope)?.rootObject)
-                        // Depth 0 is each window's root, in the order the accessibility service reports windows.
-                        SearchScope.AllWindows -> device.findObjects(By.depth(0))
-                    }
+                // Depth 0 is each window's root, in the order the accessibility service reports windows.
+                val roots = device.findObjects(By.depth(0))
                 val matches = mutableListOf<UiObject2>()
                 val pending = ArrayDeque(roots)
                 try {
@@ -158,9 +144,6 @@ internal class UiObjectAccess(
             if (!matched) child.recycle()
         }
     }
-
-    private fun focusedWindow(scope: SearchScope.FocusedWindow): UiWindow? =
-        device.findWindow(By.Window.pkg(scope.packageName).focused(true))
 }
 
 /** Recycles [element], ignoring an already recycled or stale object. */
