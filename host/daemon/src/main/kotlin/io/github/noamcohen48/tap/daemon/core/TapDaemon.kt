@@ -481,7 +481,7 @@ class TapDaemon internal constructor(
             coroutineScope {
                 devices.map { attachedDevice ->
                     async {
-                        val detail = closeAttachedDevice(attachedDevice, timeoutMs)
+                        val detail = closeAttachedDevice(attachedDevice, timeoutMs, shutdown = totalTimeoutMs != null)
                         config.log("attached device ${attachedDevice.id} detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
                     }
                 }.awaitAll()
@@ -584,7 +584,15 @@ class TapDaemon internal constructor(
 
     /** Stop scrcpy before releasing this session's serial lock. An audio failure does not skip
      * driver cleanup; both diagnostics are preserved in the detach detail. */
-    private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long): String? {
+    private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long, shutdown: Boolean): String? {
+        if (!shutdown) {
+            // Outside shutdown nothing imposes a deadline, so the recorder does not borrow the
+            // driver's: reaping scrcpy always ends (SIGTERM, then SIGKILL), and a slow scrcpy must
+            // not leave the driver close too little time and quarantine a healthy session.
+            val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
+            val sessionError = closeDeviceBounded(device.deviceSession, timeoutMs, "attached device ${device.id}")
+            return listOfNotNull(audioError, sessionError).takeIf { it.isNotEmpty() }?.joinToString("; ")
+        }
         val started = System.nanoTime()
         val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
         val elapsedMs = (System.nanoTime() - started).coerceAtLeast(0L) / 1_000_000L
@@ -758,7 +766,7 @@ class TapDaemon internal constructor(
                     attachedDevicesById.remove(id)
                 } ?: throw UnknownAttachedDeviceException(id)
             markInUse(clientConnectionId)
-            val detail = closeAttachedDevice(attachedDevice, timeoutMs)
+            val detail = closeAttachedDevice(attachedDevice, timeoutMs, shutdown = false)
             config.log("attached device $id detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
             return@withContext detail
         }
