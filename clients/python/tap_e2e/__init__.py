@@ -3,10 +3,11 @@
 from tap_e2e import TapClient, text, res
 
 with TapClient.create() as client, client.connect("smoke") as connection:  # `tap start` first
-    with connection.attach_device("emulator-5554", "com.example.app") as device:
-        device.app().cold_launch()
-        device.element(res("login")).tap()
-        device.wait(text("Welcome")).visible()
+    with connection.attach_device("emulator-5554") as device:
+        app = device.app("com.example.app")
+        app.cold_launch()
+        app.element(res("login")).tap()
+        app.wait(text("Welcome")).visible()
 """
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
@@ -14,6 +15,7 @@ from importlib.metadata import version as _dist_version
 from .app import App
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
+from .screen import Screen
 from .errors import (
     AppLifecycleError,
     CommandError,
@@ -69,7 +71,6 @@ from .selectors import (
     clickable,
     desc,
     hint,
-    raw_res,
     res,
     res_id,
     scrollable,
@@ -133,6 +134,7 @@ __all__ = [
     "NodeChange",
     "NodeFlag",
     "Recording",
+    "Screen",
     "ScreenNode",
     "ScreenSnapshot",
     "Screenshot",
@@ -155,7 +157,6 @@ __all__ = [
     "clickable",
     "desc",
     "hint",
-    "raw_res",
     "res",
     "res_id",
     "resolve_address",

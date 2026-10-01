@@ -1,8 +1,6 @@
 package io.github.noamcohen48.tap.daemon.snapshot
 
 import io.github.noamcohen48.tap.api.v1.At
-import io.github.noamcohen48.tap.api.v1.AnyWindowScope
-import io.github.noamcohen48.tap.api.v1.AutScope
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.TextProperty
@@ -13,7 +11,6 @@ import io.github.noamcohen48.tap.protocol.MAX_SELECTOR_STRING_CHARS
 import io.github.noamcohen48.tap.protocol.Nodes
 import io.github.noamcohen48.tap.protocol.SelectorPlanKind
 import io.github.noamcohen48.tap.protocol.conjunction
-import io.github.noamcohen48.tap.protocol.qualifyingPackage
 
 /** How a synthesised selector singles out its node; [BY_INDEX] is the only fragile one. */
 internal enum class SelectorKind {
@@ -52,25 +49,22 @@ internal class Synthesised(
  * an earlier one (text + class when the text alone is unique), and the `At` pick unless nothing
  * else is unique (`.docs/recorder.md`, decision 8).
  *
- * Uniqueness is checked with [DumpMatcher] in the node's scope: a window of the AUT package is
- * `aut`; a node in any other package's window gets `any_window`, checked against every window
- * of the dump (`system{package}` would search only that package's *focused* window, which the
- * status bar, the navigation bar or an overlay never is). Every emitted selector passes the
- * shared [CommandValidation] and compiles to the driver's native plan, whose semantics
- * [DumpMatcher] emulates. An AUT-window node whose own package differs from the AUT (the native
- * `pkg` filter can never match it) or a node with no string property at all gets no selector.
+ * Uniqueness is checked with [DumpMatcher] across all visible windows. Every emitted selector
+ * includes the owning package as an ordinary predicate, passes shared [CommandValidation], and
+ * compiles to the same plan the driver uses. A node with no string property gets no selector.
  */
 internal class SelectorSynthesis(
     hierarchy: Hierarchy,
-    private val autPackage: String,
 ) {
     private val nodes = hierarchy.nodes
-    private val matcher = DumpMatcher(hierarchy, autPackage)
+    private val matcher = DumpMatcher(hierarchy)
     private val byText = index { it.text }
     private val byDescription = index { it.contentDescription }
     private val byHint = index { it.hint }
     private val byClass = index { it.className }
     private val byResource = index { it.resourceName }
+    /** By the id's local name (`pkg:id/name` → `name`; a bare testTag as is), for package-less ids. */
+    private val byLocalResource = index { id -> id.resourceName?.let { QUALIFIED_ID.matchEntire(it)?.groupValues?.get(2) ?: it } }
 
     /** One entry per [Hierarchy.nodes] entry: its selector, or null where none was found. */
     fun synthesise(): List<Synthesised?> = run(all = false).map { it.firstOrNull() }
@@ -95,11 +89,8 @@ internal class SelectorSynthesis(
         done: Array<Synthesised?>,
         all: Boolean,
     ): List<Synthesised> {
-        val scopePackage = node.windowPackage
-        val inAut = scopePackage == autPackage
-        if (inAut && node.packageName != autPackage) return emptyList()
-        val scope = if (inAut) matcher.packageScope(autPackage) else matcher.allWindows()
-        val resource = resource(node.resourceName, scopePackage)
+        val packageName = node.packageName ?: node.windowPackage
+        val resource = resource(node.resourceName, packageName)
         val text = node.text?.usable()?.let { Nodes.text(it) }
         val description = node.contentDescription?.usable()?.let { Nodes.contentDescription(it) }
         val hint = node.hint?.usable()?.let { Nodes.hint(it) }
@@ -129,9 +120,10 @@ internal class SelectorSynthesis(
             predicate: Node,
             kind: SelectorKind,
         ): Boolean {
-            val operands = predicate.conjunction.toSet()
+            val bound = bind(predicate, packageName)
+            val operands = bound.conjunction.toSet()
             if (found.none { operands.containsAll(it.operands) }) {
-                unique(predicate, node, scope, scopePackage)?.let { found += Synthesised(it, kind) }
+                unique(bound, node)?.let { found += Synthesised(it, kind) }
             }
             return !all && found.isNotEmpty()
         }
@@ -142,7 +134,7 @@ internal class SelectorSynthesis(
 
         val ancestor = addressableAncestor(node, done)
         if (ancestor != null) {
-            val related = Nodes.ancestor(ancestor.node)
+            val related = Nodes.ancestor(ancestor)
             // The class alone is no candidate by itself, but "a Button under X" is.
             val own = candidates.map { it.first!! } + listOfNotNull(className)
             for (predicate in own) {
@@ -152,65 +144,52 @@ internal class SelectorSynthesis(
         if (found.isNotEmpty()) return found
 
         val specific = listOfNotNull(resource, text, description, hint, className)
-        return listOfNotNull(byIndex(node, specific, scope, scopePackage))
+        return listOfNotNull(byIndex(node, specific, packageName))
     }
 
     /** The conjunction of all of [node]'s predicates ([specific]) with an `At` pick, when valid. */
     private fun byIndex(
         node: DumpNode,
         specific: List<Node>,
-        scope: DumpMatcher.Scope,
-        scopePackage: String,
+        packageName: String,
     ): Synthesised? {
         if (specific.isEmpty()) return null
-        val inAut = scopePackage == autPackage
-        val predicate = Nodes.allOf(specific)
+        val predicate = bind(Nodes.allOf(specific), packageName)
         val position =
             seeds(predicate)
                 .map { nodes[it] }
-                // `aut` searches one window; `any_window` picks among every window's matches.
-                .filter { (!inAut || it.window == node.window) && matcher.inScope(it, scope) && matcher.matches(predicate, it) }
+                .filter { matcher.matches(predicate, it) }
                 .indexOf(node)
         if (position < 0) return null
-        val selector = selector(predicate, scopePackage).toBuilder().setAt(At.newBuilder().setIndex(position)).build()
+        val selector = selector(predicate).toBuilder().setAt(At.newBuilder().setIndex(position)).build()
         return selector.takeIf { valid(it) }?.let { Synthesised(it, SelectorKind.BY_INDEX) }
     }
 
     /**
-     * The selector of [predicate] when it matches [target] and nothing else in [scope] (a
+     * The selector of [predicate] when it matches [target] and nothing else on the screen (a
      * selector the driver would reject is no candidate).
      */
     private fun unique(
         predicate: Node,
         target: DumpNode,
-        scope: DumpMatcher.Scope,
-        scopePackage: String,
     ): Selector? {
         var matchedTarget = false
         for (i in seeds(predicate)) {
             val node = nodes[i]
-            if (!matcher.inScope(node, scope) || !matcher.matches(predicate, node)) continue
+            if (!matcher.matches(predicate, node)) continue
             if (node !== target) return null
             matchedTarget = true
         }
         if (!matchedTarget) return null
-        return selector(predicate, scopePackage).takeIf { valid(it) }
+        return selector(predicate).takeIf { valid(it) }
     }
 
-    private fun selector(
-        predicate: Node,
-        scopePackage: String,
-    ): Selector =
-        Selector
-            .newBuilder()
-            .setNode(predicate)
-            .apply {
-                if (scopePackage == autPackage) {
-                    setAut(AutScope.getDefaultInstance())
-                } else {
-                    setAnyWindow(AnyWindowScope.getDefaultInstance())
-                }
-            }.build()
+    private fun selector(predicate: Node): Selector =
+        Selector.newBuilder().setNode(predicate).build()
+
+    /** Adds package ownership as data and leaves execution screen-wide. */
+    private fun bind(predicate: Node, packageName: String): Node =
+        Nodes.allOf(predicate, Nodes.packageName(packageName))
 
     /** Only selectors the shared validation accepts, on the native plan [DumpMatcher] emulates. */
     private fun valid(selector: Selector): Boolean =
@@ -222,17 +201,20 @@ internal class SelectorSynthesis(
 
     /**
      * The nearest ancestor, at most [MAX_SELECTOR_DEPTH] levels up (the driver's traversal walk
-     * stops there), whose selector is not an index pick; its predicate becomes the relation.
+     * stops there), whose selector is not an index pick; its predicate, without the package
+     * predicate (the node's own one already says whose window it is), becomes the relation.
      */
     private fun addressableAncestor(
         node: DumpNode,
         done: Array<Synthesised?>,
-    ): Selector? {
+    ): Node? {
         var parent = node.parent
         var distance = 1
         while (parent >= 0 && distance <= MAX_SELECTOR_DEPTH) {
             val synthesised = done[parent]
-            if (synthesised != null && !synthesised.byIndex) return synthesised.selector
+            if (synthesised != null && !synthesised.byIndex) {
+                return Nodes.allOf(synthesised.selector.node.conjunction.filterNot { it.isPackagePredicate() })
+            }
             parent = nodes[parent].parent
             distance++
         }
@@ -240,22 +222,18 @@ internal class SelectorSynthesis(
     }
 
     /**
-     * A resource-id predicate: `aut_package` for the AUT's ids, `package_name` for another
-     * package's (except in `aut` scope, where the driver denies it), the raw name when the id is
-     * not `package:id/name` (a Compose testTag).
+     * A resource-id predicate. An id of the node's own package is package-less (`res("login")`):
+     * the bound package predicate already says whose it is. Another package's id (a library or
+     * `android:id/…`) keeps its package; an unqualified id is a Compose testTag.
      */
     private fun resource(
         id: String?,
-        scopePackage: String,
+        ownPackage: String,
     ): Node? {
         val usable = id?.usable() ?: return null
-        val qualified = QUALIFIED_ID.matchEntire(usable) ?: return Nodes.rawResource(usable)
+        val qualified = QUALIFIED_ID.matchEntire(usable) ?: return Nodes.resource(usable)
         val (packageName, name) = qualified.destructured
-        return when {
-            packageName == autPackage -> Nodes.autResource(name)
-            scopePackage == autPackage -> null
-            else -> Nodes.androidResource(packageName, name)
-        }
+        return if (packageName == ownPackage) Nodes.resource(name) else Nodes.androidResource(packageName, name)
     }
 
     /**
@@ -267,9 +245,13 @@ internal class SelectorSynthesis(
             predicate.conjunction.mapNotNull { operand ->
                 when (operand.kindCase) {
                     Node.KindCase.RESOURCE -> {
+                        // A package-less id matches its name in any package: seed by the local name.
                         val resource = operand.resource
-                        val id = resource.qualifyingPackage(autPackage)?.let { "$it:id/${resource.name}" } ?: resource.name
-                        byResource[id] ?: EMPTY
+                        if (resource.hasPackageName()) {
+                            byResource["${resource.packageName}:id/${resource.name}"] ?: EMPTY
+                        } else {
+                            byLocalResource[resource.name] ?: EMPTY
+                        }
                     }
 
                     Node.KindCase.MATCH -> {
@@ -301,6 +283,8 @@ internal class SelectorSynthesis(
     private companion object {
         val QUALIFIED_ID = Regex("([^:/]+):id/(.+)", RegexOption.DOT_MATCHES_ALL)
         val EMPTY = IntArray(0)
+
+        fun Node.isPackagePredicate(): Boolean = kindCase == Node.KindCase.MATCH && match.property == TextProperty.PROPERTY_PACKAGE_NAME
 
         fun String.usable(): String? = takeIf { it.isNotEmpty() && it.length <= MAX_SELECTOR_STRING_CHARS }
     }

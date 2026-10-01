@@ -23,8 +23,6 @@ APK = pathlib.Path(
     or REPO / "fixture-app/build/outputs/apk/debug/fixture-app-debug.apk"
 )
 
-os.environ.setdefault("TAP_AUT", PACKAGE)
-
 _installed: set[str] = set()
 _lock = threading.Lock()
 

@@ -24,6 +24,7 @@ class TextProperty(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     PROPERTY_CONTENT_DESCRIPTION: _ClassVar[TextProperty]
     PROPERTY_HINT: _ClassVar[TextProperty]
     PROPERTY_CLASS_NAME: _ClassVar[TextProperty]
+    PROPERTY_PACKAGE_NAME: _ClassVar[TextProperty]
 
 class NodeFlag(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -56,6 +57,7 @@ PROPERTY_TEXT: TextProperty
 PROPERTY_CONTENT_DESCRIPTION: TextProperty
 PROPERTY_HINT: TextProperty
 PROPERTY_CLASS_NAME: TextProperty
+PROPERTY_PACKAGE_NAME: TextProperty
 FLAG_UNSPECIFIED: NodeFlag
 FLAG_ENABLED: NodeFlag
 FLAG_CHECKED: NodeFlag
@@ -91,14 +93,12 @@ class Flag(_message.Message):
     def __init__(self, property: _Optional[_Union[NodeFlag, str]] = ..., value: _Optional[bool] = ...) -> None: ...
 
 class ResourceId(_message.Message):
-    __slots__ = ("name", "package_name", "aut_package")
+    __slots__ = ("name", "package_name")
     NAME_FIELD_NUMBER: _ClassVar[int]
     PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     name: str
     package_name: str
-    aut_package: bool
-    def __init__(self, name: _Optional[str] = ..., package_name: _Optional[str] = ..., aut_package: _Optional[bool] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., package_name: _Optional[str] = ...) -> None: ...
 
 class Related(_message.Message):
     __slots__ = ("relation", "node")
@@ -136,20 +136,6 @@ class Node(_message.Message):
     any_of: AnyOf
     def __init__(self, match: _Optional[_Union[Match, _Mapping]] = ..., flag: _Optional[_Union[Flag, _Mapping]] = ..., resource: _Optional[_Union[ResourceId, _Mapping]] = ..., related: _Optional[_Union[Related, _Mapping]] = ..., all_of: _Optional[_Union[AllOf, _Mapping]] = ..., any_of: _Optional[_Union[AnyOf, _Mapping]] = ...) -> None: ...
 
-class AutScope(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class SystemScope(_message.Message):
-    __slots__ = ("package_name",)
-    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
-    package_name: str
-    def __init__(self, package_name: _Optional[str] = ...) -> None: ...
-
-class AnyWindowScope(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
 class ExactlyOne(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
@@ -165,19 +151,13 @@ class At(_message.Message):
     def __init__(self, index: _Optional[int] = ...) -> None: ...
 
 class Selector(_message.Message):
-    __slots__ = ("node", "aut", "system", "any_window", "exactly_one", "first", "at")
+    __slots__ = ("node", "exactly_one", "first", "at")
     NODE_FIELD_NUMBER: _ClassVar[int]
-    AUT_FIELD_NUMBER: _ClassVar[int]
-    SYSTEM_FIELD_NUMBER: _ClassVar[int]
-    ANY_WINDOW_FIELD_NUMBER: _ClassVar[int]
     EXACTLY_ONE_FIELD_NUMBER: _ClassVar[int]
     FIRST_FIELD_NUMBER: _ClassVar[int]
     AT_FIELD_NUMBER: _ClassVar[int]
     node: Node
-    aut: AutScope
-    system: SystemScope
-    any_window: AnyWindowScope
     exactly_one: ExactlyOne
     first: First
     at: At
-    def __init__(self, node: _Optional[_Union[Node, _Mapping]] = ..., aut: _Optional[_Union[AutScope, _Mapping]] = ..., system: _Optional[_Union[SystemScope, _Mapping]] = ..., any_window: _Optional[_Union[AnyWindowScope, _Mapping]] = ..., exactly_one: _Optional[_Union[ExactlyOne, _Mapping]] = ..., first: _Optional[_Union[First, _Mapping]] = ..., at: _Optional[_Union[At, _Mapping]] = ...) -> None: ...
+    def __init__(self, node: _Optional[_Union[Node, _Mapping]] = ..., exactly_one: _Optional[_Union[ExactlyOne, _Mapping]] = ..., first: _Optional[_Union[First, _Mapping]] = ..., at: _Optional[_Union[At, _Mapping]] = ...) -> None: ...

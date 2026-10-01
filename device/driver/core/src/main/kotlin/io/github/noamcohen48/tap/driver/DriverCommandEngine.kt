@@ -49,13 +49,12 @@ import java.util.IdentityHashMap
 internal class DriverCommandEngine(
     instrumentation: Instrumentation,
     device: UiDevice,
-    expectedAut: String,
     faults: FaultHooks,
     private val sync: SyncProviderClient,
 ) {
-    private val compiler = SelectorCompiler(expectedAut)
+    private val compiler = SelectorCompiler()
     private val objects = UiObjectAccess(device)
-    private val gestures = GestureCommands(instrumentation, device, objects, faults)
+    private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, faults)
     private val textInput = TextInputCommands(instrumentation, objects)
     private val waits = WaitCommands(device, objects)
     private val queries = QueryCommands(device, objects)
@@ -80,9 +79,9 @@ internal class DriverCommandEngine(
     }
 
     /**
-     * Compiles every selector the command carries, once for the whole request: this is where
-     * the session's AUT is applied (the default scope, AUT-only resources), and the result is
-     * what every poll of the command reuses. Session identity,
+     * Compiles every selector the command carries, once for the whole request. Package
+     * ownership is already an ordinary predicate in the selector tree. The result is what every
+     * poll of the command reuses. Session identity,
      * the timeout range and the shared structural validation already ran on the reader lane
      * (`RequestScreening`), so a request that reaches this point is well formed. A denied
      * selector never touches UI.

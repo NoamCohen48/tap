@@ -41,10 +41,6 @@ def _resource(name: str, package_name: str | None = None) -> pb.Node:
     return pb.Node(resource=resource)
 
 
-def _aut_resource(name: str) -> pb.Node:
-    return pb.Node(resource=pb.ResourceId(name=name, aut_package=True))
-
-
 def _related(relation: int, node: pb.Node) -> pb.Node:
     return pb.Node(related=pb.Related(relation=relation, node=node))
 
@@ -75,8 +71,8 @@ class Selector:
 
     Build one with the module functions (``text``, ``res``, ``desc``, ...), narrow it with
     the methods below and combine selectors with ``&`` / ``|``; each returns a new Selector.
-    Bind it with ``Device.element``. Matching happens on the device, scoped to the app under
-    test; see the selectors guide. Selectors are values: equal when their protos are equal, and
+    Bind it with ``App.element`` for one package or ``Screen.element`` for whatever is visible.
+    Selectors are values: equal when their protos are equal, and
     hashable (usable in sets and as dict keys).
 
     Composition never silently drops a part: an operand of ``&``, ``|`` or a ``has_*``
@@ -99,24 +95,6 @@ class Selector:
     def _has_pick(self) -> bool:
         return self._proto.WhichOneof("pick") in ("first", "at")
 
-    @property
-    def _scope_key(self) -> str | None:
-        """None for the app under test (the default), else the package or any window."""
-        scope = self._proto.WhichOneof("scope")
-        if scope == "system":
-            return f"package {self._proto.system.package_name}"
-        if scope == "any_window":
-            return "any window"
-        return None
-
-    def _require_same_scope(self, operation: str, other: Selector) -> None:
-        if other._scope_key is not None and other._scope_key != self._scope_key:
-            raise ValueError(
-                f"{operation}: the operand {other.render()} has a different scope than "
-                f"{self.render()}; set in_package(...)/in_any_window() on the combined "
-                "selector instead"
-            )
-
     def _operand(self, operation: str, other: Selector) -> pb.Node:
         """``other``'s node, after checking that composing it into this selector loses nothing."""
         if other._has_pick:
@@ -125,7 +103,6 @@ class Selector:
                 "which a node predicate cannot carry; apply first()/at() to the combined "
                 "selector instead"
             )
-        self._require_same_scope(operation, other)
         return other._proto.node
 
     def _with_node(self, node: pb.Node) -> Selector:
@@ -158,14 +135,10 @@ class Selector:
 
     def and_res(self, package_name_or_name: str, name: str | None = None) -> Selector:
         """Also require a resource id, like Kotlin ``andRes``: ``and_res("pkg", "name")`` is
-        ``pkg:id/name``; ``and_res("name")`` is the app-under-test id ``name`` (see ``res``)."""
+        exactly ``pkg:id/name``; ``and_res("name")`` is ``name`` in any package (see ``res``)."""
         if name is None:
-            return self._also(_aut_resource(package_name_or_name))
+            return self._also(_resource(package_name_or_name))
         return self._also(_resource(name, package_name_or_name))
-
-    def and_res_aut(self, name: str) -> Selector:
-        """Also require the app-under-test resource id ``name``; same as ``and_res(name)``."""
-        return self._also(_aut_resource(name))
 
     def checkable(self, value: bool = True) -> Selector:
         """Require ``isCheckable == value``."""
@@ -253,36 +226,19 @@ class Selector:
                 f"{operation}: the receiver {self.render()} has a match choice (first()/at()), "
                 "which a relation cannot carry; apply first()/at() to the result instead"
             )
-        self._require_same_scope(operation, other)
         copy = pb.Selector()
         copy.CopyFrom(other._proto)
         copy.node.CopyFrom(_all_of(other._proto.node, _related(back, self._proto.node)))
-        scope = self._proto.WhichOneof("scope")
-        if scope == "system":
-            copy.system.CopyFrom(self._proto.system)
-        elif scope == "any_window":
-            copy.any_window.SetInParent()
-        else:
-            copy.ClearField("scope")
         return Selector(copy)
 
-    # --- scope and match choice -----------------------------------------------------------
+    def _in_package(self, package_name: str) -> Selector:
+        """This selector restricted to nodes of ``package_name``: one more predicate on the node,
+        so package ownership travels in the selector itself (``App.element``)."""
+        return self._with_node(
+            _all_of(self._proto.node, _match(pb.PROPERTY_PACKAGE_NAME, package_name, EXACT))
+        )
 
-    def in_package(self, package_name: str) -> Selector:
-        """Search the focused window of ``package_name`` instead of the app under test's: any
-        package, such as the permission controller's dialog or another app."""
-        copy = pb.Selector()
-        copy.CopyFrom(self._proto)
-        copy.system.package_name = package_name
-        return Selector(copy)
-
-    def in_any_window(self) -> Selector:
-        """Search every window on screen, of any package (dialogs, popups, the system UI, other
-        apps), instead of only the app under test's focused window."""
-        copy = pb.Selector()
-        copy.CopyFrom(self._proto)
-        copy.any_window.SetInParent()
-        return Selector(copy)
+    # --- match choice ---------------------------------------------------------------------
 
     def first(self) -> Selector:
         """Accept the first match in accessibility order instead of requiring exactly one."""
@@ -349,21 +305,16 @@ def desc(value: str, mode: MatchMode = EXACT) -> Selector:
     return _selector(_match(pb.PROPERTY_CONTENT_DESCRIPTION, value, mode))
 
 
-def raw_res(name: str) -> Selector:
-    """Compose ``testTag`` projected through ``testTagsAsResourceId``; never package-qualified."""
-    return _selector(_resource(name))
-
-
 def res_id(package_name: str, name: str) -> Selector:
-    """Android View resource id ``package:id/name``."""
+    """Exactly the Android View resource id ``package:id/name``."""
     return _selector(_resource(name, package_name))
 
 
 def res(name: str) -> Selector:
-    """View resource id ``name`` of the **app under test**: ``<aut>:id/name``, with the package
-    filled in by the server from the session, so the same selector works on every device and
-    role. Use ``res_id`` for another package (a system dialog with ``in_package`` or ``in_any_window``)."""
-    return _selector(_aut_resource(name))
+    """Resource id ``name`` in any package (``<package>:id/name``), or a Compose ``testTag``
+    ``name`` under ``testTagsAsResourceId``. Under ``App.element`` only that app's nodes match;
+    under ``Screen.element`` any visible package's. Use ``res_id`` to name the id's package."""
+    return _selector(_resource(name))
 
 
 def class_name(value: str, mode: MatchMode = EXACT) -> Selector:

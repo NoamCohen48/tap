@@ -166,8 +166,8 @@ class TapClientTest {
     fun `attach normal termination after first event invalidates devices and rejects opens`() {
         runBlocking {
             val connection = client().connect("test")
-            val first = tapScope { connection.attachDevice("emulator-5554", "com.test") }
-            val second = tapScope { connection.attachDevice("emulator-5555", "com.test") }
+            val first = tapScope { connection.attachDevice("emulator-5554") }
+            val second = tapScope { connection.attachDevice("emulator-5555") }
             assertEquals(2, connection.liveDeviceCount, "registry retains live handles")
             try {
                 // Gate the AttachDevice response so the racing registration is provably in
@@ -178,7 +178,7 @@ class TapClientTest {
                 fakeDevices.openEntered = CompletableDeferred()
                 val racing =
                     async {
-                        runCatching { tapScope { connection.attachDevice("emulator-5559", "com.test") } }
+                        runCatching { tapScope { connection.attachDevice("emulator-5559") } }
                     }
                 withTimeout(5_000) { fakeDevices.openEntered.await() }
                 // Server ends the parked stream after establishment: unexpected termination.
@@ -197,7 +197,7 @@ class TapClientTest {
                     assertFailsWith<ServerException> {
                         first.awaitUntil("x", timeout = 100.milliseconds) { true }
                     }
-                    assertFailsWith<ServerException> { first.app().isRunning() }
+                    assertFailsWith<ServerException> { first.app("com.test").isRunning() }
                 }
                 assertEquals(executeBefore, fakeDevices.executeCalls.get(), "invalidated ops rejected without RPC")
                 // The racing registration resolved during the terminal drop: either rejected at
@@ -209,7 +209,7 @@ class TapClientTest {
                 }
                 val opensAfterRace = fakeDevices.opens.size
                 assertFailsWith<ServerException> {
-                    tapScope { connection.attachDevice("emulator-5556", "com.test") }
+                    tapScope { connection.attachDevice("emulator-5556") }
                 }
                 assertEquals(opensAfterRace, fakeDevices.opens.size, "no new session opened after invalidation")
                 // Closing invalidated handles unregisters them; the registry returns to zero.
@@ -234,7 +234,7 @@ class TapClientTest {
     fun `observe error termination after first event invalidates with cause`() {
         runBlocking {
             val connection = client().connect("test")
-            val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+            val device = tapScope { connection.attachDevice("emulator-5554") }
             fakeConnections.parkError =
                 StatusRuntimeException(Status.UNAVAILABLE.withDescription("stream cut"))
             fakeConnections.finishParkedObserve()
@@ -400,7 +400,7 @@ class TapClientTest {
             try {
                 tapScope {
                     fakeDevices.hangExecute.complete(Unit)
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
                         val running = async { device.info() }
                         withTimeout(5_000) { fakeDevices.enteredExecute.await() }
@@ -443,8 +443,8 @@ class TapClientTest {
             connection.observe()
             try {
                 tapScope {
-                    val first = connection.attachDevice("emulator-5554", "com.test")
-                    val second = connection.attachDevice("emulator-5555", "com.test")
+                    val first = connection.attachDevice("emulator-5554")
+                    val second = connection.attachDevice("emulator-5555")
                     assertEquals(2, connection.liveDeviceCount)
                     val firstPoll = CompletableDeferred<Unit>()
                     // Permanently parked admitted operation: never released to unblock close.
@@ -480,7 +480,7 @@ class TapClientTest {
                     // The poisoned handle rejects locally; the sibling and new attaches still work.
                     assertFailsWith<TapUsageException> { first.info() }
                     second.info()
-                    val third = connection.attachDevice("emulator-5556", "com.test")
+                    val third = connection.attachDevice("emulator-5556")
                     // A later duplicate still shares the same terminal failure, no new RPC.
                     val late = runCatching { withTimeout(5_000) { first.detachAndReport() } }.exceptionOrNull()
                     assertSame(firstFailure, late, "late duplicate shares the same terminal failure")
@@ -503,7 +503,7 @@ class TapClientTest {
             connection.observe()
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     val firstPoll = CompletableDeferred<Unit>()
                     val parked =
                         async {
@@ -540,9 +540,9 @@ class TapClientTest {
     }
 
     @Test
-    fun `awaitAppVisible maps only WAIT_TIMEOUT to WaitTimeoutException`() {
-        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitAppVisible() }.let { assertIs<WaitTimeoutException>(it) }
-        waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.awaitAppVisible() }.let {
+    fun `awaitVisible maps only WAIT_TIMEOUT to WaitTimeoutException`() {
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.app("com.test").awaitVisible() }.let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.app("com.test").awaitVisible() }.let {
             assertIs<CommandException>(it)
             assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), it.code)
         }
@@ -550,8 +550,8 @@ class TapClientTest {
 
     @Test
     fun `awaitScreenStable maps only WAIT_TIMEOUT to WaitTimeoutException`() {
-        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.awaitScreenStable() }.let { assertIs<WaitTimeoutException>(it) }
-        waitMapping(ErrorCode.ERR_TRANSPORT_LOST) { it.awaitScreenStable() }.let {
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.app("com.test").awaitScreenStable() }.let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_TRANSPORT_LOST) { it.app("com.test").awaitScreenStable() }.let {
             assertIs<CommandException>(it)
             assertEquals(ErrorCode.ERR_TRANSPORT_LOST.toModel(), it.code)
         }
@@ -559,7 +559,7 @@ class TapClientTest {
 
     @Test
     fun `scrollUntil propagates a failing step unchanged`() {
-        val scroll: suspend (Device) -> Unit = { it.element(rawRes("list")).scrollUntil(text("row 40")) }
+        val scroll: suspend (Device) -> Unit = { it.screen.element(res("list")).scrollUntil(text("row 40")) }
         waitMapping(ErrorCode.ERR_NOT_FOUND, scroll).let {
             assertIs<CommandException>(it)
             assertEquals(ErrorCode.ERR_NOT_FOUND.toModel(), it.code)
@@ -568,20 +568,20 @@ class TapClientTest {
 
     @Test
     fun `element waits map only WAIT_TIMEOUT to WaitTimeoutException`() {
-        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.await(text("x")).visible() }.let { assertIs<WaitTimeoutException>(it) }
-        waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.await(text("x")).gone() }.let { assertIs<CommandException>(it) }
+        waitMapping(ErrorCode.ERR_WAIT_TIMEOUT) { it.screen.await(text("x")).visible() }.let { assertIs<WaitTimeoutException>(it) }
+        waitMapping(ErrorCode.ERR_DRIVER_UNHEALTHY) { it.screen.await(text("x")).gone() }.let { assertIs<CommandException>(it) }
     }
 
     @Test
     fun `attach block needs no tapScope and always detaches`() {
         runBlocking {
             client().connect("test").use { connection ->
-                assertEquals("done", connection.attach("emulator-5554", "com.test") { "done" })
+                assertEquals("done", connection.attach("emulator-5554") { "done" })
                 assertEquals(listOf("attached-emulator-5554"), fakeDevices.closes.toList())
 
                 // Inside an existing scope it reuses the caller's TapContext instead of nesting.
                 tapScope("outer") {
-                    connection.attach("emulator-5554", "com.test") { assertEquals("outer", currentCoroutineContext()[TapContext]?.owner) }
+                    connection.attach("emulator-5554") { assertEquals("outer", currentCoroutineContext()[TapContext]?.owner) }
                 }
                 assertEquals(2, fakeDevices.closes.size)
             }
@@ -596,7 +596,7 @@ class TapClientTest {
                 fakeDevices.closeError = io.grpc.StatusException(Status.INTERNAL.withDescription("detach broke"))
                 val failure =
                     assertFailsWith<IllegalStateException> {
-                        connection.attach("emulator-5554", "com.test") { error("body broke") }
+                        connection.attach("emulator-5554") { error("body broke") }
                     }
                 assertEquals("body broke", failure.message)
                 // Stack-trace recovery (debug mode) may hand back a copy whose cause is the original.
@@ -606,7 +606,7 @@ class TapClientTest {
 
                 fakeDevices.closeError = null
                 fakeDevices.quarantineNextClose = "reboot needed"
-                val quarantined = assertFailsWith<TapException> { connection.attach("emulator-5554", "com.test") { } }
+                val quarantined = assertFailsWith<TapException> { connection.attach("emulator-5554") { } }
                 assertTrue(quarantined.message!!.contains("reboot needed"))
             } finally {
                 fakeDevices.closeError = null
@@ -657,7 +657,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
                         val capture = device.capture()
                         assertEquals(34, capture.info?.apiLevel)
@@ -691,7 +691,7 @@ class TapClientTest {
                 .setMatchCount(3)
         fakeDevices.executeRequests.clear()
         val failure =
-            waitMappingWith({ CommandResult.newBuilder().setError(ambiguous).build() }) { it.await(text("Row")).one() }
+            waitMappingWith({ CommandResult.newBuilder().setError(ambiguous).build() }) { it.screen.await(text("Row")).one() }
         assertIs<WaitTimeoutException>(failure)
         assertEquals(WaitReason.AMBIGUOUS, failure.reason)
         assertEquals(3, failure.matchCount)
@@ -699,7 +699,7 @@ class TapClientTest {
         assertTrue(fakeDevices.executeRequests.any { it.command.waitVisible.exactlyOne })
 
         val unknown = ambiguous.clone().setDetail("SOMETHING_NEW").clearMatchCount()
-        val later = waitMappingWith({ CommandResult.newBuilder().setError(unknown).build() }) { it.await(text("Row")).gone() }
+        val later = waitMappingWith({ CommandResult.newBuilder().setError(unknown).build() }) { it.screen.await(text("Row")).gone() }
         assertIs<WaitTimeoutException>(later)
         assertEquals(null, later.reason)
         assertEquals(null, later.matchCount)
@@ -711,9 +711,9 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test", Timeouts(action = 3.seconds, wait = 7.seconds))
+                    val device = connection.attachDevice("emulator-5554", Timeouts(action = 3.seconds, wait = 7.seconds))
                     device.info()
-                    device.awaitAppVisible()
+                    device.app("com.test").awaitVisible()
                     device.execute(timeout = 2.seconds) { deviceInfo = io.github.noamcohen48.tap.api.v1.DeviceInfoQuery.getDefaultInstance() }
                     assertEquals(listOf(3_000L, 7_000L, 2_000L), fakeDevices.executeRequests.map { it.command.timeoutMs })
                     device.detach()
@@ -725,6 +725,33 @@ class TapClientTest {
     }
 
     /** Runs [call] against a fake whose every Execute fails with [code]; returns what it threw. */
+    @Test
+    fun `an app binds its package into the selector and the screen binds none`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                if (request.command.hasExists()) CommandResult.newBuilder().setBool(true).build() else null
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        device.app("com.test").element(text("OK")).exists()
+                        device.screen.element(text("OK")).exists()
+                        val (inApp, onScreen) = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() }.map { it.exists.selector }
+                        assertEquals(text("OK").inPackage("com.test").proto, inApp)
+                        assertEquals(text("OK").proto, onScreen)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
     @Test
     fun `scrollUntil scrolls until the target exists inside the container`() {
         runBlocking {
@@ -739,15 +766,15 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
-                        val list = device.element(rawRes("list"))
-                        val inList = rawRes("list").descendant(text("row 40"))
+                        val list = device.screen.element(res("list"))
+                        val inList = res("list").descendant(text("row 40"))
                         assertEquals(inList, list.scrollUntil(text("row 40")).selector)
                         val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() || it.hasScroll() }
                         assertEquals(List(3) { listOf("exists", "scroll") }.flatten() + "exists", ops.map { if (it.hasExists()) "exists" else "scroll" })
                         assertTrue(ops.filter { it.hasExists() }.all { it.exists.selector == inList.proto })
-                        assertTrue(ops.filter { it.hasScroll() }.all { it.scroll.selector == rawRes("list").proto && it.scroll.direction == Direction.DIR_DOWN })
+                        assertTrue(ops.filter { it.hasScroll() }.all { it.scroll.selector == res("list").proto && it.scroll.direction == Direction.DIR_DOWN })
                         // A picked container cannot be carried into a relation: the bare target is used.
                         assertEquals(text("row 40"), list.first().scrollUntil(text("row 40")).selector)
                     } finally {
@@ -770,7 +797,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
                         device.openNotifications()
                         device.openQuickSettings()
@@ -802,15 +829,15 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
-                        device.element(res("email")).typeText("abc")
+                        device.screen.element(res("email")).typeText("abc")
                         val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasTap() || it.hasSnapshot() || it.hasTypeText() }
                         assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.SNAPSHOT, Command.OpCase.SNAPSHOT, Command.OpCase.TYPE_TEXT), ops.map { it.opCase })
                         assertEquals("abc", ops.last().typeText.text)
 
                         fakeDevices.executeRequests.clear()
-                        device.element(res("email")).typeText("d", awaitFocus = false)
+                        device.screen.element(res("email")).typeText("d", awaitFocus = false)
                         val unwaited = fakeDevices.executeRequests.map { it.command.opCase }.filter { it != Command.OpCase.DEVICE_INFO }
                         assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.TYPE_TEXT), unwaited)
                     } finally {
@@ -830,9 +857,9 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
-                        val timeout = assertFailsWith<WaitTimeoutException> { device.element(rawRes("list")).scrollUntil(text("row 40"), maxScrolls = 2) }
+                        val timeout = assertFailsWith<WaitTimeoutException> { device.screen.element(res("list")).scrollUntil(text("row 40"), maxScrolls = 2) }
                         assertEquals(2, timeout.polls)
                         val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() || it.hasScroll() }
                         assertEquals(listOf(true, false, true, false, true), ops.map { it.hasExists() })
@@ -866,7 +893,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
                         assertFailsWith<TapException> { call(device) }
                     } finally {
@@ -1002,7 +1029,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     val firstJoined = CompletableDeferred<Unit>()
                     val secondJoined = CompletableDeferred<Unit>()
                     val first =
@@ -1041,7 +1068,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     assertEquals(1, connection.liveDeviceCount, "open registers a live handle")
                     device.detach()
                     assertEquals(0, connection.liveDeviceCount, "close unregisters the handle")
@@ -1053,12 +1080,12 @@ class TapClientTest {
                         device.awaitUntil("x", timeout = 100.milliseconds) { true }
                     }
                     assertFailsWith<TapUsageException> { device.pressBack() }
-                    assertFailsWith<TapUsageException> { device.app().isRunning() }
+                    assertFailsWith<TapUsageException> { device.app("com.test").isRunning() }
                     assertEquals(executeBefore, fakeDevices.executeCalls.get(), "no RPC after close")
                     assertFailsWith<TapUsageException> { device.execute { } }
                     // Many open/close cycles return the live registry to zero.
                     repeat(10) { index ->
-                        val cycled = connection.attachDevice("emulator-55${50 + index}", "com.test")
+                        val cycled = connection.attachDevice("emulator-55${50 + index}")
                         cycled.detach()
                     }
                     assertEquals(0, connection.liveDeviceCount, "registry returns to zero after many cycles")
@@ -1076,7 +1103,7 @@ class TapClientTest {
             try {
                 fakeDevices.hangExecute.complete(Unit)
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
                         val job = async { device.info() }
                         withTimeout(2_000) { fakeDevices.enteredExecute.await() }
@@ -1102,7 +1129,7 @@ class TapClientTest {
             try {
                 fakeDevices.hangExecute.complete(Unit)
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     try {
                         val failure =
                             assertFailsWith<AssertionError> {
@@ -1186,7 +1213,7 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554") }
                 // No TapContext here: direct call must fail, not hang.
                 assertFailsWith<TapUsageException> { device.info() }
                 // An independently owned scope does not inherit the Tap scope either.
@@ -1221,7 +1248,7 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554") }
                 try {
                     val started = System.nanoTime()
                     val firstPoll = CompletableDeferred<Unit>()
@@ -1269,8 +1296,8 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val first = tapScope { connection.attachDevice("emulator-5554", "com.test") }
-                val second = tapScope { connection.attachDevice("emulator-5555", "com.test") }
+                val first = tapScope { connection.attachDevice("emulator-5554") }
+                val second = tapScope { connection.attachDevice("emulator-5555") }
                 try {
                     // first's operation encloses second's: first stays admitted, so detaching it
                     // fails fast instead of waiting on its own drain.
@@ -1306,9 +1333,9 @@ class TapClientTest {
         runBlocking {
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554") }
                 try {
-                    val app = device.app()
+                    val app = device.app("com.test")
                     val apk = Files.createTempFile("tap-app-test", ".apk")
                     val bytes = ByteArray(2 * 1024 * 1024 + 17) { it.toByte() }
                     Files.write(apk, bytes)
@@ -1365,7 +1392,7 @@ class TapClientTest {
             fakeDevices.quarantineNextClose = "driver would not die"
             val connection = client().connect("test")
             try {
-                val device = tapScope { connection.attachDevice("emulator-5554", "com.test") }
+                val device = tapScope { connection.attachDevice("emulator-5554") }
                 val detail = tapScope { device.detachAndReport() }
                 assertEquals("driver would not die", detail)
             } finally {
@@ -1382,7 +1409,7 @@ class TapClientTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     assertFailsWith<WaitTimeoutException> { device.detachAndReport() }
                     assertEquals(1, fakeDevices.closeCalls.get())
                 }

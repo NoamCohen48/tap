@@ -36,9 +36,9 @@ class MultiDeviceTest {
                     .map { role ->
                         async {
                             val device = devices[role]
-                            Fixture.launch(device)
-                            device.element(res("view_button")).tap()
-                            device.await(text("View tapped")).visible()
+                            val app = Fixture.launch(device)
+                            app.element(res("view_button")).tap()
+                            app.await(text("View tapped")).visible()
                             device.info().model
                         }
                     }.awaitAll()
@@ -66,10 +66,8 @@ class MultiDeviceTest {
     @TapDevices("left", "right")
     fun siblingFailureCancelsWaitWithoutReplay(devices: Devices): Unit {
         tapTest {
-            val left = devices["left"]
-            val right = devices["right"]
-            Fixture.launch(left)
-            Fixture.launch(right)
+            val left = Fixture.launch(devices["left"])
+            val right = Fixture.launch(devices["right"])
 
             left.element(res("fault_button")).tap()
             left.await(text("Fault taps: 1")).visible()

@@ -1,10 +1,13 @@
 // How the page shows selectors and steps: in the Kotlin SDK's DSL (`res("search").andText("Go")`,
-// `element(...).tap()`), the form a test would write. What is sent and recorded is the message
-// itself; `parse.ts` reads a typed selector back.
+// `app("com.example").element(...).tap()`), the form a test would write. What is sent and recorded
+// is the message itself; `parse.ts` reads a typed selector back. A selector's package predicate is
+// the one thing the DSL has no factory for (`App.element` adds it): a step shows it as
+// `app("…").element(…)`, a lone selector as `.andPackageName("…")`, which `parse.ts` reads.
 
+import { create } from "@bufbuild/protobuf";
 import { Condition, type Step } from "./gen/studio_pb";
 import { Direction, SystemPanel, type Command } from "./gen/command_pb";
-import { MatchMode, NodeFlag, Relation, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
+import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
 export const quote = (value: string) => JSON.stringify(value).replace(/\$/g, "\\$");
@@ -15,6 +18,7 @@ export const FACTORY: Record<TextProperty, string> = {
   [TextProperty.PROPERTY_CONTENT_DESCRIPTION]: "desc",
   [TextProperty.PROPERTY_HINT]: "hint",
   [TextProperty.PROPERTY_CLASS_NAME]: "className",
+  [TextProperty.PROPERTY_PACKAGE_NAME]: "packageName",
 };
 
 export const TEXT_MODES: Partial<Record<MatchMode, string>> = {
@@ -73,9 +77,7 @@ function base(node: Node): string | null {
       return match(node.kind.value);
     case "resource": {
       const r = node.kind.value;
-      if (r.autPackage) return `res(${quote(r.name)})`;
-      if (r.packageName !== undefined) return `resId(${quote(r.packageName)}, ${quote(r.name)})`;
-      return `rawRes(${quote(r.name)})`;
+      return r.packageName !== undefined ? `resId(${quote(r.packageName)}, ${quote(r.name)})` : `res(${quote(r.name)})`;
     }
     case "anyOf":
       return `anyOf(${node.kind.value.nodes.map(expression).join(", ")})`;
@@ -93,8 +95,10 @@ function chained(node: Node): string {
       const exact = m.mode === MatchMode.MATCH_EXACT || m.mode === MatchMode.MATCH_UNSPECIFIED;
       return `.and${name[0]!.toUpperCase()}${name.slice(1)}(${quote(m.value)}${exact ? "" : `, MatchMode.${MODE_NAMES[m.mode]}`})`;
     }
-    case "resource":
-      return node.kind.value.autPackage ? `.andRes(${quote(node.kind.value.name)})` : `.and(${base(node)})`;
+    case "resource": {
+      const r = node.kind.value;
+      return r.packageName !== undefined ? `.andRes(${quote(r.packageName)}, ${quote(r.name)})` : `.andRes(${quote(r.name)})`;
+    }
     case "flag":
       return `.${FLAGS[node.kind.value.property]}(${node.kind.value.value ? "" : "false"})`;
     case "related":
@@ -126,11 +130,46 @@ function expression(node: Node): string {
 export function describeSelector(selector: Selector | undefined): string {
   if (!selector?.node) return "(no selector)";
   let text = expression(selector.node);
-  if (selector.scope.case === "system") text += `.inPackage(${quote(selector.scope.value.packageName)})`;
-  if (selector.scope.case === "anyWindow") text += ".inAnyWindow()";
   if (selector.pick.case === "at") text += `.at(${selector.pick.value.index})`;
   if (selector.pick.case === "first") text += ".first()";
   return text;
+}
+
+const isPackage = (node: Node) =>
+  node.kind.case === "match" &&
+  node.kind.value.property === TextProperty.PROPERTY_PACKAGE_NAME &&
+  (node.kind.value.mode === MatchMode.MATCH_EXACT || node.kind.value.mode === MatchMode.MATCH_UNSPECIFIED);
+
+/** The app a selector is confined to — the package predicate `App.element` appends, as one
+ *  operand of its top conjunction — and the selector without it; `packageName` is null when it
+ *  has none (a `screen` selector). */
+export function splitPackage(selector: Selector): { packageName: string | null; selector: Selector } {
+  const nodes = selector.node?.kind.case === "allOf" ? selector.node.kind.value.nodes : [];
+  const index = nodes.findIndex(isPackage);
+  if (index < 0) return { packageName: null, selector };
+  const rest = nodes.filter((_, i) => i !== index);
+  const node = rest.length === 1 ? rest[0]! : create(NodeSchema, { kind: { case: "allOf", value: { nodes: rest } } });
+  const packageName = (nodes[index]!.kind.value as Match).value;
+  return { packageName, selector: create(SelectorSchema, { node, pick: selector.pick }) };
+}
+
+/** `app("…")` or `screen`, the receiver a step's selector runs on, and the selector it gets. */
+function on(selector: Selector | undefined): [string, string] {
+  if (!selector) return ["screen", describeSelector(selector)];
+  const split = splitPackage(selector);
+  return [split.packageName !== null ? `app(${quote(split.packageName)})` : "screen", describeSelector(split.selector)];
+}
+
+/** `app("…").element(…)` / `screen.element(…)`. */
+function element(selector: Selector | undefined): string {
+  const [receiver, text] = on(selector);
+  return `${receiver}.element(${text})`;
+}
+
+/** `app("…").await(…)` / `screen.await(…)`. */
+function awaiting(selector: Selector | undefined): string {
+  const [receiver, text] = on(selector);
+  return `${receiver}.await(${text})`;
 }
 
 const DIRECTIONS: Record<Direction, string> = {
@@ -183,17 +222,17 @@ function command(c: Command | undefined, secret: string | undefined): string {
     case "openSystemPanel":
       return PANELS[c.op.value.panel] ?? `openSystemPanel(${c.op.value.panel})`;
     case "tap":
-      return `element(${describeSelector(c.op.value.selector)}).tap()`;
+      return `${element(c.op.value.selector)}.tap()`;
     case "longTap":
-      return `element(${describeSelector(c.op.value.selector)}).longTap()`;
+      return `${element(c.op.value.selector)}.longTap()`;
     case "setText":
-      return `element(${describeSelector(c.op.value.selector)}).setText(${value(c.op.value.text, secret)})`;
+      return `${element(c.op.value.selector)}.setText(${value(c.op.value.text, secret)})`;
     case "clearText":
-      return `element(${describeSelector(c.op.value.selector)}).clearText()`;
+      return `${element(c.op.value.selector)}.clearText()`;
     case "scroll":
-      return `element(${describeSelector(c.op.value.selector)}).scroll(${DIRECTIONS[c.op.value.direction]})`;
+      return `${element(c.op.value.selector)}.scroll(${DIRECTIONS[c.op.value.direction]})`;
     case "swipe":
-      return `element(${describeSelector(c.op.value.selector)}).swipe(${DIRECTIONS[c.op.value.direction]})`;
+      return `${element(c.op.value.selector)}.swipe(${DIRECTIONS[c.op.value.direction]})`;
     default:
       return `(${c.op.case ?? "empty"} command)`;
   }
@@ -222,12 +261,12 @@ export function describeStep(step: Step): string {
     case "type": {
       const t = step.kind.value;
       const input = t.input.case === "secret" ? `\${${t.input.value}}` : quote(t.input.value ?? "");
-      return `element(${describeSelector(t.selector)}).typeText(${input}${t.skipFocusWait ? ", awaitFocus = false" : ""})`;
+      return `${element(t.selector)}.typeText(${input}${t.skipFocusWait ? ", awaitFocus = false" : ""})`;
     }
     case "assertion": {
       const a = step.kind.value;
       const argument = a.value.case === "text" ? quote(a.value.value) : a.value.case === "count" ? String(a.value.value) : "";
-      return `await(${describeSelector(a.selector)}).${CONDITIONS[a.condition]}(${argument})`;
+      return `${awaiting(a.selector)}.${CONDITIONS[a.condition]}(${argument})`;
     }
     default:
       return "(empty step)";
@@ -239,5 +278,5 @@ export function describeWait(step: Step): string | null {
   if (step.kind.case !== "action") return null;
   const wait = step.kind.value.wait;
   if (wait?.op.case !== "waitVisible") return null;
-  return `await(${describeSelector(wait.op.value.selector)}).${wait.op.value.exactlyOne ? "one" : "visible"}()`;
+  return `${awaiting(wait.op.value.selector)}.${wait.op.value.exactlyOne ? "one" : "visible"}()`;
 }

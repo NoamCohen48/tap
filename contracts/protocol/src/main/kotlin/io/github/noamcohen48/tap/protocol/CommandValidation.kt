@@ -67,7 +67,10 @@ object CommandValidation {
             }
 
             BodyCase.SYNC_BOOTSTRAP -> {
-                if (request.syncBootstrap.observedStartToken.isBlank()) invalidRequest("observed_start_token must not be blank")
+                val bootstrap = request.syncBootstrap
+                if (bootstrap.observedStartToken.isBlank()) invalidRequest("observed_start_token must not be blank")
+                requirePackage(bootstrap.packageName)
+                if (bootstrap.authority.isBlank()) invalidRequest("authority must not be blank")
             }
 
             BodyCase.SYNC_POLL -> {
@@ -75,6 +78,8 @@ object CommandValidation {
                 if (poll.observedStartToken.isBlank()) invalidRequest("observed_start_token must not be blank")
                 if (poll.expectedProcessStartUuid.isBlank()) invalidRequest("expected_process_start_uuid must not be blank")
                 if (poll.expectedSessionIdentity.isBlank()) invalidRequest("expected_session_identity must not be blank")
+                requirePackage(poll.packageName)
+                if (poll.authority.isBlank()) invalidRequest("authority must not be blank")
             }
 
             BodyCase.HEALTH, BodyCase.SCREENSHOT -> {
@@ -155,11 +160,6 @@ object CommandValidation {
      */
     fun validateSelector(selector: Selector): SelectorPlanKind {
         if (!selector.hasNode()) invalidSelector(ErrorDetail.EMPTY_NODE, "Selector has no node")
-        if (selector.scopeCase == Selector.ScopeCase.SYSTEM) {
-            val packageName = selector.system.packageName
-            if (packageName.isBlank()) invalidSelector(ErrorDetail.EMPTY_VALUE, "system scope needs a package name")
-            checkLength("system.package_name", packageName)
-        }
         if (selector.pickCase == Selector.PickCase.AT && selector.at.index < 0) {
             invalidRequest("at.index must not be negative")
         }
@@ -223,10 +223,10 @@ object CommandValidation {
                     val resource = node.resource
                     checkLength("resource.name", resource.name)
                     if (resource.name.isEmpty()) invalidSelector(ErrorDetail.EMPTY_VALUE, "resource.name must not be empty")
+                    if (":id/" in resource.name) {
+                        invalidSelector(ErrorDetail.QUALIFIED_RESOURCE_NAME, "resource.name must not contain ':id/'; set resource.package_name")
+                    }
                     if (resource.hasPackageName()) {
-                        if (resource.autPackage) {
-                            invalidSelector(ErrorDetail.EMPTY_VALUE, "resource.package_name and aut_package are mutually exclusive")
-                        }
                         checkLength("resource.package_name", resource.packageName)
                         if (resource.packageName.isEmpty()) {
                             invalidSelector(ErrorDetail.EMPTY_VALUE, "resource.package_name must not be empty")

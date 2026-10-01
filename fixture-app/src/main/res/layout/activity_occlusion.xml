@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <EditText
+        android:id="@+id/occlusion_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Occlusion input"
+        android:inputType="text" />
+
+    <Button
+        android:id="@+id/cover_toggle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Show cover" />
+
+    <TextView
+        android:id="@+id/occlusion_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:text="Taps: covered=0 bottom=0 cover=0" />
+
+    <Button
+        android:id="@+id/covered_target"
+        android:layout_width="match_parent"
+        android:layout_height="96dp"
+        android:text="Covered target" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <Button
+        android:id="@+id/bottom_target"
+        android:layout_width="match_parent"
+        android:layout_height="96dp"
+        android:text="Bottom target" />
+</LinearLayout>

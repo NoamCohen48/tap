@@ -166,7 +166,7 @@ def connection_entry(entry: pb.ConnectionEntry) -> ConnectionEntry:
         hold=entry.hold.idle_timeout_ms / 1000 if entry.HasField("hold") else None,
         idle=entry.idle_ms / 1000,
         attached_devices=tuple(
-            AttachedDeviceEntry(d.attached_device_id, d.serial, d.aut_package, d.generation)
+            AttachedDeviceEntry(d.attached_device_id, d.serial, d.generation)
             for d in entry.attached_devices
         ),
     )
@@ -182,7 +182,6 @@ def logged_event(event: pb.LoggedEvent) -> LoggedEvent:
         at=event.at_epoch_ms / 1000,
         duration=event.duration_ms / 1000,
         serial=event.serial,
-        aut_package=event.aut_package,
         command=_json(event.command) if event.HasField("command") else None,
         app=_json(event.app) if event.HasField("app") else None,
         error=_json(event.error) if event.HasField("error") else None,

@@ -24,7 +24,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file event_log.proto.
  */
 export const file_event_log: GenFile = /*@__PURE__*/
-  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKVAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRITCgthdXRfcGFja2FnZRgFIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiEKBWVycm9yGAggASgLMg0udGFwLnYxLkVycm9ySAGIAQESJQoHZmFpbHVyZRgJIAEoCzIPLnRhcC52MS5GYWlsdXJlSAKIAQFCBgoEY2FsbEIICgZfZXJyb3JCCgoIX2ZhaWx1cmUipgEKB0FwcENhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKDHBhY2thZ2VfbmFtZRgCIAEoCRIVCghhY3Rpdml0eRgDIAEoCUgAiAEBEhcKCnBlcm1pc3Npb24YBCABKAlIAYgBARIXCgp0aW1lb3V0X21zGAUgASgDSAKIAQFCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQjMKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQg1FdmVudExvZ1Byb3RvUAFiBnByb3RvMw", [file_command, file_failure]);
+  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKAAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiEKBWVycm9yGAggASgLMg0udGFwLnYxLkVycm9ySAGIAQESJQoHZmFpbHVyZRgJIAEoCzIPLnRhcC52MS5GYWlsdXJlSAKIAQFCBgoEY2FsbEIICgZfZXJyb3JCCgoIX2ZhaWx1cmUipgEKB0FwcENhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKDHBhY2thZ2VfbmFtZRgCIAEoCRIVCghhY3Rpdml0eRgDIAEoCUgAiAEBEhcKCnBlcm1pc3Npb24YBCABKAlIAYgBARIXCgp0aW1lb3V0X21zGAUgASgDSAKIAQFCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQjMKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQg1FdmVudExvZ1Byb3RvUAFiBnByb3RvMw", [file_command, file_failure]);
 
 /**
  * @generated from message tap.v1.LoggedEvent
@@ -53,13 +53,6 @@ export type LoggedEvent = Message<"tap.v1.LoggedEvent"> & {
    * @generated from field: string serial = 4;
    */
   serial: string;
-
-  /**
-   * The attached device's app under test.
-   *
-   * @generated from field: string aut_package = 5;
-   */
-  autPackage: string;
 
   /**
    * @generated from oneof tap.v1.LoggedEvent.call

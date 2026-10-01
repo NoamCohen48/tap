@@ -26,13 +26,14 @@ describe("parseSelector", () => {
     'desc("Cart")',
     'hint("Search", MatchMode.ENDS_WITH)',
     'className("android.widget.Button").enabled(false)',
-    'rawRes("login_button")',
-    'resId("android", "button1").inPackage("android")',
+    'resId("android", "button1").andPackageName("android")',
+    'res("a").andRes("android", "b")',
     'res("name").andText("Wool socks")',
     'res("name").andDesc("Price", MatchMode.CONTAINS)',
     'res("add").hasAncestor(res("row").hasDescendant(text("Wool")))',
     'res("row").at(2)',
-    'text("OK").inAnyWindow().first()',
+    'text("OK").andPackageName("com.android.systemui").first()',
+    'packageName("com.example", MatchMode.STARTS_WITH)',
     'anyOf(text("Allow"), text("OK"))',
     'res("go").and(anyOf(text("Go"), desc("Go")))',
     'allOf(enabled(false), hasParent(res("row")))',
@@ -49,7 +50,7 @@ describe("parseSelector", () => {
           case: "allOf",
           value: {
             nodes: [
-              { kind: { case: "resource", value: { name: "row", autPackage: true } } },
+              { kind: { case: "resource", value: { name: "row" } } },
               { kind: { case: "match", value: { property: TextProperty.PROPERTY_TEXT, value: "Wool", mode: MatchMode.MATCH_EXACT } } },
               { kind: { case: "flag", value: { property: NodeFlag.FLAG_CLICKABLE, value: true } } },
             ],
@@ -87,7 +88,8 @@ describe("parseSelector", () => {
     expect(error('text("a", MatchMode.FUZZY)')).toMatch(/no MatchMode.FUZZY/);
     expect(error('res("row").hasChild(text("a").at(1))')).toMatch(/operand picks a match/);
     expect(error('res("list").at(1).descendant(text("a"))')).toMatch(/receiver picks a match/);
-    expect(error('text("a") and text("b").inPackage("android")')).toMatch(/another window scope/);
+    expect(error('text("a").inPackage("android")')).toBe("unknown call .inPackage(…)");
+    expect(error('rawRes("a")')).toBe("unknown selector rawRes(…)");
     expect(error('res("a") res("b")')).toBe("the end was expected, not “res”");
     expect(error("")).toBe("a name was expected, not the end");
   });

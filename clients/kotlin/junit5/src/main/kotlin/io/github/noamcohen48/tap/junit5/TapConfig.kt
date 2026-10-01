@@ -7,12 +7,11 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Resolved once per JVM from system properties, falling back to environment variables named by
- * [envName] (`tap.autPackage` → `TAP_AUT_PACKAGE`, `tap.device.sender` → `TAP_DEVICE_SENDER`).
+ * [envName] (`tap.artifactsDir` → `TAP_ARTIFACTS_DIR`, `tap.device.sender` → `TAP_DEVICE_SENDER`).
  */
 data class TapConfig(
     /** Serials roles map to, in order from a per-test rotating start; empty = whatever the server's device list offers. */
     val serials: List<String>,
-    val autPackage: String,
     val artifactsDir: Path,
     val acquireTimeout: Duration,
     /** Explicit role → serial pins (`tap.device.<role>`). */
@@ -43,10 +42,6 @@ data class TapConfig(
                     .map(String::trim)
                     .filter(String::isNotEmpty)
             require(serials.distinct().size == serials.size) { "tap.serials contains duplicates: $serials" }
-            val autPackage =
-                requireNotNull(property("tap.autPackage") ?: property("tap.aut")) {
-                    "tap.autPackage (or TAP_AUT_PACKAGE / TAP_AUT) is required"
-                }
             val pinned =
                 allProperties()
                     .filterKeys { it.startsWith("tap.device.") }
@@ -59,7 +54,6 @@ data class TapConfig(
             }
             return TapConfig(
                 serials = serials,
-                autPackage = autPackage,
                 artifactsDir = Path.of(property("tap.artifactsDir") ?: "build/tap-artifacts"),
                 acquireTimeout = property("tap.acquireTimeoutSeconds")?.toLong()?.seconds ?: Timeouts.ACQUIRE,
                 pinnedRoles = pinned,

@@ -29,7 +29,8 @@ service StudioService {
   rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
-  // Attaches a device for an app, releasing the one attached before.
+  // Attaches a device, releasing the one attached before. It names no app: app steps carry
+  // their package, and the page keeps the one its App menu acts on.
   rpc Attach(AttachRequest) returns (AttachResponse);
   // Releases the attached device; open frame streams end.
   rpc Release(ReleaseRequest) returns (ReleaseResponse);
@@ -84,12 +85,11 @@ message InfoResponse {
 
 message AttachedDevice {
   string serial = 1;
-  string aut_package = 2;
-  int32 api_level = 3;
-  string manufacturer = 4;
-  string model = 5;
-  int32 display_width = 6;
-  int32 display_height = 7;
+  int32 api_level = 2;
+  string manufacturer = 3;
+  string model = 4;
+  int32 display_width = 5;
+  int32 display_height = 6;
 }
 
 message Session {
@@ -99,9 +99,6 @@ message Session {
   bool recording = 2;
   // Steps in the recording.
   int32 steps = 3;
-  // The app the recording is for once it has steps; attaching for another app is allowed, but
-  // nothing is recorded there until NewRecording.
-  string recording_package = 4;
 }
 
 message GetSessionRequest {}
@@ -129,8 +126,6 @@ message ListDevicesResponse {
 
 message AttachRequest {
   string serial = 1;
-  // The app under test: `aut` selectors are confined to it.
-  string aut_package = 2;
 }
 
 message AttachResponse {
@@ -306,8 +301,6 @@ message Recording {
   string recorder = 3;
   // Provenance only: a replay may use any device.
   RecordedDevice device = 4;
-  // Required.
-  string aut_package = 5;
   // Every secret name the steps use, each once, so a replayer can ask for all of them up front.
   repeated string secrets = 6;
   repeated Step steps = 7;

@@ -88,7 +88,6 @@ val ErrorCode.label: String get() = normalized().name.removePrefix("ERR_")
 /** Stable machine-readable sub-reasons carried in `Error.detail`. */
 object ErrorDetail {
     // INVALID_SELECTOR
-    const val SCOPE_DENIED = "SCOPE_DENIED"
     const val SELECTOR_TOO_DEEP = "SELECTOR_TOO_DEEP"
     const val SELECTOR_TOO_LARGE = "SELECTOR_TOO_LARGE"
     const val STRING_TOO_LONG = "STRING_TOO_LONG"
@@ -96,6 +95,7 @@ object ErrorDetail {
     const val EMPTY_VALUE = "EMPTY_VALUE"
     const val INVALID_REGEX = "INVALID_REGEX"
     const val UNSPECIFIED_VALUE = "UNSPECIFIED_VALUE"
+    const val QUALIFIED_RESOURCE_NAME = "QUALIFIED_RESOURCE_NAME"
 
     // INVALID_REQUEST
     const val UNSUPPORTED_CHARACTERS = "UNSUPPORTED_CHARACTERS"
@@ -109,6 +109,9 @@ object ErrorDetail {
     // WAIT_TIMEOUT (screen stability, wait_app_visible)
     const val SCREEN_CHANGING = "SCREEN_CHANGING"
     const val APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
+
+    // NOT_INTERACTABLE: the gesture's touch point is inside a window above the target's.
+    const val OBSCURED = "OBSCURED"
 
     // ACTION_REJECTED / STALE_DURING_COMMAND / INDETERMINATE (key input)
     const val KEY_RELEASE_FAILED = "KEY_RELEASE_FAILED"

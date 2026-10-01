@@ -132,7 +132,7 @@ def test_closing_makes_the_connection_unusable_with_the_reason(fake):
         assert "reaped: no heartbeat" in str(connection.broken)
         assert connection.events == ["observing", "closing: reaped: no heartbeat"]
         with pytest.raises(TapError, match="reaped"):
-            connection.attach_device("emulator-5554", "com.test")
+            connection.attach_device("emulator-5554")
         connection.close()
     finally:
         server.close()
@@ -153,12 +153,12 @@ def test_a_dropped_stream_makes_the_connection_unusable(fake):
     server = TapClient.create(fake.address, TOKEN)
     try:
         connection = server.connect("test")
-        device = connection.attach_device("emulator-5554", "com.test")
+        device = connection.attach_device("emulator-5554")
         fake.connections.drop(connection.id)
         _wait(lambda: connection.broken is not None)
         assert not connection.usable
         with pytest.raises(TapError, match="liveness stream"):
-            connection.attach_device("emulator-5556", "com.test")
+            connection.attach_device("emulator-5556")
         calls = len(fake.devices.commands)
         with pytest.raises(TapError, match="liveness stream"):
             device.info()

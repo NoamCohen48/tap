@@ -53,8 +53,9 @@ device at a time) and ignore the per-serial lock.
      the node is interactive, and a **selector the daemon synthesised** for it.
    - Selector synthesis prefers what a person would write: resource id, text, description,
      their combinations with each other and the class, then the same with an `ancestor`
-     relation to the nearest ancestor that has its own unique selector. Uniqueness is checked
-     against the dump in the same scope (the AUT's windows → `aut`; another package's → `system`).
+     relation to the nearest ancestor that has its own unique selector. Every candidate is
+     bound to the node's package (`all_of(…, PROPERTY_PACKAGE_NAME = pkg)`) and its uniqueness is
+     checked over the whole dump, as the driver searches every window (protocol 5.0).
      The last resort is an `At(index)` pick, marked `by_index`. A node with none of these has no
      selector and cannot be acted on by ref.
    - A ref is a *name for that selector*, not a node handle. Acting on a ref resolves it with
@@ -104,7 +105,7 @@ there), recording evidence video, coordinate taps.
 ## CLI shape
 
 ```
-tap-agent attach <serial> <package> [--session S] [--idle 15m] [--launch|--cold] [--wait-for-device D]
+tap-agent attach <serial> [--session S] [--idle 15m] [--wait-for-device D]   (names no app)
 tap-agent sessions                              held connections and their devices
 tap-agent release [--session S]                 Disconnect: detach everything, end the session
 tap-agent devices                               ListDevices
@@ -122,7 +123,7 @@ tap-agent wait <target> [--gone|--one] [--timeout 10s]
 tap-agent settle                                WaitScreenStable, then the snapshot diff
 tap-agent screenshot [-o FILE]                  prints the path
 tap-agent capture [-o DIR]                      screenshot, hierarchy, device info, driver log
-tap-agent app <launch|cold-launch|stop|clear|install APK|grant PERM>
+tap-agent app <launch|cold-launch|stop|clear|install|uninstall|grant|running> <package> [activity|APK|PERM]
 tap-agent export [-o FILE]               the event log as JSON (tap-events/1)
 tap-agent mcp                            the MCP server (stdio)
 ```
@@ -159,17 +160,18 @@ Status: 1–7 done. Released as **experimental** in 0.0.1 (2026-09-28): `tap-age
 - Phase 3 (snapshots) is implemented in `host/daemon/.../daemon/snapshot/` and wired into
   `DeviceService`; unit-tested on six recorded fixture dumps (both local devices × three
   activities), with the device check pending in phase 4. Details the record did not fix:
-  - Scope: a node in an AUT window gets `aut`; a node in any other package's window gets
-    `any_window` (not `system{package}`, which searches only that package's *focused* window,
-    so the status bar, navigation bar and overlays would resolve to `NOT_FOUND`).
+  - Package (protocol 5.0, 2026-10-01; before it, scopes `aut` / `any_window`): every
+    candidate carries a `PROPERTY_PACKAGE_NAME` predicate for the node's package (the window's
+    when the node has none), so a ref to a system dialog button names `android`'s node and a
+    test can write it as `app("android").element(…)`. A resource id of the node's own package is
+    written package-less (`res(name)`), another package's as `resId(pkg, name)`.
   - Uniqueness emulates the driver's *native* plan, which every synthesised selector compiles
-    to. In `aut` the `pkg` filter applies to the node itself (an AUT-window node of another
-    package gets no selector), and because the dump does not say which window is focused,
-    matches are counted over every AUT window (never fewer than the driver's); an `At` index is
-    counted within the node's own window. In `any_window` matches and `At` indexes are counted
-    over the whole dump.
-  - In `aut` scope a resource id of another package (`android:id/content`) is not used: the
-    driver denies it (`SCOPE_DENIED`).
+    to: matches and `At` indexes are counted over the whole dump, as the driver searches every
+    window.
+  - `tap-agent` targets: `pkg=` binds the same predicate (`device.app(pkg).element`); without it
+    a target matches on the whole screen. A tap whose point another window covers is
+    `NOT_INTERACTABLE` / `OBSCURED` (a node covered completely is not found at all), and the
+    agent hints to close the covering window.
   - The ancestor round also tries the class alone with the ancestor ("a Button under X"); the
     ancestor must be at most 32 levels up (the driver's traversal walk bound).
   - The dump is parsed by a small hand parser (DTDs rejected, only predefined entities and

@@ -4,8 +4,6 @@ import { errorMessage } from "./frames";
 import { DeviceState } from "./gen/device_pb";
 import type { DeviceChoice, Session } from "./gen/studio_pb";
 
-const PACKAGE_KEY = "tap-studio.package";
-
 const STATE_NOTES: Partial<Record<DeviceState, string>> = {
   [DeviceState.DEVICE_LEASED]: "in use by another client",
   [DeviceState.DEVICE_QUARANTINED]: "quarantined",
@@ -13,36 +11,17 @@ const STATE_NOTES: Partial<Record<DeviceState, string>> = {
   [DeviceState.DEVICE_UNAUTHORIZED]: "unauthorized: accept the USB debugging prompt",
 };
 
-function remembered(): string {
-  try {
-    return window.localStorage.getItem(PACKAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function remember(pkg: string) {
-  try {
-    window.localStorage.setItem(PACKAGE_KEY, pkg);
-  } catch {
-    // Storage off (private window): only a convenience.
-  }
-}
-
-/** Choose a device and the app under test, then attach. */
+/** Choose a device and attach it. */
 export function DevicePicker({
   client,
-  session,
   onSession,
 }: {
   client: StudioClient;
-  session: Session;
   onSession: (session: Session) => void;
 }) {
   const [devices, setDevices] = useState<DeviceChoice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serial, setSerial] = useState("");
-  const [pkg, setPkg] = useState(() => session.recordingPackage || remembered());
   const [attaching, setAttaching] = useState(false);
 
   const list = useCallback(() => {
@@ -63,8 +42,7 @@ export function DevicePicker({
     setAttaching(true);
     setError(null);
     try {
-      const response = await client.attach({ serial, autPackage: pkg.trim() });
-      remember(pkg.trim());
+      const response = await client.attach({ serial });
       onSession(response.session!);
     } catch (e) {
       setError(errorMessage(e));
@@ -117,12 +95,8 @@ export function DevicePicker({
             </ul>
           )}
         </fieldset>
-        <label>
-          App under test (package)
-          <input value={pkg} onChange={(e) => setPkg(e.target.value)} placeholder="com.example.app" spellCheck={false} autoCapitalize="off" />
-        </label>
         <div>
-          <button type="submit" className="btn primary" disabled={!serial || !pkg.trim() || attaching}>
+          <button type="submit" className="btn primary" disabled={!serial || attaching}>
             {attaching ? "Attaching…" : "Attach"}
           </button>
         </div>

@@ -29,7 +29,7 @@ export function Inspector({
   node,
   onScreen,
   nodes,
-  autPackage,
+  appPackage,
   busy,
   onSelect,
   targetOf,
@@ -41,7 +41,7 @@ export function Inspector({
   /** The newest frame still has it. */
   onScreen: boolean;
   nodes: readonly ScreenNode[];
-  autPackage: string;
+  appPackage: string;
   busy: boolean;
   onSelect: (node: ScreenNode) => void;
   /** What a step on the node targets: its first candidate, or the one picked here. */
@@ -70,7 +70,7 @@ export function Inspector({
           <Element
             node={node}
             onScreen={onScreen}
-            autPackage={autPackage}
+            appPackage={appPackage}
             busy={busy}
             target={targetOf(node)}
             onChoose={(index) => onChoose(node, index)}
@@ -89,7 +89,7 @@ export function Inspector({
 function Element({
   node,
   onScreen,
-  autPackage,
+  appPackage,
   busy,
   target,
   onChoose,
@@ -97,7 +97,7 @@ function Element({
 }: {
   node: ScreenNode;
   onScreen: boolean;
-  autPackage: string;
+  appPackage: string;
   busy: boolean;
   target: Target | null;
   onChoose: (index: number) => void;
@@ -119,7 +119,7 @@ function Element({
         {node.interactive && <span className="tag">interactive</span>}
         {isScrollable(node) && <span className="tag">scrollable</span>}
         {isEditable(node) && <span className="tag">editable</span>}
-        {node.windowPackage !== autPackage && <span className="tag">window: {node.windowPackage}</span>}
+        {node.windowPackage !== appPackage && <span className="tag">window: {node.windowPackage}</span>}
         {!onScreen && <span className="tag warn">not on the current screen</span>}
       </div>
 

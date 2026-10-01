@@ -33,6 +33,10 @@
         <activity
             android:name=".MotionActivity"
             android:exported="true" />
+        <activity
+            android:name=".OcclusionActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustNothing|stateHidden" />
         <!-- Synchronization state comes from the :sync-sdk manifest (authority <applicationId>.tap-sync). -->
         <provider
             android:name=".FixtureFaultProvider"

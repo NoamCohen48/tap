@@ -40,8 +40,9 @@ def test_selector_terms(spec, expected):
 
 def test_package_and_index_modifiers():
     target = parse_target("text=Allow,pkg=com.android.permissioncontroller,index=1")
-    assert target.selector is not None
-    assert target.selector.render() == text("Allow").in_package("com.android.permissioncontroller").at(1).render()
+    assert target.selector is not None and target.package == "com.android.permissioncontroller"
+    assert target.selector.render() == text("Allow").at(1).render()
+    assert parse_target("text=Allow").package is None
 
 
 @pytest.mark.parametrize("spec", ["login", "colour=red", "pkg=com.x", "index=a,text=b", "=x"])

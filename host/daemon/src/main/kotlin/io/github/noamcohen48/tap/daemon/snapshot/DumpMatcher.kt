@@ -8,71 +8,35 @@ import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.protocol.CommandValidation
-import io.github.noamcohen48.tap.protocol.children
-import io.github.noamcohen48.tap.protocol.qualifyingPackage
+import io.github.noamcohen48.tap.protocol.matchesId
 import java.util.IdentityHashMap
 
 /**
  * Evaluates selectors against a parsed dump the way the driver's *native* plan
  * (`SelectorCompiler` → one `BySelector`) evaluates them on the device, which is the plan every
  * synthesised selector compiles to:
- * - `aut` / `system{p}` search the focused window of the package with `BySelector.pkg(p)`, so a
- *   node matches only when its own package is `p`. The dump does not say which window is
- *   focused, so every window of `p` is searched: a count here is never lower than the driver's.
- * - `aut` rejects a resource of another package (`SCOPE_DENIED`); [matches] refuses it too.
- * - A resource compares `qualifyingPackage:id/name` (or the bare name) with the whole id.
+ * - Every window of the dump is searched, as the driver searches every window it is given.
+ *   Package ownership is an ordinary `PROPERTY_PACKAGE_NAME` predicate on the node.
+ * - A resource compares with [matchesId], the function the driver's traversal plan uses.
  * - Text properties compare with the node's value; an absent value never matches.
  * - Relations walk the dump tree; `ancestor` is unbounded here (the driver's traversal plan
- *   stops at 32 levels, `BySelector` does not), so again the count is the larger one.
+ *   stops at 32 levels, `BySelector` does not), so a count here is never lower than the driver's.
+ * - The dump keeps nodes the driver skips (a node not visible to the user never matches on the
+ *   device), so again the count here is the larger one.
  *
  * Relation operands are memoised per dump node, so nested ancestor relations stay cheap. Not
  * thread-safe: one matcher per synthesis.
  */
 internal class DumpMatcher(
     private val hierarchy: Hierarchy,
-    private val autPackage: String,
 ) {
     private val nodes = hierarchy.nodes
     private val memo = IdentityHashMap<Node, HashMap<Int, Boolean>>()
 
-    /** Window indexes a scope searches, and the package a matching node must have (null: any). */
-    class Scope(
-        val windows: Set<Int>,
-        val packageName: String?,
-    )
-
-    fun scope(selector: Selector): Scope =
-        when (selector.scopeCase) {
-            Selector.ScopeCase.SYSTEM -> packageScope(selector.system.packageName)
-            Selector.ScopeCase.ANY_WINDOW -> allWindows()
-            Selector.ScopeCase.AUT, Selector.ScopeCase.SCOPE_NOT_SET, null -> packageScope(autPackage)
-        }
-
-    fun allWindows(): Scope = Scope(hierarchy.windowPackages.indices.toSet(), null)
-
-    fun packageScope(packageName: String): Scope =
-        Scope(hierarchy.windowPackages.withIndex().filter { it.value == packageName }.map { it.index }.toSet(), packageName)
-
-    /** Whether [node] may be searched by [scope] at all. */
-    fun inScope(
-        node: DumpNode,
-        scope: Scope,
-    ): Boolean = node.window in scope.windows && (scope.packageName == null || node.packageName == scope.packageName)
-
-    /**
-     * Every node [selector] matches, in dump pre-order, ignoring its pick; restricted to one
-     * [window] when given (the driver's focused window).
-     */
-    fun matches(
-        selector: Selector,
-        window: Int? = null,
-    ): List<DumpNode> {
+    /** Every node [selector] matches, in dump pre-order, ignoring its pick. */
+    fun matches(selector: Selector): List<DumpNode> {
         CommandValidation.validateSelector(selector)
-        if (selector.scopeCase.let { it == Selector.ScopeCase.AUT || it == Selector.ScopeCase.SCOPE_NOT_SET }) {
-            require(autResourcesOnly(selector.node)) { "AUT-scoped selector names a resource of another package" }
-        }
-        val scope = scope(selector)
-        return nodes.filter { (window == null || it.window == window) && inScope(it, scope) && matches(selector.node, it) }
+        return nodes.filter { matches(selector.node, it) }
     }
 
     /** Whether [candidate] satisfies the predicate [node]. */
@@ -101,9 +65,7 @@ internal class DumpMatcher(
             }
 
             Node.KindCase.RESOURCE -> {
-                val resource = node.resource
-                val expected = resource.qualifyingPackage(autPackage)?.let { "$it:id/${resource.name}" } ?: resource.name
-                candidate.resourceName == expected
+                node.resource.matchesId(candidate.resourceName)
             }
 
             Node.KindCase.RELATED -> {
@@ -150,14 +112,6 @@ internal class DumpMatcher(
             .takeWhile { it < node.subtreeEnd }
             .map { nodes[it] }
 
-    private fun autResourcesOnly(node: Node): Boolean {
-        if (node.kindCase == Node.KindCase.RESOURCE) {
-            val packageName = node.resource.qualifyingPackage(autPackage)
-            if (packageName != null && packageName != autPackage) return false
-        }
-        return node.children.all(::autResourcesOnly)
-    }
-
     private companion object {
         fun matchText(
             match: Match,
@@ -169,6 +123,7 @@ internal class DumpMatcher(
                     TextProperty.PROPERTY_CONTENT_DESCRIPTION -> node.contentDescription
                     TextProperty.PROPERTY_HINT -> node.hint
                     TextProperty.PROPERTY_CLASS_NAME -> node.className
+                    TextProperty.PROPERTY_PACKAGE_NAME -> node.packageName
                     TextProperty.PROPERTY_UNSPECIFIED, TextProperty.UNRECOGNIZED, null -> null
                 } ?: return false
             val value = match.value

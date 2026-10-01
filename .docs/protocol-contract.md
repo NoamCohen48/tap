@@ -1,17 +1,20 @@
 # Tap Protocol Contract
 
-Date: 2026-09-28
+Date: 2026-10-01
 
-Status: application protocol `4.0`; Phase 1 contract is additive and not yet complete.
+Status: application protocol `5.0`; Phase 1 contract is additive and not yet complete.
 
 This document describes the implemented wire contract. Planned but unimplemented features
 (events, typed element handles, multi-gesture input) remain design work in
-`android-e2e-framework-implementation-plan.md` and are not part of protocol 4.0 yet.
+`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.0 yet.
 
-Protocol 4.0 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
-`scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added the `any_window` scope
-and `ElementSnapshot.showing_hint`; later additive, since driver and host ship together:
-`WaitVisible.exactly_one`, `Error.match_count` and the wait-timeout details). The schema is the project's one schema,
+Protocol 5.0 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
+`scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added
+`ElementSnapshot.showing_hint`, `WaitVisible.exactly_one`, `Error.match_count` and the
+wait-timeout details; 5.0 removed selector scopes and `ResourceId.aut_package` — package
+ownership is a `PROPERTY_PACKAGE_NAME` predicate and every lookup searches all windows — made
+gestures refuse a covered touch point (`NOT_INTERACTABLE` / `OBSCURED`), and moved the sync
+package and authority from the session into `SyncBootstrap` / `SyncPoll`). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
 same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
@@ -101,7 +104,7 @@ below. With no common application version it instead answers
 - sorted supported application-protocol versions.
 
 The host selects the highest exact common `major.minor` version and a sorted subset of offered
-capabilities. Protocol 4.0 currently enables:
+capabilities. Protocol 5.0 currently enables:
 
 ```text
 artifact.screenshot.v1
@@ -153,10 +156,10 @@ Request {
 
 The request ID lives in the frame header. `command` is a public command, exactly one `op` case
 below; the other `body` cases are host-internal operations clients cannot send. Optional fields
-(`optional` in the proto, and the zero `UNSPECIFIED` value of `StabilitySignal`, `MatchMode`, and an unset `scope`/`pick`) take their documented default on
+(`optional` in the proto, and the zero `UNSPECIFIED` value of `StabilitySignal`, `MatchMode`, and an unset `pick`) take their documented default on
 the **driver**, the one place defaults are applied; host core and the daemon forward commands
-as the client built them. `ResourceId.aut_package` is likewise resolved by the driver to the
-session's AUT package. In Kotlin, `contracts/protocol` `Operations.kt` holds the catalogue
+as the client built them. The driver session names no app: a selector carries its package
+predicate, and a sync request its package and authority. In Kotlin, `contracts/protocol` `Operations.kt` holds the catalogue
 (`Command.op`, `isMutation`, `targetSelector`, the `Commands`/`Requests` factories) and the
 driver's exhaustive `Request.dispatch(CommandHandler)`, which gives each operation its own
 result type.
@@ -168,7 +171,7 @@ result type.
 | `press_key` | `PressKey` (mutation) | `key_code` ≥ 0 | `done` after one key press (every code, HOME `3` and BACK `4` included, is `UiDevice.pressKeyCode`: no idle wait, no check that the screen changed); `ACTION_REJECTED` if the platform refused to inject it |
 | `open_system_panel` | `OpenSystemPanel` (mutation) | `panel` = `SYSTEM_PANEL_NOTIFICATIONS` or `SYSTEM_PANEL_QUICK_SETTINGS` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | `done` once `UiAutomation.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS / _QUICK_SETTINGS)` returned true (not `UiDevice.openNotification`/`openQuickSettings`, which wait for idle first; no check that the panel opened); `ACTION_REJECTED` if the system refused the action |
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
-| `count` | `Count` | `selector` | `count` = matches in the selector's scope, capped at 1 000 (ignores the match limit) |
+| `count` | `Count` | `selector` | `count` = matches on the screen, capped at 1 000 (ignores the match limit) |
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count |
 | `wait_visible` | `WaitVisible` | `selector`, `exactly_one` (default false) | `done` once one or more nodes match (exactly one with `exactly_one`); `WAIT_TIMEOUT` with detail `NO_MATCH`, or `AMBIGUOUS` (only with `exactly_one`), and `match_count` from the last non-stale poll (no detail when every poll was stale) |
 | `wait_gone` | `WaitGone` | `selector` | `done` once no match exists; `WAIT_TIMEOUT` with detail `STILL_PRESENT` and `match_count` counted once after the deadline (absent if that count was stale or zero) |
@@ -182,8 +185,8 @@ result type.
 | `scroll` | `Scroll` (mutation) | `selector`, `direction` (required), `distance_percent` | `done` after one scroll segment; no scrollable pre-check and no report of whether content moved (the clients' `scrollUntil` loops `exists` + `scroll`) |
 | `dump_hierarchy` | `DumpHierarchy` | – | `text` = accessibility XML (diagnostic only) |
 | `screenshot` | `CaptureScreenshot` (host-internal) | – | `done`; PNG blob + `Response.artifact` metadata (capability `artifact.screenshot.v1`) |
-| `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token` | `done` + `Response.sync` |
-| `sync_poll` | `SyncPoll` (host-internal) | `observed_pid`, `observed_start_token`, `expected_process_start_uuid`, `expected_session_identity` | `done` + `Response.sync` |
+| `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token`, `package_name`, `authority` | `done` + `Response.sync` |
+| `sync_poll` | `SyncPoll` (host-internal) | `observed_pid`, `observed_start_token`, `expected_process_start_uuid`, `expected_session_identity`, `package_name`, `authority` | `done` + `Response.sync` |
 
 `direction` is the direction the content moves for scrolls and the finger for swipes.
 `distance_percent` (default 80) is the gesture length as a percentage of the element's size.
@@ -260,19 +263,17 @@ or XPath. Every sum type is a `oneof`:
 
 ```text
 Selector {
-  node:  Node
-  scope: aut (default)          the AUT's focused window
-       | system {package_name}   that package's focused window, any package (historical name)
-       | any_window              every window on screen, any package
+  node:  Node                    matched against every window on screen, any package
   pick:  exactly_one (default) | first | at {index ≥ 0}
 }
 Node.kind =
-  | match    {property: TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME, value, mode (default EXACT)}
+  | match    {property: TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME | PACKAGE_NAME,
+              value, mode (default EXACT)}
   | flag     {property: ENABLED | CHECKED | CHECKABLE | CLICKABLE | FOCUSED | FOCUSABLE
                         | LONG_CLICKABLE | SCROLLABLE | SELECTED, value}
-  | resource {name, package_name? | aut_package}   `pkg:id/name`; aut_package: the session's AUT,
-                                                    resolved by the driver; neither: the exact
-                                                    resource name (Compose testTag)
+  | resource {name, package_name?}   with package_name: exactly `pkg:id/name`; without: `name`
+                                     in any package (`<any>:id/name`) or the bare name (a
+                                     Compose testTag); `name` never contains `:id/`
   | related  {relation: PARENT | ANCESTOR | CHILD | DESCENDANT, node: Node}
   | all_of   {nodes: [Node, Node, …]}   conjunction, ≥ 2 operands
   | any_of   {nodes: [Node, Node, …]}   disjunction, ≥ 2 operands
@@ -281,10 +282,14 @@ mode: EXACT | CONTAINS | STARTS_WITH | ENDS_WITH | REGEX
 
 `Nodes.allOf` / `Nodes.anyOf` (and the infix `and` / `or`) normalise: nested combinators of the
 same kind are flattened and a single operand is returned as is, so a chain of refinements is
-one flat `all_of`; the client DSLs do the same. An unset `scope`/`pick` is the default. The
+one flat `all_of`; the client DSLs do the same. An unset `pick` is the default. The
 `UNSPECIFIED` value of `TextProperty`, `NodeFlag` and `Relation`, any unknown enum value, a
-node with no `kind`, an `at` with a negative index and a `system` scope with a blank package are
-rejected by validation.
+node with no `kind` and an `at` with a negative index are rejected by validation.
+
+There is no scope. "This app's element" is `all_of(<node>, match{PACKAGE_NAME, "pkg"})`, which
+the client SDKs build for `app("pkg").element(…)`; `screen.element(…)` sends the node alone. A
+package predicate is a node property like any other, so it can also sit inside `any_of` or a
+relation (a dialog button whose ancestor belongs to `android`).
 
 Both sides validate the same limits before allocating a request ID or touching the UI: depth
 ≤ 32, ≤ 256 nodes, ≤ 1024 chars per string, no empty resource name or package, a combinator
@@ -292,19 +297,17 @@ needs at least two operands (`EMPTY_NODE`), a `match` with an empty `value` is o
 `EXACT` mode (`EMPTY_VALUE`: `CONTAINS ""` and the other modes would match every node, so a
 `first` mutation would hit an arbitrary one), and `REGEX` must compile under RE2 (linear time; no
 backreferences or lookaround). The rejection reason is returned as an `INVALID_SELECTOR`
-detail (`UNSPECIFIED_VALUE` for an unset or unknown enum). Under the `aut` scope a resource with an explicit
-`package_name` must be the AUT's (`SCOPE_DENIED`); `system` and `any_window` selectors may name
-any package's resources.
+detail (`UNSPECIFIED_VALUE` for an unset or unknown enum). A resource `name` containing `:id/`
+is `QUALIFIED_RESOURCE_NAME`: the package goes in `package_name`, so one id has one spelling.
 
 `CommandValidation.validate(command)` checks the command's arguments and the selector it
 carries. On the device,
 `CommandValidation.validateSelector(selector)` also returns the query plan. A selector compiles
-to one window-scoped `BySelector` (`ByBuilder` plus `UiWindow.findObjects` on the focused window of
-the scope package, or `UiDevice.findObjects` for `any_window`) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
+to one `BySelector` (`ByBuilder`, run by `UiDevice.findObjects` over every window's root) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
 `any_of`, or a conjunction that repeats one of `BySelector`'s single-valued slots (the same
 text property twice, the same flag twice, two resources, two parents or two ancestors —
 children and descendants are lists and stay native). Those take the traversal plan, which
-walks the same window's object tree once, reading each node's `AccessibilityNodeInfo` once
+walks the windows' object trees once, reading each node's `AccessibilityNodeInfo` once
 however many predicates the tree holds; both plans return the same match set and neither
 dumps the hierarchy. `exactly_one` fetches at most two matches to decide `AMBIGUOUS`; `first`
 and `at n` take accessibility order and return `NOT_FOUND` when the index is absent.
@@ -422,7 +425,7 @@ policy; Tap itself never retries.
 | Code | May have mutated | Retryable | Meaning / details |
 |---|:-:|:-:|---|
 | `INVALID_REQUEST` | no | no | Malformed or out-of-range request. `UNSUPPORTED_CHARACTERS`: text has no key-event mapping (rejected before input). |
-| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `SCOPE_DENIED`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `UNSPECIFIED_VALUE`. |
+| `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `QUALIFIED_RESOURCE_NAME`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `UNSPECIFIED_VALUE`. |
 | `UNSUPPORTED` | no | no | No operation set (or one this driver does not know). |
 | `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
 | `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
@@ -431,7 +434,7 @@ policy; Tap itself never retries.
 | `AUT_MISMATCH` | no | no | Observed AUT identity differs. `PROCESS_RESTARTED`, `PROCESS_MISMATCH` from synchronization. |
 | `NOT_FOUND` | no | yes | Zero matches. |
 | `AMBIGUOUS` | no | no | More than one match; returned before any input. |
-| `NOT_INTERACTABLE` | no | yes | Reserved; no longer emitted (4.0: the driver does not pre-check enabled/scrollable). |
+| `NOT_INTERACTABLE` | no | yes | `OBSCURED`: the gesture's touch point (a tap's visible centre, a swipe's or scroll's start) is in a window above the target's — the keyboard, a dialog, the shade, another app's overlay — so the input would reach that window. Only a partly covered node gets here: Android marks a node that windows above cover completely as not visible, and it is not found. Checked after resolving the target and before the mutation gate; nothing was sent. The driver still does not pre-check enabled/scrollable. |
 | `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
 | `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `PARTIAL_INPUT` (deadline mid-typing). Effects are never read back. |
 | `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `APP_NOT_VISIBLE` (`wait_app_visible`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
@@ -518,15 +521,15 @@ exhaustive `when`s over the generated case enums, so a new case does not compile
 classified.
 
 **Selectors are a sum-type expression tree, with `any_of`** (*deliberate departure from plan
-§10, approved 2026-09-20*). The same principle as commands: `Node.kind`, `scope` and `pick` are
-`oneof`s, so a `system` scope always has its package, an `at` pick always has its
+§10, approved 2026-09-20*). The same principle as commands: `Node.kind` and `pick` are
+`oneof`s, so an `at` pick always has its
 index, and the old shape-validation details (`SCOPE_PACKAGE_REQUIRED`, `INDEX_REQUIRED`,
 `ORDER_NOT_ACCEPTED`, …) are unrepresentable rather than checked. The plan listed OR among
 the deliberately absent operators; it is now `any_of`, because real screens need it (the
 permission dialog's "Allow" / "Allow only while using the app" / "While using the app" variants
 across Android versions) and the alternatives — several selectors racing `exists`, or a regex
 over text only — are slower and less precise. The costs the plan worried about are contained:
-`any_of` is a node predicate, not a search across windows or scopes; it runs on the traversal
+`any_of` is a node predicate, not a separate search; it runs on the traversal
 plan (one window walk, no dump), and the native `BySelector` fast path is unchanged for every
 selector without it. `acceptAccessibilityOrder` is gone: choosing `first`/`at` *is* the opt-in,
 a second flag confirming the same choice added nothing. NOT, sibling, nearest and nth-match
@@ -556,6 +559,6 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 4.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
+Protocol 5.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
 `AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

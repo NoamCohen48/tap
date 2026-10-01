@@ -96,12 +96,12 @@ class WireContractTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     device.info()
                     device.screenshot()
                     device.driverLog()
-                    device.app().isInstalled()
-                    device.app().forceStop()
+                    device.app("com.test").isInstalled()
+                    device.app("com.test").forceStop()
                     device.detach()
                 }
             } finally {
@@ -118,8 +118,8 @@ class WireContractTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    connection.attachDevice("a", "com.test").detach()
-                    connection.attachDevice("b", "com.test", options = DeviceOptions(waitForDevice = 5.seconds)).detach()
+                    connection.attachDevice("a").detach()
+                    connection.attachDevice("b", options = DeviceOptions(waitForDevice = 5.seconds)).detach()
                 }
                 assertFalse(devices.attaches[0].hasLeaseTimeoutMs(), "absent = fail at once")
                 assertEquals(5_000L, devices.attaches[1].leaseTimeoutMs)
@@ -136,7 +136,7 @@ class WireContractTest {
             try {
                 connections.closeWith.complete("reaped: no heartbeat")
                 withTimeout(5_000) { while (connection.isUsable) kotlinx.coroutines.delay(10) }
-                val failure = assertFailsWith<ServerException> { tapScope { connection.attachDevice("a", "com.test") } }
+                val failure = assertFailsWith<ServerException> { tapScope { connection.attachDevice("a") } }
                 assertTrue(failure.message!!.contains("reaped: no heartbeat"), failure.message)
                 assertEquals(listOf("observing", "closing: reaped: no heartbeat"), connection.recentEvents)
             } finally {
@@ -159,7 +159,7 @@ class WireContractTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     val failure = assertFailsWith<ServerException> { device.info() }
                     assertEquals("PERMISSION_DENIED", failure.status)
                     assertTrue(failure.message!!.contains("another client connection"), failure.message)
@@ -179,8 +179,8 @@ class WireContractTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
-                    device.app().install(apk, timeout = 9.seconds)
+                    val device = connection.attachDevice("emulator-5554")
+                    device.app("com.test").install(apk, timeout = 9.seconds)
                     device.detach()
                 }
                 val parts = apps.installParts
@@ -205,7 +205,7 @@ class WireContractTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     assertTrue(byteArrayOf(1, 2, 3).contentEquals(device.screenshot().bytes))
                     devices.corruptScreenshot = true
                     val failure = assertFailsWith<TapException> { device.screenshot() }
@@ -223,7 +223,7 @@ class WireContractTest {
             val connection = client().connect("test")
             try {
                 tapScope {
-                    val device = connection.attachDevice("emulator-5554", "com.test")
+                    val device = connection.attachDevice("emulator-5554")
                     device.startRecording(video = false, audioSource = "mic")
                     assertFalse(devices.mediaStart!!.video)
                     assertEquals("mic", devices.mediaStart!!.audioSource)
@@ -245,7 +245,7 @@ class WireContractTest {
         val connection = client().connect("test")
         try {
             tapScope {
-                val device = connection.attachDevice("emulator-5554", "com.test")
+                val device = connection.attachDevice("emulator-5554")
                 device.startRecording(audioSource = "playback", maxSeconds = 12)
                 assertEquals("conn-1", devices.mediaStart?.clientConnectionId)
                 assertTrue(devices.mediaStart!!.video)

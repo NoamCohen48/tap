@@ -2,10 +2,10 @@ package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
-import io.github.noamcohen48.tap.api.v1.AutScope
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
 import io.github.noamcohen48.tap.api.v1.Match
 import io.github.noamcohen48.tap.api.v1.MatchMode
@@ -14,7 +14,6 @@ import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
-import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
@@ -135,10 +134,20 @@ class CommandValidationTest {
 
     @Test
     fun validatesSyncArguments() {
-        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncBootstrap(1, " ")) }
-        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncPoll(1, "", "uuid", "id")) }
-        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncPoll(1, "t", "", "id")) }
-        assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Requests.syncPoll(1, "t", "uuid", " ")) }
+        CommandValidation.validate(Requests.syncBootstrap(1, "t", AUT, AUTHORITY))
+        CommandValidation.validate(Requests.syncPoll(1, "t", "uuid", "id", AUT, AUTHORITY))
+        listOf(
+            Requests.syncBootstrap(1, " ", AUT, AUTHORITY),
+            Requests.syncBootstrap(1, "t", "", AUTHORITY),
+            Requests.syncBootstrap(1, "t", AUT, " "),
+            Requests.syncPoll(1, "", "uuid", "id", AUT, AUTHORITY),
+            Requests.syncPoll(1, "t", "", "id", AUT, AUTHORITY),
+            Requests.syncPoll(1, "t", "uuid", " ", AUT, AUTHORITY),
+            Requests.syncPoll(1, "t", "uuid", "id", " ", AUTHORITY),
+            Requests.syncPoll(1, "t", "uuid", "id", AUT, ""),
+        ).forEach { request ->
+            assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(request) }
+        }
     }
 
     // ---- selectors -------------------------------------------------------------------------------
@@ -148,12 +157,11 @@ class CommandValidationTest {
         val longString = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)
         val cases: List<Triple<String, String, Selector>> =
             listOf(
-                Triple("no node", ErrorDetail.EMPTY_NODE, Selector.newBuilder().setAut(AutScope.getDefaultInstance()).build()),
+                Triple("no node", ErrorDetail.EMPTY_NODE, Selector.newBuilder().setFirst(First.getDefaultInstance()).build()),
                 Triple("empty kind", ErrorDetail.EMPTY_NODE, Selectors.of(Node.getDefaultInstance())),
-                Triple("blank package", ErrorDetail.EMPTY_VALUE, button.inPackage(" ")),
-                Triple("long package", ErrorDetail.STRING_TOO_LONG, button.inPackage(longString)),
+                Triple("long package", ErrorDetail.STRING_TOO_LONG, Selectors.of(Nodes.packageName(longString))),
                 Triple("long value", ErrorDetail.STRING_TOO_LONG, Selectors.text(longString)),
-                Triple("long resource", ErrorDetail.STRING_TOO_LONG, Selectors.rawResource(longString)),
+                Triple("long resource", ErrorDetail.STRING_TOO_LONG, Selectors.resource(longString)),
                 Triple("long resource package", ErrorDetail.STRING_TOO_LONG, Selectors.androidResource(longString, "id")),
                 Triple("empty contains", ErrorDetail.EMPTY_VALUE, Selectors.text("", MatchMode.MATCH_CONTAINS)),
                 Triple("empty regex", ErrorDetail.EMPTY_VALUE, Selectors.text("", MatchMode.MATCH_REGEX)),
@@ -165,15 +173,9 @@ class CommandValidationTest {
                     Selectors.of(Node.newBuilder().setMatch(Match.newBuilder().setValue("x")).build()),
                 ),
                 Triple("unspecified flag", ErrorDetail.UNSPECIFIED_VALUE, Selectors.of(Node.newBuilder().setFlag(Flag.getDefaultInstance()).build())),
-                Triple("empty resource", ErrorDetail.EMPTY_VALUE, Selectors.rawResource("")),
+                Triple("empty resource", ErrorDetail.EMPTY_VALUE, Selectors.resource("")),
                 Triple("empty resource package", ErrorDetail.EMPTY_VALUE, Selectors.androidResource("", "id")),
-                Triple(
-                    "package and aut_package",
-                    ErrorDetail.EMPTY_VALUE,
-                    Selectors.of(
-                        Node.newBuilder().setResource(ResourceId.newBuilder().setName("id").setPackageName(AUT).setAutPackage(true)).build(),
-                    ),
-                ),
+                Triple("qualified resource name", ErrorDetail.QUALIFIED_RESOURCE_NAME, Selectors.resource("$AUT:id/login")),
                 Triple(
                     "unspecified relation",
                     ErrorDetail.UNSPECIFIED_VALUE,
@@ -215,7 +217,7 @@ class CommandValidationTest {
         // EXACT "" is meaningful (an empty value); so is the unspecified mode, which means EXACT.
         CommandValidation.validateSelector(Selectors.text(""))
         CommandValidation.validateSelector(Selectors.of(Nodes.match(TextProperty.PROPERTY_HINT, "", MatchMode.MATCH_UNSPECIFIED)))
-        CommandValidation.validateSelector(Selectors.of(Nodes.autResource("login")))
+        CommandValidation.validateSelector(Selectors.of(Nodes.resource("login")))
     }
 
     @Test
@@ -225,7 +227,7 @@ class CommandValidationTest {
                 Selectors.text("OK"),
                 Selectors.text("OK", MatchMode.MATCH_ENDS_WITH),
                 Selectors.androidResource(AUT, "login"),
-                Selectors.of(Nodes.autResource("login")),
+                Selectors.of(Nodes.resource("login")),
                 Selectors.of(Nodes.text("OK") and Nodes.flag(NodeFlag.FLAG_ENABLED) and Nodes.parent(Nodes.className("List"))),
                 Selectors.of(Nodes.text("OK") and Nodes.contentDescription("OK") and Nodes.hint("OK")),
                 // BySelector holds any number of child/descendant constraints.
@@ -243,7 +245,7 @@ class CommandValidationTest {
                 Selectors.of(Nodes.text("Allow") or Nodes.contentDescription("Allow")),
                 Selectors.of(Nodes.text("a", MatchMode.MATCH_CONTAINS) and Nodes.text("b", MatchMode.MATCH_CONTAINS)),
                 Selectors.of(Nodes.flag(NodeFlag.FLAG_ENABLED) and Nodes.flag(NodeFlag.FLAG_ENABLED, false)),
-                Selectors.of(Nodes.rawResource("a") and Nodes.androidResource(AUT, "b")),
+                Selectors.of(Nodes.resource("a") and Nodes.androidResource(AUT, "b")),
                 Selectors.of(Nodes.parent(Nodes.text("a")) and Nodes.parent(Nodes.text("b"))),
                 Selectors.of(Nodes.ancestor(Nodes.text("a")) and Nodes.ancestor(Nodes.text("b"))),
                 // A traversal-only predicate anywhere in the tree makes the whole selector traversal.
@@ -280,3 +282,4 @@ class CommandValidationTest {
 }
 
 internal const val AUT = "io.github.noamcohen48.tap.fixture"
+internal const val AUTHORITY = "$AUT.tap-sync"

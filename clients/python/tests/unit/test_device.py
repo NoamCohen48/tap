@@ -8,7 +8,7 @@ import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapClient, WaitTimeoutError
 from tap_e2e import _gen as pb
-from tap_e2e import raw_res, res, text
+from tap_e2e import res, text
 
 from .conftest import TOKEN
 
@@ -17,7 +17,7 @@ from .conftest import TOKEN
 def device(fake):
     server = TapClient.create(fake.address, TOKEN)
     connection = server.connect("test")
-    device = connection.attach_device("emulator-5554", "com.test")
+    device = connection.attach_device("emulator-5554")
     yield device
     fake.devices.responder = None
     fake.devices.detach_error = None
@@ -35,11 +35,11 @@ def _fail_with(fake, code: int) -> None:
 
 
 WAITS = {
-    "await_app_visible": lambda d: d.await_app_visible(),
-    "await_screen_stable": lambda d: d.await_screen_stable(),
-    "wait_visible": lambda d: d.wait(text("x")).visible(),
-    "wait_one": lambda d: d.wait(text("x")).one(),
-    "wait_gone": lambda d: d.wait(text("x")).gone(),
+    "await_visible": lambda d: d.app("com.test").await_visible(),
+    "await_screen_stable": lambda d: d.app("com.test").await_screen_stable(),
+    "wait_visible": lambda d: d.screen.wait(text("x")).visible(),
+    "wait_one": lambda d: d.app("com.test").wait(text("x")).one(),
+    "wait_gone": lambda d: d.screen.wait(text("x")).gone(),
 }
 
 
@@ -69,7 +69,7 @@ def test_device_wait_timeouts_carry_the_reason_and_match_count(fake, device):
 
     fake.devices.responder = respond
     with pytest.raises(WaitTimeoutError) as info:
-        device.wait(text("Row")).one()
+        device.screen.wait(text("Row")).one()
     assert info.value.reason is WaitReason.AMBIGUOUS
     assert info.value.match_count == 3
     assert "AMBIGUOUS (3 matches)" in str(info.value)
@@ -77,7 +77,7 @@ def test_device_wait_timeouts_carry_the_reason_and_match_count(fake, device):
 
     detail = {"detail": "SOMETHING_NEW"}
     with pytest.raises(WaitTimeoutError) as info:
-        device.wait(text("Row")).visible()
+        device.screen.wait(text("Row")).visible()
     assert info.value.reason is None and info.value.match_count is None
     assert not sent[-1].wait_visible.exactly_one
 
@@ -106,8 +106,8 @@ def test_every_call_on_a_device_names_the_owning_connection(fake, device):
     device.info()
     device.screenshot()
     device.driver_log()
-    device.app().is_installed()
-    device.app().force_stop()
+    device.app("com.test").is_installed()
+    device.app("com.test").force_stop()
     device.detach()
     assert [rpc for rpc, _ in fake.devices.owners] == [
         "execute",
@@ -123,7 +123,7 @@ def test_every_call_on_a_device_names_the_owning_connection(fake, device):
 
 def test_attach_sends_no_lease_timeout_unless_waiting(fake, device):
     connection = device.owner_connection
-    connection.attach_device("other", "com.test", wait_for_device=5).detach()
+    connection.attach_device("other", wait_for_device=5).detach()
     first, second = fake.devices.attach_requests
     assert not first.HasField("lease_timeout_ms")
     assert second.lease_timeout_ms == 5000
@@ -186,7 +186,7 @@ def test_install_streams_a_header_then_1_mib_chunks(fake, device, tmp_path):
     data = bytes(i % 251 for i in range(INSTALL_CHUNK_BYTES * 2 + 123))
     apk = tmp_path / "app.apk"
     apk.write_bytes(data)
-    device.app().install(apk, timeout=9)
+    device.app("com.test").install(apk, timeout=9)
     header, *chunks = fake.apps.install_parts
     assert header.WhichOneof("part") == "header"
     assert header.header.size_bytes == len(data)
@@ -199,7 +199,7 @@ def test_install_streams_a_header_then_1_mib_chunks(fake, device, tmp_path):
 
 def test_install_of_a_missing_file_fails_before_any_rpc(fake, device, tmp_path):
     with pytest.raises(OSError):
-        device.app().install(tmp_path / "missing.apk")
+        device.app("com.test").install(tmp_path / "missing.apk")
     assert fake.apps.install_parts == []
 
 
@@ -217,8 +217,8 @@ def test_scroll_until_scrolls_until_the_target_exists_in_the_container(fake, dev
         return None
 
     fake.devices.responder = respond
-    lst = device.element(raw_res("list"))
-    in_list = raw_res("list").descendant(text("row 40"))
+    lst = device.screen.element(res("list"))
+    in_list = res("list").descendant(text("row 40"))
     assert lst.scroll_until(text("row 40")).selector == in_list
     assert [op.WhichOneof("op") for op in ops] == ["exists", "scroll"] * 3 + ["exists"]
     assert all(op.exists.selector == in_list._proto for op in ops if op.HasField("exists"))
@@ -241,12 +241,12 @@ def test_type_text_taps_waits_for_focus_then_types_into_the_focus(fake, device):
         return pb.CommandResult(done=pb.Done())
 
     fake.devices.responder = respond
-    device.element(res("email")).type_text("abc")
+    device.screen.element(res("email")).type_text("abc")
     assert [c.WhichOneof("op") for c in ops] == ["tap", "snapshot", "snapshot", "type_text"]
     assert ops[-1].type_text.text == "abc"
 
     ops.clear()
-    device.element(res("email")).type_text("d", await_focus=False)
+    device.screen.element(res("email")).type_text("d", await_focus=False)
     assert [c.WhichOneof("op") for c in ops] == ["tap", "type_text"]
 
 
@@ -277,7 +277,7 @@ def test_scroll_until_gives_up_after_max_scrolls(fake, device):
 
     fake.devices.responder = respond
     with pytest.raises(WaitTimeoutError) as info:
-        device.element(raw_res("list")).scroll_until(text("row 40"), max_scrolls=2)
+        device.screen.element(res("list")).scroll_until(text("row 40"), max_scrolls=2)
     assert info.value.polls == 2
     assert ops == ["exists", "scroll", "exists", "scroll", "exists"]
 
@@ -285,5 +285,13 @@ def test_scroll_until_gives_up_after_max_scrolls(fake, device):
 def test_scroll_until_propagates_a_failing_step(fake, device):
     _fail_with(fake, pb.ERR_NOT_FOUND)
     with pytest.raises(CommandError) as info:
-        device.element(raw_res("list")).scroll_until(text("row 40"))
+        device.screen.element(res("list")).scroll_until(text("row 40"))
     assert info.value.code is ErrorCode.NOT_FOUND
+
+def test_an_app_binds_its_package_into_the_selector_and_the_screen_binds_none(fake, device):
+    fake.devices.responder = lambda command: pb.CommandResult(done=pb.Done()) if command.HasField("tap") else None
+    device.app("com.test").element(text("OK")).tap()
+    device.screen.element(text("OK")).tap()
+    bound, plain = [c.tap.selector for c in fake.devices.commands if c.HasField("tap")]
+    assert bound == text("OK")._in_package("com.test")._proto
+    assert plain == text("OK")._proto

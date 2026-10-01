@@ -23,7 +23,8 @@ from .targets import SELECTOR_KEYS
 
 INSTRUCTIONS = """\
 Drive an Android device through the Tap daemon (it must be running: `tap start`).
-Flow: devices -> attach(serial, package) -> snapshot -> act (tap, fill, scroll, key, ...) -> release.
+Flow: devices -> attach(serial) -> app(cold-launch, package) -> snapshot -> act (tap, fill,
+scroll, key, ...) -> release. Selectors search the whole screen unless `pkg=` names a package.
 snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pass `@e3` as
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen; an
 action with settle=true waits for the screen to settle and returns what changed (+ added,
@@ -89,11 +90,6 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="attach")
     async def attach(
         serial: Annotated[str, Field(description="Device serial from `devices`.")],
-        package: Annotated[str, Field(description="Package of the app under test.")],
-        launch: Annotated[
-            Literal["none", "launch", "cold"],
-            Field(description="launch: start the app; cold: force-stop it first, then start it."),
-        ] = "none",
         idle_minutes: Annotated[float, Field(gt=0, description="End the session after this long unused.")] = 15,
         wait_for_device_seconds: Annotated[float, Field(ge=0, description="Wait this long for a device another session holds.")] = 0,
         session: Session = "",
@@ -103,9 +99,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             session,
             lambda a: a.attach(
                 serial,
-                package,
                 idle=idle_minutes * 60,
-                launch=None if launch == "none" else launch,
                 wait_for_device=wait_for_device_seconds,
             ),
         )
@@ -253,16 +247,16 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="app")
     async def app(
         action: Literal["launch", "cold-launch", "stop", "clear", "install", "uninstall", "grant", "running"],
+        package: Annotated[str, Field(description="The app's package name.")],
         argument: Annotated[
             str, Field(description="launch/cold-launch: activity (optional); install: APK path; grant: permission.")
         ] = "",
-        package: Annotated[str, Field(description="Another package than the session's app.")] = "",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """App lifecycle: launch, cold-launch (force-stop first), stop, clear data, install,
         uninstall, grant a runtime permission, or ask whether it is running."""
-        return await call(session, lambda a: a.app(action, argument or None, device or None, package or None))
+        return await call(session, lambda a: a.app(action, package, argument or None, device or None))
 
     @mcp.tool(name="export", annotations=READ_ONLY)
     async def export(

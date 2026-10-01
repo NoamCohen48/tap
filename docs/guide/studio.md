@@ -37,13 +37,17 @@ tap-studio                   # serves on a free loopback port and opens the page
 | Option | Effect |
 |---|---|
 | `--no-open` | Print the link instead of opening a browser (open it yourself). |
-| `--serial S --package P` | Attach device `S` for app `P` at start, instead of picking them in the page. |
+| `--serial S` | Attach device `S` at start instead of picking it in the page. |
 | `--port N` | Serve on loopback port `N` instead of a free one. |
 
 The printed link carries a one-time token: the page signs in with it and the studio refuses
 anything else. It listens on `127.0.0.1` only. Ctrl-C stops it and frees the device.
 
-Without `--serial`, the page lists the server's devices: pick one and enter the app package.
+Without `--serial`, the page lists the server's devices: pick one and attach it. Attaching names
+no app. Enter the package of the app you work on in the **App** menu: it is what that menu
+launches, stops or clears, and the app a replay offers to cold launch first (the page remembers
+it). Selectors are not limited to it, so a recording can go through a system dialog or a second
+app.
 The studio holds the device exclusively, as a test does, so another client cannot attach it
 until the studio releases it.
 
@@ -55,7 +59,7 @@ until the studio releases it.
   element with no unique selector, an accessibility gap in the app. The rail on the screen's
   left, like the emulator's side toolbar: **Back**, **Home**, **Recent apps**,
   **Notifications**, **Quick settings** (`openNotifications()` / `openQuickSettings()`) and the
-  **App** menu (cold launch, launch, force stop, clear data, grant permission). Each button
+  **App** menu (its package, then cold launch, launch, force stop, clear data, grant permission). Each button
   runs on the device and records its step. A replay sends steps back to back, and a system
   panel ignores a key sent while it is still sliding open. So after opening one, record a step
   that waits for it, such as an action on an element in it, or an **Assert** that an element
@@ -98,9 +102,11 @@ for at least one match, and the action then picks.
 Click a step to open it:
 
 - **Selector:** choose another candidate, or type a selector in the Kotlin DSL
-  (`res("search").hasAncestor(res("toolbar"))`, `text("Allow").inPackage("android")`,
-  `text("Add").at(1)`). The line below it shows how many elements the
-  selector matches on the current screen.
+  (`res("search").hasAncestor(res("toolbar"))`, `text("Add").at(1)`). A recorded selector
+  usually ends in `.andPackageName("com.example.basket")`: the package of the element's app,
+  which a test writes as `app("com.example.basket").element(…)`. Remove it to match on the
+  whole screen. The line below shows how many elements the selector matches on the current
+  screen.
 - **Value and secret:** change the text of a set text or type step, or make it secret.
 - **Note:** a free-text note, kept in the file.
 - **Run** runs the step alone. **Run from here** runs it and every step after it. Move up, move
@@ -127,12 +133,13 @@ before discarding recorded steps.
   "recorded_at": "2026-09-30T09:12:44Z",
   "recorder": "tap-studio 0.0.1",
   "device": {"serial": "emulator-5554", "api_level": 34, "manufacturer": "Google", "model": "sdk_gphone64_x86_64"},
-  "aut_package": "com.example.basket",
   "steps": [
     {"id": "s1", "app": {"operation": "cold_launch", "package_name": "com.example.basket"}},
     {"id": "s2", "action": {
-      "command": {"set_text": {"selector": {"node": {"resource": {"name": "search", "aut_package": true}}}, "text": "wool"}},
-      "wait": {"wait_visible": {"selector": {"node": {"resource": {"name": "search", "aut_package": true}}}, "exactly_one": true}},
+      "command": {"set_text": {"selector": {"node": {"all_of": {"nodes": [{"resource": {"name": "search"}},
+        {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": "com.example.basket", "mode": "MATCH_EXACT"}}]}}}, "text": "wool"}},
+      "wait": {"wait_visible": {"selector": {"node": {"all_of": {"nodes": [{"resource": {"name": "search"}},
+        {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": "com.example.basket", "mode": "MATCH_EXACT"}}]}}}, "exactly_one": true}},
       "selector_origin": "SELECTOR_ORIGIN_SYNTHESIZED"}},
     {"id": "s3", "assertion": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "3 results"}}},
       "condition": "CONDITION_VISIBLE"}}
@@ -154,8 +161,13 @@ or a coding agent ([tap-agent](agents.md)), write the test from it:
 | Step | Kotlin | Python |
 |---|---|---|
 | `app` `cold_launch` | `app.coldLaunch()` | `app.cold_launch()` |
-| `action` `set_text` on `res("search")` | `device.await(res("search")).one().setText("wool")` | `device.wait(res("search")).one().set_text("wool")` |
-| `assertion` `CONDITION_VISIBLE` | `device.await(text("3 results")).visible()` | `device.wait(text("3 results")).visible()` |
+| `action` `set_text` on `res("search")` in `com.example.basket` | `app.await(res("search")).one().setText("wool")` | `app.wait(res("search")).one().set_text("wool")` |
+| `assertion` `CONDITION_VISIBLE`, no package | `device.screen.await(text("3 results")).visible()` | `device.screen.wait(text("3 results")).visible()` |
+
+A selector whose top-level conjunction has a `PROPERTY_PACKAGE_NAME` match is that app's:
+`app = device.app("com.example.basket")`, and the rest of the selector goes to
+`app.element` / `app.await`. A selector without one is `device.screen`'s. The step list shows
+each step that way.
 
 Keep the selectors the studio chose: they matched exactly one element when the step was
 recorded, and replay proved them.

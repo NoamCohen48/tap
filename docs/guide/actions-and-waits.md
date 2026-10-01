@@ -1,9 +1,11 @@
 # Actions and waits
 
-Everything on this page is a method of `Element` (built with `device.element(selector)`),
-`ElementWait` (`device.await(selector)` / `device.wait(selector)` in Python) or `Device`.
-Kotlin names are shown; Python uses the same names in `snake_case` (`setText` → `set_text`,
-`awaitAppSettled` → `await_app_settled`, `device.await(...)` → `device.wait(...)`).
+Everything on this page is a method of `Element` (built with `app.element(selector)` or
+`device.screen.element(selector)`), `ElementWait` (`app.await(selector)` /
+`device.screen.await(selector)`; `.wait(...)` in Python), `App` or `Device`. The examples use
+`val app = device.app("com.shop")`. Kotlin names are shown; Python uses the same names in
+`snake_case` (`setText` → `set_text`, `awaitSettled` → `await_settled`, `app.await(...)` →
+`app.wait(...)`).
 
 !!! info "Kotlin is suspend"
     Every Kotlin call below is `suspend` and runs inside `tapTest { ... }` (JUnit) or
@@ -41,7 +43,7 @@ exactly one.
 | `scroll(direction, distancePercent = 80)` | one scroll gesture on the node towards `direction`'s content edge (`DOWN` reveals content below). The node need not report itself scrollable, and nothing says whether content moved |
 | `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80, timeout)` | a client-side loop: while `target` does not exist inside the container, `scroll` once more; returns `target` as an `Element`. Gives up with `WaitTimeoutException` / `WaitTimeoutError` after `maxScrolls` scrolls or the timeout (default: the wait timeout). A failing scroll step propagates unchanged |
 | `device.pressBack()`, `device.pressHome()`, `device.pressKey(code)` | key events |
-| `device.openNotifications()`, `device.openQuickSettings()` (Python: `open_notifications()`, `open_quick_settings()`) | open the notification shade or quick settings through the system's accessibility action, as a swipe down from the status bar would. Only whether the system accepted it is reported: wait for what you need in the panel; `pressBack()` closes it (from quick settings, Android 14 first goes back to the notification shade, so press it twice). Elements in the panel belong to `com.android.systemui`, so scope their selectors with `inPackage("com.android.systemui")`. While a panel is still sliding open or closed, the system can accept the action and ignore it: `awaitAnimationEnd()` before opening another one |
+| `device.openNotifications()`, `device.openQuickSettings()` (Python: `open_notifications()`, `open_quick_settings()`) | open the notification shade or quick settings through the system's accessibility action, as a swipe down from the status bar would. Only whether the system accepted it is reported: wait for what you need in the panel; `pressBack()` closes it (from quick settings, Android 14 first goes back to the notification shade, so press it twice). Elements in the panel belong to `com.android.systemui`: reach them with `device.app("com.android.systemui").element(...)` or `device.screen.element(...)`. While a panel is still sliding open or closed, the system can accept the action and ignore it: `app.awaitAnimationEnd()` before opening another one |
 
 Text actions report only what Android said about the input, never what the app did with it:
 apps reformat, truncate, reject or copy text elsewhere, and the framework assumes none of
@@ -49,34 +51,36 @@ that. Assert the outcome with a selector that still identifies the field after t
 resource id, not its old text):
 
 ```kotlin
-val email = device.element(resourceId("email"))
+val email = app.element(res("email"))
 email.setText("user@example.com")
-email.waitUntil.textEquals("user@example.com")
+email.await().textEquals("user@example.com")
 ```
 
 Directions are the `Direction` enum, `UP`/`DOWN`/`LEFT`/`RIGHT`, in both SDKs (Python also
 exports them as plain constants).
 
 ```kotlin
-val list = device.element(res("results"))
+val list = app.element(res("results"))
 list.scrollUntil(text("Wool socks"), timeout = 30.seconds).tap()
 ```
 
-An action that fails **before** input (`NOT_FOUND`, `AMBIGUOUS`, `INVALID_*`) has changed nothing. An action that fails **after** input says so:
+An action that fails **before** input (`NOT_FOUND`, `AMBIGUOUS`, `INVALID_*`, and
+`NOT_INTERACTABLE` — including `OBSCURED`, a gesture whose touch point another window covers)
+has changed nothing. An action that fails **after** input says so:
 `STALE_DURING_COMMAND` (the target changed mid-action), `ACTION_REJECTED` (input was issued but
 did not take effect), `INDETERMINATE` (the transport dropped after the driver accepted the
 mutation). Tap never re-sends any of them for you.
 
 ## Waiting for elements
 
-`device.await(selector, timeout)` (Python `device.wait(...)`) returns an `ElementWait`; each
+`app.await(selector, timeout)` (Python `app.wait(...)`; `device.screen` has the same) returns an `ElementWait`; each
 terminal method waits until the condition holds or the timeout elapses, and then returns the
 `Element` so you can act on it:
 
 ```kotlin
-device.await(text("Order placed")).visible()
-device.await(res("pay")).enabled().tap()
-device.await(res("spinner"), timeout = 30.seconds).gone()
+app.await(text("Order placed")).visible()
+app.await(res("pay")).enabled().tap()
+app.await(res("spinner"), timeout = 30.seconds).gone()
 ```
 
 | Method | Condition |
@@ -98,24 +102,26 @@ the last observation (e.g. `text='Placing order…' enabled=False …`). `visibl
 several matches, so when the next step is an action, `one()` is the wait that proves it can
 run. Note that `visible()` means
 *present in the accessibility tree*, which is what UiAutomator can see; an element scrolled
-off-screen in a `RecyclerView` is usually absent from the tree, an element hidden by another
-window usually is not.
+off-screen in a `RecyclerView` is usually absent from the tree, and so is one that another
+window (a dialog, the keyboard) covers completely: Android reports it as not visible. One that
+another window covers only partly is present, and a gesture whose touch point is under the
+other window fails with `OBSCURED`.
 
 `Element.await()` is the same thing starting from an element you already hold.
 
 ## Waiting for the app or the screen
 
-These are on `Device` and take a `packageName` that defaults to the app under test.
+These are on `App` (`device.app(packageName)`).
 
 | Method | Waits until |
 |---|---|
-| `awaitAppVisible()` | the package owns the focused window (a launch or a return from another app is done) |
-| `awaitAppSettled(stableFor = 500 ms)` | the accessibility **tree** of the focused window has not changed for `stableFor` |
-| `awaitAnimationEnd(stableFor = 500 ms)` | the **pixels** of the screen have not changed for `stableFor` |
-| `awaitScreenStable(stableFor = 500 ms, signal = ALL)` | both (or the signal you pass) |
+| `app.awaitVisible()` | the package owns the focused window (a launch or a return from another app is done) |
+| `app.awaitSettled(stableFor = 500 ms)` | the accessibility **tree** of the app's focused window has not changed for `stableFor` |
+| `app.awaitAnimationEnd(stableFor = 500 ms)` | the **pixels** of the app's window have not changed for `stableFor` |
+| `app.awaitScreenStable(stableFor = 500 ms, signal = ALL)` | both (or the signal you pass) |
 | `app.awaitIdle(stableFor = 200 ms)` | the app itself reports no busy work — see [App lifecycle and sync](app-lifecycle.md) |
 
-Use `awaitAppSettled` after navigation, when a list is still being populated or a screen
+Use `awaitSettled` after navigation, when a list is still being populated or a screen
 rebuilt: it is cheap (a fingerprint of the tree, refreshed on window-change events) and ignores
 purely visual motion. Use `awaitAnimationEnd` before a screenshot or when a transition animates
 without touching the tree. `awaitScreenStable` combines both.
@@ -127,7 +133,7 @@ for the element you actually need instead, or pass `signal = TREE` to ignore the
 !!! info "There is no implicit wait"
     UiAutomator's own idle wait before each interaction is capped at 1 s by the driver, and Tap
     adds none of its own. If a test only passes with a `sleep`, it is telling you which wait
-    is missing: usually `await(...).visible()` on the thing you are about to use.
+    is missing: usually `app.await(...).visible()` on the thing you are about to use.
 
 ## Waiting on your own condition
 

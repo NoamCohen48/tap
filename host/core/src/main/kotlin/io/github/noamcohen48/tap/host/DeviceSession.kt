@@ -27,12 +27,9 @@ import java.util.concurrent.atomic.AtomicReference
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
     val serial: String,
-    /** The application under test; AUT-scoped selectors resolve inside this package. */
-    val autPackage: String,
     /** Driver APKs to install before starting; null skips installation (already installed). */
     val driverApk: Path? = null,
     val driverTestApk: Path? = null,
-    val syncAuthority: String = "$autPackage.tap-sync",
     val journalRoot: Path = Path.of(System.getProperty("user.home"), ".tap", "sessions"),
     val heartbeatIntervalMs: Long = DEFAULT_HEARTBEAT_INTERVAL_MS,
     /** Extra instrumentation arguments (fault points, heartbeat overrides). */
@@ -76,9 +73,6 @@ class DeviceSession private constructor(
     val serial: String get() = config.serial
     val generation: Long get() = journal.generation
     val sessionId: String get() = journal.sessionId
-
-    /** Immutable session metadata for cross-module users; the raw runner/config stay internal. */
-    val autPackage: String get() = config.autPackage
 
     /** The raw runner. Internal: cross-module users go through typed [AppLifecycle] operations. */
     internal val adb: Adb get() = config.adb
@@ -182,7 +176,7 @@ class DeviceSession private constructor(
      * session's lifetime: it carries the sync identity handed out at bootstrap, which must
      * survive across calls for `awaitIdle` to stay guarded against a restarted process.
      */
-    fun app(packageName: String = config.autPackage): AppLifecycle {
+    fun app(packageName: String): AppLifecycle {
         checkAdmissible()
         return apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
     }
@@ -334,8 +328,6 @@ class DeviceSession private constructor(
                             sessionId = sessionId,
                             generation = generation,
                             encodedSecret = encodedSecret,
-                            autPackage = config.autPackage,
-                            syncAuthority = config.syncAuthority,
                             driverArguments = config.driverArguments,
                             logSink = config.driverLog,
                             processStarter = config.processStarter,

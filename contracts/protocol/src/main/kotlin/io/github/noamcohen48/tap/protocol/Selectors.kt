@@ -2,7 +2,6 @@ package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
-import io.github.noamcohen48.tap.api.v1.AnyWindowScope
 import io.github.noamcohen48.tap.api.v1.At
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
@@ -14,7 +13,6 @@ import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.Selector
-import io.github.noamcohen48.tap.api.v1.SystemScope
 import io.github.noamcohen48.tap.api.v1.TextProperty
 
 /** Maximum nesting of [Node]s (related, all_of, any_of). */
@@ -54,23 +52,21 @@ object Nodes {
         mode: MatchMode = MatchMode.MATCH_EXACT,
     ): Node = match(TextProperty.PROPERTY_CLASS_NAME, value, mode)
 
+    fun packageName(value: String): Node = match(TextProperty.PROPERTY_PACKAGE_NAME, value)
+
     fun flag(
         property: NodeFlag,
         value: Boolean = true,
     ): Node = Node.newBuilder().setFlag(Flag.newBuilder().setProperty(property).setValue(value)).build()
 
-    /** A raw resource name (a Compose testTag under testTagsAsResourceId). */
-    fun rawResource(name: String): Node = Node.newBuilder().setResource(ResourceId.newBuilder().setName(name)).build()
+    /** Resource [name] in any package (`<any>:id/name`), or a Compose testTag [name]. */
+    fun resource(name: String): Node = Node.newBuilder().setResource(ResourceId.newBuilder().setName(name)).build()
 
-    /** The View id `packageName:id/name`. */
+    /** Exactly the View id `packageName:id/name`. */
     fun androidResource(
         packageName: String,
         name: String,
     ): Node = Node.newBuilder().setResource(ResourceId.newBuilder().setName(name).setPackageName(packageName)).build()
-
-    /** The View id `<app under test>:id/name`; the driver fills in the session's AUT. */
-    fun autResource(name: String): Node =
-        Node.newBuilder().setResource(ResourceId.newBuilder().setName(name).setAutPackage(true)).build()
 
     fun related(
         relation: Relation,
@@ -128,7 +124,7 @@ val Node.children: List<Node>
 val Node.conjunction: List<Node>
     get() = if (kindCase == Node.KindCase.ALL_OF) allOf.nodesList.flatMap { it.conjunction } else listOf(this)
 
-/** Selector construction; the scope defaults to the AUT and the pick to exactly one. */
+/** Selector construction; selectors are screen-wide unless a package predicate is present. */
 object Selectors {
     fun of(node: Node): Selector = Selector.newBuilder().setNode(node).build()
 
@@ -142,7 +138,7 @@ object Selectors {
         mode: MatchMode = MatchMode.MATCH_EXACT,
     ): Selector = of(Nodes.contentDescription(value, mode))
 
-    fun rawResource(name: String): Selector = of(Nodes.rawResource(name))
+    fun resource(name: String): Selector = of(Nodes.resource(name))
 
     fun androidResource(
         packageName: String,
@@ -152,44 +148,38 @@ object Selectors {
 
 fun Node.toSelector(): Selector = Selectors.of(this)
 
-/** Search the focused window of [packageName] (any package) instead of the AUT's. */
-fun Selector.inPackage(packageName: String): Selector =
-    toBuilder().setSystem(SystemScope.newBuilder().setPackageName(packageName)).build()
-
-/** Search every window on screen, of any package. */
-fun Selector.inAnyWindow(): Selector = toBuilder().setAnyWindow(AnyWindowScope.getDefaultInstance()).build()
-
 fun Selector.pickFirst(): Selector = toBuilder().setFirst(First.getDefaultInstance()).build()
 
 fun Selector.pickAt(index: Int): Selector = toBuilder().setAt(At.newBuilder().setIndex(index)).build()
 
-/** The package this selector is scoped to (`inPackage`), or null for the AUT (the default) or any window. */
-val Selector.scopedPackage: String? get() = if (scopeCase == Selector.ScopeCase.SYSTEM) system.packageName else null
+/**
+ * Whether the accessibility id [actual] is this resource: exactly `package_name:id/name` with a
+ * package; otherwise `name` in any package, or the bare `name` (a Compose testTag).
+ */
+fun ResourceId.matchesId(actual: String?): Boolean {
+    if (actual == null) return false
+    if (hasPackageName()) return actual == "$packageName$ID_SEPARATOR$name"
+    if (actual == name) return true
+    // `<package>:id/name`: a non-empty package with no ':' of its own.
+    val packageLength = actual.length - ID_SEPARATOR.length - name.length
+    return packageLength > 0 &&
+        actual.endsWith(name) &&
+        actual.startsWith(ID_SEPARATOR, packageLength) &&
+        actual.lastIndexOf(':', packageLength - 1) < 0
+}
 
-/** The package a resource id is qualified with, `null` for a raw resource name. */
-fun ResourceId.qualifyingPackage(autPackage: String): String? =
-    when {
-        this.autPackage -> autPackage
-        hasPackageName() -> packageName
-        else -> null
-    }
+private const val ID_SEPARATOR = ":id/"
 
 /** A compact, stable rendering for messages and logs, e.g. `text="OK" & parent(class~"List")`. */
 fun Selector.render(): String {
     val base = node.render()
-    val scope =
-        when (scopeCase) {
-            Selector.ScopeCase.SYSTEM -> " in ${system.packageName}"
-            Selector.ScopeCase.ANY_WINDOW -> " in any window"
-            Selector.ScopeCase.AUT, Selector.ScopeCase.SCOPE_NOT_SET, null -> ""
-        }
     val pick =
         when (pickCase) {
             Selector.PickCase.FIRST -> " [first]"
             Selector.PickCase.AT -> " [${at.index}]"
             Selector.PickCase.EXACTLY_ONE, Selector.PickCase.PICK_NOT_SET, null -> ""
         }
-    return base + scope + pick
+    return base + pick
 }
 
 fun Node.render(): String =
@@ -201,6 +191,7 @@ fun Node.render(): String =
                     TextProperty.PROPERTY_CONTENT_DESCRIPTION -> "desc"
                     TextProperty.PROPERTY_HINT -> "hint"
                     TextProperty.PROPERTY_CLASS_NAME -> "class"
+                    TextProperty.PROPERTY_PACKAGE_NAME -> "package"
                     TextProperty.PROPERTY_UNSPECIFIED, TextProperty.UNRECOGNIZED, null -> "?"
                 }
             val op =
@@ -219,15 +210,7 @@ fun Node.render(): String =
             if (flag.value) name else "!$name"
         }
 
-        Node.KindCase.RESOURCE -> {
-            val qualifier =
-                when {
-                    resource.autPackage -> "<aut>:id/"
-                    resource.hasPackageName() -> "${resource.packageName}:id/"
-                    else -> ""
-                }
-            "id=${quote(qualifier + resource.name)}"
-        }
+        Node.KindCase.RESOURCE -> "id=${quote(if (resource.hasPackageName()) "${resource.packageName}:id/${resource.name}" else resource.name)}"
 
         Node.KindCase.RELATED -> "${related.relation.name.removePrefix("RELATION_").lowercase()}(${related.node.render()})"
         Node.KindCase.ALL_OF -> allOf.nodesList.joinToString(" & ") { it.renderOperand() }

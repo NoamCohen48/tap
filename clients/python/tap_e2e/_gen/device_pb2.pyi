@@ -72,22 +72,18 @@ class ListDevicesResponse(_message.Message):
     def __init__(self, devices: _Optional[_Iterable[_Union[DeviceEntry, _Mapping]]] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
-    __slots__ = ("client_connection_id", "serial", "aut_package", "skip_driver_install", "sync_authority", "default_timeout_ms", "lease_timeout_ms")
+    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
-    AUT_PACKAGE_FIELD_NUMBER: _ClassVar[int]
     SKIP_DRIVER_INSTALL_FIELD_NUMBER: _ClassVar[int]
-    SYNC_AUTHORITY_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     client_connection_id: str
     serial: str
-    aut_package: str
     skip_driver_install: bool
-    sync_authority: str
     default_timeout_ms: int
     lease_timeout_ms: int
-    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., aut_package: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., sync_authority: _Optional[str] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class AttachResponse(_message.Message):
     __slots__ = ("attached_device_id", "serial", "generation", "device_info")

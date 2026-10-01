@@ -89,7 +89,7 @@ class Element:
 
         Fails with ``ACTION_REJECTED`` only when the node refuses the action. The field is not
         read back: assert the effect with a selector that survives the edit, e.g.
-        ``d.element(resource_id("email")).text_equals("new")``.
+        ``app.wait(res("email")).text_equals("new")``.
         """
         self._run(timeout, set_text=pb.SetText(selector=self._target, text=value))
 

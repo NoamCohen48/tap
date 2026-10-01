@@ -68,7 +68,7 @@ class DriverClientTest {
     @Test
     fun handshakeExposesNegotiatedContract() {
         assertEquals("fake-driver", client.driverInstanceId)
-        assertEquals(4, client.negotiatedVersion.major)
+        assertEquals(5, client.negotiatedVersion.major)
         assertTrue("synchronization.v1" in client.enabledCapabilities)
     }
 

@@ -56,7 +56,7 @@ class AuthenticationTest {
 
     @Test
     fun negotiationSelectsTheHighestCommonVersionAndSharedCapabilities() {
-        val hello = hello(versions = listOf(protocolVersion(2, 0), PROTOCOL_VERSION, protocolVersion(4, 5)))
+        val hello = hello(versions = listOf(protocolVersion(2, 0), PROTOCOL_VERSION, protocolVersion(5, 5)))
         val challenge = challenge(capabilities = listOf("artifact.screenshot.v1", "future.capability.v9", "synchronization.v1"))
 
         val negotiation = requireNotNull(ProtocolNegotiation.negotiate(hello, challenge))
@@ -112,7 +112,7 @@ class AuthenticationTest {
 
     @Test
     fun protocolVersionsOrderByMajorThenMinor() {
-        assertEquals("4.0", PROTOCOL_VERSION.render())
+        assertEquals("5.0", PROTOCOL_VERSION.render())
         assertTrue(protocolVersion(2, 9) < protocolVersion(3, 0))
         assertTrue(protocolVersion(3, 1) > protocolVersion(3, 0))
         assertEquals(listOf(PROTOCOL_VERSION), SUPPORTED_PROTOCOL_VERSIONS)

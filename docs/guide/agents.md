@@ -34,7 +34,8 @@ teaches the flow below.
 
 ```bash
 tap-agent devices                                   # serials and whether they are free
-tap-agent attach emulator-5554 com.example.app --cold
+tap-agent attach emulator-5554                      # hold the device
+tap-agent app cold-launch com.example.app
 tap-agent snapshot                                  # one line per node, with a ref
 tap-agent tap @e12 --settle                         # act; --settle prints what changed
 tap-agent fill id=email me@example.com
@@ -57,9 +58,14 @@ tap-agent release                                   # frees the device
     `-i` keeps only nodes you can act on. A ref (`@e3`) names a selector the server found to
     match exactly that node; it keeps naming the node while it stays on screen.
 - **Targets** are a ref or `key=value` terms joined by commas: `id=`, `text=`, `text~=`
-  (contains), `desc=`, `desc~=`, `hint=`, `class=`, `pkg=` (another app's window), `index=`.
-  As in tests, every action needs exactly one match and fails before touching the device
-  otherwise.
+  (contains), `desc=`, `desc~=`, `hint=`, `class=`, `pkg=`, `index=`.
+  A target matches anywhere on the screen; `pkg=` keeps it to one app's nodes, as
+  `device.app(pkg).element(…)` does in a test. As in tests, every action needs exactly one
+  match and fails before touching the device otherwise, and a tap whose point another window
+  covers (a dialog, the shade) fails as `NOT_INTERACTABLE` / `OBSCURED` (a node covered
+  completely is not found at all).
+- **Apps**: `app <action> <package> [argument]`: `launch`, `cold-launch`, `stop`, `clear`,
+  `install` (argument: the APK), `uninstall`, `grant` (argument: the permission), `running`.
 - **System panels**: `panel notifications` / `panel quick-settings` (MCP `open_panel`) open the
   notification shade or quick settings; target their nodes with `pkg=com.android.systemui`, and
   `key back` closes them (twice from quick settings on newer Android). `key recents` opens the
@@ -85,11 +91,11 @@ usable for a test in any language; `tap-agent` does not generate code, you (or y
   "dropped": 0,
   "events": [
     {"seq": 1, "at": "2026-09-28T10:14:40.020Z", "duration_ms": 1830, "serial": "emulator-5554",
-     "aut_package": "com.example.app", "ok": true,
+     "ok": true,
      "app": {"operation": "cold_launch", "package_name": "com.example.app"}},
     {"seq": 2, "at": "2026-09-28T10:14:43.511Z", "duration_ms": 212, "serial": "emulator-5554",
-     "aut_package": "com.example.app", "ok": true,
-     "command": {"timeout_ms": "10000", "tap": {"selector": {"node": {"resource": {"name": "login_button", "aut_package": true}}}}}}
+     "ok": true,
+     "command": {"timeout_ms": "10000", "tap": {"selector": {"node": {"resource": {"name": "login_button"}}}}}}
   ]
 }
 ```

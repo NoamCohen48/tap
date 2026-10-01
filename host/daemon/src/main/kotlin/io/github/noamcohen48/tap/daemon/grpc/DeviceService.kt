@@ -55,15 +55,12 @@ class DeviceService(
     override suspend fun attach(request: AttachRequest): AttachResponse =
         reply {
             argument(request.serial.isNotBlank()) { "serial is required" }
-            argument(request.autPackage.isNotBlank()) { "aut_package is required" }
             val attachedDevice =
                 daemon.attachDevice(
                     request.clientConnectionId,
                     request.serial,
-                    request.autPackage,
                     TapDaemon.AttachDeviceOptions(
                         skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
-                        syncAuthority = request.takeIf { it.hasSyncAuthority() }?.syncAuthority,
                         defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else Defaults.ACTION_TIMEOUT_MS,
                         leaseTimeoutMs = if (request.hasLeaseTimeoutMs()) nonNegative(request.leaseTimeoutMs, "lease_timeout_ms") else 0L,
                     ),
@@ -98,8 +95,8 @@ class DeviceService(
         }
 
     /**
-     * Forwards the client's command unchanged: optional fields and `ResourceId.aut_package` are
-     * the driver's to resolve, and its result comes back as it was sent. The shared validation
+     * Forwards the client's command unchanged: package ownership is already represented by an
+     * ordinary selector predicate, and the result comes back as it was sent. The shared validation
      * runs first as a pre-flight, so a malformed command is `INVALID_ARGUMENT` before any device
      * work. Cancellation propagates to the pending TAP1 command and requests cooperative cancel.
      */
@@ -170,7 +167,7 @@ class DeviceService(
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             val timeoutMs = if (request.hasTimeoutMs()) positive(request.timeoutMs, "timeout_ms") else attachedDevice.defaultTimeoutMs
             val xml = attachedDevice.deviceSession.client.execute(Commands.dumpHierarchy(), timeoutMs).text
-            val screen = withContext(Dispatchers.Default) { ScreenSnapshots.screen(xml, attachedDevice.deviceSession.autPackage, request.selectorCandidates) }
+            val screen = withContext(Dispatchers.Default) { ScreenSnapshots.screen(xml, request.selectorCandidates) }
             attachedDevice.screen.record(screen)
         }
 

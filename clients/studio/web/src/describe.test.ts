@@ -6,7 +6,7 @@ import { MatchMode, NodeFlag, Relation, SelectorSchema, TextProperty, type Node 
 import { Condition, PerformRequestSchema, StepSchema, type PerformRequest } from "./gen/studio_pb";
 import * as steps from "./steps";
 
-const res = (name: string): Node => ({ kind: { case: "resource", value: { name, autPackage: true } } }) as Node;
+const res = (name: string): Node => ({ kind: { case: "resource", value: { name } } }) as Node;
 const match = (property: TextProperty, value: string, mode = MatchMode.MATCH_EXACT): Node =>
   ({ kind: { case: "match", value: { property, value, mode } } }) as Node;
 const all = (...nodes: Node[]): Node => ({ kind: { case: "allOf", value: { nodes } } }) as Node;
@@ -38,10 +38,13 @@ describe("describeSelector", () => {
     ],
     [selector(res("row"), { pick: { case: "at", value: { index: 2 } } }), 'res("row").at(2)'],
     [
-      selector({ kind: { case: "resource", value: { name: "button1", packageName: "android" } } } as Node, {
-        scope: { case: "system", value: { packageName: "android" } },
-      }),
-      'resId("android", "button1").inPackage("android")',
+      selector(
+        all(
+          { kind: { case: "resource", value: { name: "button1", packageName: "android" } } } as Node,
+          match(TextProperty.PROPERTY_PACKAGE_NAME, "android"),
+        ),
+      ),
+      'resId("android", "button1").andPackageName("android")',
     ],
     [
       selector(
@@ -64,15 +67,15 @@ describe("describeStep", () => {
   const search = steps.synthesized(selector(res("search")));
 
   it("shows each kind as the SDK call it replays as", () => {
-    expect(describeStep(recorded(steps.gesture(search, "tap")))).toBe('element(res("search")).tap()');
-    expect(describeStep(recorded(steps.gesture(search, "longTap")))).toBe('element(res("search")).longTap()');
-    expect(describeStep(recorded(steps.scroll(search, Direction.DIR_DOWN)))).toBe('element(res("search")).scroll(DOWN)');
-    expect(describeStep(recorded(steps.swipe(search, Direction.DIR_LEFT)))).toBe('element(res("search")).swipe(LEFT)');
-    expect(describeStep(recorded(steps.setText(search, { text: "wool" })))).toBe('element(res("search")).setText("wool")');
+    expect(describeStep(recorded(steps.gesture(search, "tap")))).toBe('screen.element(res("search")).tap()');
+    expect(describeStep(recorded(steps.gesture(search, "longTap")))).toBe('screen.element(res("search")).longTap()');
+    expect(describeStep(recorded(steps.scroll(search, Direction.DIR_DOWN)))).toBe('screen.element(res("search")).scroll(DOWN)');
+    expect(describeStep(recorded(steps.swipe(search, Direction.DIR_LEFT)))).toBe('screen.element(res("search")).swipe(LEFT)');
+    expect(describeStep(recorded(steps.setText(search, { text: "wool" })))).toBe('screen.element(res("search")).setText("wool")');
     expect(describeStep(recorded(steps.setText(search, { secret: "password", value: "hunter2" })))).toBe(
-      'element(res("search")).setText(${password})',
+      'screen.element(res("search")).setText(${password})',
     );
-    expect(describeStep(recorded(steps.typeText(search, { text: "jo" })))).toBe('element(res("search")).typeText("jo")');
+    expect(describeStep(recorded(steps.typeText(search, { text: "jo" })))).toBe('screen.element(res("search")).typeText("jo")');
     expect(describeStep(recorded(steps.pressKey(4)))).toBe("pressBack()");
     expect(describeStep(recorded(steps.pressKey(66)))).toBe("pressKey(66)");
     expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.NOTIFICATIONS)))).toBe("openNotifications()");
@@ -82,9 +85,20 @@ describe("describeStep", () => {
       'app("com.example").grantPermission("android.permission.CAMERA")',
     );
     expect(describeStep(recorded(steps.assertion(search, { condition: Condition.TEXT_EQUALS, text: "Wool" })))).toBe(
-      'await(res("search")).textEquals("Wool")',
+      'screen.await(res("search")).textEquals("Wool")',
     );
-    expect(describeStep(recorded(steps.assertion(search, { condition: Condition.ONE })))).toBe('await(res("search")).one()');
+    expect(describeStep(recorded(steps.assertion(search, { condition: Condition.ONE })))).toBe('screen.await(res("search")).one()');
+  });
+
+  it("runs a selector with a package predicate on that app, and one without on the screen", () => {
+    const owned = steps.synthesized(selector(all(res("search"), match(TextProperty.PROPERTY_PACKAGE_NAME, "com.example"))));
+    expect(describeStep(recorded(steps.gesture(owned, "tap")))).toBe('app("com.example").element(res("search")).tap()');
+    expect(describeStep(recorded(steps.assertion(owned, { condition: Condition.GONE })))).toBe('app("com.example").await(res("search")).gone()');
+    // Only an exact predicate in the top conjunction is the app: a nested one stays in the selector.
+    const prefix = steps.synthesized(selector(all(res("a"), match(TextProperty.PROPERTY_PACKAGE_NAME, "com.", MatchMode.MATCH_STARTS_WITH))));
+    expect(describeStep(recorded(steps.gesture(prefix, "tap")))).toBe(
+      'screen.element(res("a").andPackageName("com.", MatchMode.STARTS_WITH)).tap()',
+    );
   });
 
   it("names the step kinds", () => {
@@ -104,7 +118,7 @@ describe("describeStep", () => {
         },
       },
     });
-    expect(describeWait(step)).toBe('await(res("search")).one()');
+    expect(describeWait(step)).toBe('screen.await(res("search")).one()');
     expect(describeWait(recorded(steps.pressKey(4)))).toBeNull();
     expect(describeWait(recorded(steps.openSystemPanel(SystemPanel.NOTIFICATIONS)))).toBeNull();
   });

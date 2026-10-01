@@ -13,9 +13,9 @@ from tap_e2e import res, text
 def test_drives_two_devices_concurrently(tap_devices):
     def drive(role: str) -> str:
         device = tap_devices[role]
-        launch(device)
-        device.element(res("view_button")).tap()
-        device.wait(text("View tapped")).visible()
+        app = launch(device)
+        app.element(res("view_button")).tap()
+        app.wait(text("View tapped")).visible()
         return device.info().model
 
     with ThreadPoolExecutor(max_workers=2) as pool:

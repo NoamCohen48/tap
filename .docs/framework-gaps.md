@@ -43,8 +43,9 @@ describes.
 | `device.wake` / screen state | Tests assume the screen is on and unlocked. | `UiDevice.wakeUp()` + keyguard dismissal; validation on a device with a lock screen. |
 | `inspector.snapshot` | No JSON hierarchy with selector suggestions; `DUMP_HIERARCHY` returns raw UiAutomator XML only. | Phase 5 inspector UI depends on it; failure artifacts use the XML for now. |
 | `AUT_CRASHED` / `AUT_ANR` / `AUT_NOT_INSTALLED` emission | Crashes surface as `NOT_FOUND`/`WAIT_TIMEOUT` plus a process-identity change, not as a first-class code. | Requires driver-side process observation (`am`/`dumpsys activity` or `ActivityManager` crash/ANR detection) and a fixture that crashes/ANRs on demand. |
+| Occlusion check coverage | `OBSCURED` reads the window list only: a view covering the target inside the same window (a floating bar, an in-window bottom sheet) is not detected, only the default display is checked, and `set_text` / `clear_text` (accessibility actions, not touches) are not checked. | `.docs/app-and-screen.md` Limits. Same-window covering would need a hit test over the node tree. |
 | Multi-touch / pinch, drag, fling | Not exposed. | Plan lists them as demand-driven. |
-| Permission dialogs | `App.grantPermission` pre-grants via `pm`; there is no helper to accept/deny a runtime permission dialog that appears mid-test. Selectors can reach the dialog with `inAnyWindow()` or `inPackage(controller)` (`PermissionTest`). | Adopt the Appium UiAutomator2 approach (locate the controller's allow/deny buttons by resource id per API family) behind a fixture (`PermissionActivity` exists). |
+| Permission dialogs | `App.grantPermission` pre-grants via `pm`; there is no helper to accept/deny a runtime permission dialog that appears mid-test. Selectors reach the dialog: with no package predicate, or with the controller's (`device.screen` / `device.app(controller)`; `PermissionTest`). | Adopt the Appium UiAutomator2 approach (locate the controller's allow/deny buttons by resource id per API family) behind a fixture (`PermissionActivity` exists). |
 
 ## Sync SDK visibility (plan §16)
 
@@ -151,7 +152,7 @@ locale/orientation control, and the plan's "AUT restarted during a command" faul
 
 ## Compose and WebView (plan §15, §17)
 
-- Compose: supported only through `testTagsAsResourceId` → `rawRes(tag)` and standard
+- Compose: supported only through `testTagsAsResourceId` → `res(tag)` and standard
   semantics text/description. No semantics-tree access, no `useUnmergedTree`, no Compose
   lazy-list item scrolling by key (only by visible selector via the clients' `scrollUntil` loop).
 - Observed once on emulator-5554 (2026-09-20): `MainScreenTest.scrollsComposeListUntilItemIsVisible`

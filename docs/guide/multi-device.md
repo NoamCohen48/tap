@@ -23,14 +23,14 @@ pytest plugin map roles to serials and then open one session per role.
         @TapDevices("sender", "receiver")
         fun deliversAMessage(devices: Devices) {
             tapTest {
+                val sender = devices["sender"].app("com.example.chat")
+                val receiver = devices["receiver"].app("com.example.chat")
                 coroutineScope {
                     awaitAll(
-                        async { devices["sender"].app().coldLaunch() },
-                        async { devices["receiver"].app().coldLaunch() },
+                        async { sender.coldLaunch() },
+                        async { receiver.coldLaunch() },
                     )
                 }
-                val sender = devices["sender"]
-                val receiver = devices["receiver"]
                 sender.element(res("compose")).setText("hi")
                 sender.element(text("Send")).tap()
                 receiver.await(text("hi"), timeout = 20.seconds).visible()
@@ -56,9 +56,10 @@ pytest plugin map roles to serials and then open one session per role.
     ```python
     @pytest.mark.tap_devices("sender", "receiver")
     def test_delivers_a_message(tap_devices):
-        sender, receiver = tap_devices["sender"], tap_devices["receiver"]
-        sender.app().cold_launch()
-        receiver.app().cold_launch()
+        sender = tap_devices["sender"].app("com.example.chat")
+        receiver = tap_devices["receiver"].app("com.example.chat")
+        sender.cold_launch()
+        receiver.cold_launch()
         sender.element(res("compose")).set_text("hi")
         sender.element(text("Send")).tap()
         receiver.wait(text("hi"), timeout=20).visible()
@@ -90,15 +91,15 @@ for each device, so they cannot deadlock.
 
 From the SDK you do the same by hand: `connection.availableSerials()` /
 `connection.available_serials()` to look, then
-`connection.attachDevice(serial, aut, options = DeviceOptions(waitForDevice = 60.seconds))` /
-`connection.attach_device(serial, aut, wait_for_device=60)` to open; without a wait, a busy device fails
+`connection.attachDevice(serial, options = DeviceOptions(waitForDevice = 60.seconds))` /
+`connection.attach_device(serial, wait_for_device=60)` to open; without a wait, a busy device fails
 at once with `DeviceBusyException` / `DeviceBusyError`. The device list carries only serials
 and states; anything richer (API level, model) comes from `device.info()` once a session is open,
 or from `adb -s <serial> shell getprop` if you need it before.
 
 ## Cross-device waits
 
-The receiver's UI is a normal `await(...)`. For conditions that span devices or systems, use
+The receiver's UI is a normal `app.await(...)` on that device. For conditions that span devices or systems, use
 `device.awaitUntil(...)` — see [Actions and waits](actions-and-waits.md#waiting-on-your-own-condition).
 
 ## Inspecting the devices

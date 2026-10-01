@@ -32,7 +32,7 @@ enum class MatchMode {
  */
 enum class Direction { UP, DOWN, LEFT, RIGHT }
 
-/** What [Device.awaitScreenStable] watches for changes. */
+/** What [App.awaitScreenStable] watches for changes. */
 enum class StabilitySignal {
     /** The accessibility tree of the focused window. */
     TREE,
@@ -177,7 +177,7 @@ enum class WaitReason {
     /** `awaitScreenStable`: the screen kept changing. */
     SCREEN_CHANGING,
 
-    /** `awaitAppVisible` / `awaitScreenStable`: the package never owned the focused window. */
+    /** `App.awaitVisible` / `App.awaitScreenStable`: the package never owned the focused window. */
     APP_NOT_VISIBLE,
     ;
 

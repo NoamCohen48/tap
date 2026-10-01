@@ -81,18 +81,22 @@ message Health {}
 // PNG of the whole display; the bytes arrive in blob frames before the response.
 message CaptureScreenshot {}
 
-// First contact with the AUT's sync provider for the process the host observed.
+// First contact with one app's sync provider for the process the host observed.
 message SyncBootstrap {
   int32 observed_pid = 1;
   string observed_start_token = 2;
+  string package_name = 3;
+  string authority = 4;
 }
 
-// Reads the sync provider's state; AUT_MISMATCH when the process identity moved.
+// Reads the same app's sync provider state; AUT_MISMATCH when the process identity moved.
 message SyncPoll {
   int32 observed_pid = 1;
   string observed_start_token = 2;
   string expected_process_start_uuid = 3;
   string expected_session_identity = 4;
+  string package_name = 5;
+  string authority = 6;
 }
 
 // ---- REQUEST / RESPONSE -------------------------------------------------------------------------

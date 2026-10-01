@@ -15,21 +15,20 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * Reads the AUT's synchronization state from its `tap-sync` content provider (the sync-sdk),
- * after checking the provider belongs to the expected, same-signature AUT. A provider call that
- * outlives its budget poisons the client for the rest of the session.
+ * Reads an app's synchronization state from its `tap-sync` content provider (the sync-sdk),
+ * after checking the provider belongs to the requested, same-signature package. A provider call
+ * that outlives its budget poisons the client for the rest of the session.
  */
 internal class SyncProviderClient(
     private val instrumentation: Instrumentation,
-    private val expectedAut: String,
-    private val syncAuthority: String,
 ) {
     private var poisoned = false
 
-    fun bootstrap(context: CommandContext, command: SyncBootstrap): SyncState = read(context, command.observedPid)
+    fun bootstrap(context: CommandContext, command: SyncBootstrap): SyncState =
+        read(context, command.observedPid, command.packageName, command.authority)
 
     fun poll(context: CommandContext, command: SyncPoll): SyncState {
-        val state = read(context, command.observedPid)
+        val state = read(context, command.observedPid, command.packageName, command.authority)
         if (
             state.processStartUuid != command.expectedProcessStartUuid ||
             state.sessionIdentity != command.expectedSessionIdentity
@@ -39,24 +38,29 @@ internal class SyncProviderClient(
         return state
     }
 
-    /** Reads a validated state from the AUT's provider; every failure is a [CommandFailure]. */
-    private fun read(context: CommandContext, observedPid: Int): SyncState {
+    /** Reads a validated state from one app's provider; every failure is a [CommandFailure]. */
+    private fun read(
+        context: CommandContext,
+        observedPid: Int,
+        packageName: String,
+        authority: String,
+    ): SyncState {
         if (poisoned) throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_POISONED)
         if (
             instrumentation.targetContext.packageManager.checkSignatures(
-                expectedAut,
+                packageName,
                 instrumentation.targetContext.packageName,
             ) != PackageManager.SIGNATURE_MATCH
         ) {
             throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.CERTIFICATE_MISMATCH)
         }
-        val provider = instrumentation.targetContext.packageManager.resolveContentProvider(syncAuthority, 0)
-        if (provider?.packageName != expectedAut) throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE)
+        val provider = instrumentation.targetContext.packageManager.resolveContentProvider(authority, 0)
+        if (provider?.packageName != packageName) throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE)
 
         val remaining = context.remainingMs()
         if (remaining <= 0) throw CommandFailure(ErrorCode.ERR_WAIT_TIMEOUT)
         val state = try {
-            readState(remaining)
+            readState(remaining, authority)
         } catch (_: TimeoutException) {
             poisoned = true
             throw CommandFailure(ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE, detail = ErrorDetail.PROVIDER_TIMEOUT)
@@ -80,11 +84,11 @@ internal class SyncProviderClient(
     }
 
     @Suppress("DEPRECATION")
-    private fun readState(timeoutMs: Long): SyncState {
+    private fun readState(timeoutMs: Long, authority: String): SyncState {
         val task = FutureTask {
             val bundle = requireNotNull(
                 instrumentation.targetContext.contentResolver.call(
-                    Uri.parse("content://$syncAuthority"),
+                    Uri.parse("content://$authority"),
                     "state",
                     null,
                     null,

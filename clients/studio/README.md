@@ -16,7 +16,7 @@ the first failure), and export and reopen `tap-recording/1` files. It needs a ru
 ```bash
 tap-studio              # serves on a free loopback port and opens the page
 tap-studio --no-open    # prints the link instead
-tap-studio --serial emulator-5554 --package com.example   # also attaches the device at start
+tap-studio --serial emulator-5554   # also attaches the device at start
 ```
 
 The link carries a one-time launch token; the page signs in with it and the server refuses

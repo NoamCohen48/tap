@@ -62,7 +62,7 @@ def create_app(
     async def attach_at_start(request: studio_pb2.AttachRequest) -> None:
         try:
             await studio.attach(request, None)  # type: ignore[arg-type]
-            print(f"Attached {request.serial} for {request.aut_package}", flush=True)
+            print(f"Attached {request.serial}", flush=True)
         except Exception as error:  # noqa: BLE001 - reported; the page can attach again
             print(f"tap-studio: could not attach {request.serial}: {error}", file=sys.stderr, flush=True)
 

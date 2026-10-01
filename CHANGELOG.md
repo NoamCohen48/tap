@@ -6,6 +6,33 @@ experimental may change in any release.
 
 ## Unreleased
 
+Breaking, in every family (protocol 5.0; `.docs/app-and-screen.md`):
+
+- **An attached device names no app.** Kotlin `connection.attachDevice(serial)` /
+  `attach(serial) { }`, Python `connection.attach_device(serial)`; `tap.autPackage` /
+  `tap_aut` / `TAP_AUT` and `DeviceOptions.syncAuthority` are gone. `device.app(pkg)` takes a
+  package.
+- **App or screen.** `app.element(…)` / `app.await(…)` (Python `app.wait(…)`) match only that
+  app's nodes; `device.screen.element(…)` / `.await(…)` match anywhere. Both search every window.
+  `device.element` / `device.await`, `inPackage`, `inAnyWindow`, `rawRes` and `SCOPE_DENIED` are
+  gone. App waits moved to `App`: `awaitVisible`, `awaitSettled`, `awaitScreenStable`,
+  `awaitAnimationEnd` (snake_case in Python).
+- **Resource ids.** `res(name)` matches the id in any package (or a Compose testTag),
+  `resId(pkg, name)` exactly that package's; a name containing `:id/` fails with
+  `QUALIFIED_RESOURCE_NAME`.
+- **Covered elements.** A tap, long tap, swipe or scroll on an element partly under another
+  window (keyboard, dialog, shade, overlay), with its touch point underneath, fails with
+  `NOT_INTERACTABLE` / `OBSCURED` before any input, instead of touching the covering window.
+  An element covered completely is, as before, not found.
+- `tap-agent`: `attach <serial>` (no package, `--launch`, `--cold`); `app <action> <package>
+  [argument]`; `pkg=` restricts a target to one app, otherwise it matches the whole screen.
+  The event log and `tap-recording/1` lose `aut_package`. Tap Studio attaches a device
+  alone (`--serial S`, no `--package`; `AttachRequest` / `AttachedDevice` lose `app_package`):
+  the package the App menu acts on is entered in that menu, and its code shows `app("pkg").…` or
+  `screen.…` per step.
+
+Added:
+
 - **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
   `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on
   the daemon host: video (MP4), audio (Opus) or both (Matroska), bounded to 30 s with video and

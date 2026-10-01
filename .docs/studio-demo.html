@@ -241,7 +241,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
     </div>
     <div class="devchip" title="Held connection 'studio', idle timeout 15 min">
       <span class="dot" aria-hidden="true"></span>
-      <span class="mono">emulator-5554</span><span class="sep">·</span><span>API 34</span><span class="sep">·</span><span class="mono">com.example.basket</span>
+      <span class="mono">emulator-5554</span><span class="sep">·</span><span>API 34</span>
     </div>
     <span class="spacer"></span>
     <div class="modes" role="group" aria-label="Click mode" id="modes">
@@ -282,6 +282,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
             <div class="menu-wrap">
               <button class="btn" id="appBtn" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>App</button>
               <div class="menu" id="appMenu" hidden>
+                <input aria-label="App package" value="com.example.basket" spellcheck="false" style="margin:4px 6px;font:12.5px var(--mono, monospace)">
                 <button data-app="cold_launch">Cold launch<small>force-stop, then launch; new process</small></button>
                 <button data-app="launch">Launch</button>
                 <button data-app="force_stop">Force stop</button>
@@ -472,21 +473,22 @@ function renderSel(d) {
   if (d.res && d.text) s += ".andText(" + q(d.text) + ")";
   if (d.anc) s += ".hasAncestor(res(" + q(d.anc.res) + ").hasDescendant(text(" + q(d.anc.has) + ")))";
   if (d.at != null) s += ".at(" + d.at + ")";
-  if (d.scope === "launcher") s += '.inPackage("com.android.launcher3")';
   return s;
 }
+// A ref's selector carries its node's package predicate: app("…") in code, a PACKAGE_NAME match on the wire.
+const owner = (d) => (d.scope === "launcher" ? "com.android.launcher3" : AUT);
 function nodeJson(d) {
   const parts = [];
-  if (d.res) parts.push({ resource: { name: d.res, aut_package: true } });
+  if (d.res) parts.push({ resource: { name: d.res } });
   if (d.text) parts.push({ match: { property: "TEXT", value: d.text } });
   if (d.desc) parts.push({ match: { property: "CONTENT_DESCRIPTION", value: d.desc } });
   if (d.hint) parts.push({ match: { property: "HINT", value: d.hint } });
-  if (d.anc) parts.push({ related: { relation: "ANCESTOR", node: { all_of: { nodes: [{ resource: { name: d.anc.res, aut_package: true } }, { related: { relation: "DESCENDANT", node: { match: { property: "TEXT", value: d.anc.has } } } }] } } } });
-  return parts.length === 1 ? parts[0] : { all_of: { nodes: parts } };
+  if (d.anc) parts.push({ related: { relation: "ANCESTOR", node: { all_of: { nodes: [{ resource: { name: d.anc.res } }, { related: { relation: "DESCENDANT", node: { match: { property: "TEXT", value: d.anc.has } } } }] } } } });
+  parts.push({ match: { property: "PROPERTY_PACKAGE_NAME", value: owner(d), mode: "MATCH_EXACT" } });
+  return { all_of: { nodes: parts } };
 }
 function selJson(d) {
   const o = { node: nodeJson(d) };
-  if (d.scope === "launcher") o.system = { package_name: "com.android.launcher3" };
   if (d.at != null) o.at = { index: d.at };
   return o;
 }
@@ -659,12 +661,13 @@ function drawTree(el) {
 
 /* ---------- steps ---------- */
 function stepCode(s) {
-  if (s.kind === "app") return "app()." + ({ cold_launch: "coldLaunch()", launch: "launch()", force_stop: "forceStop()", clear_data: "clearData()", grant_permission: 'grantPermission("android.permission.CAMERA")' })[s.op];
+  if (s.kind === "app") return "app(" + q(AUT) + ")." + ({ cold_launch: "coldLaunch()", launch: "launch()", force_stop: "forceStop()", clear_data: "clearData()", grant_permission: 'grantPermission("android.permission.CAMERA")' })[s.op];
   if (s.kind === "key") return s.op === "BACK" ? "pressBack()" : s.op === "HOME" ? "pressHome()" : "pressKey(" + s.op + ")";
   const sel = renderSel(s.sel);
-  if (s.kind === "assert") return "await(" + sel + ")." + ({ visible: "visible()", one: "one()", gone: "gone()", text: "textEquals(" + q(s.value) + ")", enabled: "enabled()", disabled: "disabled()", checked: "checked()", unchecked: "unchecked()" })[s.op];
+  const on = "app(" + q(owner(s.sel)) + ").";
+  if (s.kind === "assert") return on + "await(" + sel + ")." + ({ visible: "visible()", one: "one()", gone: "gone()", text: "textEquals(" + q(s.value) + ")", enabled: "enabled()", disabled: "disabled()", checked: "checked()", unchecked: "unchecked()" })[s.op];
   const v = s.secret ? "${" + s.secret + "}" : q(s.value);
-  return "element(" + sel + ")." + ({ tap: "tap()", long_tap: "longTap()", set_text: "setText(" + v + ")", type_text: "typeText(" + v + ")", clear: "clearText()", scroll_down: "scroll(DOWN)", scroll_up: "scroll(UP)", swipe_left: "swipe(LEFT)" })[s.op];
+  return on + "element(" + sel + ")." + ({ tap: "tap()", long_tap: "longTap()", set_text: "setText(" + v + ")", type_text: "typeText(" + v + ")", clear: "clearText()", scroll_down: "scroll(DOWN)", scroll_up: "scroll(UP)", swipe_left: "swipe(LEFT)" })[s.op];
 }
 function drawSteps(flashLast) {
   const el = $("steps");
@@ -857,7 +860,7 @@ function exportJson() {
     o.outcome = { ok: true, duration_ms: s.ms };
     return o;
   });
-  return JSON.stringify({ format: "tap-recording/1", recorded_at: new Date(S.recStart).toISOString().replace(/\.\d+Z/, "Z"), device: { serial: "emulator-5554", api_level: 34 }, aut_package: AUT, secrets: S.steps.filter((s) => s.secret).map((s) => s.secret), steps }, null, 2);
+  return JSON.stringify({ format: "tap-recording/1", recorded_at: new Date(S.recStart).toISOString().replace(/\.\d+Z/, "Z"), device: { serial: "emulator-5554", api_level: 34 }, secrets: S.steps.filter((s) => s.secret).map((s) => s.secret), steps }, null, 2);
 }
 $("exportBtn").onclick = () => { $("json").textContent = exportJson(); $("drawer").hidden = false; $("drawerClose").focus(); };
 $("drawerClose").onclick = () => { $("drawer").hidden = true; };

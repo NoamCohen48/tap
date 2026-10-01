@@ -91,7 +91,7 @@ class WaitTimeoutError(TapError):
     """A condition did not hold within its timeout; the message names the device, the
     condition and what was observed so a log line alone is diagnosable: ``reason`` and
     ``match_count`` for the waits the device runs (``visible``, ``one``, ``gone``,
-    ``await_app_visible``, ``await_screen_stable``), ``last_observation`` and ``polls`` for the
+    ``App.await_visible``, ``App.await_screen_stable``), ``last_observation`` and ``polls`` for the
     ones the client polls."""
 
     def __init__(
