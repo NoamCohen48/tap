@@ -7,11 +7,14 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.Base64
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class SessionJournal(
     val version: Int = 1,
@@ -29,6 +32,13 @@ data class SessionJournal(
     val resetRequired: Boolean = false,
     val resetStartedBootId: String? = null,
     val updatedAtEpochMs: Long = System.currentTimeMillis(),
+    /**
+     * Device state the session changed, as it was before ([SavedState]); empty once restored.
+     * Left out of the file while empty, so a journal without changes reads the same to an
+     * older engine.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val savedState: List<SavedState> = emptyList(),
 )
 
 @Serializable
@@ -164,6 +174,7 @@ class SessionJournalStore(root: Path, private val serial: String) {
         require(!record.resetRequired || !record.quarantineReason.isNullOrBlank())
         require(record.resetStartedBootId == null || record.resetRequired)
         require(record.resetStartedBootId == null || record.resetStartedBootId == record.bootId)
+        record.savedState.forEach { StateKey.parse(it.key) }
     }
 
     private fun writeAtomically(record: SessionJournal) {

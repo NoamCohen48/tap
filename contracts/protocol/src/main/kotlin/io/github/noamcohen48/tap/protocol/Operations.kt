@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.protocol
 
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Command.OpCase
@@ -8,25 +10,45 @@ import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
 import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.Done
+import io.github.noamcohen48.tap.api.v1.DoubleTap
+import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
+import io.github.noamcohen48.tap.api.v1.Fling
+import io.github.noamcohen48.tap.api.v1.GetClipboard
+import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.PermissionPrompt
+import io.github.noamcohen48.tap.api.v1.Pinch
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.Toast
 import io.github.noamcohen48.tap.api.v1.TypeText
+import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
+import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
@@ -81,11 +103,14 @@ val Command.isMutation: Boolean
         when (opCase) {
             OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
             OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL, OpCase.OPEN_SYSTEM_PANEL,
+            OpCase.SET_ORIENTATION, OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION,
+            OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG, OpCase.PINCH, OpCase.FLING,
+            OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.SET_CLIPBOARD,
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.WAIT_APP_VISIBLE, OpCase.WAIT_SCREEN_STABLE,
-            OpCase.OP_NOT_SET, null,
+            OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.OP_NOT_SET, null,
             -> false
         }
 
@@ -107,15 +132,24 @@ val Command.targetSelector: Selector?
             OpCase.CLEAR_TEXT -> clearText.selector
             OpCase.SWIPE -> swipe.selector
             OpCase.SCROLL -> scroll.selector
+            OpCase.DOUBLE_TAP -> doubleTap.selector
+            OpCase.DRAG -> drag.selector
+            OpCase.PINCH -> pinch.selector
+            OpCase.FLING -> fling.selector
+            OpCase.PERFORM_IME_ACTION -> performImeAction.selector
             OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.TYPE_TEXT, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
-            OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.OP_NOT_SET, null,
+            OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.SET_ORIENTATION,
+            OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD,
+            OpCase.WAIT_PERMISSION_PROMPT, OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.SET_CLIPBOARD,
+            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.OP_NOT_SET, null,
             -> null
         }
 
 val Request.targetSelector: Selector? get() = if (bodyCase == BodyCase.COMMAND) command.targetSelector else null
 
-/** Every selector the command carries (at most the target). */
-val Command.selectors: List<Selector> get() = listOfNotNull(targetSelector)
+/** Every selector the command carries: the target, and a drag's destination. */
+val Command.selectors: List<Selector>
+    get() = if (opCase == OpCase.DRAG) listOf(drag.selector, drag.target) else listOfNotNull(targetSelector)
 
 /** Public commands. Optional arguments left `null` are absent on the wire (the driver's default). */
 object Commands {
@@ -125,6 +159,42 @@ object Commands {
 
     fun openSystemPanel(panel: SystemPanel): Command =
         Command.newBuilder().setOpenSystemPanel(OpenSystemPanel.newBuilder().setPanel(panel)).build()
+
+    fun setOrientation(orientation: Orientation): Command =
+        Command.newBuilder().setSetOrientation(SetOrientation.newBuilder().setOrientation(orientation)).build()
+
+    fun setDisplayRotation(rotation: DisplayRotation): Command =
+        Command.newBuilder().setSetDisplayRotation(SetDisplayRotation.newBuilder().setRotation(rotation)).build()
+
+    fun unfreezeRotation(): Command =
+        Command.newBuilder().setUnfreezeRotation(UnfreezeRotation.getDefaultInstance()).build()
+
+    fun dismissKeyguard(): Command = Command.newBuilder().setDismissKeyguard(DismissKeyguard.getDefaultInstance()).build()
+
+    fun waitPermissionPrompt(): Command =
+        Command.newBuilder().setWaitPermissionPrompt(WaitPermissionPrompt.getDefaultInstance()).build()
+
+    fun choosePermission(choice: PermissionChoice): Command =
+        Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoice(choice)).build()
+
+    fun hideKeyboard(): Command = Command.newBuilder().setHideKeyboard(HideKeyboard.getDefaultInstance()).build()
+
+    fun setClipboard(text: String): Command = Command.newBuilder().setSetClipboard(SetClipboard.newBuilder().setText(text)).build()
+
+    fun getClipboard(): Command = Command.newBuilder().setGetClipboard(GetClipboard.getDefaultInstance()).build()
+
+    /** A toast whose text matches [text] under [mode] (any text when null), from [packageName] (any package when null). */
+    fun awaitToast(
+        text: String? = null,
+        mode: MatchMode = MatchMode.MATCH_UNSPECIFIED,
+        packageName: String? = null,
+    ): Command =
+        Command.newBuilder().setAwaitToast(
+            AwaitToast.newBuilder().setMode(mode).apply {
+                text?.let { setText(it) }
+                packageName?.let { setPackageName(it) }
+            },
+        ).build()
 
     fun dumpHierarchy(): Command = Command.newBuilder().setDumpHierarchy(DumpHierarchy.getDefaultInstance()).build()
 
@@ -190,6 +260,31 @@ object Commands {
             },
         ).build()
 
+    fun performImeAction(selector: Selector): Command =
+        Command.newBuilder().setPerformImeAction(PerformImeAction.newBuilder().setSelector(selector)).build()
+
+    fun doubleTap(selector: Selector): Command = Command.newBuilder().setDoubleTap(DoubleTap.newBuilder().setSelector(selector)).build()
+
+    fun drag(
+        selector: Selector,
+        target: Selector,
+    ): Command = Command.newBuilder().setDrag(Drag.newBuilder().setSelector(selector).setTarget(target)).build()
+
+    fun pinch(
+        selector: Selector,
+        direction: PinchDirection,
+        percent: Int? = null,
+    ): Command =
+        Command.newBuilder().setPinch(
+            Pinch.newBuilder().setSelector(selector).setDirection(direction).apply {
+                percent?.let { setPercent(it) }
+            },
+        ).build()
+
+    fun fling(
+        selector: Selector,
+        direction: Direction,
+    ): Command = Command.newBuilder().setFling(Fling.newBuilder().setSelector(selector).setDirection(direction)).build()
 }
 
 /**
@@ -349,6 +444,36 @@ interface CommandHandler {
     fun scroll(command: Scroll)
 
     fun openSystemPanel(command: OpenSystemPanel)
+
+    fun doubleTap(command: DoubleTap)
+
+    fun drag(command: Drag)
+
+    fun pinch(command: Pinch)
+
+    fun fling(command: Fling)
+
+    fun dismissKeyguard(command: DismissKeyguard)
+
+    fun waitPermissionPrompt(command: WaitPermissionPrompt): PermissionPrompt
+
+    fun choosePermission(command: ChoosePermission)
+
+    fun hideKeyboard(command: HideKeyboard)
+
+    fun performImeAction(command: PerformImeAction)
+
+    fun setClipboard(command: SetClipboard)
+
+    fun getClipboard(command: GetClipboard): String
+
+    fun awaitToast(command: AwaitToast): Toast
+
+    fun setOrientation(command: SetOrientation)
+
+    fun setDisplayRotation(command: SetDisplayRotation)
+
+    fun unfreezeRotation(command: UnfreezeRotation)
 }
 
 /**
@@ -411,6 +536,21 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.SWIPE -> result.setDone(done).also { handler.swipe(swipe) }
         OpCase.SCROLL -> result.setDone(done).also { handler.scroll(scroll) }
         OpCase.OPEN_SYSTEM_PANEL -> result.setDone(done).also { handler.openSystemPanel(openSystemPanel) }
+        OpCase.SET_ORIENTATION -> result.setDone(done).also { handler.setOrientation(setOrientation) }
+        OpCase.SET_DISPLAY_ROTATION -> result.setDone(done).also { handler.setDisplayRotation(setDisplayRotation) }
+        OpCase.UNFREEZE_ROTATION -> result.setDone(done).also { handler.unfreezeRotation(unfreezeRotation) }
+        OpCase.DISMISS_KEYGUARD -> result.setDone(done).also { handler.dismissKeyguard(dismissKeyguard) }
+        OpCase.DOUBLE_TAP -> result.setDone(done).also { handler.doubleTap(doubleTap) }
+        OpCase.DRAG -> result.setDone(done).also { handler.drag(drag) }
+        OpCase.PINCH -> result.setDone(done).also { handler.pinch(pinch) }
+        OpCase.FLING -> result.setDone(done).also { handler.fling(fling) }
+        OpCase.WAIT_PERMISSION_PROMPT -> result.setPermissionPrompt(handler.waitPermissionPrompt(waitPermissionPrompt))
+        OpCase.CHOOSE_PERMISSION -> result.setDone(done).also { handler.choosePermission(choosePermission) }
+        OpCase.HIDE_KEYBOARD -> result.setDone(done).also { handler.hideKeyboard(hideKeyboard) }
+        OpCase.PERFORM_IME_ACTION -> result.setDone(done).also { handler.performImeAction(performImeAction) }
+        OpCase.SET_CLIPBOARD -> result.setDone(done).also { handler.setClipboard(setClipboard) }
+        OpCase.GET_CLIPBOARD -> result.setText(handler.getClipboard(getClipboard))
+        OpCase.AWAIT_TOAST -> result.setToast(handler.awaitToast(awaitToast))
         OpCase.OP_NOT_SET, null -> throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "No command op this driver knows is set")
     }
     return result

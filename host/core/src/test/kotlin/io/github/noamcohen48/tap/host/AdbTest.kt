@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.host
 
+import io.github.noamcohen48.tap.api.v1.IntentExtra
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -123,12 +124,34 @@ class AdbTest {
             adb.forceStop(serial, "com.example;reboot")
             adb.grantPermission(serial, "com.example", "android.permission.CAMERA && id")
             adb.clearData(serial, "com.example")
+            adb.revokePermission(serial, "com.example", "android.permission.CAMERA")
+            val extras =
+                listOf(
+                    IntentExtra.newBuilder().setKey("query").setStringValue("it's a test; id").build(),
+                    IntentExtra.newBuilder().setKey("empty").setStringValue("").build(),
+                    IntentExtra.newBuilder().setKey("flag").setBoolValue(true).build(),
+                    IntentExtra.newBuilder().setKey("count").setIntValue(-3).build(),
+                    IntentExtra.newBuilder().setKey("id").setLongValue(9_000_000_000).build(),
+                    IntentExtra.newBuilder().setKey("ratio").setFloatValue(1.5f).build(),
+                )
+            adb.startActivity(serial, "com.example/.Main", 5_000, extras)
             assertEquals(
                 listOf(
                     listOf("shell", "am", "start", "-W", "-n", "'com.example/.Outer\$Inner'"),
                     listOf("shell", "am", "force-stop", "'com.example;reboot'"),
                     listOf("shell", "pm", "grant", "com.example", "'android.permission.CAMERA && id'"),
                     listOf("shell", "pm", "clear", "com.example"),
+                    listOf("shell", "pm", "revoke", "com.example", "android.permission.CAMERA"),
+                    listOf(
+                        "shell", "am", "start", "-W",
+                        "--es", "query", "'it'\\''s a test; id'",
+                        "--es", "empty", "''",
+                        "--ez", "flag", "true",
+                        "--ei", "count", "-3",
+                        "--el", "id", "9000000000",
+                        "--ef", "ratio", "1.5",
+                        "-n", "com.example/.Main",
+                    ),
                 ),
                 commands.map { it.drop(3) },
             )
@@ -178,6 +201,122 @@ class AdbTest {
                 installDriverPackage(adbWith(other, "Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]"), serial, DRIVER_PACKAGE, apk)
             }
             assertEquals(listOf("install"), other.map { it[3] })
+        }
+
+    @Test
+    fun `rotation state captures an absent setting and restores it by deleting it`() =
+        runBlocking {
+            val settings = mutableMapOf("accelerometer_rotation" to "1")
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        val args = command.dropWhile { it != "settings" }
+                        val out =
+                            when (args.getOrNull(1)) {
+                                "get" -> settings[args[3]] ?: "null"
+                                "put" -> "".also { settings[args[3]] = args[4] }
+                                "delete" -> "Deleted 1 rows".also { settings.remove(args[3]) }
+                                else -> ""
+                            }
+                        FakeProcess(stdout = out)
+                    },
+                )
+            val initial = adb.rotationState(serial)
+            assertEquals(RotationState(accelerometerRotation = 1, userRotation = null), initial)
+
+            settings["accelerometer_rotation"] = "0"
+            settings["user_rotation"] = "1"
+            adb.restoreRotationState(serial, initial)
+            assertEquals(mapOf("accelerometer_rotation" to "1"), settings)
+        }
+
+    @Test
+    fun `device state reads the shapes the devices print`(): Unit =
+        runBlocking {
+            suspend fun read(
+                key: String,
+                stdout: String,
+            ) = scriptedAdb(stdout).readState(serial, key)
+            assertEquals("no", read(StateKey.NightMode.id, "Night mode: no\n"))
+            assertNull(read(StateKey.Density.id, "Physical density: 280\n"))
+            assertEquals("320", read(StateKey.Density.id, "Physical density: 280\nOverride density: 320\n"))
+            assertEquals("fr-FR,en-US", read(StateKey.AppLocales("com.example").id, "Locales for com.example for user -2 are [fr-FR,en-US]\n"))
+            assertEquals("", read(StateKey.AppLocales("com.example").id, "Locales for com.example for user -2 are []\n"))
+            assertNull(read(StateKey.FONT_SCALE, "null\n"))
+            assertEquals("1.1", read(StateKey.FONT_SCALE, "1.1\n"))
+            assertFailsWith<AdbCommandException> { read(StateKey.NightMode.id, "Unknown command: night") }
+            assertFailsWith<AdbCommandException> { read(StateKey.Density.id, "Error: no display") }
+            assertFailsWith<AdbCommandException> { read(StateKey.AppLocales("com.example").id, "Unknown package com.example for user -2") }
+            assertFailsWith<IllegalArgumentException> { StateKey.parse("setting:system/font_scale;reboot") }
+            assertFailsWith<IllegalArgumentException> { StateKey.parse("locale:") }
+        }
+
+    @Test
+    fun `device state writes are quoted and null removes`() =
+        runBlocking {
+            val commands = mutableListOf<List<String>>()
+            val adb = scriptedAdb("", commands = commands)
+            adb.writeState(serial, StateKey.FONT_SCALE, "1.3")
+            adb.writeState(serial, StateKey.FONT_SCALE, null)
+            adb.writeState(serial, StateKey.NightMode.id, "yes")
+            adb.writeState(serial, StateKey.Density.id, "320")
+            adb.writeState(serial, StateKey.Density.id, null)
+            adb.writeState(serial, StateKey.AppLocales("com.example").id, "fr-FR,en")
+            adb.writeState(serial, StateKey.AppLocales("com.example").id, "")
+            assertEquals(
+                listOf(
+                    listOf("shell", "settings", "put", "system", "font_scale", "1.3"),
+                    listOf("shell", "settings", "delete", "system", "font_scale"),
+                    listOf("shell", "cmd", "uimode", "night", "yes"),
+                    listOf("shell", "wm", "density", "320"),
+                    listOf("shell", "wm", "density", "reset"),
+                    listOf("shell", "cmd", "locale", "set-app-locales", "com.example", "--user", "current", "--locales", "fr-FR,en"),
+                    listOf("shell", "cmd", "locale", "set-app-locales", "com.example", "--user", "current"),
+                ),
+                commands.map { it.drop(3) },
+            )
+        }
+
+    @Test
+    fun `restoring state locks rotation first, writes newest first and reads everything back`() =
+        runBlocking {
+            val settings = mutableMapOf("accelerometer_rotation" to "0", "user_rotation" to "1", "font_scale" to "1.3")
+            val writes = mutableListOf<String>()
+            var stuck: String? = null
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        val args = command.dropWhile { it != "settings" }
+                        val out =
+                            when (args.getOrNull(1)) {
+                                "get" -> settings[args[3]] ?: "null"
+                                "put" -> "".also {
+                                    writes += "${args[3]}=${args[4]}"
+                                    if (args[3] != stuck) settings[args[3]] = args[4]
+                                }
+                                "delete" -> "Deleted 1 rows".also {
+                                    writes += "${args[3]}=null"
+                                    settings.remove(args[3])
+                                }
+                                else -> ""
+                            }
+                        FakeProcess(stdout = out)
+                    },
+                )
+            val saved =
+                listOf(
+                    SavedState(StateKey.ACCELEROMETER_ROTATION, "1"),
+                    SavedState(StateKey.USER_ROTATION, "0"),
+                    SavedState(StateKey.FONT_SCALE, null),
+                )
+            adb.restoreState(serial, saved)
+            assertEquals(listOf("accelerometer_rotation=0", "font_scale=null", "user_rotation=0", "accelerometer_rotation=1"), writes)
+            assertEquals(mapOf("accelerometer_rotation" to "1", "user_rotation" to "0"), settings)
+
+            settings["font_scale"] = "1.3"
+            stuck = "font_scale"
+            val failure = assertFailsWith<DeviceSettingException> { adb.restoreState(serial, listOf(SavedState(StateKey.FONT_SCALE, "1.0"))) }
+            assertTrue("system/font_scale=1.3 (expected 1.0)" in failure.message.orEmpty(), failure.message)
         }
 
     @Test

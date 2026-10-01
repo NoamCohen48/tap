@@ -3,8 +3,14 @@ package io.github.noamcohen48.tap.sdk
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Count
+import io.github.noamcohen48.tap.api.v1.DoubleTap
+import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.Exists
+import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.Pinch
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
@@ -66,6 +72,89 @@ class Element internal constructor(
     /** Long click on the one matching node. */
     suspend fun longTap(timeout: Duration? = null) {
         run(timeout) { longTap = LongTap.newBuilder().setSelector(target).build() }
+    }
+
+    /** Two taps at the centre of the one matching node's visible bounds, inside Android's double-tap window. */
+    suspend fun doubleTap(timeout: Duration? = null) {
+        run(timeout) { doubleTap = DoubleTap.newBuilder().setSelector(target).build() }
+    }
+
+    /**
+     * Runs the one matching text field's keyboard action (Search, Go, Send, Done, … as the app
+     * configured it) exactly as the keyboard's action key does, through accessibility
+     * `ACTION_IME_ENTER`. API 30+: older devices fail with `UNSUPPORTED` / `REQUIRES_API_30`
+     * before any input (pressing Enter is not equivalent). The field must have input focus (tap
+     * it first): Android offers the action only then, and a node that does not offer it fails
+     * with `ACTION_REJECTED` before any input.
+     */
+    suspend fun imeAction(timeout: Duration? = null) {
+        run(timeout) { performImeAction = PerformImeAction.newBuilder().setSelector(target).build() }
+    }
+
+    /**
+     * Presses the one matching node until it is a long press, moves the finger to the centre of
+     * the one node matching [destination] (resolved on the same screen, before any input), holds
+     * there briefly and lifts. Nothing is reported about what the app did with the drop.
+     */
+    suspend fun dragTo(
+        destination: Selector,
+        timeout: Duration? = null,
+    ) {
+        run(timeout) {
+            drag =
+                Drag
+                    .newBuilder()
+                    .setSelector(target)
+                    .setTarget(destination.proto)
+                    .build()
+        }
+    }
+
+    /** Two fingers moving apart from the one matching node's centre, across [percent] of its size. */
+    suspend fun pinchOpen(
+        percent: Int = DEFAULT_GESTURE_PERCENT,
+        timeout: Duration? = null,
+    ) = pinch(PinchDirection.PINCH_OPEN, percent, timeout)
+
+    /** Two fingers moving together towards the one matching node's centre, across [percent] of its size. */
+    suspend fun pinchClose(
+        percent: Int = DEFAULT_GESTURE_PERCENT,
+        timeout: Duration? = null,
+    ) = pinch(PinchDirection.PINCH_CLOSE, percent, timeout)
+
+    private suspend fun pinch(
+        direction: PinchDirection,
+        percent: Int,
+        timeout: Duration?,
+    ) {
+        run(timeout) {
+            pinch =
+                Pinch
+                    .newBuilder()
+                    .setSelector(target)
+                    .setDirection(direction)
+                    .setPercent(percent)
+                    .build()
+        }
+    }
+
+    /**
+     * One fast swipe across the one matching node towards [direction]'s content edge (as for
+     * [scroll]: `DOWN` flings towards content below). Returns once the finger lifts; the content
+     * may keep moving, so wait for what you need next.
+     */
+    suspend fun fling(
+        direction: Direction,
+        timeout: Duration? = null,
+    ) {
+        run(timeout) {
+            fling =
+                Fling
+                    .newBuilder()
+                    .setSelector(target)
+                    .setDirection(direction.toProto())
+                    .build()
+        }
     }
 
     /**

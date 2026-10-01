@@ -156,6 +156,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.log: FakeConnections | None = None
         self.deny: bool = False
         self.png = b"\x89PNG fake"
+        self.conditions: list = []
         self.corrupt_png = False
         # Accepted attaches per client connection id.
         self.attached: dict[str, list[pb.AttachRequest]] = {}
@@ -225,6 +226,28 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self._own("driver_log", request, context)
         return pb.DriverLogResponse(lines=["line"])
 
+    def SetAnimations(self, request, context):
+        self._own("set_animations", request, context)
+        self.conditions.append(request)
+        return pb.SetAnimationsResponse()
+
+    def SetDarkMode(self, request, context):
+        self._own("set_dark_mode", request, context)
+        self.conditions.append(request)
+        fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_UNSUPPORTED_API, "dark mode needs API 29")
+
+    def SetFontScale(self, request, context):
+        self._own("set_font_scale", request, context)
+        self.conditions.append(request)
+        return pb.SetFontScaleResponse()
+
+    def SetDensity(self, request, context):
+        self._own("set_density", request, context)
+        self.conditions.append(request)
+        if request.HasField("dpi") and request.dpi == 999:
+            fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DEVICE_SETTING, "density read back 420")
+        return pb.SetDensityResponse()
+
     def Detach(self, request, context):
         self._own("detach", request, context)
         self.detaches.append(request.attached_device_id)
@@ -237,12 +260,19 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
 
 
 class FakeApps(app_pb2_grpc.AppServiceServicer):
-    """IsInstalled/ForceStop/Install; ``owners`` logs (rpc, client_connection_id)."""
+    """IsInstalled/ForceStop/Launch/ColdLaunch/RevokePermission/Foreground/OpenLink/Install; ``owners`` logs (rpc,
+    client_connection_id). OpenLink reports ``<package>/.Link`` unless ``any_app``."""
 
     def __init__(self) -> None:
         self.owners: list[tuple[str, str]] = []
         self.install_parts: list[pb.InstallRequest] = []
         self.force_stops: list[pb.ForceStopRequest] = []
+        self.foregrounds: list[pb.ForegroundRequest] = []
+        self.links: list[pb.OpenLinkRequest] = []
+        self.launches: list[pb.LaunchRequest] = []
+        self.cold_launches: list[pb.ColdLaunchRequest] = []
+        self.revokes: list[pb.RevokePermissionRequest] = []
+        self.locales: list[str] = []
         self.log: FakeConnections | None = None
 
     def _record(self, operation: str, app: pb.AppTarget, **call) -> None:
@@ -262,13 +292,48 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
 
     def Launch(self, request, context):
         self.owners.append(("launch", request.app.client_connection_id))
+        self.launches.append(request)
         self._record("launch", request.app, **({"activity": request.activity} if request.HasField("activity") else {}))
         return pb.LaunchResponse()
 
     def ColdLaunch(self, request, context):
         self.owners.append(("cold_launch", request.app.client_connection_id))
+        self.cold_launches.append(request)
         self._record("cold_launch", request.app)
         return pb.ColdLaunchResponse(process=pb.ProcessIdentity(pid=4242, start_token="t"))
+
+    def RevokePermission(self, request, context):
+        self.owners.append(("revoke_permission", request.app.client_connection_id))
+        self.revokes.append(request)
+        self._record("revoke_permission", request.app, permission=request.permission)
+        return pb.RevokePermissionResponse()
+
+    def IsPermissionGranted(self, request, context):
+        self.owners.append(("is_permission_granted", request.app.client_connection_id))
+        return pb.IsPermissionGrantedResponse(granted=request.permission == "android.permission.CAMERA")
+
+    def SetLocales(self, request, context):
+        self.owners.append(("set_locales", request.app.client_connection_id))
+        self.locales = list(request.locales)
+        return pb.SetLocalesResponse()
+
+    def GetLocales(self, request, context):
+        self.owners.append(("get_locales", request.app.client_connection_id))
+        return pb.GetLocalesResponse(locales=self.locales)
+
+    def Foreground(self, request, context):
+        self.owners.append(("foreground", request.app.client_connection_id))
+        self.foregrounds.append(request)
+        self._record("foreground", request.app)
+        return pb.ForegroundResponse()
+
+    def OpenLink(self, request, context):
+        self.owners.append(("open_link", request.app.client_connection_id))
+        self.links.append(request)
+        self._record("open_link", request.app, uri=request.uri, **({"any_app": True} if request.any_app else {}))
+        if request.any_app:
+            return pb.OpenLinkResponse()
+        return pb.OpenLinkResponse(activity=f"{request.app.package_name}/.Link")
 
     def Install(self, request_iterator, context):
         self.install_parts.extend(request_iterator)

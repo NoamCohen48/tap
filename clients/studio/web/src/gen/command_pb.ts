@@ -13,7 +13,7 @@
 
 import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Selector } from "./selector_pb";
+import type { MatchMode, Selector } from "./selector_pb";
 import { file_selector } from "./selector_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -21,7 +21,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file command.proto.
  */
 export const file_command: GenFile = /*@__PURE__*/
-  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCIPCg1EdW1wSGllcmFyY2h5IiwKBkV4aXN0cxIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciIrCgVDb3VudBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciIuCghTbmFwc2hvdBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciJGCgtXYWl0VmlzaWJsZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchITCgtleGFjdGx5X29uZRgCIAEoCCIuCghXYWl0R29uZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciImCg5XYWl0QXBwVmlzaWJsZRIUCgxwYWNrYWdlX25hbWUYASABKAkifwoQV2FpdFNjcmVlblN0YWJsZRIUCgxwYWNrYWdlX25hbWUYASABKAkSGgoNc3RhYmxlX2Zvcl9tcxgCIAEoA0gAiAEBEicKBnNpZ25hbBgDIAEoDjIXLnRhcC52MS5TdGFiaWxpdHlTaWduYWxCEAoOX3N0YWJsZV9mb3JfbXMiKQoDVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi0KB0xvbmdUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiOwoHU2V0VGV4dBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIMCgR0ZXh0GAIgASgJIhgKCFR5cGVUZXh0EgwKBHRleHQYAiABKAkiLwoJQ2xlYXJUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIoUBCgVTd2lwZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIkCglkaXJlY3Rpb24YAiABKA4yES50YXAudjEuRGlyZWN0aW9uEh0KEGRpc3RhbmNlX3BlcmNlbnQYAyABKAVIAIgBAUITChFfZGlzdGFuY2VfcGVyY2VudCKGAQoGU2Nyb2xsEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IpUGCgdDb21tYW5kEhcKCnRpbWVvdXRfbXMYASABKANIAYgBARIuCgtkZXZpY2VfaW5mbxgDIAEoCzIXLnRhcC52MS5EZXZpY2VJbmZvUXVlcnlIABIlCglwcmVzc19rZXkYBCABKAsyEC50YXAudjEuUHJlc3NLZXlIABIvCg5kdW1wX2hpZXJhcmNoeRgGIAEoCzIVLnRhcC52MS5EdW1wSGllcmFyY2h5SAASIAoGZXhpc3RzGAcgASgLMg4udGFwLnYxLkV4aXN0c0gAEh4KBWNvdW50GAggASgLMg0udGFwLnYxLkNvdW50SAASJAoIc25hcHNob3QYCSABKAsyEC50YXAudjEuU25hcHNob3RIABIrCgx3YWl0X3Zpc2libGUYCiABKAsyEy50YXAudjEuV2FpdFZpc2libGVIABIlCgl3YWl0X2dvbmUYCyABKAsyEC50YXAudjEuV2FpdEdvbmVIABIyChB3YWl0X2FwcF92aXNpYmxlGAwgASgLMhYudGFwLnYxLldhaXRBcHBWaXNpYmxlSAASNgoSd2FpdF9zY3JlZW5fc3RhYmxlGA0gASgLMhgudGFwLnYxLldhaXRTY3JlZW5TdGFibGVIABIaCgN0YXAYDiABKAsyCy50YXAudjEuVGFwSAASIwoIbG9uZ190YXAYDyABKAsyDy50YXAudjEuTG9uZ1RhcEgAEiMKCHNldF90ZXh0GBAgASgLMg8udGFwLnYxLlNldFRleHRIABIlCgl0eXBlX3RleHQYESABKAsyEC50YXAudjEuVHlwZVRleHRIABInCgpjbGVhcl90ZXh0GBIgASgLMhEudGFwLnYxLkNsZWFyVGV4dEgAEh4KBXN3aXBlGBMgASgLMg0udGFwLnYxLlN3aXBlSAASIAoGc2Nyb2xsGBQgASgLMg4udGFwLnYxLlNjcm9sbEgAEjQKEW9wZW5fc3lzdGVtX3BhbmVsGBggASgLMhcudGFwLnYxLk9wZW5TeXN0ZW1QYW5lbEgAQgQKAm9wQg0KC190aW1lb3V0X21zIkIKBkJvdW5kcxIMCgRsZWZ0GAEgASgFEgsKA3RvcBgCIAEoBRINCgVyaWdodBgDIAEoBRIOCgZib3R0b20YBCABKAUi+gMKD0VsZW1lbnRTbmFwc2hvdBIXCgpjbGFzc19uYW1lGAEgASgJSACIAQESGQoMcGFja2FnZV9uYW1lGAIgASgJSAGIAQESGgoNcmVzb3VyY2VfbmFtZRgDIAEoCUgCiAEBEhEKBHRleHQYBCABKAlIA4gBARIgChNjb250ZW50X2Rlc2NyaXB0aW9uGAUgASgJSASIAQESEQoEaGludBgGIAEoCUgFiAEBEh4KBmJvdW5kcxgHIAEoCzIOLnRhcC52MS5Cb3VuZHMSEQoJY2hlY2thYmxlGAggASgIEg8KB2NoZWNrZWQYCSABKAgSEQoJY2xpY2thYmxlGAogASgIEg8KB2VuYWJsZWQYCyABKAgSEQoJZm9jdXNhYmxlGAwgASgIEg8KB2ZvY3VzZWQYDSABKAgSFgoObG9uZ19jbGlja2FibGUYDiABKAgSEgoKc2Nyb2xsYWJsZRgPIAEoCBIQCghzZWxlY3RlZBgQIAEoCBITCgtjaGlsZF9jb3VudBgRIAEoBRIUCgxzaG93aW5nX2hpbnQYEiABKAhCDQoLX2NsYXNzX25hbWVCDwoNX3BhY2thZ2VfbmFtZUIQCg5fcmVzb3VyY2VfbmFtZUIHCgVfdGV4dEIWChRfY29udGVudF9kZXNjcmlwdGlvbkIHCgVfaGludCLQAQoKRGV2aWNlSW5mbxIRCglhcGlfbGV2ZWwYASABKAUSFAoMbWFudWZhY3R1cmVyGAIgASgJEg0KBW1vZGVsGAMgASgJEg8KB3Byb2R1Y3QYBCABKAkSFQoNZGlzcGxheV93aWR0aBgFIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgGIAEoBRIYChBkaXNwbGF5X3JvdGF0aW9uGAcgASgFEhwKD2N1cnJlbnRfcGFja2FnZRgIIAEoCUgAiAEBQhIKEF9jdXJyZW50X3BhY2thZ2UiBgoERG9uZSKUAQoFRXJyb3ISHwoEY29kZRgBIAEoDjIRLnRhcC52MS5FcnJvckNvZGUSEwoGZGV0YWlsGAIgASgJSACIAQESFAoHbWVzc2FnZRgDIAEoCUgBiAEBEhgKC21hdGNoX2NvdW50GAQgASgFSAKIAQFCCQoHX2RldGFpbEIKCghfbWVzc2FnZUIOCgxfbWF0Y2hfY291bnQipgIKDUNvbW1hbmRSZXN1bHQSEwoLZHVyYXRpb25fbXMYASABKAMSEgoKcmVxdWVzdF9pZBgCIAEoAxIaChJzZXNzaW9uX2dlbmVyYXRpb24YAyABKAMSHAoEZG9uZRgEIAEoCzIMLnRhcC52MS5Eb25lSAASDgoEYm9vbBgFIAEoCEgAEg8KBWNvdW50GAcgASgFSAASDgoEdGV4dBgIIAEoCUgAEisKCHNuYXBzaG90GAkgASgLMhcudGFwLnYxLkVsZW1lbnRTbmFwc2hvdEgAEikKC2RldmljZV9pbmZvGAogASgLMhIudGFwLnYxLkRldmljZUluZm9IABIeCgVlcnJvchgNIAEoCzINLnRhcC52MS5FcnJvckgAQgkKB291dGNvbWUqqQUKCUVycm9yQ29kZRITCg9FUlJfVU5TUEVDSUZJRUQQABIXChNFUlJfSU5WQUxJRF9SRVFVRVNUEAESGAoURVJSX0lOVkFMSURfU0VMRUNUT1IQAhITCg9FUlJfVU5TVVBQT1JURUQQAxIXChNFUlJfVU5BVVRIRU5USUNBVEVEEAQSGAoURVJSX1NFU1NJT05fTUlTTUFUQ0gQBRIaChZFUlJfRFVQTElDQVRFX09SX1NUQUxFEAYSEgoORVJSX09WRVJMT0FERUQQBxIUChBFUlJfQVVUX01JU01BVENIEAgSEQoNRVJSX05PVF9GT1VORBAJEhEKDUVSUl9BTUJJR1VPVVMQChIYChRFUlJfTk9UX0lOVEVSQUNUQUJMRRALEhwKGEVSUl9TVEFMRV9EVVJJTkdfQ09NTUFORBAMEhcKE0VSUl9BQ1RJT05fUkVKRUNURUQQDRIUChBFUlJfV0FJVF9USU1FT1VUEA4SEQoNRVJSX0NBTkNFTExFRBAPEhkKFUVSUl9ERUFETElORV9FWENFRURFRBAQEhkKFUVSUl9BVVRfTk9UX0lOU1RBTExFRBAREhMKD0VSUl9BVVRfQ1JBU0hFRBASEg8KC0VSUl9BVVRfQU5SEBMSIQodRVJSX1NZTkNfUFJPVklERVJfVU5BVkFJTEFCTEUQFBIYChRFUlJfRFJJVkVSX1VOSEVBTFRIWRAVEhYKEkVSUl9UUkFOU1BPUlRfTE9TVBAWEhUKEUVSUl9JTkRFVEVSTUlOQVRFEBcSIAocRVJSX0FSVElGQUNUX1RSQU5TRkVSX0ZBSUxFRBAYEhkKFUVSUl9QQVlMT0FEX1RPT19MQVJHRRAZEhAKDEVSUl9JTlRFUk5BTBAaEg8KC0VSUl9VTktOT1dOEBsqVwoJRGlyZWN0aW9uEhMKD0RJUl9VTlNQRUNJRklFRBAAEgoKBkRJUl9VUBABEgwKCERJUl9ET1dOEAISDAoIRElSX0xFRlQQAxINCglESVJfUklHSFQQBCppCg9TdGFiaWxpdHlTaWduYWwSGQoVU1RBQklMSVRZX1VOU1BFQ0lGSUVEEAASEgoOU1RBQklMSVRZX1RSRUUQARIUChBTVEFCSUxJVFlfUElYRUxTEAISEQoNU1RBQklMSVRZX0FMTBADKmwKC1N5c3RlbVBhbmVsEhwKGFNZU1RFTV9QQU5FTF9VTlNQRUNJRklFRBAAEh4KGlNZU1RFTV9QQU5FTF9OT1RJRklDQVRJT05TEAESHwobU1lTVEVNX1BBTkVMX1FVSUNLX1NFVFRJTkdTEAJCMgogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDENvbW1hbmRQcm90b1ABYgZwcm90bzM", [file_selector]);
+  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCI6Cg5TZXRPcmllbnRhdGlvbhIoCgtvcmllbnRhdGlvbhgBIAEoDjITLnRhcC52MS5PcmllbnRhdGlvbiI/ChJTZXREaXNwbGF5Um90YXRpb24SKQoIcm90YXRpb24YASABKA4yFy50YXAudjEuRGlzcGxheVJvdGF0aW9uIhIKEFVuZnJlZXplUm90YXRpb24iEQoPRGlzbWlzc0tleWd1YXJkIg8KDUR1bXBIaWVyYXJjaHkiLAoGRXhpc3RzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIisKBUNvdW50EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi4KCFNuYXBzaG90EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkYKC1dhaXRWaXNpYmxlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhMKC2V4YWN0bHlfb25lGAIgASgIIi4KCFdhaXRHb25lEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIiYKDldhaXRBcHBWaXNpYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSJ/ChBXYWl0U2NyZWVuU3RhYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRIaCg1zdGFibGVfZm9yX21zGAIgASgDSACIAQESJwoGc2lnbmFsGAMgASgOMhcudGFwLnYxLlN0YWJpbGl0eVNpZ25hbEIQCg5fc3RhYmxlX2Zvcl9tcyIpCgNUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiLQoHTG9uZ1RhcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciI7CgdTZXRUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEgwKBHRleHQYAiABKAkiGAoIVHlwZVRleHQSDAoEdGV4dBgCIAEoCSIvCglDbGVhclRleHQSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IihQEKBVN3aXBlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IoYBCgZTY3JvbGwSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbhIdChBkaXN0YW5jZV9wZXJjZW50GAMgASgFSACIAQFCEwoRX2Rpc3RhbmNlX3BlcmNlbnQiLwoJRG91YmxlVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkwKBERyYWcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIAoGdGFyZ2V0GAIgASgLMhAudGFwLnYxLlNlbGVjdG9yIngKBVBpbmNoEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEikKCWRpcmVjdGlvbhgCIAEoDjIWLnRhcC52MS5QaW5jaERpcmVjdGlvbhIUCgdwZXJjZW50GAMgASgFSACIAQFCCgoIX3BlcmNlbnQiUQoFRmxpbmcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbiIWChRXYWl0UGVybWlzc2lvblByb21wdCI8ChBDaG9vc2VQZXJtaXNzaW9uEigKBmNob2ljZRgBIAEoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlIg4KDEhpZGVLZXlib2FyZCI2ChBQZXJmb3JtSW1lQWN0aW9uEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIhwKDFNldENsaXBib2FyZBIMCgR0ZXh0GAEgASgJIg4KDEdldENsaXBib2FyZCJ1CgpBd2FpdFRvYXN0EhEKBHRleHQYASABKAlIAIgBARIfCgRtb2RlGAIgASgOMhEudGFwLnYxLk1hdGNoTW9kZRIZCgxwYWNrYWdlX25hbWUYAyABKAlIAYgBAUIHCgVfdGV4dEIPCg1fcGFja2FnZV9uYW1lIt4LCgdDb21tYW5kEhcKCnRpbWVvdXRfbXMYASABKANIAYgBARIuCgtkZXZpY2VfaW5mbxgDIAEoCzIXLnRhcC52MS5EZXZpY2VJbmZvUXVlcnlIABIlCglwcmVzc19rZXkYBCABKAsyEC50YXAudjEuUHJlc3NLZXlIABIvCg5kdW1wX2hpZXJhcmNoeRgGIAEoCzIVLnRhcC52MS5EdW1wSGllcmFyY2h5SAASIAoGZXhpc3RzGAcgASgLMg4udGFwLnYxLkV4aXN0c0gAEh4KBWNvdW50GAggASgLMg0udGFwLnYxLkNvdW50SAASJAoIc25hcHNob3QYCSABKAsyEC50YXAudjEuU25hcHNob3RIABIrCgx3YWl0X3Zpc2libGUYCiABKAsyEy50YXAudjEuV2FpdFZpc2libGVIABIlCgl3YWl0X2dvbmUYCyABKAsyEC50YXAudjEuV2FpdEdvbmVIABIyChB3YWl0X2FwcF92aXNpYmxlGAwgASgLMhYudGFwLnYxLldhaXRBcHBWaXNpYmxlSAASNgoSd2FpdF9zY3JlZW5fc3RhYmxlGA0gASgLMhgudGFwLnYxLldhaXRTY3JlZW5TdGFibGVIABIaCgN0YXAYDiABKAsyCy50YXAudjEuVGFwSAASIwoIbG9uZ190YXAYDyABKAsyDy50YXAudjEuTG9uZ1RhcEgAEiMKCHNldF90ZXh0GBAgASgLMg8udGFwLnYxLlNldFRleHRIABIlCgl0eXBlX3RleHQYESABKAsyEC50YXAudjEuVHlwZVRleHRIABInCgpjbGVhcl90ZXh0GBIgASgLMhEudGFwLnYxLkNsZWFyVGV4dEgAEh4KBXN3aXBlGBMgASgLMg0udGFwLnYxLlN3aXBlSAASIAoGc2Nyb2xsGBQgASgLMg4udGFwLnYxLlNjcm9sbEgAEjQKEW9wZW5fc3lzdGVtX3BhbmVsGBggASgLMhcudGFwLnYxLk9wZW5TeXN0ZW1QYW5lbEgAEjEKD3NldF9vcmllbnRhdGlvbhgZIAEoCzIWLnRhcC52MS5TZXRPcmllbnRhdGlvbkgAEjoKFHNldF9kaXNwbGF5X3JvdGF0aW9uGBogASgLMhoudGFwLnYxLlNldERpc3BsYXlSb3RhdGlvbkgAEjUKEXVuZnJlZXplX3JvdGF0aW9uGBsgASgLMhgudGFwLnYxLlVuZnJlZXplUm90YXRpb25IABIzChBkaXNtaXNzX2tleWd1YXJkGBwgASgLMhcudGFwLnYxLkRpc21pc3NLZXlndWFyZEgAEicKCmRvdWJsZV90YXAYHSABKAsyES50YXAudjEuRG91YmxlVGFwSAASHAoEZHJhZxgeIAEoCzIMLnRhcC52MS5EcmFnSAASHgoFcGluY2gYHyABKAsyDS50YXAudjEuUGluY2hIABIeCgVmbGluZxggIAEoCzINLnRhcC52MS5GbGluZ0gAEj4KFndhaXRfcGVybWlzc2lvbl9wcm9tcHQYISABKAsyHC50YXAudjEuV2FpdFBlcm1pc3Npb25Qcm9tcHRIABI1ChFjaG9vc2VfcGVybWlzc2lvbhgiIAEoCzIYLnRhcC52MS5DaG9vc2VQZXJtaXNzaW9uSAASLQoNaGlkZV9rZXlib2FyZBgjIAEoCzIULnRhcC52MS5IaWRlS2V5Ym9hcmRIABI2ChJwZXJmb3JtX2ltZV9hY3Rpb24YJCABKAsyGC50YXAudjEuUGVyZm9ybUltZUFjdGlvbkgAEi0KDXNldF9jbGlwYm9hcmQYJSABKAsyFC50YXAudjEuU2V0Q2xpcGJvYXJkSAASLQoNZ2V0X2NsaXBib2FyZBgmIAEoCzIULnRhcC52MS5HZXRDbGlwYm9hcmRIABIpCgthd2FpdF90b2FzdBgnIAEoCzISLnRhcC52MS5Bd2FpdFRvYXN0SABCBAoCb3BCDQoLX3RpbWVvdXRfbXMiQgoGQm91bmRzEgwKBGxlZnQYASABKAUSCwoDdG9wGAIgASgFEg0KBXJpZ2h0GAMgASgFEg4KBmJvdHRvbRgEIAEoBSL6AwoPRWxlbWVudFNuYXBzaG90EhcKCmNsYXNzX25hbWUYASABKAlIAIgBARIZCgxwYWNrYWdlX25hbWUYAiABKAlIAYgBARIaCg1yZXNvdXJjZV9uYW1lGAMgASgJSAKIAQESEQoEdGV4dBgEIAEoCUgDiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YBSABKAlIBIgBARIRCgRoaW50GAYgASgJSAWIAQESHgoGYm91bmRzGAcgASgLMg4udGFwLnYxLkJvdW5kcxIRCgljaGVja2FibGUYCCABKAgSDwoHY2hlY2tlZBgJIAEoCBIRCgljbGlja2FibGUYCiABKAgSDwoHZW5hYmxlZBgLIAEoCBIRCglmb2N1c2FibGUYDCABKAgSDwoHZm9jdXNlZBgNIAEoCBIWCg5sb25nX2NsaWNrYWJsZRgOIAEoCBISCgpzY3JvbGxhYmxlGA8gASgIEhAKCHNlbGVjdGVkGBAgASgIEhMKC2NoaWxkX2NvdW50GBEgASgFEhQKDHNob3dpbmdfaGludBgSIAEoCEINCgtfY2xhc3NfbmFtZUIPCg1fcGFja2FnZV9uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50IpoDCgpEZXZpY2VJbmZvEhEKCWFwaV9sZXZlbBgBIAEoBRIUCgxtYW51ZmFjdHVyZXIYAiABKAkSDQoFbW9kZWwYAyABKAkSDwoHcHJvZHVjdBgEIAEoCRIVCg1kaXNwbGF5X3dpZHRoGAUgASgFEhYKDmRpc3BsYXlfaGVpZ2h0GAYgASgFEhgKEGRpc3BsYXlfcm90YXRpb24YByABKAUSHAoPY3VycmVudF9wYWNrYWdlGAggASgJSACIAQESEQoJc2NyZWVuX29uGAkgASgIEhcKD2tleWd1YXJkX2xvY2tlZBgKIAEoCBIXCg9rZXlndWFyZF9zZWN1cmUYCyABKAgSFgoOa2V5Ym9hcmRfc2hvd24YDCABKAgSEwoLYXV0b19yb3RhdGUYDSABKAgSGgoSYW5pbWF0aW9uc19lbmFibGVkGA4gASgIEhEKCWRhcmtfbW9kZRgPIAEoCBISCgpmb250X3NjYWxlGBAgASgCEhMKC2RlbnNpdHlfZHBpGBEgASgFQhIKEF9jdXJyZW50X3BhY2thZ2UiKwoFVG9hc3QSDAoEdGV4dBgBIAEoCRIUCgxwYWNrYWdlX25hbWUYAiABKAkiUwoQUGVybWlzc2lvblByb21wdBIUCgxwYWNrYWdlX25hbWUYASABKAkSKQoHY2hvaWNlcxgCIAMoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlIgYKBERvbmUilAEKBUVycm9yEh8KBGNvZGUYASABKA4yES50YXAudjEuRXJyb3JDb2RlEhMKBmRldGFpbBgCIAEoCUgAiAEBEhQKB21lc3NhZ2UYAyABKAlIAYgBARIYCgttYXRjaF9jb3VudBgEIAEoBUgCiAEBQgkKB19kZXRhaWxCCgoIX21lc3NhZ2VCDgoMX21hdGNoX2NvdW50Iv0CCg1Db21tYW5kUmVzdWx0EhMKC2R1cmF0aW9uX21zGAEgASgDEhIKCnJlcXVlc3RfaWQYAiABKAMSGgoSc2Vzc2lvbl9nZW5lcmF0aW9uGAMgASgDEhwKBGRvbmUYBCABKAsyDC50YXAudjEuRG9uZUgAEg4KBGJvb2wYBSABKAhIABIPCgVjb3VudBgHIAEoBUgAEg4KBHRleHQYCCABKAlIABIrCghzbmFwc2hvdBgJIAEoCzIXLnRhcC52MS5FbGVtZW50U25hcHNob3RIABIpCgtkZXZpY2VfaW5mbxgKIAEoCzISLnRhcC52MS5EZXZpY2VJbmZvSAASHgoFZXJyb3IYDSABKAsyDS50YXAudjEuRXJyb3JIABI1ChFwZXJtaXNzaW9uX3Byb21wdBgOIAEoCzIYLnRhcC52MS5QZXJtaXNzaW9uUHJvbXB0SAASHgoFdG9hc3QYDyABKAsyDS50YXAudjEuVG9hc3RIAEIJCgdvdXRjb21lKqkFCglFcnJvckNvZGUSEwoPRVJSX1VOU1BFQ0lGSUVEEAASFwoTRVJSX0lOVkFMSURfUkVRVUVTVBABEhgKFEVSUl9JTlZBTElEX1NFTEVDVE9SEAISEwoPRVJSX1VOU1VQUE9SVEVEEAMSFwoTRVJSX1VOQVVUSEVOVElDQVRFRBAEEhgKFEVSUl9TRVNTSU9OX01JU01BVENIEAUSGgoWRVJSX0RVUExJQ0FURV9PUl9TVEFMRRAGEhIKDkVSUl9PVkVSTE9BREVEEAcSFAoQRVJSX0FVVF9NSVNNQVRDSBAIEhEKDUVSUl9OT1RfRk9VTkQQCRIRCg1FUlJfQU1CSUdVT1VTEAoSGAoURVJSX05PVF9JTlRFUkFDVEFCTEUQCxIcChhFUlJfU1RBTEVfRFVSSU5HX0NPTU1BTkQQDBIXChNFUlJfQUNUSU9OX1JFSkVDVEVEEA0SFAoQRVJSX1dBSVRfVElNRU9VVBAOEhEKDUVSUl9DQU5DRUxMRUQQDxIZChVFUlJfREVBRExJTkVfRVhDRUVERUQQEBIZChVFUlJfQVVUX05PVF9JTlNUQUxMRUQQERITCg9FUlJfQVVUX0NSQVNIRUQQEhIPCgtFUlJfQVVUX0FOUhATEiEKHUVSUl9TWU5DX1BST1ZJREVSX1VOQVZBSUxBQkxFEBQSGAoURVJSX0RSSVZFUl9VTkhFQUxUSFkQFRIWChJFUlJfVFJBTlNQT1JUX0xPU1QQFhIVChFFUlJfSU5ERVRFUk1JTkFURRAXEiAKHEVSUl9BUlRJRkFDVF9UUkFOU0ZFUl9GQUlMRUQQGBIZChVFUlJfUEFZTE9BRF9UT09fTEFSR0UQGRIQCgxFUlJfSU5URVJOQUwQGhIPCgtFUlJfVU5LTk9XThAbKlcKCURpcmVjdGlvbhITCg9ESVJfVU5TUEVDSUZJRUQQABIKCgZESVJfVVAQARIMCghESVJfRE9XThACEgwKCERJUl9MRUZUEAMSDQoJRElSX1JJR0hUEAQqaQoPU3RhYmlsaXR5U2lnbmFsEhkKFVNUQUJJTElUWV9VTlNQRUNJRklFRBAAEhIKDlNUQUJJTElUWV9UUkVFEAESFAoQU1RBQklMSVRZX1BJWEVMUxACEhEKDVNUQUJJTElUWV9BTEwQAypsCgtTeXN0ZW1QYW5lbBIcChhTWVNURU1fUEFORUxfVU5TUEVDSUZJRUQQABIeChpTWVNURU1fUEFORUxfTk9USUZJQ0FUSU9OUxABEh8KG1NZU1RFTV9QQU5FTF9RVUlDS19TRVRUSU5HUxACKl8KC09yaWVudGF0aW9uEhsKF09SSUVOVEFUSU9OX1VOU1BFQ0lGSUVEEAASGAoUT1JJRU5UQVRJT05fUE9SVFJBSVQQARIZChVPUklFTlRBVElPTl9MQU5EU0NBUEUQAiqqAQoPRGlzcGxheVJvdGF0aW9uEiAKHERJU1BMQVlfUk9UQVRJT05fVU5TUEVDSUZJRUQQABIcChhESVNQTEFZX1JPVEFUSU9OX05BVFVSQUwQARIZChVESVNQTEFZX1JPVEFUSU9OX0xFRlQQAhIgChxESVNQTEFZX1JPVEFUSU9OX1VQU0lERV9ET1dOEAMSGgoWRElTUExBWV9ST1RBVElPTl9SSUdIVBAEKkgKDlBpbmNoRGlyZWN0aW9uEhUKEVBJTkNIX1VOU1BFQ0lGSUVEEAASDgoKUElOQ0hfT1BFThABEg8KC1BJTkNIX0NMT1NFEAIq5gIKEFBlcm1pc3Npb25DaG9pY2USIQodUEVSTUlTU0lPTl9DSE9JQ0VfVU5TUEVDSUZJRUQQABIUChBQRVJNSVNTSU9OX0FMTE9XEAESJAogUEVSTUlTU0lPTl9BTExPV19GT1JFR1JPVU5EX09OTFkQAhIdChlQRVJNSVNTSU9OX0FMTE9XX09ORV9USU1FEAMSGwoXUEVSTUlTU0lPTl9BTExPV19BTFdBWVMQBBIdChlQRVJNSVNTSU9OX0FMTE9XX1NFTEVDVEVEEAUSGAoUUEVSTUlTU0lPTl9BTExPV19BTEwQBhITCg9QRVJNSVNTSU9OX0RFTlkQBxImCiJQRVJNSVNTSU9OX0RFTllfQU5EX0RPTlRfQVNLX0FHQUlOEAgSIwofUEVSTUlTU0lPTl9LRUVQX0ZPUkVHUk9VTkRfT05MWRAJEhwKGFBFUk1JU1NJT05fS0VFUF9PTkVfVElNRRAKQjIKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgxDb21tYW5kUHJvdG9QAWIGcHJvdG8z", [file_selector]);
 
 /**
  * @generated from message tap.v1.DeviceInfoQuery
@@ -73,6 +73,72 @@ export const OpenSystemPanelSchema: GenMessage<OpenSystemPanel> = /*@__PURE__*/
   messageDesc(file_command, 2);
 
 /**
+ * Sets portable geometry or an exact natural-relative rotation and freezes sensor rotation.
+ *
+ * @generated from message tap.v1.SetOrientation
+ */
+export type SetOrientation = Message<"tap.v1.SetOrientation"> & {
+  /**
+   * @generated from field: tap.v1.Orientation orientation = 1;
+   */
+  orientation: Orientation;
+};
+
+/**
+ * Describes the message tap.v1.SetOrientation.
+ * Use `create(SetOrientationSchema)` to create a new message.
+ */
+export const SetOrientationSchema: GenMessage<SetOrientation> = /*@__PURE__*/
+  messageDesc(file_command, 3);
+
+/**
+ * @generated from message tap.v1.SetDisplayRotation
+ */
+export type SetDisplayRotation = Message<"tap.v1.SetDisplayRotation"> & {
+  /**
+   * @generated from field: tap.v1.DisplayRotation rotation = 1;
+   */
+  rotation: DisplayRotation;
+};
+
+/**
+ * Describes the message tap.v1.SetDisplayRotation.
+ * Use `create(SetDisplayRotationSchema)` to create a new message.
+ */
+export const SetDisplayRotationSchema: GenMessage<SetDisplayRotation> = /*@__PURE__*/
+  messageDesc(file_command, 4);
+
+/**
+ * Releases the sensor lock without selecting a new rotation.
+ *
+ * @generated from message tap.v1.UnfreezeRotation
+ */
+export type UnfreezeRotation = Message<"tap.v1.UnfreezeRotation"> & {
+};
+
+/**
+ * Describes the message tap.v1.UnfreezeRotation.
+ * Use `create(UnfreezeRotationSchema)` to create a new message.
+ */
+export const UnfreezeRotationSchema: GenMessage<UnfreezeRotation> = /*@__PURE__*/
+  messageDesc(file_command, 5);
+
+/**
+ * Dismisses a keyguard that has no PIN, pattern or password; a secure one is refused, never unlocked.
+ *
+ * @generated from message tap.v1.DismissKeyguard
+ */
+export type DismissKeyguard = Message<"tap.v1.DismissKeyguard"> & {
+};
+
+/**
+ * Describes the message tap.v1.DismissKeyguard.
+ * Use `create(DismissKeyguardSchema)` to create a new message.
+ */
+export const DismissKeyguardSchema: GenMessage<DismissKeyguard> = /*@__PURE__*/
+  messageDesc(file_command, 6);
+
+/**
  * @generated from message tap.v1.DumpHierarchy
  */
 export type DumpHierarchy = Message<"tap.v1.DumpHierarchy"> & {
@@ -83,7 +149,7 @@ export type DumpHierarchy = Message<"tap.v1.DumpHierarchy"> & {
  * Use `create(DumpHierarchySchema)` to create a new message.
  */
 export const DumpHierarchySchema: GenMessage<DumpHierarchy> = /*@__PURE__*/
-  messageDesc(file_command, 3);
+  messageDesc(file_command, 7);
 
 /**
  * @generated from message tap.v1.Exists
@@ -100,7 +166,7 @@ export type Exists = Message<"tap.v1.Exists"> & {
  * Use `create(ExistsSchema)` to create a new message.
  */
 export const ExistsSchema: GenMessage<Exists> = /*@__PURE__*/
-  messageDesc(file_command, 4);
+  messageDesc(file_command, 8);
 
 /**
  * @generated from message tap.v1.Count
@@ -117,7 +183,7 @@ export type Count = Message<"tap.v1.Count"> & {
  * Use `create(CountSchema)` to create a new message.
  */
 export const CountSchema: GenMessage<Count> = /*@__PURE__*/
-  messageDesc(file_command, 5);
+  messageDesc(file_command, 9);
 
 /**
  * @generated from message tap.v1.Snapshot
@@ -134,7 +200,7 @@ export type Snapshot = Message<"tap.v1.Snapshot"> & {
  * Use `create(SnapshotSchema)` to create a new message.
  */
 export const SnapshotSchema: GenMessage<Snapshot> = /*@__PURE__*/
-  messageDesc(file_command, 6);
+  messageDesc(file_command, 10);
 
 /**
  * @generated from message tap.v1.WaitVisible
@@ -158,7 +224,7 @@ export type WaitVisible = Message<"tap.v1.WaitVisible"> & {
  * Use `create(WaitVisibleSchema)` to create a new message.
  */
 export const WaitVisibleSchema: GenMessage<WaitVisible> = /*@__PURE__*/
-  messageDesc(file_command, 7);
+  messageDesc(file_command, 11);
 
 /**
  * @generated from message tap.v1.WaitGone
@@ -175,7 +241,7 @@ export type WaitGone = Message<"tap.v1.WaitGone"> & {
  * Use `create(WaitGoneSchema)` to create a new message.
  */
 export const WaitGoneSchema: GenMessage<WaitGone> = /*@__PURE__*/
-  messageDesc(file_command, 8);
+  messageDesc(file_command, 12);
 
 /**
  * @generated from message tap.v1.WaitAppVisible
@@ -192,7 +258,7 @@ export type WaitAppVisible = Message<"tap.v1.WaitAppVisible"> & {
  * Use `create(WaitAppVisibleSchema)` to create a new message.
  */
 export const WaitAppVisibleSchema: GenMessage<WaitAppVisible> = /*@__PURE__*/
-  messageDesc(file_command, 9);
+  messageDesc(file_command, 13);
 
 /**
  * @generated from message tap.v1.WaitScreenStable
@@ -223,7 +289,7 @@ export type WaitScreenStable = Message<"tap.v1.WaitScreenStable"> & {
  * Use `create(WaitScreenStableSchema)` to create a new message.
  */
 export const WaitScreenStableSchema: GenMessage<WaitScreenStable> = /*@__PURE__*/
-  messageDesc(file_command, 10);
+  messageDesc(file_command, 14);
 
 /**
  * @generated from message tap.v1.Tap
@@ -240,7 +306,7 @@ export type Tap = Message<"tap.v1.Tap"> & {
  * Use `create(TapSchema)` to create a new message.
  */
 export const TapSchema: GenMessage<Tap> = /*@__PURE__*/
-  messageDesc(file_command, 11);
+  messageDesc(file_command, 15);
 
 /**
  * @generated from message tap.v1.LongTap
@@ -257,7 +323,7 @@ export type LongTap = Message<"tap.v1.LongTap"> & {
  * Use `create(LongTapSchema)` to create a new message.
  */
 export const LongTapSchema: GenMessage<LongTap> = /*@__PURE__*/
-  messageDesc(file_command, 12);
+  messageDesc(file_command, 16);
 
 /**
  * @generated from message tap.v1.SetText
@@ -279,7 +345,7 @@ export type SetText = Message<"tap.v1.SetText"> & {
  * Use `create(SetTextSchema)` to create a new message.
  */
 export const SetTextSchema: GenMessage<SetText> = /*@__PURE__*/
-  messageDesc(file_command, 13);
+  messageDesc(file_command, 17);
 
 /**
  * Key events for `text` (≤ 256 chars) into whatever has input focus; no target, no click.
@@ -299,7 +365,7 @@ export type TypeText = Message<"tap.v1.TypeText"> & {
  * Use `create(TypeTextSchema)` to create a new message.
  */
 export const TypeTextSchema: GenMessage<TypeText> = /*@__PURE__*/
-  messageDesc(file_command, 14);
+  messageDesc(file_command, 18);
 
 /**
  * @generated from message tap.v1.ClearText
@@ -316,7 +382,7 @@ export type ClearText = Message<"tap.v1.ClearText"> & {
  * Use `create(ClearTextSchema)` to create a new message.
  */
 export const ClearTextSchema: GenMessage<ClearText> = /*@__PURE__*/
-  messageDesc(file_command, 15);
+  messageDesc(file_command, 19);
 
 /**
  * @generated from message tap.v1.Swipe
@@ -345,7 +411,7 @@ export type Swipe = Message<"tap.v1.Swipe"> & {
  * Use `create(SwipeSchema)` to create a new message.
  */
 export const SwipeSchema: GenMessage<Swipe> = /*@__PURE__*/
-  messageDesc(file_command, 16);
+  messageDesc(file_command, 20);
 
 /**
  * @generated from message tap.v1.Scroll
@@ -374,7 +440,238 @@ export type Scroll = Message<"tap.v1.Scroll"> & {
  * Use `create(ScrollSchema)` to create a new message.
  */
 export const ScrollSchema: GenMessage<Scroll> = /*@__PURE__*/
-  messageDesc(file_command, 17);
+  messageDesc(file_command, 21);
+
+/**
+ * Two taps on the element's visible centre within Android's double-tap window, as one gesture.
+ *
+ * @generated from message tap.v1.DoubleTap
+ */
+export type DoubleTap = Message<"tap.v1.DoubleTap"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+};
+
+/**
+ * Describes the message tap.v1.DoubleTap.
+ * Use `create(DoubleTapSchema)` to create a new message.
+ */
+export const DoubleTapSchema: GenMessage<DoubleTap> = /*@__PURE__*/
+  messageDesc(file_command, 22);
+
+/**
+ * Press and hold on `selector`'s centre until it becomes a long press, move to `target`'s centre,
+ * hold there, release: one gesture. Both resolve to exactly one element before input starts.
+ *
+ * @generated from message tap.v1.Drag
+ */
+export type Drag = Message<"tap.v1.Drag"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+
+  /**
+   * @generated from field: tap.v1.Selector target = 2;
+   */
+  target?: Selector | undefined;
+};
+
+/**
+ * Describes the message tap.v1.Drag.
+ * Use `create(DragSchema)` to create a new message.
+ */
+export const DragSchema: GenMessage<Drag> = /*@__PURE__*/
+  messageDesc(file_command, 23);
+
+/**
+ * Two fingers across the element's bounds, moving `percent` of its size (1..100; default 80).
+ *
+ * @generated from message tap.v1.Pinch
+ */
+export type Pinch = Message<"tap.v1.Pinch"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+
+  /**
+   * @generated from field: tap.v1.PinchDirection direction = 2;
+   */
+  direction: PinchDirection;
+
+  /**
+   * @generated from field: optional int32 percent = 3;
+   */
+  percent?: number | undefined;
+};
+
+/**
+ * Describes the message tap.v1.Pinch.
+ * Use `create(PinchSchema)` to create a new message.
+ */
+export const PinchSchema: GenMessage<Pinch> = /*@__PURE__*/
+  messageDesc(file_command, 24);
+
+/**
+ * A fast swipe across the element. `direction` is the content edge moved towards, as for `scroll`.
+ *
+ * @generated from message tap.v1.Fling
+ */
+export type Fling = Message<"tap.v1.Fling"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+
+  /**
+   * @generated from field: tap.v1.Direction direction = 2;
+   */
+  direction: Direction;
+};
+
+/**
+ * Describes the message tap.v1.Fling.
+ * Use `create(FlingSchema)` to create a new message.
+ */
+export const FlingSchema: GenMessage<Fling> = /*@__PURE__*/
+  messageDesc(file_command, 25);
+
+/**
+ * Waits for a runtime-permission dialog and reports the choices it offers. No input.
+ *
+ * @generated from message tap.v1.WaitPermissionPrompt
+ */
+export type WaitPermissionPrompt = Message<"tap.v1.WaitPermissionPrompt"> & {
+};
+
+/**
+ * Describes the message tap.v1.WaitPermissionPrompt.
+ * Use `create(WaitPermissionPromptSchema)` to create a new message.
+ */
+export const WaitPermissionPromptSchema: GenMessage<WaitPermissionPrompt> = /*@__PURE__*/
+  messageDesc(file_command, 26);
+
+/**
+ * Taps the dialog's button for `choice`; it must be offered, exactly once.
+ *
+ * @generated from message tap.v1.ChoosePermission
+ */
+export type ChoosePermission = Message<"tap.v1.ChoosePermission"> & {
+  /**
+   * @generated from field: tap.v1.PermissionChoice choice = 1;
+   */
+  choice: PermissionChoice;
+};
+
+/**
+ * Describes the message tap.v1.ChoosePermission.
+ * Use `create(ChoosePermissionSchema)` to create a new message.
+ */
+export const ChoosePermissionSchema: GenMessage<ChoosePermission> = /*@__PURE__*/
+  messageDesc(file_command, 27);
+
+/**
+ * Hides the on-screen keyboard: one Back key when an input-method window is showing, nothing
+ * otherwise.
+ *
+ * @generated from message tap.v1.HideKeyboard
+ */
+export type HideKeyboard = Message<"tap.v1.HideKeyboard"> & {
+};
+
+/**
+ * Describes the message tap.v1.HideKeyboard.
+ * Use `create(HideKeyboardSchema)` to create a new message.
+ */
+export const HideKeyboardSchema: GenMessage<HideKeyboard> = /*@__PURE__*/
+  messageDesc(file_command, 28);
+
+/**
+ * The keyboard's action key (Search, Go, Done, …) on the field: `ACTION_IME_ENTER`, API 30+.
+ *
+ * @generated from message tap.v1.PerformImeAction
+ */
+export type PerformImeAction = Message<"tap.v1.PerformImeAction"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+};
+
+/**
+ * Describes the message tap.v1.PerformImeAction.
+ * Use `create(PerformImeActionSchema)` to create a new message.
+ */
+export const PerformImeActionSchema: GenMessage<PerformImeAction> = /*@__PURE__*/
+  messageDesc(file_command, 29);
+
+/**
+ * Replaces the primary clip with plain `text` (≤ 4096 chars).
+ *
+ * @generated from message tap.v1.SetClipboard
+ */
+export type SetClipboard = Message<"tap.v1.SetClipboard"> & {
+  /**
+   * @generated from field: string text = 1;
+   */
+  text: string;
+};
+
+/**
+ * Describes the message tap.v1.SetClipboard.
+ * Use `create(SetClipboardSchema)` to create a new message.
+ */
+export const SetClipboardSchema: GenMessage<SetClipboard> = /*@__PURE__*/
+  messageDesc(file_command, 30);
+
+/**
+ * Reads the primary clip as plain text (`text` result; "" when the clipboard is empty).
+ *
+ * @generated from message tap.v1.GetClipboard
+ */
+export type GetClipboard = Message<"tap.v1.GetClipboard"> & {
+};
+
+/**
+ * Describes the message tap.v1.GetClipboard.
+ * Use `create(GetClipboardSchema)` to create a new message.
+ */
+export const GetClipboardSchema: GenMessage<GetClipboard> = /*@__PURE__*/
+  messageDesc(file_command, 31);
+
+/**
+ * Waits for a toast. `text` (≤ 1024 chars) is compared under `mode` (default exact); absent =
+ * any text. `package_name` absent = a toast from any package. A toast posted up to 3.5 s before
+ * the command (the longest one stays up) counts.
+ *
+ * @generated from message tap.v1.AwaitToast
+ */
+export type AwaitToast = Message<"tap.v1.AwaitToast"> & {
+  /**
+   * @generated from field: optional string text = 1;
+   */
+  text?: string | undefined;
+
+  /**
+   * @generated from field: tap.v1.MatchMode mode = 2;
+   */
+  mode: MatchMode;
+
+  /**
+   * @generated from field: optional string package_name = 3;
+   */
+  packageName?: string | undefined;
+};
+
+/**
+ * Describes the message tap.v1.AwaitToast.
+ * Use `create(AwaitToastSchema)` to create a new message.
+ */
+export const AwaitToastSchema: GenMessage<AwaitToast> = /*@__PURE__*/
+  messageDesc(file_command, 32);
 
 /**
  * One protocol request minus session identity (the server owns session id, generation and
@@ -501,6 +798,96 @@ export type Command = Message<"tap.v1.Command"> & {
      */
     value: OpenSystemPanel;
     case: "openSystemPanel";
+  } | {
+    /**
+     * @generated from field: tap.v1.SetOrientation set_orientation = 25;
+     */
+    value: SetOrientation;
+    case: "setOrientation";
+  } | {
+    /**
+     * @generated from field: tap.v1.SetDisplayRotation set_display_rotation = 26;
+     */
+    value: SetDisplayRotation;
+    case: "setDisplayRotation";
+  } | {
+    /**
+     * @generated from field: tap.v1.UnfreezeRotation unfreeze_rotation = 27;
+     */
+    value: UnfreezeRotation;
+    case: "unfreezeRotation";
+  } | {
+    /**
+     * @generated from field: tap.v1.DismissKeyguard dismiss_keyguard = 28;
+     */
+    value: DismissKeyguard;
+    case: "dismissKeyguard";
+  } | {
+    /**
+     * @generated from field: tap.v1.DoubleTap double_tap = 29;
+     */
+    value: DoubleTap;
+    case: "doubleTap";
+  } | {
+    /**
+     * @generated from field: tap.v1.Drag drag = 30;
+     */
+    value: Drag;
+    case: "drag";
+  } | {
+    /**
+     * @generated from field: tap.v1.Pinch pinch = 31;
+     */
+    value: Pinch;
+    case: "pinch";
+  } | {
+    /**
+     * @generated from field: tap.v1.Fling fling = 32;
+     */
+    value: Fling;
+    case: "fling";
+  } | {
+    /**
+     * @generated from field: tap.v1.WaitPermissionPrompt wait_permission_prompt = 33;
+     */
+    value: WaitPermissionPrompt;
+    case: "waitPermissionPrompt";
+  } | {
+    /**
+     * @generated from field: tap.v1.ChoosePermission choose_permission = 34;
+     */
+    value: ChoosePermission;
+    case: "choosePermission";
+  } | {
+    /**
+     * @generated from field: tap.v1.HideKeyboard hide_keyboard = 35;
+     */
+    value: HideKeyboard;
+    case: "hideKeyboard";
+  } | {
+    /**
+     * @generated from field: tap.v1.PerformImeAction perform_ime_action = 36;
+     */
+    value: PerformImeAction;
+    case: "performImeAction";
+  } | {
+    /**
+     * @generated from field: tap.v1.SetClipboard set_clipboard = 37;
+     */
+    value: SetClipboard;
+    case: "setClipboard";
+  } | {
+    /**
+     * @generated from field: tap.v1.GetClipboard get_clipboard = 38;
+     */
+    value: GetClipboard;
+    case: "getClipboard";
+  } | {
+    /**
+     * @generated from field: tap.v1.AwaitToast await_toast = 39;
+     */
+    value: AwaitToast;
+    case: "awaitToast";
   } | { case: undefined; value?: undefined };
 };
 
@@ -509,7 +896,7 @@ export type Command = Message<"tap.v1.Command"> & {
  * Use `create(CommandSchema)` to create a new message.
  */
 export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
-  messageDesc(file_command, 18);
+  messageDesc(file_command, 33);
 
 /**
  * Screen-pixel rectangle.
@@ -543,7 +930,7 @@ export type Bounds = Message<"tap.v1.Bounds"> & {
  * Use `create(BoundsSchema)` to create a new message.
  */
 export const BoundsSchema: GenMessage<Bounds> = /*@__PURE__*/
-  messageDesc(file_command, 19);
+  messageDesc(file_command, 34);
 
 /**
  * State of one matched node at the instant of `snapshot`.
@@ -650,7 +1037,7 @@ export type ElementSnapshot = Message<"tap.v1.ElementSnapshot"> & {
  * Use `create(ElementSnapshotSchema)` to create a new message.
  */
 export const ElementSnapshotSchema: GenMessage<ElementSnapshot> = /*@__PURE__*/
-  messageDesc(file_command, 20);
+  messageDesc(file_command, 35);
 
 /**
  * Static facts about the device plus the package currently owning the focused window.
@@ -697,6 +1084,69 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
    * @generated from field: optional string current_package = 8;
    */
   currentPackage?: string | undefined;
+
+  /**
+   * PowerManager.isInteractive
+   *
+   * @generated from field: bool screen_on = 9;
+   */
+  screenOn: boolean;
+
+  /**
+   * KeyguardManager.isKeyguardLocked
+   *
+   * @generated from field: bool keyguard_locked = 10;
+   */
+  keyguardLocked: boolean;
+
+  /**
+   * a PIN, pattern or password is set
+   *
+   * @generated from field: bool keyguard_secure = 11;
+   */
+  keyguardSecure: boolean;
+
+  /**
+   * an input-method window is on screen
+   *
+   * @generated from field: bool keyboard_shown = 12;
+   */
+  keyboardShown: boolean;
+
+  /**
+   * Settings.System.ACCELEROMETER_ROTATION: the sensor picks the rotation
+   *
+   * @generated from field: bool auto_rotate = 13;
+   */
+  autoRotate: boolean;
+
+  /**
+   * any of the three animation scales is not 0
+   *
+   * @generated from field: bool animations_enabled = 14;
+   */
+  animationsEnabled: boolean;
+
+  /**
+   * the current configuration is night (UI_MODE_NIGHT_YES)
+   *
+   * @generated from field: bool dark_mode = 15;
+   */
+  darkMode: boolean;
+
+  /**
+   * Configuration.fontScale
+   *
+   * @generated from field: float font_scale = 16;
+   */
+  fontScale: number;
+
+  /**
+   * Configuration.densityDpi
+   *
+   * @generated from field: int32 density_dpi = 17;
+   */
+  densityDpi: number;
 };
 
 /**
@@ -704,7 +1154,57 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
  * Use `create(DeviceInfoSchema)` to create a new message.
  */
 export const DeviceInfoSchema: GenMessage<DeviceInfo> = /*@__PURE__*/
-  messageDesc(file_command, 21);
+  messageDesc(file_command, 36);
+
+/**
+ * A toast `await_toast` matched: its text and the package that posted it.
+ *
+ * @generated from message tap.v1.Toast
+ */
+export type Toast = Message<"tap.v1.Toast"> & {
+  /**
+   * @generated from field: string text = 1;
+   */
+  text: string;
+
+  /**
+   * @generated from field: string package_name = 2;
+   */
+  packageName: string;
+};
+
+/**
+ * Describes the message tap.v1.Toast.
+ * Use `create(ToastSchema)` to create a new message.
+ */
+export const ToastSchema: GenMessage<Toast> = /*@__PURE__*/
+  messageDesc(file_command, 37);
+
+/**
+ * The runtime-permission dialog on screen: the package of its window (what a selector's package
+ * scope names; Google builds rename the controller, so it differs from the resource ids' package)
+ * and the choices it offers, in PermissionChoice order.
+ *
+ * @generated from message tap.v1.PermissionPrompt
+ */
+export type PermissionPrompt = Message<"tap.v1.PermissionPrompt"> & {
+  /**
+   * @generated from field: string package_name = 1;
+   */
+  packageName: string;
+
+  /**
+   * @generated from field: repeated tap.v1.PermissionChoice choices = 2;
+   */
+  choices: PermissionChoice[];
+};
+
+/**
+ * Describes the message tap.v1.PermissionPrompt.
+ * Use `create(PermissionPromptSchema)` to create a new message.
+ */
+export const PermissionPromptSchema: GenMessage<PermissionPrompt> = /*@__PURE__*/
+  messageDesc(file_command, 38);
 
 /**
  * The command ran to completion and has nothing else to report.
@@ -719,7 +1219,7 @@ export type Done = Message<"tap.v1.Done"> & {
  * Use `create(DoneSchema)` to create a new message.
  */
 export const DoneSchema: GenMessage<Done> = /*@__PURE__*/
-  messageDesc(file_command, 22);
+  messageDesc(file_command, 39);
 
 /**
  * A failed command. Driver-side failures and driver-transport loss are data (including
@@ -761,7 +1261,7 @@ export type Error = Message<"tap.v1.Error"> & {
  * Use `create(ErrorSchema)` to create a new message.
  */
 export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
-  messageDesc(file_command, 23);
+  messageDesc(file_command, 40);
 
 /**
  * One protocol response: exactly one `outcome`, named like the protocol result `kind`.
@@ -815,7 +1315,7 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
     case: "count";
   } | {
     /**
-     * dump_hierarchy
+     * dump_hierarchy, get_clipboard
      *
      * @generated from field: string text = 8;
      */
@@ -839,6 +1339,18 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
      */
     value: Error;
     case: "error";
+  } | {
+    /**
+     * @generated from field: tap.v1.PermissionPrompt permission_prompt = 14;
+     */
+    value: PermissionPrompt;
+    case: "permissionPrompt";
+  } | {
+    /**
+     * @generated from field: tap.v1.Toast toast = 15;
+     */
+    value: Toast;
+    case: "toast";
   } | { case: undefined; value?: undefined };
 };
 
@@ -847,7 +1359,7 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
  * Use `create(CommandResultSchema)` to create a new message.
  */
 export const CommandResultSchema: GenMessage<CommandResult> = /*@__PURE__*/
-  messageDesc(file_command, 24);
+  messageDesc(file_command, 41);
 
 /**
  * Closed error taxonomy shared with the device protocol; `Error.detail` refines it with a
@@ -1108,4 +1620,188 @@ export enum SystemPanel {
  */
 export const SystemPanelSchema: GenEnum<SystemPanel> = /*@__PURE__*/
   enumDesc(file_command, 3);
+
+/**
+ * Portable geometry, independent of the device's natural orientation.
+ *
+ * @generated from enum tap.v1.Orientation
+ */
+export enum Orientation {
+  /**
+   * @generated from enum value: ORIENTATION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: ORIENTATION_PORTRAIT = 1;
+   */
+  PORTRAIT = 1,
+
+  /**
+   * @generated from enum value: ORIENTATION_LANDSCAPE = 2;
+   */
+  LANDSCAPE = 2,
+}
+
+/**
+ * Describes the enum tap.v1.Orientation.
+ */
+export const OrientationSchema: GenEnum<Orientation> = /*@__PURE__*/
+  enumDesc(file_command, 4);
+
+/**
+ * Exact clockwise display rotation relative to the device's natural orientation.
+ *
+ * @generated from enum tap.v1.DisplayRotation
+ */
+export enum DisplayRotation {
+  /**
+   * @generated from enum value: DISPLAY_ROTATION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DISPLAY_ROTATION_NATURAL = 1;
+   */
+  NATURAL = 1,
+
+  /**
+   * @generated from enum value: DISPLAY_ROTATION_LEFT = 2;
+   */
+  LEFT = 2,
+
+  /**
+   * @generated from enum value: DISPLAY_ROTATION_UPSIDE_DOWN = 3;
+   */
+  UPSIDE_DOWN = 3,
+
+  /**
+   * @generated from enum value: DISPLAY_ROTATION_RIGHT = 4;
+   */
+  RIGHT = 4,
+}
+
+/**
+ * Describes the enum tap.v1.DisplayRotation.
+ */
+export const DisplayRotationSchema: GenEnum<DisplayRotation> = /*@__PURE__*/
+  enumDesc(file_command, 5);
+
+/**
+ * Opposite finger movements for `pinch`: OPEN spreads two fingers apart (zoom in), CLOSE brings
+ * them together (zoom out).
+ *
+ * @generated from enum tap.v1.PinchDirection
+ */
+export enum PinchDirection {
+  /**
+   * @generated from enum value: PINCH_UNSPECIFIED = 0;
+   */
+  PINCH_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: PINCH_OPEN = 1;
+   */
+  PINCH_OPEN = 1,
+
+  /**
+   * @generated from enum value: PINCH_CLOSE = 2;
+   */
+  PINCH_CLOSE = 2,
+}
+
+/**
+ * Describes the enum tap.v1.PinchDirection.
+ */
+export const PinchDirectionSchema: GenEnum<PinchDirection> = /*@__PURE__*/
+  enumDesc(file_command, 6);
+
+/**
+ * A button of the runtime-permission dialog, by what it grants. Which ones a dialog offers depends
+ * on the permission, the Android version and the controller build (`wait_permission_prompt`).
+ *
+ * @generated from enum tap.v1.PermissionChoice
+ */
+export enum PermissionChoice {
+  /**
+   * @generated from enum value: PERMISSION_CHOICE_UNSPECIFIED = 0;
+   */
+  PERMISSION_CHOICE_UNSPECIFIED = 0,
+
+  /**
+   * "Allow"
+   *
+   * @generated from enum value: PERMISSION_ALLOW = 1;
+   */
+  PERMISSION_ALLOW = 1,
+
+  /**
+   * "While using the app"
+   *
+   * @generated from enum value: PERMISSION_ALLOW_FOREGROUND_ONLY = 2;
+   */
+  PERMISSION_ALLOW_FOREGROUND_ONLY = 2,
+
+  /**
+   * "Only this time"
+   *
+   * @generated from enum value: PERMISSION_ALLOW_ONE_TIME = 3;
+   */
+  PERMISSION_ALLOW_ONE_TIME = 3,
+
+  /**
+   * "Allow all the time" (API 29 background location)
+   *
+   * @generated from enum value: PERMISSION_ALLOW_ALWAYS = 4;
+   */
+  PERMISSION_ALLOW_ALWAYS = 4,
+
+  /**
+   * "Select photos and videos" (API 34 partial media access)
+   *
+   * @generated from enum value: PERMISSION_ALLOW_SELECTED = 5;
+   */
+  PERMISSION_ALLOW_SELECTED = 5,
+
+  /**
+   * "Allow all" (API 34 media)
+   *
+   * @generated from enum value: PERMISSION_ALLOW_ALL = 6;
+   */
+  PERMISSION_ALLOW_ALL = 6,
+
+  /**
+   * "Don't allow" / "Deny"
+   *
+   * @generated from enum value: PERMISSION_DENY = 7;
+   */
+  PERMISSION_DENY = 7,
+
+  /**
+   * "Deny & don't ask again"
+   *
+   * @generated from enum value: PERMISSION_DENY_AND_DONT_ASK_AGAIN = 8;
+   */
+  PERMISSION_DENY_AND_DONT_ASK_AGAIN = 8,
+
+  /**
+   * "Keep while app is in use" (an upgrade request refused)
+   *
+   * @generated from enum value: PERMISSION_KEEP_FOREGROUND_ONLY = 9;
+   */
+  PERMISSION_KEEP_FOREGROUND_ONLY = 9,
+
+  /**
+   * "Keep only this time" (an upgrade request refused)
+   *
+   * @generated from enum value: PERMISSION_KEEP_ONE_TIME = 10;
+   */
+  PERMISSION_KEEP_ONE_TIME = 10,
+}
+
+/**
+ * Describes the enum tap.v1.PermissionChoice.
+ */
+export const PermissionChoiceSchema: GenEnum<PermissionChoice> = /*@__PURE__*/
+  enumDesc(file_command, 7);
 

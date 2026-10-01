@@ -4,7 +4,8 @@
 //
 // Logged: every Execute except the diagnostic queries (`device_info`, `dump_hierarchy`), and the
 // app calls that change the device (install, uninstall, force-stop, clear-data, grant, launch,
-// cold launch). Not logged: screenshots, screen snapshots, ref resolution, driver logs and the
+// cold launch, locales) and the device conditions (animations, dark mode, font scale,
+// density). Not logged: screenshots, screen snapshots, ref resolution, driver logs and the
 // app queries. A command's selector is logged as sent, so a ref an agent used appears as the
 // selector the daemon resolved it to.
 
@@ -12,6 +13,7 @@ syntax = "proto3";
 
 package tap.v1;
 
+import "app.proto";
 import "command.proto";
 import "failure.proto";
 
@@ -29,6 +31,7 @@ message LoggedEvent {
   oneof call {
     Command command = 6;
     AppCall app = 7;
+    DeviceCall device = 10;
   }
   // The command ran and the driver returned an error (`CommandResult.error`).
   optional Error error = 8;
@@ -37,14 +40,34 @@ message LoggedEvent {
 }
 
 // An AppService call. `operation` is the RPC in snake_case: install, uninstall, force_stop,
-// clear_data, grant_permission, launch, cold_launch.
+// clear_data, grant_permission, revoke_permission, launch, cold_launch, foreground, open_link,
+// set_locales.
 message AppCall {
   string operation = 1;
   string package_name = 2;
   // launch / cold_launch.
   optional string activity = 3;
-  // grant_permission.
+  // grant_permission / revoke_permission.
   optional string permission = 4;
   // The explicit timeout the call carried.
   optional int64 timeout_ms = 5;
+  // open_link.
+  optional string uri = 6;
+  optional bool any_app = 7;
+  // launch / cold_launch with extras.
+  repeated IntentExtra extras = 8;
+  // set_locales.
+  repeated string locales = 9;
+}
+
+// A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
+// set_dark_mode, set_font_scale, set_density.
+message DeviceCall {
+  string operation = 1;
+  // set_animations / set_dark_mode.
+  optional bool enabled = 2;
+  // set_font_scale.
+  optional float font_scale = 3;
+  // set_density; absent there = back to the physical density.
+  optional int32 density_dpi = 4;
 }

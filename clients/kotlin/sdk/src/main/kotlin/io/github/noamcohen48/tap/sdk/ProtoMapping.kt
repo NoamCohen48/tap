@@ -5,13 +5,19 @@ import io.github.noamcohen48.tap.api.v1.DeviceEntry as DeviceEntryProto
 import io.github.noamcohen48.tap.api.v1.DeviceInfo as DeviceInfoProto
 import io.github.noamcohen48.tap.api.v1.DeviceState as DeviceStateProto
 import io.github.noamcohen48.tap.api.v1.Direction as DirectionProto
+import io.github.noamcohen48.tap.api.v1.DisplayRotation as DisplayRotationProto
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot as ElementSnapshotProto
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.FailureReason as FailureReasonProto
 import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.api.v1.IntentExtra as IntentExtraProto
 import io.github.noamcohen48.tap.api.v1.MatchMode as MatchModeProto
+import io.github.noamcohen48.tap.api.v1.Orientation as OrientationProto
+import io.github.noamcohen48.tap.api.v1.PermissionChoice as PermissionChoiceProto
+import io.github.noamcohen48.tap.api.v1.PermissionPrompt as PermissionPromptProto
 import io.github.noamcohen48.tap.api.v1.ProcessIdentity
 import io.github.noamcohen48.tap.api.v1.StabilitySignal as StabilitySignalProto
+import io.github.noamcohen48.tap.api.v1.Toast as ToastProto
 import kotlin.time.Duration.Companion.milliseconds
 
 /*
@@ -24,6 +30,19 @@ internal fun MatchMode.toProto(): MatchModeProto = MatchModeProto.valueOf("MATCH
 internal fun Direction.toProto(): DirectionProto = DirectionProto.valueOf("DIR_$name")
 
 internal fun StabilitySignal.toProto(): StabilitySignalProto = StabilitySignalProto.valueOf("STABILITY_$name")
+
+internal fun Orientation.toProto(): OrientationProto = OrientationProto.valueOf("ORIENTATION_$name")
+
+internal fun DisplayRotation.toProto(): DisplayRotationProto = DisplayRotationProto.valueOf("DISPLAY_ROTATION_$name")
+
+internal fun PermissionChoice.toProto(): PermissionChoiceProto = PermissionChoiceProto.valueOf("PERMISSION_$name")
+
+internal fun PermissionPromptProto.toModel(): PermissionPrompt =
+    PermissionPrompt(
+        packageName = packageName,
+        // A choice this client does not know yet is left out rather than guessed.
+        choices = choicesList.mapNotNull { choice -> PermissionChoice.entries.find { "PERMISSION_${it.name}" == choice.name } },
+    )
 
 internal fun ErrorCodeProto.toModel(): ErrorCode =
     ErrorCode.entries.firstOrNull { "ERR_${it.name}" == name } ?: ErrorCode.UNKNOWN
@@ -64,9 +83,37 @@ internal fun DeviceInfoProto.toModel(): DeviceInfo =
         product = product,
         displayWidth = displayWidth,
         displayHeight = displayHeight,
-        displayRotation = displayRotation,
+        displayRotation = DisplayRotation.entries[displayRotation and 3],
         currentPackage = if (hasCurrentPackage()) currentPackage else null,
+        screenOn = screenOn,
+        keyguardLocked = keyguardLocked,
+        keyguardSecure = keyguardSecure,
+        keyboardShown = keyboardShown,
+        autoRotate = autoRotate,
+        animationsEnabled = animationsEnabled,
+        darkMode = darkMode,
+        fontScale = fontScale,
+        densityDpi = densityDpi,
     )
+
+internal fun ToastProto.toModel(): Toast = Toast(text = text, packageName = packageName)
+
+/** `am start` extras from [App.launch]'s map; an unsupported value type fails before the call. */
+internal fun intentExtras(extras: Map<String, Any>): List<IntentExtraProto> =
+    extras.map { (key, value) ->
+        IntentExtraProto.newBuilder().setKey(key).apply {
+            when (value) {
+                is String -> stringValue = value
+                is Boolean -> boolValue = value
+                is Int -> intValue = value
+                is Long -> longValue = value
+                is Float -> floatValue = value
+                else -> throw IllegalArgumentException(
+                    "Intent extra '$key' is a ${value::class.simpleName}; use String, Boolean, Int, Long or Float",
+                )
+            }
+        }.build()
+    }
 
 internal fun DeviceEntryProto.toModel(): DeviceEntry =
     DeviceEntry(

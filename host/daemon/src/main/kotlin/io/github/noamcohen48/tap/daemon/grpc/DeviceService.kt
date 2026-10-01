@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
+import io.github.noamcohen48.tap.api.v1.DeviceCall
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
@@ -26,6 +27,16 @@ import io.github.noamcohen48.tap.api.v1.ScreenSnapshotRequest
 import io.github.noamcohen48.tap.api.v1.ScreenSnapshotResponse
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotResponse
+import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
+import io.github.noamcohen48.tap.api.v1.SetAnimationsResponse
+import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
+import io.github.noamcohen48.tap.api.v1.SetDarkModeResponse
+import io.github.noamcohen48.tap.api.v1.SetDensityRequest
+import io.github.noamcohen48.tap.api.v1.SetDensityResponse
+import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
+import io.github.noamcohen48.tap.daemon.core.AttachedDevice
+import io.github.noamcohen48.tap.host.DeviceConditions
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
 import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
@@ -210,6 +221,59 @@ class DeviceService(
                 .addAllLines(daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId).driverLog.snapshot())
                 .build()
         }
+
+    override suspend fun setAnimations(request: SetAnimationsRequest): SetAnimationsResponse =
+        reply {
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_animations", { enabled = request.enabled }) {
+                it.setAnimations(request.enabled)
+            }
+            SetAnimationsResponse.getDefaultInstance()
+        }
+
+    override suspend fun setDarkMode(request: SetDarkModeRequest): SetDarkModeResponse =
+        reply {
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_dark_mode", { enabled = request.enabled }) {
+                it.setDarkMode(request.enabled)
+            }
+            SetDarkModeResponse.getDefaultInstance()
+        }
+
+    override suspend fun setFontScale(request: SetFontScaleRequest): SetFontScaleResponse =
+        reply {
+            val scale = request.scale
+            argument(scale.isFinite() && scale in DeviceConditions.MIN_FONT_SCALE..DeviceConditions.MAX_FONT_SCALE) {
+                "scale must be ${DeviceConditions.MIN_FONT_SCALE} to ${DeviceConditions.MAX_FONT_SCALE}, not $scale"
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_font_scale", { fontScale = scale }) {
+                it.setFontScale(scale)
+            }
+            SetFontScaleResponse.getDefaultInstance()
+        }
+
+    override suspend fun setDensity(request: SetDensityRequest): SetDensityResponse =
+        reply {
+            val dpi = if (request.hasDpi()) request.dpi else null
+            argument(dpi == null || dpi in DeviceConditions.MIN_DENSITY..DeviceConditions.MAX_DENSITY) {
+                "dpi must be ${DeviceConditions.MIN_DENSITY} to ${DeviceConditions.MAX_DENSITY}, not $dpi"
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_density", { dpi?.let { densityDpi = it } }) {
+                it.setDensity(dpi)
+            }
+            SetDensityResponse.getDefaultInstance()
+        }
+
+    /** Runs a device-condition change on the attached device and logs it as [operation]. */
+    private suspend fun condition(
+        clientConnectionId: String,
+        attachedDeviceId: String,
+        operation: String,
+        call: DeviceCall.Builder.() -> Unit,
+        block: suspend (DeviceConditions) -> Unit,
+    ) {
+        val attachedDevice: AttachedDevice = daemon.attachedDevice(attachedDeviceId, clientConnectionId)
+        val logged = DeviceCall.newBuilder().setOperation(operation).apply(call).build()
+        attachedDevice.recorded({ setDevice(logged) }) { block(attachedDevice.deviceSession.conditions) }
+    }
 
     private fun deviceEntry(entry: DeviceEntry): io.github.noamcohen48.tap.api.v1.DeviceEntry =
         io.github.noamcohen48.tap.api.v1.DeviceEntry

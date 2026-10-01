@@ -2,8 +2,11 @@ package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
@@ -12,9 +15,15 @@ import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.Pinch
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
@@ -41,7 +50,7 @@ class CommandValidationTest {
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Command.getDefaultInstance()) }
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Request.getDefaultInstance()) }
         // A newer host's operation arrives as an unknown field: the op stays unset.
-        val unknownOp = Command.parseFrom(byteArrayOf(0xFA.toByte(), 0x01, 0x00)) // field 31, empty message
+        val unknownOp = Command.parseFrom(byteArrayOf(0x9A.toByte(), 0x06, 0x00)) // field 99, empty message
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(unknownOp) }
     }
 
@@ -66,6 +75,28 @@ class CommandValidationTest {
                 "system panel" to Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_UNSPECIFIED),
                 "unknown system panel" to
                     Command.newBuilder().setOpenSystemPanel(OpenSystemPanel.newBuilder().setPanelValue(99)).build(),
+                "orientation" to Commands.setOrientation(Orientation.ORIENTATION_UNSPECIFIED),
+                "unknown orientation" to
+                    Command.newBuilder().setSetOrientation(SetOrientation.newBuilder().setOrientationValue(99)).build(),
+                "display rotation" to Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_UNSPECIFIED),
+                "unknown display rotation" to
+                    Command.newBuilder().setSetDisplayRotation(SetDisplayRotation.newBuilder().setRotationValue(99)).build(),
+                "pinch direction" to Commands.pinch(button, PinchDirection.PINCH_UNSPECIFIED),
+                "unknown pinch direction" to
+                    Command.newBuilder().setPinch(Pinch.newBuilder().setSelector(button).setDirectionValue(99)).build(),
+                "pinch percent" to Commands.pinch(button, PinchDirection.PINCH_OPEN, percent = 0),
+                "pinch percent high" to Commands.pinch(button, PinchDirection.PINCH_CLOSE, percent = 101),
+                "fling direction" to Commands.fling(list, Direction.DIR_UNSPECIFIED),
+                "permission choice" to Commands.choosePermission(PermissionChoice.PERMISSION_CHOICE_UNSPECIFIED),
+                "unknown permission choice" to
+                    Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoiceValue(99)).build(),
+                "clipboard too long" to Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS + 1)),
+                "toast mode without text" to Commands.awaitToast(mode = MatchMode.MATCH_CONTAINS),
+                "toast text too long" to Commands.awaitToast("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "toast regex" to Commands.awaitToast("(", MatchMode.MATCH_REGEX),
+                "toast unknown mode" to
+                    Command.newBuilder().setAwaitToast(AwaitToast.newBuilder().setText("x").setModeValue(99)).build(),
+                "toast blank package" to Commands.awaitToast(packageName = " "),
             )
         invalid.forEach { (name, command) ->
             assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
@@ -87,6 +118,31 @@ class CommandValidationTest {
             Commands.tap(button.pickAt(0)),
             Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS),
             Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS),
+            Commands.setOrientation(Orientation.ORIENTATION_PORTRAIT),
+            Commands.setOrientation(Orientation.ORIENTATION_LANDSCAPE),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_NATURAL),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_LEFT),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_UPSIDE_DOWN),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_RIGHT),
+            Commands.unfreezeRotation(),
+            Commands.dismissKeyguard(),
+            Commands.waitPermissionPrompt(),
+            Commands.choosePermission(PermissionChoice.PERMISSION_KEEP_ONE_TIME),
+            Commands.doubleTap(button),
+            Commands.drag(button, list),
+            Commands.pinch(button, PinchDirection.PINCH_OPEN),
+            Commands.pinch(button, PinchDirection.PINCH_CLOSE, percent = 1),
+            Commands.pinch(button, PinchDirection.PINCH_OPEN, percent = 100),
+            Commands.fling(list, Direction.DIR_LEFT),
+            Commands.hideKeyboard(),
+            Commands.performImeAction(button),
+            Commands.setClipboard(""),
+            Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS)),
+            Commands.getClipboard(),
+            Commands.awaitToast(),
+            Commands.awaitToast("Saved"),
+            Commands.awaitToast("Sav.*", MatchMode.MATCH_REGEX, packageName = "com.android.systemui"),
+            Commands.awaitToast("x".repeat(MAX_SELECTOR_STRING_CHARS)),
         ).forEach { CommandValidation.validate(it) }
     }
 
@@ -126,6 +182,11 @@ class CommandValidationTest {
             Commands.clearText(missing),
             Commands.swipe(missing, Direction.DIR_UP),
             Commands.scroll(missing, Direction.DIR_UP),
+            Commands.doubleTap(missing),
+            Commands.drag(missing, list),
+            Commands.drag(button, missing),
+            Commands.pinch(missing, PinchDirection.PINCH_OPEN),
+            Commands.fling(missing, Direction.DIR_UP),
         ).forEach { command ->
             assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_NODE, command.op) { CommandValidation.validate(command) }
         }

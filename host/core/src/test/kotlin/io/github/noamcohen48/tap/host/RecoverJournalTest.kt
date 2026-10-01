@@ -157,4 +157,33 @@ class RecoverJournalTest {
             assertEquals(JournalState.QUARANTINED, store.read()?.state)
             assertTrue(Files.list(root).use { files -> files.anyMatch { ".corrupt-" in it.fileName.toString() } })
         }
+
+    @Test
+    fun `state a dead session changed is restored and cleared from the journal`() =
+        runBlocking {
+            val device = FakeDeviceState(mapOf(StateKey.FONT_SCALE to "1.3", StateKey.Density.id to "320"))
+            val adb = adb().apply { responder.let { base -> responder = { s, command -> device.answer(command) ?: base?.invoke(s, command) } } }
+            val prior = record(JournalState.CLOSED).copy(savedState = listOf(SavedState(StateKey.FONT_SCALE, "1.1"), SavedState(StateKey.Density.id, null)))
+            store.write(prior)
+            val restored = restorePriorState(adb, serial, store, prior)
+            assertEquals(mapOf(StateKey.FONT_SCALE to "1.1", StateKey.Density.id to null), device.values)
+            assertEquals(emptyList(), restored.savedState)
+            assertEquals(emptyList(), store.read()?.savedState)
+            assertEquals(JournalState.CLOSED, store.read()?.state)
+        }
+
+    @Test
+    fun `state that cannot be restored quarantines and keeps the record`() =
+        runBlocking {
+            val device = FakeDeviceState(mapOf(StateKey.FONT_SCALE to "1.3"))
+            device.stuck += StateKey.FONT_SCALE
+            val adb = adb().apply { responder.let { base -> responder = { s, command -> device.answer(command) ?: base?.invoke(s, command) } } }
+            val prior = record(JournalState.CLOSED).copy(savedState = listOf(SavedState(StateKey.FONT_SCALE, "1.1")))
+            store.write(prior)
+            assertFailsWith<DeviceQuarantinedException> { restorePriorState(adb, serial, store, prior) }
+            val record = store.read()
+            assertEquals(JournalState.QUARANTINED, record?.state)
+            assertTrue(record?.quarantineReason?.startsWith("DEVICE_STATE_RESTORE_FAILED") == true, record?.quarantineReason)
+            assertEquals(prior.savedState, record?.savedState)
+        }
 }

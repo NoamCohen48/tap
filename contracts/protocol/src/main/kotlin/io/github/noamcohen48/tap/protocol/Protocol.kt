@@ -7,6 +7,9 @@ const val MAX_CONTROL_PAYLOAD = 1024 * 1024
 const val MAX_REQUEST_TIMEOUT_MS = 120_000L
 const val MAX_TEXT_INPUT_CHARS = 256
 
+/** Longest `set_clipboard` text. */
+const val MAX_CLIPBOARD_CHARS = 4_096
+
 /**
  * How long the driver lets a running command overrun its deadline before its watchdog poisons
  * the session and answers `INDETERMINATE`/`DRIVER_UNHEALTHY` (instrumentation argument

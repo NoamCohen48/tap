@@ -121,7 +121,15 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.AwaitToast",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.Bounds",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.ChoosePermission",
     "allDeclaredFields": true
   },
   {
@@ -185,6 +193,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.DeviceCall",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.DeviceEntry",
     "allDeclaredFields": true
   },
@@ -205,7 +217,19 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.DismissKeyguard",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.Done",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.DoubleTap",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.Drag",
     "allDeclaredFields": true
   },
   {
@@ -265,11 +289,35 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.Fling",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.ForceStopRequest",
     "allDeclaredFields": true
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.ForceStopResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.ForegroundRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.ForegroundResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.GetClipboard",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.GetLocalesRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.GetLocalesResponse",
     "allDeclaredFields": true
   },
   {
@@ -282,6 +330,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.Heartbeat",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.HideKeyboard",
     "allDeclaredFields": true
   },
   {
@@ -309,11 +361,23 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.IntentExtra",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.IsInstalledRequest",
     "allDeclaredFields": true
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.IsInstalledResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.IsPermissionGrantedRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.IsPermissionGrantedResponse",
     "allDeclaredFields": true
   },
   {
@@ -377,7 +441,27 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.OpenLinkRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.OpenLinkResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.OpenSystemPanel",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PerformImeAction",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PermissionPrompt",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.Pinch",
     "allDeclaredFields": true
   },
   {
@@ -413,6 +497,14 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.RevokePermissionRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.RevokePermissionResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.ScreenNode",
     "allDeclaredFields": true
   },
@@ -442,6 +534,58 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.SelectorCandidate",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetAnimationsRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetAnimationsResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetClipboard",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetDarkModeRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetDarkModeResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetDensityRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetDensityResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetDisplayRotation",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetFontScaleRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetFontScaleResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetLocalesRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetLocalesResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetOrientation",
     "allDeclaredFields": true
   },
   {
@@ -481,7 +625,15 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.Toast",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.TypeText",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.UnfreezeRotation",
     "allDeclaredFields": true
   },
   {
@@ -498,6 +650,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.WaitGone",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt",
     "allDeclaredFields": true
   },
   {

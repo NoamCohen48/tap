@@ -100,8 +100,9 @@ class Hierarchy(
 }
 
 /**
- * Static facts about the device plus the package owning the focused window ([Device.info]).
- * Serialized as JSON.
+ * Facts about the device at the moment of [Device.info]: identity, display geometry and
+ * rotation, screen, keyguard and keyboard state, and the package owning the focused window. Serialized as
+ * JSON.
  */
 data class DeviceInfo(
     val apiLevel: Int,
@@ -110,11 +111,31 @@ data class DeviceInfo(
     val product: String,
     val displayWidth: Int,
     val displayHeight: Int,
-    /** `Surface.ROTATION_*`: 0, 1, 2 or 3 quarter turns. */
-    val displayRotation: Int,
+    val displayRotation: DisplayRotation,
     /** The package owning the focused window, when there is one. */
     val currentPackage: String?,
+    /** The screen is on (interactive). */
+    val screenOn: Boolean,
+    /** The keyguard (lock screen) is showing. */
+    val keyguardLocked: Boolean,
+    /** A PIN, pattern or password is set: Tap cannot dismiss this keyguard. */
+    val keyguardSecure: Boolean,
+    /** A soft keyboard (any input method's window) is on screen. */
+    val keyboardShown: Boolean,
+    /** Auto-rotate is on: the sensor turns the display (off while a rotation is frozen). */
+    val autoRotate: Boolean,
+    /** Window, transition or animator animations run (any of the three scales is not 0). */
+    val animationsEnabled: Boolean,
+    /** The UI is in night mode (dark theme). */
+    val darkMode: Boolean,
+    /** The font scale apps see (1.0 = the default size). */
+    val fontScale: Float,
+    /** The display density apps see, in dpi. */
+    val densityDpi: Int,
 ) : Artifact {
+    /** [PORTRAIT][Orientation.PORTRAIT] when the display is at least as tall as it is wide. */
+    val orientation: Orientation get() = if (displayHeight >= displayWidth) Orientation.PORTRAIT else Orientation.LANDSCAPE
+
     override val bytes: ByteArray
         get() =
             buildJsonObject {
@@ -124,8 +145,17 @@ data class DeviceInfo(
                 put("product", product)
                 put("displayWidth", displayWidth)
                 put("displayHeight", displayHeight)
-                put("displayRotation", displayRotation)
+                put("displayRotation", displayRotation.name)
                 put("currentPackage", currentPackage)
+                put("screenOn", screenOn)
+                put("keyguardLocked", keyguardLocked)
+                put("keyguardSecure", keyguardSecure)
+                put("keyboardShown", keyboardShown)
+                put("autoRotate", autoRotate)
+                put("animationsEnabled", animationsEnabled)
+                put("darkMode", darkMode)
+                put("fontScale", fontScale)
+                put("densityDpi", densityDpi)
             }.toString().encodeToByteArray()
     override val mediaType: String get() = "application/json"
     override val extension: String get() = "json"

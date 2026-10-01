@@ -131,12 +131,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def tap(
         target: Target,
         long: Annotated[bool, Field(description="Long-press instead.")] = False,
+        double: Annotated[bool, Field(description="Double-tap instead.")] = False,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Tap the one node matching target."""
-        return await call(session, lambda a: a.tap(target, device or None, long=long, settle=settle))
+        return await call(session, lambda a: a.tap(target, device or None, long=long, settle=settle, double=double))
 
     @mcp.tool(name="fill")
     async def fill(
@@ -178,6 +179,81 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """One swipe across a node, the finger moving in `direction`."""
         return await call(session, lambda a: a.swipe(target, direction, device or None, settle=settle))
 
+    @mcp.tool(name="fling")
+    async def fling(
+        target: Target, direction: Direction, settle: Settle = False, session: Session = "", device: Device = ""
+    ) -> CallToolResult:
+        """One fast swipe on a scrollable node towards a content edge, as for scroll; the content
+        may keep moving afterwards (use settle)."""
+        return await call(session, lambda a: a.fling(target, direction, device or None, settle=settle))
+
+    @mcp.tool(name="drag")
+    async def drag(
+        target: Target,
+        destination: Annotated[str, Field(description="Where to drop it: a ref (@e7) or selector terms, as for target.")],
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Long-press the node matching target, move it onto the node matching destination and drop it."""
+        return await call(session, lambda a: a.drag(target, destination, device or None, settle=settle))
+
+    @mcp.tool(name="pinch")
+    async def pinch(
+        target: Target,
+        how: Annotated[Literal["open", "close"], Field(description="open: fingers apart (zoom in); close: together.")],
+        percent: Annotated[int, Field(ge=1, le=100, description="How far across the node the fingers move.")] = 80,
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Two-finger pinch on a node (a map, an image)."""
+        return await call(session, lambda a: a.pinch(target, how, percent, device or None, settle=settle))
+
+    @mcp.tool(name="submit")
+    async def submit(target: Target, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
+        """Run a text field's keyboard action (Search, Go, Send, Done, ... as the app set it up),
+        exactly as the keyboard's action key does; press_key enter is not the same. The field must
+        have input focus (tap it first). Android 11 (API 30)+."""
+        return await call(session, lambda a: a.submit(target, device or None, settle=settle))
+
+    @mcp.tool(name="keyboard")
+    async def keyboard(
+        action: Annotated[
+            Literal["state", "hide"],
+            Field(description="state: report whether a soft keyboard shows; hide: hide it (Back, only when one shows)."),
+        ] = "state",
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """The soft keyboard: is it showing, or hide it."""
+        return await call(session, lambda a: a.keyboard(action, device or None, settle=settle))
+
+    @mcp.tool(name="clipboard")
+    async def clipboard(
+        text: Annotated[str | None, Field(description="Put this on the clipboard; omit to read it.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Read the device clipboard as text, or set it."""
+        return await call(session, lambda a: a.clipboard(text, device or None))
+
+    @mcp.tool(name="await_toast", annotations=READ_ONLY)
+    async def await_toast(
+        text: Annotated[str, Field(description="The toast's text; omit for any toast.")] = "",
+        contains: Annotated[bool, Field(description="text is only part of the toast.")] = False,
+        package: Annotated[str, Field(description="Only this package's toasts; omit for any app's.")] = "",
+        timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Wait for a toast (one shown in the last 3.5 s counts) and return its text and app.
+        Toasts never appear in snapshot: use this to check one."""
+        return await call(
+            session, lambda a: a.toast(text or None, device or None, contains=contains, package=package or None, timeout=timeout_seconds)
+        )
+
     @mcp.tool(name="press_key")
     async def press_key(
         key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],
@@ -201,6 +277,48 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Open a system panel, as a swipe down from the status bar would. Its nodes belong to
         com.android.systemui (target them with pkg=com.android.systemui); press_key back closes it."""
         return await call(session, lambda a: a.panel(panel, device or None, settle=settle))
+
+    @mcp.tool(name="rotate")
+    async def rotate(
+        how: Annotated[
+            Literal["portrait", "landscape", "natural", "left", "upside-down", "right", "auto"],
+            Field(description="A geometry, an exact rotation from the natural one, or auto (back to the sensor)."),
+        ],
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Rotate the display and keep it there. Returns where the display is afterwards: the app
+        may pin its own orientation. The device's rotation settings are restored on release."""
+        return await call(session, lambda a: a.rotate(how, device or None, settle=settle))
+
+    @mcp.tool(name="screen")
+    async def screen(
+        action: Annotated[
+            Literal["state", "on", "off", "unlock"],
+            Field(description="state: report; on/off: wake or sleep; unlock: wake and dismiss a keyguard without a PIN."),
+        ] = "state",
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Screen power and lock screen. A keyguard with a PIN, pattern or password is never unlocked."""
+        return await call(session, lambda a: a.screen(action, device or None, settle=settle))
+
+    @mcp.tool(name="permission")
+    async def permission(
+        choice: Annotated[
+            str,
+            Field(description="The button to press: allow, allow-foreground-only, allow-one-time, deny, ...; omit to list them."),
+        ] = "",
+        timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Android's runtime-permission dialog: without a choice, wait for it and list the buttons
+        it offers; with one, press that button."""
+        return await call(session, lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle))
 
     @mcp.tool(name="wait_for", annotations=READ_ONLY)
     async def wait_for(
@@ -239,6 +357,24 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             ]
         )
 
+    @mcp.tool(name="condition")
+    async def condition(
+        name: Annotated[
+            Literal["animations", "dark-mode", "font-scale", "density"] | None,
+            Field(description="The condition to read or change; omit to read them all."),
+        ] = None,
+        value: Annotated[
+            str,
+            Field(description="animations/dark-mode: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset. Omit to read."),
+        ] = "",
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Read the device conditions (animations, dark mode, font scale, display density) or
+        change one. A change lasts until release, which restores what the device had, and the
+        result is the value read back. Dark mode needs API 29+."""
+        return await call(session, lambda a: a.condition(name, value or None, device or None))
+
     @mcp.tool(name="capture", annotations=READ_ONLY)
     async def capture(session: Session = "", device: Device = "") -> CallToolResult:
         """Save a screenshot, the hierarchy, device info and the driver log; returns the paths."""
@@ -246,17 +382,31 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="app")
     async def app(
-        action: Literal["launch", "cold-launch", "stop", "clear", "install", "uninstall", "grant", "running"],
+        action: Literal[
+            "launch", "cold-launch", "foreground", "background", "open-link",
+            "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale",
+        ],
         package: Annotated[str, Field(description="The app's package name.")],
         argument: Annotated[
-            str, Field(description="launch/cold-launch: activity (optional); install: APK path; grant: permission.")
+            str,
+            Field(
+                description="launch/cold-launch: activity (optional); open-link: URI; install: APK path; "
+                "grant/revoke/granted: permission; locale: comma-separated BCP-47 tags, or system (omit to read)."
+            ),
         ] = "",
+        any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """App lifecycle: launch, cold-launch (force-stop first), stop, clear data, install,
-        uninstall, grant a runtime permission, or ask whether it is running."""
-        return await call(session, lambda a: a.app(action, package, argument or None, device or None))
+        """App lifecycle: launch, cold-launch (force-stop first), foreground (as the launcher
+        would: back where it was), background (home key), open-link (a deep link, restricted to
+        the app unless any_app), stop, clear data, install, uninstall, grant or revoke a runtime
+        permission (revoking stops the app's process), ask whether a permission is granted,
+        whether the app is running, or read or set the app's own languages (locale, API 33+,
+        restored on release)."""
+        return await call(
+            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app)
+        )
 
     @mcp.tool(name="export", annotations=READ_ONLY)
     async def export(

@@ -40,6 +40,67 @@ Added:
   external dependency: `tap start --scrcpy PATH` (or `TAP_SCRCPY`), default `scrcpy` on `PATH`;
   it runs with Tap's own ADB. Guide: `docs/guide/actions-and-waits.md`.
 
+Device actions (engine, Kotlin and Python clients, `tap-agent`), new in protocol 5.0; the engine
+and the clients must be updated together to use them:
+
+
+- **Rotation**: `setOrientation(PORTRAIT|LANDSCAPE)` (the right geometry on phones and
+  tablets), `setDisplayRotation(NATURAL|LEFT|UPSIDE_DOWN|RIGHT)` and `unfreezeRotation()`.
+  They fail only when Android refuses the rotation; an app that locks its orientation is for
+  the test to observe. Detach restores the device's own auto-rotate settings; a failed restore
+  quarantines the device.
+- **Screen and lock screen**: `wake()`, `sleep()`, `dismissKeyguard()` (never unlocks a PIN,
+  pattern or password: `ACTION_REJECTED` / `KEYGUARD_SECURE`); `DeviceInfo` reports
+  `screenOn`, `keyguardLocked`, `keyguardSecure`.
+- **App**: `foreground()` returns to the app as the home screen does (its task as it was
+  left), `background()` presses Home, `openLink(uri, anyApp = false)` opens a deep link or app
+  link in the app and returns the activity Android started (`AppService.Foreground` /
+  `OpenLink`).
+- **Permission dialogs**: `awaitPermissionPrompt()` returns the choices the runtime-permission
+  dialog offers, `choosePermission(choice)` presses one; found by resource id, not by label.
+- `device.app(pkg)` refuses Tap's driver packages (`INVALID_ARGUMENT`): force-stopping or
+  clearing the driver would end the session.
+- **Gestures**: `doubleTap()`, `dragTo(destination)`, `pinchOpen()` / `pinchClose()`,
+  `fling(direction)`; like a tap, each fails with `OBSCURED` when another window covers its
+  touch point (the centre; a fling's start).
+- `tap-agent`: `tap --double`, `fling`, `drag`, `pinch`, `rotate`, `screen`, `permission`, and
+  `app foreground|background|open-link` (CLI and MCP).
+- **Keyboard**: `keyboardShown()` (`DeviceInfo.keyboardShown`, any IME), `hideKeyboard()`
+  (Back only when a keyboard is up), `Element.imeAction()` runs a focused field's action key
+  (Search, Go, Send, Done; API 30+, `UNSUPPORTED` below).
+- **Clipboard**: `setClipboard(text)`, `clipboard()`; reading does not move focus (on API 31+
+  Android shows its "pasted from your clipboard" notice).
+- **Toasts**: `device.awaitToast(text?, mode, packageName?)` returns `Toast{text,
+  packageName}` seen in the last 3.5 s or arriving before the timeout (`WAIT_TIMEOUT` /
+  `NO_TOAST`), from any package unless one is named; `app.awaitToast(text?, mode)` names the
+  app's.
+- **App**: `launch` / `coldLaunch` take typed intent extras (string, boolean, int, long,
+  float; Python `tap_e2e.Long` for 64-bit), `revokePermission(name)` (`AppService.RevokePermission`), and
+  `isPermissionGranted(name)` to read it back (`AppService.IsPermissionGranted`).
+- `tap-agent`: `submit`, `keyboard`, `clipboard`, `toast [--package]`, `app revoke` (CLI and MCP).
+- `DeviceInfo.autoRotate` / `auto_rotate`: whether the sensor turns the display (false while a
+  rotation is frozen), so a test can tell what detach restored.
+- **Device conditions** for the session: `setAnimations(enabled)` (the three animation
+  scales), `setDarkMode(enabled)` (API 29+), `setFontScale(scale)` (0.5..2.0), `setDensity(dpi)`
+  (100..1000, `null` = physical); Python `set_animations`, `set_dark_mode`, `set_font_scale`,
+  `set_density` (`DeviceService.SetAnimations/SetDarkMode/SetFontScale/SetDensity`). Each change
+  is read back, and `DeviceInfo` reports `animationsEnabled`, `darkMode`, `fontScale`,
+  `densityDpi`.
+- **App languages** (API 33+): `App.setLocales(tags)` / `locales()` (Python `set_locales` /
+  `locales`; `AppService.SetLocales/GetLocales`), BCP-47 tags checked and canonicalized by the
+  server.
+- Rotation, the device conditions and app languages are captured before the session's first
+  change, journaled, and restored on detach; when the server died first, the next attach
+  restores them (a restore that does not read back quarantines the device). New failure
+  reasons `UNSUPPORTED_API` (detail `REQUIRES_API_<n>`) and `DEVICE_SETTING`.
+- `tap-agent`: `condition [animations|dark-mode|font-scale|density] [value]` and
+  `app locale <package> [tags|system]` (CLI and MCP).
+- **Breaking** (Kotlin, Python positional): `DeviceInfo` gains `keyboardShown`, `autoRotate`,
+  `animationsEnabled`, `darkMode`, `fontScale` and `densityDpi` constructor parameters.
+- **Breaking** (Kotlin, Python): `DeviceInfo.displayRotation` / `display_rotation` is now a
+  `DisplayRotation` instead of an int (the wire field is unchanged); `DeviceInfo.orientation`
+  derives portrait or landscape from the size.
+
 ## 0.0.2 — 2026-09-30 (alpha)
 
 `daemon/v0.0.2`, `client-kotlin/v0.0.2`, `client-python/v0.0.2`, `client-agent/v0.0.2`, and the

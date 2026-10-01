@@ -32,6 +32,18 @@ service DeviceService {
   // The selector a ref of the latest snapshot names. Unknown ref: NOT_FOUND (UNKNOWN_REF);
   // a node with no selector: FAILED_PRECONDITION (REF_NOT_ADDRESSABLE).
   rpc ResolveRef(ResolveRefRequest) returns (ResolveRefResponse);
+  // Device-wide conditions. Each changed value is captured before the session's first change
+  // of it, journaled, and restored when the device is detached (or by the next attach when the
+  // daemon died first); a restore that cannot be proven quarantines the device. Every change is
+  // read back: a value the device did not take is FAILED_PRECONDITION (DEVICE_SETTING).
+  // The three animation scales (window, transition, animator duration): all 0 or all 1.
+  rpc SetAnimations(SetAnimationsRequest) returns (SetAnimationsResponse);
+  // `cmd uimode night yes|no`. API 29+ (FAILED_PRECONDITION, UNSUPPORTED_API below).
+  rpc SetDarkMode(SetDarkModeRequest) returns (SetDarkModeResponse);
+  // The system font scale (`font_scale`), 0.5 to 2.0.
+  rpc SetFontScale(SetFontScaleRequest) returns (SetFontScaleResponse);
+  // `wm density`: an override in dpi (100 to 1000), or absent for the display's physical density.
+  rpc SetDensity(SetDensityRequest) returns (SetDensityResponse);
 }
 
 // State of a listed device.
@@ -233,3 +245,36 @@ message ResolveRefResponse {
   bool by_index = 2;
   int64 snapshot_id = 3;
 }
+
+message SetAnimationsRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  bool enabled = 3;
+}
+
+message SetAnimationsResponse {}
+
+message SetDarkModeRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  bool enabled = 3;
+}
+
+message SetDarkModeResponse {}
+
+message SetFontScaleRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  float scale = 3;
+}
+
+message SetFontScaleResponse {}
+
+message SetDensityRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // Absent: remove the override (the display's physical density).
+  optional int32 dpi = 3;
+}
+
+message SetDensityResponse {}

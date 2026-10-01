@@ -64,6 +64,26 @@ class AppServiceStub:
                 request_serializer=app__pb2.GrantPermissionRequest.SerializeToString,
                 response_deserializer=app__pb2.GrantPermissionResponse.FromString,
                 _registered_method=True)
+        self.RevokePermission = channel.unary_unary(
+                '/tap.v1.AppService/RevokePermission',
+                request_serializer=app__pb2.RevokePermissionRequest.SerializeToString,
+                response_deserializer=app__pb2.RevokePermissionResponse.FromString,
+                _registered_method=True)
+        self.IsPermissionGranted = channel.unary_unary(
+                '/tap.v1.AppService/IsPermissionGranted',
+                request_serializer=app__pb2.IsPermissionGrantedRequest.SerializeToString,
+                response_deserializer=app__pb2.IsPermissionGrantedResponse.FromString,
+                _registered_method=True)
+        self.SetLocales = channel.unary_unary(
+                '/tap.v1.AppService/SetLocales',
+                request_serializer=app__pb2.SetLocalesRequest.SerializeToString,
+                response_deserializer=app__pb2.SetLocalesResponse.FromString,
+                _registered_method=True)
+        self.GetLocales = channel.unary_unary(
+                '/tap.v1.AppService/GetLocales',
+                request_serializer=app__pb2.GetLocalesRequest.SerializeToString,
+                response_deserializer=app__pb2.GetLocalesResponse.FromString,
+                _registered_method=True)
         self.Launch = channel.unary_unary(
                 '/tap.v1.AppService/Launch',
                 request_serializer=app__pb2.LaunchRequest.SerializeToString,
@@ -73,6 +93,16 @@ class AppServiceStub:
                 '/tap.v1.AppService/ColdLaunch',
                 request_serializer=app__pb2.ColdLaunchRequest.SerializeToString,
                 response_deserializer=app__pb2.ColdLaunchResponse.FromString,
+                _registered_method=True)
+        self.Foreground = channel.unary_unary(
+                '/tap.v1.AppService/Foreground',
+                request_serializer=app__pb2.ForegroundRequest.SerializeToString,
+                response_deserializer=app__pb2.ForegroundResponse.FromString,
+                _registered_method=True)
+        self.OpenLink = channel.unary_unary(
+                '/tap.v1.AppService/OpenLink',
+                request_serializer=app__pb2.OpenLinkRequest.SerializeToString,
+                response_deserializer=app__pb2.OpenLinkResponse.FromString,
                 _registered_method=True)
         self.Process = channel.unary_unary(
                 '/tap.v1.AppService/Process',
@@ -136,6 +166,36 @@ class AppServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RevokePermission(self, request, context):
+        """`pm revoke` a runtime permission, verified like a grant. Android kills the app's process.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def IsPermissionGranted(self, request, context):
+        """Whether `dumpsys package` lists the permission as granted to the package (a read; not logged).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetLocales(self, request, context):
+        """The app's own languages (`cmd locale set-app-locales`, API 33+; FAILED_PRECONDITION,
+        UNSUPPORTED_API below), BCP-47 tags in preference order; empty = follow the system. Read
+        back after the change; restored on detach like the device conditions.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLocales(self, request, context):
+        """The app's own languages now (`cmd locale get-app-locales`); empty = it follows the system.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Launch(self, request, context):
         """Start the activity (or the launcher) and wait for the package to own the focused window.
         """
@@ -145,6 +205,21 @@ class AppServiceServicer:
 
     def ColdLaunch(self, request, context):
         """Verified force-stop, launch, then a new process identity in the foreground.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Foreground(self, request, context):
+        """`am start -W` of the launcher intent, as the home screen does: the app's existing task comes
+        back as it was left; with no task, the launcher activity starts.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def OpenLink(self, request, context):
+        """`am start -W -a android.intent.action.VIEW -d <uri>`, limited to the package unless `any_app`.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -204,6 +279,26 @@ def add_AppServiceServicer_to_server(servicer, server):
                     request_deserializer=app__pb2.GrantPermissionRequest.FromString,
                     response_serializer=app__pb2.GrantPermissionResponse.SerializeToString,
             ),
+            'RevokePermission': grpc.unary_unary_rpc_method_handler(
+                    servicer.RevokePermission,
+                    request_deserializer=app__pb2.RevokePermissionRequest.FromString,
+                    response_serializer=app__pb2.RevokePermissionResponse.SerializeToString,
+            ),
+            'IsPermissionGranted': grpc.unary_unary_rpc_method_handler(
+                    servicer.IsPermissionGranted,
+                    request_deserializer=app__pb2.IsPermissionGrantedRequest.FromString,
+                    response_serializer=app__pb2.IsPermissionGrantedResponse.SerializeToString,
+            ),
+            'SetLocales': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetLocales,
+                    request_deserializer=app__pb2.SetLocalesRequest.FromString,
+                    response_serializer=app__pb2.SetLocalesResponse.SerializeToString,
+            ),
+            'GetLocales': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLocales,
+                    request_deserializer=app__pb2.GetLocalesRequest.FromString,
+                    response_serializer=app__pb2.GetLocalesResponse.SerializeToString,
+            ),
             'Launch': grpc.unary_unary_rpc_method_handler(
                     servicer.Launch,
                     request_deserializer=app__pb2.LaunchRequest.FromString,
@@ -213,6 +308,16 @@ def add_AppServiceServicer_to_server(servicer, server):
                     servicer.ColdLaunch,
                     request_deserializer=app__pb2.ColdLaunchRequest.FromString,
                     response_serializer=app__pb2.ColdLaunchResponse.SerializeToString,
+            ),
+            'Foreground': grpc.unary_unary_rpc_method_handler(
+                    servicer.Foreground,
+                    request_deserializer=app__pb2.ForegroundRequest.FromString,
+                    response_serializer=app__pb2.ForegroundResponse.SerializeToString,
+            ),
+            'OpenLink': grpc.unary_unary_rpc_method_handler(
+                    servicer.OpenLink,
+                    request_deserializer=app__pb2.OpenLinkRequest.FromString,
+                    response_serializer=app__pb2.OpenLinkResponse.SerializeToString,
             ),
             'Process': grpc.unary_unary_rpc_method_handler(
                     servicer.Process,
@@ -403,6 +508,114 @@ class AppService:
             _registered_method=True)
 
     @staticmethod
+    def RevokePermission(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.AppService/RevokePermission',
+            app__pb2.RevokePermissionRequest.SerializeToString,
+            app__pb2.RevokePermissionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def IsPermissionGranted(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.AppService/IsPermissionGranted',
+            app__pb2.IsPermissionGrantedRequest.SerializeToString,
+            app__pb2.IsPermissionGrantedResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetLocales(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.AppService/SetLocales',
+            app__pb2.SetLocalesRequest.SerializeToString,
+            app__pb2.SetLocalesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLocales(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.AppService/GetLocales',
+            app__pb2.GetLocalesRequest.SerializeToString,
+            app__pb2.GetLocalesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def Launch(request,
             target,
             options=(),
@@ -446,6 +659,60 @@ class AppService:
             '/tap.v1.AppService/ColdLaunch',
             app__pb2.ColdLaunchRequest.SerializeToString,
             app__pb2.ColdLaunchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Foreground(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.AppService/Foreground',
+            app__pb2.ForegroundRequest.SerializeToString,
+            app__pb2.ForegroundResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def OpenLink(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.AppService/OpenLink',
+            app__pb2.OpenLinkRequest.SerializeToString,
+            app__pb2.OpenLinkResponse.FromString,
             options,
             channel_credentials,
             insecure,

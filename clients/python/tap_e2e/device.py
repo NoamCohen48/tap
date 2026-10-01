@@ -18,12 +18,18 @@ from .models import (
     AttachedDeviceEntry,
     Capture,
     DeviceInfo,
+    DisplayRotation,
     DriverLog,
     Hierarchy,
+    Orientation,
+    MatchMode,
+    PermissionChoice,
+    PermissionPrompt,
     Recording,
     ScreenSnapshot,
     Screenshot,
     StabilitySignal,
+    Toast,
 )
 from .selectors import Selector
 from .screen import Screen
@@ -35,6 +41,8 @@ if TYPE_CHECKING:
 
 KEYCODE_HOME = 3
 KEYCODE_BACK = 4
+KEYCODE_SLEEP = 223
+KEYCODE_WAKEUP = 224
 
 
 @dataclass(frozen=True)
@@ -195,6 +203,163 @@ class Device:
     def open_quick_settings(self) -> None:
         """Open the quick settings panel; otherwise as ``open_notifications``."""
         self._execute_or_raise(open_system_panel=pb.OpenSystemPanel(panel=pb.SYSTEM_PANEL_QUICK_SETTINGS))
+
+    def set_orientation(self, orientation: Orientation) -> None:
+        """Rotate the display to ``orientation`` geometry, whatever the device's natural
+        orientation, and freeze it there until ``unfreeze_rotation``.
+
+        Fails only when Android refuses the request; the call then waits briefly for the display
+        to turn. The foreground app may pin its own orientation and keep the display where it
+        wants it: assert with ``info()`` (``orientation``, ``display_rotation``). The rotation
+        settings the device had before the session's first rotation call are restored when the
+        device is detached.
+        """
+        self._execute_or_raise(set_orientation=pb.SetOrientation(orientation=_proto.orientation(orientation)))
+
+    def set_display_rotation(self, rotation: DisplayRotation) -> None:
+        """Rotate the display to the exact ``rotation`` and freeze it there; otherwise as
+        ``set_orientation``."""
+        self._execute_or_raise(
+            set_display_rotation=pb.SetDisplayRotation(rotation=_proto.display_rotation(rotation))
+        )
+
+    def unfreeze_rotation(self) -> None:
+        """Hand rotation back to the device's sensor (auto-rotate), without choosing a rotation."""
+        self._execute_or_raise(unfreeze_rotation=pb.UnfreezeRotation())
+
+    def wake(self) -> None:
+        """Turn the screen on (``KEYCODE_WAKEUP``; nothing happens when it is on). The keyguard
+        may still show: see ``dismiss_keyguard``."""
+        self.press_key(KEYCODE_WAKEUP)
+
+    def sleep(self) -> None:
+        """Turn the screen off (``KEYCODE_SLEEP``; nothing happens when it is off)."""
+        self.press_key(KEYCODE_SLEEP)
+
+    def dismiss_keyguard(self) -> None:
+        """Dismiss a keyguard that has no PIN, pattern or password (``wm dismiss-keyguard``); with
+        no keyguard showing nothing is sent. A secure keyguard raises ``CommandError``
+        (``ACTION_REJECTED`` / ``KEYGUARD_SECURE``) before any input: Tap never unlocks one.
+        ``info()`` reports the state."""
+        self._execute_or_raise(dismiss_keyguard=pb.DismissKeyguard())
+
+    def await_permission_prompt(self, timeout: float | None = None) -> PermissionPrompt:
+        """Wait until a runtime-permission dialog shows and return the choices it offers.
+
+        Buttons are recognised by the permission controller's resource ids, never by label or
+        position. Raises ``WaitTimeoutError`` (reason ``NO_PERMISSION_PROMPT``) when none appears
+        within ``timeout`` (default ``timeouts.wait``).
+        """
+        timeout = self.timeouts.wait if timeout is None else timeout
+        result = self._execute(timeout, wait_permission_prompt=pb.WaitPermissionPrompt())
+        if result.HasField("error"):
+            if result.error.code != pb.ERR_WAIT_TIMEOUT:
+                raise CommandError._from_result(result, "wait_permission_prompt", self.serial, None)
+            raise WaitTimeoutError._from_result(result, "a permission dialog", self.serial)
+        return _proto.permission_prompt(result.permission_prompt)
+
+    def choose_permission(self, choice: PermissionChoice, timeout: float | None = None) -> None:
+        """Tap the permission dialog's button for ``choice`` (``NOT_FOUND`` before any input when
+        the dialog does not offer it). Only the tap is reported: assert the outcome, e.g. the
+        dialog gone and the app's state."""
+        self._execute_or_raise(
+            timeout, choose_permission=pb.ChoosePermission(choice=_proto.permission_choice(choice))
+        )
+
+    def keyboard_shown(self) -> bool:
+        """Whether a soft keyboard (any input method's window) is on screen; ``info()`` reports
+        the same."""
+        return self.info().keyboard_shown
+
+    def hide_keyboard(self, timeout: float | None = None) -> None:
+        """Hide the soft keyboard with one Back key, which the keyboard consumes; with no keyboard
+        showing nothing is sent, so Back never reaches the app. Only the key is reported: assert
+        ``keyboard_shown()`` when it matters."""
+        self._execute_or_raise(timeout, hide_keyboard=pb.HideKeyboard())
+
+    def set_clipboard(self, text: str, timeout: float | None = None) -> None:
+        """Put ``text`` on the device clipboard as plain text (at most 4096 characters)."""
+        self._execute_or_raise(timeout, set_clipboard=pb.SetClipboard(text=text))
+
+    def clipboard(self, timeout: float | None = None) -> str:
+        """The device clipboard as text; ``""`` when it is empty or holds nothing that reads as
+        text."""
+        return self._execute_or_raise(timeout, get_clipboard=pb.GetClipboard()).text
+
+    def set_animations(self, enabled: bool) -> None:
+        """Turn the window, transition and animator animations off (all three scales 0) or on
+        (all 1) for this session.
+
+        Like every device condition below, the value the device had before the session's first
+        change is restored on ``detach()`` (or by the next attach when the server died first),
+        and the change is read back: a value the device did not take raises ``ServerError``
+        (reason ``DEVICE_SETTING``). ``info().animations_enabled`` reports it.
+        """
+        self._condition("set_animations", "SetAnimations", pb.SetAnimationsRequest, enabled=enabled)
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Dark theme on or off (``cmd uimode night``) until ``detach()``, see
+        ``set_animations``. API 29+: below, ``ServerError`` (reason ``UNSUPPORTED_API``). Read
+        back with ``info().dark_mode``."""
+        self._condition("set_dark_mode", "SetDarkMode", pb.SetDarkModeRequest, enabled=enabled)
+
+    def set_font_scale(self, scale: float) -> None:
+        """The system font scale, 0.5 to 2.0 (1.0 = default), until ``detach()``, see
+        ``set_animations``. Read back with ``info().font_scale``."""
+        self._condition("set_font_scale", "SetFontScale", pb.SetFontScaleRequest, scale=scale)
+
+    def set_density(self, dpi: int | None) -> None:
+        """Override the display density with ``dpi`` (100 to 1000), or with ``None`` go back to
+        the display's physical density, until ``detach()``, see ``set_animations``. Read back
+        with ``info().density_dpi``."""
+        if dpi is None:
+            self._condition("set_density", "SetDensity", pb.SetDensityRequest)
+        else:
+            self._condition("set_density", "SetDensity", pb.SetDensityRequest, dpi=dpi)
+
+    def _condition(self, operation: str, rpc: str, request_type, **fields) -> None:
+        self._ensure_usable(operation)
+        request = request_type(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            **fields,
+        )
+        with mapped_errors(self.serial):
+            getattr(self.client.device_stub, rpc)(
+                request, timeout=self.timeouts.lifecycle + RPC_DEADLINE_SLACK
+            )
+
+    def await_toast(
+        self,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        timeout: float | None = None,
+    ) -> Toast:
+        """Wait for a toast and return it: one shown in the last 3.5 s (the longest a toast stays
+        up) or arriving within ``timeout`` (default ``timeouts.wait``).
+
+        ``text`` matches with ``mode`` (any text when ``None``); a toast from any package counts
+        unless ``package_name`` names one (``App.await_toast`` passes its own). Not consuming: the
+        same toast can satisfy two calls in a row. Raises ``WaitTimeoutError`` (reason ``NO_TOAST``)
+        when none matches.
+        """
+        timeout = self.timeouts.wait if timeout is None else timeout
+        request = pb.AwaitToast()
+        if text is not None:
+            request.text = text
+            request.mode = _proto.match_mode(mode)
+        if package_name is not None:
+            request.package_name = package_name
+        result = self._execute(timeout, await_toast=request)
+        if result.HasField("error"):
+            if result.error.code != pb.ERR_WAIT_TIMEOUT:
+                raise CommandError._from_result(result, "await_toast", self.serial, None)
+            what = "a toast" if text is None else f"a toast {text!r}"
+            origin = "" if package_name is None else f" from {package_name}"
+            raise WaitTimeoutError._from_result(result, what + origin, self.serial)
+        return _proto.toast(result.toast)
 
     def type_text(self, value: str, timeout: float | None = None) -> None:
         """Type ``value`` as real key events into whatever has input focus now.

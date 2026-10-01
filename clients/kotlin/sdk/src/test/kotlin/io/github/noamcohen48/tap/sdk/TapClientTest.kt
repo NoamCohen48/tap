@@ -815,6 +815,269 @@ class TapClientTest {
     }
 
     @Test
+    fun `rotation methods send one typed mutation each`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                if (request.command.opCase in setOf(
+                        Command.OpCase.SET_ORIENTATION,
+                        Command.OpCase.SET_DISPLAY_ROTATION,
+                        Command.OpCase.UNFREEZE_ROTATION,
+                    )
+                ) {
+                    CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
+                } else {
+                    null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        device.setOrientation(Orientation.LANDSCAPE)
+                        device.setDisplayRotation(DisplayRotation.UPSIDE_DOWN)
+                        device.unfreezeRotation()
+                        val commands =
+                            fakeDevices.executeRequests.map { it.command }.filter {
+                                it.opCase in setOf(
+                                    Command.OpCase.SET_ORIENTATION,
+                                    Command.OpCase.SET_DISPLAY_ROTATION,
+                                    Command.OpCase.UNFREEZE_ROTATION,
+                                )
+                            }
+                        assertEquals(
+                            listOf(
+                                Command.OpCase.SET_ORIENTATION,
+                                Command.OpCase.SET_DISPLAY_ROTATION,
+                                Command.OpCase.UNFREEZE_ROTATION,
+                            ),
+                            commands.map { it.opCase },
+                        )
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.Orientation.ORIENTATION_LANDSCAPE,
+                            commands[0].setOrientation.orientation,
+                        )
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.DisplayRotation.DISPLAY_ROTATION_UPSIDE_DOWN,
+                            commands[1].setDisplayRotation.rotation,
+                        )
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `screen, permission and gesture methods send their typed commands`() {
+        runBlocking {
+            val sent =
+                setOf(
+                    Command.OpCase.PRESS_KEY,
+                    Command.OpCase.DISMISS_KEYGUARD,
+                    Command.OpCase.WAIT_PERMISSION_PROMPT,
+                    Command.OpCase.CHOOSE_PERMISSION,
+                    Command.OpCase.DOUBLE_TAP,
+                    Command.OpCase.DRAG,
+                    Command.OpCase.PINCH,
+                    Command.OpCase.FLING,
+                )
+            fakeDevices.executeResponder = { request ->
+                when (request.command.opCase) {
+                    Command.OpCase.WAIT_PERMISSION_PROMPT ->
+                        CommandResult
+                            .newBuilder()
+                            .setPermissionPrompt(
+                                io.github.noamcohen48.tap.api.v1.PermissionPrompt
+                                    .newBuilder()
+                                    .setPackageName("com.android.permissioncontroller")
+                                    .addChoices(io.github.noamcohen48.tap.api.v1.PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY)
+                                    .addChoices(io.github.noamcohen48.tap.api.v1.PermissionChoice.PERMISSION_DENY),
+                            ).build()
+                    in sent -> CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        device.wake()
+                        device.sleep()
+                        device.dismissKeyguard()
+                        val prompt = device.awaitPermissionPrompt()
+                        assertEquals(
+                            PermissionPrompt(
+                                "com.android.permissioncontroller",
+                                listOf(PermissionChoice.ALLOW_FOREGROUND_ONLY, PermissionChoice.DENY),
+                            ),
+                            prompt,
+                        )
+                        device.choosePermission(PermissionChoice.DENY_AND_DONT_ASK_AGAIN)
+                        val card = device.screen.element(res("card"))
+                        card.doubleTap()
+                        card.dragTo(res("bin"))
+                        card.pinchOpen()
+                        card.pinchClose(percent = 40)
+                        card.fling(io.github.noamcohen48.tap.sdk.Direction.DOWN)
+                        val commands = fakeDevices.executeRequests.map { it.command }.filter { it.opCase in sent }
+                        assertEquals(
+                            listOf(
+                                Command.OpCase.PRESS_KEY,
+                                Command.OpCase.PRESS_KEY,
+                                Command.OpCase.DISMISS_KEYGUARD,
+                                Command.OpCase.WAIT_PERMISSION_PROMPT,
+                                Command.OpCase.CHOOSE_PERMISSION,
+                                Command.OpCase.DOUBLE_TAP,
+                                Command.OpCase.DRAG,
+                                Command.OpCase.PINCH,
+                                Command.OpCase.PINCH,
+                                Command.OpCase.FLING,
+                            ),
+                            commands.map { it.opCase },
+                        )
+                        assertEquals(listOf(224, 223), commands.take(2).map { it.pressKey.keyCode })
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.PermissionChoice.PERMISSION_DENY_AND_DONT_ASK_AGAIN,
+                            commands[4].choosePermission.choice,
+                        )
+                        assertEquals(res("card").proto, commands[6].drag.selector)
+                        assertEquals(res("bin").proto, commands[6].drag.target)
+                        assertEquals(
+                            listOf(
+                                io.github.noamcohen48.tap.api.v1.PinchDirection.PINCH_OPEN to 80,
+                                io.github.noamcohen48.tap.api.v1.PinchDirection.PINCH_CLOSE to 40,
+                            ),
+                            commands.slice(7..8).map { it.pinch.direction to it.pinch.percent },
+                        )
+                        assertEquals(Direction.DIR_DOWN, commands[9].fling.direction)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `awaitPermissionPrompt timeout carries NO_PERMISSION_PROMPT`() {
+        val none =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("NO_PERMISSION_PROMPT")
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(none).build() }) { it.awaitPermissionPrompt() }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.NO_PERMISSION_PROMPT, failure.reason)
+    }
+
+    @Test
+    fun `keyboard, clipboard and toast methods send their typed commands`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                val result = CommandResult.newBuilder()
+                when (request.command.opCase) {
+                    Command.OpCase.GET_CLIPBOARD -> result.setText("copied").build()
+                    Command.OpCase.AWAIT_TOAST ->
+                        result.setToast(io.github.noamcohen48.tap.api.v1.Toast.newBuilder().setText("Saved").setPackageName("com.test")).build()
+                    Command.OpCase.DEVICE_INFO ->
+                        result.setDeviceInfo(io.github.noamcohen48.tap.api.v1.DeviceInfo.newBuilder().setApiLevel(34).setKeyboardShown(true)).build()
+                    Command.OpCase.HIDE_KEYBOARD, Command.OpCase.PERFORM_IME_ACTION, Command.OpCase.SET_CLIPBOARD ->
+                        result.setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        assertTrue(device.keyboardShown())
+                        device.hideKeyboard()
+                        device.screen.element(res("search")).imeAction()
+                        device.setClipboard("hello")
+                        assertEquals("copied", device.clipboard())
+                        assertEquals(Toast("Saved", "com.test"), device.awaitToast())
+                        device.app("com.test").awaitToast("Sav", MatchMode.STARTS_WITH)
+                        device.awaitToast(packageName = "com.android.systemui")
+                        val commands = fakeDevices.executeRequests.map { it.command }
+                        val toasts = commands.filter { it.hasAwaitToast() }.map { it.awaitToast }
+                        assertEquals(3, toasts.size)
+                        assertFalse(toasts[0].hasText())
+                        assertEquals(io.github.noamcohen48.tap.api.v1.MatchMode.MATCH_UNSPECIFIED, toasts[0].mode)
+                        assertFalse(toasts[0].hasPackageName())
+                        assertEquals("Sav", toasts[1].text)
+                        assertEquals(io.github.noamcohen48.tap.api.v1.MatchMode.MATCH_STARTS_WITH, toasts[1].mode)
+                        assertEquals("com.test", toasts[1].packageName)
+                        assertEquals("com.android.systemui", toasts[2].packageName)
+                        assertEquals(res("search").proto, commands.single { it.hasPerformImeAction() }.performImeAction.selector)
+                        assertEquals("hello", commands.single { it.hasSetClipboard() }.setClipboard.text)
+                        assertTrue(commands.any { it.hasHideKeyboard() } && commands.any { it.hasGetClipboard() })
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `awaitToast timeout carries NO_TOAST`() {
+        val none =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("NO_TOAST")
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(none).build() }) { it.awaitToast("Saved") }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.NO_TOAST, failure.reason)
+    }
+
+    @Test
+    fun `foreground, background and openLink reach the app service`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                if (request.command.hasPressKey()) CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build() else null
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        val app = device.app("com.test")
+                        app.background()
+                        app.foreground(timeout = 7.seconds)
+                        assertEquals("com.test/.Orders", app.openLink("test://orders/42"))
+                        assertEquals(null, app.openLink("https://example.com/x", anyApp = true))
+                        assertEquals(3, fakeDevices.executeRequests.single { it.command.hasPressKey() }.command.pressKey.keyCode)
+                        val foreground = fakeApps.requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.ForegroundRequest>().single()
+                        assertEquals(7_000, foreground.timeoutMs)
+                        val links = fakeApps.requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.OpenLinkRequest>()
+                        assertEquals(listOf("test://orders/42" to false, "https://example.com/x" to true), links.map { it.uri to it.anyApp })
+                        assertEquals("com.test", links.first().app.packageName)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `typeText taps the field, waits for its focus, then types into the focus`() {
         runBlocking {
             var snapshots = 0
@@ -1343,9 +1606,15 @@ class TapClientTest {
                         assertTrue(app.isRunning())
                         app.install(apk, timeout = 90.seconds)
                         app.grantPermission("android.permission.CAMERA")
+                        app.revokePermission("android.permission.CAMERA")
+                        assertTrue(app.isPermissionGranted("android.permission.CAMERA"))
+                        assertFalse(app.isPermissionGranted("android.permission.RECORD_AUDIO"))
+                        app.setLocales(listOf("fr-FR", "en"))
+                        assertEquals(listOf("fr-FR", "en"), app.locales())
                         app.launch(".Main", timeout = 7.seconds)
-                        app.launch()
-                        assertEquals(AppProcess(4242, "token"), app.coldLaunch(timeout = 9.seconds))
+                        app.launch(extras = mapOf("query" to "shoes", "flag" to true, "count" to 3, "id" to 42L, "ratio" to 0.5f))
+                        assertEquals(AppProcess(4242, "token"), app.coldLaunch(timeout = 9.seconds, extras = mapOf("id" to 7L)))
+                        assertFailsWith<IllegalArgumentException> { app.launch(extras = mapOf("ratio" to 0.5)) }
                         val refused = assertFailsWith<ServerException> { app.grantPermission("android.permission.NOPE") }
                         assertEquals("FAILED_PRECONDITION", refused.status)
                     }
@@ -1359,23 +1628,92 @@ class TapClientTest {
                     val launches = requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.LaunchRequest>()
                     assertEquals(listOf(".Main" to 7_000L, "" to device.timeouts.lifecycle.inWholeMilliseconds), launches.map { it.activity to it.timeoutMs })
                     assertFalse(launches[1].hasActivity())
-                    assertEquals(9_000, requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.ColdLaunchRequest>().single().timeoutMs)
+                    assertEquals(
+                        listOf("query" to "shoes", "flag" to true, "count" to 3, "id" to 42L, "ratio" to 0.5f),
+                        launches[1].extrasList.map {
+                            it.key to
+                                when (it.valueCase) {
+                                    io.github.noamcohen48.tap.api.v1.IntentExtra.ValueCase.STRING_VALUE -> it.stringValue
+                                    io.github.noamcohen48.tap.api.v1.IntentExtra.ValueCase.BOOL_VALUE -> it.boolValue
+                                    io.github.noamcohen48.tap.api.v1.IntentExtra.ValueCase.INT_VALUE -> it.intValue
+                                    io.github.noamcohen48.tap.api.v1.IntentExtra.ValueCase.LONG_VALUE -> it.longValue
+                                    else -> it.floatValue
+                                }
+                        },
+                    )
+                    val cold = requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.ColdLaunchRequest>().single()
+                    assertEquals(9_000, cold.timeoutMs)
+                    assertEquals(7L, cold.extrasList.single().longValue)
+                    val revoke = requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.RevokePermissionRequest>().single()
+                    assertEquals("android.permission.CAMERA", revoke.permission)
                     val targets =
                         requests.map { request ->
                             when (request) {
                                 is io.github.noamcohen48.tap.api.v1.IsRunningRequest -> request.app
                                 is io.github.noamcohen48.tap.api.v1.InstallHeader -> request.app
                                 is io.github.noamcohen48.tap.api.v1.GrantPermissionRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.RevokePermissionRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.IsPermissionGrantedRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.SetLocalesRequest -> request.app
+                                is io.github.noamcohen48.tap.api.v1.GetLocalesRequest -> request.app
                                 is io.github.noamcohen48.tap.api.v1.LaunchRequest -> request.app
                                 is io.github.noamcohen48.tap.api.v1.ColdLaunchRequest -> request.app
                                 else -> error("unexpected request $request")
                             }
                         }
-                    assertEquals(7, targets.size)
+                    assertEquals(12, targets.size)
+                    assertEquals(
+                        listOf("fr-FR", "en"),
+                        requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.SetLocalesRequest>().single().localesList,
+                    )
                     for (target in targets) {
                         assertEquals("com.test", target.packageName)
                         assertEquals(connection.id, target.clientConnectionId)
                         assertEquals(device.attachedDeviceId, target.attachedDeviceId)
+                    }
+                } finally {
+                    tapScope { device.detach() }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `device conditions name the attached device and keep the failure reason`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val device = tapScope { connection.attachDevice("emulator-5554") }
+                try {
+                    tapScope {
+                        device.setAnimations(false)
+                        device.setFontScale(1.3f)
+                        device.setDensity(320)
+                        device.setDensity(null)
+                        val old = assertFailsWith<ServerException> { device.setDarkMode(true) }
+                        assertEquals("FAILED_PRECONDITION", old.status)
+                        assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.UNSUPPORTED_API, old.reason)
+                        val stuck = assertFailsWith<ServerException> { device.setDensity(999) }
+                        assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.DEVICE_SETTING, stuck.reason)
+                    }
+                    val sent = fakeDevices.conditions
+                    assertFalse((sent[0] as io.github.noamcohen48.tap.api.v1.SetAnimationsRequest).enabled)
+                    assertEquals(1.3f, (sent[1] as io.github.noamcohen48.tap.api.v1.SetFontScaleRequest).scale)
+                    assertEquals(320, (sent[2] as io.github.noamcohen48.tap.api.v1.SetDensityRequest).dpi)
+                    assertFalse((sent[3] as io.github.noamcohen48.tap.api.v1.SetDensityRequest).hasDpi())
+                    assertTrue((sent[4] as io.github.noamcohen48.tap.api.v1.SetDarkModeRequest).enabled)
+                    for (request in sent) {
+                        val ids =
+                            when (request) {
+                                is io.github.noamcohen48.tap.api.v1.SetAnimationsRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetFontScaleRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetDensityRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetDarkModeRequest -> request.clientConnectionId to request.attachedDeviceId
+                                else -> error("unexpected request $request")
+                            }
+                        assertEquals(connection.id to device.attachedDeviceId, ids)
                     }
                 } finally {
                     tapScope { device.detach() }
@@ -1700,6 +2038,32 @@ class TapClientTest {
         override suspend fun driverLog(request: io.github.noamcohen48.tap.api.v1.DriverLogRequest): io.github.noamcohen48.tap.api.v1.DriverLogResponse =
             io.github.noamcohen48.tap.api.v1.DriverLogResponse
                 .getDefaultInstance()
+
+        val conditions = CopyOnWriteArrayList<Any>()
+
+        override suspend fun setAnimations(request: io.github.noamcohen48.tap.api.v1.SetAnimationsRequest): io.github.noamcohen48.tap.api.v1.SetAnimationsResponse =
+            io.github.noamcohen48.tap.api.v1.SetAnimationsResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setDarkMode(request: io.github.noamcohen48.tap.api.v1.SetDarkModeRequest): io.github.noamcohen48.tap.api.v1.SetDarkModeResponse {
+            conditions += request
+            throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_UNSUPPORTED_API, "dark mode needs API 29", "emulator-5554")
+        }
+
+        override suspend fun setFontScale(request: io.github.noamcohen48.tap.api.v1.SetFontScaleRequest): io.github.noamcohen48.tap.api.v1.SetFontScaleResponse =
+            io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setDensity(request: io.github.noamcohen48.tap.api.v1.SetDensityRequest): io.github.noamcohen48.tap.api.v1.SetDensityResponse {
+            conditions += request
+            if (request.dpi == 999) {
+                throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_DEVICE_SETTING, "density read back 420", "emulator-5554")
+            }
+            return io.github.noamcohen48.tap.api.v1.SetDensityResponse
+                .getDefaultInstance()
+        }
     }
 
     private class FakeApps : AppServiceGrpcKt.AppServiceCoroutineImplBase() {
@@ -1740,10 +2104,56 @@ class TapClientTest {
                 .getDefaultInstance()
         }
 
+        override suspend fun revokePermission(
+            request: io.github.noamcohen48.tap.api.v1.RevokePermissionRequest,
+        ): io.github.noamcohen48.tap.api.v1.RevokePermissionResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.RevokePermissionResponse
+                .getDefaultInstance()
+        }
+
+        override suspend fun isPermissionGranted(
+            request: io.github.noamcohen48.tap.api.v1.IsPermissionGrantedRequest,
+        ): io.github.noamcohen48.tap.api.v1.IsPermissionGrantedResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.IsPermissionGrantedResponse
+                .newBuilder()
+                .setGranted(request.permission == "android.permission.CAMERA")
+                .build()
+        }
+
+        override suspend fun setLocales(request: io.github.noamcohen48.tap.api.v1.SetLocalesRequest): io.github.noamcohen48.tap.api.v1.SetLocalesResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.SetLocalesResponse
+                .getDefaultInstance()
+        }
+
+        override suspend fun getLocales(request: io.github.noamcohen48.tap.api.v1.GetLocalesRequest): io.github.noamcohen48.tap.api.v1.GetLocalesResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.GetLocalesResponse
+                .newBuilder()
+                .addAllLocales(listOf("fr-FR", "en"))
+                .build()
+        }
+
         override suspend fun launch(request: io.github.noamcohen48.tap.api.v1.LaunchRequest): io.github.noamcohen48.tap.api.v1.LaunchResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.LaunchResponse
                 .getDefaultInstance()
+        }
+
+        override suspend fun foreground(request: io.github.noamcohen48.tap.api.v1.ForegroundRequest): io.github.noamcohen48.tap.api.v1.ForegroundResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.ForegroundResponse
+                .getDefaultInstance()
+        }
+
+        override suspend fun openLink(request: io.github.noamcohen48.tap.api.v1.OpenLinkRequest): io.github.noamcohen48.tap.api.v1.OpenLinkResponse {
+            requests += request
+            return io.github.noamcohen48.tap.api.v1.OpenLinkResponse
+                .newBuilder()
+                .apply { if (!request.anyApp) setActivity("com.test/.Orders") }
+                .build()
         }
 
         override suspend fun coldLaunch(request: io.github.noamcohen48.tap.api.v1.ColdLaunchRequest): io.github.noamcohen48.tap.api.v1.ColdLaunchResponse {

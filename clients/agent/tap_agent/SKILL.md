@@ -54,16 +54,42 @@ the device, and says so.
 
 ## Acting
 
-`tap`, `tap --long`, `fill <target> <text>` (replaces the text), `type <text>` (key events into
-the focused field), `clear`, `scroll <target> up|down|left|right` (`down` reveals content
-below), `swipe <target> <direction>`, `key back|home|recents|enter|tab|delete|…`,
+`tap`, `tap --long`, `tap --double`, `fill <target> <text>` (replaces the text), `type <text>`
+(key events into the focused field), `clear`, `scroll <target> up|down|left|right` (`down`
+reveals content below), `swipe <target> <direction>`, `fling <target> <direction>` (as
+`scroll`, fast; the content may keep moving), `drag <target> <destination>` (long-press, move
+onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
+`key back|home|recents|enter|tab|delete|…`,
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in
 `pkg=com.android.systemui`; `key back` closes them, twice from quick settings on newer
 Android; use `--settle` before opening another), and
-`app launch|cold-launch|stop|clear|install|uninstall|grant|running <package> [activity|APK|PERMISSION]`.
+`app launch|cold-launch|foreground|background|open-link|stop|clear|install|uninstall|grant|revoke|granted|running|locale <package> [activity|URI|APK|PERMISSION|TAGS]`
+(`foreground` returns to the app as it was left; `app open-link <package> myapp://x` opens a
+deep link in the app, `--any-app` lets Android pick the handler).
 A node that another window covers completely is not found; an action on a node it covers
 partly fails as not interactable (OBSCURED) instead of tapping whatever is on top. Either way,
 close the covering window (often `key back`) first.
+
+Device state: `rotate portrait|landscape|natural|left|upside-down|right|auto` (prints the
+resulting orientation; `auto` hands rotation back to the sensor; `release` restores the
+device's own setting), `screen` (on/off and lock state), `screen on|off|unlock` (`unlock`
+wakes and dismisses a lock screen without a PIN; a PIN is never entered).
+`condition` prints animations, dark mode, font scale and density; `condition animations
+on|off`, `condition dark-mode on|off` (Android 10+), `condition font-scale 0.5..2.0` and
+`condition density <dpi>|reset` change one and print the value read back. `app locale <package>`
+prints the app's own languages, `app locale <package> fr-FR,en` sets them and `app locale
+<package> system` makes the app follow the system again (Android 13+). All of these, like rotation, are put back on `release`.
+
+Keyboard and clipboard: `keyboard` prints whether a soft keyboard shows, `keyboard hide`
+hides it (nothing is pressed when none shows); `submit <target>` runs the field's keyboard
+action key (Search, Go, Send, Done; Android 11+), and the field must have input focus, so tap
+it first. `clipboard` prints the device clipboard, `clipboard <text>` sets it.
+`toast [text] [--contains] [--package PKG]` waits for a toast (one shown in the last 3.5 s
+counts; any app's unless `--package`) and prints its text and app.
+
+Permission dialogs: `permission` waits for one and lists its buttons
+(`allow`, `allow-foreground-only`, `deny`, …); `permission <choice>` presses one. Buttons are
+found by id, so this works in any language.
 
 Add `--settle` to an action to wait until the screen stops changing and print the difference:
 `+` added nodes, `-` removed ones. That is usually enough to decide the next step without a

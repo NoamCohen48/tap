@@ -11,6 +11,10 @@ import io.github.noamcohen48.tap.driver.engine.CommandContext
 internal class QueryCommands(
     private val device: UiDevice,
     private val objects: UiObjectAccess,
+    private val screen: ScreenCommands,
+    private val keyboard: KeyboardCommands,
+    private val rotation: RotationCommands,
+    private val conditions: DeviceConditionsReader,
 ) {
     fun exists(
         context: CommandContext,
@@ -76,6 +80,15 @@ internal class QueryCommands(
             .setDisplayHeight(device.displayHeight)
             .setDisplayRotation(device.displayRotation)
             .apply { device.currentPackageName?.let(::setCurrentPackage) }
+            .setScreenOn(screen.screenOn)
+            .setKeyguardLocked(screen.keyguardLocked)
+            .setKeyguardSecure(screen.keyguardSecure)
+            .setKeyboardShown(keyboard.shown)
+            .setAutoRotate(rotation.autoRotate)
+            .setAnimationsEnabled(conditions.animationsEnabled)
+            .setDarkMode(conditions.darkMode)
+            .setFontScale(conditions.fontScale)
+            .setDensityDpi(conditions.densityDpi)
             .build()
 
     /**

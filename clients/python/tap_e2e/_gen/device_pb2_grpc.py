@@ -84,6 +84,26 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.ResolveRefRequest.SerializeToString,
                 response_deserializer=device__pb2.ResolveRefResponse.FromString,
                 _registered_method=True)
+        self.SetAnimations = channel.unary_unary(
+                '/tap.v1.DeviceService/SetAnimations',
+                request_serializer=device__pb2.SetAnimationsRequest.SerializeToString,
+                response_deserializer=device__pb2.SetAnimationsResponse.FromString,
+                _registered_method=True)
+        self.SetDarkMode = channel.unary_unary(
+                '/tap.v1.DeviceService/SetDarkMode',
+                request_serializer=device__pb2.SetDarkModeRequest.SerializeToString,
+                response_deserializer=device__pb2.SetDarkModeResponse.FromString,
+                _registered_method=True)
+        self.SetFontScale = channel.unary_unary(
+                '/tap.v1.DeviceService/SetFontScale',
+                request_serializer=device__pb2.SetFontScaleRequest.SerializeToString,
+                response_deserializer=device__pb2.SetFontScaleResponse.FromString,
+                _registered_method=True)
+        self.SetDensity = channel.unary_unary(
+                '/tap.v1.DeviceService/SetDensity',
+                request_serializer=device__pb2.SetDensityRequest.SerializeToString,
+                response_deserializer=device__pb2.SetDensityResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -155,6 +175,38 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetAnimations(self, request, context):
+        """Device-wide conditions. Each changed value is captured before the session's first change
+        of it, journaled, and restored when the device is detached (or by the next attach when the
+        daemon died first); a restore that cannot be proven quarantines the device. Every change is
+        read back: a value the device did not take is FAILED_PRECONDITION (DEVICE_SETTING).
+        The three animation scales (window, transition, animator duration): all 0 or all 1.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetDarkMode(self, request, context):
+        """`cmd uimode night yes|no`. API 29+ (FAILED_PRECONDITION, UNSUPPORTED_API below).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetFontScale(self, request, context):
+        """The system font scale (`font_scale`), 0.5 to 2.0.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetDensity(self, request, context):
+        """`wm density`: an override in dpi (100 to 1000), or absent for the display's physical density.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -207,6 +259,26 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.ResolveRef,
                     request_deserializer=device__pb2.ResolveRefRequest.FromString,
                     response_serializer=device__pb2.ResolveRefResponse.SerializeToString,
+            ),
+            'SetAnimations': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetAnimations,
+                    request_deserializer=device__pb2.SetAnimationsRequest.FromString,
+                    response_serializer=device__pb2.SetAnimationsResponse.SerializeToString,
+            ),
+            'SetDarkMode': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetDarkMode,
+                    request_deserializer=device__pb2.SetDarkModeRequest.FromString,
+                    response_serializer=device__pb2.SetDarkModeResponse.SerializeToString,
+            ),
+            'SetFontScale': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetFontScale,
+                    request_deserializer=device__pb2.SetFontScaleRequest.FromString,
+                    response_serializer=device__pb2.SetFontScaleResponse.SerializeToString,
+            ),
+            'SetDensity': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetDensity,
+                    request_deserializer=device__pb2.SetDensityRequest.FromString,
+                    response_serializer=device__pb2.SetDensityResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -479,6 +551,114 @@ class DeviceService:
             '/tap.v1.DeviceService/ResolveRef',
             device__pb2.ResolveRefRequest.SerializeToString,
             device__pb2.ResolveRefResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetAnimations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetAnimations',
+            device__pb2.SetAnimationsRequest.SerializeToString,
+            device__pb2.SetAnimationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetDarkMode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetDarkMode',
+            device__pb2.SetDarkModeRequest.SerializeToString,
+            device__pb2.SetDarkModeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetFontScale(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetFontScale',
+            device__pb2.SetFontScaleRequest.SerializeToString,
+            device__pb2.SetFontScaleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetDensity(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetDensity',
+            device__pb2.SetDensityRequest.SerializeToString,
+            device__pb2.SetDensityResponse.FromString,
             options,
             channel_credentials,
             insecure,

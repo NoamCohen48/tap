@@ -42,8 +42,20 @@ exactly one.
 | `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves. Returns nothing: whether the screen moved is for the test to assert |
 | `scroll(direction, distancePercent = 80)` | one scroll gesture on the node towards `direction`'s content edge (`DOWN` reveals content below). The node need not report itself scrollable, and nothing says whether content moved |
 | `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80, timeout)` | a client-side loop: while `target` does not exist inside the container, `scroll` once more; returns `target` as an `Element`. Gives up with `WaitTimeoutException` / `WaitTimeoutError` after `maxScrolls` scrolls or the timeout (default: the wait timeout). A failing scroll step propagates unchanged |
+| `doubleTap()` | two taps at the centre of the node's visible bounds, inside Android's double-tap window, as one gesture. Like a tap, this and the gestures below fail with `OBSCURED` when another window covers the touch point (the centre; a fling's start) |
+| `dragTo(destination)` | press on the node until it is a long press, move to the centre of `destination` (a selector, exactly one match), hold briefly so drop targets see the finger arrive, release. Both nodes are found before the finger goes down: a missing or ambiguous destination fails with no input |
+| `pinchOpen(percent = 80)`, `pinchClose(percent = 80)` | two fingers moving apart (zoom in) or together (zoom out) across `percent` of the node's size |
+| `fling(direction)` | one fast swipe across the whole node towards `direction`'s content edge, as `scroll`. It does not wait for the content to stop moving |
 | `device.pressBack()`, `device.pressHome()`, `device.pressKey(code)` | key events |
+| `device.wake()`, `device.sleep()` | turn the screen on or off (the `WAKEUP` / `SLEEP` keys; nothing happens when it already is). Waking does not dismiss the keyguard |
+| `device.dismissKeyguard()` | dismiss a lock screen that has no PIN, pattern or password (none showing: nothing is sent). A secure one fails with `ACTION_REJECTED` / `KEYGUARD_SECURE` before any input: Tap never unlocks it. `device.info()` reports `screenOn`, `keyguardLocked` and `keyguardSecure` |
 | `device.openNotifications()`, `device.openQuickSettings()` (Python: `open_notifications()`, `open_quick_settings()`) | open the notification shade or quick settings through the system's accessibility action, as a swipe down from the status bar would. Only whether the system accepted it is reported: wait for what you need in the panel; `pressBack()` closes it (from quick settings, Android 14 first goes back to the notification shade, so press it twice). Elements in the panel belong to `com.android.systemui`: reach them with `device.app("com.android.systemui").element(...)` or `device.screen.element(...)`. While a panel is still sliding open or closed, the system can accept the action and ignore it: `app.awaitAnimationEnd()` before opening another one |
+| `element.imeAction()` (Python: `ime_action()`) | run the field's keyboard action key (Search, Go, Send, Done, …: whatever the app configured), as the keyboard's own key does. The field must have input focus, so `tap()` it first; a node that does not offer the action fails with `ACTION_REJECTED` before input. Android 11 (API 30)+; older devices fail with `UNSUPPORTED` before input. Pressing Enter is not the same: apps waiting for "Search" ignore it |
+| `device.keyboardShown()`, `device.hideKeyboard()` (Python: `keyboard_shown()`, `hide_keyboard()`) | whether any soft keyboard is on screen (also `device.info().keyboardShown`); hide it with one Back key. No keyboard: nothing is sent, so Back never reaches the app |
+| `device.setClipboard(text)`, `device.clipboard()` | write or read the device clipboard as plain text (empty reads as `""`), without moving focus away from the app. On Android 12+ a read shows the system's "Tap Driver pasted from your clipboard" notice |
+| `device.setOrientation(orientation)` | `PORTRAIT` or `LANDSCAPE`: choose the screen geometry and freeze sensor rotation, on portrait-natural phones and landscape-natural tablets alike |
+| `device.setDisplayRotation(rotation)` | `NATURAL`, `LEFT`, `UPSIDE_DOWN` or `RIGHT`: an exact clockwise rotation relative to the device's natural orientation, frozen |
+| `device.unfreezeRotation()` | release the sensor lock without selecting a new rotation |
 
 Text actions report only what Android said about the input, never what the app did with it:
 apps reformat, truncate, reject or copy text elsewhere, and the framework assumes none of
@@ -54,6 +66,72 @@ resource id, not its old text):
 val email = app.element(res("email"))
 email.setText("user@example.com")
 email.await().textEquals("user@example.com")
+```
+
+Rotation calls fail only when Android refuses the rotation (`ACTION_REJECTED`). They wait up
+to two seconds for the display to turn, but an app that locks its own orientation can keep it
+where it was without that being an error: assert what you need, for example
+`device.info().orientation`; `device.info().autoRotate` says whether the sensor turns the
+display (false while a rotation is frozen). Before the session's first rotation call, the host captures the
+device's auto-rotate settings; detach restores them. A restoration failure is a visible detach
+failure and quarantines the device rather than leaving changed state silently.
+
+```kotlin
+try {
+    device.setOrientation(Orientation.LANDSCAPE)
+    // assertions in landscape
+    device.setDisplayRotation(DisplayRotation.RIGHT)
+} finally {
+    device.unfreezeRotation() // optional during the session; detach still restores initial state
+}
+```
+
+```python
+device.set_orientation(Orientation.LANDSCAPE)
+device.set_display_rotation(DisplayRotation.RIGHT)
+device.unfreeze_rotation()
+```
+
+### Device conditions
+
+Four device-wide settings can be changed for the session. Each change is read back (a value the
+device did not take fails with `ServerException` / `ServerError`, reason `DEVICE_SETTING`), and
+what the device had before the session's first change comes back on detach, as for rotation.
+`info()` reports the current values.
+
+| Call (Kotlin / Python) | Changes | Read back |
+|---|---|---|
+| `setAnimations(enabled)` / `set_animations` | window, transition and animator scales, all 0 or all 1 | `animationsEnabled` |
+| `setDarkMode(enabled)` / `set_dark_mode` | `cmd uimode night`; API 29+ (below: reason `UNSUPPORTED_API`). Some devices (Samsung's One UI) lock the day/night mode: there it fails with `DEVICE_SETTING` | `darkMode` |
+| `setFontScale(scale)` / `set_font_scale` | system font scale, 0.5 to 2.0 | `fontScale` |
+| `setDensity(dpi)` / `set_density` | display density override, 100 to 1000 dpi; `null` / `None` for the physical density | `densityDpi` |
+
+```kotlin
+device.setAnimations(false)
+device.setDarkMode(true)
+device.setFontScale(1.3f)
+val app = device.app("com.example.shop")
+app.launch()
+app.await(text("Large text")).visible()
+```
+
+```python
+device.set_animations(False)
+device.set_density(None)  # back to the display's own density
+assert device.info().animations_enabled is False
+```
+
+Android applies dark mode, font scale and density as configuration changes: a running app's
+activities are recreated unless it handles the change itself, so wait for what the test needs
+after changing one. The app's own language is on `App`: see
+[App lifecycle](app-lifecycle.md).
+
+Gestures are reported the same way: `done` means Android accepted the injected input, not that
+the app zoomed, dropped or scrolled. Wait for the effect:
+
+```kotlin
+app.element(res("card")).dragTo(res("done_column"))
+app.await(text("Moved to Done")).visible()
 ```
 
 Directions are the `Direction` enum, `UP`/`DOWN`/`LEFT`/`RIGHT`, in both SDKs (Python also
@@ -108,6 +186,32 @@ another window covers only partly is present, and a gesture whose touch point is
 other window fails with `OBSCURED`.
 
 `Element.await()` is the same thing starting from an element you already hold.
+
+## Waiting for a toast
+
+`device.awaitToast(text = null, mode = EXACT, packageName = null, timeout)`
+(Python: `await_toast(text=None, mode=..., *, package_name=None, timeout=None)`)
+returns a `Toast(text, packageName)`. A toast shown in the last 3.5 s counts (the longest one
+stays up), so calling it right after the action that raises the toast cannot miss it. It does
+not consume the toast: two calls in a row can both match it. Without `packageName` a toast
+from any package matches; `app.awaitToast(text, mode)` (Python `app.await_toast`) matches only
+that app's (on Android 11+ a text toast is drawn by SystemUI but still reported under the app
+that posted it). `mode` is a
+selector `MatchMode` (`CONTAINS`, `REGEX`, …). Nothing within the timeout is a
+`WaitTimeoutException` / `WaitTimeoutError` with reason `NO_TOAST`.
+
+```kotlin
+app.element(res("save")).tap()
+assertEquals("Saved", app.awaitToast().text)
+```
+
+```python
+app.element(res("save")).tap()
+app.await_toast("Saved")
+```
+
+Custom-view toasts posted from the background are blocked by Android itself (11+) and never
+appear.
 
 ## Waiting for the app or the screen
 

@@ -6,12 +6,17 @@ import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.PermissionPrompt
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.SystemPanel
+import io.github.noamcohen48.tap.api.v1.Toast
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
 import io.github.noamcohen48.tap.wire.v1.Authentication
 import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
@@ -110,6 +115,24 @@ class GoldenWireTest {
             "request-open-system-panel" to (
                 envelope(Requests.of(Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS))) to Request::parseFrom
             ),
+            "request-set-display-rotation" to (
+                envelope(Requests.of(Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_UPSIDE_DOWN))) to Request::parseFrom
+            ),
+            "request-drag" to (
+                envelope(Requests.of(Commands.drag(Selectors.text("Card 1"), Selectors.of(Nodes.resource("done_column"))))) to
+                    Request::parseFrom
+            ),
+            "request-pinch" to (
+                envelope(Requests.of(Commands.pinch(Selectors.resource("map"), PinchDirection.PINCH_CLOSE, percent = 40))) to
+                    Request::parseFrom
+            ),
+            "request-choose-permission" to (
+                envelope(Requests.of(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY))) to Request::parseFrom
+            ),
+            "request-await-toast" to (
+                envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom
+            ),
+            "request-set-clipboard" to (envelope(Requests.of(Commands.setClipboard("copied 42"))) to Request::parseFrom),
             "request-type-text" to (envelope(Requests.of(Commands.typeText("keys 42"))) to Request::parseFrom),
             "request-set-text" to (
                 envelope(Requests.of(Commands.setText(Selectors.androidResource(AUT, "email"), "user@example.com"))) to Request::parseFrom
@@ -200,6 +223,40 @@ class GoldenWireTest {
                             .setDisplayWidth(1080)
                             .setDisplayHeight(2400)
                             .setCurrentPackage(AUT),
+                    )
+                } to Response::parseFrom
+            ),
+            "response-device-info-screen" to (
+                result {
+                    setDeviceInfo(
+                        DeviceInfo.newBuilder()
+                            .setApiLevel(29)
+                            .setDisplayWidth(1480)
+                            .setDisplayHeight(720)
+                            .setDisplayRotation(1)
+                            .setScreenOn(true)
+                            .setKeyguardLocked(true)
+                            .setKeyguardSecure(false)
+                            .setKeyboardShown(true)
+                            .setAutoRotate(true)
+                            .setAnimationsEnabled(true)
+                            .setDarkMode(true)
+                            .setFontScale(1.1f)
+                            .setDensityDpi(280),
+                    )
+                } to Response::parseFrom
+            ),
+            "response-toast" to (
+                result { setToast(Toast.newBuilder().setText("Saved").setPackageName(AUT)) } to Response::parseFrom
+            ),
+            "response-permission-prompt" to (
+                result {
+                    setPermissionPrompt(
+                        PermissionPrompt.newBuilder()
+                            .setPackageName("com.google.android.permissioncontroller")
+                            .addChoices(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY)
+                            .addChoices(PermissionChoice.PERMISSION_ALLOW_ONE_TIME)
+                            .addChoices(PermissionChoice.PERMISSION_DENY),
                     )
                 } to Response::parseFrom
             ),

@@ -4,7 +4,8 @@
 //
 // Logged: every Execute except the diagnostic queries (`device_info`, `dump_hierarchy`), and the
 // app calls that change the device (install, uninstall, force-stop, clear-data, grant, launch,
-// cold launch). Not logged: screenshots, screen snapshots, ref resolution, driver logs and the
+// cold launch, locales) and the device conditions (animations, dark mode, font scale,
+// density). Not logged: screenshots, screen snapshots, ref resolution, driver logs and the
 // app queries. A command's selector is logged as sent, so a ref an agent used appears as the
 // selector the daemon resolved it to.
 
@@ -14,6 +15,8 @@
 
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { IntentExtra } from "./app_pb";
+import { file_app } from "./app_pb";
 import type { Command, Error } from "./command_pb";
 import { file_command } from "./command_pb";
 import type { Failure } from "./failure_pb";
@@ -24,7 +27,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file event_log.proto.
  */
 export const file_event_log: GenFile = /*@__PURE__*/
-  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKAAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiEKBWVycm9yGAggASgLMg0udGFwLnYxLkVycm9ySAGIAQESJQoHZmFpbHVyZRgJIAEoCzIPLnRhcC52MS5GYWlsdXJlSAKIAQFCBgoEY2FsbEIICgZfZXJyb3JCCgoIX2ZhaWx1cmUipgEKB0FwcENhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKDHBhY2thZ2VfbmFtZRgCIAEoCRIVCghhY3Rpdml0eRgDIAEoCUgAiAEBEhcKCnBlcm1pc3Npb24YBCABKAlIAYgBARIXCgp0aW1lb3V0X21zGAUgASgDSAKIAQFCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQjMKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQg1FdmVudExvZ1Byb3RvUAFiBnByb3RvMw", [file_command, file_failure]);
+  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKmAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiQKBmRldmljZRgKIAEoCzISLnRhcC52MS5EZXZpY2VDYWxsSAASIQoFZXJyb3IYCCABKAsyDS50YXAudjEuRXJyb3JIAYgBARIlCgdmYWlsdXJlGAkgASgLMg8udGFwLnYxLkZhaWx1cmVIAogBAUIGCgRjYWxsQggKBl9lcnJvckIKCghfZmFpbHVyZSKYAgoHQXBwQ2FsbBIRCglvcGVyYXRpb24YASABKAkSFAoMcGFja2FnZV9uYW1lGAIgASgJEhUKCGFjdGl2aXR5GAMgASgJSACIAQESFwoKcGVybWlzc2lvbhgEIAEoCUgBiAEBEhcKCnRpbWVvdXRfbXMYBSABKANIAogBARIQCgN1cmkYBiABKAlIA4gBARIUCgdhbnlfYXBwGAcgASgISASIAQESIwoGZXh0cmFzGAggAygLMhMudGFwLnYxLkludGVudEV4dHJhEg8KB2xvY2FsZXMYCSADKAlCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQgYKBF91cmlCCgoIX2FueV9hcHAikwEKCkRldmljZUNhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKB2VuYWJsZWQYAiABKAhIAIgBARIXCgpmb250X3NjYWxlGAMgASgCSAGIAQESGAoLZGVuc2l0eV9kcGkYBCABKAVIAogBAUIKCghfZW5hYmxlZEINCgtfZm9udF9zY2FsZUIOCgxfZGVuc2l0eV9kcGlCMwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDUV2ZW50TG9nUHJvdG9QAWIGcHJvdG8z", [file_app, file_command, file_failure]);
 
 /**
  * @generated from message tap.v1.LoggedEvent
@@ -69,6 +72,12 @@ export type LoggedEvent = Message<"tap.v1.LoggedEvent"> & {
      */
     value: AppCall;
     case: "app";
+  } | {
+    /**
+     * @generated from field: tap.v1.DeviceCall device = 10;
+     */
+    value: DeviceCall;
+    case: "device";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -95,7 +104,8 @@ export const LoggedEventSchema: GenMessage<LoggedEvent> = /*@__PURE__*/
 
 /**
  * An AppService call. `operation` is the RPC in snake_case: install, uninstall, force_stop,
- * clear_data, grant_permission, launch, cold_launch.
+ * clear_data, grant_permission, revoke_permission, launch, cold_launch, foreground, open_link,
+ * set_locales.
  *
  * @generated from message tap.v1.AppCall
  */
@@ -118,7 +128,7 @@ export type AppCall = Message<"tap.v1.AppCall"> & {
   activity?: string | undefined;
 
   /**
-   * grant_permission.
+   * grant_permission / revoke_permission.
    *
    * @generated from field: optional string permission = 4;
    */
@@ -130,6 +140,32 @@ export type AppCall = Message<"tap.v1.AppCall"> & {
    * @generated from field: optional int64 timeout_ms = 5;
    */
   timeoutMs?: bigint | undefined;
+
+  /**
+   * open_link.
+   *
+   * @generated from field: optional string uri = 6;
+   */
+  uri?: string | undefined;
+
+  /**
+   * @generated from field: optional bool any_app = 7;
+   */
+  anyApp?: boolean | undefined;
+
+  /**
+   * launch / cold_launch with extras.
+   *
+   * @generated from field: repeated tap.v1.IntentExtra extras = 8;
+   */
+  extras: IntentExtra[];
+
+  /**
+   * set_locales.
+   *
+   * @generated from field: repeated string locales = 9;
+   */
+  locales: string[];
 };
 
 /**
@@ -138,4 +174,45 @@ export type AppCall = Message<"tap.v1.AppCall"> & {
  */
 export const AppCallSchema: GenMessage<AppCall> = /*@__PURE__*/
   messageDesc(file_event_log, 1);
+
+/**
+ * A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
+ * set_dark_mode, set_font_scale, set_density.
+ *
+ * @generated from message tap.v1.DeviceCall
+ */
+export type DeviceCall = Message<"tap.v1.DeviceCall"> & {
+  /**
+   * @generated from field: string operation = 1;
+   */
+  operation: string;
+
+  /**
+   * set_animations / set_dark_mode.
+   *
+   * @generated from field: optional bool enabled = 2;
+   */
+  enabled?: boolean | undefined;
+
+  /**
+   * set_font_scale.
+   *
+   * @generated from field: optional float font_scale = 3;
+   */
+  fontScale?: number | undefined;
+
+  /**
+   * set_density; absent there = back to the physical density.
+   *
+   * @generated from field: optional int32 density_dpi = 4;
+   */
+  densityDpi?: number | undefined;
+};
+
+/**
+ * Describes the message tap.v1.DeviceCall.
+ * Use `create(DeviceCallSchema)` to create a new message.
+ */
+export const DeviceCallSchema: GenMessage<DeviceCall> = /*@__PURE__*/
+  messageDesc(file_event_log, 2);
 

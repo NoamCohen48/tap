@@ -167,9 +167,20 @@ result type.
 | `op` | Message | Fields | Result (`CommandResult.outcome`) |
 |---|---|---|---|
 | `health` | `Health` (host-internal) | – | `done` |
-| `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, display size and rotation, focused package |
+| `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, display size and rotation (`Surface.ROTATION_*`, 0..3), focused package, `screen_on` (`PowerManager.isInteractive`), `keyguard_locked`, `keyguard_secure`, `keyboard_shown` (an `AccessibilityWindowInfo.TYPE_INPUT_METHOD` window is on screen, any IME), `auto_rotate` (`Settings.System.ACCELEROMETER_ROTATION` is 1: the sensor turns the display; 0 while a rotation is frozen), `animations_enabled` (any of the three `Settings.Global` animation scales is not 0; an unset scale counts as 1), `dark_mode` (the night bit of `Configuration.uiMode`), `font_scale` and `density_dpi` (`Configuration.fontScale` / `densityDpi`), all read from the driver's own resources |
 | `press_key` | `PressKey` (mutation) | `key_code` ≥ 0 | `done` after one key press (every code, HOME `3` and BACK `4` included, is `UiDevice.pressKeyCode`: no idle wait, no check that the screen changed); `ACTION_REJECTED` if the platform refused to inject it |
 | `open_system_panel` | `OpenSystemPanel` (mutation) | `panel` = `SYSTEM_PANEL_NOTIFICATIONS` or `SYSTEM_PANEL_QUICK_SETTINGS` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | `done` once `UiAutomation.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS / _QUICK_SETTINGS)` returned true (not `UiDevice.openNotification`/`openQuickSettings`, which wait for idle first; no check that the panel opened); `ACTION_REJECTED` if the system refused the action |
+| `set_orientation` | `SetOrientation` (mutation) | `orientation` = `PORTRAIT` or `LANDSCAPE` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | already in that geometry: freezes the current rotation; otherwise freezes the quarter turn away from natural (`UiDevice.setOrientationPortrait/Landscape`'s choice, phone or tablet). `done` once `UiAutomation.setRotation` accepted it, after waiting up to 2 s (AndroidX `ROTATION_TIMEOUT`) for the display to report the rotation; the wait never fails. `ACTION_REJECTED` if `setRotation` returned false |
+| `set_display_rotation` | `SetDisplayRotation` (mutation) | `rotation` = `NATURAL`, `LEFT`, `UPSIDE_DOWN`, or `RIGHT` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | freezes that clockwise rotation relative to natural (`Surface.ROTATION_0/90/180/270`); same bounded settle wait and `ACTION_REJECTED` as `set_orientation`. An app that locks its own orientation may keep the display elsewhere: `device_info` shows what happened |
+| `unfreeze_rotation` | `UnfreezeRotation` (mutation) | – | `done` once `setRotation(ROTATION_UNFREEZE)` accepted it; nothing is waited for |
+| `dismiss_keyguard` | `DismissKeyguard` (mutation) | – | no keyguard showing: `done`, nothing sent. A secure keyguard (PIN/pattern/password): `ACTION_REJECTED` / `KEYGUARD_SECURE` before any input (Tap never unlocks one). Otherwise `done` after `wm dismiss-keyguard` ran; whether it went is for `device_info` or the screen to show |
+| `wait_permission_prompt` | `WaitPermissionPrompt` | – | `permission_prompt` = the dialog window's package and the `PermissionChoice`s it offers, once a button with a known permission-controller resource id is showing (never by label or position); `WAIT_TIMEOUT` / `NO_PERMISSION_PROMPT` |
+| `choose_permission` | `ChoosePermission` (mutation) | `choice` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | `done` after clicking that choice's button; `NOT_FOUND` if no dialog offers it, `AMBIGUOUS` if several windows do, both before input |
+| `hide_keyboard` | `HideKeyboard` (mutation) | – | no input-method window: `done`, nothing sent (Back never reaches the app). Otherwise `done` after one Back key, which the IME consumes; not read back (`device_info.keyboard_shown`). `ACTION_REJECTED` if the key was not injected |
+| `perform_ime_action` | `PerformImeAction` (mutation) | `selector` (exactly one match) | API 30+: `done` after accessibility `ACTION_IME_ENTER` on the node, which runs the field's configured editor action (Search, Go, Send, Done, …) as the keyboard's action key does. Below API 30: `UNSUPPORTED` / `REQUIRES_API_30` before input (no Enter fallback: `TextView` reports Enter as `IME_NULL`). A node that does not list the action (not an editable field, or one without input focus) is `ACTION_REJECTED` before input: `TextView` answers `true` to the action on any view, so the offered action is the signal |
+| `set_clipboard` | `SetClipboard` (mutation) | `text` (≤ 4 096 chars, may be empty) | `done` after `ClipboardManager.setPrimaryClip` (plain text, label `tap`) on the driver's main thread |
+| `get_clipboard` | `GetClipboard` | – | `text` = the primary clip's first item coerced to text; `""` when empty. API 29+ reads with the shell's `READ_CLIPBOARD_IN_BACKGROUND` adopted for the call (`UiAutomation.adoptShellPermissionIdentity`), so the focused app keeps focus. On API 31+ Android shows its "Tap Driver pasted from your clipboard" toast (seen on API 34). `ACTION_REJECTED` if Android refused the read |
+| `await_toast` | `AwaitToast` | `text?` (≤ 1 024 chars; regex compiled up front) with `mode` (a `MatchMode`; needs `text`), `package_name?` (not blank) | `toast` = `{text, package_name}` of the newest matching toast seen at most 3.5 s before the command started or arriving before its timeout; not consuming. Without `package_name` a toast of any package matches. Toasts come from `TYPE_NOTIFICATION_STATE_CHANGED` accessibility events without a `Notification` parcelable, kept in a 32-entry buffer from session start. `WAIT_TIMEOUT` / `NO_TOAST` |
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
 | `count` | `Count` | `selector` | `count` = matches on the screen, capped at 1 000 (ignores the match limit) |
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count |
@@ -182,13 +193,17 @@ result type.
 | `type_text` | `TypeText` (mutation) | `text` (≤ 256 chars); no selector (field 1 reserved) | `done`: every key event injected into whatever has input focus; no click, no settling, not read back. `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` before input for a character the virtual key map cannot type |
 | `clear_text` | `ClearText` (mutation) | `selector` | `done`: `ACTION_SET_TEXT` with "" accepted (not read back) |
 | `swipe` | `Swipe` (mutation) | `selector`, `direction` (required), `distance_percent` 1..100 | `done` after one finger gesture across the element |
+| `double_tap` | `DoubleTap` (mutation) | `selector` (exactly one match) | `done` after two injected touchscreen taps on the visible centre, 100 ms apart (inside the double-tap window). A failed second tap is `ACTION_REJECTED` / `PARTIAL_INPUT` |
+| `drag` | `Drag` (mutation) | `selector` (source) and `target` (destination), each exactly one match, both resolved before input | `done` after one stroke: press on the source's centre for 1.5 × the long-press timeout, move to the target's centre at 2 500 dp/s (0.3–2 s), hold 300 ms, release. An injection failure mid-stroke cancels the stroke: `ACTION_REJECTED` / `PARTIAL_INPUT` |
+| `pinch` | `Pinch` (mutation) | `selector`, `direction` = `PINCH_OPEN`/`PINCH_CLOSE` (required), `percent` 1..100 (default 80) | `done` after `UiObject2.pinchOpen`/`pinchClose` across the element |
+| `fling` | `Fling` (mutation) | `selector`, `direction` (required) | `done` after one fast swipe (7 500 dp/s) across the whole element; no wait for scrolling to end and no "more content" guess |
 | `scroll` | `Scroll` (mutation) | `selector`, `direction` (required), `distance_percent` | `done` after one scroll segment; no scrollable pre-check and no report of whether content moved (the clients' `scrollUntil` loops `exists` + `scroll`) |
 | `dump_hierarchy` | `DumpHierarchy` | – | `text` = accessibility XML (diagnostic only) |
 | `screenshot` | `CaptureScreenshot` (host-internal) | – | `done`; PNG blob + `Response.artifact` metadata (capability `artifact.screenshot.v1`) |
 | `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token`, `package_name`, `authority` | `done` + `Response.sync` |
 | `sync_poll` | `SyncPoll` (host-internal) | `observed_pid`, `observed_start_token`, `expected_process_start_uuid`, `expected_session_identity`, `package_name`, `authority` | `done` + `Response.sync` |
 
-`direction` is the direction the content moves for scrolls and the finger for swipes.
+`direction` is the direction the content moves for scrolls and flings (DOWN reveals content below) and the finger for swipes.
 `distance_percent` (default 80) is the gesture length as a percentage of the element's size.
 `CommandValidation` (`contracts/protocol`) holds the range and structure checks and runs three
 times: on the daemon as a pre-flight, in host core before a request ID is allocated, and on the
@@ -431,7 +446,7 @@ policy; Tap itself never retries.
 |---|:-:|:-:|---|
 | `INVALID_REQUEST` | no | no | Malformed or out-of-range request. `UNSUPPORTED_CHARACTERS`: text has no key-event mapping (rejected before input). |
 | `INVALID_SELECTOR` | no | no | Selector rejected before any lookup. `QUALIFIED_RESOURCE_NAME`, `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `EMPTY_NODE`, `EMPTY_VALUE`, `INVALID_REGEX`, `UNSPECIFIED_VALUE`. |
-| `UNSUPPORTED` | no | no | No operation set (or one this driver does not know). |
+| `UNSUPPORTED` | no | no | No operation set (or one this driver does not know). `REQUIRES_API_30`: `perform_ime_action` below API 30, before input. |
 | `UNAUTHENTICATED` | no | no | Handshake failure (`AUTH_RESULT.error`). |
 | `SESSION_MISMATCH` | no | no | Wrong session ID or generation. |
 | `DUPLICATE_OR_STALE` | no | no | Request ID at or below the watermark. Not sent as a response: it prefixes the driver's `CLOSE` reason. |
@@ -439,10 +454,10 @@ policy; Tap itself never retries.
 | `AUT_MISMATCH` | no | no | Observed AUT identity differs. `PROCESS_RESTARTED`, `PROCESS_MISMATCH` from synchronization. |
 | `NOT_FOUND` | no | yes | Zero matches. |
 | `AMBIGUOUS` | no | no | More than one match; returned before any input. |
-| `NOT_INTERACTABLE` | no | yes | `OBSCURED`: the gesture's touch point (a tap's visible centre, a swipe's or scroll's start) is in a window above the target's — the keyboard, a dialog, the shade, another app's overlay — so the input would reach that window. Only a partly covered node gets here: Android marks a node that windows above cover completely as not visible, and it is not found. Checked after resolving the target and before the mutation gate; nothing was sent. The driver still does not pre-check enabled/scrollable. |
+| `NOT_INTERACTABLE` | no | yes | `OBSCURED`: the gesture's touch point (a tap's, double tap's, drag's or pinch's visible centre, a swipe's, scroll's or fling's start) is in a window above the target's — the keyboard, a dialog, the shade, another app's overlay — so the input would reach that window. Only a partly covered node gets here: Android marks a node that windows above cover completely as not visible, and it is not found. Checked after resolving the target and before the mutation gate; nothing was sent. The driver still does not pre-check enabled/scrollable. |
 | `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
-| `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected). `PARTIAL_INPUT` (deadline mid-typing). Effects are never read back. |
-| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `APP_NOT_VISIBLE` (`wait_app_visible`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
+| `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected) or refused a rotation. `PARTIAL_INPUT` (deadline mid-typing; the second tap of a double tap or a drag stroke not injected), `KEYGUARD_SECURE` (`dismiss_keyguard` on a PIN/pattern/password keyguard, before input). `perform_ime_action` on a node that does not offer the action is refused before input, without a detail. Effects are never read back: text, rotation and gestures are for the test to observe. |
+| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `APP_NOT_VISIBLE` (`wait_app_visible`); `NO_PERMISSION_PROMPT` (`wait_permission_prompt`); `NO_TOAST` (`await_toast`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
 | `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |
@@ -564,6 +579,6 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 5.0 does not yet expose events, multi-touch gestures, `session.shutdown`, or
+Protocol 5.0 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
 `AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.
