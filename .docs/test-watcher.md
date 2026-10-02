@@ -33,6 +33,14 @@ Implemented limits, timing definitions, passive API 29/API 34 evidence and remai
 native-image checks are recorded in [shared-video.md](shared-video.md). User instructions
 are in `docs/guide/watcher.md`. Historical phase lists below remain historical.
 
+Owner follow-up: stopping a recording now saves it to the watcher's local disk library;
+resuming creates a separate clip (owner selected this rather than appending). Default path
+is `~/.tap/recordings/watcher/<id>/`, override `TAP_WATCHER_RECORDINGS`. Saved playback uses
+MP4 from disk; clips/JSON survive page and server restarts. Library cap = 2 GiB, refuse new
+saves rather than delete old data. Live preview is not durable recording. Scrubbing freezes
+its bounded playback snapshot so new frames/eviction do not move the playhead. WebCodecs
+backpressure yields inside a GOP instead of flushing, which would require a new key frame.
+
 ### Video frame correlation — proposed approach and limits
 
 No per-action screenshot RPC is needed for nearby visual context: keep a bounded video

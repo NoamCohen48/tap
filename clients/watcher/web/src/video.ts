@@ -102,9 +102,12 @@ export class CanvasPlayer {
     const decoder = this.decoder!;
     for (let i = start; i <= index; i++) {
       this.feed(window.frames[i]);
-      // Bound pending decoder work even on a long GOP.
-      if (decoder.decodeQueueSize > 30) await decoder.flush();
-      if (decoder !== this.decoder) return;
+      // flush() requires the NEXT decode to be a key frame. Never use it for
+      // backpressure inside a GOP: yield until work drains without resetting state.
+      while (decoder === this.decoder && decoder.state === 'configured' && decoder.decodeQueueSize > 30) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      if (decoder !== this.decoder || decoder.state !== 'configured') return;
     }
     await decoder.flush();
   }

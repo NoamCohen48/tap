@@ -16,7 +16,9 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import (
+    FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
     Response,
@@ -27,6 +29,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ._gen.watcher_connect import WatcherServiceASGIApplication
 from .export import MAX_BODY, export_clip
+from .recordings import Recordings, default_directory
 from .service import Watcher
 
 STATIC = pathlib.Path(__file__).parent / "static"
@@ -38,10 +41,14 @@ def cookie_name(token: str) -> str:
 
 
 def create_app(
-    token: str, service: Watcher | None = None, static_dir: pathlib.Path = STATIC
+    token: str,
+    service: Watcher | None = None,
+    static_dir: pathlib.Path = STATIC,
+    recordings_dir: pathlib.Path | None = None,
 ) -> Starlette:
     """Serve the generated read-only service and built page; close its channel on exit."""
     watcher = service or Watcher()
+    recordings = Recordings(recordings_dir or default_directory())
 
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
@@ -77,6 +84,9 @@ def create_app(
             try:
                 document = json.loads(body)
                 archive = await asyncio.to_thread(export_clip, document)
+                if request.url.path == "/recordings":
+                    saved = await asyncio.to_thread(recordings.save, archive, document)
+                    return JSONResponse(saved, headers={"Cache-Control": "no-store"})
             except (
                 ValueError,
                 KeyError,
@@ -94,10 +104,43 @@ def create_app(
                 },
             )
 
+    async def library(request: Request) -> Response:
+        return JSONResponse(
+            {
+                "directory": str(recordings.directory),
+                "recordings": await asyncio.to_thread(recordings.list),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def recording_file(request: Request) -> Response:
+        try:
+            path = recordings.file(
+                request.path_params["id"], request.path_params["name"]
+            )
+        except ValueError:
+            return PlainTextResponse("recording not found", status_code=404)
+        if not path.is_file():
+            return PlainTextResponse("recording not found", status_code=404)
+        media_type = {
+            "video.mp4": "video/mp4",
+            "steps.json": "application/json",
+            "clip.zip": "application/zip",
+        }[path.name]
+        return FileResponse(
+            path,
+            media_type=media_type,
+            filename=path.name if path.name == "clip.zip" else None,
+            headers={"Cache-Control": "no-store"},
+        )
+
     connect = WatcherServiceASGIApplication(watcher)
     routes: list[Route | Mount] = [
         Route("/login", login),
         Route("/export", export, methods=["POST"]),
+        Route("/recordings", export, methods=["POST"]),
+        Route("/recordings", library, methods=["GET"]),
+        Route("/recordings/{id}/{name}", recording_file),
         Mount(connect.path, app=connect),
     ]
     if (static_dir / "index.html").is_file():

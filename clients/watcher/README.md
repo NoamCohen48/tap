@@ -21,6 +21,12 @@ Open the printed login URL. The server binds loopback, guards Host/Origin and us
 HttpOnly cookie; the daemon token stays on the backend. The watcher does not Connect, Attach,
 Observe, call driver screenshots or renew owner idle timeouts.
 
+Start recording → Stop & save writes clips automatically to
+`~/.tap/recordings/watcher/<id>/` (override with `TAP_WATCHER_RECORDINGS`). Resume starts a
+separate clip. Saved recordings survive browser/server restart and play from the page;
+ZIP and JSON downloads are available. The 2 GiB library limit refuses new saves rather
+than deleting your files. Live preview itself only keeps a rolling memory buffer.
+
 Regenerate bindings with `.venv/bin/python clients/watcher/scripts/gen_protos.py` after
 contract edits. Unit checks: `pytest clients/watcher/tests`, and `bun run test`/`bun run build`
 in `clients/watcher/web`. UI concept and current decisions: `.docs/test-watcher.md`.

@@ -187,10 +187,15 @@ internal class SharedVideo(
             }
         }
         val size = update.frame.data.size()
-        val slow = producer.readers.filter { reader ->
-            if (reader.bytes + size > 4L * 1024 * 1024 || reader.channel.trySend(update).isFailure) true
-            else { reader.bytes += size; false }
-        }
+        val slow =
+            producer.readers.filter { reader ->
+                if (reader.bytes + size > 4L * 1024 * 1024 || reader.channel.trySend(update).isFailure) {
+                    true
+                } else {
+                    reader.bytes += size
+                    false
+                }
+            }
         slow.forEach {
             it.channel.close(EventReaderOverflowException())
             producer.readers.remove(it)

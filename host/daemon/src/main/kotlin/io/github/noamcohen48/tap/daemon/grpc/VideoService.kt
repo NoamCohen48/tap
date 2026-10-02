@@ -26,10 +26,12 @@ class VideoService(
         }.catch { error ->
             when (error) {
                 is CancellationException -> throw error
+
                 is VideoException -> throw failureStatus(
                     Status.UNAVAILABLE.withDescription(error.message),
                     Failure.newBuilder().setReason(FailureReason.FAILURE_REASON_DAEMON_PRECONDITION).build(),
                 )
+
                 else -> throw error.toStatus()
             }
         }

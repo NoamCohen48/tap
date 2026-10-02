@@ -33,10 +33,24 @@ Select a device, then an action to seek nearby video. Play, scrub, or return to 
 from existing video; it never requests screenshots or changes owner configuration.
 Missing samples show unavailable.
 
-**New recording** creates a fresh local encoded window, with preceding keyframe preroll.
-**Stop recording** preserves it for playback. **Set in** and **Set out** mark a clip;
-**Export clip** downloads a ZIP containing `video.mp4` and `steps.json`. A stopped recording
-can be reopened with **Recording**. Export is disabled while recording.
+**Start recording** creates a fresh encoded window with preceding keyframe preroll.
+**Stop & save** stops that recording and automatically saves `video.mp4`, `steps.json`, and
+`clip.zip` under `~/.tap/recordings/watcher/<recording-id>/` on the watcher server's machine.
+Set `TAP_WATCHER_RECORDINGS` before starting `tap-watcher` to use another directory.
+**Resume recording** starts a **separate clip**, not an append to the old one.
+
+**Saved recordings** lists clips for this device across browser/server restarts and plays
+them from disk; download the ZIP or JSON there. The library is capped at 2 GiB; old recordings
+are never silently deleted. Move/delete files yourself when full. Save failures are shown
+and **Retry save** retries the in-memory recording; do not switch devices or close the page
+before a failed save succeeds.
+
+**Set in** and **Set out** mark a clip; **Export clip** downloads a ZIP containing
+`video.mp4` and `steps.json` to your browser's download folder. Export is disabled while
+recording. Scrubbing or playing freezes the playback window and leaves Live mode; incoming
+preview frames no longer change that slider's range or position. Click **Live** to follow
+incoming video again. Live preview keeps a rolling memory buffer, but does not create files
+unless a recording is stopped and saved. Closing the page while recording does not save it.
 
 Buffers are limited to **120 seconds and 32 MiB**, with whole-GOP eviction. Recording
 also stops after two minutes of wall time. Earlier frames expire; sequence gaps reset
