@@ -178,6 +178,62 @@ async def test_count_asks_the_device(attached, daemon):
     await refused(attached.count(pb.CountRequest(), None), Code.INVALID_ARGUMENT)
 
 
+async def test_describe_element_reports_its_actions_and_range(attached, daemon):
+    daemon.devices.responder = lambda c: (
+        tap.CommandResult(
+            snapshot=tap.ElementSnapshot(
+                actions=[tap.A11Y_EXPAND, tap.A11Y_SCROLL_FORWARD],
+                custom_actions=["Archive"],
+                range=tap.Range(type=tap.RANGE_INT, min=0, max=10, current=4),
+            )
+        )
+        if c.WhichOneof("op") == "snapshot"
+        else device_answers(c)
+    )
+    selector = json_format.ParseDict(SEARCH, tap.Selector())
+    response = await attached.describe_element(pb.DescribeElementRequest(selector=selector), None)
+    assert list(response.actions) == [tap.A11Y_EXPAND, tap.A11Y_SCROLL_FORWARD]
+    assert list(response.custom_actions) == ["Archive"]
+    assert response.range == tap.Range(type=tap.RANGE_INT, min=0, max=10, current=4)
+    await refused(attached.describe_element(pb.DescribeElementRequest(), None), Code.INVALID_ARGUMENT)
+    daemon.devices.responder = lambda c: tap.CommandResult(error=tap.Error(code=tap.ERR_AMBIGUOUS, match_count=2))
+    await refused(attached.describe_element(pb.DescribeElementRequest(selector=selector), None), Code.FAILED_PRECONDITION)
+
+
+async def test_device_status_is_the_device_info_and_the_resumed_activity(attached, daemon):
+    daemon.devices.foreground = ("com.example", "com.example.Main")
+    status = await attached.get_device_status(pb.GetDeviceStatusRequest(), None)
+    assert (status.info.api_level, status.info.model) == (34, "sdk_gphone64")
+    assert (status.foreground_package, status.foreground_activity) == ("com.example", "com.example.Main")
+    daemon.devices.foreground = None
+    status = await attached.get_device_status(pb.GetDeviceStatusRequest(), None)
+    assert not status.HasField("foreground_activity")
+
+
+async def test_list_notifications_reads_them_as_data(attached, daemon):
+    message = tap.DeviceNotification(package_name="com.example", title="New message", actions=["Mark as read"], clearable=True, posted_at_ms=1_700_000_000_000)
+    daemon.devices.responder = lambda c: (
+        tap.CommandResult(notifications=tap.NotificationList(notifications=[message]))
+        if c.WhichOneof("op") == "list_notifications"
+        else device_answers(c)
+    )
+    response = await attached.list_notifications(pb.ListNotificationsRequest(), None)
+    assert list(response.notifications) == [message]
+
+
+async def test_device_steps_are_recorded(attached, daemon):
+    for kind in (
+        {"device": {"operation": "set_stay_awake", "enabled": True}},
+        {"action": {"command": {"set_orientation": {"orientation": "ORIENTATION_LANDSCAPE"}}}},
+        {"device_assertion": {"check": "DEVICE_CHECK_KEYBOARD_HIDDEN"}},
+    ):
+        response = await attached.perform(pb.PerformRequest(step=step(**kind)), None)
+        assert response.recorded, response.message
+    kinds = [s.WhichOneof("kind") for s in attached.recording.steps]
+    assert kinds == ["device", "action", "device_assertion"]
+    dumps(attached.recording)
+
+
 async def test_frames_stream_the_screen_and_end_on_release(attached, daemon):
     daemon.devices.snapshot = tap.ScreenSnapshotResponse(
         snapshot_id=7,

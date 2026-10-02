@@ -344,6 +344,8 @@ class DeviceService(
             val logged: DeviceCall.Builder.() -> Unit = {
                 latitude = request.latitude
                 longitude = request.longitude
+                accuracy?.let { accuracyM = it }
+                altitude?.let { altitudeM = it }
             }
             condition(request.clientConnectionId, request.attachedDeviceId, "set_location", logged) {
                 it.setLocation(request.latitude, request.longitude, accuracy, altitude)

@@ -17,7 +17,10 @@ from connectrpc.errors import ConnectError
 from connectrpc.request import RequestContext
 from google.protobuf.timestamp_pb2 import Timestamp
 from tap_e2e import (
+    CommandError,
     DeviceBusyError,
+    DeviceInfo,
+    DisplayRotation,
     DeviceQuarantinedError,
     Selector,
     ServerError,
@@ -183,6 +186,72 @@ class Studio:
         except TapError as error:
             raise _connect_error(error) from None
         return studio.CountResponse(count=count)
+
+    async def describe_element(
+        self, request: studio.DescribeElementRequest, ctx: RequestContext
+    ) -> studio.DescribeElementResponse:
+        worker = self._require_device()
+        if not request.selector.HasField("node"):
+            raise ConnectError(Code.INVALID_ARGUMENT, "selector has no node")
+        device = worker.device
+        assert device is not None
+        selector = Selector.from_proto(request.selector)
+        try:
+            snapshot = await worker.call(lambda: device.screen.element(selector).snapshot(), changes_screen=False)
+        except CommandError as error:
+            # NOT_FOUND / AMBIGUOUS: the selector does not name one node now.
+            raise ConnectError(Code.FAILED_PRECONDITION, str(error)) from None
+        except TapError as error:
+            raise _connect_error(error) from None
+        response = studio.DescribeElementResponse(
+            actions=[tap.StandardAction.Value(f"A11Y_{action.name}") for action in snapshot.actions],
+            custom_actions=list(snapshot.custom_actions),
+        )
+        if snapshot.range is not None:
+            r = snapshot.range
+            kind = tap.RANGE_TYPE_UNSPECIFIED if r.type.name == "UNKNOWN" else tap.RangeType.Value(f"RANGE_{r.type.name}")
+            response.range.CopyFrom(tap.Range(type=kind, min=r.min, max=r.max, current=r.current))
+        return response
+
+    async def get_device_status(
+        self, request: studio.GetDeviceStatusRequest, ctx: RequestContext
+    ) -> studio.GetDeviceStatusResponse:
+        worker = self._require_device()
+        device = worker.device
+        assert device is not None
+        try:
+            info, top = await worker.call(lambda: (device.info(), device.foreground_activity()), changes_screen=False)
+        except TapError as error:
+            raise _connect_error(error) from None
+        response = studio.GetDeviceStatusResponse(info=_device_info(info))
+        if top is not None:
+            response.foreground_package = top.package_name
+            response.foreground_activity = top.class_name
+        return response
+
+    async def list_notifications(
+        self, request: studio.ListNotificationsRequest, ctx: RequestContext
+    ) -> studio.ListNotificationsResponse:
+        worker = self._require_device()
+        device = worker.device
+        assert device is not None
+        try:
+            shown = await worker.call(device.notifications, changes_screen=False)
+        except TapError as error:
+            raise _connect_error(error) from None
+        return studio.ListNotificationsResponse(
+            notifications=[
+                tap.DeviceNotification(
+                    package_name=n.package_name,
+                    title=n.title,
+                    text=n.text,
+                    actions=list(n.actions),
+                    clearable=n.clearable,
+                    posted_at_ms=round(n.posted_at.timestamp() * 1000),
+                )
+                for n in shown
+            ]
+        )
 
     # --- steps -----------------------------------------------------------------------------------
 
@@ -405,6 +474,38 @@ def _same_run(old: studio.Step, new: studio.Step) -> bool:
         step.ClearField("note")
         step.ClearField("outcome")
     return a == b
+
+
+def _device_info(info: DeviceInfo) -> tap.DeviceInfo:
+    """The client's ``DeviceInfo`` as the ``tap.v1`` message the page reads."""
+    message = tap.DeviceInfo(
+        api_level=info.api_level,
+        manufacturer=info.manufacturer,
+        model=info.model,
+        product=info.product,
+        display_width=info.display_width,
+        display_height=info.display_height,
+        display_rotation=list(DisplayRotation).index(info.display_rotation),
+        screen_on=info.screen_on,
+        keyguard_locked=info.keyguard_locked,
+        keyguard_secure=info.keyguard_secure,
+        keyboard_shown=info.keyboard_shown,
+        auto_rotate=info.auto_rotate,
+        animations_enabled=info.animations_enabled,
+        dark_mode=info.dark_mode,
+        font_scale=info.font_scale,
+        density_dpi=info.density_dpi,
+        airplane_mode=info.airplane_mode,
+        wifi_enabled=info.wifi_enabled,
+        mobile_data_enabled=info.mobile_data_enabled,
+        system_locales=list(info.system_locales),
+        stay_awake=info.stay_awake,
+        bold_text=info.bold_text,
+    )
+    for name in ("current_package", "high_contrast_text", "color_inversion"):
+        if getattr(info, name) is not None:
+            setattr(message, name, getattr(info, name))
+    return message
 
 
 def _device_state(name: str) -> int:

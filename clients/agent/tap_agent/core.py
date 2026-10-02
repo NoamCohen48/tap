@@ -10,9 +10,10 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
+import math
 import os
 import pathlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from typing import TypeVar
 
 from tap_e2e import (
@@ -25,6 +26,7 @@ from tap_e2e import (
     FailureReason,
     Element,
     LocationAccuracy,
+    Long,
     MatchMode,
     Notification,
     Orientation,
@@ -58,6 +60,42 @@ PERMISSION_CHOICES = tuple(choice.name.lower().replace("_", "-") for choice in P
 PINCHES = ("open", "close")
 STANDARD_ACTIONS = tuple(action.name.lower().replace("_", "-") for action in StandardAction)
 ACCURACIES = tuple(accuracy.name.lower() for accuracy in LocationAccuracy)
+EXTRA_TYPES = ("string", "int", "long", "float", "bool")
+
+
+def parse_extras(items: Sequence[str]) -> dict[str, str | bool | int | float | Long]:
+    """Launch extras from ``KEY=VALUE`` (a string) or ``KEY:TYPE=VALUE`` with TYPE one of
+    string, int (32-bit), long, float or bool, as ``am start --es/--ei/--el/--ef/--ez`` put them."""
+    extras: dict[str, str | bool | int | float | Long] = {}
+    for item in items:
+        name, eq, value = item.partition("=")
+        key, colon, kind = name.partition(":")
+        kind = kind.strip().lower() if colon else "string"
+        key = key.strip()
+        if not eq or not key or kind not in EXTRA_TYPES:
+            raise AgentError(f"an extra is KEY=VALUE or KEY:TYPE=VALUE (TYPE: {', '.join(EXTRA_TYPES)}), not {item!r}", EXIT_USAGE)
+        if key in extras:
+            raise AgentError(f"extra {key!r} is given twice", EXIT_USAGE)
+        try:
+            if kind == "string":
+                extras[key] = value
+            elif kind == "bool":
+                if value.strip().lower() not in ("true", "false"):
+                    raise ValueError
+                extras[key] = value.strip().lower() == "true"
+            elif kind == "float":
+                number = float(value)
+                if not math.isfinite(number):
+                    raise ValueError
+                extras[key] = number
+            else:
+                whole = int(value.strip())
+                if kind == "int" and not -(2**31) <= whole < 2**31:
+                    raise ValueError
+                extras[key] = Long(whole) if kind == "long" else whole
+        except ValueError:
+            raise AgentError(f"extra {key!r}: {value!r} is not a {kind}", EXIT_USAGE) from None
+    return extras
 KEYBOARD_ACTIONS = ("state", "hide")
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
 CONDITIONS = (
@@ -613,17 +651,24 @@ class Agent:
         longitude: float,
         accuracy: float | None = None,
         device: str | None = None,
+        altitude: float | None = None,
     ) -> str:
-        """Mocks the device location at ``latitude``, ``longitude`` (``accuracy`` in meters) until
-        release, which ends the mock and restores the device's location setting."""
+        """Mocks the device location at ``latitude``, ``longitude`` (``accuracy`` and ``altitude``
+        in meters) until release, which ends the mock and restores the device's location setting."""
         if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
             raise AgentError(f"location takes a latitude -90..90 and a longitude -180..180, not {latitude}, {longitude}", EXIT_USAGE)
         if accuracy is not None and not accuracy > 0:
             raise AgentError(f"accuracy must be a positive number of meters, not {accuracy}", EXIT_USAGE)
+        if altitude is not None and not math.isfinite(altitude):
+            raise AgentError(f"altitude must be a finite number of meters, not {altitude}", EXIT_USAGE)
 
         def step() -> str:
-            self._device(device).set_location(latitude, longitude, accuracy_m=accuracy)
-            shown = f"{latitude:g}, {longitude:g}" + (f" ±{accuracy:g} m" if accuracy is not None else "")
+            self._device(device).set_location(latitude, longitude, accuracy_m=accuracy, altitude_m=altitude)
+            shown = (
+                f"{latitude:g}, {longitude:g}"
+                + (f" ±{accuracy:g} m" if accuracy is not None else "")
+                + (f", {altitude:g} m up" if altitude is not None else "")
+            )
             return f"location mocked at {shown} (ends on release)"
 
         return self._run(step)
@@ -817,9 +862,10 @@ class Agent:
         argument: str | None = None,
         device: str | None = None,
         any_app: bool = False,
+        extras: Sequence[str] = (),
     ) -> str:
         """App lifecycle for ``package``: launch [activity], cold-launch
-        [activity], foreground, background, open-link URI (``any_app``: any app may handle it),
+        [activity] (both with ``extras`` on the intent, ``KEY[:TYPE]=VALUE``), foreground, background, open-link URI (``any_app``: any app may handle it),
         stop, clear, install APK, uninstall, grant PERMISSION, revoke PERMISSION, granted PERMISSION, running,
         locale [TAGS] (prints the app's languages; comma-separated BCP-47 tags set them, ``system``
         makes the app follow the system again; API 33+, restored on release)."""
@@ -828,15 +874,18 @@ class Agent:
         needs = {"install": "APK path", "grant": "permission", "revoke": "permission", "granted": "permission", "open-link": "URI"}
         if action in needs and not argument:
             raise AgentError(f"app {action} needs an argument ({needs[action]})", EXIT_USAGE)
+        if extras and action not in ("launch", "cold-launch"):
+            raise AgentError(f"extras go with launch and cold-launch, not {action}", EXIT_USAGE)
+        intent = parse_extras(extras)
 
         def step() -> str:
             app = self._device(device).app(package)
             name = app.package_name
             if action == "launch":
-                app.launch(argument)
+                app.launch(argument, extras=intent)
                 return f"launched {name}"
             if action == "cold-launch":
-                process = app.cold_launch(argument)
+                process = app.cold_launch(argument, extras=intent)
                 return f"cold-launched {name} (pid {process.pid})"
             if action == "foreground":
                 app.foreground()

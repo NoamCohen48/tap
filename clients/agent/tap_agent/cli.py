@@ -32,6 +32,7 @@ Drive an Android device through a running Tap daemon (`tap start`), one step per
   tap-agent devices
   tap-agent attach emulator-5554
   tap-agent app cold-launch com.example.app
+  tap-agent app launch com.example.app .ui.ItemActivity --extra item:long=42
   tap-agent snapshot                 # one line per node: @e3  [Button] "Log in"  id=login
   tap-agent tap @e3 --settle         # act on a ref; --settle prints what changed
   tap-agent fill id=email me@example.com
@@ -117,6 +118,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("latitude", type=float, help="-90..90")
     p.add_argument("longitude", type=float, help="-180..180")
     p.add_argument("--accuracy", type=float, help="in meters (default 5)")
+    p.add_argument("--altitude", type=float, help="in meters")
 
     verb("activity", "print the activity on top of the screen (package/class)", on_device)
 
@@ -211,6 +213,13 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("package")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
     p.add_argument("--any-app", action="store_true", help="open-link: let any app handle the link, not only this one")
+    p.add_argument(
+        "--extra",
+        action="append",
+        default=[],
+        metavar="KEY[:TYPE]=VALUE",
+        help="launch/cold-launch: an intent extra; TYPE is string (default), int, long, float or bool; repeat for more",
+    )
 
     p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
     p.add_argument("-o", "--out", help="write it to this file instead")
@@ -252,7 +261,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "keyboard":
         return agent.keyboard(args.action, device, settle=settle)
     if v == "location":
-        return agent.location(args.latitude, args.longitude, args.accuracy, device)
+        return agent.location(args.latitude, args.longitude, args.accuracy, device, altitude=args.altitude)
     if v == "activity":
         return agent.activity(device)
     if v == "push":
@@ -303,7 +312,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "export":
         return agent.export(args.out)
     if v == "app":
-        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app)
+        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra)
     raise AssertionError(v)
 
 

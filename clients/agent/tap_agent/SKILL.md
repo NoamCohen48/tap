@@ -65,7 +65,9 @@ onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
 Android; use `--settle` before opening another), and
 `app launch|cold-launch|foreground|background|open-link|stop|clear|install|uninstall|grant|revoke|granted|running|locale <package> [activity|URI|APK|PERMISSION|TAGS]`
 (`foreground` returns to the app as it was left; `app open-link <package> myapp://x` opens a
-deep link in the app, `--any-app` lets Android pick the handler).
+deep link in the app, `--any-app` lets Android pick the handler; `--extra KEY[:TYPE]=VALUE`,
+repeatable, puts an extra on a launch or cold-launch intent, TYPE string (default), int, long,
+float or bool).
 A node that another window covers completely is not found; an action on a node it covers
 partly fails as not interactable (OBSCURED) instead of tapping whatever is on top. Either way,
 close the covering window (often `key back`) first.
@@ -79,7 +81,7 @@ device languages; `condition animations
 on|off`, `condition dark-mode on|off` (Android 10+), `condition font-scale 0.5..2.0` and
 `condition density <dpi>|reset` change one and print the value read back;
 `condition airplane-mode|wifi|mobile-data on|off` flip the real switches and `condition locale
-fr-FR,en` sets the device languages. `location <lat> <lon> [--accuracy M]` mocks the device
+fr-FR,en` sets the device languages. `location <lat> <lon> [--accuracy M] [--altitude M]` mocks the device
 location (call again to move it). `app locale <package>`
 prints the app's own languages, `app locale <package> fr-FR,en` sets them and `app locale
 <package> system` makes the app follow the system again (Android 13+). `condition stay-awake

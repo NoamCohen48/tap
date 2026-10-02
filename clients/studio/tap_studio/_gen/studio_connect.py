@@ -38,6 +38,15 @@ class StudioService(Protocol):
     async def count(self, request: studio__pb2.CountRequest, ctx: RequestContext) -> studio__pb2.CountResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def describe_element(self, request: studio__pb2.DescribeElementRequest, ctx: RequestContext) -> studio__pb2.DescribeElementResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def get_device_status(self, request: studio__pb2.GetDeviceStatusRequest, ctx: RequestContext) -> studio__pb2.GetDeviceStatusResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def list_notifications(self, request: studio__pb2.ListNotificationsRequest, ctx: RequestContext) -> studio__pb2.ListNotificationsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -140,6 +149,36 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.count,
+                ),
+                "/tap.studio.v1.StudioService/DescribeElement": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DescribeElement",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DescribeElementRequest,
+                        output=studio__pb2.DescribeElementResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.describe_element,
+                ),
+                "/tap.studio.v1.StudioService/GetDeviceStatus": Endpoint.unary(
+                    method=MethodInfo(
+                        name="GetDeviceStatus",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetDeviceStatusRequest,
+                        output=studio__pb2.GetDeviceStatusResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.get_device_status,
+                ),
+                "/tap.studio.v1.StudioService/ListNotifications": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListNotifications",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListNotificationsRequest,
+                        output=studio__pb2.ListNotificationsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.list_notifications,
                 ),
                 "/tap.studio.v1.StudioService/Perform": Endpoint.unary(
                     method=MethodInfo(
@@ -392,6 +431,70 @@ class StudioServiceClient(ConnectClient):
             use_get=use_get,
         )
 
+    async def describe_element(
+        self,
+        request: studio__pb2.DescribeElementRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.DescribeElementResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DescribeElement",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DescribeElementRequest,
+                output=studio__pb2.DescribeElementResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def get_device_status(
+        self,
+        request: studio__pb2.GetDeviceStatusRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetDeviceStatusResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetDeviceStatus",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetDeviceStatusRequest,
+                output=studio__pb2.GetDeviceStatusResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def list_notifications(
+        self,
+        request: studio__pb2.ListNotificationsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.ListNotificationsResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListNotifications",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListNotificationsRequest,
+                output=studio__pb2.ListNotificationsResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def perform(
         self,
         request: studio__pb2.PerformRequest,
@@ -590,6 +693,12 @@ class StudioServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def count(self, request: studio__pb2.CountRequest, ctx: RequestContext) -> studio__pb2.CountResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def describe_element(self, request: studio__pb2.DescribeElementRequest, ctx: RequestContext) -> studio__pb2.DescribeElementResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def get_device_status(self, request: studio__pb2.GetDeviceStatusRequest, ctx: RequestContext) -> studio__pb2.GetDeviceStatusResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def list_notifications(self, request: studio__pb2.ListNotificationsRequest, ctx: RequestContext) -> studio__pb2.ListNotificationsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def update_step(self, request: studio__pb2.UpdateStepRequest, ctx: RequestContext) -> studio__pb2.UpdateStepResponse:
@@ -683,6 +792,36 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.count,
+                ),
+                "/tap.studio.v1.StudioService/DescribeElement": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DescribeElement",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DescribeElementRequest,
+                        output=studio__pb2.DescribeElementResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.describe_element,
+                ),
+                "/tap.studio.v1.StudioService/GetDeviceStatus": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="GetDeviceStatus",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetDeviceStatusRequest,
+                        output=studio__pb2.GetDeviceStatusResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.get_device_status,
+                ),
+                "/tap.studio.v1.StudioService/ListNotifications": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListNotifications",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListNotificationsRequest,
+                        output=studio__pb2.ListNotificationsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.list_notifications,
                 ),
                 "/tap.studio.v1.StudioService/Perform": EndpointSync.unary(
                     method=MethodInfo(
@@ -933,6 +1072,70 @@ class StudioServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def describe_element(
+        self,
+        request: studio__pb2.DescribeElementRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.DescribeElementResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DescribeElement",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DescribeElementRequest,
+                output=studio__pb2.DescribeElementResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def get_device_status(
+        self,
+        request: studio__pb2.GetDeviceStatusRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetDeviceStatusResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetDeviceStatus",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetDeviceStatusRequest,
+                output=studio__pb2.GetDeviceStatusResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def list_notifications(
+        self,
+        request: studio__pb2.ListNotificationsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.ListNotificationsResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListNotifications",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListNotificationsRequest,
+                output=studio__pb2.ListNotificationsResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )
 
     def perform(

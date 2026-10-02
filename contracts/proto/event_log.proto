@@ -77,7 +77,7 @@ message DeviceCall {
   optional bool mobile_data = 7;
   // set_system_locales.
   repeated string locales = 8;
-  // set_location.
+  // set_location (with accuracy_m / altitude_m below).
   optional double latitude = 9;
   optional double longitude = 10;
   // push_file / pull_file / add_media: the device file and its size.
@@ -87,4 +87,7 @@ message DeviceCall {
   optional bool high_contrast_text = 13;
   optional bool color_inversion = 14;
   optional bool bold_text = 15;
+  // set_location: the accuracy and altitude the call gave.
+  optional float accuracy_m = 16;
+  optional double altitude_m = 17;
 }

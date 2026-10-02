@@ -151,6 +151,17 @@ and the clients must be updated together to use them:
 - **Breaking** (Kotlin, Python): `DeviceInfo.displayRotation` / `display_rotation` is now a
   `DisplayRotation` instead of an int (the wire field is unchanged); `DeviceInfo.orientation`
   derives portrait or landscape from the size.
+- Tap Studio records every device action: on an element, double tap, drag to, pinch, fling,
+  submit (IME action), its accessibility and custom actions and a range's value; in the App tab,
+  foreground, background, open link, revoke, the app's languages and launch extras; and a new
+  **Device** tab (key 5) that reads the device back and records rotation, wake/sleep/unlock, the
+  keyboard and clipboard, the permission dialog, notifications and toasts, the conditions and a
+  mock location, and device assertions (foreground activity, keyboard, clipboard).
+  `tap-recording/1` gains the `device_wait`, `device` and `device_assertion` steps; the studio
+  API gains `DescribeElement`, `GetDeviceStatus` and `ListNotifications`.
+- The event log's `set_location` call records the `accuracy_m` and `altitude_m` it gave.
+- `tap-agent`: `app launch|cold-launch --extra KEY[:TYPE]=VALUE` (MCP `extras`) and
+  `location --altitude` (MCP `altitude_m`).
 
 ## 0.0.2 — 2026-09-30 (alpha)
 

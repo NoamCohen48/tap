@@ -66,6 +66,8 @@ tap-agent release                                   # frees the device
   completely is not found at all).
 - **Apps**: `app <action> <package> [argument]`: `launch`, `cold-launch`, `stop`, `clear`,
   `install` (argument: the APK), `uninstall`, `grant` (argument: the permission), `running`.
+  `--extra KEY[:TYPE]=VALUE` (repeatable; MCP `extras`) puts an intent extra on a launch or
+  cold-launch: `--extra user=ada --extra item:long=42` (TYPE string, int, long, float or bool).
 - **System panels**: `panel notifications` / `panel quick-settings` (MCP `open_panel`) open the
   notification shade or quick settings; target their nodes with `pkg=com.android.systemui`, and
   `key back` closes them (twice from quick settings on newer Android). `key recents` opens the
@@ -87,7 +89,7 @@ tap-agent release                                   # frees the device
   `condition dark-mode on` (Android 10+), `condition font-scale 1.3`, `condition density
   320|reset`, `condition airplane-mode|wifi|mobile-data on|off` (real switches, read back) and
   `condition locale fr-FR,en` change one until release, which restores the device's own values;
-  `location 48.85 2.35 [--accuracy 10]` mocks the device location until release; `app locale <package> [fr-FR,en|system]` reads or sets the app's own languages
+  `location 48.85 2.35 [--accuracy 10] [--altitude 35]` mocks the device location until release; `app locale <package> [fr-FR,en|system]` reads or sets the app's own languages
   (Android 13+). `condition stay-awake on` keeps the screen on while plugged in, and
   `condition high-contrast-text|color-inversion|bold-text on|off` (bold text Android 12+) set
   the accessibility display settings. MCP `condition`, `set_location` and `app` with `locale`.

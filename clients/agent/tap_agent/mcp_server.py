@@ -269,13 +269,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         latitude: Annotated[float, Field(ge=-90, le=90)],
         longitude: Annotated[float, Field(ge=-180, le=180)],
         accuracy_m: Annotated[float | None, Field(gt=0, description="Accuracy in meters; omit for 5.")] = None,
+        altitude_m: Annotated[float | None, Field(description="Altitude in meters; omit for none.")] = None,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Mock the device location until release (the device's location providers report this
         fix, and location is turned on if it was off). Call again to move it; release restores
         the device."""
-        return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None))
+        return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None, altitude=altitude_m))
 
     @mcp.tool(name="foreground_activity", annotations=READ_ONLY)
     async def foreground_activity(session: Session = "", device: Device = "") -> CallToolResult:
@@ -521,6 +522,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             ),
         ] = "",
         any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
+        extras: Annotated[
+            list[str],
+            Field(
+                description="launch/cold-launch: intent extras as KEY=VALUE (a string) or KEY:TYPE=VALUE, "
+                "TYPE one of string, int, long, float, bool (e.g. item:long=42)."
+            ),
+        ] = [],
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -531,7 +539,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release)."""
         return await call(
-            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app)
+            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras)
         )
 
     @mcp.tool(name="export", annotations=READ_ONLY)

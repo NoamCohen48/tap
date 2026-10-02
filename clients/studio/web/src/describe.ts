@@ -5,10 +5,24 @@
 // `app("…").element(…)`, a lone selector as `.andPackageName("…")`, which `parse.ts` reads.
 
 import { create } from "@bufbuild/protobuf";
-import { Check, Condition, type AssertionStep, type Step } from "./gen/studio_pb";
-import { Direction, StabilitySignal, SystemPanel, type Command } from "./gen/command_pb";
+import type { IntentExtra } from "./gen/app_pb";
+import type { AppCall, DeviceCall } from "./gen/event_log_pb";
+import { Check, Condition, DeviceCheck, type AssertionStep, type DeviceAssertionStep, type Step } from "./gen/studio_pb";
+import {
+  Direction,
+  DisplayRotation,
+  LocationAccuracy,
+  Orientation,
+  PermissionChoice,
+  PinchDirection,
+  StabilitySignal,
+  StandardAction,
+  SystemPanel,
+  type Command,
+  type NotificationMatch,
+} from "./gen/command_pb";
 import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
-import { KEY_BACK, KEY_HOME, keyName } from "./keys";
+import { KEY_BACK, KEY_HOME, KEY_SLEEP, KEY_WAKEUP, keyName } from "./keys";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
 export const quote = (value: string) => JSON.stringify(value).replace(/\$/g, "\\$");
@@ -181,7 +195,7 @@ const DIRECTIONS: Record<Direction, string> = {
   [Direction.DIR_RIGHT]: "RIGHT",
 };
 
-const KEYS: Record<number, string> = { [KEY_HOME]: "pressHome()", [KEY_BACK]: "pressBack()" };
+const KEYS: Record<number, string> = { [KEY_HOME]: "pressHome()", [KEY_BACK]: "pressBack()", [KEY_WAKEUP]: "wake()", [KEY_SLEEP]: "sleep()" };
 
 const PANELS: Partial<Record<SystemPanel, string>> = {
   [SystemPanel.NOTIFICATIONS]: "openNotifications()",
@@ -191,10 +205,153 @@ const PANELS: Partial<Record<SystemPanel, string>> = {
 const APP: Record<string, string> = {
   cold_launch: "coldLaunch",
   launch: "launch",
+  foreground: "foreground",
   force_stop: "forceStop",
   clear_data: "clearData",
   grant_permission: "grantPermission",
+  revoke_permission: "revokePermission",
+  open_link: "openLink",
+  set_locales: "setLocales",
 };
+
+/** A Kotlin enum constant from a proto one: the proto's prefix dropped (`A11Y_EXPAND` → `StandardAction.EXPAND`). */
+function constant(kotlinEnum: string, names: Record<number, string>, value: number, prefix = ""): string {
+  return `${kotlinEnum}.${(names[value] ?? String(value)).replace(prefix, "")}`;
+}
+
+/** Kotlin literals for the numbers a step carries. */
+const float = (n: number) => `${n}f`;
+const double = (n: number) => (Number.isInteger(n) ? `${n}.0` : String(n));
+const list = (values: string[]) => `listOf(${values.map(quote).join(", ")})`;
+
+/** Named arguments, in order, for the ones given. */
+function named(args: [string, string | undefined][]): string {
+  return args
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k} = ${v}`)
+    .join(", ");
+}
+
+function extra(e: IntentExtra): string {
+  const v = e.value;
+  const literal =
+    v.case === "stringValue"
+      ? quote(v.value)
+      : v.case === "longValue"
+        ? `${v.value}L`
+        : v.case === "floatValue"
+          ? float(v.value)
+          : String(v.value ?? "null");
+  return `${quote(e.key)} to ${literal}`;
+}
+
+function appCall(call: AppCall): string {
+  let args: string;
+  switch (call.operation) {
+    case "grant_permission":
+    case "revoke_permission":
+      args = quote(call.permission ?? "");
+      break;
+    case "open_link":
+      args = [quote(call.uri ?? ""), call.anyApp ? "anyApp = true" : ""].filter(Boolean).join(", ");
+      break;
+    case "set_locales":
+      args = list(call.locales);
+      break;
+    default: {
+      const extras = call.extras.length ? `extras = mapOf(${call.extras.map(extra).join(", ")})` : "";
+      args = [call.activity ? quote(call.activity) : "", extras].filter(Boolean).join(", ");
+    }
+  }
+  return `app(${quote(call.packageName)}).${APP[call.operation] ?? call.operation}(${args})`;
+}
+
+const bool = (b: boolean | undefined) => (b === undefined ? undefined : String(b));
+
+/** A held device condition as its `Device` call. */
+function deviceCall(call: DeviceCall): string {
+  switch (call.operation) {
+    case "set_animations":
+      return `setAnimations(${call.enabled})`;
+    case "set_dark_mode":
+      return `setDarkMode(${call.enabled})`;
+    case "set_stay_awake":
+      return `setStayAwake(${call.enabled})`;
+    case "set_font_scale":
+      return `setFontScale(${float(call.fontScale ?? 1)})`;
+    case "set_density":
+      return `setDensity(${call.densityDpi ?? "null"})`;
+    case "set_network":
+      return `setNetwork(${named([["airplaneMode", bool(call.airplaneMode)], ["wifi", bool(call.wifi)], ["mobileData", bool(call.mobileData)]])})`;
+    case "set_system_locales":
+      return `setSystemLocales(${list(call.locales)})`;
+    case "set_location": {
+      const rest = named([
+        ["accuracyM", call.accuracyM !== undefined ? float(call.accuracyM) : undefined],
+        ["altitudeM", call.altitudeM !== undefined ? double(call.altitudeM) : undefined],
+      ]);
+      return `setLocation(${[double(call.latitude ?? 0), double(call.longitude ?? 0), rest].filter(Boolean).join(", ")})`;
+    }
+    case "set_accessibility_display":
+      return `setAccessibilityDisplay(${named([
+        ["highContrastText", bool(call.highContrastText)],
+        ["colorInversion", bool(call.colorInversion)],
+        ["boldText", bool(call.boldText)],
+      ])})`;
+    default:
+      return `(${call.operation} device call)`;
+  }
+}
+
+/** A notification match as the SDK's `title`/`text`/`mode`/`packageName` arguments, plus any more. */
+function matching(m: NotificationMatch | undefined, more: [string, string | undefined][] = []): string {
+  const exact = !m || m.mode === MatchMode.MATCH_EXACT || m.mode === MatchMode.MATCH_UNSPECIFIED;
+  return named([
+    ["title", m?.title !== undefined ? quote(m.title) : undefined],
+    ["text", m?.text !== undefined ? quote(m.text) : undefined],
+    ["mode", exact ? undefined : `MatchMode.${MODE_NAMES[m.mode]}`],
+    ["packageName", m?.packageName !== undefined ? quote(m.packageName) : undefined],
+    ...more,
+  ]);
+}
+
+function deviceWait(c: Command | undefined): string {
+  switch (c?.op.case) {
+    case "awaitToast": {
+      const t = c.op.value;
+      const exact = t.mode === MatchMode.MATCH_EXACT || t.mode === MatchMode.MATCH_UNSPECIFIED;
+      const args = named([
+        ["text", t.text !== undefined ? quote(t.text) : undefined],
+        ["mode", exact ? undefined : `MatchMode.${MODE_NAMES[t.mode]}`],
+        ["packageName", t.packageName !== undefined ? quote(t.packageName) : undefined],
+      ]);
+      return `awaitToast(${args})`;
+    }
+    case "awaitNotification":
+      return `awaitNotification(${matching(c.op.value.match)})`;
+    case "waitPermissionPrompt":
+      return "awaitPermissionPrompt()";
+    default:
+      return `(${c?.op.case ?? "empty"} device wait)`;
+  }
+}
+
+function deviceAssertion(a: DeviceAssertionStep): string {
+  switch (a.check) {
+    case DeviceCheck.FOREGROUND_ACTIVITY: {
+      const [pkg = "", cls = ""] = (a.text ?? "").split("/");
+      return `assertEquals(ForegroundActivity(${quote(pkg)}, ${quote(cls)}), foregroundActivity())`;
+    }
+    case DeviceCheck.KEYBOARD_SHOWN:
+      return "assertTrue(keyboardShown())";
+    case DeviceCheck.KEYBOARD_HIDDEN:
+      return "assertFalse(keyboardShown())";
+    case DeviceCheck.CLIPBOARD_EQUALS:
+      return `assertEquals(${quote(a.text ?? "")}, clipboard())`;
+    default:
+      return "(no device check)";
+  }
+}
 
 const CONDITIONS: Record<Condition, string> = {
   [Condition.UNSPECIFIED]: "?",
@@ -282,6 +439,50 @@ function command(c: Command | undefined, secret: string | undefined): string {
       return `${element(c.op.value.selector)}.setText(${value(c.op.value.text, secret)})`;
     case "clearText":
       return `${element(c.op.value.selector)}.clearText()`;
+    case "doubleTap":
+      return `${element(c.op.value.selector)}.doubleTap()`;
+    case "performImeAction":
+      return `${element(c.op.value.selector)}.imeAction()`;
+    case "fling":
+      return `${element(c.op.value.selector)}.fling(${DIRECTIONS[c.op.value.direction]})`;
+    case "pinch": {
+      const p = c.op.value;
+      const percent = p.percent !== undefined && p.percent !== 80 ? String(p.percent) : "";
+      return `${element(p.selector)}.${p.direction === PinchDirection.PINCH_CLOSE ? "pinchClose" : "pinchOpen"}(${percent})`;
+    }
+    case "drag":
+      return `${element(c.op.value.selector)}.dragTo(${describeSelector(c.op.value.target)})`;
+    case "performAccessibilityAction": {
+      const a = c.op.value;
+      return a.action.case === "custom"
+        ? `${element(a.selector)}.performCustomAction(${quote(a.action.value)})`
+        : `${element(a.selector)}.performAction(${constant("StandardAction", StandardAction, a.action.value ?? 0, "A11Y_")})`;
+    }
+    case "setProgress":
+      return `${element(c.op.value.selector)}.setProgress(${float(c.op.value.value)})`;
+    case "setOrientation":
+      return `setOrientation(${constant("Orientation", Orientation, c.op.value.orientation)})`;
+    case "setDisplayRotation":
+      return `setDisplayRotation(${constant("DisplayRotation", DisplayRotation, c.op.value.rotation)})`;
+    case "unfreezeRotation":
+      return "unfreezeRotation()";
+    case "dismissKeyguard":
+      return "dismissKeyguard()";
+    case "hideKeyboard":
+      return "hideKeyboard()";
+    case "setClipboard":
+      return `setClipboard(${quote(c.op.value.text)})`;
+    case "choosePermission": {
+      const p = c.op.value;
+      const choice = constant("PermissionChoice", PermissionChoice, p.choice, "PERMISSION_");
+      const accuracy =
+        p.accuracy !== LocationAccuracy.LOCATION_ACCURACY_UNSPECIFIED ? `, ${constant("LocationAccuracy", LocationAccuracy, p.accuracy, "LOCATION_")}` : "";
+      return `choosePermission(${choice}${accuracy})`;
+    }
+    case "openNotification":
+      return `openNotification(${matching(c.op.value.match, [["action", c.op.value.action !== undefined ? quote(c.op.value.action) : undefined]])})`;
+    case "dismissNotification":
+      return `dismissNotification(${matching(c.op.value.match)})`;
     case "scroll":
     case "swipe": {
       const g = c.op.value;
@@ -293,18 +494,36 @@ function command(c: Command | undefined, secret: string | undefined): string {
   }
 }
 
-export type StepKind = "app" | "action" | "key" | "system" | "type" | "assertion" | "wait";
+export type StepKind = "app" | "action" | "key" | "system" | "device" | "type" | "assertion" | "wait";
+
+/** The command ops that act on the device rather than an element. */
+const DEVICE_OPS = new Set<string>([
+  "setOrientation",
+  "setDisplayRotation",
+  "unfreezeRotation",
+  "dismissKeyguard",
+  "hideKeyboard",
+  "setClipboard",
+  "choosePermission",
+  "openNotification",
+  "dismissNotification",
+]);
 
 export function stepKind(step: Step): StepKind | null {
   switch (step.kind.case) {
     case "action": {
       const op = step.kind.value.command?.op.case;
-      return op === "pressKey" ? "key" : op === "openSystemPanel" ? "system" : "action";
+      return op === "pressKey" ? "key" : op === "openSystemPanel" ? "system" : op && DEVICE_OPS.has(op) ? "device" : "action";
     }
     case "scrollUntil":
       return "action";
     case "appWait":
+    case "deviceWait":
       return "wait";
+    case "device":
+      return "device";
+    case "deviceAssertion":
+      return "assertion";
     default:
       return step.kind.case ?? null;
   }
@@ -313,11 +532,14 @@ export function stepKind(step: Step): StepKind | null {
 /** The step as the SDK call it replays as. */
 export function describeStep(step: Step): string {
   switch (step.kind.case) {
-    case "app": {
-      const call = step.kind.value;
-      const argument = call.operation === "grant_permission" ? quote(call.permission ?? "") : call.activity ? quote(call.activity) : "";
-      return `app(${quote(call.packageName)}).${APP[call.operation] ?? call.operation}(${argument})`;
-    }
+    case "app":
+      return appCall(step.kind.value);
+    case "device":
+      return deviceCall(step.kind.value);
+    case "deviceWait":
+      return deviceWait(step.kind.value.command);
+    case "deviceAssertion":
+      return deviceAssertion(step.kind.value);
     case "action":
       return command(step.kind.value.command, step.kind.value.secret);
     case "type": {

@@ -23,6 +23,8 @@ type Props = {
   /** The container of a scroll until being set up: it is outlined, and a click picks among the
    *  elements inside it (the target), whatever the overlay filter. */
   seeking: ScreenNode | null;
+  /** The element a drag being set up starts on: it is outlined, and a click picks where it drops. */
+  dragging?: ScreenNode | null;
   /** Under the phone: the device's buttons. */
   children?: ReactNode;
 };
@@ -130,7 +132,7 @@ export function ScreenView(props: Props) {
             screens): its aspect ratio is the frame's. */}
         <div className="phone-fit">
           <div className="phone">
-            <div className={`screen tone-${intent}${frame?.moving ? " provisional" : ""}${seeking ? " seeking" : ""}`} ref={screen}>
+            <div className={`screen tone-${intent}${frame?.moving ? " provisional" : ""}${seeking || props.dragging ? " seeking" : ""}`} ref={screen}>
               {frame ? (
                 <img src={frame.url} width={frame.width} height={frame.height} alt="The device's screen" draggable={false} />
               ) : (
@@ -146,6 +148,7 @@ export function ScreenView(props: Props) {
                   onContextMenu={onContextMenu}
                 >
                   {seeking && frame && <ContainerBox node={seeking} width={frame.width} height={frame.height} />}
+                  {props.dragging && frame && <ContainerBox node={props.dragging} width={frame.width} height={frame.height} source />}
                   {boxes.map(({ node, box: b }) => (
                     <div
                       key={node.ref}
@@ -187,8 +190,8 @@ export function ScreenView(props: Props) {
   );
 }
 
-function ContainerBox({ node, width, height }: { node: ScreenNode; width: number; height: number }) {
+function ContainerBox({ node, width, height, source }: { node: ScreenNode; width: number; height: number; source?: boolean }) {
   const b = box(node, width, height);
   if (!b) return null;
-  return <div className="container-box" style={{ left: `${b.left}%`, top: `${b.top}%`, width: `${b.width}%`, height: `${b.height}%` }} />;
+  return <div className={source ? "container-box source" : "container-box"} style={{ left: `${b.left}%`, top: `${b.top}%`, width: `${b.width}%`, height: `${b.height}%` }} />;
 }

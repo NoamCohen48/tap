@@ -478,6 +478,8 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     assert agent.activity() == "com.example/com.example.MainActivity"
     assert agent.location(48.8584, 2.2945, 3.5) == "location mocked at 48.8584, 2.2945 ±3.5 m (ends on release)"
     assert fake.devices.conditions[-1].latitude == 48.8584 and fake.devices.conditions[-1].accuracy_m == 3.5
+    assert agent.location(48.8584, 2.2945, device=None, altitude=35) == "location mocked at 48.8584, 2.2945, 35 m up (ends on release)"
+    assert fake.devices.conditions[-1].altitude_m == 35 and not fake.devices.conditions[-1].HasField("accuracy_m")
     with pytest.raises(AgentError) as far:
         agent.location(95, 0)
     assert far.value.exit_code == EXIT_USAGE
@@ -572,3 +574,27 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert not result.is_error and result.content[0].text.startswith("opened example://x")
         result = await client.call_tool("export", {})
         assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text
+
+
+def test_launch_extras_are_typed_and_checked(fake, agent, capsys):
+    agent.attach("emulator-5554")
+    assert agent.app("launch", "com.example", ".Item", extras=["user=ada", "n:int=3", "id:long=42", "ratio:float=0.5", "on:bool=true"]) == "launched com.example"
+    request = fake.apps.launches[-1]
+    shown = {e.key: (e.WhichOneof("value"), getattr(e, e.WhichOneof("value"))) for e in request.extras}
+    assert shown == {
+        "user": ("string_value", "ada"),
+        "n": ("int_value", 3),
+        "id": ("long_value", 42),
+        "ratio": ("float_value", 0.5),
+        "on": ("bool_value", True),
+    }
+    agent.app("cold-launch", "com.example", extras=["url=a=b"])
+    assert [(e.key, e.string_value) for e in fake.apps.cold_launches[-1].extras] == [("url", "a=b")]
+    for bad in (["novalue"], ["n:int=x"], ["n:int=3000000000"], ["x:short=1"], ["b:bool=yes"], ["f:float=nan"], ["k=1", "k=2"], ["=v"]):
+        with pytest.raises(AgentError) as info:
+            agent.app("launch", "com.example", extras=bad)
+        assert info.value.exit_code == EXIT_USAGE, bad
+    with pytest.raises(AgentError) as info:
+        agent.app("stop", "com.example", extras=["a=b"])
+    assert info.value.exit_code == EXIT_USAGE
+    assert len(fake.apps.launches) == 1
