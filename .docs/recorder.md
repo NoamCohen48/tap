@@ -370,8 +370,15 @@ daemon
      `describe.ts`; the JSON is only in the export.
    - Hit-testing is in the page: one pointer layer over the frame, boxes in percent of the
      frame (bounds and screenshot are both in display orientation, so rotation needs nothing),
-     the smallest node under the pointer wins, then the deeper one. Act mode hits interactive
-     nodes (all nodes when the overlay shows all); Assert and Inspect hit every node.
+     the smallest node under the pointer wins, then the deeper one, within the window on top
+     there: the dump has no z-order, so of the windows whose root contains the point the one
+     with the smallest root (a dialog, popup, keyboard or status bar over the activity); a
+     click never reaches a node behind a dialog. Act mode hits interactive nodes (all nodes
+     when the overlay shows all); Assert and Inspect hit every node.
+   - A tap or long tap on a node whose selector is an index pick (a preference or list row: a
+     layout with nothing of its own) is recorded through its first label with a selector of
+     its own whose centre hits the row (`tapLabel`): `text("Apps")` instead of
+     `className("…LinearLayout").at(9)`, which changes as soon as the list scrolls.
    - Hover does not call `Count`: every candidate is unique in its snapshot by construction
      (phase 2), so the hover shows the selector and its ref. `Count` stays for typed selectors
      (phase 5).

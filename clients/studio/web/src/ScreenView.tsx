@@ -3,8 +3,8 @@ import { describeSelector } from "./describe";
 import type { Frame } from "./frames";
 import { Direction, SystemPanel } from "./gen/command_pb";
 import type { ScreenNode } from "./gen/device_pb";
-import type { PerformRequest } from "./gen/studio_pb";
-import { box, dragDirection, hit, isEditable, label, scrollableAt, shortClass, toFrame, type Point } from "./geometry";
+import { SelectorOrigin, type PerformRequest } from "./gen/studio_pb";
+import { box, dragDirection, hit, isEditable, label, scrollableAt, shortClass, tapLabel, toFrame, type Point } from "./geometry";
 import { AppIcon, Back, Bell, Home, Recents, Toggles } from "./icons";
 import { checksFor } from "./nodes";
 import * as steps from "./steps";
@@ -78,7 +78,7 @@ export function ScreenView(props: Props) {
   const interactive = useMemo(() => nodes.filter((n) => n.interactive), [nodes]);
   // Act mode clicks what the overlay offers; assert and inspect reach every node (a label is
   // worth asserting on).
-  const pool = mode === "act" && overlay !== "all" ? interactive : nodes;
+  const pickable = mode === "act" && overlay !== "all" ? (n: ScreenNode) => n.interactive : undefined;
   const shown = overlay === "off" ? [] : overlay === "all" ? nodes : interactive;
 
   useEffect(() => {
@@ -110,7 +110,9 @@ export function ScreenView(props: Props) {
     }
     if (mode === "assert") return setPopover({ kind: "assert", node, target });
     if (isEditable(node) && !alt) return setPopover({ kind: "text", node, target });
-    perform(steps.gesture(target, alt ? "longTap" : "tap"));
+    // A row picked by index is tapped through its label, which survives the list scrolling.
+    const through = target.selector.pick.case === "at" && target.origin === SelectorOrigin.SYNTHESIZED ? tapLabel(nodes, node) : null;
+    perform(steps.gesture(through?.selector ? steps.synthesized(through.selector) : target, alt ? "longTap" : "tap"));
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -129,12 +131,12 @@ export function ScreenView(props: Props) {
     if (!end) return;
     const direction = dragDirection(start.frame, end, frame.width * DRAG_MINIMUM);
     if (direction === null) {
-      const node = hit(pool, start.frame);
+      const node = hit(nodes, start.frame, pickable);
       if (node) click(node, e.altKey);
       return;
     }
     if (mode !== "act") return;
-    const node = scrollableAt(nodes, start.frame) ?? hit(pool, start.frame);
+    const node = scrollableAt(nodes, start.frame) ?? hit(nodes, start.frame, pickable);
     const target = node && props.targetOf(node);
     if (!node || !target) return props.onNotice("Nothing with a selector to swipe there");
     props.onSelect(node);
@@ -143,7 +145,7 @@ export function ScreenView(props: Props) {
 
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const at = pointOf({ x: e.clientX, y: e.clientY });
-    const node = at && hit(pool, at);
+    const node = at && hit(nodes, at, pickable);
     if (!screen.current) return;
     const rect = screen.current.getBoundingClientRect();
     setHover(node ? { node, at: { x: e.clientX - rect.left, y: e.clientY - rect.top } } : null);

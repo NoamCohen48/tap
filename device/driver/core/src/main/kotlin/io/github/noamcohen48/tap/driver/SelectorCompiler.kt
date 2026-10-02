@@ -23,10 +23,15 @@ import java.util.regex.Pattern
 internal sealed interface CompiledSelector {
     val pick: SelectorPick
 
-    /** Every predicate maps onto `BySelector`; UiAutomator evaluates it natively. */
+    /**
+     * Every predicate maps onto `BySelector`; UiAutomator evaluates it natively. With
+     * [mayRepeat] (a parent or ancestor relation) `ByMatcher` searches from the ancestor down and
+     * returns a node once per matching ancestor, so the matches need de-duplicating.
+     */
     class Native(
         override val pick: SelectorPick,
         val by: BySelector,
+        val mayRepeat: Boolean,
     ) : CompiledSelector
 
     /**
@@ -52,10 +57,21 @@ internal class SelectorCompiler {
         val plan = CommandValidation.validateSelector(selector)
         val pick = SelectorPick.of(selector)
         return when (plan) {
-            SelectorPlanKind.NATIVE -> CompiledSelector.Native(pick, nativeSelector(selector.node))
+            SelectorPlanKind.NATIVE -> CompiledSelector.Native(pick, nativeSelector(selector.node), looksUp(selector.node))
             SelectorPlanKind.TRAVERSAL -> CompiledSelector.Traversal(pick, NodePredicate(selector.node))
         }
     }
+
+    /** Whether [node] has a parent or ancestor relation anywhere, which `ByMatcher` inverts. */
+    private fun looksUp(node: Node): Boolean =
+        node.conjunction.any { operand ->
+            operand.kindCase == Node.KindCase.RELATED &&
+                (
+                    operand.related.relation == Relation.RELATION_PARENT ||
+                        operand.related.relation == Relation.RELATION_ANCESTOR ||
+                        looksUp(operand.related.node)
+                )
+        }
 
     /** One `BySelector` for a conjunction; validation already ruled out anything it cannot hold. */
     private fun nativeSelector(node: Node): BySelector {
