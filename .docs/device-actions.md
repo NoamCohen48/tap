@@ -265,9 +265,13 @@ on shows Google Play services' "improve location accuracy" activity
   there is nothing to back up. The size is read back with `stat`.
 - Media goes to `/sdcard/Pictures/Tap/` (jpg, jpeg, png, gif, webp, heic, heif, bmp) or
   `/sdcard/Movies/Tap/` (mp4, 3gp, webm, mkv, mov) and is indexed with MediaProvider's
-  `content call --method scan_file` on API 29+ (the `MEDIA_SCANNER_SCAN_FILE` broadcast below);
-  the read-back is a `content query` of `content://media/external/file`. The scanner skips a
-  file it cannot decode, so an invalid image is `DEVICE_FILE`.
+  MediaProvider's synchronous `content call --method scan_file` on API 30+, and the
+  asynchronous `MEDIA_SCANNER_SCAN_FILE` broadcast below that or when the call throws (API 29's
+  `scan_file` reads a Uri extra `content call` cannot pass and throws an NPE — seen on the
+  SM-J810G); the read-back polls a `content query` of `content://media/external/file` for up to
+  10 s. The scanner skips a file it cannot decode, so an invalid image is `DEVICE_FILE`.
+- Pull checks `test -r` first: a file the shell user may not read (`/system/build.prop` on
+  Samsung) is `DEVICE_FILE`, not a failed adb command.
 - Every created file is captured as absent (`file:<path>`, `media:<path>`) before it is
   written, so detach — or the next attach after a dead server — deletes it; media is rescanned
   (dropping the index entry) and the empty `Tap` folder removed. Only Tap-created entries are

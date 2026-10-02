@@ -28,6 +28,13 @@ class FakeDeviceState(
 
     /** As a device whose media scanner skips files (API 29 without `scan_file`, say). */
     var mediaScannerIgnores: Boolean = false
+
+    /** Index queries before a scan broadcast's result shows (the broadcast scans asynchronously). */
+    var broadcastScanQueries: Int = 0
+    private val pendingScans = mutableMapOf<String, Int>()
+
+    /** Files that exist but the shell user may not read (as `/system/build.prop` on Samsung). */
+    val unreadable = mutableSetOf<String>()
     val stuck = mutableSetOf<String>()
     val writes = mutableListOf<String>()
 
@@ -119,6 +126,7 @@ class FakeDeviceState(
                 ok("1 file pushed.\n")
             }
             args[0] == "pull" -> {
+                if (path(args[1]) in unreadable) return Adb.Result(1, "adb: error: failed to copy: remote open failed: Permission denied\n")
                 val bytes = files[path(args[1])] ?: return Adb.Result(1, "adb: error: remote object does not exist\n")
                 Files.write(Path.of(args[2]), bytes)
                 ok("1 file pulled.\n")
@@ -131,6 +139,7 @@ class FakeDeviceState(
                     else -> Adb.Result(1, "stat: '$target': No such file or directory\n")
                 }
             }
+            command.startsWith("shell test -r ") -> path(args[3]).let { Adb.Result(if ((it in files || it in directories) && it !in unreadable) 0 else 1, "") }
             command.startsWith("shell test -d ") -> Adb.Result(if (path(args[3]) in directories) 0 else 1, "")
             command.startsWith("shell mkdir -p ") -> {
                 var directory = path(args[3])
@@ -152,15 +161,21 @@ class FakeDeviceState(
             }
             command.startsWith("shell content call --uri content://media/ --method scan_file ") -> {
                 val target = path(args.last())
-                if (!mediaScannerIgnores) if (target in files) mediaIndex += target else mediaIndex -= target
+                // As API 29's MediaProvider: it reads a Uri extra `content call` cannot send.
+                if (apiLevel < 30) return ok("Error while accessing provider:media\njava.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.String android.net.Uri.getPath()' on a null object reference\n")
+                if (!mediaScannerIgnores) scanned(target)
                 ok("Result: Bundle[{}]\n")
             }
             command.startsWith("shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE ") -> {
                 val target = path(args.last()).removePrefix("file://")
-                if (!mediaScannerIgnores) if (target in files) mediaIndex += target else mediaIndex -= target
+                if (!mediaScannerIgnores) if (broadcastScanQueries > 0) pendingScans[target] = broadcastScanQueries else scanned(target)
                 ok("Broadcast completed: result=0\n")
             }
             command.startsWith("shell content query --uri content://media/external/file ") -> {
+                pendingScans.keys.toList().forEach { target ->
+                    val left = pendingScans.getValue(target) - 1
+                    if (left > 0) pendingScans[target] = left else scanned(target).also { pendingScans -= target }
+                }
                 val where = command.replace("'\\''", "'")
                 val name = Regex("_display_name='([^']*)'").find(where)!!.groupValues[1]
                 val folder = Regex("LIKE '%/(.*)/").find(where)!!.groupValues[1]
@@ -169,6 +184,10 @@ class FakeDeviceState(
             }
             else -> null
         }
+    }
+
+    private fun scanned(target: String) {
+        if (target in files) mediaIndex += target else mediaIndex -= target
     }
 
     /** As Android does: airplane mode turns Wi-Fi off (`3`, back on with it) and back on when it ends. */

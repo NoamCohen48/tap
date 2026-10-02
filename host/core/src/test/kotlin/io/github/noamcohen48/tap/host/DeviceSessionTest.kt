@@ -825,6 +825,8 @@ class DeviceSessionTest {
         runBlocking {
             val state = FakeDeviceState()
             state.files["/data/local/tmp/theirs.txt"] = "keep".toByteArray()
+            state.files["/system/build.prop"] = "ro.build".toByteArray()
+            state.unreadable += "/system/build.prop"
             val local = Files.createTempFile("tap-push", ".txt").also { Files.writeString(it, "hello") }
             val pulled = Files.createTempFile("tap-pull", ".txt")
             try {
@@ -847,9 +849,11 @@ class DeviceSessionTest {
                     assertEquals("keep", Files.readString(pulled))
                     assertFailsWith<DeviceFileException> { session.files.pull("/data/local/tmp/absent.txt", pulled) }
                     assertFailsWith<DeviceFileException> { session.files.pull("/data/local/tmp", pulled) }
+                    // Refused before adb pull, not reported as a failed adb command.
+                    assertFailsWith<DeviceFileException> { session.files.pull("/system/build.prop", pulled) }
 
                     session.close(timeoutMs = 5_000)
-                    assertEquals(setOf("/data/local/tmp/theirs.txt"), state.files.keys)
+                    assertEquals(setOf("/data/local/tmp/theirs.txt", "/system/build.prop"), state.files.keys)
                     assertEquals(JournalState.CLOSED, journalStore().read()?.state)
                 }
             } finally {
@@ -876,6 +880,24 @@ class DeviceSessionTest {
                     assertEquals(emptySet(), state.mediaIndex)
                     assertFalse("/sdcard/Pictures/Tap" in state.directories)
                     assertTrue("/sdcard/Pictures" in state.directories)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+            }
+        }
+
+    @Test
+    fun `on API 29 media is indexed by the scan broadcast, which lands after it returns`() =
+        runBlocking {
+            val state = FakeDeviceState(apiLevel = 29).apply { broadcastScanQueries = 3 }
+            val local = Files.createTempFile("tap-media", ".bin").also { Files.write(it, byteArrayOf(1)) }
+            try {
+                openWithState("session-media-api29", state) { session, adb ->
+                    assertEquals("/sdcard/Pictures/Tap/cat.png", session.files.addMedia(local, "cat.png"))
+                    assertEquals(setOf("/sdcard/Pictures/Tap/cat.png"), state.mediaIndex)
+                    assertEquals(1, adb.calls.count { "MEDIA_SCANNER_SCAN_FILE" in it })
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(emptySet(), state.files.keys)
                 }
             } finally {
                 Files.deleteIfExists(local)

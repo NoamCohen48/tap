@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.host
 
+import kotlinx.coroutines.delay
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -41,6 +42,7 @@ class DeviceFiles internal constructor(
         session.guardAdb {
             val info = adb.fileInfo(serial, path) ?: throw DeviceFileException(serial, "No file at $path on $serial")
             if (!info.regular) throw DeviceFileException(serial, "$path on $serial is not a regular file")
+            if (!adb.isReadable(serial, path)) throw DeviceFileException(serial, "$path on $serial is not readable by the adb shell")
             if (info.sizeBytes > MAX_FILE_BYTES) throw DeviceFileException(serial, "$path on $serial is ${info.sizeBytes} bytes; at most $MAX_FILE_BYTES are pulled")
             adb.pull(serial, path, target)
             val pulled = Files.size(target)
@@ -65,9 +67,22 @@ class DeviceFiles internal constructor(
         write(source, path, StateKey.DeviceFile(path, media = true))
         session.guardAdb {
             adb.scanMedia(serial, path)
-            if (!adb.mediaIndexed(serial, folder, fileName)) throw DeviceFileException(serial, "The media scanner did not index $path on $serial")
+            if (!indexed(folder, fileName)) throw DeviceFileException(serial, "The media scanner did not index $path on $serial")
         }
         return path
+    }
+
+    /** Polls the index for up to [SCAN_TIMEOUT_MS]: the scan broadcast lands after it returns. */
+    private suspend fun indexed(
+        folder: String,
+        fileName: String,
+    ): Boolean {
+        val deadline = System.nanoTime() + SCAN_TIMEOUT_MS * 1_000_000
+        while (true) {
+            if (adb.mediaIndexed(serial, folder, fileName)) return true
+            if (System.nanoTime() >= deadline) return false
+            delay(SCAN_POLL_MS)
+        }
     }
 
     private suspend fun write(
@@ -96,6 +111,8 @@ class DeviceFiles internal constructor(
         /** Largest file pushed, pulled or added as media. */
         const val MAX_FILE_BYTES = 512L shl 20
         const val MAX_DEVICE_PATH_CHARS = 1024
+        private const val SCAN_TIMEOUT_MS = 10_000L
+        private const val SCAN_POLL_MS = 200L
 
         /** Where shell (and every app with storage access) sees shared storage. */
         const val SHARED_STORAGE = "/sdcard"
