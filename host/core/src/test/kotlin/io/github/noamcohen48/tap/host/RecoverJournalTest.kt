@@ -54,7 +54,7 @@ class RecoverJournalTest {
         runBlocking {
             val adb = adb()
             assertNull(recoverJournal(adb, serial, "boot-1", store))
-            assertEquals(listOf("$serial: shell am force-stop $DRIVER_PACKAGE", "$serial: shell pidof $DRIVER_PACKAGE"), adb.calls)
+            assertEquals(listOf("$serial: shell dumpsys notification", "$serial: shell am force-stop $DRIVER_PACKAGE", "$serial: shell pidof $DRIVER_PACKAGE"), adb.calls)
         }
 
     @Test
@@ -156,6 +156,53 @@ class RecoverJournalTest {
             assertFailsWith<CorruptJournalException> { recoverJournal(adb(), serial, "boot-1", store) }
             assertEquals(JournalState.QUARANTINED, store.read()?.state)
             assertTrue(Files.list(root).use { files -> files.anyMatch { ".corrupt-" in it.fileName.toString() } })
+        }
+
+    /** [device] answers the notification commands; the driver process runs while its listener is bound. */
+    private fun listenerAdb(device: FakeDeviceState) =
+        adb().apply {
+            responder.let { base ->
+                responder = { s, command ->
+                    when (command) {
+                        "shell pidof $DRIVER_PACKAGE" -> if (device.driverListenerBound) ok("4242") else Adb.Result(1, "")
+                        else -> device.answer(command) ?: base?.invoke(s, command)
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun `a listener bound with its access given is unbound before the driver stops`() =
+        runBlocking {
+            // A server that died while a session had given notification access.
+            val device = FakeDeviceState(mapOf(StateKey.DriverNotificationListener.id to "allowed")).apply { driverListenerBound = true }
+            val adb = listenerAdb(device)
+            assertNull(recoverJournal(adb, serial, "boot-1", store))
+            assertEquals("disallowed", device.values[StateKey.DriverNotificationListener.id])
+            val disallow = adb.calls.indexOf("$serial: shell cmd notification disallow_listener $DRIVER_NOTIFICATION_LISTENER")
+            assertTrue(disallow in 0 until adb.calls.indexOf("$serial: shell am force-stop $DRIVER_PACKAGE"), "${adb.calls}")
+            assertTrue(adb.calls.none { "allow_listener" in it && "disallow" !in it }, "${adb.calls}")
+        }
+
+    @Test
+    fun `a listener Android bound again without access is given it and has it taken back to unbind`() =
+        runBlocking {
+            // Android 10 rebinds a killed listener whatever its access; only a change unbinds it.
+            val device = FakeDeviceState(mapOf(StateKey.DriverNotificationListener.id to "disallowed")).apply { driverListenerBound = true }
+            val adb = listenerAdb(device)
+            assertNull(recoverJournal(adb, serial, "boot-1", store))
+            assertEquals("disallowed", device.values[StateKey.DriverNotificationListener.id])
+            assertEquals(listOf("${StateKey.DriverNotificationListener.id}=allowed", "${StateKey.DriverNotificationListener.id}=disallowed"), device.writes)
+        }
+
+    @Test
+    fun `a listener that stays bound fails the stop instead of leaving the driver to come back`() =
+        runBlocking {
+            val device = FakeDeviceState(mapOf(StateKey.DriverNotificationListener.id to "allowed")).apply { driverListenerBound = true }
+            device.stuck += StateKey.DriverNotificationListener.id
+            val adb = listenerAdb(device)
+            assertFailsWith<DeviceSettingException> { recoverJournal(adb, serial, "boot-1", store) }
+            assertTrue(adb.calls.none { "force-stop" in it }, "${adb.calls}")
         }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.host.validation
 
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.SavedState
 import io.github.noamcohen48.tap.host.StateKey
 import io.github.noamcohen48.tap.protocol.Commands
@@ -9,12 +10,16 @@ import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.detail
 import io.github.noamcohen48.tap.protocol.errorCode
 import io.github.noamcohen48.tap.protocol.ok
+import kotlinx.coroutines.delay
 
 /**
  * The driver's notification listener: `cmd notification allow_listener` (as the server gives it)
  * reads back as allowed, the listener binds in the driver's process, the fixture's two
  * notifications are awaited and listed with their actions, the ongoing one is refused as
- * `NOT_CLEARABLE`, the other is dismissed, and restoring (as detach does) takes the access back.
+ * `NOT_CLEARABLE`, the other is dismissed, and restoring takes the access back. As detach, the
+ * access is taken back while the driver still runs: Android 10 binds a listener killed while bound
+ * again ~10 s later whatever its access, so a driver that ends with its listener bound comes back
+ * as a bare listener process. No driver process may be left 12 s after the session.
  */
 @DeviceTest
 class NotificationListenerTest {
@@ -57,12 +62,17 @@ class NotificationListenerTest {
                     check(gone.ok && gone.result.notifications.notificationsList.none { it.packageName == FIXTURE_PACKAGE && it.title == "New message" }) {
                         "The dismissed notification is still listed: $gone"
                     }
+                    device.adb.restoreState(serial, before)
                 }
             } finally {
                 device.forceStopFixture()
                 device.adb.restoreState(serial, before)
             }
             check(device.adb.readState(serial, key) == before.single().value) { "The listener access was not put back" }
+            // Android's rebind of a listener killed while bound comes ~10 s after the kill.
+            delay(12_000)
+            val left = device.adb.processIds(serial, DRIVER_PACKAGE)
+            check(left.isEmpty()) { "A driver process $left came back after the session: its listener was bound when it ended" }
             report("notification_listener", serial, "before" to before.single().value.orEmpty(), "listed" to listed, "not_clearable" to "ok")
         }
 }
