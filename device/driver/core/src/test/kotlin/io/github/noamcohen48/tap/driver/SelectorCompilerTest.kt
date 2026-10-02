@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.protocol.or
 import io.github.noamcohen48.tap.protocol.pickAt
 import io.github.noamcohen48.tap.protocol.toSelector
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -64,6 +65,18 @@ class SelectorCompilerTest {
         val selector = (Nodes.text("a", MatchMode.MATCH_CONTAINS) and Nodes.text("b", MatchMode.MATCH_CONTAINS)).toSelector()
 
         assertTrue(compiler.compile(selector) is CompiledSelector.Traversal)
+    }
+
+    @Test
+    fun onlyAnUpwardRelationMayRepeatNativeMatches() {
+        fun mayRepeat(node: io.github.noamcohen48.tap.api.v1.Node) = (compiler.compile(node.toSelector()) as CompiledSelector.Native).mayRepeat
+
+        assertFalse(mayRepeat(Nodes.text("OK")))
+        assertFalse(mayRepeat(Nodes.text("OK") and Nodes.child(Nodes.className("Button"))))
+        assertFalse(mayRepeat(Nodes.text("OK") and Nodes.descendant(Nodes.className("Button"))))
+        assertTrue(mayRepeat(Nodes.text("OK") and Nodes.ancestor(Nodes.className("LinearLayout"))))
+        assertTrue(mayRepeat(Nodes.text("OK") and Nodes.parent(Nodes.className("LinearLayout"))))
+        assertTrue(mayRepeat(Nodes.text("OK") and Nodes.parent(Nodes.text("row") and Nodes.ancestor(Nodes.className("ListView")))))
     }
 
     @Test

@@ -42,7 +42,8 @@ internal class Synthesised(
  * (`.docs/agent-surface.md`, decision 2). Candidates go from what a person would write to the
  * fragile: resource id, text, description, their pairs with each other and the class, the hint;
  * then each of those with an `ancestor` relation to the nearest ancestor that has its own
- * non-index selector; last, the most specific conjunction with an `At` pick.
+ * non-index selector; last, the most specific conjunction with an `At` pick, counted in the order
+ * the driver's native plan returns matches ([DumpMatcher.NATIVE_ORDER]).
  *
  * [synthesise] keeps the first candidate that is unique; [candidates] keeps every one, in the
  * same order (the first is [synthesise]'s), leaving out a candidate that only adds predicates to
@@ -147,7 +148,12 @@ internal class SelectorSynthesis(
         return listOfNotNull(byIndex(node, specific, packageName))
     }
 
-    /** The conjunction of all of [node]'s predicates ([specific]) with an `At` pick, when valid. */
+    /**
+     * The conjunction of all of [node]'s predicates ([specific]) with an `At` pick, when valid.
+     * The index counts in the driver's [DumpMatcher.NATIVE_ORDER], not dump pre-order: a
+     * matching ancestor (the decor's `LinearLayout` above a list of `LinearLayout` rows) comes
+     * after the rows there, so a pre-order index would pick the next row.
+     */
     private fun byIndex(
         node: DumpNode,
         specific: List<Node>,
@@ -159,6 +165,7 @@ internal class SelectorSynthesis(
             seeds(predicate)
                 .map { nodes[it] }
                 .filter { matcher.matches(predicate, it) }
+                .sortedWith(DumpMatcher.NATIVE_ORDER)
                 .indexOf(node)
         if (position < 0) return null
         val selector = selector(predicate).toBuilder().setAt(At.newBuilder().setIndex(position)).build()

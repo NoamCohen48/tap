@@ -81,14 +81,19 @@ internal class UiObjectAccess(
             }
         }
 
-    /** Up to [limit] matches in accessibility traversal order. The caller recycles them. */
+    /**
+     * Up to [limit] matches, each window in order. The native plan keeps `ByMatcher`'s order,
+     * post-order (a match after the matches inside it); the traversal plan walks pre-order
+     * (DR-23 in `.docs/code-review-status.md`). The caller recycles them.
+     */
     private fun findObjects(
         compiled: CompiledSelector,
         limit: Int,
     ): List<UiObject2> {
         return when (compiled) {
             is CompiledSelector.Native -> {
-                val all = device.findObjects(compiled.by)
+                val found = device.findObjects(compiled.by)
+                val all = if (compiled.mayRepeat) distinct(found) else found
                 all.drop(limit).forEach(UiObject2::recycle)
                 all.take(limit)
             }
@@ -124,6 +129,18 @@ internal class UiObjectAccess(
                 }
             }
         }
+    }
+
+    /**
+     * [found] without repeats, first occurrence kept, the repeats recycled. `ByMatcher` searches
+     * an ancestor relation from the ancestor down, so a node under two nested matching ancestors
+     * (a `Button` under `LinearLayout`s) comes back once per ancestor. `UiObject2.equals` compares
+     * the node identity, refreshing each node: only paid when a selector looks up.
+     */
+    private fun distinct(found: List<UiObject2>): List<UiObject2> {
+        val seen = LinkedHashSet<UiObject2>()
+        found.forEach { if (!seen.add(it)) it.recycle() }
+        return seen.toList()
     }
 
     /** Depth-first pre-order over [root]'s descendants (not [root] itself). */
