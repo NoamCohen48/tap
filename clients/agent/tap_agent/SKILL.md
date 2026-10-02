@@ -82,7 +82,18 @@ on|off`, `condition dark-mode on|off` (Android 10+), `condition font-scale 0.5..
 fr-FR,en` sets the device languages. `location <lat> <lon> [--accuracy M]` mocks the device
 location (call again to move it). `app locale <package>`
 prints the app's own languages, `app locale <package> fr-FR,en` sets them and `app locale
-<package> system` makes the app follow the system again (Android 13+). All of these, like rotation, are put back on `release`.
+<package> system` makes the app follow the system again (Android 13+). `condition stay-awake
+on` keeps the screen on while plugged in; `condition high-contrast-text|color-inversion|bold-text
+on|off` set the accessibility display settings (bold text Android 12+). All of these, like
+rotation, are put back on `release`.
+
+Notifications: `notification` lists them as data (the shade stays closed; Tap's driver gets
+notification access until `release`), `notification await --title T [--text X] [--contains]
+[--package PKG]` waits for one, `notification open --title T` opens it as a tap does
+(`--button "Mark as read"` presses an action button instead), `notification dismiss --title T`
+swipes it away (an ongoing one is refused). Open and dismiss need exactly one match: add
+`--package` or `--text` when several match. `activity` prints the activity on top
+(`package/class`), e.g. to see where a notification or link landed.
 
 Keyboard and clipboard: `keyboard` prints whether a soft keyboard shows, `keyboard hide`
 hides it (nothing is pressed when none shows); `submit <target>` runs the field's keyboard

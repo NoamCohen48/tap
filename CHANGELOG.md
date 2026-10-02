@@ -125,6 +125,26 @@ and the clients must be updated together to use them:
 - `tap-agent`: `condition airplane-mode|wifi|mobile-data|locale`, `location`, `action`,
   `progress`, `permission --accuracy`, `push`, `pull`, `media` (CLI and MCP: `set_location`,
   `accessibility_action`, `set_progress`, `push_file`, `pull_file`, `add_media`).
+- **Notifications as data**: `awaitNotification`, `notifications()`, `openNotification(…,
+  action?)` and `dismissNotification` (Python `await_notification`, `notifications`,
+  `open_notification`, `dismiss_notification`; `App.awaitNotification` for one app's; driver
+  commands `await_notification`, `list_notifications`, `open_notification`,
+  `dismiss_notification`) read the notifications through a notification listener in the Tap
+  driver app, which gets notification access for the session and loses it on detach. Open and
+  dismiss act on exactly one match; an ongoing notification is not dismissed (`NOT_CLEARABLE`).
+  New `Notification` model and wait reason `NO_NOTIFICATION`.
+- **Stay awake and accessibility display**: `setStayAwake(enabled)` and
+  `setAccessibilityDisplay(highContrastText?, colorInversion?, boldText?)` (bold text API 31+;
+  Python `set_stay_awake`, `set_accessibility_display`; `DeviceService.SetStayAwake`,
+  `SetAccessibilityDisplay`), restored on detach; `DeviceInfo` reports `stayAwake`,
+  `highContrastText`, `colorInversion`, `boldText`.
+- `foregroundActivity()` (Python `foreground_activity()`; `DeviceService.GetForegroundActivity`):
+  the resumed activity on top, or null.
+- Fixed: a setting the device reported absent after a change or a restore was taken as read
+  back; it is now a `DEVICE_SETTING` failure.
+- `tap-agent`: `notification [list|await|open|dismiss]`, `activity`, `condition
+  stay-awake|high-contrast-text|color-inversion|bold-text` (CLI and MCP: `notification`,
+  `foreground_activity`).
 - **Breaking** (Kotlin, Python positional): `DeviceInfo` gains `keyboardShown`, `autoRotate`,
   `animationsEnabled`, `darkMode`, `fontScale`, `densityDpi`, `airplaneMode`, `wifiEnabled` and
   `mobileDataEnabled` constructor parameters (and `systemLocales`, defaulted).
