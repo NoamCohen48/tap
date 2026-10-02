@@ -85,6 +85,12 @@ class DeviceSession private constructor(
     /** Files pushed to and pulled from the device, and media added to its gallery. */
     val files: DeviceFiles = DeviceFiles(this)
 
+    /**
+     * The resumed activity on top, as package and fully qualified class name; null when none is
+     * resumed (a keyguard, or between activities).
+     */
+    suspend fun foregroundActivity(): Pair<String, String>? = guardAdb { adb.foregroundActivity(serial) }
+
     /** Guards [savedState] and the journal writes that persist it. */
     private val savedStateMutex = Mutex()
     private val savedState = mutableListOf<SavedState>()
@@ -235,7 +241,8 @@ class DeviceSession private constructor(
         captureBeforeChange(values.keys.toList())
         guardAdb {
             values.forEach { (key, value) -> adb.writeState(serial, key, value) }
-            val wrong = values.mapNotNull { (key, value) -> adb.readState(serial, key).takeIf { it != value }?.let { "$key=$it (expected $value)" } }
+            // Compared as values: a setting the device reports absent (null) is a mismatch too.
+            val wrong = values.mapNotNull { (key, value) -> adb.readState(serial, key).let { actual -> "$key=$actual (expected $value)".takeIf { actual != value } } }
             if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "The device did not take the change on $serial: ${wrong.joinToString()}")
         }
     }

@@ -40,6 +40,12 @@ class FakeDeviceState(
     /** The location providers that are test providers, as a mock location leaves them. */
     val mockProviders = mutableSetOf<String>()
 
+    /** The resumed activity `dumpsys activity activities` reports (`pkg/.Name` or `pkg/full.Name`); null = none. */
+    var resumedActivity: String? = null
+
+    /** `dumpsys activity` in the API 26-28 layout (`mResumedActivity:` without `topResumedActivity=`). */
+    var legacyActivityDump: Boolean = false
+
     /** `dumpsys location` in the API 26-28 layout (a "Mock Providers" section). */
     var legacyLocationDump: Boolean = false
     val writes = mutableListOf<String>()
@@ -100,6 +106,7 @@ class FakeDeviceState(
                 }
             }
             command == "shell dumpsys location" -> ok(locationDump())
+            command == "shell dumpsys activity activities" -> ok(activityDump())
             command.startsWith("shell am broadcast ") && "$DRIVER_PACKAGE/.MockLocationReceiver" in command -> {
                 val names = args[args.indexOf("remove") + 1].trim('\'').split(',')
                 writes += "mock-providers-removed=${names.joinToString(",")}"
@@ -198,6 +205,18 @@ class FakeDeviceState(
             }
             else -> null
         }
+    }
+
+    private fun activityDump(): String {
+        val record = resumedActivity?.let { "ActivityRecord{40ee6c0 u0 $it t1063}" }
+        return "ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)\n  Display #0:\n" +
+            if (record == null) {
+                "  ResumedActivity: null\n"
+            } else if (legacyActivityDump) {
+                "    mResumedActivity: $record\n  ResumedActivity: $record\n"
+            } else {
+                "    mResumedActivity: $record\n  topResumedActivity=$record\n  ResumedActivity: $record\n"
+            }
     }
 
     private fun locationDump(): String =

@@ -401,6 +401,12 @@ message DeviceInfo {
   bool wifi_enabled = 19; // Settings.Global.WIFI_ON is 1, or 2 (on under airplane mode)
   bool mobile_data_enabled = 20; // Settings.Global `mobile_data`; false without telephony
   repeated string system_locales = 21; // the system configuration's LocaleList, as BCP-47 tags
+  bool stay_awake = 22; // Settings.Global.STAY_ON_WHILE_PLUGGED_IN is not 0
+  // Settings.Secure `high_text_contrast_enabled` / `accessibility_display_inversion_enabled`;
+  // absent when Android does not let the driver read them.
+  optional bool high_contrast_text = 23;
+  optional bool color_inversion = 24;
+  bool bold_text = 25; // Configuration.fontWeightAdjustment > 0 (API 31+; false below)
 }
 
 // A toast `await_toast` matched: its text and the package that posted it.

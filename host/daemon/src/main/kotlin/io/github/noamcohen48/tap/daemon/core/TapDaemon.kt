@@ -162,6 +162,9 @@ internal interface DaemonDeviceSession {
     /** Device files; fakes without a device leave the default. */
     val files: DeviceFiles get() = throw UnsupportedOperationException("no device files in this session")
 
+    /** The resumed activity on top; fakes without a device leave the default. */
+    suspend fun foregroundActivity(): Pair<String, String>? = throw UnsupportedOperationException("no foreground activity in this session")
+
     /** Rejects use after sticky reap quarantine; cleanup still runs via [close]. */
     fun checkUsable()
 
@@ -189,6 +192,8 @@ private class CoreDeviceSessionAdapter(
 
     override val conditions: DeviceConditions get() = delegate.conditions
     override val files: DeviceFiles get() = delegate.files
+
+    override suspend fun foregroundActivity(): Pair<String, String>? = delegate.foregroundActivity()
 
     override fun checkUsable() = delegate.checkUsable()
 

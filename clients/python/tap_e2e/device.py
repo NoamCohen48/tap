@@ -23,6 +23,7 @@ from .models import (
     DeviceInfo,
     DisplayRotation,
     DriverLog,
+    ForegroundActivity,
     Hierarchy,
     Orientation,
     MatchMode,
@@ -413,6 +414,59 @@ class Device:
         if altitude_m is not None:
             fields["altitude_m"] = altitude_m
         self._condition("set_location", "SetLocation", pb.SetLocationRequest, **fields)
+
+    def set_stay_awake(self, enabled: bool) -> None:
+        """Keep the screen on while the device is plugged in (USB, AC or wireless), or let it time
+        out again, until ``detach()``: what Developer options › Stay awake sets. A device on ADB
+        over USB is plugged in, so a long test does not find the screen off. Read back with
+        ``DeviceInfo.stay_awake``."""
+        self._condition("set_stay_awake", "SetStayAwake", pb.SetStayAwakeRequest, enabled=bool(enabled))
+
+    def set_accessibility_display(
+        self,
+        *,
+        high_contrast_text: bool | None = None,
+        color_inversion: bool | None = None,
+        bold_text: bool | None = None,
+    ) -> None:
+        """Turn the accessibility display settings on or off until ``detach()``; a ``None``
+        setting is left as it is (``ValueError`` when all are ``None``). ``high_contrast_text``
+        draws text with a black or white outline, ``color_inversion`` inverts the display's
+        colors (screenshots stay uninverted: the inversion happens in the display pipeline), and
+        ``bold_text`` makes the system font bold (API 31+, ``FailureReason.UNSUPPORTED_API`` below,
+        before anything changes). The values are what Settings › Accessibility writes, read back
+        (``FailureReason.DEVICE_SETTING`` when the device did not take one). Read back with
+        ``DeviceInfo.high_contrast_text``, ``color_inversion`` and ``bold_text``."""
+        fields = {
+            name: bool(value)
+            for name, value in (
+                ("high_contrast_text", high_contrast_text),
+                ("color_inversion", color_inversion),
+                ("bold_text", bold_text),
+            )
+            if value is not None
+        }
+        if not fields:
+            raise ValueError("set at least one of high_contrast_text, color_inversion, bold_text")
+        self._condition(
+            "set_accessibility_display", "SetAccessibilityDisplay", pb.SetAccessibilityDisplayRequest, **fields
+        )
+
+    def foreground_activity(self) -> ForegroundActivity | None:
+        """The activity on top of the screen (the resumed one, the focused one in multi-window),
+        or ``None`` when none is resumed: the keyguard is showing, or an activity is starting.
+        Read on the host from ``dumpsys activity``; changes nothing. Use it to check that a deep
+        link or a notification opened the right screen."""
+        self._ensure_usable("foreground_activity")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.GetForegroundActivity(
+                pb.GetForegroundActivityRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                ),
+                timeout=self.timeouts.lifecycle + RPC_DEADLINE_SLACK,
+            )
+        return _proto.foreground_activity(response)
 
     def push_file(
         self, device_path: str, source: bytes | bytearray | memoryview | str | os.PathLike[str]

@@ -1814,6 +1814,12 @@ class TapClientTest {
                         device.setLocation(48.8584, 2.2945, accuracyM = 3.5f)
                         assertFailsWith<IllegalArgumentException> { device.setLocation(91.0, 0.0) }
                         assertFailsWith<IllegalArgumentException> { device.setLocation(0.0, 0.0, accuracyM = 0f) }
+                        device.setStayAwake(true)
+                        device.setAccessibilityDisplay(highContrastText = true, boldText = false)
+                        assertFailsWith<IllegalArgumentException> { device.setAccessibilityDisplay() }
+                        assertEquals(ForegroundActivity("io.example", "io.example.MainActivity"), device.foregroundActivity())
+                        fakeDevices.foreground = null
+                        assertEquals(null, device.foregroundActivity())
                     }
                     val sent = fakeDevices.conditions
                     assertFalse((sent[0] as io.github.noamcohen48.tap.api.v1.SetAnimationsRequest).enabled)
@@ -1826,6 +1832,9 @@ class TapClientTest {
                     assertEquals(listOf("fr-FR", "en"), (sent[7] as io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest).localesList)
                     val location = sent[8] as io.github.noamcohen48.tap.api.v1.SetLocationRequest
                     assertTrue(location.latitude == 48.8584 && location.accuracyM == 3.5f && !location.hasAltitudeM())
+                    assertTrue((sent[9] as io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest).enabled)
+                    val display = sent[10] as io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
+                    assertTrue(display.highContrastText && display.hasBoldText() && !display.boldText && !display.hasColorInversion())
                     for (request in sent) {
                         val ids =
                             when (request) {
@@ -1836,6 +1845,8 @@ class TapClientTest {
                                 is io.github.noamcohen48.tap.api.v1.SetNetworkRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetLocationRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest -> request.clientConnectionId to request.attachedDeviceId
                                 else -> error("unexpected request $request")
                             }
                         assertEquals(connection.id to device.attachedDeviceId, ids)
@@ -2189,6 +2200,28 @@ class TapClientTest {
             return io.github.noamcohen48.tap.api.v1.SetDensityResponse
                 .getDefaultInstance()
         }
+
+        var foreground: Pair<String, String>? = "io.example" to "io.example.MainActivity"
+
+        override suspend fun setStayAwake(request: io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest): io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse =
+            io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setAccessibilityDisplay(
+            request: io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse =
+            io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun getForegroundActivity(
+            request: io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest,
+        ): io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse =
+            io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
+                .newBuilder()
+                .apply { foreground?.let { (pkg, activity) -> setPackageName(pkg).setActivity(activity) } }
+                .build()
 
         override suspend fun setNetwork(request: io.github.noamcohen48.tap.api.v1.SetNetworkRequest): io.github.noamcohen48.tap.api.v1.SetNetworkResponse =
             io.github.noamcohen48.tap.api.v1.SetNetworkResponse

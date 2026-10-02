@@ -157,6 +157,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.deny: bool = False
         self.png = b"\x89PNG fake"
         self.conditions: list = []
+        self.foreground: tuple[str, str] | None = None
         # Device files by path; the headers and chunk sizes the uploads carried.
         self.files: dict[str, bytes] = {}
         self.file_headers: list = []
@@ -266,6 +267,22 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self._own("set_location", request, context)
         self.conditions.append(request)
         return pb.SetLocationResponse()
+
+    def SetStayAwake(self, request, context):
+        self._own("set_stay_awake", request, context)
+        self.conditions.append(request)
+        return pb.SetStayAwakeResponse()
+
+    def SetAccessibilityDisplay(self, request, context):
+        self._own("set_accessibility_display", request, context)
+        self.conditions.append(request)
+        return pb.SetAccessibilityDisplayResponse()
+
+    def GetForegroundActivity(self, request, context):
+        self._own("foreground_activity", request, context)
+        if self.foreground is None:
+            return pb.GetForegroundActivityResponse()
+        return pb.GetForegroundActivityResponse(package_name=self.foreground[0], activity=self.foreground[1])
 
     def _receive(self, requests) -> tuple:
         header, data = None, bytearray()

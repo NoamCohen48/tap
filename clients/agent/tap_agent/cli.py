@@ -117,6 +117,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("longitude", type=float, help="-180..180")
     p.add_argument("--accuracy", type=float, help="in meters (default 5)")
 
+    verb("activity", "print the activity on top of the screen (package/class)", on_device)
+
     p = verb("push", "copy a local file to the device until release", on_device)
     p.add_argument("local", help="the file on this machine")
     p.add_argument("device_path", help="absolute path on the device; its directory must exist (e.g. /sdcard/Download/a.pdf)")
@@ -162,9 +164,9 @@ def parser() -> argparse.ArgumentParser:
     p = verb("screen", "screen state, or turn it on/off, or wake it and dismiss a keyguard without a PIN", on_device, settle)
     p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", default="state")
 
-    p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches, languages): print or change until release", on_device)
+    p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches, languages, stay awake, accessibility display): print or change until release", on_device)
     p.add_argument("name", choices=CONDITIONS, nargs="?", help="omit to print all")
-    p.add_argument("value", nargs="?", help="animations/dark-mode/airplane-mode/wifi/mobile-data: on|off; font-scale: 0.5..2.0; density: dpi or reset; locale: comma-separated BCP-47 tags, e.g. fr-FR,en (omit to print)")
+    p.add_argument("value", nargs="?", help="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/high-contrast-text/color-inversion/bold-text: on|off; font-scale: 0.5..2.0; density: dpi or reset; locale: comma-separated BCP-47 tags, e.g. fr-FR,en (omit to print)")
 
     p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
     p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")
@@ -241,6 +243,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.keyboard(args.action, device, settle=settle)
     if v == "location":
         return agent.location(args.latitude, args.longitude, args.accuracy, device)
+    if v == "activity":
+        return agent.activity(device)
     if v == "push":
         return agent.push(args.local, args.device_path, device)
     if v == "pull":

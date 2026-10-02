@@ -11,7 +11,10 @@ import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
 import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
@@ -73,6 +76,21 @@ class DeviceServiceTest {
             code { stub.setNetwork(SetNetworkRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").apply(build).build()) }
         assertEquals(Status.Code.INVALID_ARGUMENT, network {})
         assertEquals(Status.Code.NOT_FOUND, network { wifi = false })
+
+        fun display(build: SetAccessibilityDisplayRequest.Builder.() -> Unit) =
+            code {
+                stub.setAccessibilityDisplay(SetAccessibilityDisplayRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").apply(build).build())
+            }
+        assertEquals(Status.Code.INVALID_ARGUMENT, display {})
+        assertEquals(Status.Code.NOT_FOUND, display { boldText = false })
+        assertEquals(
+            Status.Code.NOT_FOUND,
+            code { stub.setStayAwake(SetStayAwakeRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setEnabled(true).build()) },
+        )
+        assertEquals(
+            Status.Code.NOT_FOUND,
+            code { stub.getForegroundActivity(GetForegroundActivityRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").build()) },
+        )
 
         fun systemLocales(vararg tags: String) =
             code {

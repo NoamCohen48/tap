@@ -114,6 +114,10 @@ internal fun DeviceInfoProto.toModel(): DeviceInfo =
         wifiEnabled = wifiEnabled,
         mobileDataEnabled = mobileDataEnabled,
         systemLocales = systemLocalesList.toList(),
+        stayAwake = stayAwake,
+        highContrastText = if (hasHighContrastText()) highContrastText else null,
+        colorInversion = if (hasColorInversion()) colorInversion else null,
+        boldText = boldText,
     )
 
 internal fun ToastProto.toModel(): Toast = Toast(text = text, packageName = packageName)

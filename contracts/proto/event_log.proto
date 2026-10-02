@@ -62,7 +62,7 @@ message AppCall {
 
 // A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
 // set_dark_mode, set_font_scale, set_density, set_network, set_system_locales,
-// set_location, push_file, pull_file, add_media.
+// set_location, push_file, pull_file, add_media, set_stay_awake, set_accessibility_display.
 message DeviceCall {
   string operation = 1;
   // set_animations / set_dark_mode.
@@ -83,4 +83,8 @@ message DeviceCall {
   // push_file / pull_file / add_media: the device file and its size.
   optional string device_path = 11;
   optional int64 size_bytes = 12;
+  // set_accessibility_display: the settings the call set (set_stay_awake uses `enabled`).
+  optional bool high_contrast_text = 13;
+  optional bool color_inversion = 14;
+  optional bool bold_text = 15;
 }

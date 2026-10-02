@@ -63,6 +63,9 @@ def test_device_info_maps_rotation_and_screen_state():
     assert info.display_rotation is DisplayRotation.RIGHT
     assert info.orientation is Orientation.LANDSCAPE
     assert (info.screen_on, info.keyguard_locked, info.keyguard_secure) == (True, True, False)
+    assert (info.stay_awake, info.high_contrast_text, info.color_inversion, info.bold_text) == (False, None, None, False)
+    a11y = _proto.device_info(pb.DeviceInfo(stay_awake=True, high_contrast_text=False, color_inversion=True, bold_text=True))
+    assert (a11y.stay_awake, a11y.high_contrast_text, a11y.color_inversion, a11y.bold_text) == (True, False, True, True)
 
 
 def test_intent_extras_keep_their_type_and_refuse_what_am_start_cannot_carry():
@@ -103,6 +106,7 @@ def test_artifacts_save_their_bytes(tmp_path):
     assert saved["font_scale"] == 1.3 and saved["density_dpi"] == 420
     assert (saved["airplane_mode"], saved["wifi_enabled"], saved["mobile_data_enabled"]) == (False, True, True)
     assert saved["system_locales"] == ["fr-FR", "en"]
+    assert (saved["stay_awake"], saved["high_contrast_text"], saved["bold_text"]) == (False, None, False)
     assert info.orientation is Orientation.PORTRAIT
     assert replace(info, display_width=2400, display_height=1080).orientation is Orientation.LANDSCAPE
     assert Hierarchy("<a/>").save(tmp_path / "h.xml").read_text() == "<a/>"

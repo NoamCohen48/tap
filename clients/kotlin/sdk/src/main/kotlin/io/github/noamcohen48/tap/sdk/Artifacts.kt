@@ -142,6 +142,14 @@ data class DeviceInfo(
     val mobileDataEnabled: Boolean,
     /** The device's languages, BCP-47 tags in preference order ([Device.setSystemLocales]). */
     val systemLocales: List<String> = emptyList(),
+    /** The screen stays on while plugged in ([Device.setStayAwake]). */
+    val stayAwake: Boolean = false,
+    /** High-contrast text is on; null when Android does not let Tap read it. */
+    val highContrastText: Boolean? = null,
+    /** Color inversion is on; null when Android does not let Tap read it. */
+    val colorInversion: Boolean? = null,
+    /** The system font is bold (API 31+; always false below). */
+    val boldText: Boolean = false,
 ) : Artifact {
     /** [PORTRAIT][Orientation.PORTRAIT] when the display is at least as tall as it is wide. */
     val orientation: Orientation get() = if (displayHeight >= displayWidth) Orientation.PORTRAIT else Orientation.LANDSCAPE
@@ -170,6 +178,10 @@ data class DeviceInfo(
                 put("wifiEnabled", wifiEnabled)
                 put("mobileDataEnabled", mobileDataEnabled)
                 putJsonArray("systemLocales") { systemLocales.forEach(::add) }
+                put("stayAwake", stayAwake)
+                put("highContrastText", highContrastText)
+                put("colorInversion", colorInversion)
+                put("boldText", boldText)
             }.toString().encodeToByteArray()
     override val mediaType: String get() = "application/json"
     override val extension: String get() = "json"

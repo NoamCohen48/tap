@@ -396,12 +396,13 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
 def test_condition_reads_back_and_app_locale(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda command: (
-        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320, wifi_enabled=True, system_locales=["fr-FR", "en"]))
+        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320, wifi_enabled=True, system_locales=["fr-FR", "en"], color_inversion=True))
         if command.HasField("device_info")
         else None
     )
     assert agent.condition() == (
-        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en"
+        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en, "
+        "stay-awake off, high-contrast-text unknown, color-inversion on, bold-text off"
     )
     assert agent.condition("animations", "off") == "animations off (restored on release)"
     assert agent.condition("font_scale", "1.25") == "font-scale 1.25 (restored on release)"
@@ -429,6 +430,13 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     with pytest.raises(AgentError) as empty:
         agent.condition("locale", " , ")
     assert empty.value.exit_code == EXIT_USAGE
+    assert agent.condition("color-inversion", "on") == "color-inversion on (restored on release)"
+    assert fake.devices.conditions[-1].color_inversion is True and not fake.devices.conditions[-1].HasField("bold_text")
+    assert agent.condition("stay_awake", "on") == "stay-awake off (restored on release)"
+    assert fake.devices.conditions[-1].enabled is True
+    assert agent.activity() == "no activity is resumed"
+    fake.devices.foreground = ("com.example", "com.example.MainActivity")
+    assert agent.activity() == "com.example/com.example.MainActivity"
     assert agent.location(48.8584, 2.2945, 3.5) == "location mocked at 48.8584, 2.2945 ±3.5 m (ends on release)"
     assert fake.devices.conditions[-1].latitude == 48.8584 and fake.devices.conditions[-1].accuracy_m == 3.5
     with pytest.raises(AgentError) as far:
@@ -466,6 +474,7 @@ EXPECTED_TOOLS = {
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
+    "foreground_activity",
 }
 
 
