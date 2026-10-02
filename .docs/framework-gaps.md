@@ -163,10 +163,17 @@ written (`SystemLocaleTest`, `MockLocationTest`, `AccessibilityActionTest`, `Dev
 `DeviceActionsTest` 12–15, Python `test_device_actions.py`). They pass on the Samsung (API 29,
 2026-10-02); the emulator (API 34) run is pending, so the device-wide locale stays listed below
 until it passes there too.
+Group 4 is implemented with unit and fake-device tests — notifications as data (await, list,
+open, dismiss through the driver app's notification listener), stay awake, the accessibility
+display settings and the foreground activity — and its device tests are written
+(`NotificationListenerTest`, `DeviceActionsTest` 16–17, Python `test_device_actions.py`) but
+not yet run, so notifications stay listed below.
 
 Missing: crash/ANR detection as codes (above), activity-result assertions, the device-wide
 locale (implemented, passing on API 29, API 34 run pending; see above), and
-the plan's "AUT restarted during a command" fault scenario.
+the plan's "AUT restarted during a command" fault scenario, and group 4 on a device
+(notification listener binding in the driver's process, opening a notification's intent on
+API 29 and 34, the display settings' read-back; implemented, device tests not yet run).
 
 ## Compose and WebView (plan §15, §17)
 

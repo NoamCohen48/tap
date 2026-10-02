@@ -121,6 +121,9 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 | `SetNetwork(…, airplane_mode?, wifi?, mobile_data?)` → `{}` | Real switches, held until detach: `cmd connectivity airplane-mode`, `svc wifi`, `svc data`; API 29+ (`UNSUPPORTED_API` below). At least one must be set (`INVALID_ARGUMENT`). Airplane mode is written first and restored first. Read back from `Settings.Global` (`DEVICE_SETTING` on a mismatch). A serial reached over the network refuses Wi-Fi off / airplane on (`DEVICE_SETTING`) before anything changes. Logged with `airplane_mode`/`wifi`/`mobile_data`. |
 | `SetSystemLocales(…, locales)` → `{}` | The device's languages until detach: 1..16 BCP-47 tags (validated, canonicalised, no repeats; else `INVALID_ARGUMENT`), applied by the driver app's `SystemLocaleReceiver` (an `am broadcast` that only shell/system may send; the host grants it `CHANGE_CONFIGURATION` and the `WRITE_SETTINGS` app-op) and read back (`settings get system system_locales`, else `persist.sys.locale`, else `ro.product.locale`). Logged with `locales`. |
 | `SetLocation(…, latitude, longitude, accuracy_m?, altitude_m?)` → `{}` | A mock location until detach: the host makes the driver the mock-location app (`appops set … android:mock_location allow`), turns location on (`location_mode` 3) if it was off — both captured and restored — then runs the driver's `set_location`. The driver's test providers outlive it and the app-op, so they are captured too (`mock-location-providers`) and removed first on detach (the driver app's `MockLocationReceiver`). Out-of-range or non-finite arguments are `INVALID_ARGUMENT`. Logged with `latitude`/`longitude`. |
+| `SetStayAwake(…, enabled)` → `{}` | The screen stays on while plugged in (USB, AC or wireless; a device on ADB over USB is plugged in) until detach: `Settings.Global` `stay_on_while_plugged_in` `7`, or `0` — what Developer options › Stay awake sets. Read back over ADB (`DEVICE_SETTING` on a mismatch). Logged with `enabled`. |
+| `SetAccessibilityDisplay(…, high_contrast_text?, color_inversion?, bold_text?)` → `{}` | The accessibility display settings until detach, as Settings › Accessibility writes them: `Settings.Secure` `high_text_contrast_enabled`, `accessibility_display_inversion_enabled` (`1`/`0`) and `font_weight_adjustment` (`300`/`0`, API 31+; below: `FAILED_PRECONDITION` / `UNSUPPORTED_API` before anything changes). An absent field is left as it is; none set is `INVALID_ARGUMENT`. Read back over ADB. Logged with the fields set. |
+| `GetForegroundActivity(…)` → `{package_name?, activity?}` | The resumed activity on top, from `dumpsys activity activities` (`topResumedActivity` on API 29+, the focused one in multi-window; `mResumedActivity` before), `activity` fully qualified. Both absent when none is resumed (a keyguard, or between activities). Changes nothing; not logged. |
 | `PushFile(stream {header{…, device_path, size_bytes} \| chunk})` → `{}` | Copies the streamed bytes (≤ 512 MiB, spooled to an owner-only file under the state dir, size checked against the header) to `device_path` with `adb push`. The path must be absolute and normalised, its directory must exist; a file already there is refused unless this attached device pushed it; the size is read back (`stat`). Captured as absent first, so detach (or the next attach after a crash) deletes it. A malformed upload or path is `INVALID_ARGUMENT`; a device-side refusal `FAILED_PRECONDITION` / `DEVICE_FILE`. Logged with `device_path`/`size_bytes`. |
 | `PullFile(…, device_path)` → `stream {size_bytes (first), chunk}` | The regular file at `device_path` (≤ 512 MiB), pulled into an owner-only spool file and streamed in 256 KiB chunks. No file, not a regular file or too large: `DEVICE_FILE`. |
 | `AddMedia(stream {header{…, file_name, size_bytes} \| chunk})` → `{device_path}` | A photo or video for the gallery: `file_name` (1..127 of letters, digits, `.`, `_`, `-`, space, with a photo or video extension; else `INVALID_ARGUMENT`) is written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/`, indexed by the media scanner (`content call … scan_file` on API 30+, the scan broadcast on API 29 and below, polled until indexed for up to 10 s) and read back from MediaProvider (`DEVICE_FILE` when it is not indexed). Same no-overwrite rule and detach removal as `PushFile`; removal also rescans and removes an empty `Tap` folder. |
@@ -197,6 +200,17 @@ wire types:
   `custom_actions` and `range` (`Range`, `RangeType`); `DeviceInfo.airplane_mode` (18),
   `wifi_enabled` (19), `mobile_data_enabled` (20) and `system_locales` (21). Errors:
   `ACTION_REJECTED`/`ACTION_NOT_OFFERED`, `ACTION_REJECTED`/`OUT_OF_RANGE`.
+- Device actions group 4 (protocol 5.0, additive): `AwaitNotification` (43),
+  `ListNotifications` (44), `OpenNotification` (45, mutation, optional `action`) and
+  `DismissNotification` (46, mutation), each with a `NotificationMatch{package_name?, title?,
+  text?, mode}`; results `CommandResult.notification` (16, `DeviceNotification`) and
+  `notifications` (17, `NotificationList`). Before the session's first notification command the
+  server gives the driver app's `TapNotificationListener` notification access (`cmd
+  notification allow_listener`, read back from `dumpsys notification`'s allowed listeners; saved
+  state `driver-notification-listener`), which detach takes back. `DeviceInfo.stay_awake` (22),
+  `high_contrast_text` (23), `color_inversion` (24) and `bold_text` (25). Errors:
+  `WAIT_TIMEOUT`/`NO_NOTIFICATION`, `ACTION_REJECTED`/`NOT_CLEARABLE`,
+  `UNSUPPORTED`/`NO_NOTIFICATION_ACCESS`.
 
 ### AppService: AUT lifecycle
 
@@ -322,7 +336,7 @@ grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `Ta
     first change of a value, the server reads it (`settings get`, `cmd uimode night`, `wm
     density`, `cmd locale get-app-locales`) and appends it to the journal's `savedState`
     (`{key, value}`; keys `setting:<namespace>/<name>`, `uimode:night`, `wm:density`,
-    `locale:<package>`, `network:airplane|wifi|mobile_data`, `system-locales`, `mock-location-providers`, `appop:<package>/<op>`,
+    `locale:<package>`, `network:airplane|wifi|mobile_data`, `system-locales`, `mock-location-providers`, `appop:<package>/<op>`, `driver-notification-listener`,
     `file:<path>`, `media:<path>`; a null value = absent). Later changes of the same value
     capture nothing. Pushed files and added media are only ever captured as absent: restoring
     deletes what the session created.

@@ -109,6 +109,8 @@ what the device had before the session's first change comes back on detach, as f
 | `setDensity(dpi)` / `set_density` | display density override, 100 to 1000 dpi; `null` / `None` for the physical density | `densityDpi` |
 | `setNetwork(airplaneMode, wifi, mobileData)` / `set_network` | the real switches (pass only the ones to change); API 29+. Airplane mode turns Wi-Fi off, as on a phone, unless the call also turns Wi-Fi on. A device reached over ADB on Wi-Fi refuses Wi-Fi off and airplane mode on: Tap would lose it | `airplaneMode`, `wifiEnabled`, `mobileDataEnabled` |
 | `setSystemLocales(tags)` / `set_system_locales` | the device's languages (Settings › Languages), BCP-47 tags in preference order; every app that follows the system language sees it. Apps with their own language (`App.setLocales`) keep it | `systemLocales` |
+| `setStayAwake(enabled)` / `set_stay_awake` | Developer options › Stay awake: the screen stays on while the device is plugged in (a device on ADB over USB is), so a long test does not find it off | `stayAwake` |
+| `setAccessibilityDisplay(highContrastText, colorInversion, boldText)` / `set_accessibility_display` | Settings › Accessibility: high-contrast text, colour inversion and bold text (Android 12+; below: reason `UNSUPPORTED_API`); pass only the ones to change. Screenshots are not inverted: the inversion happens on the way to the display | `highContrastText`, `colorInversion`, `boldText` |
 | `setLocation(latitude, longitude, accuracyM, altitudeM)` / `set_location` | a mock location: the GPS and network providers report this fix (re-sent every second, so an app that starts listening later gets it); call again to move it. The Tap driver app becomes the device's mock-location app and location is turned on if it was off; both come back on detach, which also removes the mock providers | the app's own location |
 
 ```kotlin
@@ -266,6 +268,43 @@ app.await_toast("Saved")
 
 Custom-view toasts posted from the background are blocked by Android itself (11+) and never
 appear.
+
+## Notifications
+
+Tap reads notifications as data, from a notification listener in its driver app (it gets
+notification access for the session and gives it back on detach); the shade stays closed.
+A `Notification` has `packageName`, `title`, `text`, `actions` (its button titles),
+`clearable` and `postedAt`.
+
+| Call (Kotlin / Python) | Does |
+|---|---|
+| `awaitNotification(title, text, mode, packageName, timeout)` / `await_notification` | waits until a matching notification is showing (one already posted counts) and returns the newest; nothing within the timeout is a wait timeout with reason `NO_NOTIFICATION`. `app.awaitNotification(...)` matches only that app's |
+| `notifications()` | every notification showing, newest first |
+| `openNotification(title, text, mode, packageName, action)` / `open_notification` | opens it as a tap in the shade does (its content intent; an auto-cancel notification then goes away), or with `action` presses the button with that title |
+| `dismissNotification(title, text, mode, packageName)` / `dismiss_notification` | swipes it away; an ongoing one is refused (`ACTION_REJECTED` / `NOT_CLEARABLE`) |
+
+`title` and `text` match under `mode` (`EXACT`, `CONTAINS`, `REGEX`, …); every argument given
+must match. Open and dismiss act on exactly one notification: none or several fail with
+`NOT_FOUND` / `AMBIGUOUS` before anything happens. Group summaries are not listed. On Android
+13+ an app needs the `POST_NOTIFICATIONS` permission to post at all.
+
+`device.foregroundActivity()` (Python `foreground_activity()`) returns the activity on top as
+`ForegroundActivity(packageName, className)`, or null when none is showing (a lock screen):
+use it to check where a notification or a deep link landed.
+
+```kotlin
+app.element(res("send")).tap()
+val message = app.awaitNotification(title = "New message")
+assertEquals(listOf("Mark as read"), message.actions)
+device.openNotification(title = "New message", packageName = app.packageName)
+assertEquals("com.example.chat.ConversationActivity", device.foregroundActivity()?.className)
+```
+
+```python
+app.await_notification("New message")
+device.open_notification("New message", package_name=app.package_name, action="Mark as read")
+device.dismiss_notification("Syncing", package_name=app.package_name)  # ongoing: NOT_CLEARABLE
+```
 
 ## Waiting for the app or the screen
 

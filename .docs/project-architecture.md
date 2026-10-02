@@ -114,6 +114,7 @@ tap/
 |   |   +-- src/main/AndroidManifest.xml   app shell (package io.github.noamcohen48.tap.driver, <queries> for sync/fault providers; CHANGE_CONFIGURATION, WRITE_SETTINGS, ACCESS_MOCK_LOCATION)
 |   |   +-- src/main/kotlin/.../SystemLocaleReceiver.kt  device-wide locale (receiver only shell/system may send to: CHANGE_CONFIGURATION), as Settings' language picker
 |   |   +-- src/main/kotlin/.../MockLocationReceiver.kt  removes LocationManager test providers on detach (shell-only, like SystemLocaleReceiver)
+|   |   +-- src/main/kotlin/.../TapNotificationListener.kt  NotificationListenerService (access given by the host per session); driver core reads its bound instance by reflection
 |   |   +-- src/androidTest/kotlin/io/github/noamcohen48/tap/driver/
 |   |   |   +-- TapDriverServerTest.kt   instrumentation entry point (keeps the process alive)
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers
@@ -132,6 +133,7 @@ tap/
 |   |   |   +-- DeviceConditionsReader.kt  DeviceInfo read-backs: animations_enabled (global scales), dark_mode, font_scale, density_dpi (driver resources' Configuration), airplane/wifi/mobile data, system_locales
 |   |   |   +-- AccessibilityActionCommands.kt  perform_accessibility_action (standard / custom, only if offered), set_progress (within the RangeInfo); ElementSnapshot actions/range
 |   |   |   +-- LocationCommands.kt   set_location: LocationManager test providers (gps, network, fused API 31+), re-sent every second
+|   |   |   +-- NotificationCommands.kt  await/list/open/dismiss_notification from the listener's active notifications (group summaries left out); open sends the PendingIntent
 |   |   |   +-- SyncProviderClient.kt    signature-checked ContentProvider reads with timeout
 |   |   |   +-- FaultController.kt       test-only fault injection (transport loss, late work, cancel-after-mutation)
 |   |   +-- command-engine/      :device:driver:command-engine — pure Kotlin/JVM execution state machine (no Android types)
@@ -161,7 +163,7 @@ tap/
 |   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
 |   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grant/revoke/isPermissionGranted/setLocales/locales/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits; launch returns after `am start -W`)
 |   |   |   +-- DeviceState.kt       SavedState + StateKey (setting:<ns>/<name>, uimode:night, wm:density, locale:<pkg>, network:*, system-locales, appop:<pkg>/<op>, file:/media:<path>): what a session changed, journaled for restore
-|   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity/setNetwork/setSystemLocales/setLocation: capture once, write, read back (DeviceSession.change)
+|   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity/setNetwork/setSystemLocales/setLocation/setStayAwake/setAccessibilityDisplay, notification-listener access: capture once, write, read back (DeviceSession.change)
 |   |   |   +-- DeviceFiles.kt       push/pull/addMedia: path rules, never overwrite a device's file, size and media-index read-back; created files captured as absent (removed on detach)
 |   |   |   +-- ScrcpyRecorder.kt        optional host-owned, serial-scoped scrcpy child; bounded Opus/MP4/Matroska capture and cleanup
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly

@@ -88,7 +88,15 @@ tap-agent release                                   # frees the device
   320|reset`, `condition airplane-mode|wifi|mobile-data on|off` (real switches, read back) and
   `condition locale fr-FR,en` change one until release, which restores the device's own values;
   `location 48.85 2.35 [--accuracy 10]` mocks the device location until release; `app locale <package> [fr-FR,en|system]` reads or sets the app's own languages
-  (Android 13+). MCP `condition`, `set_location` and `app` with `locale`.
+  (Android 13+). `condition stay-awake on` keeps the screen on while plugged in, and
+  `condition high-contrast-text|color-inversion|bold-text on|off` (bold text Android 12+) set
+  the accessibility display settings. MCP `condition`, `set_location` and `app` with `locale`.
+- **Notifications and the activity on top**: `notification` lists the device's notifications
+  (read as data; the shade stays closed), `notification await --title T [--text X] [--contains]
+  [--package PKG]` waits for one, `notification open …` opens it as a tap does (`--button
+  "Mark as read"` presses an action button) and `notification dismiss …` swipes it away (an
+  ongoing one is refused). `activity` prints the activity on top (`package/class`). MCP
+  `notification`, `foreground_activity`.
 - **Keyboard, clipboard, toasts**: `keyboard [hide]`, `submit <target>` (the focused field's
   action key; tap the field first), `clipboard [text]`, `toast [text] [--contains] [--package PKG]`
   (any app's toast unless `--package`);

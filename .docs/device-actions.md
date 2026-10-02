@@ -1,8 +1,9 @@
 # Device actions: roadmap and decisions
 
-Status: phases A–D and groups 1–3 implemented (groups 1–2 on `feat/device-actions`, group 3 on
+Status: phases A–D and groups 1–4 implemented (groups 1–2 on `feat/device-actions`, group 3 on
 `feat/device-actions-3`). Groups 1–2 proven on emulator-5554 (API 34) and the Samsung (API 29);
-group 3 proven on the Samsung (2026-10-02), its emulator run pending.
+group 3 proven on the Samsung (2026-10-02), its emulator run pending. Group 4 on
+`feat/device-actions-4`: implemented, device tests not yet run.
 Started from the pi session report (`.docs/pi-session-…html`, not committed) and continued on
 2026-09-30.
 
@@ -299,6 +300,74 @@ devices. On the Samsung (85e49002, API 29) all three device suites pass (2026-10
 fixes the first run found: API 29's media scan (the broadcast, polled) and the leaked mock
 location test providers (now removed on detach), plus `DEVICE_FILE` for an unreadable pull. The
 run on emulator-5554 (API 34) is pending.
+
+## Group 4: notifications, stay awake, accessibility display, foreground activity (implemented)
+
+Chosen 2026-10-02 with the user, after group 3 (battery, doze, broadcasts and hardware keys were
+offered and not taken). The notification listener in the driver app was approved as a driver
+change.
+
+### Notifications as data (driver + host)
+
+| Call | Does | Refusals |
+|---|---|---|
+| `awaitNotification(title?, text?, mode, packageName?)` (`App.awaitNotification` fixes the package) | the newest matching active notification, one already posted included; polled every 100 ms | `WAIT_TIMEOUT` / `NO_NOTIFICATION` |
+| `notifications()` | every active notification, newest first | – |
+| `openNotification(…, action?)` | sends the content intent as a tap in the shade does, then cancels an auto-cancel notification as SystemUI does; with `action`, the PendingIntent of the button with exactly that title (the notification stays) | `NOT_FOUND` / `AMBIGUOUS` (`match_count`), `ACTION_REJECTED` / `ACTION_NOT_OFFERED` (no content intent, no such button), all before anything is sent |
+| `dismissNotification(…)` | `cancelNotification`, as a swipe | `NOT_FOUND` / `AMBIGUOUS`, `ACTION_REJECTED` / `NOT_CLEARABLE` (ongoing) |
+
+- A `Notification` is `{package, title?, text?, actions (button titles), clearable, postedAt}`
+  from `EXTRA_TITLE` / `EXTRA_TEXT`. Group summaries are left out: they head their group and are
+  not what a user reads. Open and dismiss are mutations and take exactly one match, like every
+  other mutation.
+- Source: `TapNotificationListener`, a `NotificationListenerService` in the driver app (the
+  instrumentation runs in that process, so driver core reads the bound instance through a static,
+  looked up by reflection since core does not compile against the app). Notification access is
+  per-component and user-granted; the host gives it with `cmd notification allow_listener
+  <driver>/.TapNotificationListener` before the session's first notification command, reads it
+  back from `dumpsys notification` ("Allowed notification listeners": one colon-separated line
+  with a `(user: …)` suffix on the Samsung; the parser also takes one per line), saves the previous value (`driver-notification-listener`)
+  and takes the access back on detach. When the listener is not bound yet the driver asks for a
+  rebind and waits up to 5 s; still unbound is `UNSUPPORTED` / `NO_NOTIFICATION_ACCESS`.
+- Opening on API 34+ passes `ActivityOptions` that allow a background activity start
+  (`MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, `ALLOW_ALWAYS` from API 36); the driver is not in
+  the foreground, and without it Android 14 drops an activity PendingIntent sent from the
+  background.
+- Why not the shade's UI: accessibility events for notifications are not sent for every channel,
+  and the shade's layout differs per OEM and per API. `openNotifications()` (group 0) still
+  opens the shade for a test that wants to look at it.
+- Upstream: Appium's settings app reads notifications through its own notification listener
+  (`mobile: getNotifications`, read only); openatx's `open_notification()` opens the shade. Not
+  re-checked against the pinned commits for this group. Tap adds open/dismiss as exact-one
+  mutations and takes the access back on detach.
+
+### Device conditions (saved device state, as group 2)
+
+| Call | Device | Read back | Notes |
+|---|---|---|---|
+| `setStayAwake(enabled)` | `Settings.Global` `stay_on_while_plugged_in` `7` (USB, AC, wireless) or `0` | the setting (host); `DeviceInfo.stay_awake` (driver) | What Developer options › Stay awake sets (`svc power stayon true` writes the same) |
+| `setAccessibilityDisplay(highContrastText?, colorInversion?, boldText?)` | `Settings.Secure` `high_text_contrast_enabled`, `accessibility_display_inversion_enabled` (`1`/`0`), `font_weight_adjustment` (`300`/`0`) | the settings (host); `DeviceInfo.high_contrast_text` / `color_inversion` (absent when unreadable) / `bold_text` (`Configuration.fontWeightAdjustment`) | Bold text is API 31+ (`UNSUPPORTED_API` below, before anything changes); `300` is what Settings writes (bold − normal weight). Colour inversion happens in the display pipeline: screenshots are not inverted |
+
+While adding these, the read-back in `DeviceSession.change` (group 2 code) turned out to accept a
+setting the device reported absent: `takeIf { it != value }` on a null read gave null, so the
+mismatch was dropped. It now compares the values, so an absent setting is a `DEVICE_SETTING`
+failure too; `Adb.restoreState` had the same pattern and the same fix.
+
+### Foreground activity (host)
+
+`foregroundActivity()` → `ForegroundActivity(packageName, className)` or null: the resumed
+activity on top from `dumpsys activity activities` (`topResumedActivity` on API 29+, the focused
+one in multi-window; `mResumedActivity` before), class fully qualified. Null under a keyguard or
+between activities. A read only; used to check where a deep link or a notification landed
+(Appium's `getCurrentActivity` answers the same question).
+
+### Verification
+
+Unit and fake-device tests cover every call (protocol goldens and validation, driver matcher,
+host core, daemon, both clients, agent). Device tests are written and not yet run:
+`:host:validation` `NotificationListenerTest`, `samples/fixture-tests` `DeviceActionsTest` (orders
+16–17; the fixture's `FormActivity` has a Notify button posting a message with a "Mark as read"
+action and an ongoing "Syncing" notification), and Python `test_device_actions.py`.
 
 ## Later (backlog, rough priority)
 

@@ -8,6 +8,7 @@ import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.DeviceInfo
 import io.github.noamcohen48.tap.sdk.ErrorCode
 import io.github.noamcohen48.tap.sdk.FailureReason
+import io.github.noamcohen48.tap.sdk.ForegroundActivity
 import io.github.noamcohen48.tap.sdk.LocationAccuracy
 import io.github.noamcohen48.tap.sdk.MatchMode
 import io.github.noamcohen48.tap.sdk.Orientation
@@ -362,7 +363,75 @@ class DeviceActionsTest {
         }
     }
 
+    /**
+     * Stay awake and the accessibility display settings read back while the test holds them; the
+     * fixture's notifications are read as data, a button and the notification itself open the
+     * app's link screen (the auto-cancel one goes away), an ongoing one cannot be dismissed, and
+     * a match of both is refused as ambiguous before anything is sent.
+     */
+    @Test
+    @Order(16)
+    fun displaySettingsAndNotificationsHoldForTheTest(device: Device): Unit {
+        tapTest {
+            val before = device.info()
+            displayBefore[device.serial] = before
+            device.setStayAwake(!before.stayAwake)
+            val bold = before.apiLevel >= 31
+            device.setAccessibilityDisplay(highContrastText = true, colorInversion = true, boldText = if (bold) true else null)
+            val held = device.info()
+            assertEquals(!before.stayAwake, held.stayAwake)
+            assertEquals(listOf(true, true, bold), listOf(held.highContrastText, held.colorInversion, held.boldText))
+
+            val app = Fixture.launch(device, ".FormActivity")
+            if (before.apiLevel >= 33) app.grantPermission("android.permission.POST_NOTIFICATIONS")
+            app.element(res("notify_button")).tap()
+            val message = app.awaitNotification("New message")
+            assertEquals("from Ada" to listOf("Mark as read"), message.text to message.actions)
+            assertTrue(message.clearable)
+            val mine = device.notifications().filter { it.packageName == Fixture.PACKAGE }
+            assertEquals(setOf("New message", "Syncing"), mine.map { it.title }.toSet())
+            assertFalse(mine.single { it.title == "Syncing" }.clearable)
+
+            val ongoing = assertFailsSuspend<CommandException> { device.dismissNotification("Syncing", packageName = Fixture.PACKAGE) }
+            assertEquals(ErrorCode.ACTION_REJECTED to "NOT_CLEARABLE", ongoing.code to ongoing.detail)
+            assertEquals(ErrorCode.AMBIGUOUS, assertFailsSuspend<CommandException> { device.openNotification(packageName = Fixture.PACKAGE) }.code)
+
+            device.openNotification("New message", packageName = Fixture.PACKAGE, action = "Mark as read")
+            app.await(text("Link: tapfixture://link/read")).visible()
+            device.openNotification("New message", packageName = Fixture.PACKAGE)
+            app.await(text("Link: tapfixture://link/notification")).visible()
+            assertEquals(ForegroundActivity(Fixture.PACKAGE, "${Fixture.PACKAGE}.LinkActivity"), device.foregroundActivity())
+            device.awaitUntil("the opened notification auto-cancelled", observe = { device.notifications().joinToString { it.title.orEmpty() } }) {
+                device.notifications().none { it.packageName == Fixture.PACKAGE && it.title == "New message" }
+            }
+
+            app.launch(".FormActivity")
+            app.element(res("notify_button")).tap()
+            app.awaitNotification("New message")
+            device.dismissNotification("New message", packageName = Fixture.PACKAGE)
+            device.awaitUntil("the notification dismissed", observe = { device.notifications().joinToString { it.title.orEmpty() } }) {
+                device.notifications().none { it.packageName == Fixture.PACKAGE && it.title == "New message" }
+            }
+            app.forceStop()
+        }
+    }
+
+    /** Detach put stay awake and the accessibility display settings back. */
+    @Test
+    @Order(17)
+    fun displaySettingsAreRestoredAfterTheTest(device: Device): Unit {
+        tapTest {
+            val before = displayBefore[device.serial] ?: return@tapTest
+            val now = device.info()
+            assertEquals(
+                listOf(before.stayAwake, before.highContrastText, before.colorInversion, before.boldText),
+                listOf(now.stayAwake, now.highContrastText, now.colorInversion, now.boldText),
+            )
+        }
+    }
+
     private companion object {
+        val displayBefore = ConcurrentHashMap<String, DeviceInfo>()
         const val PUSHED = "/data/local/tmp/tap-sample-pushed.bin"
         const val PHOTO = "tap-sample.png"
         val localeBefore = ConcurrentHashMap<String, List<String>>()

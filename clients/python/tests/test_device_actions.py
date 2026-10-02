@@ -7,6 +7,7 @@ from tap_e2e import (
     CommandError,
     ErrorCode,
     FailureReason,
+    ForegroundActivity,
     LocationAccuracy,
     Long,
     Orientation,
@@ -342,5 +343,73 @@ def test_files_round_trip_and_media_reaches_the_gallery_then_both_leave(tap_clie
             # "No gallery" until read; then "Gallery empty" or "Gallery: <names>".
             shown = app.wait(res("gallery_value").and_text("Gallery", CONTAINS)).visible().text() or ""
             assert shown.startswith(("Gallery empty", "Gallery: ")) and photo not in shown, shown
+    finally:
+        connection.close()
+
+
+def test_notifications_are_awaited_listed_opened_and_dismissed(tap_device):
+    """The fixture posts a message (with a "Mark as read" action) and an ongoing "Syncing"
+    notification: both are listed, the ongoing one refuses a dismiss, the action and the content
+    intent each open their deep link, and the auto-cancel message leaves once opened."""
+    app = launch(tap_device, ".FormActivity")
+    if tap_device.info().api_level >= 33:
+        app.grant_permission("android.permission.POST_NOTIFICATIONS")
+    try:
+        app.element(res("notify_button")).tap()
+        message = app.await_notification("New message")
+        assert (message.text, message.actions, message.clearable) == ("from Ada", ["Mark as read"], True)
+        mine = [n for n in tap_device.notifications() if n.package_name == PACKAGE]
+        assert {n.title for n in mine} == {"New message", "Syncing"}
+        with pytest.raises(CommandError) as ongoing:
+            tap_device.dismiss_notification("Syncing", package_name=PACKAGE)
+        assert ongoing.value.code is ErrorCode.ACTION_REJECTED and ongoing.value.detail == "NOT_CLEARABLE"
+        with pytest.raises(CommandError) as ambiguous:
+            tap_device.open_notification(package_name=PACKAGE)
+        assert ambiguous.value.code is ErrorCode.AMBIGUOUS
+
+        tap_device.open_notification("New message", package_name=PACKAGE, action="Mark as read")
+        app.wait(text("Link: tapfixture://link/read")).visible()
+        tap_device.open_notification("New message", package_name=PACKAGE)
+        app.wait(text("Link: tapfixture://link/notification")).visible()
+        assert tap_device.foreground_activity() == ForegroundActivity(PACKAGE, f"{PACKAGE}.LinkActivity")
+        tap_device.await_until(
+            "the opened message gone",
+            lambda: all(n.title != "New message" for n in tap_device.notifications() if n.package_name == PACKAGE),
+        )
+    finally:
+        app.force_stop()
+
+
+def test_stay_awake_and_accessibility_display_hold_until_detach_then_are_restored(tap_client, tap_config):
+    """Stay awake, high-contrast text, colour inversion and (API 31+) bold text read back in
+    ``info()`` while attached and come back on detach."""
+    connection = tap_client.connect("display-settings")
+    try:
+        serial = (tap_config.serials or connection.available_serials())[0]
+        with connection.attach_device(serial) as device:
+            before = device.info()
+            bold = before.api_level >= 31
+            device.set_stay_awake(not before.stay_awake)
+            device.set_accessibility_display(
+                high_contrast_text=not before.high_contrast_text,
+                color_inversion=not before.color_inversion,
+                bold_text=(not before.bold_text) if bold else None,
+            )
+            now = device.info()
+            assert (now.stay_awake, now.high_contrast_text, now.color_inversion) == (
+                not before.stay_awake,
+                not before.high_contrast_text,
+                not before.color_inversion,
+            )
+            if bold:
+                assert now.bold_text is not before.bold_text
+        with connection.attach_device(serial) as device:
+            now = device.info()
+            assert (now.stay_awake, bool(now.high_contrast_text), bool(now.color_inversion), now.bold_text) == (
+                before.stay_awake,
+                bool(before.high_contrast_text),
+                bool(before.color_inversion),
+                before.bold_text,
+            )
     finally:
         connection.close()
