@@ -9,6 +9,13 @@ This page takes you from nothing to a passing test in Kotlin or Python.
       **JDK 17+** for the JVM build.
     - For Kotlin: a Gradle project with JUnit 5. For Python: **Python 3.10+** and pytest.
 
+!!! tip "Everything in one download"
+
+    The [Download](../download.md) page has one zip per platform with the server, both clients,
+    `tap-agent`, Tap Studio and these docs, plus an `install.sh` that sets it all up. With it,
+    Gradle reads Tap from a local Maven repository and needs no GitHub token. The steps below
+    install each part on its own instead.
+
 ## 1. The server
 
 The server is a single executable that owns ADB and the devices for the whole machine. Pick

@@ -1,0 +1,172 @@
+name: Bundle
+
+# The one-download bundles: a Release `bundle/v<version>` with one zip per platform
+# (tap-<version>-linux-x86_64.zip, -macos-aarch64.zip, -jvm.zip), each holding the server,
+# the Python wheels, the Kotlin artifacts as a local Maven repository, the docs, install.sh
+# and INSTALL.md (scripts/build-bundle.sh, packaging/bundle/). Built from the published
+# releases, never rebuilt; only the docs are built here, from the newest tagged commit.
+# Release set runs it after a set ships; run it by hand to bundle releases that already
+# exist. A family left empty uses its newest release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Bundle version, e.g. 0.0.2 (tag bundle/v<version>)"
+        required: true
+      daemon:
+        description: "Daemon tag (empty: newest)"
+        required: false
+        default: ""
+      client_kotlin:
+        description: "Kotlin tag (empty: newest)"
+        required: false
+        default: ""
+      client_python:
+        description: "Python tag (empty: newest)"
+        required: false
+        default: ""
+      client_agent:
+        description: "Agent tag (empty: newest)"
+        required: false
+        default: ""
+      client_studio:
+        description: "Studio tag (empty: newest)"
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      daemon:
+        type: string
+        default: ""
+      client_kotlin:
+        type: string
+        default: ""
+      client_python:
+        type: string
+        default: ""
+      client_agent:
+        type: string
+        default: ""
+      client_studio:
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  resolve:
+    name: Resolve the set
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      daemon: ${{ steps.set.outputs.daemon }}
+      client_kotlin: ${{ steps.set.outputs.client_kotlin }}
+      client_python: ${{ steps.set.outputs.client_python }}
+      client_agent: ${{ steps.set.outputs.client_agent }}
+      client_studio: ${{ steps.set.outputs.client_studio }}
+      docs: ${{ steps.set.outputs.docs }}
+      commit: ${{ steps.set.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Not bundled yet
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if gh release view "bundle/v$VERSION" > /dev/null 2>&1; then
+            echo "::error::bundle/v$VERSION exists; a published version is never replaced"
+            exit 1
+          fi
+      - id: set
+        env:
+          DAEMON: ${{ inputs.daemon }}
+          KOTLIN: ${{ inputs.client_kotlin }}
+          PYTHON: ${{ inputs.client_python }}
+          AGENT: ${{ inputs.client_agent }}
+          STUDIO: ${{ inputs.client_studio }}
+        run: |
+          scripts/build-bundle.sh --resolve-only --out build/bundle \
+            --daemon "$DAEMON" --kotlin "$KOTLIN" --python "$PYTHON" \
+            --agent "$AGENT" --studio "$STUDIO"
+          cat build/bundle/resolved.env >> "$GITHUB_OUTPUT"
+
+  # The Markdown docs, built from the newest tagged commit in the set (the per-family
+  # Releases no longer carry them).
+  docs:
+    name: Docs (Markdown)
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.docs }}
+      - uses: ./.github/actions/build-docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-docs
+          path: build/docs-md
+          if-no-files-found: error
+
+  bundle:
+    name: Bundle ${{ inputs.version }}
+    needs: [resolve, docs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-docs
+          path: build/docs-md
+      - name: Build
+        env:
+          VERSION: ${{ inputs.version }}
+          DAEMON: ${{ needs.resolve.outputs.daemon }}
+          KOTLIN: ${{ needs.resolve.outputs.client_kotlin }}
+          PYTHON: ${{ needs.resolve.outputs.client_python }}
+          AGENT: ${{ needs.resolve.outputs.client_agent }}
+          STUDIO: ${{ needs.resolve.outputs.client_studio }}
+        run: |
+          scripts/build-bundle.sh --version "$VERSION" --docs build/docs-md \
+            --out build/bundle --daemon "$DAEMON" --kotlin "$KOTLIN" \
+            --python "$PYTHON" --agent "$AGENT" --studio "$STUDIO"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bundle/v${{ inputs.version }}
+          # The bundle tag sits on the daemon's commit.
+          target_commitish: ${{ needs.resolve.outputs.commit }}
+          name: Tap ${{ inputs.version }} (everything, one download)
+          prerelease: true
+          make_latest: false
+          files: |
+            build/bundle/*.zip
+            build/bundle/SHA256SUMS
+          body: |
+            Everything Tap ships in one download. Pick the zip for your system,
+            unpack it and run `./install.sh` (or follow `INSTALL.md` inside):
+
+            - [`tap-${{ inputs.version }}-linux-x86_64.zip`](https://github.com/${{ github.repository }}/releases/download/bundle/v${{ inputs.version }}/tap-${{ inputs.version }}-linux-x86_64.zip): Linux on x86-64
+            - [`tap-${{ inputs.version }}-macos-aarch64.zip`](https://github.com/${{ github.repository }}/releases/download/bundle/v${{ inputs.version }}/tap-${{ inputs.version }}-macos-aarch64.zip): macOS on Apple silicon
+            - [`tap-${{ inputs.version }}-jvm.zip`](https://github.com/${{ github.repository }}/releases/download/bundle/v${{ inputs.version }}/tap-${{ inputs.version }}-jvm.zip): any system with Java 17+ (Windows: see `INSTALL.md`)
+
+            Each holds the `tap` server, the Kotlin client and JUnit 5
+            extension as a local Maven repository (no GitHub token needed),
+            the `tap-e2e`, `tap-agent` and `tap-studio` wheels, and the
+            documentation. Built from these releases:
+
+            | Part | Release |
+            |---|---|
+            | Server | `${{ needs.resolve.outputs.daemon }}` |
+            | Kotlin client | `${{ needs.resolve.outputs.client_kotlin }}` |
+            | Python client | `${{ needs.resolve.outputs.client_python }}` |
+            | tap-agent | `${{ needs.resolve.outputs.client_agent }}` |
+            | tap-studio | `${{ needs.resolve.outputs.client_studio }}` |

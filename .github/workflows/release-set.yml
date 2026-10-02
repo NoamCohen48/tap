@@ -15,6 +15,11 @@ name: Release set
 # (git tag <family>/v<version> on the version-bump commit,
 # git push origin <tag>). A dry run validates the tags and prints the
 # plan without starting anything.
+#
+# Once the set is out, the Bundle workflow packs it (plus the newest release
+# of any family not in the set) into one zip per platform, released as
+# bundle/v<bundle> (default: the daemon tag's version; no daemon tag and no
+# bundle version means no bundle).
 
 on:
   workflow_dispatch:
@@ -39,6 +44,10 @@ on:
         description: "Studio tag, e.g. client-studio/v0.0.1"
         required: false
         default: ""
+      bundle:
+        description: "Bundle version (empty: the daemon's; 'none' skips)"
+        required: false
+        default: ""
       dry_run:
         description: "Validate only, start nothing"
         required: false
@@ -53,6 +62,8 @@ jobs:
     name: Ship the set
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    outputs:
+      bundle: ${{ steps.plan.outputs.bundle }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -86,6 +97,14 @@ jobs:
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
           echo "Plan: $tags"
+          bundle="${{ inputs.bundle }}"
+          daemon="${{ inputs.daemon }}"
+          if [ -z "$bundle" ] && [ -n "$daemon" ]; then
+            bundle="${daemon#daemon/v}"
+          fi
+          [ "$bundle" = none ] && bundle=""
+          echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+          echo "Bundle: ${bundle:-none}"
 
       - name: Release the set in order
         run: |
@@ -145,24 +164,42 @@ jobs:
         run: |
           missing=""
           for tag in ${{ steps.plan.outputs.tags }}; do
+            # The Kotlin client's artifacts are in GitHub Packages; its
+            # Release only has to exist.
             case "$tag" in
               daemon/*) need="tap-" ;;
-              client-kotlin/*) need="tap-docs-" ;;
+              client-kotlin/*) need="" ;;
               client-python/*) need="tap_e2e-" ;;
               client-agent/*) need="tap_agent-" ;;
               client-studio/*) need="tap_studio-" ;;
             esac
-            assets=$(gh release view "$tag" \
-              --json assets --jq '.assets[].name')
-            echo "== $tag =="; echo "$assets"
-            if ! echo "$assets" | grep -q "$need"; then
-              echo "::error::$tag has no $need* asset"
+            if ! assets=$(gh release view "$tag" \
+              --json assets --jq '.assets[].name'); then
+              echo "::error::no Release for $tag"
               missing="$missing $tag"
+              continue
             fi
-            if ! echo "$assets" | grep -q "tap-docs-"; then
-              echo "::error::$tag has no docs bundle"
+            echo "== $tag =="; echo "$assets"
+            if [ -n "$need" ] && ! echo "$assets" | grep -q "$need"; then
+              echo "::error::$tag has no $need* asset"
               missing="$missing $tag"
             fi
           done
           [ -z "$missing" ] || exit 1
           echo "Every Release in the set is up with its assets."
+
+  bundle:
+    name: One-download bundle
+    needs: ship
+    if: inputs.dry_run != 'true' && needs.ship.outputs.bundle != ''
+    permissions:
+      contents: write
+      packages: read
+    uses: ./.github/workflows/bundle.yml
+    with:
+      version: ${{ needs.ship.outputs.bundle }}
+      daemon: ${{ inputs.daemon }}
+      client_kotlin: ${{ inputs.client_kotlin }}
+      client_python: ${{ inputs.client_python }}
+      client_agent: ${{ inputs.client_agent }}
+      client_studio: ${{ inputs.client_studio }}
