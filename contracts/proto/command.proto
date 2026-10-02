@@ -115,7 +115,52 @@ enum PermissionChoice {
   PERMISSION_KEEP_ONE_TIME = 10; // "Keep only this time" (an upgrade request refused)
 }
 
+// The Precise / Approximate radio buttons of the location dialog (API 31+, when the app asks for
+// fine location).
+enum LocationAccuracy {
+  LOCATION_ACCURACY_UNSPECIFIED = 0;
+  LOCATION_PRECISE = 1;
+  LOCATION_APPROXIMATE = 2;
+}
+
 // ---- commands: one message per operation, each carrying only its own arguments -----------------
+
+// A standard accessibility action that takes no arguments (`AccessibilityNodeInfo.AccessibilityAction`),
+// as a screen reader performs it. Click and long click are not here: `tap` / `long_tap` touch.
+enum StandardAction {
+  STANDARD_ACTION_UNSPECIFIED = 0;
+  A11Y_EXPAND = 1;
+  A11Y_COLLAPSE = 2;
+  A11Y_DISMISS = 3;
+  A11Y_SCROLL_FORWARD = 4;
+  A11Y_SCROLL_BACKWARD = 5;
+  A11Y_SCROLL_UP = 6;
+  A11Y_SCROLL_DOWN = 7;
+  A11Y_SCROLL_LEFT = 8;
+  A11Y_SCROLL_RIGHT = 9;
+  A11Y_PAGE_UP = 10; // API 29+
+  A11Y_PAGE_DOWN = 11; // API 29+
+  A11Y_PAGE_LEFT = 12; // API 29+
+  A11Y_PAGE_RIGHT = 13; // API 29+
+  A11Y_SHOW_ON_SCREEN = 14;
+  A11Y_CONTEXT_CLICK = 15;
+  A11Y_PRESS_AND_HOLD = 16; // API 30+
+  A11Y_SELECT = 17;
+  A11Y_CLEAR_SELECTION = 18;
+  A11Y_FOCUS = 19; // input focus
+  A11Y_CLEAR_FOCUS = 20;
+  A11Y_COPY = 21;
+  A11Y_CUT = 22;
+  A11Y_PASTE = 23;
+}
+
+// How a range node counts (`AccessibilityNodeInfo.RangeInfo`).
+enum RangeType {
+  RANGE_TYPE_UNSPECIFIED = 0;
+  RANGE_INT = 1;
+  RANGE_FLOAT = 2;
+  RANGE_PERCENT = 3;
+}
 
 message DeviceInfoQuery {}
 message PressKey { int32 key_code = 1; } // an Android KeyEvent key code, ≥ 0
@@ -189,7 +234,12 @@ message Fling {
 // Waits for a runtime-permission dialog and reports the choices it offers. No input.
 message WaitPermissionPrompt {}
 // Taps the dialog's button for `choice`; it must be offered, exactly once.
-message ChoosePermission { PermissionChoice choice = 1; } // not UNSPECIFIED
+// With `accuracy`, the dialog's radio for it is selected first; it must be offered too (both are
+// found before any input). UNSPECIFIED leaves the accuracy as the dialog shows it.
+message ChoosePermission {
+  PermissionChoice choice = 1; // not UNSPECIFIED
+  LocationAccuracy accuracy = 2;
+}
 // Hides the on-screen keyboard: one Back key when an input-method window is showing, nothing
 // otherwise.
 message HideKeyboard {}
@@ -206,6 +256,24 @@ message AwaitToast {
   optional string text = 1;
   MatchMode mode = 2;
   optional string package_name = 3;
+}
+
+// An accessibility action on the one matching node, as a screen reader performs it (no touch,
+// so no occlusion check): a standard action, or a custom one by its exact label (≤ 1024 chars).
+// The node must offer it: ACTION_REJECTED (ACTION_NOT_OFFERED) before input otherwise.
+message PerformAccessibilityAction {
+  Selector selector = 1;
+  oneof action {
+    StandardAction standard = 2; // not UNSPECIFIED
+    string custom = 3;
+  }
+}
+// `ACTION_SET_PROGRESS` on the one matching range node (SeekBar, Slider, RatingBar): `value` in
+// the node's own RangeInfo units, finite and within its min..max. A node without the action or
+// a value outside the range is ACTION_REJECTED (ACTION_NOT_OFFERED / OUT_OF_RANGE) before input.
+message SetProgress {
+  Selector selector = 1;
+  float value = 2;
 }
 
 // One protocol request minus session identity (the server owns session id, generation and
@@ -246,6 +314,8 @@ message Command {
     SetClipboard set_clipboard = 37;
     GetClipboard get_clipboard = 38;
     AwaitToast await_toast = 39;
+    PerformAccessibilityAction perform_accessibility_action = 40;
+    SetProgress set_progress = 41;
   }
 }
 
@@ -281,6 +351,18 @@ message ElementSnapshot {
   // The node is showing its hint: on API 26+ an empty field then reports the hint as `text`.
   // `text` is always the raw accessibility text; selectors match that same raw text.
   bool showing_hint = 18;
+  // The standard actions (of StandardAction) and the custom actions (by label) the node offers.
+  repeated StandardAction actions = 19;
+  repeated string custom_actions = 20;
+  // A range node's (SeekBar, Slider, RatingBar, ProgressBar) RangeInfo.
+  optional Range range = 21;
+}
+
+message Range {
+  RangeType type = 1;
+  float min = 2;
+  float max = 3;
+  float current = 4;
 }
 
 // Static facts about the device plus the package currently owning the focused window.
@@ -319,6 +401,8 @@ message Toast {
 message PermissionPrompt {
   string package_name = 1;
   repeated PermissionChoice choices = 2;
+  // The location accuracies the dialog offers to pick (empty when it asks for none).
+  repeated LocationAccuracy accuracies = 3;
 }
 
 // The command ran to completion and has nothing else to report.

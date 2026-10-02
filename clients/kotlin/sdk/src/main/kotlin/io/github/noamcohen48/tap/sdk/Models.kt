@@ -78,13 +78,72 @@ enum class PermissionChoice {
     KEEP_ONE_TIME,
 }
 
+/** The Precise / Approximate choice of the location permission dialog (Android 12+). */
+enum class LocationAccuracy { PRECISE, APPROXIMATE }
+
 /**
  * The runtime-permission dialog on screen: the [packageName] of its window (`device.app(packageName)`
- * reaches its other elements) and the [choices] it offers, in [PermissionChoice] order.
+ * reaches its other elements), the [choices] it offers, in [PermissionChoice] order, and the
+ * location [accuracies] it lets the user pick (empty unless it asks for precise location).
  */
 data class PermissionPrompt(
     val packageName: String,
     val choices: List<PermissionChoice>,
+    val accuracies: List<LocationAccuracy> = emptyList(),
+)
+
+/**
+ * A standard accessibility action that takes no arguments, as a screen reader performs it
+ * ([Element.performAction]). Click and long click are not here: [Element.tap] and
+ * [Element.longTap] touch the screen.
+ */
+enum class StandardAction {
+    EXPAND,
+    COLLAPSE,
+    DISMISS,
+    SCROLL_FORWARD,
+    SCROLL_BACKWARD,
+    SCROLL_UP,
+    SCROLL_DOWN,
+    SCROLL_LEFT,
+    SCROLL_RIGHT,
+
+    /** API 29+. */
+    PAGE_UP,
+
+    /** API 29+. */
+    PAGE_DOWN,
+
+    /** API 29+. */
+    PAGE_LEFT,
+
+    /** API 29+. */
+    PAGE_RIGHT,
+    SHOW_ON_SCREEN,
+    CONTEXT_CLICK,
+
+    /** API 30+. */
+    PRESS_AND_HOLD,
+    SELECT,
+    CLEAR_SELECTION,
+
+    /** Input focus. */
+    FOCUS,
+    CLEAR_FOCUS,
+    COPY,
+    CUT,
+    PASTE,
+}
+
+/** How a range node counts its value. */
+enum class RangeType { INT, FLOAT, PERCENT, UNKNOWN }
+
+/** A range node's (SeekBar, Slider, RatingBar, ProgressBar) value and bounds, in its own units. */
+data class Range(
+    val type: RangeType,
+    val min: Float,
+    val max: Float,
+    val current: Float,
 )
 
 /**
@@ -315,6 +374,12 @@ data class ElementSnapshot(
     val selected: Boolean,
     val childCount: Int,
     val showingHint: Boolean,
+    /** The standard actions the node offers ([Element.performAction]). */
+    val actions: List<StandardAction> = emptyList(),
+    /** The labels of the custom actions the node offers ([Element.performCustomAction]). */
+    val customActions: List<String> = emptyList(),
+    /** The node's range, when it is a range node ([Element.setProgress]). */
+    val range: Range? = null,
 )
 
 /** A process of an app as the host sees it: PID plus the `/proc` start token that tells reused PIDs apart. */

@@ -300,14 +300,20 @@ class Device internal constructor(
 
     /**
      * Taps the permission dialog's button for [choice] (`NOT_FOUND` before any input when the
-     * dialog does not offer it). Only the tap is reported: assert the outcome, e.g. the dialog
-     * gone and the app's state.
+     * dialog does not offer it). With [accuracy], the location dialog's Precise / Approximate
+     * radio is selected first; it must be offered too ([PermissionPrompt.accuracies], Android 12+
+     * when the app asks for fine location), or nothing is tapped. Only the taps are reported:
+     * assert the outcome, e.g. the dialog gone and the app's state.
      */
     suspend fun choosePermission(
         choice: PermissionChoice,
+        accuracy: LocationAccuracy? = null,
         timeout: Duration? = null,
     ) {
-        executeOrThrow(timeout) { choosePermission = ChoosePermission.newBuilder().setChoice(choice.toProto()).build() }
+        executeOrThrow(timeout) {
+            choosePermission =
+                ChoosePermission.newBuilder().setChoice(choice.toProto()).apply { accuracy?.let { setAccuracy(it.toProto()) } }.build()
+        }
     }
 
     /** Whether a soft keyboard (any input method's window) is on screen; [info] reports the same. */

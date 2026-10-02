@@ -25,7 +25,10 @@ import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetProgress
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
@@ -93,7 +96,7 @@ class OperationsTest {
             "press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll",
             "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
             "dismiss_keyguard", "choose_permission", "double_tap", "drag", "pinch", "fling",
-            "hide_keyboard", "perform_ime_action", "set_clipboard",
+            "hide_keyboard", "perform_ime_action", "set_clipboard", "perform_accessibility_action", "set_progress",
         )
         sampleCommands.forEach { (name, command) ->
             assertEquals(name in mutations, command.isMutation, name)
@@ -348,6 +351,10 @@ class OperationsTest {
 
         override fun performImeAction(command: PerformImeAction) = record("perform_ime_action", Unit)
 
+        override fun performAccessibilityAction(command: PerformAccessibilityAction) = record("perform_accessibility_action", Unit)
+
+        override fun setProgress(command: SetProgress) = record("set_progress", Unit)
+
         override fun setClipboard(command: SetClipboard) = record("set_clipboard", Unit)
 
         override fun getClipboard(command: GetClipboard): String = record("get_clipboard", "copied")
@@ -395,6 +402,8 @@ class OperationsTest {
                 "set_clipboard" to Commands.setClipboard("copied"),
                 "get_clipboard" to Commands.getClipboard(),
                 "await_toast" to Commands.awaitToast("Saved", MatchMode.MATCH_CONTAINS),
+                "perform_accessibility_action" to Commands.performAccessibilityAction(button, StandardAction.A11Y_EXPAND),
+                "set_progress" to Commands.setProgress(Selectors.resource("volume"), 40f),
             )
 
         /** One valid request per host-internal operation. */

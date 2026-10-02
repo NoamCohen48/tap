@@ -63,7 +63,12 @@ internal class QueryCommands(
                 .setSelected(element.isSelected)
                 .setChildCount(element.childCount)
                 .setShowingHint(node.isShowingHintText)
-                .build()
+                .apply {
+                    val (standard, custom) = AccessibilityActionCommands.offered(node)
+                    addAllActions(standard)
+                    addAllCustomActions(custom)
+                    AccessibilityActionCommands.range(node)?.let(::setRange)
+                }.build()
         } finally {
             element.recycle()
         }

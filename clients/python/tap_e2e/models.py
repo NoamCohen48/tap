@@ -85,6 +85,64 @@ class PermissionChoice(enum.Enum):
     """"Keep only this time" when an upgrade is offered."""
 
 
+class LocationAccuracy(enum.Enum):
+    """The Precise / Approximate choice of the location permission dialog (API 31+)."""
+
+    PRECISE = "PRECISE"
+    APPROXIMATE = "APPROXIMATE"
+
+
+class StandardAction(enum.Enum):
+    """A standard accessibility action that takes no arguments, as a screen reader performs it
+    (``Element.perform_action``). Click and long click are not here: ``tap`` / ``long_tap``
+    touch the screen. ``PAGE_*`` need API 29+, ``PRESS_AND_HOLD`` API 30+."""
+
+    EXPAND = "EXPAND"
+    COLLAPSE = "COLLAPSE"
+    DISMISS = "DISMISS"
+    SCROLL_FORWARD = "SCROLL_FORWARD"
+    SCROLL_BACKWARD = "SCROLL_BACKWARD"
+    SCROLL_UP = "SCROLL_UP"
+    SCROLL_DOWN = "SCROLL_DOWN"
+    SCROLL_LEFT = "SCROLL_LEFT"
+    SCROLL_RIGHT = "SCROLL_RIGHT"
+    PAGE_UP = "PAGE_UP"
+    PAGE_DOWN = "PAGE_DOWN"
+    PAGE_LEFT = "PAGE_LEFT"
+    PAGE_RIGHT = "PAGE_RIGHT"
+    SHOW_ON_SCREEN = "SHOW_ON_SCREEN"
+    CONTEXT_CLICK = "CONTEXT_CLICK"
+    PRESS_AND_HOLD = "PRESS_AND_HOLD"
+    SELECT = "SELECT"
+    CLEAR_SELECTION = "CLEAR_SELECTION"
+    FOCUS = "FOCUS"
+    """Input focus."""
+    CLEAR_FOCUS = "CLEAR_FOCUS"
+    COPY = "COPY"
+    CUT = "CUT"
+    PASTE = "PASTE"
+
+
+class RangeType(enum.Enum):
+    """How a range node counts its value."""
+
+    INT = "INT"
+    FLOAT = "FLOAT"
+    PERCENT = "PERCENT"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class Range:
+    """A range node's (SeekBar, Slider, RatingBar, ProgressBar) value and bounds, in its own
+    units (``Element.set_progress``)."""
+
+    type: RangeType
+    min: float
+    max: float
+    current: float
+
+
 class StabilitySignal(enum.Enum):
     """What ``App.await_screen_stable`` watches: the accessibility tree, the window pixels
     (0.5 % tolerance) or both."""
@@ -279,6 +337,12 @@ class ElementSnapshot:
     selected: bool
     child_count: int
     showing_hint: bool
+    actions: tuple[StandardAction, ...] = ()
+    """The standard actions the node offers (``Element.perform_action``)."""
+    custom_actions: tuple[str, ...] = ()
+    """The labels of the custom actions the node offers (``Element.perform_custom_action``)."""
+    range: Range | None = None
+    """The node's range, when it is a range node (``Element.set_progress``)."""
 
 
 @dataclass(frozen=True)
@@ -644,11 +708,13 @@ class DeviceInfo(Artifact):
 @dataclass(frozen=True)
 class PermissionPrompt:
     """A runtime-permission dialog on screen (``Device.await_permission_prompt``): the package
-    of its window (what ``in_package`` scopes its other elements with) and the choices it
-    offers, in ``PermissionChoice`` order."""
+    of its window (what ``in_package`` scopes its other elements with), the choices it offers,
+    in ``PermissionChoice`` order, and the location accuracies it lets the user pick (empty
+    unless it asks for precise location)."""
 
     package_name: str
     choices: tuple[PermissionChoice, ...]
+    accuracies: tuple[LocationAccuracy, ...] = ()
 
 
 @dataclass(frozen=True)

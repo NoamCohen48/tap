@@ -1033,6 +1033,69 @@ class TapClientTest {
     }
 
     @Test
+    fun `accessibility actions, progress and location accuracy send their typed commands`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                val result = CommandResult.newBuilder()
+                when (request.command.opCase) {
+                    Command.OpCase.SNAPSHOT ->
+                        result
+                            .setSnapshot(
+                                io.github.noamcohen48.tap.api.v1.ElementSnapshot
+                                    .newBuilder()
+                                    .addActions(io.github.noamcohen48.tap.api.v1.StandardAction.A11Y_COLLAPSE)
+                                    .addActionsValue(999)
+                                    .addCustomActions("Archive")
+                                    .setRange(
+                                        io.github.noamcohen48.tap.api.v1.Range
+                                            .newBuilder()
+                                            .setType(io.github.noamcohen48.tap.api.v1.RangeType.RANGE_INT)
+                                            .setMax(100f)
+                                            .setCurrent(20f),
+                                    ),
+                            ).build()
+                    Command.OpCase.PERFORM_ACCESSIBILITY_ACTION, Command.OpCase.SET_PROGRESS, Command.OpCase.CHOOSE_PERMISSION ->
+                        result.setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        val card = device.screen.element(res("card"))
+                        val snapshot = card.snapshot()
+                        assertEquals(listOf(StandardAction.COLLAPSE), snapshot.actions)
+                        assertEquals(listOf("Archive"), snapshot.customActions)
+                        assertEquals(Range(RangeType.INT, 0f, 100f, 20f), snapshot.range)
+                        card.performAction(StandardAction.EXPAND)
+                        card.performCustomAction("Archive")
+                        card.setProgress(55f)
+                        assertFailsWith<IllegalArgumentException> { card.setProgress(Float.NaN) }
+                        device.choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+                        val commands = fakeDevices.executeRequests.map { it.command }
+                        val (standard, custom) = commands.filter { it.hasPerformAccessibilityAction() }.map { it.performAccessibilityAction }
+                        assertEquals(io.github.noamcohen48.tap.api.v1.StandardAction.A11Y_EXPAND, standard.standard)
+                        assertEquals(res("card").proto, standard.selector)
+                        assertEquals("Archive", custom.custom)
+                        assertEquals(55f, commands.single { it.hasSetProgress() }.setProgress.value)
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.LocationAccuracy.LOCATION_APPROXIMATE,
+                            commands.single { it.hasChoosePermission() }.choosePermission.accuracy,
+                        )
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `awaitToast timeout carries NO_TOAST`() {
         val none =
             io.github.noamcohen48.tap.api.v1.Error

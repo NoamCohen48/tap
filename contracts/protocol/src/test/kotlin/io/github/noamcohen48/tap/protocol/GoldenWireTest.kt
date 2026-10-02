@@ -17,6 +17,8 @@ import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Toast
+import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
 import io.github.noamcohen48.tap.wire.v1.Authentication
 import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
@@ -129,6 +131,19 @@ class GoldenWireTest {
             "request-choose-permission" to (
                 envelope(Requests.of(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY))) to Request::parseFrom
             ),
+            "request-choose-permission-accuracy" to (
+                envelope(
+                    Requests.of(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE)),
+                ) to Request::parseFrom
+            ),
+            "request-perform-accessibility-action" to (
+                envelope(Requests.of(Commands.performAccessibilityAction(Selectors.resource("details"), StandardAction.A11Y_EXPAND))) to
+                    Request::parseFrom
+            ),
+            "request-perform-custom-action" to (
+                envelope(Requests.of(Commands.performCustomAction(Selectors.resource("card"), "Archive"))) to Request::parseFrom
+            ),
+            "request-set-progress" to (envelope(Requests.of(Commands.setProgress(Selectors.resource("volume"), 42.5f))) to Request::parseFrom),
             "request-await-toast" to (
                 envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom
             ),

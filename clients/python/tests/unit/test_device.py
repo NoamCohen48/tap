@@ -11,10 +11,14 @@ from tap_e2e import (
     DisplayRotation,
     ErrorCode,
     FailureReason,
+    LocationAccuracy,
     Orientation,
     PermissionChoice,
     PermissionPrompt,
+    Range,
+    RangeType,
     ServerError,
+    StandardAction,
     TapError,
     TapClient,
     Toast,
@@ -349,6 +353,47 @@ def test_screen_permission_and_gesture_methods_send_their_typed_commands(fake, d
     assert commands[6].drag.target == res("bin")._proto
     assert [(c.pinch.direction, c.pinch.percent) for c in commands[7:9]] == [(pb.PINCH_OPEN, 80), (pb.PINCH_CLOSE, 40)]
     assert commands[9].fling.direction == pb.DIR_DOWN
+
+
+def test_accessibility_actions_progress_and_accuracy_send_their_typed_commands(fake, device):
+    commands: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        commands.append(command)
+        if command.HasField("snapshot"):
+            return pb.CommandResult(
+                snapshot=pb.ElementSnapshot(
+                    actions=[pb.A11Y_COLLAPSE, 999],
+                    custom_actions=["Archive", "Mark unread"],
+                    range=pb.Range(type=pb.RANGE_FLOAT, min=0, max=1, current=0.25),
+                )
+            )
+        if command.HasField("wait_permission_prompt"):
+            return pb.CommandResult(
+                permission_prompt=pb.PermissionPrompt(package_name="p", choices=[pb.PERMISSION_DENY], accuracies=[pb.LOCATION_PRECISE])
+            )
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    card = device.screen.element(res("card"))
+    snapshot = card.snapshot()
+    assert snapshot.actions == (StandardAction.COLLAPSE,)
+    assert snapshot.custom_actions == ("Archive", "Mark unread")
+    assert snapshot.range == Range(RangeType.FLOAT, 0.0, 1.0, 0.25)
+    card.perform_action(StandardAction.EXPAND)
+    card.perform_custom_action("Archive")
+    card.set_progress(0.5)
+    with pytest.raises(ValueError):
+        card.set_progress(float("nan"))
+    assert device.await_permission_prompt().accuracies == (LocationAccuracy.PRECISE,)
+    device.choose_permission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+
+    standard, custom = [c.perform_accessibility_action for c in commands if c.HasField("perform_accessibility_action")]
+    assert standard.standard == pb.A11Y_EXPAND and standard.selector == res("card")._proto
+    assert custom.custom == "Archive"
+    [progress] = [c.set_progress for c in commands if c.HasField("set_progress")]
+    assert progress.value == 0.5
+    assert commands[-1].choose_permission.accuracy == pb.LOCATION_APPROXIMATE
 
 
 def test_await_permission_prompt_timeout_carries_no_permission_prompt(fake, device):

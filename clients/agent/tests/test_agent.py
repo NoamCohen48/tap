@@ -195,7 +195,9 @@ def test_rotate_screen_and_permission_report_what_the_device_says(fake, agent):
         if op == "wait_permission_prompt":
             return pb.CommandResult(
                 permission_prompt=pb.PermissionPrompt(
-                    package_name="com.android.permissioncontroller", choices=[pb.PERMISSION_ALLOW_FOREGROUND_ONLY, pb.PERMISSION_DENY]
+                    package_name="com.android.permissioncontroller",
+                    choices=[pb.PERMISSION_ALLOW_FOREGROUND_ONLY, pb.PERMISSION_DENY],
+                    accuracies=[pb.LOCATION_PRECISE, pb.LOCATION_APPROXIMATE],
                 )
             )
         return None
@@ -213,10 +215,47 @@ def test_rotate_screen_and_permission_report_what_the_device_says(fake, agent):
     assert fake.devices.commands[-3].press_key.key_code == 224
     agent.screen("off")
     assert fake.devices.commands[-2].press_key.key_code == 223
-    assert agent.permission() == "permission dialog (com.android.permissioncontroller) offers: allow-foreground-only, deny"
+    assert agent.permission() == (
+        "permission dialog (com.android.permissioncontroller) offers: allow-foreground-only, deny; accuracy: precise, approximate"
+    )
     assert agent.permission("allow-one-time") == "pressed allow-one-time"
     assert fake.devices.commands[-1].choose_permission.choice == pb.PERMISSION_ALLOW_ONE_TIME
-    for bad in (lambda: agent.rotate("sideways"), lambda: agent.screen("dim"), lambda: agent.permission("maybe")):
+    assert fake.devices.commands[-1].choose_permission.accuracy == pb.LOCATION_ACCURACY_UNSPECIFIED
+    assert agent.permission("allow-foreground-only", accuracy="approximate") == "pressed allow-foreground-only (approximate)"
+    assert fake.devices.commands[-1].choose_permission.accuracy == pb.LOCATION_APPROXIMATE
+    for bad in (
+        lambda: agent.rotate("sideways"),
+        lambda: agent.screen("dim"),
+        lambda: agent.permission("maybe"),
+        lambda: agent.permission(accuracy="precise"),
+        lambda: agent.permission("allow", accuracy="exact"),
+    ):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+
+
+def test_accessibility_actions_and_progress(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(
+            snapshot=pb.ElementSnapshot(
+                actions=[pb.A11Y_EXPAND, pb.A11Y_SCROLL_FORWARD],
+                custom_actions=["Archive"],
+                range=pb.Range(type=pb.RANGE_INT, min=0, max=100, current=20),
+            )
+        )
+        if command.HasField("snapshot")
+        else None
+    )
+    assert agent.action("id=card") == "id=card offers: expand, scroll-forward, 'Archive'\nrange 0..100, now 20 (int)"
+    assert agent.action("id=card", "expand") == "performed expand on id=card"
+    assert fake.devices.commands[-1].perform_accessibility_action.standard == pb.A11Y_EXPAND
+    assert agent.action("id=card", "Archive", custom=True) == "performed 'Archive' on id=card"
+    assert fake.devices.commands[-1].perform_accessibility_action.custom == "Archive"
+    assert agent.progress("id=volume", 55) == "set progress 55 on id=volume"
+    assert fake.devices.commands[-1].set_progress.value == 55
+    for bad in (lambda: agent.action("id=card", "explode"), lambda: agent.action("id=card", custom=True)):
         with pytest.raises(AgentError) as info:
             bad()
         assert info.value.exit_code == EXIT_USAGE
@@ -397,7 +436,7 @@ EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
-    "condition",
+    "condition", "accessibility_action", "set_progress",
 }
 
 

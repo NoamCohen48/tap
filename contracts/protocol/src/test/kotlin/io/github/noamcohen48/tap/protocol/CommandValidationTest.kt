@@ -28,6 +28,9 @@ import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -97,6 +100,23 @@ class CommandValidationTest {
                 "toast unknown mode" to
                     Command.newBuilder().setAwaitToast(AwaitToast.newBuilder().setText("x").setModeValue(99)).build(),
                 "toast blank package" to Commands.awaitToast(packageName = " "),
+                "unknown location accuracy" to
+                    Command
+                        .newBuilder()
+                        .setChoosePermission(ChoosePermission.newBuilder().setChoice(PermissionChoice.PERMISSION_DENY).setAccuracyValue(99))
+                        .build(),
+                "no accessibility action" to
+                    Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(button)).build(),
+                "standard action" to Commands.performAccessibilityAction(button, StandardAction.STANDARD_ACTION_UNSPECIFIED),
+                "unknown standard action" to
+                    Command
+                        .newBuilder()
+                        .setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(button).setStandardValue(99))
+                        .build(),
+                "empty custom action" to Commands.performCustomAction(button, ""),
+                "custom action too long" to Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "progress NaN" to Commands.setProgress(button, Float.NaN),
+                "progress infinite" to Commands.setProgress(button, Float.NEGATIVE_INFINITY),
             )
         invalid.forEach { (name, command) ->
             assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
@@ -136,6 +156,10 @@ class CommandValidationTest {
             Commands.fling(list, Direction.DIR_LEFT),
             Commands.hideKeyboard(),
             Commands.performImeAction(button),
+            Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE),
+            Commands.performAccessibilityAction(button, StandardAction.A11Y_PASTE),
+            Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS)),
+            Commands.setProgress(button, -1.5f),
             Commands.setClipboard(""),
             Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS)),
             Commands.getClipboard(),
