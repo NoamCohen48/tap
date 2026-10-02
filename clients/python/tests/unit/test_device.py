@@ -439,9 +439,13 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
     with pytest.raises(ServerError) as stuck:
         device.set_density(999)
     assert stuck.value.reason is FailureReason.DEVICE_SETTING
-    animations, font, density, reset, dark, _ = fake.devices.conditions
+    device.set_network(airplane_mode=True, mobile_data=False)
+    with pytest.raises(ValueError):
+        device.set_network()
+    animations, font, density, reset, dark, _, network = fake.devices.conditions
     assert animations.enabled is False and font.scale == pytest.approx(1.3)
     assert density.dpi == 320 and not reset.HasField("dpi") and dark.enabled is True
+    assert network.airplane_mode is True and network.mobile_data is False and not network.HasField("wifi")
     for request in fake.devices.conditions:
         assert request.attached_device_id == device.attached_device_id
         assert request.client_connection_id == device.owner_connection.id

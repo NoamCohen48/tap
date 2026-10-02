@@ -24,6 +24,7 @@ import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
@@ -386,6 +387,34 @@ class Device internal constructor(
             setDensity(
                 SetDensityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
                     .apply { if (dpi != null) setDpi(dpi) }.build(),
+            )
+        }
+    }
+
+    /**
+     * Switches airplane mode, Wi-Fi and mobile data on or off until [detach], see [setAnimations];
+     * a `null` switch is left as it is. These are the device's real switches (nothing is mocked):
+     * the app sees what it would see if a user flipped them, and turning Wi-Fi on says nothing about
+     * when it connects. Airplane mode is applied first, so `setNetwork(airplaneMode = true, wifi =
+     * true)` is airplane mode with Wi-Fi on. API 29+. A device reached over ADB on the network
+     * refuses Wi-Fi off or airplane mode on ([FailureReason.DEVICE_SETTING]): that would cut Tap off.
+     * Read back with [DeviceInfo.airplaneMode], [DeviceInfo.wifiEnabled] and
+     * [DeviceInfo.mobileDataEnabled].
+     */
+    suspend fun setNetwork(
+        airplaneMode: Boolean? = null,
+        wifi: Boolean? = null,
+        mobileData: Boolean? = null,
+    ) {
+        require(airplaneMode != null || wifi != null || mobileData != null) { "set at least one of airplaneMode, wifi or mobileData" }
+        condition("Device.setNetwork") {
+            setNetwork(
+                SetNetworkRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .apply {
+                        airplaneMode?.let(::setAirplaneMode)
+                        wifi?.let(::setWifi)
+                        mobileData?.let(::setMobileData)
+                    }.build(),
             )
         }
     }

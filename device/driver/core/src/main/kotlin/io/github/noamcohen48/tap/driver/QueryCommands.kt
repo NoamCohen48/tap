@@ -89,6 +89,9 @@ internal class QueryCommands(
             .setDarkMode(conditions.darkMode)
             .setFontScale(conditions.fontScale)
             .setDensityDpi(conditions.densityDpi)
+            .setAirplaneMode(conditions.airplaneMode)
+            .setWifiEnabled(conditions.wifiEnabled)
+            .setMobileDataEnabled(conditions.mobileDataEnabled)
             .build()
 
     /**

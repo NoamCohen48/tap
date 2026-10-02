@@ -494,7 +494,7 @@ class ElementSnapshot(_message.Message):
     def __init__(self, class_name: _Optional[str] = ..., package_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[Bounds, _Mapping]] = ..., checkable: _Optional[bool] = ..., checked: _Optional[bool] = ..., clickable: _Optional[bool] = ..., enabled: _Optional[bool] = ..., focusable: _Optional[bool] = ..., focused: _Optional[bool] = ..., long_clickable: _Optional[bool] = ..., scrollable: _Optional[bool] = ..., selected: _Optional[bool] = ..., child_count: _Optional[int] = ..., showing_hint: _Optional[bool] = ...) -> None: ...
 
 class DeviceInfo(_message.Message):
-    __slots__ = ("api_level", "manufacturer", "model", "product", "display_width", "display_height", "display_rotation", "current_package", "screen_on", "keyguard_locked", "keyguard_secure", "keyboard_shown", "auto_rotate", "animations_enabled", "dark_mode", "font_scale", "density_dpi")
+    __slots__ = ("api_level", "manufacturer", "model", "product", "display_width", "display_height", "display_rotation", "current_package", "screen_on", "keyguard_locked", "keyguard_secure", "keyboard_shown", "auto_rotate", "animations_enabled", "dark_mode", "font_scale", "density_dpi", "airplane_mode", "wifi_enabled", "mobile_data_enabled")
     API_LEVEL_FIELD_NUMBER: _ClassVar[int]
     MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
@@ -512,6 +512,9 @@ class DeviceInfo(_message.Message):
     DARK_MODE_FIELD_NUMBER: _ClassVar[int]
     FONT_SCALE_FIELD_NUMBER: _ClassVar[int]
     DENSITY_DPI_FIELD_NUMBER: _ClassVar[int]
+    AIRPLANE_MODE_FIELD_NUMBER: _ClassVar[int]
+    WIFI_ENABLED_FIELD_NUMBER: _ClassVar[int]
+    MOBILE_DATA_ENABLED_FIELD_NUMBER: _ClassVar[int]
     api_level: int
     manufacturer: str
     model: str
@@ -529,7 +532,10 @@ class DeviceInfo(_message.Message):
     dark_mode: bool
     font_scale: float
     density_dpi: int
-    def __init__(self, api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., product: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., display_rotation: _Optional[int] = ..., current_package: _Optional[str] = ..., screen_on: _Optional[bool] = ..., keyguard_locked: _Optional[bool] = ..., keyguard_secure: _Optional[bool] = ..., keyboard_shown: _Optional[bool] = ..., auto_rotate: _Optional[bool] = ..., animations_enabled: _Optional[bool] = ..., dark_mode: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ...) -> None: ...
+    airplane_mode: bool
+    wifi_enabled: bool
+    mobile_data_enabled: bool
+    def __init__(self, api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., product: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., display_rotation: _Optional[int] = ..., current_package: _Optional[str] = ..., screen_on: _Optional[bool] = ..., keyguard_locked: _Optional[bool] = ..., keyguard_secure: _Optional[bool] = ..., keyboard_shown: _Optional[bool] = ..., auto_rotate: _Optional[bool] = ..., animations_enabled: _Optional[bool] = ..., dark_mode: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi_enabled: _Optional[bool] = ..., mobile_data_enabled: _Optional[bool] = ...) -> None: ...
 
 class Toast(_message.Message):
     __slots__ = ("text", "package_name")

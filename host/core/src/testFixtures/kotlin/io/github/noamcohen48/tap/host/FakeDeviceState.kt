@@ -55,7 +55,30 @@ class FakeDeviceState(
                 val pkg = args[4]
                 write(StateKey.AppLocales(pkg).id, args.getOrNull(args.indexOf("--locales") + 1)?.takeIf { "--locales" in args } ?: "")
             }
+            command == "shell cmd connectivity airplane-mode enable" -> airplane(true)
+            command == "shell cmd connectivity airplane-mode disable" -> airplane(false)
+            command.startsWith("shell svc wifi ") -> {
+                val airplane = values[AIRPLANE] == "1"
+                write(WIFI, if (args[3] == "enable") (if (airplane) "2" else "1") else "0")
+            }
+            command.startsWith("shell svc data ") -> write(DATA, if (args[3] == "enable") "1" else "0")
             else -> null
         }
+    }
+
+    /** As Android does: airplane mode turns Wi-Fi off (`3`, back on with it) and back on when it ends. */
+    private fun airplane(on: Boolean): Adb.Result {
+        write(AIRPLANE, if (on) "1" else "0")
+        val wifi = values[WIFI]
+        if (on && (wifi == "1" || wifi == "2")) values[WIFI] = "3"
+        if (!on && (wifi == "3" || wifi == "2")) values[WIFI] = "1"
+        return ok("")
+    }
+
+    companion object {
+        /** The raw global settings behind [StateKey.Network], as the device stores them. */
+        val AIRPLANE = StateKey.Setting("global", "airplane_mode_on").id
+        val WIFI = StateKey.Setting("global", "wifi_on").id
+        val DATA = StateKey.Setting("global", "mobile_data").id
     }
 }

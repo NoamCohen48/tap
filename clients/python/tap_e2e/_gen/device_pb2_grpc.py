@@ -104,6 +104,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetDensityRequest.SerializeToString,
                 response_deserializer=device__pb2.SetDensityResponse.FromString,
                 _registered_method=True)
+        self.SetNetwork = channel.unary_unary(
+                '/tap.v1.DeviceService/SetNetwork',
+                request_serializer=device__pb2.SetNetworkRequest.SerializeToString,
+                response_deserializer=device__pb2.SetNetworkResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -207,6 +212,16 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetNetwork(self, request, context):
+        """Airplane mode (`cmd connectivity airplane-mode`), Wi-Fi (`svc wifi`) and mobile data
+        (`svc data`): the real switches, nothing mocked. API 29+. Airplane mode is written first;
+        all three are captured on the first change and restored airplane mode first. A device reached
+        over ADB on the network refuses Wi-Fi off / airplane mode on (FAILED_PRECONDITION).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -279,6 +294,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.SetDensity,
                     request_deserializer=device__pb2.SetDensityRequest.FromString,
                     response_serializer=device__pb2.SetDensityResponse.SerializeToString,
+            ),
+            'SetNetwork': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetNetwork,
+                    request_deserializer=device__pb2.SetNetworkRequest.FromString,
+                    response_serializer=device__pb2.SetNetworkResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -659,6 +679,33 @@ class DeviceService:
             '/tap.v1.DeviceService/SetDensity',
             device__pb2.SetDensityRequest.SerializeToString,
             device__pb2.SetDensityResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetNetwork(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetNetwork',
+            device__pb2.SetNetworkRequest.SerializeToString,
+            device__pb2.SetNetworkResponse.FromString,
             options,
             channel_credentials,
             insecure,
