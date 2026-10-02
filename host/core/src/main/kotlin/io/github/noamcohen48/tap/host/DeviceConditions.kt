@@ -60,8 +60,9 @@ class DeviceConditions internal constructor(
      * Mock location: the device reports this fix ([latitude], [longitude], [accuracyM] meters,
      * [altitudeM] meters or none) from its location providers until detach. The driver app
      * becomes the mock-location app (its `android:mock_location` app-op) and, when location is
-     * off, location is turned on; both are captured first and restored on detach, which also
-     * ends the mock. The driver then serves the fix from LocationManager test providers.
+     * off, location is turned on; both are captured first and restored on detach. The driver
+     * serves the fix from LocationManager test providers, which outlive it and its app-op: they
+     * are captured too ([StateKey.MockLocationProviders], restored first) and removed on detach.
      */
     suspend fun setLocation(
         latitude: Double,
@@ -73,7 +74,8 @@ class DeviceConditions internal constructor(
         require(longitude in -180.0..180.0) { "longitude must be -180 to 180, not $longitude" }
         require(accuracyM == null || (accuracyM.isFinite() && accuracyM > 0f)) { "accuracy must be a positive number of meters, not $accuracyM" }
         require(altitudeM == null || altitudeM.isFinite()) { "altitude must be finite, not $altitudeM" }
-        session.captureBeforeChange(listOf(StateKey.LOCATION_MODE, StateKey.DRIVER_MOCK_LOCATION))
+        // Newest first on restore: the test providers go while the driver still has the app-op.
+        session.captureBeforeChange(listOf(StateKey.LOCATION_MODE, StateKey.DRIVER_MOCK_LOCATION, StateKey.MockLocationProviders.id))
         val locationOff = session.guardAdb { adb.readState(serial, StateKey.LOCATION_MODE) }.let { it == null || it == "0" }
         change(mapOfNotNull(StateKey.DRIVER_MOCK_LOCATION to "allow", (StateKey.LOCATION_MODE to LOCATION_ON).takeIf { locationOff }))
         session.checkUsable()

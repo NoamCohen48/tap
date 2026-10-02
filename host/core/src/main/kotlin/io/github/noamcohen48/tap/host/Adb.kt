@@ -547,6 +547,7 @@ open class Adb internal constructor(
                     ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.product.locale"), null, "", "No readable locale on $serial")
             }
             is StateKey.DeviceFile -> fileInfo(serial, parsed.path)?.let { "present" }
+            StateKey.MockLocationProviders -> mockLocationProviders(serial).sorted().joinToString(",")
             is StateKey.AppOp -> {
                 val command = listOf("shell", "appops", "get", shellQuote(parsed.packageName), shellQuote(parsed.op))
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -602,6 +603,11 @@ open class Adb internal constructor(
                         StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
                     }
                 }
+            StateKey.MockLocationProviders -> {
+                val keep = value.orEmpty().split(',').filter(String::isNotEmpty).toSet()
+                val remove = mockLocationProviders(serial) - keep
+                if (remove.isNotEmpty()) removeTestProviders(serial, remove.sorted())
+            }
             is StateKey.DeviceFile -> {
                 // Only ever captured as absent: restoring removes what the session created.
                 check(value == null) { "a device file can only be restored as absent, not $value" }
@@ -705,6 +711,37 @@ open class Adb internal constructor(
         val command = listOf("shell", "content", "query", "--uri", "content://media/external/file", "--projection", "_id", "--where", shellQuote(where))
         val output = exec(serial, *command.toTypedArray())
         return output.lineSequence().any { it.trim().startsWith("Row:") }
+    }
+
+    /**
+     * The location providers that are test providers, from `dumpsys location`: `gps provider
+     * [mock]:` on API 29+, and on API 26-28 the "Mock Providers" section, where each provider's
+     * name is followed by its `mHasLocation=` line.
+     */
+    private suspend fun mockLocationProviders(serial: String): Set<String> {
+        val lines = exec(serial, "shell", "dumpsys", "location").lines().map(String::trim)
+        val current = lines.mapNotNull { MOCK_PROVIDER.matchEntire(it)?.groupValues?.get(1) }
+        val legacy = lines.zipWithNext().filter { (name, next) -> next.startsWith("mHasLocation=") && PROVIDER_NAME.matches(name) }.map { it.first }
+        return (current + legacy).toSet()
+    }
+
+    /**
+     * Removes the test providers [names] through the driver app's `MockLocationReceiver`, which
+     * needs the mock-location app-op (LocationManager ignores the call silently without it): the
+     * op is allowed first, and restoring goes newest first, so the op's own saved mode is
+     * written back after this.
+     */
+    private suspend fun removeTestProviders(
+        serial: String,
+        names: List<String>,
+    ) {
+        exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "android:mock_location", "allow")
+        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.MockLocationReceiver", "--es", "remove", shellQuote(names.joinToString(",")))
+        val output = exec(serial, *command.toTypedArray())
+        if (!output.contains("Broadcast completed: result=1")) {
+            val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
+            throw AdbCommandException(serial, command, null, output, "Removing the mock location providers on $serial failed: $reason")
+        }
     }
 
     /**
@@ -1176,6 +1213,8 @@ internal fun parseDumpsysPackage(
 }
 
 private val WHITESPACE = Regex("\\s+")
+private val MOCK_PROVIDER = Regex("([A-Za-z0-9_]+) provider \\[mock\\]:")
+private val PROVIDER_NAME = Regex("[A-Za-z0-9_]+")
 
 private val DUMPSYS_VERSION_CODE = Regex("""^versionCode=(\d+)""")
 

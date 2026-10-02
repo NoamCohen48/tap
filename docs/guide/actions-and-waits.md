@@ -109,7 +109,7 @@ what the device had before the session's first change comes back on detach, as f
 | `setDensity(dpi)` / `set_density` | display density override, 100 to 1000 dpi; `null` / `None` for the physical density | `densityDpi` |
 | `setNetwork(airplaneMode, wifi, mobileData)` / `set_network` | the real switches (pass only the ones to change); API 29+. Airplane mode turns Wi-Fi off, as on a phone, unless the call also turns Wi-Fi on. A device reached over ADB on Wi-Fi refuses Wi-Fi off and airplane mode on: Tap would lose it | `airplaneMode`, `wifiEnabled`, `mobileDataEnabled` |
 | `setSystemLocales(tags)` / `set_system_locales` | the device's languages (Settings › Languages), BCP-47 tags in preference order; every app that follows the system language sees it. Apps with their own language (`App.setLocales`) keep it | `systemLocales` |
-| `setLocation(latitude, longitude, accuracyM, altitudeM)` / `set_location` | a mock location: the GPS and network providers report this fix (re-sent every second, so an app that starts listening later gets it); call again to move it. The Tap driver app becomes the device's mock-location app and location is turned on if it was off; both come back on detach, which ends the mock | the app's own location |
+| `setLocation(latitude, longitude, accuracyM, altitudeM)` / `set_location` | a mock location: the GPS and network providers report this fix (re-sent every second, so an app that starts listening later gets it); call again to move it. The Tap driver app becomes the device's mock-location app and location is turned on if it was off; both come back on detach, which also removes the mock providers | the app's own location |
 
 ```kotlin
 device.setAnimations(false)

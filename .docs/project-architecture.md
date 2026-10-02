@@ -113,6 +113,7 @@ tap/
 |   +-- driver/                  :device:driver — Android; the on-device driver
 |   |   +-- src/main/AndroidManifest.xml   app shell (package io.github.noamcohen48.tap.driver, <queries> for sync/fault providers; CHANGE_CONFIGURATION, WRITE_SETTINGS, ACCESS_MOCK_LOCATION)
 |   |   +-- src/main/kotlin/.../SystemLocaleReceiver.kt  device-wide locale (receiver only shell/system may send to: CHANGE_CONFIGURATION), as Settings' language picker
+|   |   +-- src/main/kotlin/.../MockLocationReceiver.kt  removes LocationManager test providers on detach (shell-only, like SystemLocaleReceiver)
 |   |   +-- src/androidTest/kotlin/io/github/noamcohen48/tap/driver/
 |   |   |   +-- TapDriverServerTest.kt   instrumentation entry point (keeps the process alive)
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers

@@ -209,7 +209,7 @@ written; see "Verification" below for what ran on devices.
 |---|---|---|---|
 | `setNetwork(airplaneMode?, wifi?, mobileData?)` | `cmd connectivity airplane-mode enable/disable`, `svc wifi`, `svc data` | `Settings.Global` `airplane_mode_on`, `wifi_on`, `mobile_data` (host); `DeviceInfo.airplane_mode`/`wifi_enabled`/`mobile_data_enabled` (driver) | API 29+ (`cmd connectivity`). Real switches, nothing mocked. Airplane mode is written first and restored first: Android turns Wi-Fi off with it (`wifi_on=3`) and back on after; `wifi_on=2` is on under airplane mode. A serial reached over the network (`host:port`, wireless debugging) refuses Wi-Fi off / airplane on (`DEVICE_SETTING`) before anything is captured: it would cut Tap off |
 | `setSystemLocales(tags)` | the driver app's `SystemLocaleReceiver` (below) | `settings get system system_locales`, else `persist.sys.locale`, else `ro.product.locale` (host); `DeviceInfo.system_locales` (driver) | Tags validated and canonicalised as `App.setLocales`, 1..16 |
-| `setLocation(lat, lon, accuracyM?, altitudeM?)` | the driver becomes the mock-location app (`appops set <driver> android:mock_location allow`); `location_mode` 3 when location was off; then driver command `set_location` | the app-op and `location_mode` (host); the fix itself is what the app's listener gets (tests) | Captures `setting:secure/location_mode` and `appop:<driver>/android:mock_location` |
+| `setLocation(lat, lon, accuracyM?, altitudeM?)` | the driver becomes the mock-location app (`appops set <driver> android:mock_location allow`); `location_mode` 3 when location was off; then driver command `set_location` | the app-op and `location_mode` (host); the fix itself is what the app's listener gets (tests) | Captures `setting:secure/location_mode`, `appop:<driver>/android:mock_location` and `mock-location-providers` (the test providers, from `dumpsys location`) |
 
 **Device locale.** Android has no shell command for the system locale (`cmd locale` is per-app
 only; the Samsung has no `locale` service at all). Maestro's approach, adapted: an exported
@@ -229,8 +229,16 @@ on the binder proxy class is denied as max-target-r. Verified on both local devi
 network (and fused, API 31+), added with the instrumentation's *target* context and re-sent every
 second on a daemon thread, so an app that starts listening later still gets a fix. Default
 accuracy 5 m. `SecurityException` / `IllegalArgumentException` from LocationManager are
-`ACTION_REJECTED`. Detach restores the app-op and location mode; whether the test providers
-outlive the driver session is what `MockLocationTest` reports. On the Samsung, turning location
+`ACTION_REJECTED`. The test providers outlive the driver instrumentation *and* the app-op: on the
+SM-J810G (API 29) gps and network stayed `[mock]` at the last fix after detach, and the next
+`set_location` failed with `Provider "gps" already exists`. So the host captures
+`mock-location-providers` (the `[mock]` providers in `dumpsys location`, or the API 26-28 "Mock
+Providers" section) and restores it first: providers not in the saved list are removed through
+the driver app's `MockLocationReceiver` (shell-only, like the locale receiver), with the app-op
+allowed for the call, since LocationManager ignores `removeTestProvider` without it; the op and
+location mode are restored after. The driver also replaces a provider that is already a test
+provider (a crashed run's, or one removed under a live driver) instead of failing.
+`MockLocationTest` asserts no `[mock]` provider is left. On the Samsung, turning location
 on shows Google Play services' "improve location accuracy" activity
 (`LocationOffWarningActivity`) — device behaviour, not dismissed by Tap. The Samsung has no
 `cmd location`.

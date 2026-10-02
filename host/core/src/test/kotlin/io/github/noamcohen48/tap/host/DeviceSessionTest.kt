@@ -921,6 +921,22 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `mock providers read from both dumpsys layouts and keep the ones the device already had`() =
+        runBlocking {
+            for (legacy in listOf(false, true)) {
+                val state = FakeDeviceState(mapOf(StateKey.DRIVER_MOCK_LOCATION to "allow")).apply { legacyLocationDump = legacy }
+                val adb = FakeAdb().apply { responder = { _, command -> state.answer(command) } }
+                state.mockProviders += setOf("network")
+                assertEquals("network", adb.readState("serial", StateKey.MockLocationProviders.id))
+                state.mockProviders += setOf("gps", "fused")
+                assertEquals("fused,gps,network", adb.readState("serial", StateKey.MockLocationProviders.id))
+                // Another tool's test provider from before the session stays.
+                adb.restoreState("serial", listOf(SavedState(StateKey.MockLocationProviders.id, "network")))
+                assertEquals(setOf("network"), state.mockProviders)
+            }
+        }
+
+    @Test
     fun `a mock location makes the driver the mock app, turns location on and both come back on detach`() =
         runBlocking {
             val state = FakeDeviceState(mapOf(StateKey.LOCATION_MODE to "0"))
@@ -932,14 +948,24 @@ class DeviceSessionTest {
                 // The app-op and location are on before the driver is asked.
                 assertEquals("allow", state.values[StateKey.DRIVER_MOCK_LOCATION])
                 assertEquals("3", state.values[StateKey.LOCATION_MODE])
+                // As the driver does: gps and network become test providers, which outlive it.
+                state.mockProviders += setOf("gps", "network")
                 fake.respond(frame.requestId, Responses.done())
                 setting.await()
                 assertEquals(
-                    listOf(SavedState(StateKey.LOCATION_MODE, "0"), SavedState(StateKey.DRIVER_MOCK_LOCATION, "default")),
+                    listOf(
+                        SavedState(StateKey.LOCATION_MODE, "0"),
+                        SavedState(StateKey.DRIVER_MOCK_LOCATION, "default"),
+                        SavedState(StateKey.MockLocationProviders.id, ""),
+                    ),
                     journalStore().read()?.savedState,
                 )
 
                 session.close(timeoutMs = 5_000)
+                assertEquals(emptySet(), state.mockProviders)
+                // Removed while the driver still had the app-op, which is restored after.
+                val removed = state.writes.indexOf("mock-providers-removed=gps,network")
+                assertTrue(removed >= 0 && removed < state.writes.lastIndexOf("${StateKey.DRIVER_MOCK_LOCATION}=default"), "${state.writes}")
                 assertEquals("0", state.values[StateKey.LOCATION_MODE])
                 assertEquals("default", state.values[StateKey.DRIVER_MOCK_LOCATION])
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)

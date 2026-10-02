@@ -36,6 +36,12 @@ class FakeDeviceState(
     /** Files that exist but the shell user may not read (as `/system/build.prop` on Samsung). */
     val unreadable = mutableSetOf<String>()
     val stuck = mutableSetOf<String>()
+
+    /** The location providers that are test providers, as a mock location leaves them. */
+    val mockProviders = mutableSetOf<String>()
+
+    /** `dumpsys location` in the API 26-28 layout (a "Mock Providers" section). */
+    var legacyLocationDump: Boolean = false
     val writes = mutableListOf<String>()
 
     private fun write(
@@ -92,6 +98,14 @@ class FakeDeviceState(
                     values[PERSIST_LOCALE] = tags.substringBefore(',')
                     ok("Broadcasting: Intent { }\nBroadcast completed: result=1, data=\"$tags\"\n")
                 }
+            }
+            command == "shell dumpsys location" -> ok(locationDump())
+            command.startsWith("shell am broadcast ") && "$DRIVER_PACKAGE/.MockLocationReceiver" in command -> {
+                val names = args[args.indexOf("remove") + 1].trim('\'').split(',')
+                writes += "mock-providers-removed=${names.joinToString(",")}"
+                // As LocationManager: without the app-op the call is ignored.
+                if (values[StateKey.DRIVER_MOCK_LOCATION] == "allow") mockProviders -= names.toSet()
+                ok("Broadcasting: Intent { }\nBroadcast completed: result=1, data=\"${names.joinToString(",")}\"\n")
             }
             command.startsWith("shell cmd locale get-app-locales ") -> {
                 val pkg = args[4]
@@ -185,6 +199,17 @@ class FakeDeviceState(
             else -> null
         }
     }
+
+    private fun locationDump(): String =
+        if (legacyLocationDump) {
+            "Location Providers:\n    gps Internal State:\n  Mock Providers:\n" +
+                mockProviders.joinToString("") { "      $it\n      mHasLocation=true\n      mLocation:\n" }
+        } else {
+            "Location Manager State:\n  Location Providers:\n" +
+                listOf("passive", "network", "fused", "gps").joinToString("") { name ->
+                    "    $name provider${if (name in mockProviders) " [mock]" else ""}:\n      enabled=true\n"
+                }
+        }
 
     private fun scanned(target: String) {
         if (target in files) mediaIndex += target else mediaIndex -= target

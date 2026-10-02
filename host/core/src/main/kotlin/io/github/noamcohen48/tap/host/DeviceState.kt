@@ -52,6 +52,16 @@ sealed interface StateKey {
     }
 
     /**
+     * The location providers that are LocationManager test providers (`dumpsys location`):
+     * sorted, comma-separated names, empty when none. Mock location replaces `gps` and `network`
+     * (and `fused`) with test providers that outlive the driver and its app-op, so restoring
+     * removes every one not in the saved list, through the driver app's `MockLocationReceiver`.
+     */
+    data object MockLocationProviders : StateKey {
+        override val id: String = "mock-location-providers"
+    }
+
+    /**
      * An app-op mode of one package (`appops get|set`): `allow`, `ignore`, `deny`, `foreground`
      * or `default`. A package with the op at its default mode reads `default`.
      */
@@ -119,6 +129,7 @@ sealed interface StateKey {
                 id == NightMode.id -> NightMode
                 id == Density.id -> Density
                 id == SystemLocales.id -> SystemLocales
+                id == MockLocationProviders.id -> MockLocationProviders
                 id.startsWith("network:") -> Network.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Bad state key $id")
                 id.startsWith("file:") -> DeviceFile(id.removePrefix("file:").also { require(it.startsWith("/")) { "Bad state key $id" } })
                 id.startsWith("media:") -> DeviceFile(id.removePrefix("media:").also { require(it.startsWith("/")) { "Bad state key $id" } }, media = true)
