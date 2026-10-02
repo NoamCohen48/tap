@@ -97,6 +97,7 @@ internal class QueryCommands(
             .setAirplaneMode(conditions.airplaneMode)
             .setWifiEnabled(conditions.wifiEnabled)
             .setMobileDataEnabled(conditions.mobileDataEnabled)
+            .addAllSystemLocales(conditions.systemLocales)
             .build()
 
     /**

@@ -37,8 +37,11 @@ import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
 import io.github.noamcohen48.tap.host.DeviceConditions
+import io.github.noamcohen48.tap.host.canonicalLocales
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
 import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
@@ -279,6 +282,21 @@ class DeviceService(
                 it.setNetwork(airplane, wifi, data)
             }
             SetNetworkResponse.getDefaultInstance()
+        }
+
+    override suspend fun setSystemLocales(request: SetSystemLocalesRequest): SetSystemLocalesResponse =
+        reply {
+            argument(request.localesCount > 0) { "set at least one locale" }
+            val locales =
+                try {
+                    canonicalLocales(request.localesList)
+                } catch (bad: IllegalArgumentException) {
+                    throw InvalidArgumentException(bad.message ?: "invalid locales")
+                }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_system_locales", { addAllLocales(request.localesList) }) {
+                it.setSystemLocales(locales)
+            }
+            SetSystemLocalesResponse.getDefaultInstance()
         }
 
     /** Runs a device-condition change on the attached device and logs it as [operation]. */

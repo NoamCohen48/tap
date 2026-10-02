@@ -396,12 +396,12 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
 def test_condition_reads_back_and_app_locale(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda command: (
-        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320, wifi_enabled=True))
+        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320, wifi_enabled=True, system_locales=["fr-FR", "en"]))
         if command.HasField("device_info")
         else None
     )
     assert agent.condition() == (
-        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off"
+        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en"
     )
     assert agent.condition("animations", "off") == "animations off (restored on release)"
     assert agent.condition("font_scale", "1.25") == "font-scale 1.25 (restored on release)"
@@ -424,6 +424,11 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     assert len(fake.devices.conditions) == 4
     assert agent.condition("mobile-data", "off") == "mobile-data off (restored on release)"
     assert fake.devices.conditions[-1].mobile_data is False and not fake.devices.conditions[-1].HasField("wifi")
+    assert agent.condition("locale", "fr-FR, en") == "locale fr-FR,en (restored on release)"
+    assert list(fake.devices.conditions[-1].locales) == ["fr-FR", "en"]
+    with pytest.raises(AgentError) as empty:
+        agent.condition("locale", " , ")
+    assert empty.value.exit_code == EXIT_USAGE
     assert agent.app("locale", "com.example") == "com.example follows the system language"
     assert agent.app("locale", "com.example", "fr-FR, en") == "com.example languages: fr-FR, en"
     assert agent.app("locale", "com.example", "system") == "com.example follows the system language"

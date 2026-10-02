@@ -2,7 +2,7 @@ package io.github.noamcohen48.tap.host
 
 /**
  * Device-wide conditions a test may change for its session: animations, dark mode, font scale,
- * display density and the network switches. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
+ * display density, the device locale and the network switches. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
  * so detach restores the device as its owner left it, and is read back afterwards: a value the
  * device did not take is a [DeviceSettingException]. Apps see the new configuration as Android
  * delivers it (activities may be recreated); waiting for that is the test's business.
@@ -41,6 +41,17 @@ class DeviceConditions internal constructor(
     suspend fun setDensity(dpi: Int?) {
         require(dpi == null || dpi in MIN_DENSITY..MAX_DENSITY) { "density must be $MIN_DENSITY to $MAX_DENSITY dpi, not $dpi" }
         change(mapOf(StateKey.Density.id to dpi?.toString()))
+    }
+
+    /**
+     * The device-wide locale list (Settings › Languages), BCP-47 tags in preference order,
+     * canonicalised as Android reports them ([canonicalLocales]). Android has no shell command
+     * for it: the driver app's receiver applies it, as Settings' language picker does, and the
+     * list is read back from the device. Apps see it as a configuration change.
+     */
+    suspend fun setSystemLocales(locales: List<String>) {
+        require(locales.isNotEmpty()) { "the device needs at least one locale" }
+        change(mapOf(StateKey.SystemLocales.id to canonicalLocales(locales).joinToString(",")))
     }
 
     /**

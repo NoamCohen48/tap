@@ -59,7 +59,7 @@ STANDARD_ACTIONS = tuple(action.name.lower().replace("_", "-") for action in Sta
 ACCURACIES = tuple(accuracy.name.lower() for accuracy in LocationAccuracy)
 KEYBOARD_ACTIONS = ("state", "hide")
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
-CONDITIONS = ("animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data")
+CONDITIONS = ("animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale")
 """The device conditions `condition` reads or changes (restored on release)."""
 
 # Exit codes shared by the CLI and reported in MCP error results.
@@ -565,13 +565,14 @@ class Agent:
     def condition(self, name: str | None = None, value: str | None = None, device: str | None = None) -> str:
         """Without ``name``: reports every device condition. With ``name`` (animations on|off,
         dark-mode on|off, font-scale 0.5..2.0, density DPI|reset, airplane-mode / wifi /
-        mobile-data on|off) and ``value``: changes it until release, which restores what the
-        device had. Reports the value read back."""
+        mobile-data on|off, locale TAGS: the device languages as comma-separated BCP-47 tags) and
+        ``value``: changes it until release, which restores what the device had. Reports the value
+        read back."""
         if name is not None:
             name = name.strip().lower().replace("_", "-")
             if name not in CONDITIONS:
                 raise AgentError(f"condition takes {', '.join(CONDITIONS)}, not {name!r}", EXIT_USAGE)
-        change = None if value is None else _condition_change(name or "", value.strip().lower())
+        change = None if value is None else _condition_change(name or "", value.strip())
 
         def step() -> str:
             d = self._device(device)
@@ -586,6 +587,7 @@ class Agent:
                 "airplane-mode": "on" if info.airplane_mode else "off",
                 "wifi": "on" if info.wifi_enabled else "off",
                 "mobile-data": "on" if info.mobile_data_enabled else "off",
+                "locale": ",".join(info.system_locales) or "unknown",
             }
             if name is None:
                 return ", ".join(f"{key} {shown[key]}" for key in CONDITIONS)
@@ -754,6 +756,12 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
     """The device call that sets condition ``name`` to ``value``, checked before any call."""
     if not name:
         raise AgentError("condition: name the condition to change", EXIT_USAGE)
+    if name == "locale":
+        tags = [tag.strip() for tag in value.split(",") if tag.strip()]
+        if not tags:
+            raise AgentError("locale takes comma-separated BCP-47 tags, e.g. fr-FR,en", EXIT_USAGE)
+        return lambda d: d.set_system_locales(tags)
+    value = value.lower()
     if name in ("animations", "dark-mode", "airplane-mode", "wifi", "mobile-data"):
         if value not in ("on", "off"):
             raise AgentError(f"{name} takes on or off, not {value!r}", EXIT_USAGE)

@@ -783,6 +783,38 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `the device locale goes through the driver receiver, is read back and comes back on detach`() =
+        runBlocking {
+            val state = FakeDeviceState(productLocale = "en-GB")
+            openWithState("session-system-locale", state) { session, adb ->
+                session.conditions.setSystemLocales(listOf("fr-fr", "en-US"))
+                assertEquals("fr-FR,en-US", state.values[FakeDeviceState.SYSTEM_LOCALES])
+                assertTrue(adb.calls.any { "pm grant $DRIVER_PACKAGE android.permission.CHANGE_CONFIGURATION" in it }, "${adb.calls}")
+                assertTrue(adb.calls.any { "appops set $DRIVER_PACKAGE WRITE_SETTINGS allow" in it }, "${adb.calls}")
+                // Never set before: the build's locale is what was there.
+                assertEquals(listOf(SavedState(StateKey.SystemLocales.id, "en-GB")), journalStore().read()?.savedState)
+                session.conditions.setSystemLocales(listOf("de-DE"))
+
+                session.close(timeoutMs = 5_000)
+                assertEquals("en-GB", state.values[FakeDeviceState.SYSTEM_LOCALES])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `a locale the receiver refuses is a failure, and nothing changed stays captured`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(FakeDeviceState.SYSTEM_LOCALES to "en-US"), localeReceiverFails = true)
+            openWithState("session-system-locale-refused", state) { session, _ ->
+                val error = assertFailsWith<AdbCommandException> { session.conditions.setSystemLocales(listOf("fr-FR")) }
+                assertTrue("result=2" in error.message.orEmpty(), error.message)
+                assertFailsWith<IllegalArgumentException> { session.conditions.setSystemLocales(emptyList()) }
+                assertFailsWith<IllegalArgumentException> { session.conditions.setSystemLocales(listOf("not a tag")) }
+                assertEquals("en-US", state.values[FakeDeviceState.SYSTEM_LOCALES])
+            }
+        }
+
+    @Test
     fun `wifi turned on under airplane mode is restored off under it`() =
         runBlocking {
             val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "1", FakeDeviceState.WIFI to "0", FakeDeviceState.DATA to "0"))

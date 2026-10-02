@@ -6,7 +6,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -348,6 +348,23 @@ class Device:
         if not fields:
             raise ValueError("set at least one of airplane_mode, wifi or mobile_data")
         self._condition("set_network", "SetNetwork", pb.SetNetworkRequest, **fields)
+
+    def set_system_locales(self, locales: Sequence[str]) -> None:
+        """Set the device's languages (Settings › Languages) until ``detach()``, see
+        ``set_animations``: BCP-47 tags in preference order, 1 to 16 of them (``"fr-FR"``,
+        ``"en"``).
+
+        Every app that follows the system sees the change as a configuration change; an app with
+        its own languages (``App.set_locales``) keeps them. Android has no shell command for
+        this: the Tap driver app applies it as Settings' language picker does, and the result is
+        read back (``ServerError``, reason ``DEVICE_SETTING``, when the device reports another
+        list). Read back with ``info().system_locales``.
+        """
+        if isinstance(locales, str):
+            raise TypeError("locales is a sequence of tags, e.g. ['fr-FR', 'en']")
+        if not locales:
+            raise ValueError("set at least one locale")
+        self._condition("set_system_locales", "SetSystemLocales", pb.SetSystemLocalesRequest, locales=list(locales))
 
     def _condition(self, operation: str, rpc: str, request_type, **fields) -> None:
         self._ensure_usable(operation)

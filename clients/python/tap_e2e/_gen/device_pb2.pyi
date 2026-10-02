@@ -362,3 +362,17 @@ class SetNetworkRequest(_message.Message):
 class SetNetworkResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class SetSystemLocalesRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "locales")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    LOCALES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    locales: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., locales: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class SetSystemLocalesResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...

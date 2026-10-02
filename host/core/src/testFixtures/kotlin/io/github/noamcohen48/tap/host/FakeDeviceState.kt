@@ -11,6 +11,10 @@ class FakeDeviceState(
     var physicalDensity: Int = 280,
     /** As Samsung's One UI: `cmd uimode night` is accepted and ignored. */
     var nightModeLocked: Boolean = false,
+    /** The build's locale (`ro.product.locale`), the one in effect until the system locale is set. */
+    var productLocale: String = "en-US",
+    /** The driver app's locale receiver answers `result=2` instead of applying the locale. */
+    var localeReceiverFails: Boolean = false,
 ) {
     val values = initial.toMutableMap()
     val stuck = mutableSetOf<String>()
@@ -47,6 +51,19 @@ class FakeDeviceState(
                 ok("Physical density: $physicalDensity\n" + (values[StateKey.Density.id]?.let { "Override density: $it\n" } ?: ""))
             command == "shell wm density reset" -> write(StateKey.Density.id, null)
             command.startsWith("shell wm density ") -> write(StateKey.Density.id, args[3])
+            command == "shell getprop persist.sys.locale" -> ok((values[PERSIST_LOCALE] ?: "") + "\n")
+            command == "shell getprop ro.product.locale" -> ok("$productLocale\n")
+            command.startsWith("shell pm grant $DRIVER_PACKAGE ") || command.startsWith("shell appops set $DRIVER_PACKAGE ") -> ok("")
+            command.startsWith("shell am broadcast ") && "$DRIVER_PACKAGE/.SystemLocaleReceiver" in command -> {
+                val tags = args[args.indexOf("locales") + 1].trim('\'')
+                if (localeReceiverFails) {
+                    ok("Broadcasting: Intent { }\nBroadcast completed: result=2, data=\"java.lang.SecurityException: denied\"\n")
+                } else {
+                    write(SYSTEM_LOCALES, tags)
+                    values[PERSIST_LOCALE] = tags.substringBefore(',')
+                    ok("Broadcasting: Intent { }\nBroadcast completed: result=1, data=\"$tags\"\n")
+                }
+            }
             command.startsWith("shell cmd locale get-app-locales ") -> {
                 val pkg = args[4]
                 ok("Locales for $pkg for user -2 are [${values[StateKey.AppLocales(pkg).id].orEmpty()}]\n")
@@ -80,5 +97,9 @@ class FakeDeviceState(
         val AIRPLANE = StateKey.Setting("global", "airplane_mode_on").id
         val WIFI = StateKey.Setting("global", "wifi_on").id
         val DATA = StateKey.Setting("global", "mobile_data").id
+
+        /** The settings value and property the system writes when its locale is set. */
+        val SYSTEM_LOCALES = StateKey.Setting("system", "system_locales").id
+        const val PERSIST_LOCALE = "prop:persist.sys.locale"
     }
 }

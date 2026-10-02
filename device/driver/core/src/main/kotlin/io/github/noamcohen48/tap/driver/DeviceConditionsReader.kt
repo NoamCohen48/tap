@@ -27,6 +27,9 @@ internal class DeviceConditionsReader(
 
     val densityDpi: Int get() = configuration.densityDpi
 
+    /** The system locale list as BCP-47 tags: the driver has no locales of its own, so it follows the system. */
+    val systemLocales: List<String> get() = configuration.locales.toLanguageTags().split(',').filter { it.isNotEmpty() }
+
     val airplaneMode: Boolean get() = global(Settings.Global.AIRPLANE_MODE_ON) == 1
 
     /** `wifi_on` 1, or 2: on while airplane mode is on (3 is off until airplane mode ends). */

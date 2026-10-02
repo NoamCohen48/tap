@@ -2,11 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="io.github.noamcohen48.tap.permission.SYNCHRONIZATION" />
+    <!-- Device locale (SystemLocaleReceiver): the host grants both (pm grant, appops set). -->
+    <uses-permission android:name="android.permission.CHANGE_CONFIGURATION" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <queries>
         <provider android:authorities="io.github.noamcohen48.tap.fixture.tap-sync" />
     </queries>
     <application
         android:allowBackup="false"
         android:label="Tap Driver"
-        android:supportsRtl="true" />
+        android:supportsRtl="true">
+        <!-- Only the shell (or the system) holds CHANGE_CONFIGURATION, so only they can send it. -->
+        <receiver
+            android:name=".SystemLocaleReceiver"
+            android:exported="true"
+            android:permission="android.permission.CHANGE_CONFIGURATION" />
+    </application>
 </manifest>

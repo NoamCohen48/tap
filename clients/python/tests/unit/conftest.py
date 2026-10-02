@@ -253,6 +253,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.conditions.append(request)
         return pb.SetNetworkResponse()
 
+    def SetSystemLocales(self, request, context):
+        self._own("set_system_locales", request, context)
+        self.conditions.append(request)
+        return pb.SetSystemLocalesResponse()
+
     def Detach(self, request, context):
         self._own("detach", request, context)
         self.detaches.append(request.attached_device_id)

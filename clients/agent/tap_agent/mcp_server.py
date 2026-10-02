@@ -400,18 +400,18 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="condition")
     async def condition(
         name: Annotated[
-            Literal["animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data"] | None,
+            Literal["animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale"] | None,
             Field(description="The condition to read or change; omit to read them all."),
         ] = None,
         value: Annotated[
             str,
-            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset. Omit to read."),
+            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
         ] = "",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Read the device conditions (animations, dark mode, font scale, display density, airplane
-        mode, Wi-Fi, mobile data) or change one. A change lasts until release, which restores what
+        mode, Wi-Fi, mobile data, the device languages) or change one. A change lasts until release, which restores what
         the device had, and the result is the value read back. Dark mode and the network switches
         need API 29+; the network switches are real (nothing is mocked)."""
         return await call(session, lambda a: a.condition(name, value or None, device or None))

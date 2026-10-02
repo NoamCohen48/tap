@@ -113,6 +113,7 @@ internal fun DeviceInfoProto.toModel(): DeviceInfo =
         airplaneMode = airplaneMode,
         wifiEnabled = wifiEnabled,
         mobileDataEnabled = mobileDataEnabled,
+        systemLocales = systemLocalesList.toList(),
     )
 
 internal fun ToastProto.toModel(): Toast = Toast(text = text, packageName = packageName)
