@@ -22,5 +22,10 @@
             android:name=".SystemLocaleReceiver"
             android:exported="true"
             android:permission="android.permission.CHANGE_CONFIGURATION" />
+        <!-- Removes the mock-location test providers on detach; shell-only, as above. -->
+        <receiver
+            android:name=".MockLocationReceiver"
+            android:exported="true"
+            android:permission="android.permission.CHANGE_CONFIGURATION" />
     </application>
 </manifest>

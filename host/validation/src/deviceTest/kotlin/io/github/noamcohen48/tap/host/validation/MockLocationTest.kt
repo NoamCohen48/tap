@@ -1,6 +1,5 @@
 package io.github.noamcohen48.tap.host.validation
 
-import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.SavedState
 import io.github.noamcohen48.tap.host.StateKey
 import io.github.noamcohen48.tap.protocol.Commands
@@ -10,15 +9,15 @@ import io.github.noamcohen48.tap.protocol.ok
 /**
  * The driver's mock location reaches an app's gps listener: with the driver as the mock-location
  * app and location on (as the server sets them), `set_location` makes the fixture read that fix,
- * and a second call moves it. The app-op and location mode are restored afterwards; whether the
- * driver's test providers are gone once its session ends is reported.
+ * and a second call moves it. Restoring (as detach does) removes the test providers, which
+ * outlive the driver session, and puts back the app-op and location mode.
  */
 @DeviceTest
 class MockLocationTest {
     @OnEachDevice
     fun `a mocked fix reaches the app and moves`(serial: String) =
         deviceTest(serial) { device ->
-            val keys = listOf(StateKey.LOCATION_MODE, StateKey.DRIVER_MOCK_LOCATION)
+            val keys = listOf(StateKey.LOCATION_MODE, StateKey.DRIVER_MOCK_LOCATION, StateKey.MockLocationProviders.id)
             val before = keys.map { SavedState(it, device.adb.readState(serial, it)) }
             try {
                 device.adb.writeState(serial, StateKey.DRIVER_MOCK_LOCATION, "allow")
@@ -43,7 +42,8 @@ class MockLocationTest {
             } finally {
                 device.adb.restoreState(serial, before)
             }
-            val providers = device.shell("dumpsys", "location").lineSequence().count { "$DRIVER_PACKAGE" in it && "mock" in it.lowercase() }
-            report("mock_location", serial, "fix" to "ok", "moved" to "ok", "driver_mock_lines_after" to providers)
+            val mocks = device.shell("dumpsys", "location").lineSequence().filter { "provider [mock]" in it }.map(String::trim).toList()
+            check(mocks.isEmpty()) { "Test providers left after restore: $mocks" }
+            report("mock_location", serial, "fix" to "ok", "moved" to "ok", "mock_providers_after" to before.last().value.orEmpty())
         }
 }

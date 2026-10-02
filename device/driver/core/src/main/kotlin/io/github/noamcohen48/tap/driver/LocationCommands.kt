@@ -20,9 +20,10 @@ import java.util.concurrent.TimeUnit
  * Mock location (`set_location`), as Maestro's driver does it: the gps and network providers (and
  * fused, API 31+) are replaced by LocationManager test providers this process owns, and the fix
  * is sent to all of them again every [RESEND_MS], fresh each time, so an app that starts
- * listening later still gets one. The test providers live as long as this process; the host
- * revokes the mock-location app-op on detach, which removes them. Whether the app reads the fix
- * is the test's business: nothing here checks it.
+ * listening later still gets one. The test providers outlive this process and the app-op, so
+ * the host removes them on detach (the driver app's `MockLocationReceiver`); a provider already a
+ * test provider (left by a crashed run, or removed under this process) is replaced. Whether the
+ * app reads the fix is the test's business: nothing here checks it.
  */
 internal class LocationCommands(
     private val instrumentation: Instrumentation,
@@ -41,8 +42,15 @@ internal class LocationCommands(
         val manager = manager()
         context.markMutationStarted()
         try {
-            for (name in PROVIDERS) if (name !in providers) add(manager, name)
-            emit(manager, command)
+            try {
+                addMissing(manager)
+                emit(manager, command)
+            } catch (_: IllegalArgumentException) {
+                // The host removed this process's test providers on a detach since: add them again.
+                providers.clear()
+                addMissing(manager)
+                emit(manager, command)
+            }
         } catch (denied: SecurityException) {
             throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Android refused the mock location (the driver lacks the mock-location app-op): ${denied.message}")
         } catch (refused: IllegalArgumentException) {
@@ -56,6 +64,19 @@ internal class LocationCommands(
                 RESEND_MS,
                 TimeUnit.MILLISECONDS,
             )
+    }
+
+    private fun addMissing(manager: LocationManager) {
+        for (name in PROVIDERS) {
+            if (name in providers) continue
+            // A test provider left by another run makes addTestProvider throw on older APIs.
+            try {
+                manager.removeTestProvider(name)
+            } catch (_: IllegalArgumentException) {
+                // Not a test provider: the usual case.
+            }
+            add(manager, name)
+        }
     }
 
     private fun add(

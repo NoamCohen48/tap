@@ -105,7 +105,8 @@ and the clients must be updated together to use them:
 - **Mock location**: `setLocation(latitude, longitude, accuracyM?, altitudeM?)` (Python
   `set_location`; `DeviceService.SetLocation`, driver command `set_location`): the gps and
   network providers (and fused, API 31+) report the fix, re-sent every second; the driver
-  becomes the mock-location app and location is turned on if it was off.
+  becomes the mock-location app and location is turned on if it was off. Detach removes the
+  test providers again (they outlive the driver and its app-op).
 - Network, languages and location are restored on detach like the other conditions.
 - **Accessibility actions**: `Element.performAction(StandardAction)` and
   `performCustomAction(label)` (Python `perform_action` / `perform_custom_action`) run a node's
