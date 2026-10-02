@@ -74,17 +74,31 @@ tap-agent release                                   # frees the device
   `pinch <target> open|close`; `rotate portrait|landscape|…|auto` (detach restores the device's
   own setting); `screen [on|off|unlock]` (`unlock` never enters a PIN); `permission [choice]`
   lists or presses the runtime-permission dialog's buttons; `app foreground|background|open-link|revoke|granted
-  <package> [URI|PERMISSION]`. MCP has the same tools (`fling`, `drag`, `pinch`, `rotate`, `screen`,
-  `permission`).
+  <package> [URI|PERMISSION]`; `permission allow-foreground-only --accuracy approximate` picks
+  Precise or Approximate in the location dialog first (Android 12+). MCP has the same tools
+  (`fling`, `drag`, `pinch`, `rotate`, `screen`, `permission` with `accuracy`).
+- **Accessibility actions and sliders**: `action <target>` lists the node's standard and custom
+  accessibility actions, `action <target> expand` performs one and `action <target> Archive
+  --custom` a custom one, as a screen reader would (no touch); `progress <target> 40` sets a
+  slider in its own units (a value outside its range is refused). MCP `accessibility_action`,
+  `set_progress`.
 - **Device conditions and languages**: `condition` prints animations, dark mode, font scale and
-  density; `condition animations off`, `condition dark-mode on` (Android 10+), `condition
-  font-scale 1.3`, `condition density 320|reset` change one until release, which restores the
-  device's own values; `app locale <package> [fr-FR,en|system]` reads or sets the app's own languages
-  (Android 13+). MCP `condition` and `app` with `locale`.
+  density, the network switches and the device languages; `condition animations off`,
+  `condition dark-mode on` (Android 10+), `condition font-scale 1.3`, `condition density
+  320|reset`, `condition airplane-mode|wifi|mobile-data on|off` (real switches, read back) and
+  `condition locale fr-FR,en` change one until release, which restores the device's own values;
+  `location 48.85 2.35 [--accuracy 10]` mocks the device location until release; `app locale <package> [fr-FR,en|system]` reads or sets the app's own languages
+  (Android 13+). MCP `condition`, `set_location` and `app` with `locale`.
 - **Keyboard, clipboard, toasts**: `keyboard [hide]`, `submit <target>` (the focused field's
   action key; tap the field first), `clipboard [text]`, `toast [text] [--contains] [--package PKG]`
   (any app's toast unless `--package`);
   MCP `keyboard`, `submit`, `clipboard`, `await_toast`.
+- **Files and the gallery**: `push <local> <device-path>` copies a file to the device (its
+  directory must exist; an existing file is never overwritten), `pull <device-path> [-o FILE]`
+  copies one back and prints the local path, `media <local> [--name NAME]` adds a photo or video
+  to the gallery (`Pictures/Tap`, `Movies/Tap`, indexed by the media scanner). The bytes stream
+  through the server; what Tap created is removed on release. MCP `push_file`, `pull_file`,
+  `add_media`.
 - **`--settle`** after an action waits for the screen to stop changing and prints the
   difference (`+` added, `-` removed nodes), which is usually enough to pick the next step.
 - **Evidence**: `screenshot` and `capture` (screenshot, hierarchy, device info, driver log)

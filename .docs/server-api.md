@@ -118,6 +118,12 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 | `ResolveRef(…, ref)` → `{selector, by_index, snapshot_id}` | The selector a ref of the latest snapshot names; the caller sends it in an ordinary `Execute`, where the driver still demands exactly one match. Unknown ref: `NOT_FOUND` / `UNKNOWN_REF`. A node without a selector: `FAILED_PRECONDITION` / `REF_NOT_ADDRESSABLE`. |
 | `Detach(…)` → `{clean, detail?}` | `clean=false` means cleanup timed out or the session was quarantined, and `detail` says why. |
 | `SetAnimations(…, enabled)` / `SetDarkMode(…, enabled)` / `SetFontScale(…, scale)` / `SetDensity(…, dpi?)` → `{}` | Device conditions, held until detach (see *Saved device state* below). Animations: the three `Settings.Global` animation scales all `0` or all `1`. Dark mode: `cmd uimode night yes|no`, API 29+ (below: `FAILED_PRECONDITION` / `UNSUPPORTED_API`, detail `REQUIRES_API_29`, nothing changed); a device that locks the day/night mode (`mNightModeLocked=true`, Samsung One UI) ignores it, which fails the read-back (`DEVICE_SETTING`, the message names the lock). Font scale: `settings put system font_scale`, 0.5..2.0. Density: `wm density <dpi>` (100..1000) or, with `dpi` absent, `wm density reset`. Out-of-range or non-finite arguments are `INVALID_ARGUMENT` before the device is looked up. Every change is read back over ADB; a value the device did not take is `FAILED_PRECONDITION` / `DEVICE_SETTING`. Logged as `DeviceCall{operation, enabled? / font_scale? / density_dpi?}`. |
+| `SetNetwork(…, airplane_mode?, wifi?, mobile_data?)` → `{}` | Real switches, held until detach: `cmd connectivity airplane-mode`, `svc wifi`, `svc data`; API 29+ (`UNSUPPORTED_API` below). At least one must be set (`INVALID_ARGUMENT`). Airplane mode is written first and restored first. Read back from `Settings.Global` (`DEVICE_SETTING` on a mismatch). A serial reached over the network refuses Wi-Fi off / airplane on (`DEVICE_SETTING`) before anything changes. Logged with `airplane_mode`/`wifi`/`mobile_data`. |
+| `SetSystemLocales(…, locales)` → `{}` | The device's languages until detach: 1..16 BCP-47 tags (validated, canonicalised, no repeats; else `INVALID_ARGUMENT`), applied by the driver app's `SystemLocaleReceiver` (an `am broadcast` that only shell/system may send; the host grants it `CHANGE_CONFIGURATION` and the `WRITE_SETTINGS` app-op) and read back (`settings get system system_locales`, else `persist.sys.locale`, else `ro.product.locale`). Logged with `locales`. |
+| `SetLocation(…, latitude, longitude, accuracy_m?, altitude_m?)` → `{}` | A mock location until detach: the host makes the driver the mock-location app (`appops set … android:mock_location allow`), turns location on (`location_mode` 3) if it was off — both captured and restored — then runs the driver's `set_location`. Out-of-range or non-finite arguments are `INVALID_ARGUMENT`. Logged with `latitude`/`longitude`. |
+| `PushFile(stream {header{…, device_path, size_bytes} \| chunk})` → `{}` | Copies the streamed bytes (≤ 512 MiB, spooled to an owner-only file under the state dir, size checked against the header) to `device_path` with `adb push`. The path must be absolute and normalised, its directory must exist; a file already there is refused unless this attached device pushed it; the size is read back (`stat`). Captured as absent first, so detach (or the next attach after a crash) deletes it. A malformed upload or path is `INVALID_ARGUMENT`; a device-side refusal `FAILED_PRECONDITION` / `DEVICE_FILE`. Logged with `device_path`/`size_bytes`. |
+| `PullFile(…, device_path)` → `stream {size_bytes (first), chunk}` | The regular file at `device_path` (≤ 512 MiB), pulled into an owner-only spool file and streamed in 256 KiB chunks. No file, not a regular file or too large: `DEVICE_FILE`. |
+| `AddMedia(stream {header{…, file_name, size_bytes} \| chunk})` → `{device_path}` | A photo or video for the gallery: `file_name` (1..127 of letters, digits, `.`, `_`, `-`, space, with a photo or video extension; else `INVALID_ARGUMENT`) is written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/`, indexed by the media scanner (`content call … scan_file` on API 29+, the scan broadcast below) and read back from MediaProvider (`DEVICE_FILE` when it is not indexed). Same no-overwrite rule and detach removal as `PushFile`; removal also rescans and removes an empty `Tap` folder. |
 
 `Command`:
 
@@ -183,6 +189,14 @@ wire types:
   `PressKey` 224 / 223 (the SDKs' `wake`/`sleep`); there is no command for them. Errors:
   `ACTION_REJECTED`/`KEYGUARD_SECURE`, `WAIT_TIMEOUT`/`NO_PERMISSION_PROMPT`
   (`.docs/protocol-contract.md`).
+- Device actions groups 1–3 (also protocol 5.0, additive): `HideKeyboard` (35),
+  `PerformImeAction` (36), `SetClipboard` (37), `GetClipboard` (38), `AwaitToast` (39),
+  `PerformAccessibilityAction` (40, `StandardAction` or a custom label), `SetProgress` (41) and
+  `SetLocation` (42, no selector). `ChoosePermission.accuracy` and
+  `PermissionPrompt.accuracies` (`LocationAccuracy`); `ElementSnapshot.actions`,
+  `custom_actions` and `range` (`Range`, `RangeType`); `DeviceInfo.airplane_mode` (18),
+  `wifi_enabled` (19), `mobile_data_enabled` (20) and `system_locales` (21). Errors:
+  `ACTION_REJECTED`/`ACTION_NOT_OFFERED`, `ACTION_REJECTED`/`OUT_OF_RANGE`.
 
 ### AppService: AUT lifecycle
 
@@ -260,6 +274,7 @@ failure, a client-side deadline).
 | Ref not in the latest snapshot / ref without a selector | `NOT_FOUND` / `FAILED_PRECONDITION` | `UNKNOWN_REF` / `REF_NOT_ADDRESSABLE` |
 | Device below the call's API level | `FAILED_PRECONDITION` | `UNSUPPORTED_API` (detail `REQUIRES_API_<n>`) |
 | A device setting did not read back as written | `FAILED_PRECONDITION` | `DEVICE_SETTING` |
+| A device file exists and is not this session's, its directory is missing, it is not a regular file, or it did not read back | `FAILED_PRECONDITION` | `DEVICE_FILE` |
 | Session unusable (poisoned driver connection) | `ABORTED` | `SESSION_UNUSABLE` |
 | Driver start failure | `UNAVAILABLE` | `DRIVER_START_FAILED` |
 | ADB command failure, gated ADB runner | `UNAVAILABLE` | `ADB_FAILED` |
@@ -307,7 +322,10 @@ grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `Ta
     first change of a value, the server reads it (`settings get`, `cmd uimode night`, `wm
     density`, `cmd locale get-app-locales`) and appends it to the journal's `savedState`
     (`{key, value}`; keys `setting:<namespace>/<name>`, `uimode:night`, `wm:density`,
-    `locale:<package>`; a null value = absent). Later changes of the same value capture nothing.
+    `locale:<package>`, `network:airplane|wifi|mobile_data`, `system-locales`, `appop:<package>/<op>`,
+    `file:<path>`, `media:<path>`; a null value = absent). Later changes of the same value
+    capture nothing. Pushed files and added media are only ever captured as absent: restoring
+    deletes what the session created.
   - Detach writes the values back newest first (locking auto-rotate first when rotation is
     among them), reads every one back, then clears `savedState`. A value that does not come
     back fails the detach and quarantines the device.

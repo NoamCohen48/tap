@@ -51,6 +51,8 @@ exactly one.
 | `device.dismissKeyguard()` | dismiss a lock screen that has no PIN, pattern or password (none showing: nothing is sent). A secure one fails with `ACTION_REJECTED` / `KEYGUARD_SECURE` before any input: Tap never unlocks it. `device.info()` reports `screenOn`, `keyguardLocked` and `keyguardSecure` |
 | `device.openNotifications()`, `device.openQuickSettings()` (Python: `open_notifications()`, `open_quick_settings()`) | open the notification shade or quick settings through the system's accessibility action, as a swipe down from the status bar would. Only whether the system accepted it is reported: wait for what you need in the panel; `pressBack()` closes it (from quick settings, Android 14 first goes back to the notification shade, so press it twice). Elements in the panel belong to `com.android.systemui`: reach them with `device.app("com.android.systemui").element(...)` or `device.screen.element(...)`. While a panel is still sliding open or closed, the system can accept the action and ignore it: `app.awaitAnimationEnd()` before opening another one |
 | `element.imeAction()` (Python: `ime_action()`) | run the field's keyboard action key (Search, Go, Send, Done, …: whatever the app configured), as the keyboard's own key does. The field must have input focus, so `tap()` it first; a node that does not offer the action fails with `ACTION_REJECTED` before input. Android 11 (API 30)+; older devices fail with `UNSUPPORTED` before input. Pressing Enter is not the same: apps waiting for "Search" ignore it |
+| `performAction(action)`, `performCustomAction(label)` (Python: `perform_action`, `perform_custom_action`) | run one of the node's accessibility actions as a screen reader does, with no touch: a `StandardAction` (`EXPAND`, `COLLAPSE`, `DISMISS`, `SCROLL_FORWARD`, `PAGE_DOWN`, `SELECT`, `COPY`, …) or an app-defined custom action by its label ("Archive", "Mark unread"). An action the node does not offer fails with `ACTION_REJECTED` / `ACTION_NOT_OFFERED` before input; `snapshot().actions` and `customActions` list what it offers. Page actions need Android 10, press-and-hold Android 11 (`UNSUPPORTED` below) |
+| `setProgress(value)` (Python: `set_progress`) | set a slider, seek bar or rating bar to `value` in its own units (`snapshot().range` gives the type, min, max and current value). A value outside the range fails with `ACTION_REJECTED` / `OUT_OF_RANGE` before input instead of being clamped |
 | `device.keyboardShown()`, `device.hideKeyboard()` (Python: `keyboard_shown()`, `hide_keyboard()`) | whether any soft keyboard is on screen (also `device.info().keyboardShown`); hide it with one Back key. No keyboard: nothing is sent, so Back never reaches the app |
 | `device.setClipboard(text)`, `device.clipboard()` | write or read the device clipboard as plain text (empty reads as `""`), without moving focus away from the app. On Android 12+ a read shows the system's "Tap Driver pasted from your clipboard" notice |
 | `device.setOrientation(orientation)` | `PORTRAIT` or `LANDSCAPE`: choose the screen geometry and freeze sensor rotation, on portrait-natural phones and landscape-natural tablets alike |
@@ -94,7 +96,7 @@ device.unfreeze_rotation()
 
 ### Device conditions
 
-Four device-wide settings can be changed for the session. Each change is read back (a value the
+Device-wide settings can be changed for the session. Each change is read back (a value the
 device did not take fails with `ServerException` / `ServerError`, reason `DEVICE_SETTING`), and
 what the device had before the session's first change comes back on detach, as for rotation.
 `info()` reports the current values.
@@ -105,6 +107,9 @@ what the device had before the session's first change comes back on detach, as f
 | `setDarkMode(enabled)` / `set_dark_mode` | `cmd uimode night`; API 29+ (below: reason `UNSUPPORTED_API`). Some devices (Samsung's One UI) lock the day/night mode: there it fails with `DEVICE_SETTING` | `darkMode` |
 | `setFontScale(scale)` / `set_font_scale` | system font scale, 0.5 to 2.0 | `fontScale` |
 | `setDensity(dpi)` / `set_density` | display density override, 100 to 1000 dpi; `null` / `None` for the physical density | `densityDpi` |
+| `setNetwork(airplaneMode, wifi, mobileData)` / `set_network` | the real switches (pass only the ones to change); API 29+. Airplane mode turns Wi-Fi off, as on a phone, unless the call also turns Wi-Fi on. A device reached over ADB on Wi-Fi refuses Wi-Fi off and airplane mode on: Tap would lose it | `airplaneMode`, `wifiEnabled`, `mobileDataEnabled` |
+| `setSystemLocales(tags)` / `set_system_locales` | the device's languages (Settings › Languages), BCP-47 tags in preference order; every app that follows the system language sees it. Apps with their own language (`App.setLocales`) keep it | `systemLocales` |
+| `setLocation(latitude, longitude, accuracyM, altitudeM)` / `set_location` | a mock location: the GPS and network providers report this fix (re-sent every second, so an app that starts listening later gets it); call again to move it. The Tap driver app becomes the device's mock-location app and location is turned on if it was off; both come back on detach, which ends the mock | the app's own location |
 
 ```kotlin
 device.setAnimations(false)
@@ -121,9 +126,24 @@ device.set_density(None)  # back to the display's own density
 assert device.info().animations_enabled is False
 ```
 
-Android applies dark mode, font scale and density as configuration changes: a running app's
-activities are recreated unless it handles the change itself, so wait for what the test needs
-after changing one. The app's own language is on `App`: see
+```kotlin
+device.setSystemLocales("de-DE", "en-US")
+device.setNetwork(wifi = false, mobileData = false) // offline, without airplane mode
+device.setLocation(48.8584, 2.2945, accuracyM = 5f)
+app.grantPermission("android.permission.ACCESS_FINE_LOCATION")
+```
+
+```python
+device.set_system_locales(["de-DE", "en-US"])
+device.set_network(airplane_mode=True)
+device.set_location(48.8584, 2.2945, accuracy_m=5)
+```
+
+Android applies dark mode, font scale, density and the languages as configuration changes: a
+running app's activities are recreated unless it handles the change itself, so wait for what
+the test needs after changing one. Network switches take time to reach the app's connectivity
+callbacks; wait for the app's own offline or online state. On some devices turning location on
+also shows Google Play services' "improve location accuracy" prompt. The app's own language is on `App`: see
 [App lifecycle](app-lifecycle.md).
 
 Gestures are reported the same way: `done` means Android accepted the injected input, not that
@@ -148,6 +168,40 @@ has changed nothing. An action that fails **after** input says so:
 `STALE_DURING_COMMAND` (the target changed mid-action), `ACTION_REJECTED` (input was issued but
 did not take effect), `INDETERMINATE` (the transport dropped after the driver accepted the
 mutation). Tap never re-sends any of them for you.
+
+### Files and the gallery
+
+`device.pushFile(devicePath, content)` copies bytes, or a file on the test machine, to the
+device; `device.pullFile(devicePath)` returns a device file's bytes (or writes it to a local
+path). `device.addMedia(fileName, content)` puts a photo or video in the gallery, where gallery
+apps and photo pickers list it, and returns where it landed. The bytes are streamed through the
+server (at most 512 MiB), so the test machine and the server need not share a disk.
+
+- Paths are absolute: `/data/local/tmp/…`, or shared storage such as `/sdcard/Download/…` for
+  an app with storage access to read. The directory must exist.
+- Tap never overwrites a file it did not create: pushing over a device file fails with
+  `ServerException` / `ServerError`, reason `DEVICE_FILE` (as do a missing directory and a
+  pull of something that is not a file). Pushing again to a path this device handle pushed
+  replaces it.
+- Media names end in a photo (`jpg`, `jpeg`, `png`, `gif`, `webp`, `heic`, `heif`, `bmp`) or
+  video (`mp4`, `3gp`, `webm`, `mkv`, `mov`) extension and go to `Pictures/Tap` or
+  `Movies/Tap`. The media scanner must index the file, so it has to be a real image or video.
+- Every pushed file and added media item is deleted on detach (and the gallery entry with it);
+  nothing else on the device is touched.
+
+```kotlin
+device.pushFile("/sdcard/Download/invoice.pdf", Path.of("fixtures/invoice.pdf"))
+val photo = device.addMedia(Path.of("fixtures/cat.jpg"))  // "/sdcard/Pictures/Tap/cat.jpg"
+app.grantPermission("android.permission.READ_MEDIA_IMAGES")
+val log = device.pullFile("/sdcard/Android/data/com.example.shop/files/log.txt").decodeToString()
+```
+
+```python
+device.push_file("/sdcard/Download/invoice.pdf", "fixtures/invoice.pdf")
+device.add_media(png_bytes, "cat.png")
+log = device.pull_file("/sdcard/Android/data/com.example.shop/files/log.txt")
+device.pull_file("/data/local/tmp/trace.txt", "out/trace.txt")
+```
 
 ## Waiting for elements
 
