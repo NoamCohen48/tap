@@ -3,7 +3,7 @@
 Status: phases A–D and groups 1–4 implemented (groups 1–2 on `feat/device-actions`, group 3 on
 `feat/device-actions-3`). Groups 1–2 proven on emulator-5554 (API 34) and the Samsung (API 29);
 group 3 proven on the Samsung (2026-10-02), its emulator run pending. Group 4 on
-`feat/device-actions-4`: implemented, device tests not yet run.
+`feat/device-actions-4`: proven on the Samsung (2026-10-02), its emulator run pending.
 Started from the pi session report (`.docs/pi-session-…html`, not committed) and continued on
 2026-09-30.
 
@@ -329,6 +329,19 @@ change.
   with a `(user: …)` suffix on the Samsung; the parser also takes one per line), saves the previous value (`driver-notification-listener`)
   and takes the access back on detach. When the listener is not bound yet the driver asks for a
   rebind and waits up to 5 s; still unbound is `UNSUPPORTED` / `NO_NOTIFICATION_ACCESS`.
+- **A listener killed while bound comes back** (found on the SM-J810G, API 29, 2026-10-02): when
+  a bound listener's process dies, `NotificationListeners` logs "binding died" and binds it again
+  about 10 s later *without checking its access*, starting a bare driver process; every later
+  kill repeats it. The instrumentation's own finish force-stops the package ("finished inst"), so
+  a session that ended with access given left a driver process behind, and the next force-stop
+  "survived" (quarantine). Taking the access back while the listener is connected unbinds it
+  cleanly (`disallow_listener` unbinds on the change only; a listener bound while already
+  disallowed needs allow then disallow). So: detach unbinds the listener before it closes the
+  driver connection (`Adb.releaseDriverNotificationListener`, then the saved access is restored),
+  taking the access back waits for the unbind (`Live notification listeners` in `dumpsys
+  notification`), and every driver force-stop first unbinds a listener Android holds bound. Shell
+  cannot disable the component instead (`pm disable`: "Shell cannot change component state").
+  A rebind already scheduled by a kill less than 10 s before cannot be cancelled.
 - Opening on API 34+ passes `ActivityOptions` that allow a background activity start
   (`MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, `ALLOW_ALWAYS` from API 36); the driver is not in
   the foreground, and without it Android 14 drops an activity PendingIntent sent from the
@@ -364,10 +377,15 @@ between activities. A read only; used to check where a deep link or a notificati
 ### Verification
 
 Unit and fake-device tests cover every call (protocol goldens and validation, driver matcher,
-host core, daemon, both clients, agent). Device tests are written and not yet run:
-`:host:validation` `NotificationListenerTest`, `samples/fixture-tests` `DeviceActionsTest` (orders
-16–17; the fixture's `FormActivity` has a Notify button posting a message with a "Mark as read"
-action and an ongoing "Syncing" notification), and Python `test_device_actions.py`.
+host core, daemon, both clients, agent). Device tests: `:host:validation`
+`NotificationListenerTest` (also checks no driver process is back 12 s after the session),
+`samples/fixture-tests` `DeviceActionsTest` (orders 16–17; the fixture's `FormActivity` has a
+Notify button posting a message with a "Mark as read" action and an ongoing "Syncing"
+notification), and Python `test_device_actions.py`. On the Samsung (85e49002, API 29) the full
+validation suite, `DeviceActionsTest` and the Python device-action tests pass (2026-10-02), after
+the listener fix above; opening a notification's activity intent from the driver works there
+without background-start options. The run on emulator-5554 (API 34, where the options apply) is
+pending.
 
 ## Later (backlog, rough priority)
 

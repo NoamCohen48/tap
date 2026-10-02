@@ -357,7 +357,7 @@ def test_notifications_are_awaited_listed_opened_and_dismissed(tap_device):
     try:
         app.element(res("notify_button")).tap()
         message = app.await_notification("New message")
-        assert (message.text, message.actions, message.clearable) == ("from Ada", ["Mark as read"], True)
+        assert (message.text, message.actions, message.clearable) == ("from Ada", ("Mark as read",), True)
         mine = [n for n in tap_device.notifications() if n.package_name == PACKAGE]
         assert {n.title for n in mine} == {"New message", "Syncing"}
         with pytest.raises(CommandError) as ongoing:
