@@ -27,5 +27,16 @@
             android:name=".MockLocationReceiver"
             android:exported="true"
             android:permission="android.permission.CHANGE_CONFIGURATION" />
+        <!-- Notification access (NotificationCommands): only the system binds it, and only once
+             the host allows it with `cmd notification allow_listener`. -->
+        <service
+            android:name=".TapNotificationListener"
+            android:exported="true"
+            android:label="Tap Driver"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

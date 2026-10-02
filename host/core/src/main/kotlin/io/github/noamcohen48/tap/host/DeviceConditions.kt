@@ -4,8 +4,8 @@ import io.github.noamcohen48.tap.protocol.Commands
 
 /**
  * Device-wide conditions a test may change for its session: animations, dark mode, font scale,
- * display density, the device locale, the network switches, a mock location, stay-awake and the
- * accessibility display settings. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
+ * display density, the device locale, the network switches, a mock location, stay-awake, the
+ * accessibility display settings, and the driver's notification access. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
  * so detach restores the device as its owner left it, and is read back afterwards: a value the
  * device did not take is a [DeviceSettingException]. Apps see the new configuration as Android
  * delivers it (activities may be recreated); waiting for that is the test's business.
@@ -139,6 +139,19 @@ class DeviceConditions internal constructor(
             ).toMap()
         change(values)
     }
+
+    /**
+     * Gives the driver app's notification listener notification access until detach, for the
+     * notification commands (the server calls it before the first one). Once per session.
+     */
+    suspend fun allowNotificationListener() {
+        if (notificationListenerAllowed) return
+        change(mapOf(StateKey.DriverNotificationListener.id to "allowed"))
+        notificationListenerAllowed = true
+    }
+
+    @Volatile
+    private var notificationListenerAllowed = false
 
     private suspend fun change(values: Map<String, String?>) = session.change(values)
 

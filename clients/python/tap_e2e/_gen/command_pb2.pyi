@@ -472,8 +472,44 @@ class SetLocation(_message.Message):
     altitude_m: float
     def __init__(self, latitude: _Optional[float] = ..., longitude: _Optional[float] = ..., accuracy_m: _Optional[float] = ..., altitude_m: _Optional[float] = ...) -> None: ...
 
+class NotificationMatch(_message.Message):
+    __slots__ = ("package_name", "title", "text", "mode")
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    MODE_FIELD_NUMBER: _ClassVar[int]
+    package_name: str
+    title: str
+    text: str
+    mode: _selector_pb2.MatchMode
+    def __init__(self, package_name: _Optional[str] = ..., title: _Optional[str] = ..., text: _Optional[str] = ..., mode: _Optional[_Union[_selector_pb2.MatchMode, str]] = ...) -> None: ...
+
+class AwaitNotification(_message.Message):
+    __slots__ = ("match",)
+    MATCH_FIELD_NUMBER: _ClassVar[int]
+    match: NotificationMatch
+    def __init__(self, match: _Optional[_Union[NotificationMatch, _Mapping]] = ...) -> None: ...
+
+class ListNotifications(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class OpenNotification(_message.Message):
+    __slots__ = ("match", "action")
+    MATCH_FIELD_NUMBER: _ClassVar[int]
+    ACTION_FIELD_NUMBER: _ClassVar[int]
+    match: NotificationMatch
+    action: str
+    def __init__(self, match: _Optional[_Union[NotificationMatch, _Mapping]] = ..., action: _Optional[str] = ...) -> None: ...
+
+class DismissNotification(_message.Message):
+    __slots__ = ("match",)
+    MATCH_FIELD_NUMBER: _ClassVar[int]
+    match: NotificationMatch
+    def __init__(self, match: _Optional[_Union[NotificationMatch, _Mapping]] = ...) -> None: ...
+
 class Command(_message.Message):
-    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation", "dismiss_keyguard", "double_tap", "drag", "pinch", "fling", "wait_permission_prompt", "choose_permission", "hide_keyboard", "perform_ime_action", "set_clipboard", "get_clipboard", "await_toast", "perform_accessibility_action", "set_progress", "set_location")
+    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation", "dismiss_keyguard", "double_tap", "drag", "pinch", "fling", "wait_permission_prompt", "choose_permission", "hide_keyboard", "perform_ime_action", "set_clipboard", "get_clipboard", "await_toast", "perform_accessibility_action", "set_progress", "set_location", "await_notification", "list_notifications", "open_notification", "dismiss_notification")
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     PRESS_KEY_FIELD_NUMBER: _ClassVar[int]
@@ -511,6 +547,10 @@ class Command(_message.Message):
     PERFORM_ACCESSIBILITY_ACTION_FIELD_NUMBER: _ClassVar[int]
     SET_PROGRESS_FIELD_NUMBER: _ClassVar[int]
     SET_LOCATION_FIELD_NUMBER: _ClassVar[int]
+    AWAIT_NOTIFICATION_FIELD_NUMBER: _ClassVar[int]
+    LIST_NOTIFICATIONS_FIELD_NUMBER: _ClassVar[int]
+    OPEN_NOTIFICATION_FIELD_NUMBER: _ClassVar[int]
+    DISMISS_NOTIFICATION_FIELD_NUMBER: _ClassVar[int]
     timeout_ms: int
     device_info: DeviceInfoQuery
     press_key: PressKey
@@ -548,7 +588,11 @@ class Command(_message.Message):
     perform_accessibility_action: PerformAccessibilityAction
     set_progress: SetProgress
     set_location: SetLocation
-    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ..., set_orientation: _Optional[_Union[SetOrientation, _Mapping]] = ..., set_display_rotation: _Optional[_Union[SetDisplayRotation, _Mapping]] = ..., unfreeze_rotation: _Optional[_Union[UnfreezeRotation, _Mapping]] = ..., dismiss_keyguard: _Optional[_Union[DismissKeyguard, _Mapping]] = ..., double_tap: _Optional[_Union[DoubleTap, _Mapping]] = ..., drag: _Optional[_Union[Drag, _Mapping]] = ..., pinch: _Optional[_Union[Pinch, _Mapping]] = ..., fling: _Optional[_Union[Fling, _Mapping]] = ..., wait_permission_prompt: _Optional[_Union[WaitPermissionPrompt, _Mapping]] = ..., choose_permission: _Optional[_Union[ChoosePermission, _Mapping]] = ..., hide_keyboard: _Optional[_Union[HideKeyboard, _Mapping]] = ..., perform_ime_action: _Optional[_Union[PerformImeAction, _Mapping]] = ..., set_clipboard: _Optional[_Union[SetClipboard, _Mapping]] = ..., get_clipboard: _Optional[_Union[GetClipboard, _Mapping]] = ..., await_toast: _Optional[_Union[AwaitToast, _Mapping]] = ..., perform_accessibility_action: _Optional[_Union[PerformAccessibilityAction, _Mapping]] = ..., set_progress: _Optional[_Union[SetProgress, _Mapping]] = ..., set_location: _Optional[_Union[SetLocation, _Mapping]] = ...) -> None: ...
+    await_notification: AwaitNotification
+    list_notifications: ListNotifications
+    open_notification: OpenNotification
+    dismiss_notification: DismissNotification
+    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ..., set_orientation: _Optional[_Union[SetOrientation, _Mapping]] = ..., set_display_rotation: _Optional[_Union[SetDisplayRotation, _Mapping]] = ..., unfreeze_rotation: _Optional[_Union[UnfreezeRotation, _Mapping]] = ..., dismiss_keyguard: _Optional[_Union[DismissKeyguard, _Mapping]] = ..., double_tap: _Optional[_Union[DoubleTap, _Mapping]] = ..., drag: _Optional[_Union[Drag, _Mapping]] = ..., pinch: _Optional[_Union[Pinch, _Mapping]] = ..., fling: _Optional[_Union[Fling, _Mapping]] = ..., wait_permission_prompt: _Optional[_Union[WaitPermissionPrompt, _Mapping]] = ..., choose_permission: _Optional[_Union[ChoosePermission, _Mapping]] = ..., hide_keyboard: _Optional[_Union[HideKeyboard, _Mapping]] = ..., perform_ime_action: _Optional[_Union[PerformImeAction, _Mapping]] = ..., set_clipboard: _Optional[_Union[SetClipboard, _Mapping]] = ..., get_clipboard: _Optional[_Union[GetClipboard, _Mapping]] = ..., await_toast: _Optional[_Union[AwaitToast, _Mapping]] = ..., perform_accessibility_action: _Optional[_Union[PerformAccessibilityAction, _Mapping]] = ..., set_progress: _Optional[_Union[SetProgress, _Mapping]] = ..., set_location: _Optional[_Union[SetLocation, _Mapping]] = ..., await_notification: _Optional[_Union[AwaitNotification, _Mapping]] = ..., list_notifications: _Optional[_Union[ListNotifications, _Mapping]] = ..., open_notification: _Optional[_Union[OpenNotification, _Mapping]] = ..., dismiss_notification: _Optional[_Union[DismissNotification, _Mapping]] = ...) -> None: ...
 
 class Bounds(_message.Message):
     __slots__ = ("left", "top", "right", "bottom")
@@ -674,6 +718,28 @@ class DeviceInfo(_message.Message):
     bold_text: bool
     def __init__(self, api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., product: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., display_rotation: _Optional[int] = ..., current_package: _Optional[str] = ..., screen_on: _Optional[bool] = ..., keyguard_locked: _Optional[bool] = ..., keyguard_secure: _Optional[bool] = ..., keyboard_shown: _Optional[bool] = ..., auto_rotate: _Optional[bool] = ..., animations_enabled: _Optional[bool] = ..., dark_mode: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi_enabled: _Optional[bool] = ..., mobile_data_enabled: _Optional[bool] = ..., system_locales: _Optional[_Iterable[str]] = ..., stay_awake: _Optional[bool] = ..., high_contrast_text: _Optional[bool] = ..., color_inversion: _Optional[bool] = ..., bold_text: _Optional[bool] = ...) -> None: ...
 
+class DeviceNotification(_message.Message):
+    __slots__ = ("package_name", "title", "text", "actions", "clearable", "posted_at_ms")
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    ACTIONS_FIELD_NUMBER: _ClassVar[int]
+    CLEARABLE_FIELD_NUMBER: _ClassVar[int]
+    POSTED_AT_MS_FIELD_NUMBER: _ClassVar[int]
+    package_name: str
+    title: str
+    text: str
+    actions: _containers.RepeatedScalarFieldContainer[str]
+    clearable: bool
+    posted_at_ms: int
+    def __init__(self, package_name: _Optional[str] = ..., title: _Optional[str] = ..., text: _Optional[str] = ..., actions: _Optional[_Iterable[str]] = ..., clearable: _Optional[bool] = ..., posted_at_ms: _Optional[int] = ...) -> None: ...
+
+class NotificationList(_message.Message):
+    __slots__ = ("notifications",)
+    NOTIFICATIONS_FIELD_NUMBER: _ClassVar[int]
+    notifications: _containers.RepeatedCompositeFieldContainer[DeviceNotification]
+    def __init__(self, notifications: _Optional[_Iterable[_Union[DeviceNotification, _Mapping]]] = ...) -> None: ...
+
 class Toast(_message.Message):
     __slots__ = ("text", "package_name")
     TEXT_FIELD_NUMBER: _ClassVar[int]
@@ -709,7 +775,7 @@ class Error(_message.Message):
     def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., match_count: _Optional[int] = ...) -> None: ...
 
 class CommandResult(_message.Message):
-    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast")
+    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications")
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_GENERATION_FIELD_NUMBER: _ClassVar[int]
@@ -722,6 +788,8 @@ class CommandResult(_message.Message):
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PERMISSION_PROMPT_FIELD_NUMBER: _ClassVar[int]
     TOAST_FIELD_NUMBER: _ClassVar[int]
+    NOTIFICATION_FIELD_NUMBER: _ClassVar[int]
+    NOTIFICATIONS_FIELD_NUMBER: _ClassVar[int]
     duration_ms: int
     request_id: int
     session_generation: int
@@ -734,4 +802,6 @@ class CommandResult(_message.Message):
     error: Error
     permission_prompt: PermissionPrompt
     toast: Toast
-    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ...) -> None: ...
+    notification: DeviceNotification
+    notifications: NotificationList
+    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ...) -> None: ...

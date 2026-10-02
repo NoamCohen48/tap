@@ -2,13 +2,16 @@ package io.github.noamcohen48.tap.driver
 
 import android.app.Instrumentation
 import androidx.test.uiautomator.UiDevice
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
 import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DismissNotification
 import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
@@ -17,7 +20,10 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
+import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
@@ -85,6 +91,7 @@ internal class DriverCommandEngine(
     private val clipboard = ClipboardCommands(instrumentation)
     private val location = LocationCommands(instrumentation)
     private val toasts = ToastWatcher(instrumentation)
+    private val notifications = NotificationCommands(instrumentation)
     private val queries = QueryCommands(device, objects, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
     private val screenStability = ScreenStability(instrumentation)
     private val artifacts = ArtifactCommands(instrumentation, device)
@@ -193,6 +200,14 @@ internal class DriverCommandEngine(
         override fun getClipboard(command: GetClipboard): String = clipboard.get(context)
 
         override fun awaitToast(command: AwaitToast): Toast = toasts.await(context, command)
+
+        override fun awaitNotification(command: AwaitNotification): DeviceNotification = notifications.await(context, command.match)
+
+        override fun listNotifications(command: ListNotifications): NotificationList = notifications.list(context)
+
+        override fun openNotification(command: OpenNotification) = notifications.open(context, command)
+
+        override fun dismissNotification(command: DismissNotification) = notifications.dismiss(context, command.match)
 
         override fun dumpHierarchy(command: DumpHierarchy): String = artifacts.dumpHierarchy()
 

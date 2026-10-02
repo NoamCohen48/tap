@@ -1096,6 +1096,74 @@ class TapClientTest {
     }
 
     @Test
+    fun `notifications are matched, listed, opened and dismissed through Execute`() {
+        runBlocking {
+            val message =
+                io.github.noamcohen48.tap.api.v1.DeviceNotification
+                    .newBuilder()
+                    .setPackageName("com.test")
+                    .setTitle("New message")
+                    .addActions("Reply")
+                    .setClearable(true)
+                    .setPostedAtMs(1_790_000_000_000)
+                    .build()
+            fakeDevices.executeResponder = { request ->
+                val result = CommandResult.newBuilder()
+                when (request.command.opCase) {
+                    Command.OpCase.AWAIT_NOTIFICATION -> result.setNotification(message).build()
+                    Command.OpCase.LIST_NOTIFICATIONS ->
+                        result.setNotifications(io.github.noamcohen48.tap.api.v1.NotificationList.newBuilder().addNotifications(message)).build()
+                    Command.OpCase.OPEN_NOTIFICATION, Command.OpCase.DISMISS_NOTIFICATION -> result.setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        val expected = Notification("com.test", "New message", null, listOf("Reply"), true, java.time.Instant.ofEpochMilli(1_790_000_000_000))
+                        assertEquals(expected, device.app("com.test").awaitNotification("New", mode = MatchMode.STARTS_WITH))
+                        assertEquals(listOf(expected), device.notifications())
+                        device.openNotification(title = "New message", action = "Reply")
+                        device.dismissNotification(text = "Sync", packageName = "android")
+                        val commands = fakeDevices.executeRequests.map { it.command }
+                        val awaited = commands.single { it.hasAwaitNotification() }.awaitNotification.match
+                        assertEquals("New", awaited.title)
+                        assertEquals(io.github.noamcohen48.tap.api.v1.MatchMode.MATCH_STARTS_WITH, awaited.mode)
+                        assertEquals("com.test", awaited.packageName)
+                        assertFalse(awaited.hasText())
+                        val opened = commands.single { it.hasOpenNotification() }.openNotification
+                        assertEquals("Reply", opened.action)
+                        assertFalse(opened.match.hasPackageName())
+                        val dismissed = commands.single { it.hasDismissNotification() }.dismissNotification.match
+                        assertEquals("Sync", dismissed.text)
+                        assertEquals("android", dismissed.packageName)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `awaitNotification timeout carries NO_NOTIFICATION`() {
+        val none =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("NO_NOTIFICATION")
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(none).build() }) { it.awaitNotification(title = "New message") }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.NO_NOTIFICATION, failure.reason)
+        assertTrue("title \"New message\"" in failure.message.orEmpty(), failure.message)
+    }
+
+    @Test
     fun `awaitToast timeout carries NO_TOAST`() {
         val none =
             io.github.noamcohen48.tap.api.v1.Error

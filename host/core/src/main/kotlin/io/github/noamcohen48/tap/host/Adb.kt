@@ -548,6 +548,7 @@ open class Adb internal constructor(
             }
             is StateKey.DeviceFile -> fileInfo(serial, parsed.path)?.let { "present" }
             StateKey.MockLocationProviders -> mockLocationProviders(serial).sorted().joinToString(",")
+            StateKey.DriverNotificationListener -> if (DRIVER_NOTIFICATION_LISTENER in approvedNotificationListeners(serial)) "allowed" else "disallowed"
             is StateKey.AppOp -> {
                 val command = listOf("shell", "appops", "get", shellQuote(parsed.packageName), shellQuote(parsed.op))
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -617,6 +618,10 @@ open class Adb internal constructor(
                     // The Tap folder the media went into, when nothing else is left in it.
                     execResult(serial, "shell", "rmdir", shellQuote(parsed.path.substringBeforeLast('/')))
                 }
+            }
+            StateKey.DriverNotificationListener -> {
+                val verb = if (value == "allowed") "allow_listener" else "disallow_listener"
+                exec(serial, "shell", "cmd", "notification", verb, DRIVER_NOTIFICATION_LISTENER)
             }
             is StateKey.AppOp ->
                 exec(serial, "shell", "appops", "set", shellQuote(parsed.packageName), shellQuote(parsed.op), shellQuote(value ?: "default"))
@@ -743,6 +748,29 @@ open class Adb internal constructor(
      * op is allowed first, and restoring goes newest first, so the op's own saved mode is
      * written back after this.
      */
+    /**
+     * The components with notification access, from `dumpsys notification`'s "Allowed notification
+     * listeners:" section (colon-separated per user, `pkg/.Name` short forms expanded).
+     */
+    private suspend fun approvedNotificationListeners(serial: String): Set<String> {
+        val output = exec(serial, "shell", "dumpsys", "notification")
+        val lines = output.lines()
+        val header = lines.indexOfFirst { it.trim() == "Allowed notification listeners:" }
+        if (header < 0) {
+            throw AdbCommandException(serial, listOf("shell", "dumpsys", "notification"), null, output.take(2_000), "No notification listener list in dumpsys notification on $serial")
+        }
+        val indent = lines[header].indexOfFirst { !it.isWhitespace() }
+        return lines
+            .drop(header + 1)
+            .takeWhile { line -> line.isNotBlank() && line.indexOfFirst { !it.isWhitespace() } > indent }
+            .flatMap { line -> line.trim().substringBefore(" (").split(':') }
+            .filter { '/' in it }
+            .map { component ->
+                val (pkg, cls) = component.split('/', limit = 2)
+                if (cls.startsWith(".")) "$pkg/$pkg$cls" else component
+            }.toSet()
+    }
+
     private suspend fun removeTestProviders(
         serial: String,
         names: List<String>,

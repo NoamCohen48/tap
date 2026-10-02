@@ -5,12 +5,14 @@ import com.google.protobuf.MessageLite
 import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.PinchDirection
@@ -150,6 +152,17 @@ class GoldenWireTest {
             "request-await-toast" to (
                 envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom
             ),
+            "request-await-notification" to (
+                envelope(Requests.of(Commands.awaitNotification(Commands.notificationMatch(AUT, "New message", "from Ada", MatchMode.MATCH_CONTAINS)))) to
+                    Request::parseFrom
+            ),
+            "request-open-notification-action" to (
+                envelope(Requests.of(Commands.openNotification(Commands.notificationMatch(AUT, title = "New message"), action = "Reply"))) to
+                    Request::parseFrom
+            ),
+            "request-dismiss-notification" to (
+                envelope(Requests.of(Commands.dismissNotification(Commands.notificationMatch(text = "Syncing")))) to Request::parseFrom
+            ),
             "request-set-clipboard" to (envelope(Requests.of(Commands.setClipboard("copied 42"))) to Request::parseFrom),
             "request-type-text" to (envelope(Requests.of(Commands.typeText("keys 42"))) to Request::parseFrom),
             "request-set-text" to (
@@ -266,6 +279,23 @@ class GoldenWireTest {
             ),
             "response-toast" to (
                 result { setToast(Toast.newBuilder().setText("Saved").setPackageName(AUT)) } to Response::parseFrom
+            ),
+            "response-notifications" to (
+                result {
+                    setNotifications(
+                        NotificationList.newBuilder()
+                            .addNotifications(
+                                DeviceNotification.newBuilder()
+                                    .setPackageName(AUT)
+                                    .setTitle("New message")
+                                    .setText("from Ada")
+                                    .addActions("Reply")
+                                    .addActions("Mark as read")
+                                    .setClearable(true)
+                                    .setPostedAtMs(1_790_000_000_000),
+                            ).addNotifications(DeviceNotification.newBuilder().setPackageName("android").setPostedAtMs(1_789_999_999_000)),
+                    )
+                } to Response::parseFrom
             ),
             "response-permission-prompt" to (
                 result {

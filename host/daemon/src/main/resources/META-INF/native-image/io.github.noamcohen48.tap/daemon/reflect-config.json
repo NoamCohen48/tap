@@ -133,6 +133,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.AwaitNotification",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.AwaitToast",
     "allDeclaredFields": true
   },
@@ -221,6 +225,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.DeviceNotification",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.DisconnectRequest",
     "allDeclaredFields": true
   },
@@ -230,6 +238,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.DismissKeyguard",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.DismissNotification",
     "allDeclaredFields": true
   },
   {
@@ -433,6 +445,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.ListNotifications",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.LoggedEvent",
     "allDeclaredFields": true
   },
@@ -446,6 +462,14 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.Node",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.NotificationList",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.NotificationMatch",
     "allDeclaredFields": true
   },
   {
@@ -466,6 +490,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.OpenLinkResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.OpenNotification",
     "allDeclaredFields": true
   },
   {

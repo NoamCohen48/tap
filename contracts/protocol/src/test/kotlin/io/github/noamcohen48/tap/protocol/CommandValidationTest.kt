@@ -100,6 +100,17 @@ class CommandValidationTest {
                 "toast unknown mode" to
                     Command.newBuilder().setAwaitToast(AwaitToast.newBuilder().setText("x").setModeValue(99)).build(),
                 "toast blank package" to Commands.awaitToast(packageName = " "),
+                "notification mode without title or text" to
+                    Commands.awaitNotification(Commands.notificationMatch(AUT, mode = MatchMode.MATCH_CONTAINS)),
+                "notification title too long" to
+                    Commands.openNotification(Commands.notificationMatch(title = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1))),
+                "notification regex" to Commands.dismissNotification(Commands.notificationMatch(text = "(", mode = MatchMode.MATCH_REGEX)),
+                "notification blank package" to Commands.awaitNotification(Commands.notificationMatch(packageName = "")),
+                "notification empty action" to Commands.openNotification(Commands.notificationMatch(AUT), action = ""),
+                "notification action too long" to
+                    Commands.openNotification(Commands.notificationMatch(AUT), action = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "notification unknown mode" to
+                    Commands.awaitNotification(Commands.notificationMatch(title = "x").toBuilder().setModeValue(99).build()),
                 "unknown location accuracy" to
                     Command
                         .newBuilder()
@@ -175,6 +186,11 @@ class CommandValidationTest {
             Commands.awaitToast("Saved"),
             Commands.awaitToast("Sav.*", MatchMode.MATCH_REGEX, packageName = "com.android.systemui"),
             Commands.awaitToast("x".repeat(MAX_SELECTOR_STRING_CHARS)),
+            Commands.awaitNotification(),
+            Commands.awaitNotification(Commands.notificationMatch(AUT, "Re.*", "x".repeat(MAX_SELECTOR_STRING_CHARS), MatchMode.MATCH_REGEX)),
+            Commands.listNotifications(),
+            Commands.openNotification(Commands.notificationMatch(title = "New message"), action = "Mark as read"),
+            Commands.dismissNotification(Commands.notificationMatch(AUT)),
         ).forEach { CommandValidation.validate(it) }
     }
 

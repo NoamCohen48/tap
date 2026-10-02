@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import io.github.noamcohen48.tap.api.v1.AddMediaHeader
 import io.github.noamcohen48.tap.api.v1.AddMediaRequest
 import io.github.noamcohen48.tap.api.v1.AttachRequest
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.Command
@@ -12,12 +13,16 @@ import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
 import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DismissNotification
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
+import io.github.noamcohen48.tap.api.v1.ListNotifications
+import io.github.noamcohen48.tap.api.v1.NotificationMatch
+import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.PullFileRequest
@@ -775,6 +780,96 @@ class Device internal constructor(
             result.toast.toModel()
         }
     }
+
+    /**
+     * Waits until a matching notification is active (one already posted counts) and returns the
+     * newest. [title] and [text] match with [mode] (any when null); [packageName] narrows it to
+     * one app's notifications ([App.awaitNotification] passes its own). Notifications are read as
+     * data from a notification listener in the Tap driver app, not from the shade, so nothing is
+     * opened on screen; the server gives the driver notification access for the session (taken
+     * back on [detach]). Group summaries are left out. Throws [WaitTimeoutException]
+     * (`NO_NOTIFICATION`) when none matches within [timeout].
+     */
+    suspend fun awaitNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        timeout: Duration = timeouts.wait,
+    ): Notification {
+        ensureTapBound("Device.awaitNotification")
+        return admitted("Device.awaitNotification") {
+            val result =
+                rpcExecute(timeout) {
+                    awaitNotification = AwaitNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).build()
+                }
+            if (result.hasError()) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) throw CommandException(result, "await_notification", serial, null)
+                val what = listOfNotNull(title?.let { "title \"$it\"" }, text?.let { "text \"$it\"" }).joinToString(" and ")
+                val from = packageName?.let { " from $it" }.orEmpty()
+                throw WaitTimeoutException.of(result, "a notification" + (if (what.isEmpty()) "" else " with $what") + from, serial)
+            }
+            result.notification.toModel()
+        }
+    }
+
+    /** The active notifications, newest first (group summaries left out), as [awaitNotification] reads them. */
+    suspend fun notifications(timeout: Duration? = null): List<Notification> =
+        executeOrThrow(timeout) { listNotifications = ListNotifications.getDefaultInstance() }
+            .notifications.notificationsList.map { it.toModel() }
+
+    /**
+     * Opens the one active notification that matches (as for [awaitNotification]) as a tap on it
+     * in the shade does: sends its content intent and, when it auto-cancels, removes it. With
+     * [action], presses its action button with exactly that title instead, and the notification
+     * stays. No match or several matches throw [CommandException] (`NOT_FOUND` / `AMBIGUOUS`),
+     * and a notification that opens nothing or has no such action `ACTION_REJECTED`
+     * (`ACTION_NOT_OFFERED`), before anything is sent. What the app does then is for the test to
+     * assert (an activity, say: [foregroundActivity]).
+     */
+    suspend fun openNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        action: String? = null,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) {
+            openNotification =
+                OpenNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).apply { action?.let(::setAction) }.build()
+        }
+    }
+
+    /**
+     * Dismisses the one active notification that matches (as for [awaitNotification]) as a swipe
+     * does. No match or several matches throw [CommandException] (`NOT_FOUND` / `AMBIGUOUS`), and
+     * an ongoing notification `ACTION_REJECTED` (`NOT_CLEARABLE`), before anything changes.
+     */
+    suspend fun dismissNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) { dismissNotification = DismissNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).build() }
+    }
+
+    private fun notificationMatch(
+        title: String?,
+        text: String?,
+        mode: MatchMode,
+        packageName: String?,
+    ): NotificationMatch =
+        NotificationMatch
+            .newBuilder()
+            .apply {
+                title?.let(::setTitle)
+                text?.let(::setText)
+                if (title != null || text != null) setMode(mode.toProto())
+                packageName?.let(::setPackageName)
+            }.build()
 
     /**
      * Types [value] as real key events into whatever has input focus now: no target and no

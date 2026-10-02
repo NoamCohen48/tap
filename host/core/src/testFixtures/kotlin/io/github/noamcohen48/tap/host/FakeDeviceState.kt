@@ -106,6 +106,11 @@ class FakeDeviceState(
                 }
             }
             command == "shell dumpsys location" -> ok(locationDump())
+            command == "shell dumpsys notification" -> ok(notificationDump())
+            command == "shell cmd notification allow_listener $DRIVER_NOTIFICATION_LISTENER" ->
+                write(StateKey.DriverNotificationListener.id, "allowed")
+            command == "shell cmd notification disallow_listener $DRIVER_NOTIFICATION_LISTENER" ->
+                write(StateKey.DriverNotificationListener.id, "disallowed")
             command == "shell dumpsys activity activities" -> ok(activityDump())
             command.startsWith("shell am broadcast ") && "$DRIVER_PACKAGE/.MockLocationReceiver" in command -> {
                 val names = args[args.indexOf("remove") + 1].trim('\'').split(',')
@@ -217,6 +222,14 @@ class FakeDeviceState(
             } else {
                 "    mResumedActivity: $record\n  topResumedActivity=$record\n  ResumedActivity: $record\n"
             }
+    }
+
+    /** As the Samsung prints it: the approved listeners on one line, colon-separated. */
+    private fun notificationDump(): String {
+        val approved = listOfNotNull("com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener", "$DRIVER_PACKAGE/.TapNotificationListener".takeIf { values[StateKey.DriverNotificationListener.id] == "allowed" })
+        return "Current Notification Manager state:\n  Notification listeners:\n    Allowed notification listeners:\n" +
+            "      ${approved.joinToString(":")} (user: 0 isPrimary: true)\n" +
+            "    All notification listeners (1) enabled for current profiles:\n      ComponentInfo{com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener}\n"
     }
 
     private fun locationDump(): String =

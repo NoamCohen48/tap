@@ -340,6 +340,33 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             session, lambda a: a.toast(text or None, device or None, contains=contains, package=package or None, timeout=timeout_seconds)
         )
 
+    @mcp.tool(name="notification")
+    async def notification(
+        action: Annotated[
+            Literal["list", "await", "open", "dismiss"],
+            Field(description="list: every active notification; await: wait for one and return it; open: tap it (or press button); dismiss: swipe it away."),
+        ] = "list",
+        title: Annotated[str, Field(description="The notification's title; omit to match any.")] = "",
+        text: Annotated[str, Field(description="The notification's text; omit to match any.")] = "",
+        contains: Annotated[bool, Field(description="title/text are only part of it.")] = False,
+        package: Annotated[str, Field(description="Only this package's notifications; omit for any app's.")] = "",
+        button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
+        timeout_seconds: Annotated[float, Field(gt=0, le=600, description="await only.")] = 10,
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """The device's notifications as data (the shade stays closed; they never appear in
+        snapshot). open and dismiss need exactly one match. The driver gets notification access
+        for the session."""
+        return await call(
+            session,
+            lambda a: a.notification(
+                action, title or None, text or None, device or None, contains=contains, package=package or None,
+                button=button or None, timeout=timeout_seconds, settle=settle,
+            ),
+        )
+
     @mcp.tool(name="press_key")
     async def press_key(
         key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],

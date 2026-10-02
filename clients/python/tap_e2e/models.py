@@ -5,6 +5,7 @@ generated code."""
 from __future__ import annotations
 
 import builtins
+import datetime
 import enum
 import json
 import os
@@ -240,6 +241,8 @@ class WaitReason(enum.Enum):
 
     NO_TOAST = "NO_TOAST"
     """``await_toast``: no matching toast was shown."""
+    NO_NOTIFICATION = "NO_NOTIFICATION"
+    """``await_notification``: no matching notification was active."""
 
 
 class DeviceState(enum.Enum):
@@ -737,6 +740,22 @@ class Toast:
 
     text: str
     package_name: str
+
+
+@dataclass(frozen=True)
+class Notification:
+    """An active notification (``Device.notifications``, ``Device.await_notification``): the
+    package that posted it, its title and text (the ``android.title`` / ``android.text`` extras,
+    ``None`` when it has none), the titles of its action buttons (what
+    ``Device.open_notification``'s ``action`` names), whether a swipe dismisses it (``False`` for
+    an ongoing one, such as a foreground service's), and when it was posted (UTC)."""
+
+    package_name: str
+    title: str | None
+    text: str | None
+    actions: tuple[str, ...]
+    clearable: bool
+    posted_at: datetime.datetime
 
 
 @dataclass(frozen=True)

@@ -15,6 +15,7 @@ from .core import (
     EXIT_OK,
     EXIT_USAGE,
     KEYBOARD_ACTIONS,
+    NOTIFICATION_ACTIONS,
     PANELS,
     PERMISSION_CHOICES,
     PINCHES,
@@ -179,6 +180,15 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
     p.add_argument("--timeout", type=_duration, default=10.0, help="default 10s")
 
+    p = verb("notification", "list the device's notifications, or wait for, open or dismiss one (read as data; the shade stays closed)", on_device, settle)
+    p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", default="list")
+    p.add_argument("--title", help="the notification's title")
+    p.add_argument("--text", help="the notification's text")
+    p.add_argument("--contains", action="store_true", help="title/text are only part of it")
+    p.add_argument("--package", help="only this package's notifications")
+    p.add_argument("--button", help="open: press the action button with this title instead")
+    p.add_argument("--timeout", type=_duration, default=10.0, help="await: default 10s")
+
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
     state = p.add_mutually_exclusive_group()
@@ -253,6 +263,11 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.media(args.local, args.name, device)
     if v == "clipboard":
         return agent.clipboard(args.text, device)
+    if v == "notification":
+        return agent.notification(
+            args.action, args.title, args.text, device, contains=args.contains, package=args.package,
+            button=args.button, timeout=args.timeout, settle=settle,
+        )
     if v == "toast":
         return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout)
     if v == "scroll":

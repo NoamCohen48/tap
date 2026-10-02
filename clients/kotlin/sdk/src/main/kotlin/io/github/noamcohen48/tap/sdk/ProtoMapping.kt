@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.sdk
 import io.github.noamcohen48.tap.api.v1.Defaults as DefaultsProto
 import io.github.noamcohen48.tap.api.v1.DeviceEntry as DeviceEntryProto
 import io.github.noamcohen48.tap.api.v1.DeviceInfo as DeviceInfoProto
+import io.github.noamcohen48.tap.api.v1.DeviceNotification as DeviceNotificationProto
 import io.github.noamcohen48.tap.api.v1.DeviceState as DeviceStateProto
 import io.github.noamcohen48.tap.api.v1.Direction as DirectionProto
 import io.github.noamcohen48.tap.api.v1.DisplayRotation as DisplayRotationProto
@@ -20,6 +21,7 @@ import io.github.noamcohen48.tap.api.v1.ProcessIdentity
 import io.github.noamcohen48.tap.api.v1.StabilitySignal as StabilitySignalProto
 import io.github.noamcohen48.tap.api.v1.StandardAction as StandardActionProto
 import io.github.noamcohen48.tap.api.v1.Toast as ToastProto
+import java.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 
 /*
@@ -121,6 +123,16 @@ internal fun DeviceInfoProto.toModel(): DeviceInfo =
     )
 
 internal fun ToastProto.toModel(): Toast = Toast(text = text, packageName = packageName)
+
+internal fun DeviceNotificationProto.toModel(): Notification =
+    Notification(
+        packageName = packageName,
+        title = if (hasTitle()) title else null,
+        text = if (hasText()) text else null,
+        actions = actionsList.toList(),
+        clearable = clearable,
+        postedAt = Instant.ofEpochMilli(postedAtMs),
+    )
 
 /** `am start` extras from [App.launch]'s map; an unsupported value type fails before the call. */
 internal fun intentExtras(extras: Map<String, Any>): List<IntentExtraProto> =

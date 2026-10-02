@@ -4,6 +4,7 @@ schema needs a matching model constant; until then it maps to the model's "unkno
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
 
 from google.protobuf import json_format
@@ -17,6 +18,7 @@ from .models import (
     DeviceEntry,
     DeviceInfo,
     ForegroundActivity,
+    Notification,
     DeviceState,
     Direction,
     DisplayRotation,
@@ -199,6 +201,17 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         high_contrast_text=_optional(info, "high_contrast_text"),
         color_inversion=_optional(info, "color_inversion"),
         bold_text=info.bold_text,
+    )
+
+
+def notification(value: pb.DeviceNotification) -> Notification:
+    return Notification(
+        package_name=value.package_name,
+        title=_optional(value, "title"),
+        text=_optional(value, "text"),
+        actions=tuple(value.actions),
+        clearable=value.clearable,
+        posted_at=datetime.datetime.fromtimestamp(value.posted_at_ms / 1000, tz=datetime.timezone.utc),
     )
 
 

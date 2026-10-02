@@ -8,6 +8,7 @@ import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
+import io.github.noamcohen48.tap.api.v1.NotificationMatch
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Orientation
@@ -202,6 +203,19 @@ object CommandValidation {
                 if (toast.hasPackageName()) requirePackage(toast.packageName)
             }
 
+            OpCase.AWAIT_NOTIFICATION -> validateMatch(command.awaitNotification.match)
+
+            OpCase.OPEN_NOTIFICATION -> {
+                val open = command.openNotification
+                validateMatch(open.match)
+                if (open.hasAction()) {
+                    if (open.action.isEmpty()) invalidRequest("action must not be empty")
+                    if (open.action.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("action must be at most $MAX_SELECTOR_STRING_CHARS chars")
+                }
+            }
+
+            OpCase.DISMISS_NOTIFICATION -> validateMatch(command.dismissNotification.match)
+
             OpCase.PERFORM_ACCESSIBILITY_ACTION -> {
                 val action = command.performAccessibilityAction
                 when (action.actionCase) {
@@ -239,6 +253,7 @@ object CommandValidation {
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.TAP, OpCase.LONG_TAP, OpCase.CLEAR_TEXT,
             OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.GET_CLIPBOARD,
+            OpCase.LIST_NOTIFICATIONS,
             -> {
                 Unit
             }
@@ -402,6 +417,28 @@ object CommandValidation {
                 }
             !seen.add(key)
         }
+    }
+
+    /** A title and text (≤ 1024 chars, a valid regex under REGEX), a mode only with one of them. */
+    private fun validateMatch(match: NotificationMatch) {
+        if (match.mode == MatchMode.UNRECOGNIZED) invalidRequest("Unknown match mode")
+        val strings =
+            buildList {
+                if (match.hasTitle()) add("title" to match.title)
+                if (match.hasText()) add("text" to match.text)
+            }
+        for ((name, value) in strings) {
+            if (value.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("$name must be at most $MAX_SELECTOR_STRING_CHARS chars")
+            if (match.mode == MatchMode.MATCH_REGEX) {
+                try {
+                    Pattern.compile(value)
+                } catch (error: PatternSyntaxException) {
+                    invalidRequest("Invalid regex '$value': ${error.message}")
+                }
+            }
+        }
+        if (strings.isEmpty() && match.mode != MatchMode.MATCH_UNSPECIFIED) invalidRequest("mode needs a title or text")
+        if (match.hasPackageName()) requirePackage(match.packageName)
     }
 
     private fun requirePackage(packageName: String) {

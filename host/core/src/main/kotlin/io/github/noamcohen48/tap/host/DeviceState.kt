@@ -62,6 +62,15 @@ sealed interface StateKey {
     }
 
     /**
+     * Whether the driver app's `TapNotificationListener` has notification access: `allowed` or
+     * `disallowed`, read from `dumpsys notification` (the approved listeners) and written with
+     * `cmd notification allow_listener|disallow_listener`, as Settings › Notification access does.
+     */
+    data object DriverNotificationListener : StateKey {
+        override val id: String = "driver-notification-listener"
+    }
+
+    /**
      * An app-op mode of one package (`appops get|set`): `allow`, `ignore`, `deny`, `foreground`
      * or `default`. A package with the op at its default mode reads `default`.
      */
@@ -138,6 +147,7 @@ sealed interface StateKey {
                 id == Density.id -> Density
                 id == SystemLocales.id -> SystemLocales
                 id == MockLocationProviders.id -> MockLocationProviders
+                id == DriverNotificationListener.id -> DriverNotificationListener
                 id.startsWith("network:") -> Network.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Bad state key $id")
                 id.startsWith("file:") -> DeviceFile(id.removePrefix("file:").also { require(it.startsWith("/")) { "Bad state key $id" } })
                 id.startsWith("media:") -> DeviceFile(id.removePrefix("media:").also { require(it.startsWith("/")) { "Bad state key $id" } }, media = true)

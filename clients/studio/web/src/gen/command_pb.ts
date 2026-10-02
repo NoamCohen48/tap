@@ -21,7 +21,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file command.proto.
  */
 export const file_command: GenFile = /*@__PURE__*/
-  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCI6Cg5TZXRPcmllbnRhdGlvbhIoCgtvcmllbnRhdGlvbhgBIAEoDjITLnRhcC52MS5PcmllbnRhdGlvbiI/ChJTZXREaXNwbGF5Um90YXRpb24SKQoIcm90YXRpb24YASABKA4yFy50YXAudjEuRGlzcGxheVJvdGF0aW9uIhIKEFVuZnJlZXplUm90YXRpb24iEQoPRGlzbWlzc0tleWd1YXJkIg8KDUR1bXBIaWVyYXJjaHkiLAoGRXhpc3RzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIisKBUNvdW50EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi4KCFNuYXBzaG90EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkYKC1dhaXRWaXNpYmxlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhMKC2V4YWN0bHlfb25lGAIgASgIIi4KCFdhaXRHb25lEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIiYKDldhaXRBcHBWaXNpYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSJ/ChBXYWl0U2NyZWVuU3RhYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRIaCg1zdGFibGVfZm9yX21zGAIgASgDSACIAQESJwoGc2lnbmFsGAMgASgOMhcudGFwLnYxLlN0YWJpbGl0eVNpZ25hbEIQCg5fc3RhYmxlX2Zvcl9tcyIpCgNUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiLQoHTG9uZ1RhcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciI7CgdTZXRUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEgwKBHRleHQYAiABKAkiGAoIVHlwZVRleHQSDAoEdGV4dBgCIAEoCSIvCglDbGVhclRleHQSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IihQEKBVN3aXBlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IoYBCgZTY3JvbGwSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbhIdChBkaXN0YW5jZV9wZXJjZW50GAMgASgFSACIAQFCEwoRX2Rpc3RhbmNlX3BlcmNlbnQiLwoJRG91YmxlVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkwKBERyYWcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIAoGdGFyZ2V0GAIgASgLMhAudGFwLnYxLlNlbGVjdG9yIngKBVBpbmNoEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEikKCWRpcmVjdGlvbhgCIAEoDjIWLnRhcC52MS5QaW5jaERpcmVjdGlvbhIUCgdwZXJjZW50GAMgASgFSACIAQFCCgoIX3BlcmNlbnQiUQoFRmxpbmcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbiIWChRXYWl0UGVybWlzc2lvblByb21wdCJoChBDaG9vc2VQZXJtaXNzaW9uEigKBmNob2ljZRgBIAEoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlEioKCGFjY3VyYWN5GAIgASgOMhgudGFwLnYxLkxvY2F0aW9uQWNjdXJhY3kiDgoMSGlkZUtleWJvYXJkIjYKEFBlcmZvcm1JbWVBY3Rpb24SIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiHAoMU2V0Q2xpcGJvYXJkEgwKBHRleHQYASABKAkiDgoMR2V0Q2xpcGJvYXJkInUKCkF3YWl0VG9hc3QSEQoEdGV4dBgBIAEoCUgAiAEBEh8KBG1vZGUYAiABKA4yES50YXAudjEuTWF0Y2hNb2RlEhkKDHBhY2thZ2VfbmFtZRgDIAEoCUgBiAEBQgcKBV90ZXh0Qg8KDV9wYWNrYWdlX25hbWUiiAEKGlBlcmZvcm1BY2Nlc3NpYmlsaXR5QWN0aW9uEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEioKCHN0YW5kYXJkGAIgASgOMhYudGFwLnYxLlN0YW5kYXJkQWN0aW9uSAASEAoGY3VzdG9tGAMgASgJSABCCAoGYWN0aW9uIkAKC1NldFByb2dyZXNzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEg0KBXZhbHVlGAIgASgCIoIBCgtTZXRMb2NhdGlvbhIQCghsYXRpdHVkZRgBIAEoARIRCglsb25naXR1ZGUYAiABKAESFwoKYWNjdXJhY3lfbRgDIAEoAkgAiAEBEhcKCmFsdGl0dWRlX20YBCABKAFIAYgBAUINCgtfYWNjdXJhY3lfbUINCgtfYWx0aXR1ZGVfbSKEDQoHQ29tbWFuZBIXCgp0aW1lb3V0X21zGAEgASgDSAGIAQESLgoLZGV2aWNlX2luZm8YAyABKAsyFy50YXAudjEuRGV2aWNlSW5mb1F1ZXJ5SAASJQoJcHJlc3Nfa2V5GAQgASgLMhAudGFwLnYxLlByZXNzS2V5SAASLwoOZHVtcF9oaWVyYXJjaHkYBiABKAsyFS50YXAudjEuRHVtcEhpZXJhcmNoeUgAEiAKBmV4aXN0cxgHIAEoCzIOLnRhcC52MS5FeGlzdHNIABIeCgVjb3VudBgIIAEoCzINLnRhcC52MS5Db3VudEgAEiQKCHNuYXBzaG90GAkgASgLMhAudGFwLnYxLlNuYXBzaG90SAASKwoMd2FpdF92aXNpYmxlGAogASgLMhMudGFwLnYxLldhaXRWaXNpYmxlSAASJQoJd2FpdF9nb25lGAsgASgLMhAudGFwLnYxLldhaXRHb25lSAASMgoQd2FpdF9hcHBfdmlzaWJsZRgMIAEoCzIWLnRhcC52MS5XYWl0QXBwVmlzaWJsZUgAEjYKEndhaXRfc2NyZWVuX3N0YWJsZRgNIAEoCzIYLnRhcC52MS5XYWl0U2NyZWVuU3RhYmxlSAASGgoDdGFwGA4gASgLMgsudGFwLnYxLlRhcEgAEiMKCGxvbmdfdGFwGA8gASgLMg8udGFwLnYxLkxvbmdUYXBIABIjCghzZXRfdGV4dBgQIAEoCzIPLnRhcC52MS5TZXRUZXh0SAASJQoJdHlwZV90ZXh0GBEgASgLMhAudGFwLnYxLlR5cGVUZXh0SAASJwoKY2xlYXJfdGV4dBgSIAEoCzIRLnRhcC52MS5DbGVhclRleHRIABIeCgVzd2lwZRgTIAEoCzINLnRhcC52MS5Td2lwZUgAEiAKBnNjcm9sbBgUIAEoCzIOLnRhcC52MS5TY3JvbGxIABI0ChFvcGVuX3N5c3RlbV9wYW5lbBgYIAEoCzIXLnRhcC52MS5PcGVuU3lzdGVtUGFuZWxIABIxCg9zZXRfb3JpZW50YXRpb24YGSABKAsyFi50YXAudjEuU2V0T3JpZW50YXRpb25IABI6ChRzZXRfZGlzcGxheV9yb3RhdGlvbhgaIAEoCzIaLnRhcC52MS5TZXREaXNwbGF5Um90YXRpb25IABI1ChF1bmZyZWV6ZV9yb3RhdGlvbhgbIAEoCzIYLnRhcC52MS5VbmZyZWV6ZVJvdGF0aW9uSAASMwoQZGlzbWlzc19rZXlndWFyZBgcIAEoCzIXLnRhcC52MS5EaXNtaXNzS2V5Z3VhcmRIABInCgpkb3VibGVfdGFwGB0gASgLMhEudGFwLnYxLkRvdWJsZVRhcEgAEhwKBGRyYWcYHiABKAsyDC50YXAudjEuRHJhZ0gAEh4KBXBpbmNoGB8gASgLMg0udGFwLnYxLlBpbmNoSAASHgoFZmxpbmcYICABKAsyDS50YXAudjEuRmxpbmdIABI+ChZ3YWl0X3Blcm1pc3Npb25fcHJvbXB0GCEgASgLMhwudGFwLnYxLldhaXRQZXJtaXNzaW9uUHJvbXB0SAASNQoRY2hvb3NlX3Blcm1pc3Npb24YIiABKAsyGC50YXAudjEuQ2hvb3NlUGVybWlzc2lvbkgAEi0KDWhpZGVfa2V5Ym9hcmQYIyABKAsyFC50YXAudjEuSGlkZUtleWJvYXJkSAASNgoScGVyZm9ybV9pbWVfYWN0aW9uGCQgASgLMhgudGFwLnYxLlBlcmZvcm1JbWVBY3Rpb25IABItCg1zZXRfY2xpcGJvYXJkGCUgASgLMhQudGFwLnYxLlNldENsaXBib2FyZEgAEi0KDWdldF9jbGlwYm9hcmQYJiABKAsyFC50YXAudjEuR2V0Q2xpcGJvYXJkSAASKQoLYXdhaXRfdG9hc3QYJyABKAsyEi50YXAudjEuQXdhaXRUb2FzdEgAEkoKHHBlcmZvcm1fYWNjZXNzaWJpbGl0eV9hY3Rpb24YKCABKAsyIi50YXAudjEuUGVyZm9ybUFjY2Vzc2liaWxpdHlBY3Rpb25IABIrCgxzZXRfcHJvZ3Jlc3MYKSABKAsyEy50YXAudjEuU2V0UHJvZ3Jlc3NIABIrCgxzZXRfbG9jYXRpb24YKiABKAsyEy50YXAudjEuU2V0TG9jYXRpb25IAEIECgJvcEINCgtfdGltZW91dF9tcyJCCgZCb3VuZHMSDAoEbGVmdBgBIAEoBRILCgN0b3AYAiABKAUSDQoFcmlnaHQYAyABKAUSDgoGYm90dG9tGAQgASgFIugECg9FbGVtZW50U25hcHNob3QSFwoKY2xhc3NfbmFtZRgBIAEoCUgAiAEBEhkKDHBhY2thZ2VfbmFtZRgCIAEoCUgBiAEBEhoKDXJlc291cmNlX25hbWUYAyABKAlIAogBARIRCgR0ZXh0GAQgASgJSAOIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgFIAEoCUgEiAEBEhEKBGhpbnQYBiABKAlIBYgBARIeCgZib3VuZHMYByABKAsyDi50YXAudjEuQm91bmRzEhEKCWNoZWNrYWJsZRgIIAEoCBIPCgdjaGVja2VkGAkgASgIEhEKCWNsaWNrYWJsZRgKIAEoCBIPCgdlbmFibGVkGAsgASgIEhEKCWZvY3VzYWJsZRgMIAEoCBIPCgdmb2N1c2VkGA0gASgIEhYKDmxvbmdfY2xpY2thYmxlGA4gASgIEhIKCnNjcm9sbGFibGUYDyABKAgSEAoIc2VsZWN0ZWQYECABKAgSEwoLY2hpbGRfY291bnQYESABKAUSFAoMc2hvd2luZ19oaW50GBIgASgIEicKB2FjdGlvbnMYEyADKA4yFi50YXAudjEuU3RhbmRhcmRBY3Rpb24SFgoOY3VzdG9tX2FjdGlvbnMYFCADKAkSIQoFcmFuZ2UYFSABKAsyDS50YXAudjEuUmFuZ2VIBogBAUINCgtfY2xhc3NfbmFtZUIPCg1fcGFja2FnZV9uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50QggKBl9yYW5nZSJTCgVSYW5nZRIfCgR0eXBlGAEgASgOMhEudGFwLnYxLlJhbmdlVHlwZRILCgNtaW4YAiABKAISCwoDbWF4GAMgASgCEg8KB2N1cnJlbnQYBCABKAIijQUKCkRldmljZUluZm8SEQoJYXBpX2xldmVsGAEgASgFEhQKDG1hbnVmYWN0dXJlchgCIAEoCRINCgVtb2RlbBgDIAEoCRIPCgdwcm9kdWN0GAQgASgJEhUKDWRpc3BsYXlfd2lkdGgYBSABKAUSFgoOZGlzcGxheV9oZWlnaHQYBiABKAUSGAoQZGlzcGxheV9yb3RhdGlvbhgHIAEoBRIcCg9jdXJyZW50X3BhY2thZ2UYCCABKAlIAIgBARIRCglzY3JlZW5fb24YCSABKAgSFwoPa2V5Z3VhcmRfbG9ja2VkGAogASgIEhcKD2tleWd1YXJkX3NlY3VyZRgLIAEoCBIWCg5rZXlib2FyZF9zaG93bhgMIAEoCBITCgthdXRvX3JvdGF0ZRgNIAEoCBIaChJhbmltYXRpb25zX2VuYWJsZWQYDiABKAgSEQoJZGFya19tb2RlGA8gASgIEhIKCmZvbnRfc2NhbGUYECABKAISEwoLZGVuc2l0eV9kcGkYESABKAUSFQoNYWlycGxhbmVfbW9kZRgSIAEoCBIUCgx3aWZpX2VuYWJsZWQYEyABKAgSGwoTbW9iaWxlX2RhdGFfZW5hYmxlZBgUIAEoCBIWCg5zeXN0ZW1fbG9jYWxlcxgVIAMoCRISCgpzdGF5X2F3YWtlGBYgASgIEh8KEmhpZ2hfY29udHJhc3RfdGV4dBgXIAEoCEgBiAEBEhwKD2NvbG9yX2ludmVyc2lvbhgYIAEoCEgCiAEBEhEKCWJvbGRfdGV4dBgZIAEoCEISChBfY3VycmVudF9wYWNrYWdlQhUKE19oaWdoX2NvbnRyYXN0X3RleHRCEgoQX2NvbG9yX2ludmVyc2lvbiIrCgVUb2FzdBIMCgR0ZXh0GAEgASgJEhQKDHBhY2thZ2VfbmFtZRgCIAEoCSKBAQoQUGVybWlzc2lvblByb21wdBIUCgxwYWNrYWdlX25hbWUYASABKAkSKQoHY2hvaWNlcxgCIAMoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlEiwKCmFjY3VyYWNpZXMYAyADKA4yGC50YXAudjEuTG9jYXRpb25BY2N1cmFjeSIGCgREb25lIpQBCgVFcnJvchIfCgRjb2RlGAEgASgOMhEudGFwLnYxLkVycm9yQ29kZRITCgZkZXRhaWwYAiABKAlIAIgBARIUCgdtZXNzYWdlGAMgASgJSAGIAQESGAoLbWF0Y2hfY291bnQYBCABKAVIAogBAUIJCgdfZGV0YWlsQgoKCF9tZXNzYWdlQg4KDF9tYXRjaF9jb3VudCL9AgoNQ29tbWFuZFJlc3VsdBITCgtkdXJhdGlvbl9tcxgBIAEoAxISCgpyZXF1ZXN0X2lkGAIgASgDEhoKEnNlc3Npb25fZ2VuZXJhdGlvbhgDIAEoAxIcCgRkb25lGAQgASgLMgwudGFwLnYxLkRvbmVIABIOCgRib29sGAUgASgISAASDwoFY291bnQYByABKAVIABIOCgR0ZXh0GAggASgJSAASKwoIc25hcHNob3QYCSABKAsyFy50YXAudjEuRWxlbWVudFNuYXBzaG90SAASKQoLZGV2aWNlX2luZm8YCiABKAsyEi50YXAudjEuRGV2aWNlSW5mb0gAEh4KBWVycm9yGA0gASgLMg0udGFwLnYxLkVycm9ySAASNQoRcGVybWlzc2lvbl9wcm9tcHQYDiABKAsyGC50YXAudjEuUGVybWlzc2lvblByb21wdEgAEh4KBXRvYXN0GA8gASgLMg0udGFwLnYxLlRvYXN0SABCCQoHb3V0Y29tZSqpBQoJRXJyb3JDb2RlEhMKD0VSUl9VTlNQRUNJRklFRBAAEhcKE0VSUl9JTlZBTElEX1JFUVVFU1QQARIYChRFUlJfSU5WQUxJRF9TRUxFQ1RPUhACEhMKD0VSUl9VTlNVUFBPUlRFRBADEhcKE0VSUl9VTkFVVEhFTlRJQ0FURUQQBBIYChRFUlJfU0VTU0lPTl9NSVNNQVRDSBAFEhoKFkVSUl9EVVBMSUNBVEVfT1JfU1RBTEUQBhISCg5FUlJfT1ZFUkxPQURFRBAHEhQKEEVSUl9BVVRfTUlTTUFUQ0gQCBIRCg1FUlJfTk9UX0ZPVU5EEAkSEQoNRVJSX0FNQklHVU9VUxAKEhgKFEVSUl9OT1RfSU5URVJBQ1RBQkxFEAsSHAoYRVJSX1NUQUxFX0RVUklOR19DT01NQU5EEAwSFwoTRVJSX0FDVElPTl9SRUpFQ1RFRBANEhQKEEVSUl9XQUlUX1RJTUVPVVQQDhIRCg1FUlJfQ0FOQ0VMTEVEEA8SGQoVRVJSX0RFQURMSU5FX0VYQ0VFREVEEBASGQoVRVJSX0FVVF9OT1RfSU5TVEFMTEVEEBESEwoPRVJSX0FVVF9DUkFTSEVEEBISDwoLRVJSX0FVVF9BTlIQExIhCh1FUlJfU1lOQ19QUk9WSURFUl9VTkFWQUlMQUJMRRAUEhgKFEVSUl9EUklWRVJfVU5IRUFMVEhZEBUSFgoSRVJSX1RSQU5TUE9SVF9MT1NUEBYSFQoRRVJSX0lOREVURVJNSU5BVEUQFxIgChxFUlJfQVJUSUZBQ1RfVFJBTlNGRVJfRkFJTEVEEBgSGQoVRVJSX1BBWUxPQURfVE9PX0xBUkdFEBkSEAoMRVJSX0lOVEVSTkFMEBoSDwoLRVJSX1VOS05PV04QGypXCglEaXJlY3Rpb24SEwoPRElSX1VOU1BFQ0lGSUVEEAASCgoGRElSX1VQEAESDAoIRElSX0RPV04QAhIMCghESVJfTEVGVBADEg0KCURJUl9SSUdIVBAEKmkKD1N0YWJpbGl0eVNpZ25hbBIZChVTVEFCSUxJVFlfVU5TUEVDSUZJRUQQABISCg5TVEFCSUxJVFlfVFJFRRABEhQKEFNUQUJJTElUWV9QSVhFTFMQAhIRCg1TVEFCSUxJVFlfQUxMEAMqbAoLU3lzdGVtUGFuZWwSHAoYU1lTVEVNX1BBTkVMX1VOU1BFQ0lGSUVEEAASHgoaU1lTVEVNX1BBTkVMX05PVElGSUNBVElPTlMQARIfChtTWVNURU1fUEFORUxfUVVJQ0tfU0VUVElOR1MQAipfCgtPcmllbnRhdGlvbhIbChdPUklFTlRBVElPTl9VTlNQRUNJRklFRBAAEhgKFE9SSUVOVEFUSU9OX1BPUlRSQUlUEAESGQoVT1JJRU5UQVRJT05fTEFORFNDQVBFEAIqqgEKD0Rpc3BsYXlSb3RhdGlvbhIgChxESVNQTEFZX1JPVEFUSU9OX1VOU1BFQ0lGSUVEEAASHAoYRElTUExBWV9ST1RBVElPTl9OQVRVUkFMEAESGQoVRElTUExBWV9ST1RBVElPTl9MRUZUEAISIAocRElTUExBWV9ST1RBVElPTl9VUFNJREVfRE9XThADEhoKFkRJU1BMQVlfUk9UQVRJT05fUklHSFQQBCpICg5QaW5jaERpcmVjdGlvbhIVChFQSU5DSF9VTlNQRUNJRklFRBAAEg4KClBJTkNIX09QRU4QARIPCgtQSU5DSF9DTE9TRRACKuYCChBQZXJtaXNzaW9uQ2hvaWNlEiEKHVBFUk1JU1NJT05fQ0hPSUNFX1VOU1BFQ0lGSUVEEAASFAoQUEVSTUlTU0lPTl9BTExPVxABEiQKIFBFUk1JU1NJT05fQUxMT1dfRk9SRUdST1VORF9PTkxZEAISHQoZUEVSTUlTU0lPTl9BTExPV19PTkVfVElNRRADEhsKF1BFUk1JU1NJT05fQUxMT1dfQUxXQVlTEAQSHQoZUEVSTUlTU0lPTl9BTExPV19TRUxFQ1RFRBAFEhgKFFBFUk1JU1NJT05fQUxMT1dfQUxMEAYSEwoPUEVSTUlTU0lPTl9ERU5ZEAcSJgoiUEVSTUlTU0lPTl9ERU5ZX0FORF9ET05UX0FTS19BR0FJThAIEiMKH1BFUk1JU1NJT05fS0VFUF9GT1JFR1JPVU5EX09OTFkQCRIcChhQRVJNSVNTSU9OX0tFRVBfT05FX1RJTUUQCiplChBMb2NhdGlvbkFjY3VyYWN5EiEKHUxPQ0FUSU9OX0FDQ1VSQUNZX1VOU1BFQ0lGSUVEEAASFAoQTE9DQVRJT05fUFJFQ0lTRRABEhgKFExPQ0FUSU9OX0FQUFJPWElNQVRFEAIqiAQKDlN0YW5kYXJkQWN0aW9uEh8KG1NUQU5EQVJEX0FDVElPTl9VTlNQRUNJRklFRBAAEg8KC0ExMVlfRVhQQU5EEAESEQoNQTExWV9DT0xMQVBTRRACEhAKDEExMVlfRElTTUlTUxADEhcKE0ExMVlfU0NST0xMX0ZPUldBUkQQBBIYChRBMTFZX1NDUk9MTF9CQUNLV0FSRBAFEhIKDkExMVlfU0NST0xMX1VQEAYSFAoQQTExWV9TQ1JPTExfRE9XThAHEhQKEEExMVlfU0NST0xMX0xFRlQQCBIVChFBMTFZX1NDUk9MTF9SSUdIVBAJEhAKDEExMVlfUEFHRV9VUBAKEhIKDkExMVlfUEFHRV9ET1dOEAsSEgoOQTExWV9QQUdFX0xFRlQQDBITCg9BMTFZX1BBR0VfUklHSFQQDRIXChNBMTFZX1NIT1dfT05fU0NSRUVOEA4SFgoSQTExWV9DT05URVhUX0NMSUNLEA8SFwoTQTExWV9QUkVTU19BTkRfSE9MRBAQEg8KC0ExMVlfU0VMRUNUEBESGAoUQTExWV9DTEVBUl9TRUxFQ1RJT04QEhIOCgpBMTFZX0ZPQ1VTEBMSFAoQQTExWV9DTEVBUl9GT0NVUxAUEg0KCUExMVlfQ09QWRAVEgwKCEExMVlfQ1VUEBYSDgoKQTExWV9QQVNURRAXKloKCVJhbmdlVHlwZRIaChZSQU5HRV9UWVBFX1VOU1BFQ0lGSUVEEAASDQoJUkFOR0VfSU5UEAESDwoLUkFOR0VfRkxPQVQQAhIRCg1SQU5HRV9QRVJDRU5UEANCMgogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDENvbW1hbmRQcm90b1ABYgZwcm90bzM", [file_selector]);
+  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCI6Cg5TZXRPcmllbnRhdGlvbhIoCgtvcmllbnRhdGlvbhgBIAEoDjITLnRhcC52MS5PcmllbnRhdGlvbiI/ChJTZXREaXNwbGF5Um90YXRpb24SKQoIcm90YXRpb24YASABKA4yFy50YXAudjEuRGlzcGxheVJvdGF0aW9uIhIKEFVuZnJlZXplUm90YXRpb24iEQoPRGlzbWlzc0tleWd1YXJkIg8KDUR1bXBIaWVyYXJjaHkiLAoGRXhpc3RzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIisKBUNvdW50EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi4KCFNuYXBzaG90EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkYKC1dhaXRWaXNpYmxlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhMKC2V4YWN0bHlfb25lGAIgASgIIi4KCFdhaXRHb25lEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIiYKDldhaXRBcHBWaXNpYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSJ/ChBXYWl0U2NyZWVuU3RhYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRIaCg1zdGFibGVfZm9yX21zGAIgASgDSACIAQESJwoGc2lnbmFsGAMgASgOMhcudGFwLnYxLlN0YWJpbGl0eVNpZ25hbEIQCg5fc3RhYmxlX2Zvcl9tcyIpCgNUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiLQoHTG9uZ1RhcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciI7CgdTZXRUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEgwKBHRleHQYAiABKAkiGAoIVHlwZVRleHQSDAoEdGV4dBgCIAEoCSIvCglDbGVhclRleHQSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IihQEKBVN3aXBlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IoYBCgZTY3JvbGwSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbhIdChBkaXN0YW5jZV9wZXJjZW50GAMgASgFSACIAQFCEwoRX2Rpc3RhbmNlX3BlcmNlbnQiLwoJRG91YmxlVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkwKBERyYWcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIAoGdGFyZ2V0GAIgASgLMhAudGFwLnYxLlNlbGVjdG9yIngKBVBpbmNoEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEikKCWRpcmVjdGlvbhgCIAEoDjIWLnRhcC52MS5QaW5jaERpcmVjdGlvbhIUCgdwZXJjZW50GAMgASgFSACIAQFCCgoIX3BlcmNlbnQiUQoFRmxpbmcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbiIWChRXYWl0UGVybWlzc2lvblByb21wdCJoChBDaG9vc2VQZXJtaXNzaW9uEigKBmNob2ljZRgBIAEoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlEioKCGFjY3VyYWN5GAIgASgOMhgudGFwLnYxLkxvY2F0aW9uQWNjdXJhY3kiDgoMSGlkZUtleWJvYXJkIjYKEFBlcmZvcm1JbWVBY3Rpb24SIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiHAoMU2V0Q2xpcGJvYXJkEgwKBHRleHQYASABKAkiDgoMR2V0Q2xpcGJvYXJkInUKCkF3YWl0VG9hc3QSEQoEdGV4dBgBIAEoCUgAiAEBEh8KBG1vZGUYAiABKA4yES50YXAudjEuTWF0Y2hNb2RlEhkKDHBhY2thZ2VfbmFtZRgDIAEoCUgBiAEBQgcKBV90ZXh0Qg8KDV9wYWNrYWdlX25hbWUiiAEKGlBlcmZvcm1BY2Nlc3NpYmlsaXR5QWN0aW9uEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEioKCHN0YW5kYXJkGAIgASgOMhYudGFwLnYxLlN0YW5kYXJkQWN0aW9uSAASEAoGY3VzdG9tGAMgASgJSABCCAoGYWN0aW9uIkAKC1NldFByb2dyZXNzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEg0KBXZhbHVlGAIgASgCIoIBCgtTZXRMb2NhdGlvbhIQCghsYXRpdHVkZRgBIAEoARIRCglsb25naXR1ZGUYAiABKAESFwoKYWNjdXJhY3lfbRgDIAEoAkgAiAEBEhcKCmFsdGl0dWRlX20YBCABKAFIAYgBAUINCgtfYWNjdXJhY3lfbUINCgtfYWx0aXR1ZGVfbSKaAQoRTm90aWZpY2F0aW9uTWF0Y2gSGQoMcGFja2FnZV9uYW1lGAEgASgJSACIAQESEgoFdGl0bGUYAiABKAlIAYgBARIRCgR0ZXh0GAMgASgJSAKIAQESHwoEbW9kZRgEIAEoDjIRLnRhcC52MS5NYXRjaE1vZGVCDwoNX3BhY2thZ2VfbmFtZUIICgZfdGl0bGVCBwoFX3RleHQiPQoRQXdhaXROb3RpZmljYXRpb24SKAoFbWF0Y2gYASABKAsyGS50YXAudjEuTm90aWZpY2F0aW9uTWF0Y2giEwoRTGlzdE5vdGlmaWNhdGlvbnMiXAoQT3Blbk5vdGlmaWNhdGlvbhIoCgVtYXRjaBgBIAEoCzIZLnRhcC52MS5Ob3RpZmljYXRpb25NYXRjaBITCgZhY3Rpb24YAiABKAlIAIgBAUIJCgdfYWN0aW9uIj8KE0Rpc21pc3NOb3RpZmljYXRpb24SKAoFbWF0Y2gYASABKAsyGS50YXAudjEuTm90aWZpY2F0aW9uTWF0Y2gi6g4KB0NvbW1hbmQSFwoKdGltZW91dF9tcxgBIAEoA0gBiAEBEi4KC2RldmljZV9pbmZvGAMgASgLMhcudGFwLnYxLkRldmljZUluZm9RdWVyeUgAEiUKCXByZXNzX2tleRgEIAEoCzIQLnRhcC52MS5QcmVzc0tleUgAEi8KDmR1bXBfaGllcmFyY2h5GAYgASgLMhUudGFwLnYxLkR1bXBIaWVyYXJjaHlIABIgCgZleGlzdHMYByABKAsyDi50YXAudjEuRXhpc3RzSAASHgoFY291bnQYCCABKAsyDS50YXAudjEuQ291bnRIABIkCghzbmFwc2hvdBgJIAEoCzIQLnRhcC52MS5TbmFwc2hvdEgAEisKDHdhaXRfdmlzaWJsZRgKIAEoCzITLnRhcC52MS5XYWl0VmlzaWJsZUgAEiUKCXdhaXRfZ29uZRgLIAEoCzIQLnRhcC52MS5XYWl0R29uZUgAEjIKEHdhaXRfYXBwX3Zpc2libGUYDCABKAsyFi50YXAudjEuV2FpdEFwcFZpc2libGVIABI2ChJ3YWl0X3NjcmVlbl9zdGFibGUYDSABKAsyGC50YXAudjEuV2FpdFNjcmVlblN0YWJsZUgAEhoKA3RhcBgOIAEoCzILLnRhcC52MS5UYXBIABIjCghsb25nX3RhcBgPIAEoCzIPLnRhcC52MS5Mb25nVGFwSAASIwoIc2V0X3RleHQYECABKAsyDy50YXAudjEuU2V0VGV4dEgAEiUKCXR5cGVfdGV4dBgRIAEoCzIQLnRhcC52MS5UeXBlVGV4dEgAEicKCmNsZWFyX3RleHQYEiABKAsyES50YXAudjEuQ2xlYXJUZXh0SAASHgoFc3dpcGUYEyABKAsyDS50YXAudjEuU3dpcGVIABIgCgZzY3JvbGwYFCABKAsyDi50YXAudjEuU2Nyb2xsSAASNAoRb3Blbl9zeXN0ZW1fcGFuZWwYGCABKAsyFy50YXAudjEuT3BlblN5c3RlbVBhbmVsSAASMQoPc2V0X29yaWVudGF0aW9uGBkgASgLMhYudGFwLnYxLlNldE9yaWVudGF0aW9uSAASOgoUc2V0X2Rpc3BsYXlfcm90YXRpb24YGiABKAsyGi50YXAudjEuU2V0RGlzcGxheVJvdGF0aW9uSAASNQoRdW5mcmVlemVfcm90YXRpb24YGyABKAsyGC50YXAudjEuVW5mcmVlemVSb3RhdGlvbkgAEjMKEGRpc21pc3Nfa2V5Z3VhcmQYHCABKAsyFy50YXAudjEuRGlzbWlzc0tleWd1YXJkSAASJwoKZG91YmxlX3RhcBgdIAEoCzIRLnRhcC52MS5Eb3VibGVUYXBIABIcCgRkcmFnGB4gASgLMgwudGFwLnYxLkRyYWdIABIeCgVwaW5jaBgfIAEoCzINLnRhcC52MS5QaW5jaEgAEh4KBWZsaW5nGCAgASgLMg0udGFwLnYxLkZsaW5nSAASPgoWd2FpdF9wZXJtaXNzaW9uX3Byb21wdBghIAEoCzIcLnRhcC52MS5XYWl0UGVybWlzc2lvblByb21wdEgAEjUKEWNob29zZV9wZXJtaXNzaW9uGCIgASgLMhgudGFwLnYxLkNob29zZVBlcm1pc3Npb25IABItCg1oaWRlX2tleWJvYXJkGCMgASgLMhQudGFwLnYxLkhpZGVLZXlib2FyZEgAEjYKEnBlcmZvcm1faW1lX2FjdGlvbhgkIAEoCzIYLnRhcC52MS5QZXJmb3JtSW1lQWN0aW9uSAASLQoNc2V0X2NsaXBib2FyZBglIAEoCzIULnRhcC52MS5TZXRDbGlwYm9hcmRIABItCg1nZXRfY2xpcGJvYXJkGCYgASgLMhQudGFwLnYxLkdldENsaXBib2FyZEgAEikKC2F3YWl0X3RvYXN0GCcgASgLMhIudGFwLnYxLkF3YWl0VG9hc3RIABJKChxwZXJmb3JtX2FjY2Vzc2liaWxpdHlfYWN0aW9uGCggASgLMiIudGFwLnYxLlBlcmZvcm1BY2Nlc3NpYmlsaXR5QWN0aW9uSAASKwoMc2V0X3Byb2dyZXNzGCkgASgLMhMudGFwLnYxLlNldFByb2dyZXNzSAASKwoMc2V0X2xvY2F0aW9uGCogASgLMhMudGFwLnYxLlNldExvY2F0aW9uSAASNwoSYXdhaXRfbm90aWZpY2F0aW9uGCsgASgLMhkudGFwLnYxLkF3YWl0Tm90aWZpY2F0aW9uSAASNwoSbGlzdF9ub3RpZmljYXRpb25zGCwgASgLMhkudGFwLnYxLkxpc3ROb3RpZmljYXRpb25zSAASNQoRb3Blbl9ub3RpZmljYXRpb24YLSABKAsyGC50YXAudjEuT3Blbk5vdGlmaWNhdGlvbkgAEjsKFGRpc21pc3Nfbm90aWZpY2F0aW9uGC4gASgLMhsudGFwLnYxLkRpc21pc3NOb3RpZmljYXRpb25IAEIECgJvcEINCgtfdGltZW91dF9tcyJCCgZCb3VuZHMSDAoEbGVmdBgBIAEoBRILCgN0b3AYAiABKAUSDQoFcmlnaHQYAyABKAUSDgoGYm90dG9tGAQgASgFIugECg9FbGVtZW50U25hcHNob3QSFwoKY2xhc3NfbmFtZRgBIAEoCUgAiAEBEhkKDHBhY2thZ2VfbmFtZRgCIAEoCUgBiAEBEhoKDXJlc291cmNlX25hbWUYAyABKAlIAogBARIRCgR0ZXh0GAQgASgJSAOIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgFIAEoCUgEiAEBEhEKBGhpbnQYBiABKAlIBYgBARIeCgZib3VuZHMYByABKAsyDi50YXAudjEuQm91bmRzEhEKCWNoZWNrYWJsZRgIIAEoCBIPCgdjaGVja2VkGAkgASgIEhEKCWNsaWNrYWJsZRgKIAEoCBIPCgdlbmFibGVkGAsgASgIEhEKCWZvY3VzYWJsZRgMIAEoCBIPCgdmb2N1c2VkGA0gASgIEhYKDmxvbmdfY2xpY2thYmxlGA4gASgIEhIKCnNjcm9sbGFibGUYDyABKAgSEAoIc2VsZWN0ZWQYECABKAgSEwoLY2hpbGRfY291bnQYESABKAUSFAoMc2hvd2luZ19oaW50GBIgASgIEicKB2FjdGlvbnMYEyADKA4yFi50YXAudjEuU3RhbmRhcmRBY3Rpb24SFgoOY3VzdG9tX2FjdGlvbnMYFCADKAkSIQoFcmFuZ2UYFSABKAsyDS50YXAudjEuUmFuZ2VIBogBAUINCgtfY2xhc3NfbmFtZUIPCg1fcGFja2FnZV9uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50QggKBl9yYW5nZSJTCgVSYW5nZRIfCgR0eXBlGAEgASgOMhEudGFwLnYxLlJhbmdlVHlwZRILCgNtaW4YAiABKAISCwoDbWF4GAMgASgCEg8KB2N1cnJlbnQYBCABKAIijQUKCkRldmljZUluZm8SEQoJYXBpX2xldmVsGAEgASgFEhQKDG1hbnVmYWN0dXJlchgCIAEoCRINCgVtb2RlbBgDIAEoCRIPCgdwcm9kdWN0GAQgASgJEhUKDWRpc3BsYXlfd2lkdGgYBSABKAUSFgoOZGlzcGxheV9oZWlnaHQYBiABKAUSGAoQZGlzcGxheV9yb3RhdGlvbhgHIAEoBRIcCg9jdXJyZW50X3BhY2thZ2UYCCABKAlIAIgBARIRCglzY3JlZW5fb24YCSABKAgSFwoPa2V5Z3VhcmRfbG9ja2VkGAogASgIEhcKD2tleWd1YXJkX3NlY3VyZRgLIAEoCBIWCg5rZXlib2FyZF9zaG93bhgMIAEoCBITCgthdXRvX3JvdGF0ZRgNIAEoCBIaChJhbmltYXRpb25zX2VuYWJsZWQYDiABKAgSEQoJZGFya19tb2RlGA8gASgIEhIKCmZvbnRfc2NhbGUYECABKAISEwoLZGVuc2l0eV9kcGkYESABKAUSFQoNYWlycGxhbmVfbW9kZRgSIAEoCBIUCgx3aWZpX2VuYWJsZWQYEyABKAgSGwoTbW9iaWxlX2RhdGFfZW5hYmxlZBgUIAEoCBIWCg5zeXN0ZW1fbG9jYWxlcxgVIAMoCRISCgpzdGF5X2F3YWtlGBYgASgIEh8KEmhpZ2hfY29udHJhc3RfdGV4dBgXIAEoCEgBiAEBEhwKD2NvbG9yX2ludmVyc2lvbhgYIAEoCEgCiAEBEhEKCWJvbGRfdGV4dBgZIAEoCEISChBfY3VycmVudF9wYWNrYWdlQhUKE19oaWdoX2NvbnRyYXN0X3RleHRCEgoQX2NvbG9yX2ludmVyc2lvbiKeAQoSRGV2aWNlTm90aWZpY2F0aW9uEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBEhEKBHRleHQYAyABKAlIAYgBARIPCgdhY3Rpb25zGAQgAygJEhEKCWNsZWFyYWJsZRgFIAEoCBIUCgxwb3N0ZWRfYXRfbXMYBiABKANCCAoGX3RpdGxlQgcKBV90ZXh0IkUKEE5vdGlmaWNhdGlvbkxpc3QSMQoNbm90aWZpY2F0aW9ucxgBIAMoCzIaLnRhcC52MS5EZXZpY2VOb3RpZmljYXRpb24iKwoFVG9hc3QSDAoEdGV4dBgBIAEoCRIUCgxwYWNrYWdlX25hbWUYAiABKAkigQEKEFBlcm1pc3Npb25Qcm9tcHQSFAoMcGFja2FnZV9uYW1lGAEgASgJEikKB2Nob2ljZXMYAiADKA4yGC50YXAudjEuUGVybWlzc2lvbkNob2ljZRIsCgphY2N1cmFjaWVzGAMgAygOMhgudGFwLnYxLkxvY2F0aW9uQWNjdXJhY3kiBgoERG9uZSKUAQoFRXJyb3ISHwoEY29kZRgBIAEoDjIRLnRhcC52MS5FcnJvckNvZGUSEwoGZGV0YWlsGAIgASgJSACIAQESFAoHbWVzc2FnZRgDIAEoCUgBiAEBEhgKC21hdGNoX2NvdW50GAQgASgFSAKIAQFCCQoHX2RldGFpbEIKCghfbWVzc2FnZUIOCgxfbWF0Y2hfY291bnQi5AMKDUNvbW1hbmRSZXN1bHQSEwoLZHVyYXRpb25fbXMYASABKAMSEgoKcmVxdWVzdF9pZBgCIAEoAxIaChJzZXNzaW9uX2dlbmVyYXRpb24YAyABKAMSHAoEZG9uZRgEIAEoCzIMLnRhcC52MS5Eb25lSAASDgoEYm9vbBgFIAEoCEgAEg8KBWNvdW50GAcgASgFSAASDgoEdGV4dBgIIAEoCUgAEisKCHNuYXBzaG90GAkgASgLMhcudGFwLnYxLkVsZW1lbnRTbmFwc2hvdEgAEikKC2RldmljZV9pbmZvGAogASgLMhIudGFwLnYxLkRldmljZUluZm9IABIeCgVlcnJvchgNIAEoCzINLnRhcC52MS5FcnJvckgAEjUKEXBlcm1pc3Npb25fcHJvbXB0GA4gASgLMhgudGFwLnYxLlBlcm1pc3Npb25Qcm9tcHRIABIeCgV0b2FzdBgPIAEoCzINLnRhcC52MS5Ub2FzdEgAEjIKDG5vdGlmaWNhdGlvbhgQIAEoCzIaLnRhcC52MS5EZXZpY2VOb3RpZmljYXRpb25IABIxCg1ub3RpZmljYXRpb25zGBEgASgLMhgudGFwLnYxLk5vdGlmaWNhdGlvbkxpc3RIAEIJCgdvdXRjb21lKqkFCglFcnJvckNvZGUSEwoPRVJSX1VOU1BFQ0lGSUVEEAASFwoTRVJSX0lOVkFMSURfUkVRVUVTVBABEhgKFEVSUl9JTlZBTElEX1NFTEVDVE9SEAISEwoPRVJSX1VOU1VQUE9SVEVEEAMSFwoTRVJSX1VOQVVUSEVOVElDQVRFRBAEEhgKFEVSUl9TRVNTSU9OX01JU01BVENIEAUSGgoWRVJSX0RVUExJQ0FURV9PUl9TVEFMRRAGEhIKDkVSUl9PVkVSTE9BREVEEAcSFAoQRVJSX0FVVF9NSVNNQVRDSBAIEhEKDUVSUl9OT1RfRk9VTkQQCRIRCg1FUlJfQU1CSUdVT1VTEAoSGAoURVJSX05PVF9JTlRFUkFDVEFCTEUQCxIcChhFUlJfU1RBTEVfRFVSSU5HX0NPTU1BTkQQDBIXChNFUlJfQUNUSU9OX1JFSkVDVEVEEA0SFAoQRVJSX1dBSVRfVElNRU9VVBAOEhEKDUVSUl9DQU5DRUxMRUQQDxIZChVFUlJfREVBRExJTkVfRVhDRUVERUQQEBIZChVFUlJfQVVUX05PVF9JTlNUQUxMRUQQERITCg9FUlJfQVVUX0NSQVNIRUQQEhIPCgtFUlJfQVVUX0FOUhATEiEKHUVSUl9TWU5DX1BST1ZJREVSX1VOQVZBSUxBQkxFEBQSGAoURVJSX0RSSVZFUl9VTkhFQUxUSFkQFRIWChJFUlJfVFJBTlNQT1JUX0xPU1QQFhIVChFFUlJfSU5ERVRFUk1JTkFURRAXEiAKHEVSUl9BUlRJRkFDVF9UUkFOU0ZFUl9GQUlMRUQQGBIZChVFUlJfUEFZTE9BRF9UT09fTEFSR0UQGRIQCgxFUlJfSU5URVJOQUwQGhIPCgtFUlJfVU5LTk9XThAbKlcKCURpcmVjdGlvbhITCg9ESVJfVU5TUEVDSUZJRUQQABIKCgZESVJfVVAQARIMCghESVJfRE9XThACEgwKCERJUl9MRUZUEAMSDQoJRElSX1JJR0hUEAQqaQoPU3RhYmlsaXR5U2lnbmFsEhkKFVNUQUJJTElUWV9VTlNQRUNJRklFRBAAEhIKDlNUQUJJTElUWV9UUkVFEAESFAoQU1RBQklMSVRZX1BJWEVMUxACEhEKDVNUQUJJTElUWV9BTEwQAypsCgtTeXN0ZW1QYW5lbBIcChhTWVNURU1fUEFORUxfVU5TUEVDSUZJRUQQABIeChpTWVNURU1fUEFORUxfTk9USUZJQ0FUSU9OUxABEh8KG1NZU1RFTV9QQU5FTF9RVUlDS19TRVRUSU5HUxACKl8KC09yaWVudGF0aW9uEhsKF09SSUVOVEFUSU9OX1VOU1BFQ0lGSUVEEAASGAoUT1JJRU5UQVRJT05fUE9SVFJBSVQQARIZChVPUklFTlRBVElPTl9MQU5EU0NBUEUQAiqqAQoPRGlzcGxheVJvdGF0aW9uEiAKHERJU1BMQVlfUk9UQVRJT05fVU5TUEVDSUZJRUQQABIcChhESVNQTEFZX1JPVEFUSU9OX05BVFVSQUwQARIZChVESVNQTEFZX1JPVEFUSU9OX0xFRlQQAhIgChxESVNQTEFZX1JPVEFUSU9OX1VQU0lERV9ET1dOEAMSGgoWRElTUExBWV9ST1RBVElPTl9SSUdIVBAEKkgKDlBpbmNoRGlyZWN0aW9uEhUKEVBJTkNIX1VOU1BFQ0lGSUVEEAASDgoKUElOQ0hfT1BFThABEg8KC1BJTkNIX0NMT1NFEAIq5gIKEFBlcm1pc3Npb25DaG9pY2USIQodUEVSTUlTU0lPTl9DSE9JQ0VfVU5TUEVDSUZJRUQQABIUChBQRVJNSVNTSU9OX0FMTE9XEAESJAogUEVSTUlTU0lPTl9BTExPV19GT1JFR1JPVU5EX09OTFkQAhIdChlQRVJNSVNTSU9OX0FMTE9XX09ORV9USU1FEAMSGwoXUEVSTUlTU0lPTl9BTExPV19BTFdBWVMQBBIdChlQRVJNSVNTSU9OX0FMTE9XX1NFTEVDVEVEEAUSGAoUUEVSTUlTU0lPTl9BTExPV19BTEwQBhITCg9QRVJNSVNTSU9OX0RFTlkQBxImCiJQRVJNSVNTSU9OX0RFTllfQU5EX0RPTlRfQVNLX0FHQUlOEAgSIwofUEVSTUlTU0lPTl9LRUVQX0ZPUkVHUk9VTkRfT05MWRAJEhwKGFBFUk1JU1NJT05fS0VFUF9PTkVfVElNRRAKKmUKEExvY2F0aW9uQWNjdXJhY3kSIQodTE9DQVRJT05fQUNDVVJBQ1lfVU5TUEVDSUZJRUQQABIUChBMT0NBVElPTl9QUkVDSVNFEAESGAoUTE9DQVRJT05fQVBQUk9YSU1BVEUQAiqIBAoOU3RhbmRhcmRBY3Rpb24SHwobU1RBTkRBUkRfQUNUSU9OX1VOU1BFQ0lGSUVEEAASDwoLQTExWV9FWFBBTkQQARIRCg1BMTFZX0NPTExBUFNFEAISEAoMQTExWV9ESVNNSVNTEAMSFwoTQTExWV9TQ1JPTExfRk9SV0FSRBAEEhgKFEExMVlfU0NST0xMX0JBQ0tXQVJEEAUSEgoOQTExWV9TQ1JPTExfVVAQBhIUChBBMTFZX1NDUk9MTF9ET1dOEAcSFAoQQTExWV9TQ1JPTExfTEVGVBAIEhUKEUExMVlfU0NST0xMX1JJR0hUEAkSEAoMQTExWV9QQUdFX1VQEAoSEgoOQTExWV9QQUdFX0RPV04QCxISCg5BMTFZX1BBR0VfTEVGVBAMEhMKD0ExMVlfUEFHRV9SSUdIVBANEhcKE0ExMVlfU0hPV19PTl9TQ1JFRU4QDhIWChJBMTFZX0NPTlRFWFRfQ0xJQ0sQDxIXChNBMTFZX1BSRVNTX0FORF9IT0xEEBASDwoLQTExWV9TRUxFQ1QQERIYChRBMTFZX0NMRUFSX1NFTEVDVElPThASEg4KCkExMVlfRk9DVVMQExIUChBBMTFZX0NMRUFSX0ZPQ1VTEBQSDQoJQTExWV9DT1BZEBUSDAoIQTExWV9DVVQQFhIOCgpBMTFZX1BBU1RFEBcqWgoJUmFuZ2VUeXBlEhoKFlJBTkdFX1RZUEVfVU5TUEVDSUZJRUQQABINCglSQU5HRV9JTlQQARIPCgtSQU5HRV9GTE9BVBACEhEKDVJBTkdFX1BFUkNFTlQQA0IyCiBpby5naXRodWIubm9hbWNvaGVuNDgudGFwLmFwaS52MUIMQ29tbWFuZFByb3RvUAFiBnByb3RvMw", [file_selector]);
 
 /**
  * @generated from message tap.v1.DeviceInfoQuery
@@ -788,6 +788,127 @@ export const SetLocationSchema: GenMessage<SetLocation> = /*@__PURE__*/
   messageDesc(file_command, 35);
 
 /**
+ * Which notifications a notification op means; every field given must match (none: any).
+ * `package_name` exactly; `title` and `text` (≤ 1024 chars each) under `mode` (default exact).
+ * The notifications are what a NotificationListenerService in the driver app sees: the server
+ * gives the driver notification access (`cmd notification allow_listener`) before the first
+ * notification op and takes it back on detach. Group summaries are left out.
+ *
+ * @generated from message tap.v1.NotificationMatch
+ */
+export type NotificationMatch = Message<"tap.v1.NotificationMatch"> & {
+  /**
+   * @generated from field: optional string package_name = 1;
+   */
+  packageName?: string | undefined;
+
+  /**
+   * @generated from field: optional string title = 2;
+   */
+  title?: string | undefined;
+
+  /**
+   * @generated from field: optional string text = 3;
+   */
+  text?: string | undefined;
+
+  /**
+   * @generated from field: tap.v1.MatchMode mode = 4;
+   */
+  mode: MatchMode;
+};
+
+/**
+ * Describes the message tap.v1.NotificationMatch.
+ * Use `create(NotificationMatchSchema)` to create a new message.
+ */
+export const NotificationMatchSchema: GenMessage<NotificationMatch> = /*@__PURE__*/
+  messageDesc(file_command, 36);
+
+/**
+ * Waits until a matching notification is active (one already posted counts) and returns the
+ * newest; WAIT_TIMEOUT (NO_NOTIFICATION) otherwise. No input.
+ *
+ * @generated from message tap.v1.AwaitNotification
+ */
+export type AwaitNotification = Message<"tap.v1.AwaitNotification"> & {
+  /**
+   * @generated from field: tap.v1.NotificationMatch match = 1;
+   */
+  match?: NotificationMatch | undefined;
+};
+
+/**
+ * Describes the message tap.v1.AwaitNotification.
+ * Use `create(AwaitNotificationSchema)` to create a new message.
+ */
+export const AwaitNotificationSchema: GenMessage<AwaitNotification> = /*@__PURE__*/
+  messageDesc(file_command, 37);
+
+/**
+ * The active notifications, newest first. No input.
+ *
+ * @generated from message tap.v1.ListNotifications
+ */
+export type ListNotifications = Message<"tap.v1.ListNotifications"> & {
+};
+
+/**
+ * Describes the message tap.v1.ListNotifications.
+ * Use `create(ListNotificationsSchema)` to create a new message.
+ */
+export const ListNotificationsSchema: GenMessage<ListNotifications> = /*@__PURE__*/
+  messageDesc(file_command, 38);
+
+/**
+ * Opens the one matching notification as a tap on it in the shade does: sends its content
+ * intent and, when it auto-cancels, removes it. With `action` (≤ 1024 chars), sends the intent
+ * of its action button with exactly that title instead, and the notification stays. NOT_FOUND /
+ * AMBIGUOUS, or ACTION_REJECTED (ACTION_NOT_OFFERED) when it has no content intent or no such
+ * action, before anything is sent.
+ *
+ * @generated from message tap.v1.OpenNotification
+ */
+export type OpenNotification = Message<"tap.v1.OpenNotification"> & {
+  /**
+   * @generated from field: tap.v1.NotificationMatch match = 1;
+   */
+  match?: NotificationMatch | undefined;
+
+  /**
+   * @generated from field: optional string action = 2;
+   */
+  action?: string | undefined;
+};
+
+/**
+ * Describes the message tap.v1.OpenNotification.
+ * Use `create(OpenNotificationSchema)` to create a new message.
+ */
+export const OpenNotificationSchema: GenMessage<OpenNotification> = /*@__PURE__*/
+  messageDesc(file_command, 39);
+
+/**
+ * Dismisses the one matching notification as a swipe does. NOT_FOUND / AMBIGUOUS, or
+ * ACTION_REJECTED (NOT_CLEARABLE) for an ongoing one, before anything changes.
+ *
+ * @generated from message tap.v1.DismissNotification
+ */
+export type DismissNotification = Message<"tap.v1.DismissNotification"> & {
+  /**
+   * @generated from field: tap.v1.NotificationMatch match = 1;
+   */
+  match?: NotificationMatch | undefined;
+};
+
+/**
+ * Describes the message tap.v1.DismissNotification.
+ * Use `create(DismissNotificationSchema)` to create a new message.
+ */
+export const DismissNotificationSchema: GenMessage<DismissNotification> = /*@__PURE__*/
+  messageDesc(file_command, 40);
+
+/**
  * One protocol request minus session identity (the server owns session id, generation and
  * request ids). Exactly one `op` must be set; its case name is the protocol `op`.
  *
@@ -1020,6 +1141,30 @@ export type Command = Message<"tap.v1.Command"> & {
      */
     value: SetLocation;
     case: "setLocation";
+  } | {
+    /**
+     * @generated from field: tap.v1.AwaitNotification await_notification = 43;
+     */
+    value: AwaitNotification;
+    case: "awaitNotification";
+  } | {
+    /**
+     * @generated from field: tap.v1.ListNotifications list_notifications = 44;
+     */
+    value: ListNotifications;
+    case: "listNotifications";
+  } | {
+    /**
+     * @generated from field: tap.v1.OpenNotification open_notification = 45;
+     */
+    value: OpenNotification;
+    case: "openNotification";
+  } | {
+    /**
+     * @generated from field: tap.v1.DismissNotification dismiss_notification = 46;
+     */
+    value: DismissNotification;
+    case: "dismissNotification";
   } | { case: undefined; value?: undefined };
 };
 
@@ -1028,7 +1173,7 @@ export type Command = Message<"tap.v1.Command"> & {
  * Use `create(CommandSchema)` to create a new message.
  */
 export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
-  messageDesc(file_command, 36);
+  messageDesc(file_command, 41);
 
 /**
  * Screen-pixel rectangle.
@@ -1062,7 +1207,7 @@ export type Bounds = Message<"tap.v1.Bounds"> & {
  * Use `create(BoundsSchema)` to create a new message.
  */
 export const BoundsSchema: GenMessage<Bounds> = /*@__PURE__*/
-  messageDesc(file_command, 37);
+  messageDesc(file_command, 42);
 
 /**
  * State of one matched node at the instant of `snapshot`.
@@ -1188,7 +1333,7 @@ export type ElementSnapshot = Message<"tap.v1.ElementSnapshot"> & {
  * Use `create(ElementSnapshotSchema)` to create a new message.
  */
 export const ElementSnapshotSchema: GenMessage<ElementSnapshot> = /*@__PURE__*/
-  messageDesc(file_command, 38);
+  messageDesc(file_command, 43);
 
 /**
  * @generated from message tap.v1.Range
@@ -1220,7 +1365,7 @@ export type Range = Message<"tap.v1.Range"> & {
  * Use `create(RangeSchema)` to create a new message.
  */
 export const RangeSchema: GenMessage<Range> = /*@__PURE__*/
-  messageDesc(file_command, 39);
+  messageDesc(file_command, 44);
 
 /**
  * Static facts about the device plus the package currently owning the focused window.
@@ -1392,7 +1537,70 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
  * Use `create(DeviceInfoSchema)` to create a new message.
  */
 export const DeviceInfoSchema: GenMessage<DeviceInfo> = /*@__PURE__*/
-  messageDesc(file_command, 40);
+  messageDesc(file_command, 45);
+
+/**
+ * An active notification: the package that posted it, its title and text (Notification extras
+ * `android.title` / `android.text`, absent when it has none), the titles of its action buttons,
+ * whether a swipe can dismiss it, and when it was posted (wall clock, epoch milliseconds).
+ *
+ * @generated from message tap.v1.DeviceNotification
+ */
+export type DeviceNotification = Message<"tap.v1.DeviceNotification"> & {
+  /**
+   * @generated from field: string package_name = 1;
+   */
+  packageName: string;
+
+  /**
+   * @generated from field: optional string title = 2;
+   */
+  title?: string | undefined;
+
+  /**
+   * @generated from field: optional string text = 3;
+   */
+  text?: string | undefined;
+
+  /**
+   * @generated from field: repeated string actions = 4;
+   */
+  actions: string[];
+
+  /**
+   * @generated from field: bool clearable = 5;
+   */
+  clearable: boolean;
+
+  /**
+   * @generated from field: int64 posted_at_ms = 6;
+   */
+  postedAtMs: bigint;
+};
+
+/**
+ * Describes the message tap.v1.DeviceNotification.
+ * Use `create(DeviceNotificationSchema)` to create a new message.
+ */
+export const DeviceNotificationSchema: GenMessage<DeviceNotification> = /*@__PURE__*/
+  messageDesc(file_command, 46);
+
+/**
+ * @generated from message tap.v1.NotificationList
+ */
+export type NotificationList = Message<"tap.v1.NotificationList"> & {
+  /**
+   * @generated from field: repeated tap.v1.DeviceNotification notifications = 1;
+   */
+  notifications: DeviceNotification[];
+};
+
+/**
+ * Describes the message tap.v1.NotificationList.
+ * Use `create(NotificationListSchema)` to create a new message.
+ */
+export const NotificationListSchema: GenMessage<NotificationList> = /*@__PURE__*/
+  messageDesc(file_command, 47);
 
 /**
  * A toast `await_toast` matched: its text and the package that posted it.
@@ -1416,7 +1624,7 @@ export type Toast = Message<"tap.v1.Toast"> & {
  * Use `create(ToastSchema)` to create a new message.
  */
 export const ToastSchema: GenMessage<Toast> = /*@__PURE__*/
-  messageDesc(file_command, 41);
+  messageDesc(file_command, 48);
 
 /**
  * The runtime-permission dialog on screen: the package of its window (what a selector's package
@@ -1449,7 +1657,7 @@ export type PermissionPrompt = Message<"tap.v1.PermissionPrompt"> & {
  * Use `create(PermissionPromptSchema)` to create a new message.
  */
 export const PermissionPromptSchema: GenMessage<PermissionPrompt> = /*@__PURE__*/
-  messageDesc(file_command, 42);
+  messageDesc(file_command, 49);
 
 /**
  * The command ran to completion and has nothing else to report.
@@ -1464,7 +1672,7 @@ export type Done = Message<"tap.v1.Done"> & {
  * Use `create(DoneSchema)` to create a new message.
  */
 export const DoneSchema: GenMessage<Done> = /*@__PURE__*/
-  messageDesc(file_command, 43);
+  messageDesc(file_command, 50);
 
 /**
  * A failed command. Driver-side failures and driver-transport loss are data (including
@@ -1506,7 +1714,7 @@ export type Error = Message<"tap.v1.Error"> & {
  * Use `create(ErrorSchema)` to create a new message.
  */
 export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
-  messageDesc(file_command, 44);
+  messageDesc(file_command, 51);
 
 /**
  * One protocol response: exactly one `outcome`, named like the protocol result `kind`.
@@ -1596,6 +1804,22 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
      */
     value: Toast;
     case: "toast";
+  } | {
+    /**
+     * await_notification
+     *
+     * @generated from field: tap.v1.DeviceNotification notification = 16;
+     */
+    value: DeviceNotification;
+    case: "notification";
+  } | {
+    /**
+     * list_notifications
+     *
+     * @generated from field: tap.v1.NotificationList notifications = 17;
+     */
+    value: NotificationList;
+    case: "notifications";
   } | { case: undefined; value?: undefined };
 };
 
@@ -1604,7 +1828,7 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
  * Use `create(CommandResultSchema)` to create a new message.
  */
 export const CommandResultSchema: GenMessage<CommandResult> = /*@__PURE__*/
-  messageDesc(file_command, 45);
+  messageDesc(file_command, 52);
 
 /**
  * Closed error taxonomy shared with the device protocol; `Error.detail` refines it with a

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import datetime
+
 import grpc
 import pytest  # type: ignore[import-not-found]
 
@@ -11,6 +13,7 @@ from tap_e2e import (
     DisplayRotation,
     ErrorCode,
     ForegroundActivity,
+    Notification,
     FailureReason,
     LocationAccuracy,
     Orientation,
@@ -455,6 +458,53 @@ def test_await_toast_timeout_carries_no_toast(fake, device):
     with pytest.raises(WaitTimeoutError) as timeout:
         device.await_toast("Saved", timeout=0.5)
     assert timeout.value.reason is WaitReason.NO_TOAST
+
+
+def test_notifications_are_matched_listed_opened_and_dismissed(fake, device):
+    commands: list[pb.Command] = []
+    message = pb.DeviceNotification(
+        package_name="com.test", title="New message", actions=["Reply"], clearable=True, posted_at_ms=1_790_000_000_000
+    )
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        op = command.WhichOneof("op")
+        commands.append(command)
+        if op == "await_notification":
+            return pb.CommandResult(notification=message)
+        if op == "list_notifications":
+            return pb.CommandResult(notifications=pb.NotificationList(notifications=[message]))
+        if op in ("open_notification", "dismiss_notification"):
+            return pb.CommandResult(done=pb.Done())
+        return None
+
+    fake.devices.responder = respond
+    expected = Notification(
+        "com.test", "New message", None, ("Reply",), True, datetime.datetime(2026, 9, 21, 14, 13, 20, tzinfo=datetime.timezone.utc)
+    )
+    assert device.app("com.test").await_notification("New", mode=STARTS_WITH) == expected
+    assert device.notifications() == [expected]
+    device.open_notification(title="New message", action="Reply")
+    device.dismiss_notification(text="Sync", package_name="android")
+
+    awaited = next(c for c in commands if c.HasField("await_notification")).await_notification.match
+    assert (awaited.title, awaited.mode, awaited.package_name) == ("New", pb.MATCH_STARTS_WITH, "com.test")
+    assert not awaited.HasField("text")
+    opened = next(c for c in commands if c.HasField("open_notification")).open_notification
+    assert opened.action == "Reply" and not opened.match.HasField("package_name") and opened.match.mode == pb.MATCH_EXACT
+    dismissed = next(c for c in commands if c.HasField("dismiss_notification")).dismiss_notification.match
+    assert (dismissed.text, dismissed.package_name) == ("Sync", "android")
+
+
+def test_await_notification_timeout_carries_no_notification(fake, device):
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="NO_NOTIFICATION"))
+        if command.HasField("await_notification")
+        else None
+    )
+    with pytest.raises(WaitTimeoutError) as timeout:
+        device.await_notification(title="New message", timeout=0.5)
+    assert timeout.value.reason is WaitReason.NO_NOTIFICATION
+    assert "title 'New message'" in str(timeout.value)
 
 
 def test_launch_extras_and_revoke_permission_reach_the_app_service(fake, device):

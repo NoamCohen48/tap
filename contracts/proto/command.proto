@@ -288,6 +288,35 @@ message SetLocation {
   optional double altitude_m = 4;
 }
 
+// Which notifications a notification op means; every field given must match (none: any).
+// `package_name` exactly; `title` and `text` (≤ 1024 chars each) under `mode` (default exact).
+// The notifications are what a NotificationListenerService in the driver app sees: the server
+// gives the driver notification access (`cmd notification allow_listener`) before the first
+// notification op and takes it back on detach. Group summaries are left out.
+message NotificationMatch {
+  optional string package_name = 1;
+  optional string title = 2;
+  optional string text = 3;
+  MatchMode mode = 4;
+}
+// Waits until a matching notification is active (one already posted counts) and returns the
+// newest; WAIT_TIMEOUT (NO_NOTIFICATION) otherwise. No input.
+message AwaitNotification { NotificationMatch match = 1; }
+// The active notifications, newest first. No input.
+message ListNotifications {}
+// Opens the one matching notification as a tap on it in the shade does: sends its content
+// intent and, when it auto-cancels, removes it. With `action` (≤ 1024 chars), sends the intent
+// of its action button with exactly that title instead, and the notification stays. NOT_FOUND /
+// AMBIGUOUS, or ACTION_REJECTED (ACTION_NOT_OFFERED) when it has no content intent or no such
+// action, before anything is sent.
+message OpenNotification {
+  NotificationMatch match = 1;
+  optional string action = 2;
+}
+// Dismisses the one matching notification as a swipe does. NOT_FOUND / AMBIGUOUS, or
+// ACTION_REJECTED (NOT_CLEARABLE) for an ongoing one, before anything changes.
+message DismissNotification { NotificationMatch match = 1; }
+
 // One protocol request minus session identity (the server owns session id, generation and
 // request ids). Exactly one `op` must be set; its case name is the protocol `op`.
 message Command {
@@ -329,6 +358,10 @@ message Command {
     PerformAccessibilityAction perform_accessibility_action = 40;
     SetProgress set_progress = 41;
     SetLocation set_location = 42;
+    AwaitNotification await_notification = 43;
+    ListNotifications list_notifications = 44;
+    OpenNotification open_notification = 45;
+    DismissNotification dismiss_notification = 46;
   }
 }
 
@@ -409,6 +442,22 @@ message DeviceInfo {
   bool bold_text = 25; // Configuration.fontWeightAdjustment > 0 (API 31+; false below)
 }
 
+// An active notification: the package that posted it, its title and text (Notification extras
+// `android.title` / `android.text`, absent when it has none), the titles of its action buttons,
+// whether a swipe can dismiss it, and when it was posted (wall clock, epoch milliseconds).
+message DeviceNotification {
+  string package_name = 1;
+  optional string title = 2;
+  optional string text = 3;
+  repeated string actions = 4;
+  bool clearable = 5;
+  int64 posted_at_ms = 6;
+}
+
+message NotificationList {
+  repeated DeviceNotification notifications = 1;
+}
+
 // A toast `await_toast` matched: its text and the package that posted it.
 message Toast {
   string text = 1;
@@ -456,5 +505,7 @@ message CommandResult {
     Error error = 13;
     PermissionPrompt permission_prompt = 14;
     Toast toast = 15;
+    DeviceNotification notification = 16; // await_notification
+    NotificationList notifications = 17; // list_notifications
   }
 }
