@@ -42,6 +42,21 @@ sealed interface StateKey {
         override val id: String get() = "locale:$packageName"
     }
 
+    /**
+     * A radio switch, `1` (on) or `0` (off): airplane mode (`cmd connectivity airplane-mode`),
+     * Wi-Fi (`svc wifi`) or mobile data (`svc data`), read from their global settings.
+     */
+    enum class Network(
+        val setting: String,
+    ) : StateKey {
+        AIRPLANE("airplane_mode_on"),
+        WIFI("wifi_on"),
+        MOBILE_DATA("mobile_data"),
+        ;
+
+        override val id: String get() = "network:${name.lowercase()}"
+    }
+
     companion object {
         val ACCELEROMETER_ROTATION = Setting("system", "accelerometer_rotation").id
         val USER_ROTATION = Setting("system", "user_rotation").id
@@ -52,12 +67,19 @@ sealed interface StateKey {
             listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale").map { Setting("global", it).id }
         val FONT_SCALE = Setting("system", "font_scale").id
 
+        /**
+         * Captured together on the first network change, airplane mode last: restoring goes newest
+         * first, so airplane mode is back before Wi-Fi and mobile data are written under it.
+         */
+        val NETWORK = listOf(Network.WIFI, Network.MOBILE_DATA, Network.AIRPLANE).map { it.id }
+
         private val SETTING = Regex("setting:(system|secure|global)/([A-Za-z0-9_.]+)")
 
         fun parse(id: String): StateKey =
             when {
                 id == NightMode.id -> NightMode
                 id == Density.id -> Density
+                id.startsWith("network:") -> Network.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Bad state key $id")
                 id.startsWith("locale:") -> AppLocales(id.removePrefix("locale:").also { require(it.isNotBlank()) { "Bad state key $id" } })
                 else -> SETTING.matchEntire(id)?.let { Setting(it.groupValues[1], it.groupValues[2]) } ?: throw IllegalArgumentException("Bad state key $id")
             }

@@ -55,7 +55,7 @@ PERMISSION_CHOICES = tuple(choice.name.lower().replace("_", "-") for choice in P
 PINCHES = ("open", "close")
 KEYBOARD_ACTIONS = ("state", "hide")
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
-CONDITIONS = ("animations", "dark-mode", "font-scale", "density")
+CONDITIONS = ("animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data")
 """The device conditions `condition` reads or changes (restored on release)."""
 
 # Exit codes shared by the CLI and reported in MCP error results.
@@ -526,8 +526,9 @@ class Agent:
 
     def condition(self, name: str | None = None, value: str | None = None, device: str | None = None) -> str:
         """Without ``name``: reports every device condition. With ``name`` (animations on|off,
-        dark-mode on|off, font-scale 0.5..2.0, density DPI|reset) and ``value``: changes it until
-        release, which restores what the device had. Reports the value read back."""
+        dark-mode on|off, font-scale 0.5..2.0, density DPI|reset, airplane-mode / wifi /
+        mobile-data on|off) and ``value``: changes it until release, which restores what the
+        device had. Reports the value read back."""
         if name is not None:
             name = name.strip().lower().replace("_", "-")
             if name not in CONDITIONS:
@@ -544,6 +545,9 @@ class Agent:
                 "dark-mode": "on" if info.dark_mode else "off",
                 "font-scale": f"{info.font_scale:g}",
                 "density": f"{info.density_dpi} dpi",
+                "airplane-mode": "on" if info.airplane_mode else "off",
+                "wifi": "on" if info.wifi_enabled else "off",
+                "mobile-data": "on" if info.mobile_data_enabled else "off",
             }
             if name is None:
                 return ", ".join(f"{key} {shown[key]}" for key in CONDITIONS)
@@ -696,11 +700,18 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
     """The device call that sets condition ``name`` to ``value``, checked before any call."""
     if not name:
         raise AgentError("condition: name the condition to change", EXIT_USAGE)
-    if name in ("animations", "dark-mode"):
+    if name in ("animations", "dark-mode", "airplane-mode", "wifi", "mobile-data"):
         if value not in ("on", "off"):
             raise AgentError(f"{name} takes on or off, not {value!r}", EXIT_USAGE)
         enabled = value == "on"
-        return (lambda d: d.set_animations(enabled)) if name == "animations" else (lambda d: d.set_dark_mode(enabled))
+        switch = {
+            "animations": lambda d: d.set_animations(enabled),
+            "dark-mode": lambda d: d.set_dark_mode(enabled),
+            "airplane-mode": lambda d: d.set_network(airplane_mode=enabled),
+            "wifi": lambda d: d.set_network(wifi=enabled),
+            "mobile-data": lambda d: d.set_network(mobile_data=enabled),
+        }
+        return switch[name]
     if name == "font-scale":
         try:
             scale = float(value)

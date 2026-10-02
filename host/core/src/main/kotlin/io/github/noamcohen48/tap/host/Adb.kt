@@ -503,7 +503,8 @@ open class Adb internal constructor(
     /**
      * Reads one piece of device state by its [StateKey] id: a `settings` value (null when the
      * device never wrote it), the night mode, the display density override (null = none) or an
-     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system).
+     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system), or a
+     * radio switch as `1`/`0` (null when the device has no such setting, e.g. no telephony).
      */
     open suspend fun readState(
         serial: String,
@@ -527,6 +528,15 @@ open class Adb internal constructor(
                     line.trim().removePrefix("Override density:").takeIf { it != line.trim() }?.trim()
                 }
             }
+            is StateKey.Network -> {
+                val raw = exec(serial, "shell", "settings", "get", "global", parsed.setting).trim().takeUnless { it == "null" }
+                when (parsed) {
+                    // wifi_on: 1 on, 2 on while airplane mode is on, 3 off by airplane mode (back on with it), 0 off.
+                    StateKey.Network.WIFI -> raw?.let { if (it == "1" || it == "2") "1" else "0" } ?: "0"
+                    StateKey.Network.AIRPLANE -> if (raw == "1") "1" else "0"
+                    StateKey.Network.MOBILE_DATA -> raw
+                }
+            }
             is StateKey.AppLocales -> {
                 val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -542,7 +552,11 @@ open class Adb internal constructor(
      */
     open suspend fun nightModeLocked(serial: String): Boolean = "mNightModeLocked=true" in exec(serial, "shell", "dumpsys", "uimode")
 
-    /** Writes one piece of device state read by [readState]; null removes it (`settings delete`, `wm density reset`). */
+    /**
+     * Writes one piece of device state read by [readState]; null removes it (`settings delete`,
+     * `wm density reset`). Radio switches are flipped through their services, never by writing
+     * the setting, which would not move the radio.
+     */
     open suspend fun writeState(
         serial: String,
         key: String,
@@ -557,6 +571,16 @@ open class Adb internal constructor(
                 }
             StateKey.NightMode -> exec(serial, "shell", "cmd", "uimode", "night", shellQuote(requireNotNull(value) { "night mode needs a value" }))
             StateKey.Density -> exec(serial, "shell", "wm", "density", value?.let(::shellQuote) ?: "reset")
+            // Null: the device had no such switch to put back.
+            is StateKey.Network ->
+                if (value != null) {
+                    val verb = if (value == "1") "enable" else "disable"
+                    when (parsed) {
+                        StateKey.Network.AIRPLANE -> exec(serial, "shell", "cmd", "connectivity", "airplane-mode", verb)
+                        StateKey.Network.WIFI -> exec(serial, "shell", "svc", "wifi", verb)
+                        StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
+                    }
+                }
             is StateKey.AppLocales -> {
                 val locales = if (value.isNullOrEmpty()) emptyList() else listOf("--locales", shellQuote(value))
                 exec(serial, "shell", "cmd", "locale", "set-app-locales", shellQuote(parsed.packageName), "--user", "current", *locales.toTypedArray())

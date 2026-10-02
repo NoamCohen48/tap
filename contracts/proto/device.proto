@@ -44,6 +44,11 @@ service DeviceService {
   rpc SetFontScale(SetFontScaleRequest) returns (SetFontScaleResponse);
   // `wm density`: an override in dpi (100 to 1000), or absent for the display's physical density.
   rpc SetDensity(SetDensityRequest) returns (SetDensityResponse);
+  // Airplane mode (`cmd connectivity airplane-mode`), Wi-Fi (`svc wifi`) and mobile data
+  // (`svc data`): the real switches, nothing mocked. API 29+. Airplane mode is written first;
+  // all three are captured on the first change and restored airplane mode first. A device reached
+  // over ADB on the network refuses Wi-Fi off / airplane mode on (FAILED_PRECONDITION).
+  rpc SetNetwork(SetNetworkRequest) returns (SetNetworkResponse);
 }
 
 // State of a listed device.
@@ -278,3 +283,14 @@ message SetDensityRequest {
 }
 
 message SetDensityResponse {}
+
+// At least one switch must be set; an absent one is left as it is.
+message SetNetworkRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  optional bool airplane_mode = 3;
+  optional bool wifi = 4;
+  optional bool mobile_data = 5;
+}
+
+message SetNetworkResponse {}

@@ -619,6 +619,12 @@ class DeviceInfo(Artifact):
     """The font scale apps see (1.0 = the default size)."""
     density_dpi: int
     """The display density apps see, in dpi."""
+    airplane_mode: bool
+    """Airplane mode is on."""
+    wifi_enabled: bool
+    """Wi-Fi is switched on (also while airplane mode is on); says nothing about a connection."""
+    mobile_data_enabled: bool
+    """Mobile data is switched on; ``False`` on a device without telephony."""
 
     media_type = "application/json"
     extension = "json"

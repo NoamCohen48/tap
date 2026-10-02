@@ -5,6 +5,7 @@ import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
 import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.host.Adb
@@ -55,6 +56,11 @@ class DeviceServiceTest {
         for (dpi in listOf(0, 99, 1001, -320)) assertEquals(Status.Code.INVALID_ARGUMENT, density(dpi), "$dpi")
         assertEquals(Status.Code.NOT_FOUND, density(100))
         assertEquals(Status.Code.NOT_FOUND, density(null))
+
+        fun network(build: SetNetworkRequest.Builder.() -> Unit) =
+            code { stub.setNetwork(SetNetworkRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").apply(build).build()) }
+        assertEquals(Status.Code.INVALID_ARGUMENT, network {})
+        assertEquals(Status.Code.NOT_FOUND, network { wifi = false })
 
         assertEquals(
             Status.Code.NOT_FOUND,

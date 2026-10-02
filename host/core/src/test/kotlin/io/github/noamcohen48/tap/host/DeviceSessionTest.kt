@@ -754,6 +754,56 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `network switches capture all three, airplane mode goes first and comes back first`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "0", FakeDeviceState.WIFI to "1", FakeDeviceState.DATA to "1"))
+            openWithState("session-network", state) { session, adb ->
+                session.conditions.setNetwork(airplaneMode = true, wifi = true, mobileData = false)
+                assertEquals(listOf("1", "2", "0"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] })
+                val writes = adb.calls.filter { "airplane-mode" in it || "svc" in it }
+                assertTrue(writes.first().endsWith("airplane-mode enable"), "$writes")
+                assertEquals(
+                    listOf(
+                        SavedState(StateKey.Network.WIFI.id, "1"),
+                        SavedState(StateKey.Network.MOBILE_DATA.id, "1"),
+                        SavedState(StateKey.Network.AIRPLANE.id, "0"),
+                    ),
+                    journalStore().read()?.savedState,
+                )
+                session.conditions.setNetwork(wifi = false, airplaneMode = null, mobileData = null)
+                assertEquals("0", state.values[FakeDeviceState.WIFI])
+
+                val before = adb.calls.size
+                session.close(timeoutMs = 5_000)
+                val restores = adb.calls.drop(before).filter { "airplane-mode" in it || "svc" in it }
+                assertTrue(restores.first().endsWith("airplane-mode disable"), "$restores")
+                assertEquals(listOf("0", "1", "1"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] })
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `wifi turned on under airplane mode is restored off under it`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "1", FakeDeviceState.WIFI to "0", FakeDeviceState.DATA to "0"))
+            openWithState("session-network-airplane", state) { session, _ ->
+                session.conditions.setNetwork(airplaneMode = null, wifi = true, mobileData = null)
+                assertEquals("2", state.values[FakeDeviceState.WIFI])
+                session.close(timeoutMs = 5_000)
+                assertEquals(listOf("1", "0"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI).map { state.values[it] })
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `a device on adb over the network refuses to cut it`() {
+        assertTrue(overNetwork("192.168.1.20:5555"))
+        assertTrue(overNetwork("adb-R58M123-AbCdEf._adb-tls-connect._tcp"))
+        assertFalse(overNetwork("emulator-5554"))
+        assertFalse(overNetwork("85e49002"))
+    }
+
+    @Test
     fun `a condition below its API level is refused before anything is captured`() =
         runBlocking {
             val state = FakeDeviceState(apiLevel = 28)

@@ -1697,6 +1697,8 @@ class TapClientTest {
                         assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.UNSUPPORTED_API, old.reason)
                         val stuck = assertFailsWith<ServerException> { device.setDensity(999) }
                         assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.DEVICE_SETTING, stuck.reason)
+                        device.setNetwork(airplaneMode = true, mobileData = false)
+                        assertFailsWith<IllegalArgumentException> { device.setNetwork() }
                     }
                     val sent = fakeDevices.conditions
                     assertFalse((sent[0] as io.github.noamcohen48.tap.api.v1.SetAnimationsRequest).enabled)
@@ -1704,6 +1706,8 @@ class TapClientTest {
                     assertEquals(320, (sent[2] as io.github.noamcohen48.tap.api.v1.SetDensityRequest).dpi)
                     assertFalse((sent[3] as io.github.noamcohen48.tap.api.v1.SetDensityRequest).hasDpi())
                     assertTrue((sent[4] as io.github.noamcohen48.tap.api.v1.SetDarkModeRequest).enabled)
+                    val network = sent[6] as io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+                    assertTrue(network.airplaneMode && network.hasMobileData() && !network.mobileData && !network.hasWifi())
                     for (request in sent) {
                         val ids =
                             when (request) {
@@ -1711,6 +1715,7 @@ class TapClientTest {
                                 is io.github.noamcohen48.tap.api.v1.SetFontScaleRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetDensityRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetDarkModeRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetNetworkRequest -> request.clientConnectionId to request.attachedDeviceId
                                 else -> error("unexpected request $request")
                             }
                         assertEquals(connection.id to device.attachedDeviceId, ids)
@@ -2064,6 +2069,11 @@ class TapClientTest {
             return io.github.noamcohen48.tap.api.v1.SetDensityResponse
                 .getDefaultInstance()
         }
+
+        override suspend fun setNetwork(request: io.github.noamcohen48.tap.api.v1.SetNetworkRequest): io.github.noamcohen48.tap.api.v1.SetNetworkResponse =
+            io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+                .getDefaultInstance()
+                .also { conditions += request }
     }
 
     private class FakeApps : AppServiceGrpcKt.AppServiceCoroutineImplBase() {

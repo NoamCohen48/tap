@@ -35,6 +35,8 @@ import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityResponse
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
 import io.github.noamcohen48.tap.host.DeviceConditions
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
@@ -260,6 +262,23 @@ class DeviceService(
                 it.setDensity(dpi)
             }
             SetDensityResponse.getDefaultInstance()
+        }
+
+    override suspend fun setNetwork(request: SetNetworkRequest): SetNetworkResponse =
+        reply {
+            val airplane = if (request.hasAirplaneMode()) request.airplaneMode else null
+            val wifi = if (request.hasWifi()) request.wifi else null
+            val data = if (request.hasMobileData()) request.mobileData else null
+            argument(airplane != null || wifi != null || data != null) { "set at least one of airplane_mode, wifi or mobile_data" }
+            val logged: DeviceCall.Builder.() -> Unit = {
+                airplane?.let { airplaneMode = it }
+                wifi?.let { this.wifi = it }
+                data?.let { mobileData = it }
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_network", logged) {
+                it.setNetwork(airplane, wifi, data)
+            }
+            SetNetworkResponse.getDefaultInstance()
         }
 
     /** Runs a device-condition change on the attached device and logs it as [operation]. */

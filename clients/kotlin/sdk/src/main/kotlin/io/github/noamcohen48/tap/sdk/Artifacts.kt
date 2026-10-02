@@ -101,8 +101,8 @@ class Hierarchy(
 
 /**
  * Facts about the device at the moment of [Device.info]: identity, display geometry and
- * rotation, screen, keyguard and keyboard state, and the package owning the focused window. Serialized as
- * JSON.
+ * rotation, screen, keyguard and keyboard state, the package owning the focused window and the
+ * device conditions ([Device.setAnimations] and the rest). Serialized as JSON.
  */
 data class DeviceInfo(
     val apiLevel: Int,
@@ -132,6 +132,12 @@ data class DeviceInfo(
     val fontScale: Float,
     /** The display density apps see, in dpi. */
     val densityDpi: Int,
+    /** Airplane mode is on. */
+    val airplaneMode: Boolean,
+    /** Wi-Fi is switched on (also while airplane mode is on); says nothing about a connection. */
+    val wifiEnabled: Boolean,
+    /** Mobile data is switched on; false on a device without telephony. */
+    val mobileDataEnabled: Boolean,
 ) : Artifact {
     /** [PORTRAIT][Orientation.PORTRAIT] when the display is at least as tall as it is wide. */
     val orientation: Orientation get() = if (displayHeight >= displayWidth) Orientation.PORTRAIT else Orientation.LANDSCAPE
@@ -156,6 +162,9 @@ data class DeviceInfo(
                 put("darkMode", darkMode)
                 put("fontScale", fontScale)
                 put("densityDpi", densityDpi)
+                put("airplaneMode", airplaneMode)
+                put("wifiEnabled", wifiEnabled)
+                put("mobileDataEnabled", mobileDataEnabled)
             }.toString().encodeToByteArray()
     override val mediaType: String get() = "application/json"
     override val extension: String get() = "json"

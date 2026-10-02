@@ -94,13 +94,14 @@ def test_a_screenshot_reads_its_size_from_the_png_header():
 
 
 def test_artifacts_save_their_bytes(tmp_path):
-    info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, DisplayRotation.NATURAL, None, True, False, False, True, True, False, True, 1.3, 420)
+    info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, DisplayRotation.NATURAL, None, True, False, False, True, True, False, True, 1.3, 420, False, True, True)
     saved = json.loads(info.save(tmp_path / "a" / "info.json").read_text())
     assert saved["api_level"] == 34 and saved["current_package"] is None
     assert saved["display_rotation"] == "NATURAL" and saved["screen_on"] is True
     assert saved["keyboard_shown"] is True and saved["auto_rotate"] is True
     assert saved["animations_enabled"] is False and saved["dark_mode"] is True
     assert saved["font_scale"] == 1.3 and saved["density_dpi"] == 420
+    assert (saved["airplane_mode"], saved["wifi_enabled"], saved["mobile_data_enabled"]) == (False, True, True)
     assert info.orientation is Orientation.PORTRAIT
     assert replace(info, display_width=2400, display_height=1080).orientation is Orientation.LANDSCAPE
     assert Hierarchy("<a/>").save(tmp_path / "h.xml").read_text() == "<a/>"

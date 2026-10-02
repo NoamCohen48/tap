@@ -317,6 +317,29 @@ class Device:
         else:
             self._condition("set_density", "SetDensity", pb.SetDensityRequest, dpi=dpi)
 
+    def set_network(
+        self,
+        *,
+        airplane_mode: bool | None = None,
+        wifi: bool | None = None,
+        mobile_data: bool | None = None,
+    ) -> None:
+        """Switch airplane mode, Wi-Fi and mobile data on or off until ``detach()``, see
+        ``set_animations``; a switch left ``None`` stays as it is.
+
+        These are the device's real switches (nothing is mocked): the app sees what it would see
+        if a user flipped them, and turning Wi-Fi on says nothing about when it connects. Airplane
+        mode is applied first, so ``set_network(airplane_mode=True, wifi=True)`` is airplane mode
+        with Wi-Fi on. API 29+. A device reached over ADB on the network refuses Wi-Fi off or
+        airplane mode on (``ServerError``, reason ``DEVICE_SETTING``): that would cut Tap off. Read
+        back with ``info().airplane_mode``, ``wifi_enabled`` and ``mobile_data_enabled``.
+        """
+        switches = {"airplane_mode": airplane_mode, "wifi": wifi, "mobile_data": mobile_data}
+        fields = {name: value for name, value in switches.items() if value is not None}
+        if not fields:
+            raise ValueError("set at least one of airplane_mode, wifi or mobile_data")
+        self._condition("set_network", "SetNetwork", pb.SetNetworkRequest, **fields)
+
     def _condition(self, operation: str, rpc: str, request_type, **fields) -> None:
         self._ensure_usable(operation)
         request = request_type(

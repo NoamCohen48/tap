@@ -344,3 +344,21 @@ class SetDensityRequest(_message.Message):
 class SetDensityResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class SetNetworkRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "airplane_mode", "wifi", "mobile_data")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    AIRPLANE_MODE_FIELD_NUMBER: _ClassVar[int]
+    WIFI_FIELD_NUMBER: _ClassVar[int]
+    MOBILE_DATA_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    airplane_mode: bool
+    wifi: bool
+    mobile_data: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., airplane_mode: _Optional[bool] = ..., wifi: _Optional[bool] = ..., mobile_data: _Optional[bool] = ...) -> None: ...
+
+class SetNetworkResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...

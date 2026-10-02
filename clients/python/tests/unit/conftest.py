@@ -248,6 +248,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
             fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DEVICE_SETTING, "density read back 420")
         return pb.SetDensityResponse()
 
+    def SetNetwork(self, request, context):
+        self._own("set_network", request, context)
+        self.conditions.append(request)
+        return pb.SetNetworkResponse()
+
     def Detach(self, request, context):
         self._own("detach", request, context)
         self.detaches.append(request.attached_device_id)

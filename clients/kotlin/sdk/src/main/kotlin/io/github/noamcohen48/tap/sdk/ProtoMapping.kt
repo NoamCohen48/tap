@@ -94,6 +94,9 @@ internal fun DeviceInfoProto.toModel(): DeviceInfo =
         darkMode = darkMode,
         fontScale = fontScale,
         densityDpi = densityDpi,
+        airplaneMode = airplaneMode,
+        wifiEnabled = wifiEnabled,
+        mobileDataEnabled = mobileDataEnabled,
     )
 
 internal fun ToastProto.toModel(): Toast = Toast(text = text, packageName = packageName)

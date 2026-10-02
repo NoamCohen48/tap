@@ -158,6 +158,9 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         dark_mode=info.dark_mode,
         font_scale=round(info.font_scale, 6),
         density_dpi=info.density_dpi,
+        airplane_mode=info.airplane_mode,
+        wifi_enabled=info.wifi_enabled,
+        mobile_data_enabled=info.mobile_data_enabled,
     )
 
 
