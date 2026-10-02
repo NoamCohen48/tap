@@ -101,21 +101,29 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 | `jvm` | Unit tests (`:contracts:protocol`, `:host:core`, `:host:daemon`, `:device:driver:command-engine`, both Kotlin client modules); assembles driver APKs, fixture, daemon dist/zip and validation executable; `publishToMavenLocal` for the five Maven artifacts (POMs resolve); `tap version` equals `tap.version.engine`. Uploads the JVM dist. |
 | `python` | On 3.10 and 3.13: installs `tap-e2e` and `tap-agent`, runs their unit tests over the in-process fake daemon (`clients/python/tests/unit`, `clients/agent/tests`), builds both wheels, `tap-agent --help`. Uploads the wheels (`python-dists`). |
 | `studio` | On 3.10 and 3.13: `tap-studio` (experimental, `.docs/recorder.md`; released as `client-studio/v*`). `gen_protos.py --check` (the committed Python and TypeScript code matches `clients/studio/proto/studio.proto`, with the pinned `grpcio-tools` and `protoc-gen-connect-python`); the page with Bun 1.3.11: `bun install --frozen-lockfile`, Vitest, `tsc --noEmit` (TypeScript 7) and the Vite build; the back end's unit tests; the wheel, checked to carry the built page, `tap-studio --version`. Uploads the wheel (`studio-dists`). |
-| `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64 running `.github/scripts/device-tests.sh` (the action runs each `script` line as its own `sh -c`, so the lane is one script): `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`), then `.github/scripts/agent-smoke.sh` — a `tap-agent` session (attach, install, cold launch, snapshot, tap by ref with `--settle`, wait, export) whose JSON export is checked (install and cold launch first, the ref logged as its `view_button` selector, every call ok), then `.github/scripts/studio_smoke.py` on the `studio` job's wheel: `tap-studio --serial --package` driven through its own Connect API with the launch-link cookie (the page needs it, frames carry a PNG and selector candidates; a cold launch, taps, set text, a tap picked with `.at(1)` recorded without an exactly-one wait, text assertions; export, New, Open, Replay all passed; SIGTERM releases the device; the exported file replays through `tap-e2e` in a fresh connection). One serial, so two-device tests are skipped. Failure artifacts (incl. `build/agent-smoke`, `build/studio-smoke`) are uploaded. Needs `studio` as well as `api-contract`, `jvm` and `python`. |
+| `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64 running `.github/scripts/device-tests.sh` (the action runs each `script` line as its own `sh -c`, so the lane is one script): `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`), then `.github/scripts/agent-smoke.sh` — a `tap-agent` session (attach, install, cold launch, snapshot, tap by ref with `--settle`, wait, export) whose JSON export is checked (install and cold launch first, the ref logged as its `view_button` selector, every call ok), then `.github/scripts/studio_smoke.py` on the `studio` job's wheel: `tap-studio --serial --package` driven through its own Connect API with the launch-link cookie (the page needs it, frames carry a PNG and selector candidates; a cold launch, taps, set text, a tap picked with `.at(1)` recorded without an exactly-one wait, text assertions; export, New, Open, Replay all passed; SIGTERM releases the device; the exported file replays through `tap-e2e` in a fresh connection). One serial, so two-device tests are skipped. Failure artifacts (incl. `build/agent-smoke`, `build/studio-smoke`) are uploaded. Needs only `api-contract` and `studio` (both < 1 min); it builds what it runs, so it runs side by side with `jvm` rather than after it. |
 | `native-image` | (push to `main` only) GraalVM 21 `nativeCompile`, then `tap start` and `.github/scripts/daemon_smoke.py`: every RPC that needs no device (Info, ListDevices, held Connect, ListConnections, Events, Disconnect, an observed connection) on the native binary, which catches missing reflection metadata before a release. |
 
-Duration (2026-09-29 runs): about 22 min end to end. API contract and Python < 1 min, JVM 6
-min, native image 6 min, device tests 16 min, and the device job starts only after `jvm` and
-`python` pass. Its 16 min: a cold emulator boot on a 2–4 vCPU runner, a Gradle rebuild of the
-driver APKs, fixture and daemon (already built by `jvm`), then the Kotlin suite, the Python suite
-and the agent smoke in sequence, each test attaching the driver on a slow emulator. Not done
-yet, in order of payoff for effort:
+Duration (2026-10-02 runs, before the changes below): about 17 min end to end, almost all of
+it the critical path `jvm` (5 min, 162 tasks compiled from scratch) → `device-tests` (11 min: 2
+min Gradle build, 1.5 min emulator SDK install and cold boot, 3.5 min Kotlin suite, 2 min Python
+suite, 0.5 min smokes, 0.7 min freeing disk space). Everything else is under 1 min. Since then:
 
-- run `device-tests` in parallel with `jvm`/`python` instead of after them (≈6 min wall time;
-  costs emulator minutes on runs a unit test would have failed);
-- cache the AVD snapshot (`android-emulator-runner`'s documented cache step; ≈2–3 min boot);
-- `paths-ignore` for docs-only pushes (`docs/**`, `.docs/**`, `*.md`) on the device job;
-- reuse the `jvm` job's daemon dist and APKs as artifacts instead of rebuilding (a few min).
+- `device-tests` no longer waits for `jvm`/`python` (≈5 min off the wall time; costs emulator
+  minutes on a run a unit test would have failed);
+- the Gradle build cache is on (`org.gradle.caching=true`); `setup-gradle` saves it with the
+  Gradle home on `main` and PRs restore it read-only, so unchanged modules come `FROM-CACHE` in
+  `jvm`, `device-tests` and the docs build. Device test tasks are `cacheIf { false }`;
+- the disk clean-up only runs when the runner has under 30 GB free (current runners have ~90).
+
+Not done yet, in order of payoff for effort:
+
+- split the device lane over two emulator jobs (Kotlin suite / Python suite + smokes; ≈2–3 min);
+- cache the AVD snapshot (`android-emulator-runner`'s documented cache step; ≈1 min — the cache
+  restore of a multi-GB snapshot eats much of the boot it saves);
+- a configuration-cache encryption key for `setup-gradle` (`cache-encryption-key`), so the
+  configuration cache is saved too (≈5–10 s per Gradle invocation);
+- `paths-ignore` for docs-only pushes (`docs/**`, `.docs/**`, `*.md`) on the device job.
 
 Not in CI, still local: `:host:validation:deviceTest` (needs the two-device local matrix; the
 `reboot`-tagged scenario reboots), the Samsung API 29 lane, and a native-image run against a
