@@ -207,7 +207,9 @@ wire types:
   `notifications` (17, `NotificationList`). Before the session's first notification command the
   server gives the driver app's `TapNotificationListener` notification access (`cmd
   notification allow_listener`, read back from `dumpsys notification`'s allowed listeners; saved
-  state `driver-notification-listener`), which detach takes back. `DeviceInfo.stay_awake` (22),
+  state `driver-notification-listener`), which detach takes back. Detach unbinds the listener
+  before it closes the driver (Android 10 binds a listener killed while bound again, whatever its
+  access), and every driver force-stop first unbinds a bound one (`.docs/device-actions.md`). `DeviceInfo.stay_awake` (22),
   `high_contrast_text` (23), `color_inversion` (24) and `bold_text` (25). Errors:
   `WAIT_TIMEOUT`/`NO_NOTIFICATION`, `ACTION_REJECTED`/`NOT_CLEARABLE`,
   `UNSUPPORTED`/`NO_NOTIFICATION_ACCESS`.

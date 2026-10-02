@@ -381,10 +381,14 @@ class DeviceActionsTest {
             val held = device.info()
             assertEquals(!before.stayAwake, held.stayAwake)
             assertEquals(listOf(true, true, bold), listOf(held.highContrastText, held.colorInversion, held.boldText))
+            // Stay awake off lets the screen time out at once on a device left idle: the rest needs it on.
+            device.setStayAwake(true)
+            device.wake()
+            device.dismissKeyguard()
 
             val app = Fixture.launch(device, ".FormActivity")
             if (before.apiLevel >= 33) app.grantPermission("android.permission.POST_NOTIFICATIONS")
-            app.element(res("notify_button")).tap()
+            app.await(res("notify_button")).visible().tap()
             val message = app.awaitNotification("New message")
             assertEquals("from Ada" to listOf("Mark as read"), message.text to message.actions)
             assertTrue(message.clearable)
@@ -405,8 +409,8 @@ class DeviceActionsTest {
                 device.notifications().none { it.packageName == Fixture.PACKAGE && it.title == "New message" }
             }
 
-            app.launch(".FormActivity")
-            app.element(res("notify_button")).tap()
+            app.coldLaunch(".FormActivity") // the task's top is the link screen now
+            app.await(res("notify_button")).visible().tap()
             app.awaitNotification("New message")
             device.dismissNotification("New message", packageName = Fixture.PACKAGE)
             device.awaitUntil("the notification dismissed", observe = { device.notifications().joinToString { it.title.orEmpty() } }) {
