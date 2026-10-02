@@ -2,6 +2,7 @@
 import pytest  # type: ignore[import-not-found]
 from conftest import PACKAGE, launch
 from tap_e2e import (
+    CONTAINS,
     AppLifecycleError,
     CommandError,
     ErrorCode,
@@ -282,5 +283,64 @@ def test_network_switches_read_back_then_are_restored(tap_client, tap_config):
                 before.wifi_enabled,
                 before.mobile_data_enabled,
             )
+    finally:
+        connection.close()
+
+
+def _png() -> bytes:
+    """A valid 1x1 PNG: the media scanner skips files it cannot decode."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    pixels = zlib.compress(b"\x00\xff\x00\x00")
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", pixels) + chunk(b"IEND", b"")
+
+
+def test_files_round_trip_and_media_reaches_the_gallery_then_both_leave(tap_client, tap_config, tmp_path):
+    """A pushed file pulls back byte for byte and never overwrites the device's own; added media
+    is listed by an app reading MediaStore; detach removes both."""
+    import uuid
+
+    name = f"tap-{uuid.uuid4().hex[:8]}"
+    pushed = f"/data/local/tmp/{name}.bin"
+    photo = f"{name}.png"
+    payload = bytes(range(256)) * 5000  # over one chunk
+    connection = tap_client.connect("files")
+    try:
+        serial = (tap_config.serials or connection.available_serials())[0]
+        with connection.attach_device(serial) as device:
+            device.push_file(pushed, payload)
+            assert device.pull_file(pushed) == payload
+            device.push_file(pushed, b"again")  # its own file it may replace
+            local = tmp_path / "pulled.bin"
+            device.pull_file(pushed, local)
+            assert local.read_bytes() == b"again"
+            with pytest.raises(ServerError) as theirs:
+                device.push_file("/system/build.prop", b"x")
+            assert theirs.value.reason is FailureReason.DEVICE_FILE
+            assert b"ro.build" in device.pull_file("/system/build.prop")
+
+            assert device.add_media(_png(), photo) == f"/sdcard/Pictures/Tap/{photo}"
+            app = launch(device, ".PermissionActivity")
+            api = device.info().api_level
+            app.grant_permission("android.permission.READ_MEDIA_IMAGES" if api >= 33 else "android.permission.READ_EXTERNAL_STORAGE")
+            app.launch(".PermissionActivity")
+            app.element(res("read_gallery")).tap()
+            app.wait(text_contains(photo)).visible()
+        with connection.attach_device(serial) as device:
+            with pytest.raises(ServerError) as gone:
+                device.pull_file(pushed)
+            assert gone.value.reason is FailureReason.DEVICE_FILE
+            app = device.app(PACKAGE)
+            app.grant_permission("android.permission.READ_MEDIA_IMAGES" if api >= 33 else "android.permission.READ_EXTERNAL_STORAGE")
+            app.launch(".PermissionActivity")
+            app.element(res("read_gallery")).tap()
+            # "No gallery" until read; then "Gallery empty" or "Gallery: <names>".
+            shown = app.wait(res("gallery_value").and_text("Gallery", CONTAINS)).visible().text() or ""
+            assert shown.startswith(("Gallery empty", "Gallery: ")) and photo not in shown, shown
     finally:
         connection.close()
