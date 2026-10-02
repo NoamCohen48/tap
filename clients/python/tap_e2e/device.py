@@ -23,6 +23,7 @@ from .models import (
     Hierarchy,
     Orientation,
     MatchMode,
+    LocationAccuracy,
     PermissionChoice,
     PermissionPrompt,
     Recording,
@@ -258,13 +259,21 @@ class Device:
             raise WaitTimeoutError._from_result(result, "a permission dialog", self.serial)
         return _proto.permission_prompt(result.permission_prompt)
 
-    def choose_permission(self, choice: PermissionChoice, timeout: float | None = None) -> None:
+    def choose_permission(
+        self,
+        choice: PermissionChoice,
+        accuracy: LocationAccuracy | None = None,
+        timeout: float | None = None,
+    ) -> None:
         """Tap the permission dialog's button for ``choice`` (``NOT_FOUND`` before any input when
-        the dialog does not offer it). Only the tap is reported: assert the outcome, e.g. the
-        dialog gone and the app's state."""
-        self._execute_or_raise(
-            timeout, choose_permission=pb.ChoosePermission(choice=_proto.permission_choice(choice))
-        )
+        the dialog does not offer it). With ``accuracy``, the location dialog's Precise /
+        Approximate radio is selected first; it must be offered too (``PermissionPrompt.accuracies``,
+        API 31+ when the app asks for fine location), or nothing is tapped. Only the taps are
+        reported: assert the outcome, e.g. the dialog gone and the app's state."""
+        request = pb.ChoosePermission(choice=_proto.permission_choice(choice))
+        if accuracy is not None:
+            request.accuracy = _proto.location_accuracy(accuracy)
+        self._execute_or_raise(timeout, choose_permission=request)
 
     def keyboard_shown(self) -> bool:
         """Whether a soft keyboard (any input method's window) is on screen; ``info()`` reports

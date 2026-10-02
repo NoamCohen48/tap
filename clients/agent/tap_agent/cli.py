@@ -9,6 +9,7 @@ from importlib import resources
 
 from . import render
 from .core import (
+    ACCURACIES,
     APP_ACTIONS,
     CONDITIONS,
     EXIT_OK,
@@ -99,6 +100,15 @@ def parser() -> argparse.ArgumentParser:
     p = verb("submit", "run a focused field's keyboard action (Search, Go, Send, Done, …); API 30+", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
 
+    p = verb("action", "list a node's accessibility actions, or perform one as a screen reader does (no touch)", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+    p.add_argument("name", nargs="?", help="a standard action (expand, collapse, dismiss, scroll-forward, ...) or, with --custom, a label")
+    p.add_argument("--custom", action="store_true", help="NAME is a custom action's label (e.g. 'Archive')")
+
+    p = verb("progress", "set a slider (SeekBar, Slider, RatingBar) to a value in its own units", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+    p.add_argument("value", type=float)
+
     p = verb("keyboard", "whether a soft keyboard shows, or hide it", on_device, settle)
     p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", default="state")
 
@@ -142,6 +152,7 @@ def parser() -> argparse.ArgumentParser:
     p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
     p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")
     p.add_argument("--timeout", type=_duration, default=10.0, help="how long to wait for the dialog (default 10s)")
+    p.add_argument("--accuracy", choices=ACCURACIES, help="pick Precise or Approximate first (location dialog, Android 12+)")
 
     p = verb("toast", "wait for a toast (shown in the last 3.5s or coming) and print it", on_device)
     p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
@@ -205,6 +216,10 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.clear(args.target, device, settle=settle)
     if v == "submit":
         return agent.submit(args.target, device, settle=settle)
+    if v == "action":
+        return agent.action(args.target, args.name, device, custom=args.custom, settle=settle)
+    if v == "progress":
+        return agent.progress(args.target, args.value, device, settle=settle)
     if v == "keyboard":
         return agent.keyboard(args.action, device, settle=settle)
     if v == "clipboard":
@@ -232,7 +247,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "screen":
         return agent.screen(args.action, device, settle=settle)
     if v == "permission":
-        return agent.permission(args.choice, device, args.timeout, settle=settle)
+        return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout)
     if v == "settle":

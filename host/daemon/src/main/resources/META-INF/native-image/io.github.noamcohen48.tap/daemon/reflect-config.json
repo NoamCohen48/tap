@@ -453,6 +453,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.PerformImeAction",
     "allDeclaredFields": true
   },
@@ -478,6 +482,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.ProcessResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.Range",
     "allDeclaredFields": true
   },
   {
@@ -585,7 +593,19 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.SetNetworkRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetNetworkResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.SetOrientation",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetProgress",
     "allDeclaredFields": true
   },
   {

@@ -217,6 +217,40 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         have input focus (tap it first). Android 11 (API 30)+."""
         return await call(session, lambda a: a.submit(target, device or None, settle=settle))
 
+    @mcp.tool(name="accessibility_action")
+    async def accessibility_action(
+        target: Target,
+        name: Annotated[
+            str,
+            Field(
+                description="A standard action (expand, collapse, dismiss, scroll-forward, scroll-backward, page-down, "
+                "show-on-screen, context-click, select, copy, paste, ...) or, with custom, the custom action's label. "
+                "Omit to list what the node offers."
+            ),
+        ] = "",
+        custom: Annotated[bool, Field(description="name is a custom action's label (e.g. 'Archive').")] = False,
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Perform an accessibility action on a node as a screen reader does (no touch), or list
+        the actions it offers and its range. Use it for what a node offers instead of a gesture:
+        expand/collapse a section, a list item's custom "Archive"/"Delete". An action the node does
+        not offer fails before anything happens."""
+        return await call(session, lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle))
+
+    @mcp.tool(name="set_progress")
+    async def set_progress(
+        target: Target,
+        value: Annotated[float, Field(description="The value in the node's own units (see accessibility_action's range).")],
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Set a slider (SeekBar, Slider, RatingBar) to an exact value through accessibility
+        ACTION_SET_PROGRESS. A value outside the node's range fails before anything happens."""
+        return await call(session, lambda a: a.progress(target, value, device or None, settle=settle))
+
     @mcp.tool(name="keyboard")
     async def keyboard(
         action: Annotated[
@@ -312,13 +346,19 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="The button to press: allow, allow-foreground-only, allow-one-time, deny, ...; omit to list them."),
         ] = "",
         timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        accuracy: Annotated[
+            Literal["precise", "approximate"] | None,
+            Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
+        ] = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Android's runtime-permission dialog: without a choice, wait for it and list the buttons
-        it offers; with one, press that button."""
-        return await call(session, lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle))
+        (and location accuracies) it offers; with one, press that button."""
+        return await call(
+            session, lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle, accuracy=accuracy)
+        )
 
     @mcp.tool(name="wait_for", annotations=READ_ONLY)
     async def wait_for(

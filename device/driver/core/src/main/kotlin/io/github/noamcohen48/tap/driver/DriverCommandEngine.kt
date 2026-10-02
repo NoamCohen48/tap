@@ -19,7 +19,9 @@ import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PressKey
@@ -78,6 +80,7 @@ internal class DriverCommandEngine(
     private val permissions = PermissionCommands(device)
     private val waits = WaitCommands(device, objects)
     private val keyboard = KeyboardCommands(instrumentation, device, objects)
+    private val accessibilityActions = AccessibilityActionCommands(objects)
     private val clipboard = ClipboardCommands(instrumentation)
     private val toasts = ToastWatcher(instrumentation)
     private val queries = QueryCommands(device, objects, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
@@ -170,11 +173,16 @@ internal class DriverCommandEngine(
 
         override fun waitPermissionPrompt(command: WaitPermissionPrompt): PermissionPrompt = permissions.waitPrompt(context)
 
-        override fun choosePermission(command: ChoosePermission) = permissions.choose(context, command.choice)
+        override fun choosePermission(command: ChoosePermission) = permissions.choose(context, command.choice, command.accuracy)
 
         override fun hideKeyboard(command: HideKeyboard) = keyboard.hide(context)
 
         override fun performImeAction(command: PerformImeAction) = keyboard.performImeAction(context, selectors[command.selector])
+
+        override fun performAccessibilityAction(command: PerformAccessibilityAction) =
+            accessibilityActions.perform(context, selectors[command.selector], command)
+
+        override fun setProgress(command: SetProgress) = accessibilityActions.setProgress(context, selectors[command.selector], command.value)
 
         override fun setClipboard(command: SetClipboard) = clipboard.set(context, command.text)
 

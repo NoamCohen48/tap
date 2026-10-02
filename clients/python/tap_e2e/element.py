@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from . import _gen as pb
 from . import _proto
 from .errors import CommandError, WaitTimeoutError
-from .models import Direction, ElementSnapshot, ErrorCode
+from .models import Direction, ElementSnapshot, ErrorCode, StandardAction
 from .selectors import Selector
 
 if TYPE_CHECKING:
@@ -97,6 +97,33 @@ class Element:
         must have input focus (tap it first): Android offers the action only then, and a node
         that does not offer it raises ``ACTION_REJECTED`` before any input."""
         self._run(timeout, perform_ime_action=pb.PerformImeAction(selector=self._target))
+
+    def perform_action(self, action: StandardAction, timeout: float | None = None) -> None:
+        """Perform a standard accessibility ``action`` on the one matching node, as a screen
+        reader does: no touch, so a covered node is no obstacle. The node must offer it
+        (``snapshot().actions``); otherwise ``CommandError`` (``ACTION_REJECTED`` /
+        ``ACTION_NOT_OFFERED``) before any input. A node that refuses an offered action is
+        ``ACTION_REJECTED``. Only Android's answer is reported: assert what the app did."""
+        request = pb.PerformAccessibilityAction(selector=self._target, standard=_proto.standard_action(action))
+        self._run(timeout, perform_accessibility_action=request)
+
+    def perform_custom_action(self, label: str, timeout: float | None = None) -> None:
+        """Perform the custom accessibility action labelled ``label`` (exactly) on the one matching
+        node: the "Archive" or "Delete" a list item offers screen reader users instead of a swipe
+        (``snapshot().custom_actions``). Not offered, or offered twice under that label:
+        ``ACTION_REJECTED`` / ``ACTION_NOT_OFFERED`` before any input."""
+        request = pb.PerformAccessibilityAction(selector=self._target, custom=label)
+        self._run(timeout, perform_accessibility_action=request)
+
+    def set_progress(self, value: float, timeout: float | None = None) -> None:
+        """Set the one matching range node (SeekBar, Slider, RatingBar) to ``value`` in its own
+        units (``snapshot().range``) through accessibility ``ACTION_SET_PROGRESS``: exact, where
+        a drag would land on whatever pixel maps to. A node without the action, or a value
+        outside its min..max, is ``ACTION_REJECTED`` (``ACTION_NOT_OFFERED`` / ``OUT_OF_RANGE``)
+        before any input; the view is not left to clamp it."""
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError(f"value must be finite, not {value}")
+        self._run(timeout, set_progress=pb.SetProgress(selector=self._target, value=value))
 
     def drag_to(self, destination: Selector, timeout: float | None = None) -> None:
         """Press the one matching node until it is a long press, move the finger to the centre of

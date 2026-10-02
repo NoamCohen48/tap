@@ -11,12 +11,14 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.FailureReason as FailureReasonProto
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.IntentExtra as IntentExtraProto
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy as LocationAccuracyProto
 import io.github.noamcohen48.tap.api.v1.MatchMode as MatchModeProto
 import io.github.noamcohen48.tap.api.v1.Orientation as OrientationProto
 import io.github.noamcohen48.tap.api.v1.PermissionChoice as PermissionChoiceProto
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt as PermissionPromptProto
 import io.github.noamcohen48.tap.api.v1.ProcessIdentity
 import io.github.noamcohen48.tap.api.v1.StabilitySignal as StabilitySignalProto
+import io.github.noamcohen48.tap.api.v1.StandardAction as StandardActionProto
 import io.github.noamcohen48.tap.api.v1.Toast as ToastProto
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -42,7 +44,12 @@ internal fun PermissionPromptProto.toModel(): PermissionPrompt =
         packageName = packageName,
         // A choice this client does not know yet is left out rather than guessed.
         choices = choicesList.mapNotNull { choice -> PermissionChoice.entries.find { "PERMISSION_${it.name}" == choice.name } },
+        accuracies = accuraciesList.mapNotNull { accuracy -> LocationAccuracy.entries.find { "LOCATION_${it.name}" == accuracy.name } },
     )
+
+internal fun LocationAccuracy.toProto(): LocationAccuracyProto = LocationAccuracyProto.valueOf("LOCATION_$name")
+
+internal fun StandardAction.toProto(): StandardActionProto = StandardActionProto.valueOf("A11Y_$name")
 
 internal fun ErrorCodeProto.toModel(): ErrorCode =
     ErrorCode.entries.firstOrNull { "ERR_${it.name}" == name } ?: ErrorCode.UNKNOWN
@@ -73,6 +80,15 @@ internal fun ElementSnapshotProto.toModel(): ElementSnapshot =
         selected = selected,
         childCount = childCount,
         showingHint = showingHint,
+        // An action this client does not know yet is left out rather than guessed.
+        actions = actionsList.mapNotNull { action -> StandardAction.entries.find { "A11Y_${it.name}" == action.name } },
+        customActions = customActionsList,
+        range =
+            if (hasRange()) {
+                Range(RangeType.entries.find { "RANGE_${it.name}" == range.type.name } ?: RangeType.UNKNOWN, range.min, range.max, range.current)
+            } else {
+                null
+            },
     )
 
 internal fun DeviceInfoProto.toModel(): DeviceInfo =

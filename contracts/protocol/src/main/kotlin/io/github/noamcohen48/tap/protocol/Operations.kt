@@ -26,8 +26,12 @@ import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetProgress
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
@@ -106,6 +110,7 @@ val Command.isMutation: Boolean
             OpCase.SET_ORIENTATION, OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION,
             OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG, OpCase.PINCH, OpCase.FLING,
             OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.SET_CLIPBOARD,
+            OpCase.PERFORM_ACCESSIBILITY_ACTION, OpCase.SET_PROGRESS,
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
@@ -137,6 +142,8 @@ val Command.targetSelector: Selector?
             OpCase.PINCH -> pinch.selector
             OpCase.FLING -> fling.selector
             OpCase.PERFORM_IME_ACTION -> performImeAction.selector
+            OpCase.PERFORM_ACCESSIBILITY_ACTION -> performAccessibilityAction.selector
+            OpCase.SET_PROGRESS -> setProgress.selector
             OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.TYPE_TEXT, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
             OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.SET_ORIENTATION,
             OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD,
@@ -174,8 +181,10 @@ object Commands {
     fun waitPermissionPrompt(): Command =
         Command.newBuilder().setWaitPermissionPrompt(WaitPermissionPrompt.getDefaultInstance()).build()
 
-    fun choosePermission(choice: PermissionChoice): Command =
-        Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoice(choice)).build()
+    fun choosePermission(
+        choice: PermissionChoice,
+        accuracy: LocationAccuracy = LocationAccuracy.LOCATION_ACCURACY_UNSPECIFIED,
+    ): Command = Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoice(choice).setAccuracy(accuracy)).build()
 
     fun hideKeyboard(): Command = Command.newBuilder().setHideKeyboard(HideKeyboard.getDefaultInstance()).build()
 
@@ -262,6 +271,23 @@ object Commands {
 
     fun performImeAction(selector: Selector): Command =
         Command.newBuilder().setPerformImeAction(PerformImeAction.newBuilder().setSelector(selector)).build()
+
+    fun performAccessibilityAction(
+        selector: Selector,
+        action: StandardAction,
+    ): Command =
+        Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(selector).setStandard(action)).build()
+
+    fun performCustomAction(
+        selector: Selector,
+        label: String,
+    ): Command =
+        Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(selector).setCustom(label)).build()
+
+    fun setProgress(
+        selector: Selector,
+        value: Float,
+    ): Command = Command.newBuilder().setSetProgress(SetProgress.newBuilder().setSelector(selector).setValue(value)).build()
 
     fun doubleTap(selector: Selector): Command = Command.newBuilder().setDoubleTap(DoubleTap.newBuilder().setSelector(selector)).build()
 
@@ -463,6 +489,10 @@ interface CommandHandler {
 
     fun performImeAction(command: PerformImeAction)
 
+    fun performAccessibilityAction(command: PerformAccessibilityAction)
+
+    fun setProgress(command: SetProgress)
+
     fun setClipboard(command: SetClipboard)
 
     fun getClipboard(command: GetClipboard): String
@@ -548,6 +578,8 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.CHOOSE_PERMISSION -> result.setDone(done).also { handler.choosePermission(choosePermission) }
         OpCase.HIDE_KEYBOARD -> result.setDone(done).also { handler.hideKeyboard(hideKeyboard) }
         OpCase.PERFORM_IME_ACTION -> result.setDone(done).also { handler.performImeAction(performImeAction) }
+        OpCase.PERFORM_ACCESSIBILITY_ACTION -> result.setDone(done).also { handler.performAccessibilityAction(performAccessibilityAction) }
+        OpCase.SET_PROGRESS -> result.setDone(done).also { handler.setProgress(setProgress) }
         OpCase.SET_CLIPBOARD -> result.setDone(done).also { handler.setClipboard(setClipboard) }
         OpCase.GET_CLIPBOARD -> result.setText(handler.getClipboard(getClipboard))
         OpCase.AWAIT_TOAST -> result.setToast(handler.awaitToast(awaitToast))

@@ -24,10 +24,12 @@ from tap_e2e import (
     ErrorCode,
     FailureReason,
     Element,
+    LocationAccuracy,
     MatchMode,
     Orientation,
     PermissionChoice,
     ServerError,
+    StandardAction,
     TapClient,
     TapConnection,
     TapError,
@@ -53,6 +55,8 @@ SCREEN_ACTIONS = ("state", "on", "off", "unlock")
 PERMISSION_CHOICES = tuple(choice.name.lower().replace("_", "-") for choice in PermissionChoice)
 """The permission-dialog buttons `permission` can press."""
 PINCHES = ("open", "close")
+STANDARD_ACTIONS = tuple(action.name.lower().replace("_", "-") for action in StandardAction)
+ACCURACIES = tuple(accuracy.name.lower() for accuracy in LocationAccuracy)
 KEYBOARD_ACTIONS = ("state", "hide")
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
 CONDITIONS = ("animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data")
@@ -407,6 +411,40 @@ class Agent:
         keyboard's action key does. API 30+."""
         return self._act(device, target, "submitted", lambda e: e.ime_action(), settle)
 
+    def action(
+        self, target: str, name: str | None = None, device: str | None = None, custom: bool = False, settle: bool = False
+    ) -> str:
+        """Without ``name``: lists the accessibility actions the node offers (and its range). With
+        one: performs that standard action (expand, collapse, dismiss, scroll-forward, ...), or with
+        ``custom`` the custom action labelled ``name``, as a screen reader does (no touch)."""
+        if name is None:
+            if custom:
+                raise AgentError("action --custom needs the action's label", EXIT_USAGE)
+
+            def listing() -> str:
+                d = self._device(device)
+                element, described = self._element(d, target)
+                snapshot = element.snapshot()
+                offered = [a.name.lower().replace("_", "-") for a in snapshot.actions] + [repr(c) for c in snapshot.custom_actions]
+                text = f"{described} offers: {', '.join(offered) if offered else 'no actions Tap can perform'}"
+                if snapshot.range is not None:
+                    r = snapshot.range
+                    text += f"\nrange {r.min:g}..{r.max:g}, now {r.current:g} ({r.type.name.lower()})"
+                return text
+
+            return self._run(listing)
+        if custom:
+            return self._act(device, target, f"performed {name!r} on", lambda e: e.perform_custom_action(name), settle)
+        key = name.strip().upper().replace("-", "_")
+        if key not in StandardAction.__members__:
+            raise AgentError(f"action takes {', '.join(STANDARD_ACTIONS)} (or --custom LABEL), not {name!r}", EXIT_USAGE)
+        standard = StandardAction[key]
+        return self._act(device, target, f"performed {name.strip().lower()} on", lambda e: e.perform_action(standard), settle)
+
+    def progress(self, target: str, value: float, device: str | None = None, settle: bool = False) -> str:
+        """Sets a slider (SeekBar, Slider, RatingBar) to ``value`` in its own units, exactly."""
+        return self._act(device, target, f"set progress {value:g} on", lambda e: e.set_progress(value), settle)
+
     def drag(self, target: str, destination: str, device: str | None = None, settle: bool = False) -> str:
         """Long-press ``target``, move to the centre of ``destination`` and drop it there."""
 
@@ -590,25 +628,41 @@ class Agent:
         return self._run(step)
 
     def permission(
-        self, choice: str | None = None, device: str | None = None, timeout: float = DEFAULT_WAIT, settle: bool = False
+        self,
+        choice: str | None = None,
+        device: str | None = None,
+        timeout: float = DEFAULT_WAIT,
+        settle: bool = False,
+        accuracy: str | None = None,
     ) -> str:
         """Without ``choice``: waits for a runtime-permission dialog and lists the buttons it
-        offers. With one (``allow``, ``allow-foreground-only``, ``deny``, ...): presses it."""
+        offers. With one (``allow``, ``allow-foreground-only``, ``deny``, ...): presses it, after
+        picking ``accuracy`` (precise or approximate) on a location dialog that offers it."""
         chosen = None
         if choice is not None:
             name = choice.strip().upper().replace("-", "_")
             if name not in PermissionChoice.__members__:
                 raise AgentError(f"permission takes {', '.join(PERMISSION_CHOICES)}, not {choice!r}", EXIT_USAGE)
             chosen = PermissionChoice[name]
+        picked = None
+        if accuracy is not None:
+            if chosen is None:
+                raise AgentError("permission --accuracy needs a choice to press", EXIT_USAGE)
+            if accuracy.strip().upper() not in LocationAccuracy.__members__:
+                raise AgentError(f"accuracy must be {' or '.join(ACCURACIES)}, not {accuracy!r}", EXIT_USAGE)
+            picked = LocationAccuracy[accuracy.strip().upper()]
 
         def step() -> str:
             d = self._device(device)
             if chosen is None:
                 prompt = d.await_permission_prompt(timeout)
                 offered = ", ".join(c.name.lower().replace("_", "-") for c in prompt.choices)
-                return f"permission dialog ({prompt.package_name}) offers: {offered}"
-            d.choose_permission(chosen)
-            text = f"pressed {choice}"
+                text = f"permission dialog ({prompt.package_name}) offers: {offered}"
+                if prompt.accuracies:
+                    text += f"; accuracy: {', '.join(a.name.lower() for a in prompt.accuracies)}"
+                return text
+            d.choose_permission(chosen, picked)
+            text = f"pressed {choice}" + (f" ({picked.name.lower()})" if picked else "")
             return f"{text}\n{self._settled(d)}" if settle else text
 
         return self._run(step)

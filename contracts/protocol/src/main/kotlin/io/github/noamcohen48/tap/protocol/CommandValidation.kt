@@ -11,7 +11,10 @@ import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
@@ -173,6 +176,7 @@ object CommandValidation {
                 if (choice == PermissionChoice.PERMISSION_CHOICE_UNSPECIFIED || choice == PermissionChoice.UNRECOGNIZED) {
                     invalidRequest("A known permission choice is required")
                 }
+                if (command.choosePermission.accuracy == LocationAccuracy.UNRECOGNIZED) invalidRequest("Unknown location accuracy")
             }
 
             OpCase.SET_CLIPBOARD -> {
@@ -196,6 +200,25 @@ object CommandValidation {
                     invalidRequest("mode needs text")
                 }
                 if (toast.hasPackageName()) requirePackage(toast.packageName)
+            }
+
+            OpCase.PERFORM_ACCESSIBILITY_ACTION -> {
+                val action = command.performAccessibilityAction
+                when (action.actionCase) {
+                    PerformAccessibilityAction.ActionCase.STANDARD ->
+                        if (action.standard == StandardAction.STANDARD_ACTION_UNSPECIFIED || action.standard == StandardAction.UNRECOGNIZED) {
+                            invalidRequest("A known standard action is required")
+                        }
+                    PerformAccessibilityAction.ActionCase.CUSTOM -> {
+                        if (action.custom.isEmpty()) invalidRequest("custom must not be empty")
+                        if (action.custom.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("custom must be at most $MAX_SELECTOR_STRING_CHARS chars")
+                    }
+                    PerformAccessibilityAction.ActionCase.ACTION_NOT_SET, null -> invalidRequest("standard or custom is required")
+                }
+            }
+
+            OpCase.SET_PROGRESS -> {
+                if (!command.setProgress.value.isFinite()) invalidRequest("value must be finite")
             }
 
             OpCase.OP_NOT_SET, null -> {

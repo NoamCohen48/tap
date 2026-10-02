@@ -4,6 +4,9 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Location feeds the precise/approximate dialog and the mock location tests. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".FixtureApplication"
@@ -39,6 +42,9 @@
             android:windowSoftInputMode="adjustNothing|stateHidden" />
         <activity
             android:name=".GestureActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ControlsActivity"
             android:exported="true" />
         <activity
             android:name=".FormActivity"

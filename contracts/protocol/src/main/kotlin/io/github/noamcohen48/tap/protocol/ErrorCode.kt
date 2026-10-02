@@ -118,7 +118,13 @@ object ErrorDetail {
     // WAIT_TIMEOUT (await_toast)
     const val NO_TOAST = "NO_TOAST"
 
-    // UNSUPPORTED (perform_ime_action below API 30)
+    // ACTION_REJECTED before input: the node does not offer the accessibility action
+    // (perform_accessibility_action, set_progress) or the value is outside its range (set_progress).
+    const val ACTION_NOT_OFFERED = "ACTION_NOT_OFFERED"
+    const val OUT_OF_RANGE = "OUT_OF_RANGE"
+
+    // UNSUPPORTED: the operation (perform_ime_action, an accessibility action) needs a newer API.
+    const val REQUIRES_API_29 = "REQUIRES_API_29"
     const val REQUIRES_API_30 = "REQUIRES_API_30"
 
     // ACTION_REJECTED / STALE_DURING_COMMAND / INDETERMINATE (key input)
