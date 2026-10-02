@@ -114,6 +114,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetSystemLocalesRequest.SerializeToString,
                 response_deserializer=device__pb2.SetSystemLocalesResponse.FromString,
                 _registered_method=True)
+        self.SetLocation = channel.unary_unary(
+                '/tap.v1.DeviceService/SetLocation',
+                request_serializer=device__pb2.SetLocationRequest.SerializeToString,
+                response_deserializer=device__pb2.SetLocationResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -236,6 +241,17 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetLocation(self, request, context):
+        """Mock location: the device reports this fix from its location providers until detach.
+        `latitude` -90..90, `longitude` -180..180, `accuracy_m` > 0 (default 5), `altitude_m` finite
+        (INVALID_ARGUMENT otherwise). The driver app becomes the mock-location app (its
+        `android:mock_location` app-op) and location is turned on when it is off; both are captured
+        and restored on detach, which ends the mock. The driver serves the fix (`set_location`).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -318,6 +334,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.SetSystemLocales,
                     request_deserializer=device__pb2.SetSystemLocalesRequest.FromString,
                     response_serializer=device__pb2.SetSystemLocalesResponse.SerializeToString,
+            ),
+            'SetLocation': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetLocation,
+                    request_deserializer=device__pb2.SetLocationRequest.FromString,
+                    response_serializer=device__pb2.SetLocationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -752,6 +773,33 @@ class DeviceService:
             '/tap.v1.DeviceService/SetSystemLocales',
             device__pb2.SetSystemLocalesRequest.SerializeToString,
             device__pb2.SetSystemLocalesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetLocation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetLocation',
+            device__pb2.SetLocationRequest.SerializeToString,
+            device__pb2.SetLocationResponse.FromString,
             options,
             channel_credentials,
             insecure,

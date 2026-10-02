@@ -1,8 +1,10 @@
 package io.github.noamcohen48.tap.host
 
+import io.github.noamcohen48.tap.protocol.Commands
+
 /**
  * Device-wide conditions a test may change for its session: animations, dark mode, font scale,
- * display density, the device locale and the network switches. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
+ * display density, the device locale, the network switches and a mock location. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
  * so detach restores the device as its owner left it, and is read back afterwards: a value the
  * device did not take is a [DeviceSettingException]. Apps see the new configuration as Android
  * delivers it (activities may be recreated); waiting for that is the test's business.
@@ -55,6 +57,30 @@ class DeviceConditions internal constructor(
     }
 
     /**
+     * Mock location: the device reports this fix ([latitude], [longitude], [accuracyM] meters,
+     * [altitudeM] meters or none) from its location providers until detach. The driver app
+     * becomes the mock-location app (its `android:mock_location` app-op) and, when location is
+     * off, location is turned on; both are captured first and restored on detach, which also
+     * ends the mock. The driver then serves the fix from LocationManager test providers.
+     */
+    suspend fun setLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyM: Float?,
+        altitudeM: Double?,
+    ) {
+        require(latitude in -90.0..90.0) { "latitude must be -90 to 90, not $latitude" }
+        require(longitude in -180.0..180.0) { "longitude must be -180 to 180, not $longitude" }
+        require(accuracyM == null || (accuracyM.isFinite() && accuracyM > 0f)) { "accuracy must be a positive number of meters, not $accuracyM" }
+        require(altitudeM == null || altitudeM.isFinite()) { "altitude must be finite, not $altitudeM" }
+        session.captureBeforeChange(listOf(StateKey.LOCATION_MODE, StateKey.DRIVER_MOCK_LOCATION))
+        val locationOff = session.guardAdb { adb.readState(serial, StateKey.LOCATION_MODE) }.let { it == null || it == "0" }
+        change(mapOfNotNull(StateKey.DRIVER_MOCK_LOCATION to "allow", (StateKey.LOCATION_MODE to LOCATION_ON).takeIf { locationOff }))
+        session.checkUsable()
+        session.client.execute(Commands.setLocation(latitude, longitude, accuracyM, altitudeM), timeoutMs = LOCATION_TIMEOUT_MS)
+    }
+
+    /**
      * Turns airplane mode, Wi-Fi and mobile data on or off; null leaves a switch as it is. Real
      * switches, nothing mocked: airplane mode is written first, so Wi-Fi turned on with it stays
      * on under it. All three are captured on the first network change and restored airplane mode
@@ -82,6 +108,8 @@ class DeviceConditions internal constructor(
 
     private suspend fun change(values: Map<String, String?>) = session.change(values)
 
+    private fun mapOfNotNull(vararg pairs: Pair<String, String?>?): Map<String, String?> = pairs.filterNotNull().toMap()
+
     companion object {
         const val DARK_MODE_API = 29
 
@@ -89,6 +117,9 @@ class DeviceConditions internal constructor(
         const val NETWORK_API = 29
         const val MIN_FONT_SCALE = 0.5f
         const val MAX_FONT_SCALE = 2.0f
+        /** `location_mode` 3: on, high accuracy (what Settings writes when location is turned on). */
+        const val LOCATION_ON = "3"
+        const val LOCATION_TIMEOUT_MS = 10_000L
         const val MIN_DENSITY = 100
         const val MAX_DENSITY = 1000
     }

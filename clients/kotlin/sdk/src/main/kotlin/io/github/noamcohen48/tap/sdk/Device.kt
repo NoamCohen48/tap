@@ -25,6 +25,7 @@ import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
@@ -441,6 +442,37 @@ class Device internal constructor(
             setSystemLocales(
                 SetSystemLocalesRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
                     .addAllLocales(locales).build(),
+            )
+        }
+    }
+
+    /**
+     * Mocks the device location until [detach]: the gps and network providers (and fused, API
+     * 31+) report this fix, sent again every second so an app that starts listening later still
+     * gets one. [latitude] -90..90, [longitude] -180..180, [accuracyM] in meters (> 0; null = 5),
+     * [altitudeM] in meters (null = none). The Tap driver app becomes the device's mock-location
+     * app and, when location is off, location is turned on; both are restored on [detach], which
+     * ends the mock. Calling it again moves the fix. Apps that read location through Google Play
+     * services see it as Play services relays the platform providers.
+     */
+    suspend fun setLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyM: Float? = null,
+        altitudeM: Double? = null,
+    ) {
+        require(latitude in -90.0..90.0) { "latitude must be -90 to 90, not $latitude" }
+        require(longitude in -180.0..180.0) { "longitude must be -180 to 180, not $longitude" }
+        require(accuracyM == null || (accuracyM.isFinite() && accuracyM > 0f)) { "accuracyM must be a positive number of meters, not $accuracyM" }
+        require(altitudeM == null || altitudeM.isFinite()) { "altitudeM must be finite, not $altitudeM" }
+        condition("Device.setLocation") {
+            setLocation(
+                SetLocationRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setLatitude(latitude).setLongitude(longitude)
+                    .apply {
+                        accuracyM?.let(::setAccuracyM)
+                        altitudeM?.let(::setAltitudeM)
+                    }.build(),
             )
         }
     }

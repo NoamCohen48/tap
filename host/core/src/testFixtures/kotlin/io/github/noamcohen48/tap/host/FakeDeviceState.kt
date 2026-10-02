@@ -53,7 +53,17 @@ class FakeDeviceState(
             command.startsWith("shell wm density ") -> write(StateKey.Density.id, args[3])
             command == "shell getprop persist.sys.locale" -> ok((values[PERSIST_LOCALE] ?: "") + "\n")
             command == "shell getprop ro.product.locale" -> ok("$productLocale\n")
-            command.startsWith("shell pm grant $DRIVER_PACKAGE ") || command.startsWith("shell appops set $DRIVER_PACKAGE ") -> ok("")
+            command.startsWith("shell pm grant $DRIVER_PACKAGE ") || command == "shell appops set $DRIVER_PACKAGE WRITE_SETTINGS allow" -> ok("")
+            args.getOrNull(1) == "appops" && args.size == 5 && args[2] == "get" -> {
+                val mode = values[StateKey.AppOp(args[3], args[4]).id]
+                // As Android prints it: an op at its default (or deny, the default) has no entry.
+                if (mode == null || mode == "deny") {
+                    ok("No operations.\nDefault mode: deny\n")
+                } else {
+                    ok("${args[4].removePrefix("android:").uppercase()}: $mode; time=+1s ago\n")
+                }
+            }
+            args.getOrNull(1) == "appops" && args.size == 6 && args[2] == "set" -> write(StateKey.AppOp(args[3], args[4]).id, args[5])
             command.startsWith("shell am broadcast ") && "$DRIVER_PACKAGE/.SystemLocaleReceiver" in command -> {
                 val tags = args[args.indexOf("locales") + 1].trim('\'')
                 if (localeReceiverFails) {

@@ -37,6 +37,8 @@ import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+import io.github.noamcohen48.tap.api.v1.SetLocationRequest
+import io.github.noamcohen48.tap.api.v1.SetLocationResponse
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
@@ -297,6 +299,24 @@ class DeviceService(
                 it.setSystemLocales(locales)
             }
             SetSystemLocalesResponse.getDefaultInstance()
+        }
+
+    override suspend fun setLocation(request: SetLocationRequest): SetLocationResponse =
+        reply {
+            val accuracy = if (request.hasAccuracyM()) request.accuracyM else null
+            val altitude = if (request.hasAltitudeM()) request.altitudeM else null
+            argument(request.latitude in -90.0..90.0) { "latitude must be -90 to 90, not ${request.latitude}" }
+            argument(request.longitude in -180.0..180.0) { "longitude must be -180 to 180, not ${request.longitude}" }
+            argument(accuracy == null || (accuracy.isFinite() && accuracy > 0f)) { "accuracy_m must be a positive number of meters, not $accuracy" }
+            argument(altitude == null || altitude.isFinite()) { "altitude_m must be finite, not $altitude" }
+            val logged: DeviceCall.Builder.() -> Unit = {
+                latitude = request.latitude
+                longitude = request.longitude
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_location", logged) {
+                it.setLocation(request.latitude, request.longitude, accuracy, altitude)
+            }
+            SetLocationResponse.getDefaultInstance()
         }
 
     /** Runs a device-condition change on the attached device and logs it as [operation]. */

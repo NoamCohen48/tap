@@ -143,6 +143,9 @@ class GoldenWireTest {
             "request-perform-custom-action" to (
                 envelope(Requests.of(Commands.performCustomAction(Selectors.resource("card"), "Archive"))) to Request::parseFrom
             ),
+            "request-set-location" to (
+                envelope(Requests.of(Commands.setLocation(48.8584, 2.2945, accuracyM = 3.5f, altitudeM = 35.0))) to Request::parseFrom
+            ),
             "request-set-progress" to (envelope(Requests.of(Commands.setProgress(Selectors.resource("volume"), 42.5f))) to Request::parseFrom),
             "request-await-toast" to (
                 envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom

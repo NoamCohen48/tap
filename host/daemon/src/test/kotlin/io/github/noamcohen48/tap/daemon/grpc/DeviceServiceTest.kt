@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
@@ -73,6 +74,14 @@ class DeviceServiceTest {
         assertEquals(Status.Code.INVALID_ARGUMENT, systemLocales("not a tag"))
         assertEquals(Status.Code.INVALID_ARGUMENT, systemLocales("fr-FR", "fr-fr"))
         assertEquals(Status.Code.NOT_FOUND, systemLocales("fr-FR", "en"))
+
+        fun location(build: SetLocationRequest.Builder.() -> Unit) =
+            code { stub.setLocation(SetLocationRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").apply(build).build()) }
+        assertEquals(Status.Code.INVALID_ARGUMENT, location { latitude = 91.0 })
+        assertEquals(Status.Code.INVALID_ARGUMENT, location { longitude = Double.NaN })
+        assertEquals(Status.Code.INVALID_ARGUMENT, location { accuracyM = 0f })
+        assertEquals(Status.Code.INVALID_ARGUMENT, location { altitudeM = Double.POSITIVE_INFINITY })
+        assertEquals(Status.Code.NOT_FOUND, location { latitude = -90.0; longitude = 180.0; accuracyM = 1f })
 
         assertEquals(
             Status.Code.NOT_FOUND,

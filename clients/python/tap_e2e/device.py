@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import math
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -365,6 +366,39 @@ class Device:
         if not locales:
             raise ValueError("set at least one locale")
         self._condition("set_system_locales", "SetSystemLocales", pb.SetSystemLocalesRequest, locales=list(locales))
+
+    def set_location(
+        self,
+        latitude: float,
+        longitude: float,
+        *,
+        accuracy_m: float | None = None,
+        altitude_m: float | None = None,
+    ) -> None:
+        """Mock the device location until ``detach()``.
+
+        The gps and network providers (and fused, API 31+) report this fix, sent again every
+        second so an app that starts listening later still gets one. ``latitude`` -90..90,
+        ``longitude`` -180..180, ``accuracy_m`` in meters (> 0; ``None`` = 5), ``altitude_m`` in
+        meters (``None`` = none). The Tap driver app becomes the device's mock-location app and,
+        when location is off, location is turned on; both are restored on ``detach()``, which
+        ends the mock. Calling it again moves the fix. Apps that read location through Google
+        Play services see it as Play services relays the platform providers.
+        """
+        if not -90 <= latitude <= 90:
+            raise ValueError(f"latitude must be -90 to 90, not {latitude}")
+        if not -180 <= longitude <= 180:
+            raise ValueError(f"longitude must be -180 to 180, not {longitude}")
+        if accuracy_m is not None and not (math.isfinite(accuracy_m) and accuracy_m > 0):
+            raise ValueError(f"accuracy_m must be a positive number of meters, not {accuracy_m}")
+        if altitude_m is not None and not math.isfinite(altitude_m):
+            raise ValueError(f"altitude_m must be finite, not {altitude_m}")
+        fields = {"latitude": latitude, "longitude": longitude}
+        if accuracy_m is not None:
+            fields["accuracy_m"] = accuracy_m
+        if altitude_m is not None:
+            fields["altitude_m"] = altitude_m
+        self._condition("set_location", "SetLocation", pb.SetLocationRequest, **fields)
 
     def _condition(self, operation: str, rpc: str, request_type, **fields) -> None:
         self._ensure_usable(operation)

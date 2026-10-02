@@ -546,6 +546,17 @@ open class Adb internal constructor(
                     ?: exec(serial, "shell", "getprop", "ro.product.locale").trim().takeUnless { it.isEmpty() }
                     ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.product.locale"), null, "", "No readable locale on $serial")
             }
+            is StateKey.AppOp -> {
+                val command = listOf("shell", "appops", "get", shellQuote(parsed.packageName), shellQuote(parsed.op))
+                val output = exec(serial, *command.toTypedArray()).trim()
+                // "MOCK_LOCATION: allow; time=…", or "No operations." when the op is at its default.
+                if (output.startsWith("No operations")) {
+                    "default"
+                } else {
+                    output.lineSequence().firstNotNullOfOrNull { line -> Regex("^[A-Za-z_:]+: (\\w+)").find(line.trim())?.groupValues?.get(1) }
+                        ?: throw AdbCommandException(serial, command, null, output, "Unreadable app-op ${parsed.op} of ${parsed.packageName} on $serial: $output")
+                }
+            }
             is StateKey.AppLocales -> {
                 val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -590,6 +601,8 @@ open class Adb internal constructor(
                         StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
                     }
                 }
+            is StateKey.AppOp ->
+                exec(serial, "shell", "appops", "set", shellQuote(parsed.packageName), shellQuote(parsed.op), shellQuote(value ?: "default"))
             StateKey.SystemLocales -> writeSystemLocales(serial, requireNotNull(value) { "system locales need a value" })
             is StateKey.AppLocales -> {
                 val locales = if (value.isNullOrEmpty()) emptyList() else listOf("--locales", shellQuote(value))

@@ -61,7 +61,8 @@ message AppCall {
 }
 
 // A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
-// set_dark_mode, set_font_scale, set_density, set_network, set_system_locales.
+// set_dark_mode, set_font_scale, set_density, set_network, set_system_locales,
+// set_location.
 message DeviceCall {
   string operation = 1;
   // set_animations / set_dark_mode.
@@ -76,4 +77,7 @@ message DeviceCall {
   optional bool mobile_data = 7;
   // set_system_locales.
   repeated string locales = 8;
+  // set_location.
+  optional double latitude = 9;
+  optional double longitude = 10;
 }
