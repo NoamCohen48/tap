@@ -13,6 +13,8 @@
   --accent-soft: rgba(255, 106, 61, 0.12);
   --assert: #2c63d6;
   --assert-soft: rgba(44, 99, 214, 0.12);
+  --wait: #7340c9;
+  --wait-soft: rgba(115, 64, 201, 0.11);
   --ok: #1b8a4b;
   --ok-soft: rgba(27, 138, 75, 0.12);
   --warn: #a86a08;
@@ -39,6 +41,8 @@
     --accent-soft: rgba(255, 106, 61, 0.16);
     --assert: #7ea6ff;
     --assert-soft: rgba(126, 166, 255, 0.16);
+    --wait: #b99bff;
+    --wait-soft: rgba(185, 155, 255, 0.15);
     --ok: #4cd38a;
     --ok-soft: rgba(76, 211, 138, 0.14);
     --warn: #f2b84b;
@@ -144,47 +148,6 @@ code,
 .devchip .sep {
   color: var(--faint);
 }
-.modes {
-  display: inline-flex;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
-}
-.modes button {
-  border: 0;
-  background: transparent;
-  padding: 5px 12px;
-  border-radius: 6px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-}
-.modes button kbd {
-  font: 10px/1 var(--mono);
-  color: var(--faint);
-  min-width: 16px;
-  padding: 2px 4px;
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  text-align: center;
-}
-.modes button[aria-pressed="true"][data-mode="act"] {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.modes button[aria-pressed="true"][data-mode="assert"] {
-  background: var(--assert-soft);
-  color: var(--assert);
-}
-.modes button[aria-pressed="true"][data-mode="inspect"] {
-  background: var(--surface-2);
-  color: var(--ink);
-}
 .rec {
   display: flex;
   align-items: center;
@@ -238,8 +201,8 @@ code,
     grid-template-rows: auto minmax(0, 1fr);
   }
   /* The device column is as wide as the phone at the window's full height needs, and the
-     inspector takes what is left. 184px: the top bar, the frame status and the paddings above
-     and below the phone; 96px: the rail, its gap, the paddings and the phone's bezel. */
+     composer takes what is left. 234px: the top bar, the frame status, the device bar and the
+     paddings above and below the phone; 42px: the paddings and the phone's bezel. */
   .cols {
     grid-template-columns: auto minmax(320px, 1fr) minmax(300px, 400px);
     height: 100%;
@@ -247,18 +210,28 @@ code,
     align-items: stretch;
   }
   .device-panel {
-    width: clamp(300px, (100dvh - 184px) * var(--ar) + 96px, 50vw);
+    width: clamp(300px, (100dvh - 234px) * var(--ar) + 42px, 50vw);
   }
-  .cols > .panel {
+  .cols > .panel,
+  .mid > .panel {
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
   }
-  .cols > .panel > .panel-b {
+  .cols > .panel > .panel-b,
+  .mid > .panel > .panel-b {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
+  }
+  /* The composer gets the room it needs, up to two thirds; the inspector has the rest. */
+  .mid {
+    grid-template-rows: minmax(0, max-content) minmax(120px, 1fr);
+    min-height: 0;
+  }
+  .mid > .composer {
+    max-height: 67vh;
   }
   .cols .tree {
     max-height: none;
@@ -273,18 +246,18 @@ code,
   .device-stage {
     flex: 1 1 auto;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
   .phone-fit {
     height: 100%;
     container-type: size;
     justify-content: center;
   }
-  /* 16px: the phone's padding around the screen; the rail and the gap take the rest of the
-     width. (Scoped to win over the base .phone rule, which comes later in the file.) */
+  /* 16px: the phone's padding around the screen. (Scoped to win over the base .phone rule,
+     which comes later in the file.) */
   .phone-fit > .phone {
     flex: none;
-    width: min(100cqw - var(--rail-w) - var(--rail-gap), (100cqh - 16px) * var(--ar) + 16px);
+    width: min(100cqw, (100cqh - 16px) * var(--ar) + 16px);
   }
 }
 @media (max-width: 1180px) {
@@ -294,6 +267,12 @@ code,
   .steps-col {
     grid-column: 1 / -1;
   }
+}
+.mid {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
 }
 @media (max-width: 760px) {
   .cols {
@@ -389,73 +368,16 @@ code,
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
-/* The phone, and the device rail beside it (as the emulator's side toolbar). */
+/* The phone, as large as the panel allows. */
 .phone-fit {
-  --rail-w: 44px;
-  --rail-gap: 10px;
   width: 100%;
   min-height: 0;
   display: flex;
-  gap: var(--rail-gap);
-  align-items: flex-start;
+  justify-content: center;
 }
-/* Low specificity: the wide-screen rule (earlier in the file) sizes the phone to fit. */
 :where(.phone-fit) > .phone {
   flex: 1 1 0;
   min-width: 0;
-}
-.rail {
-  flex: none;
-}
-.rail {
-  width: var(--rail-w);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-.rail-group {
-  display: grid;
-  gap: 2px;
-}
-.rail-group + .rail-group {
-  border-top: 1px solid var(--line);
-  padding-top: 6px;
-}
-.railbtn {
-  width: 34px;
-  height: 34px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ink);
-  display: grid;
-  place-items: center;
-  padding: 0;
-}
-.railbtn:hover {
-  background: var(--surface);
-}
-.railbtn[aria-expanded="true"] {
-  background: var(--surface);
-  color: var(--accent);
-}
-.railbtn svg {
-  width: 18px;
-  height: 18px;
-}
-.railbtn[disabled] {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-/* The app menu opens beside the rail, over the phone, growing up from its button. */
-.rail .menu {
-  bottom: 0;
-  left: calc(100% + 8px);
 }
 .phone {
   position: relative;
@@ -492,7 +414,7 @@ code,
 .overlay {
   position: absolute;
   inset: 0;
-  cursor: crosshair;
+  cursor: pointer;
 }
 .overlay.busy {
   cursor: progress;
@@ -523,26 +445,16 @@ code,
   background: rgba(255, 106, 61, 0.16);
   box-shadow: 0 0 0 3px rgba(255, 106, 61, 0.25);
 }
-.mode-assert .ob:not(.gap):not(.passive) {
-  border-color: rgba(44, 99, 214, 0.75);
-  background: rgba(44, 99, 214, 0.06);
-}
-.mode-assert .ob.hover,
-.mode-assert .ob.sel {
-  background: rgba(44, 99, 214, 0.2);
+/* The selection takes the composer's colour: what the step on it will be. */
+.tone-assert .ob.sel {
   border-color: #2c63d6;
+  background: rgba(44, 99, 214, 0.16);
+  box-shadow: 0 0 0 3px rgba(44, 99, 214, 0.28);
 }
-.mode-inspect .ob:not(.gap) {
-  border-color: rgba(100, 112, 125, 0.6);
-  background: transparent;
-}
-.mode-inspect .ob.hover {
-  background: rgba(100, 112, 125, 0.18);
-  border-color: #4a5561;
-}
-.mode-inspect .ob.sel {
-  border-color: #e6eaef;
-  box-shadow: 0 0 0 3px rgba(23, 32, 42, 0.35);
+.tone-wait .ob.sel {
+  border-color: #8a5be0;
+  background: rgba(138, 91, 224, 0.16);
+  box-shadow: 0 0 0 3px rgba(138, 91, 224, 0.28);
 }
 .provisional .ob {
   border-style: dashed;
@@ -602,6 +514,21 @@ code,
   border-color: transparent;
   color: var(--assert);
 }
+.btn.wait {
+  background: var(--wait-soft);
+  border-color: transparent;
+  color: var(--wait);
+}
+.btn.assert:hover,
+.btn.wait:hover {
+  filter: brightness(0.96);
+}
+/* A direction: a square arrow button, the arrow the way the finger or the content goes. */
+.btn.dir {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
 .btn.ghost {
   border-color: transparent;
   background: transparent;
@@ -633,103 +560,10 @@ code,
   color: var(--ink);
   font-weight: 600;
 }
-.menu-wrap {
-  position: relative;
-}
-.menu {
-  position: absolute;
-  z-index: 10;
-  bottom: calc(100% + 6px);
-  left: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 4px;
-  min-width: 220px;
-  display: grid;
-}
-.menu button {
-  text-align: left;
-  border: 0;
-  background: transparent;
-  padding: 6px 10px;
-  border-radius: 5px;
-  font-size: 13px;
-}
-.menu button:hover {
-  background: var(--surface-2);
-}
-.menu button:disabled {
-  color: var(--muted);
-  background: transparent;
-  cursor: default;
-}
-.menu > input {
-  margin: 4px 6px;
-  font-family: var(--mono);
-}
-.menu small {
-  color: var(--muted);
+.seg button svg {
+  width: 14px;
+  height: 14px;
   display: block;
-  font-size: 11.5px;
-}
-.menu form {
-  display: flex;
-  gap: 4px;
-  padding: 4px 6px;
-}
-.menu input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  border-radius: 6px;
-  padding: 4px 6px;
-  font-size: 12.5px;
-}
-
-/* popover over the device */
-.pop {
-  position: absolute;
-  z-index: 8;
-  width: 270px;
-  max-width: calc(100% - 8px);
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-  font: 13px/1.45 var(--sans);
-  box-sizing: border-box;
-}
-.pop h3 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  word-break: break-word;
-}
-.pop h3 code {
-  color: var(--ink);
-}
-.pop input[type="text"],
-.pop input[type="password"] {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  border-radius: 6px;
-  padding: 6px 8px;
-}
-.pop .row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
 }
 .chk {
   display: flex;
@@ -738,19 +572,339 @@ code,
   font-size: 12.5px;
   color: var(--muted);
 }
-.pop .opts {
-  display: grid;
-  gap: 2px;
+/* The composer: what to do with the selected element. The tab is the kind of step; each tab
+   has its colour, which the selection on the screen takes too. */
+.composer {
+  --tone: var(--accent);
+  --tone-soft: var(--accent-soft);
 }
-.pop .opts button {
-  text-align: left;
+.composer.tone-assert {
+  --tone: var(--assert);
+  --tone-soft: var(--assert-soft);
+}
+.composer.tone-wait {
+  --tone: var(--wait);
+  --tone-soft: var(--wait-soft);
+}
+.intents {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+.intents button {
   border: 0;
   background: transparent;
-  border-radius: 6px;
-  padding: 6px 8px;
+  padding: 10px 8px 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
 }
-.pop .opts button:hover {
-  background: var(--assert-soft);
+.intents button:hover {
+  color: var(--ink);
+}
+.intents button[aria-selected="true"] {
+  color: var(--tone);
+  border-bottom-color: var(--tone);
+  font-weight: 650;
+}
+.intents kbd {
+  font: 10.5px var(--mono);
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.composer > .panel-b {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.selected {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--tone-soft);
+}
+.selected.none {
+  display: block;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+}
+.selected .cands {
+  margin: 0;
+}
+.selected .cand,
+.selected .cand.first {
+  background: var(--surface);
+}
+.selected .cand.first {
+  border-color: var(--tone);
+}
+.selected .node-head .ref {
+  color: var(--tone);
+  background: var(--surface);
+}
+.selected input[type="radio"] {
+  accent-color: var(--tone);
+}
+.node-head .label {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.group {
+  display: grid;
+  gap: 8px;
+}
+.group h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.group .note {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+.group .note code {
+  font-size: 11.5px;
+}
+/* A row: what it does on the left, the buttons beside it, and why it cannot run under them. */
+.crow {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+}
+.crow .rl {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.crow .why {
+  grid-column: 2;
+  font-size: 12px;
+  color: var(--faint);
+}
+.crow .why.bad {
+  color: var(--bad);
+}
+.crow .actions {
+  align-items: center;
+}
+@media (max-width: 520px) {
+  .crow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .crow .why {
+    grid-column: 1;
+  }
+}
+.actions input {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 5px 8px;
+  min-width: 0;
+}
+.actions input.grow {
+  flex: 1 1 160px;
+}
+.actions input.num {
+  width: 6ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.actions input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+.unit {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.composer .btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* The device's buttons, under the phone as its navigation bar is. */
+.navbar {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.navbtn {
+  width: 40px;
+  height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.navbtn:hover:not([disabled]) {
+  background: var(--surface);
+}
+.navbtn svg {
+  width: 18px;
+  height: 18px;
+}
+.navbtn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* The keys menu: opens upwards from the bar, as wide as it, over the bottom of the phone. */
+.keys-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.keys-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.keys-grid .btn {
+  justify-content: space-between;
+  min-width: 0;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+.keys-grid .code,
+.keys-note {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.keys-code {
+  white-space: nowrap;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.keys-code input {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 5px 8px;
+}
+.keys-note {
+  margin: 0;
+  font-family: inherit;
+  font-size: 11.5px;
+}
+.navsep {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 6px;
+}
+
+/* The App tab: apart from the element, so its tab sits after a rule and nothing is selected in it. */
+.composer.tone-app {
+  --tone: var(--ink);
+  --tone-soft: var(--surface-2);
+}
+.intents .apart {
+  border-left: 1px solid var(--line);
+}
+.appctl {
+  display: grid;
+  gap: 8px;
+}
+.appctl .use {
+  padding: 2px 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The distance slider. */
+.distance input[type="range"] {
+  flex: 0 1 180px;
+  min-width: 100px;
+  accent-color: var(--tone);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+/* Reset keeps its place while hidden, so the row does not change height when it shows. */
+.distance .btn.idle {
+  visibility: hidden;
+}
+.distance output {
+  font-variant-numeric: tabular-nums;
+  min-width: 14ch;
+}
+
+/* A scroll until being set up: the composer asks for the target, the screen outlines where. */
+.seek {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--tone-soft);
+  border: 1px dashed var(--tone);
+}
+.seek h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.seek p {
+  margin: 0;
+  font-size: 13px;
+}
+.seek .ask {
+  color: var(--ink);
+}
+.seek .why {
+  font-size: 12px;
+  color: var(--muted);
+}
+.seek .why.bad {
+  color: var(--bad);
+}
+.container-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed #ff6a3d;
+  background: rgba(255, 106, 61, 0.06);
+  box-shadow: 0 0 0 9999px rgba(11, 15, 20, 0.35);
+  pointer-events: none;
+}
+.seeking .overlay {
+  cursor: crosshair;
 }
 
 /* inspector */
@@ -807,9 +961,7 @@ code,
 }
 .section > h4 {
   margin: 0 0 6px;
-  font-size: 11.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
   color: var(--muted);
   font-weight: 600;
 }
@@ -881,21 +1033,33 @@ code,
   flex-wrap: wrap;
   gap: 6px;
 }
+.textentry {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
 .textact {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-top: 6px;
   align-items: center;
 }
-.textact input[type="text"],
-.textact input[type="password"] {
-  flex: 1 1 140px;
+.textentry > input,
+.textact input[type="text"] {
   min-width: 0;
   border: 1px solid var(--line);
   background: var(--surface-2);
   border-radius: 7px;
   padding: 5px 8px;
+}
+.textact input[type="text"] {
+  flex: 0 1 140px;
+}
+.typekeys {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
 }
 .props {
   display: grid;
@@ -1122,7 +1286,9 @@ code,
   font-size: 12px;
   color: var(--muted);
 }
-.field input {
+.field input,
+.field select {
+  height: 30px;
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--line);
@@ -1130,13 +1296,17 @@ code,
   border-radius: 6px;
   padding: 5px 8px;
 }
-.field input[aria-invalid="true"] {
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"] {
   border-color: var(--bad);
 }
 .step-editor .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+.step-editor .row.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .check {
   display: flex;
@@ -1375,18 +1545,4 @@ code,
   justify-content: flex-end;
   flex-wrap: wrap;
   margin-top: 4px;
-}
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 20px;
-  transform: translateX(-50%);
-  z-index: 30;
-  background: #17202a;
-  color: #f1f3f5;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  box-shadow: var(--shadow);
-  max-width: calc(100% - 32px);
 }

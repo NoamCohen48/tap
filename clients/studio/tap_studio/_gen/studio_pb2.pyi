@@ -37,6 +37,19 @@ class Condition(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CONDITION_TEXT_EQUALS: _ClassVar[Condition]
     CONDITION_TEXT_CONTAINS: _ClassVar[Condition]
     CONDITION_COUNT: _ClassVar[Condition]
+
+class Check(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    CHECK_UNSPECIFIED: _ClassVar[Check]
+    CHECK_EXISTS: _ClassVar[Check]
+    CHECK_COUNT: _ClassVar[Check]
+    CHECK_TEXT_EQUALS: _ClassVar[Check]
+    CHECK_TEXT_CONTAINS: _ClassVar[Check]
+    CHECK_ENABLED: _ClassVar[Check]
+    CHECK_DISABLED: _ClassVar[Check]
+    CHECK_CHECKED: _ClassVar[Check]
+    CHECK_UNCHECKED: _ClassVar[Check]
+    CHECK_FOCUSED: _ClassVar[Check]
 SELECTOR_ORIGIN_UNSPECIFIED: SelectorOrigin
 SELECTOR_ORIGIN_SYNTHESIZED: SelectorOrigin
 SELECTOR_ORIGIN_ALTERNATIVE: SelectorOrigin
@@ -53,6 +66,16 @@ CONDITION_FOCUSED: Condition
 CONDITION_TEXT_EQUALS: Condition
 CONDITION_TEXT_CONTAINS: Condition
 CONDITION_COUNT: Condition
+CHECK_UNSPECIFIED: Check
+CHECK_EXISTS: Check
+CHECK_COUNT: Check
+CHECK_TEXT_EQUALS: Check
+CHECK_TEXT_CONTAINS: Check
+CHECK_ENABLED: Check
+CHECK_DISABLED: Check
+CHECK_CHECKED: Check
+CHECK_UNCHECKED: Check
+CHECK_FOCUSED: Check
 
 class InfoRequest(_message.Message):
     __slots__ = ()
@@ -185,14 +208,16 @@ class CountResponse(_message.Message):
     def __init__(self, count: _Optional[int] = ...) -> None: ...
 
 class PerformRequest(_message.Message):
-    __slots__ = ("step", "secret_value", "before_step_id")
+    __slots__ = ("step", "secret_value", "before_step_id", "skip_recording")
     STEP_FIELD_NUMBER: _ClassVar[int]
     SECRET_VALUE_FIELD_NUMBER: _ClassVar[int]
     BEFORE_STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    SKIP_RECORDING_FIELD_NUMBER: _ClassVar[int]
     step: Step
     secret_value: str
     before_step_id: str
-    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ..., before_step_id: _Optional[str] = ...) -> None: ...
+    skip_recording: bool
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ..., before_step_id: _Optional[str] = ..., skip_recording: _Optional[bool] = ...) -> None: ...
 
 class PerformResponse(_message.Message):
     __slots__ = ("step", "recorded", "message")
@@ -358,22 +383,28 @@ class RecordedDevice(_message.Message):
     def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ...) -> None: ...
 
 class Step(_message.Message):
-    __slots__ = ("id", "note", "outcome", "app", "action", "type", "assertion")
+    __slots__ = ("id", "note", "outcome", "app", "action", "type", "wait", "assertion", "scroll_until", "app_wait")
     ID_FIELD_NUMBER: _ClassVar[int]
     NOTE_FIELD_NUMBER: _ClassVar[int]
     OUTCOME_FIELD_NUMBER: _ClassVar[int]
     APP_FIELD_NUMBER: _ClassVar[int]
     ACTION_FIELD_NUMBER: _ClassVar[int]
     TYPE_FIELD_NUMBER: _ClassVar[int]
+    WAIT_FIELD_NUMBER: _ClassVar[int]
     ASSERTION_FIELD_NUMBER: _ClassVar[int]
+    SCROLL_UNTIL_FIELD_NUMBER: _ClassVar[int]
+    APP_WAIT_FIELD_NUMBER: _ClassVar[int]
     id: str
     note: str
     outcome: Outcome
     app: _event_log_pb2.AppCall
     action: ActionStep
     type: TypeStep
+    wait: WaitStep
     assertion: AssertionStep
-    def __init__(self, id: _Optional[str] = ..., note: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., app: _Optional[_Union[_event_log_pb2.AppCall, _Mapping]] = ..., action: _Optional[_Union[ActionStep, _Mapping]] = ..., type: _Optional[_Union[TypeStep, _Mapping]] = ..., assertion: _Optional[_Union[AssertionStep, _Mapping]] = ...) -> None: ...
+    scroll_until: ScrollUntilStep
+    app_wait: AppWaitStep
+    def __init__(self, id: _Optional[str] = ..., note: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., app: _Optional[_Union[_event_log_pb2.AppCall, _Mapping]] = ..., action: _Optional[_Union[ActionStep, _Mapping]] = ..., type: _Optional[_Union[TypeStep, _Mapping]] = ..., wait: _Optional[_Union[WaitStep, _Mapping]] = ..., assertion: _Optional[_Union[AssertionStep, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntilStep, _Mapping]] = ..., app_wait: _Optional[_Union[AppWaitStep, _Mapping]] = ...) -> None: ...
 
 class ActionStep(_message.Message):
     __slots__ = ("command", "wait", "secret", "selector_origin")
@@ -401,7 +432,7 @@ class TypeStep(_message.Message):
     selector_origin: SelectorOrigin
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., secret: _Optional[str] = ..., skip_focus_wait: _Optional[bool] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
 
-class AssertionStep(_message.Message):
+class WaitStep(_message.Message):
     __slots__ = ("selector", "condition", "text", "count", "selector_origin")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     CONDITION_FIELD_NUMBER: _ClassVar[int]
@@ -415,12 +446,50 @@ class AssertionStep(_message.Message):
     selector_origin: SelectorOrigin
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
 
+class AssertionStep(_message.Message):
+    __slots__ = ("selector", "check", "text", "count", "selector_origin")
+    SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    CHECK_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    selector: _selector_pb2.Selector
+    check: Check
+    text: str
+    count: int
+    selector_origin: SelectorOrigin
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., check: _Optional[_Union[Check, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+
+class ScrollUntilStep(_message.Message):
+    __slots__ = ("container", "target", "direction", "max_scrolls", "distance_percent", "selector_origin")
+    CONTAINER_FIELD_NUMBER: _ClassVar[int]
+    TARGET_FIELD_NUMBER: _ClassVar[int]
+    DIRECTION_FIELD_NUMBER: _ClassVar[int]
+    MAX_SCROLLS_FIELD_NUMBER: _ClassVar[int]
+    DISTANCE_PERCENT_FIELD_NUMBER: _ClassVar[int]
+    SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    container: _selector_pb2.Selector
+    target: _selector_pb2.Selector
+    direction: _command_pb2.Direction
+    max_scrolls: int
+    distance_percent: int
+    selector_origin: SelectorOrigin
+    def __init__(self, container: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., target: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[_command_pb2.Direction, str]] = ..., max_scrolls: _Optional[int] = ..., distance_percent: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+
+class AppWaitStep(_message.Message):
+    __slots__ = ("command",)
+    COMMAND_FIELD_NUMBER: _ClassVar[int]
+    command: _command_pb2.Command
+    def __init__(self, command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ...) -> None: ...
+
 class Outcome(_message.Message):
-    __slots__ = ("duration_ms", "error", "failure")
+    __slots__ = ("duration_ms", "error", "failure", "mismatch")
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     FAILURE_FIELD_NUMBER: _ClassVar[int]
+    MISMATCH_FIELD_NUMBER: _ClassVar[int]
     duration_ms: int
     error: _command_pb2.Error
     failure: _failure_pb2.Failure
-    def __init__(self, duration_ms: _Optional[int] = ..., error: _Optional[_Union[_command_pb2.Error, _Mapping]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ...) -> None: ...
+    mismatch: str
+    def __init__(self, duration_ms: _Optional[int] = ..., error: _Optional[_Union[_command_pb2.Error, _Mapping]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ..., mismatch: _Optional[str] = ...) -> None: ...

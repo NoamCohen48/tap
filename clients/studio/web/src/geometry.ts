@@ -1,11 +1,10 @@
-// Where nodes are on the frame, and which node a point or a gesture means (decision 4: a click is
-// hit-tested against the snapshot of the frame it was made on).
+// Where nodes are on the frame, and which node a point means (decision 4: a click is hit-tested
+// against the snapshot of the frame it was made on).
 //
 // Node bounds and the screenshot are both in the display's current orientation, in device
 // pixels, so a node's box is its bounds as fractions of the frame: the overlay scales with the
 // picture and follows rotation without knowing about it.
 
-import { Direction } from "./gen/command_pb";
 import type { ScreenNode } from "./gen/device_pb";
 import { NodeFlag } from "./gen/selector_pb";
 
@@ -103,16 +102,32 @@ export function tapLabel(nodes: readonly ScreenNode[], row: ScreenNode): ScreenN
   return null;
 }
 
+/** The nodes a container holds: their centre is inside its bounds (a row half scrolled out still
+ *  counts). The container itself is not among them. */
+export function within(nodes: readonly ScreenNode[], container: ScreenNode): ScreenNode[] {
+  const c = container.bounds;
+  if (!c) return [];
+  return nodes.filter((n) => {
+    if (n.ref === container.ref || !n.bounds) return false;
+    const x = (n.bounds.left + n.bounds.right) / 2;
+    const y = (n.bounds.top + n.bounds.bottom) / 2;
+    return x >= c.left && x < c.right && y >= c.top && y < c.bottom;
+  });
+}
+
+/** The smallest scrollable node holding `node` (its centre inside), so a row leads to its list. */
+export function scrollableAround(nodes: readonly ScreenNode[], node: ScreenNode): ScreenNode | null {
+  const b = node.bounds;
+  if (!b) return null;
+  const centre = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
+  return hit(nodes, centre, (n) => n.ref !== node.ref && isScrollable(n));
+}
+
 export const isScrollable = (node: ScreenNode) => node.flags.includes(NodeFlag.FLAG_SCROLLABLE);
 
 export const isEditable = (node: ScreenNode) => /EditText$/.test(node.className ?? "");
 
 export const isCheckable = (node: ScreenNode) => node.flags.includes(NodeFlag.FLAG_CHECKABLE);
-
-/** The innermost scrollable node under a point: what the wheel over it scrolls. */
-export function scrollableAt(nodes: readonly ScreenNode[], p: Point): ScreenNode | null {
-  return hit(nodes, p, isScrollable);
-}
 
 /** A point on the element in client pixels, as a point on the frame in device pixels. */
 export function toFrame(client: Point, rect: { left: number; top: number; width: number; height: number }, width: number, height: number): Point {
@@ -120,16 +135,6 @@ export function toFrame(client: Point, rect: { left: number; top: number; width:
     x: ((client.x - rect.left) / rect.width) * width,
     y: ((client.y - rect.top) / rect.height) * height,
   };
-}
-
-/** The swipe a drag means (the direction the finger moved), or `null` for a click: a drag must
- *  go at least `minimum` along its main axis. */
-export function dragDirection(from: Point, to: Point, minimum: number): Direction | null {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (Math.max(Math.abs(dx), Math.abs(dy)) < minimum) return null;
-  if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? Direction.DIR_LEFT : Direction.DIR_RIGHT;
-  return dy < 0 ? Direction.DIR_UP : Direction.DIR_DOWN;
 }
 
 /** The node's name in the UI: its text, description, id or class. */

@@ -176,7 +176,8 @@ message CountResponse {
 
 message PerformRequest {
   // The step to run. `id` and `outcome` are ignored and an action's `wait` must be absent: the
-  // studio sets the id, infers the wait (decision 6) and measures the outcome.
+  // studio sets the id, infers the wait (decision 6), fills in the gesture defaults and measures
+  // the outcome.
   Step step = 1;
   // The value of the step's `secret` (a secret set_text or type step, and only then): sent to the
   // device, never written to the recording.
@@ -184,6 +185,9 @@ message PerformRequest {
   // Where a recorded step goes: before this step; empty for the end. NOT_FOUND (and nothing runs)
   // for an unknown id.
   string before_step_id = 3;
+  // Run the step but never record it, whether recording is on or not: the page's own probes,
+  // such as the scrolls that look for a scroll until's target before the user picks it.
+  bool skip_recording = 4;
 }
 
 message PerformResponse {
@@ -334,7 +338,10 @@ message Step {
     tap.v1.AppCall app = 10;
     ActionStep action = 11;
     TypeStep type = 12;
-    AssertionStep assertion = 13;
+    WaitStep wait = 13;
+    AssertionStep assertion = 14;
+    ScrollUntilStep scroll_until = 15;
+    AppWaitStep app_wait = 16;
   }
 }
 
@@ -370,7 +377,7 @@ message TypeStep {
   SelectorOrigin selector_origin = 5;
 }
 
-// The SDKs' element waits.
+// The SDKs' element waits (`ElementWait`).
 enum Condition {
   CONDITION_UNSPECIFIED = 0;
   CONDITION_VISIBLE = 1;
@@ -386,9 +393,9 @@ enum Condition {
   CONDITION_COUNT = 11; // value: count
 }
 
-// A check: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
-// wait of the same name.
-message AssertionStep {
+// A wait: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
+// wait of the same name (`screen.await(selector).visible()`).
+message WaitStep {
   // Required.
   tap.v1.Selector selector = 1;
   // Required.
@@ -401,11 +408,70 @@ message AssertionStep {
   SelectorOrigin selector_origin = 5;
 }
 
-// At most one of `error` and `failure`; neither means the step passed.
+// What an assertion checks, with the SDKs' element queries, once and at once.
+enum Check {
+  CHECK_UNSPECIFIED = 0;
+  CHECK_EXISTS = 1; // exists(): at least one match
+  CHECK_COUNT = 2; // count() == value: count
+  CHECK_TEXT_EQUALS = 3; // text() == value: text
+  CHECK_TEXT_CONTAINS = 4; // text() contains value: text
+  CHECK_ENABLED = 5; // isEnabled()
+  CHECK_DISABLED = 6; // !isEnabled()
+  CHECK_CHECKED = 7; // isChecked()
+  CHECK_UNCHECKED = 8; // !isChecked()
+  CHECK_FOCUSED = 9; // snapshot().focused
+}
+
+// An assertion: the screen as it is now, with no waiting. One query command (`exists`, `count`, or
+// `snapshot` of the one match) whose answer must be `check`; a test writes it as
+// `assertTrue(screen.element(selector).exists())`. Wait first (a WaitStep) for a screen that is
+// still changing.
+message AssertionStep {
+  // Required.
+  tap.v1.Selector selector = 1;
+  // Required.
+  Check check = 2;
+  // Set exactly for the checks that take one.
+  oneof value {
+    string text = 3;
+    int32 count = 4; // ≥ 0
+  }
+  SelectorOrigin selector_origin = 5;
+}
+
+// The SDKs' `Element.scrollUntil`: scrolls `container` towards `direction` until `target` exists
+// inside it (`container.descendant(target)`, or `target` itself for a container with a pick), at
+// most `max_scrolls` times within the device's wait timeout. The container's wait before it is
+// implied, as a type step's: exactly one match, or at least one for a selector with a pick.
+message ScrollUntilStep {
+  // Required: the scrollable element.
+  tap.v1.Selector container = 1;
+  // Required: what to scroll into view.
+  tap.v1.Selector target = 2;
+  // Required: the content edge scrolled towards, as `scroll`'s.
+  tap.v1.Direction direction = 3;
+  // 0..1000; the studio sets 20 (the SDKs' default) when the page leaves it out.
+  optional int32 max_scrolls = 4;
+  // 1..100; the studio sets 80 (the SDKs' default) when the page leaves it out.
+  optional int32 distance_percent = 5;
+  // The container's.
+  SelectorOrigin selector_origin = 6;
+}
+
+// An app wait, one command on the app's package: `wait_app_visible` (`App.awaitVisible`: the app
+// owns the focused window) or `wait_screen_stable` (`App.awaitScreenStable`, or its shorthands
+// `awaitSettled` for STABILITY_TREE and `awaitAnimationEnd` for STABILITY_PIXELS).
+message AppWaitStep {
+  tap.v1.Command command = 1;
+}
+
+// At most one of `error`, `failure` and `mismatch`; none means the step passed.
 message Outcome {
   int32 duration_ms = 1;
   // The driver's error when a command failed.
   tap.v1.Error error = 2;
   // The call failed as an RPC (an app call, a lost device).
   tap.v1.Failure failure = 3;
+  // An assertion's commands ran but its check did not hold: what was found, for a person.
+  string mismatch = 4;
 }

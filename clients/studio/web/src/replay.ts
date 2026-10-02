@@ -16,7 +16,7 @@ export type ReplayRequest = { fromStepId?: string; only?: boolean; secretValues?
  *  steps can be inserted while the replay runs (a prepended cold launch). */
 export type ReplaySummary = { tone: "ok" | "fail" | "info"; text: string; failedStepId?: string };
 
-export const passed = (outcome: Outcome | undefined) => !!outcome && !outcome.error && !outcome.failure;
+export const passed = (outcome: Outcome | undefined) => !!outcome && !outcome.error && !outcome.failure && !outcome.mismatch;
 
 export function useReplay(client: StudioClient, onOutcome: (stepId: string, outcome: Outcome) => void) {
   const [running, setRunning] = useState(false);

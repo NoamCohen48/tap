@@ -41,6 +41,8 @@ def device_answers(command: tap.Command) -> tap.CommandResult | None:
         return tap.CommandResult(snapshot=tap.ElementSnapshot(text="Wool socks", enabled=True, checked=True, focused=True))
     if op == "count":
         return tap.CommandResult(count=1)
+    if op == "exists":
+        return tap.CommandResult(bool=True)
     if op == "wait_gone":
         return tap.CommandResult(done=tap.Done())
     return None

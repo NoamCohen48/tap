@@ -1,12 +1,13 @@
-// What the page offers for a node: the checks that fit it and the warnings its selectors carry.
+// What the page offers for a node: the waits and assertions that fit it and the warnings its selectors carry.
 
 import { SelectorKind, type ScreenNode, type SelectorCandidate } from "./gen/device_pb";
 import { NodeFlag, TextProperty, type Node, type Selector } from "./gen/selector_pb";
-import { Condition } from "./gen/studio_pb";
+import { Check, Condition } from "./gen/studio_pb";
 import { isCheckable } from "./geometry";
-import type { Check } from "./steps";
+import type { Expect, Until } from "./steps";
 
-export type CheckOption = { label: string; check: Check };
+export type WaitOption = { label: string; until: Until; title?: string };
+export type AssertOption = { label: string; expect: Expect };
 
 const has = (node: ScreenNode, flag: NodeFlag) => node.flags.includes(flag);
 
@@ -14,27 +15,43 @@ const has = (node: ScreenNode, flag: NodeFlag) => node.flags.includes(flag);
 export const picks = (selector: Selector | undefined) => selector?.pick.case === "first" || selector?.pick.case === "at";
 
 /**
- * The assertions that hold on the node as it is on this frame, so recording one passes. No
- * "Exactly one" for a selector that picks: it matches several nodes, so the check could only fail.
+ * The waits offered for a node (text and count take a value, so the page asks for those apart).
+ * A wait is for what is about to happen, so both states of a flag are offered, and Gone too:
+ * waiting for a spinner to go is the point. No "Exactly one" for a selector that picks: it
+ * matches several nodes, so the wait could only time out.
  */
-export function checksFor(node: ScreenNode, selector: Selector | undefined): CheckOption[] {
-  const options: CheckOption[] = [{ label: "Visible", check: { condition: Condition.VISIBLE } }];
-  if (!picks(selector)) options.push({ label: "Exactly one", check: { condition: Condition.ONE } });
-  if (node.text) options.push({ label: `Text is “${node.text}”`, check: { condition: Condition.TEXT_EQUALS, text: node.text } });
+export function waitsFor(node: ScreenNode, selector: Selector | undefined): WaitOption[] {
+  const options: WaitOption[] = [{ label: "Visible", until: { condition: Condition.VISIBLE } }];
+  if (!picks(selector)) options.push({ label: "Exactly one", until: { condition: Condition.ONE } });
   options.push(
-    has(node, NodeFlag.FLAG_ENABLED)
-      ? { label: "Enabled", check: { condition: Condition.ENABLED } }
-      : { label: "Disabled", check: { condition: Condition.DISABLED } },
+    { label: "Gone", until: { condition: Condition.GONE }, title: "Until no element matches: times out while this one stays" },
+    { label: "Enabled", until: { condition: Condition.ENABLED } },
+    { label: "Disabled", until: { condition: Condition.DISABLED } },
+  );
+  if (isCheckable(node)) {
+    options.push({ label: "Checked", until: { condition: Condition.CHECKED } }, { label: "Unchecked", until: { condition: Condition.UNCHECKED } });
+  }
+  if (has(node, NodeFlag.FLAG_FOCUSABLE) || has(node, NodeFlag.FLAG_FOCUSED)) {
+    options.push({ label: "Focused", until: { condition: Condition.FOCUSED } });
+  }
+  return options;
+}
+
+/**
+ * The assertions offered for a node: the state it is in on this frame, so recording one passes
+ * (an assertion does not wait for a change). Text and count take a value, asked for apart.
+ */
+export function assertsFor(node: ScreenNode): AssertOption[] {
+  const options: AssertOption[] = [{ label: "Exists", expect: { check: Check.EXISTS } }];
+  options.push(
+    has(node, NodeFlag.FLAG_ENABLED) ? { label: "Is enabled", expect: { check: Check.ENABLED } } : { label: "Is disabled", expect: { check: Check.DISABLED } },
   );
   if (isCheckable(node)) {
     options.push(
-      has(node, NodeFlag.FLAG_CHECKED)
-        ? { label: "Checked", check: { condition: Condition.CHECKED } }
-        : { label: "Unchecked", check: { condition: Condition.UNCHECKED } },
+      has(node, NodeFlag.FLAG_CHECKED) ? { label: "Is checked", expect: { check: Check.CHECKED } } : { label: "Is unchecked", expect: { check: Check.UNCHECKED } },
     );
   }
-  if (has(node, NodeFlag.FLAG_FOCUSED)) options.push({ label: "Focused", check: { condition: Condition.FOCUSED } });
-  // No "Gone": the node is on this frame, so the check would time out and not be recorded.
+  if (has(node, NodeFlag.FLAG_FOCUSED)) options.push({ label: "Is focused", expect: { check: Check.FOCUSED } });
   return options;
 }
 

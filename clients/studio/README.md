@@ -1,13 +1,15 @@
 # tap-studio
 
 **Experimental.** A browser inspector and action recorder for Android apps on a running `tap`
-daemon: see the app's screen with its elements overlaid, act on them by clicking, and get what
-you did as `tap-recording/1` JSON: element interactions (`tap res("search")`), never
+daemon: see the app's screen with its elements overlaid, select one and choose what to do with
+it, and get what you did as `tap-recording/1` JSON: element interactions (`tap res("search")`), never
 coordinates. The design is `.docs/recorder.md` in the repository.
 
-So far: pick a device and the app under test, see its screen with the element overlay, record
-by clicking (Act, Assert and Inspect modes; text and secrets; wheel scrolls; drags swipe; Back,
-Home and app steps), inspect an element's selector candidates and properties or the screen tree,
+So far: pick a device and the app under test, see its screen with the element overlay, select an
+element and record a step on it from the composer (Act: tap, long press, swipe and scroll in four
+directions with a distance, scroll until shown by scrolling, text and secrets; Assert: a check of
+the element now; Wait: element waits; App: launch, stop, clear, grant, app waits) and
+the device bar under the phone, inspect an element's selector candidates and properties or the screen tree,
 choose which selector candidate a step uses or type one in the SDK's DSL (with a live match
 count), edit, insert, reorder and delete steps, replay all or part of the recording (it stops at
 the first failure), and export and reopen `tap-recording/1` files. It needs a running daemon
@@ -46,10 +48,13 @@ User guide: `docs/guide/studio.md` (published at
   recording), `screen.py` (the per-device worker thread and the frame loop), `steps.py`
   (completing and running a step), `recording.py` (the `tap-recording/1` document); `_gen/` is
   generated.
-- `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, modes, the three
-  areas), `ScreenView.tsx` (frame, overlay, pointer handling), `Inspector.tsx`, `StepsPanel.tsx`
-  (steps, replay controls, open, export), `StepEditor.tsx` (a step's selector, value, secret and
-  note), `Dialogs.tsx`, `frames.ts` (the `Frames` stream), `replay.ts` (the `Replay` stream),
+- `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, the three
+  areas), `ScreenView.tsx` (frame, overlay, selecting), `Composer.tsx` (the selected element, the
+  Act / Assert / Wait / App tabs, the scroll until search), `AppControls.tsx` (the App tab), `DeviceBar.tsx`,
+  `controls.tsx` (rows and direction buttons), `Inspector.tsx` (properties, screen tree), `count.ts` (live
+  match counts), `StepsPanel.tsx`
+  (steps, replay controls, open, export), `StepEditor.tsx` (a step's selector, value, secret, gesture and
+  note), `keys.ts` (the key codes the page names), `Dialogs.tsx`, `frames.ts` (the `Frames` stream), `replay.ts` (the `Replay` stream),
   `describe.ts` (steps and selectors as SDK calls), `parse.ts` (a typed selector back into the
   proto), `edit.ts` (reading and rewriting a step, its warnings), `geometry.ts` (hit-testing),
   `steps.ts` (`Perform` requests); `src/gen/` is generated. `bun run build` writes it into

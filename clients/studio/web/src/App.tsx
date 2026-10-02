@@ -20,21 +20,18 @@ import {
   type Session,
   type Step,
 } from "./gen/studio_pb";
+import { Composer, TABS, type Seek, type Tab } from "./Composer";
+import { DeviceBar } from "./DeviceBar";
+import type { Direction } from "./gen/command_pb";
 import { Eject, Logo } from "./icons";
 import { Inspector } from "./Inspector";
-import { ScreenView, type Mode, type OverlayFilter } from "./ScreenView";
+import { ScreenView, type OverlayFilter } from "./ScreenView";
 import { useReplay, type ReplayRequest } from "./replay";
 import * as stepsApi from "./steps";
 import { synthesized, type Target } from "./steps";
 import { StepsPanel, type LastRun } from "./StepsPanel";
 
 type Status = { kind: "loading" } | { kind: "ready"; info: InfoResponse } | { kind: "failed"; message: string };
-
-const MODES: { mode: Mode; label: string; key: string; title: string }[] = [
-  { mode: "act", label: "Act", key: "1", title: "A click performs the action and records it" },
-  { mode: "assert", label: "Assert", key: "2", title: "A click records a check on the element" },
-  { mode: "inspect", label: "Inspect", key: "3", title: "A click only selects; nothing runs" },
-];
 
 export function App({ client }: { client: StudioClient }) {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -108,18 +105,21 @@ function Workspace({
   const { frame, error } = useFrames(client, device.serial);
   const [appPackage, setAppPackage] = useAppPackage();
   const app = appPackage.trim();
-  const [mode, setMode] = useState<Mode>("act");
+  const [tab, setTab] = useState<Tab>("act");
   const [overlay, setOverlay] = useState<OverlayFilter>("interactive");
   const [selected, setSelected] = useState<ScreenNode | null>(null);
-  // The candidate picked in the inspector for one node; steps on other nodes use their first.
+  // The candidate picked in the composer for one node; steps on other nodes use their first.
   const [chosen, setChosen] = useState<{ ref: string; index: number } | null>(null);
   const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [] });
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false); // set at once, so a second click cannot start another step
   const [lastRun, setLastRun] = useState<LastRun>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [distance, setDistance] = useState(stepsApi.DEFAULT_DISTANCE);
+  const [seek, setSeek] = useState<Seek | null>(null);
+  const searching = useRef(false); // for the key handler: the tab cannot change during a search
+  searching.current = seek !== null;
   const { steps } = recording;
 
   const onOutcome = useCallback((stepId: string, outcome: Outcome) => {
@@ -149,18 +149,16 @@ function Workspace({
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]")) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      const chosenMode = MODES.find((m) => m.key === e.key);
-      if (chosenMode) setMode(chosenMode.mode);
+      if (e.key === "Escape") {
+        setSeek(null);
+        return;
+      }
+      const chosen = TABS.find((t) => t.key === e.key);
+      if (chosen && !searching.current) setTab(chosen.tab);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(null), 3000);
-    return () => clearTimeout(timer);
-  }, [notice]);
 
   const targetOf = useCallback(
     (node: ScreenNode): Target | null => {
@@ -196,7 +194,7 @@ function Workspace({
           setLastRun(null);
         } else if (response.message) {
           setLastRun({ tone: "fail", text: `Not recorded: ${describeStep(step)} failed. ${response.message}` });
-        } else {
+        } else if (!request.skipRecording) {
           setLastRun({ tone: "info", text: `Ran ${describeStep(step)} (${step.outcome?.durationMs ?? 0} ms), not recorded.` });
         }
         return !response.message;
@@ -273,10 +271,41 @@ function Workspace({
       startReplay({ ...request, fromStepId: first }, { launch: true, launched: true });
   };
 
+  /** One probe scroll of a scroll until's container; the search ends if it fails. */
+  const probeScroll = async (s: Seek) => {
+    const passed = await perform(stepsApi.probe(stepsApi.scroll(s.container, s.direction, s.distance)));
+    // A failed probe (the container is gone) ends the search; its message is in the steps panel.
+    setSeek((current) => (current && passed ? { ...current, scrolls: current.scrolls + 1, note: undefined } : null));
+  };
+
+  const startSeek = (direction: Direction) => {
+    const target = inspected && targetOf(inspected);
+    if (!inspected || !target) return;
+    const s: Seek = { container: target, containerNode: inspected, direction, distance, scrolls: 0 };
+    setSeek(s);
+    void probeScroll(s);
+  };
+
+  /** The element the search was for: record the scroll until, with room for the scrolls it took. */
+  const pickTarget = async (s: Seek, node: ScreenNode) => {
+    const target = targetOf(node);
+    if (!target) {
+      setSeek({ ...s, note: "That element has no selector of its own: pick another, or scroll again." });
+      return;
+    }
+    const maxScrolls = Math.max(stepsApi.DEFAULT_MAX_SCROLLS, s.scrolls * 2);
+    if (await perform(stepsApi.scrollUntil(s.container, target.selector, s.direction, { distance: s.distance, maxScrolls }))) {
+      setSeek(null);
+      setSelected(node);
+    }
+  };
+
   const nodes = frame?.nodes ?? [];
+  const packages = [...new Set(nodes.map((n) => n.windowPackage).filter(Boolean))];
   const current = selected ? (nodes.find((n) => n.ref === selected.ref) ?? null) : null;
   const inspected = current ?? selected;
   const locked = busy || replay.running;
+  const seeking = seek ? (nodeFor(nodes, seek.container.selector) ?? seek.containerNode) : null;
 
   const selectStep = (stepId: string | null) => {
     setSelectedStep(stepId);
@@ -305,21 +334,6 @@ function Workspace({
           </button>
         </div>
         <span className="spacer" />
-        <div className="modes" role="group" aria-label="Click mode">
-          {MODES.map((m) => (
-            <button
-              key={m.mode}
-              type="button"
-              data-mode={m.mode}
-              aria-pressed={mode === m.mode}
-              title={`${m.title} (key ${m.key})`}
-              aria-keyshortcuts={m.key}
-              onClick={() => setMode(m.mode)}
-            >
-              {m.label} <kbd aria-hidden="true">{m.key}</kbd>
-            </button>
-          ))}
-        </div>
         <button
           type="button"
           className="rec"
@@ -335,29 +349,47 @@ function Workspace({
         <ScreenView
           frame={frame}
           error={error}
-          appPackage={app}
-          onAppPackage={setAppPackage}
-          mode={mode}
+          intent={tab === "app" ? "act" : tab}
           overlay={overlay}
           onOverlay={setOverlay}
           selectedRef={inspected?.ref ?? null}
           busy={locked}
-          onSelect={setSelected}
+          onSelect={(node) => {
+            if (seek) return void pickTarget(seek, node);
+            setSelected(node);
+            // Picking an element is for a step on it: leave the App tab.
+            setTab((t) => (t === "app" ? "act" : t));
+          }}
           targetOf={targetOf}
-          onPerform={perform}
-          onNotice={setNotice}
-        />
-        <Inspector
-          node={inspected}
-          onScreen={current !== null}
-          nodes={nodes}
-          appPackage={app}
-          busy={locked}
-          onSelect={setSelected}
-          targetOf={targetOf}
-          onChoose={(node, index) => setChosen({ ref: node.ref, index })}
-          onPerform={perform}
-        />
+          seeking={seeking}
+        >
+          <DeviceBar disabled={locked || !!seek} onPerform={(request) => void perform(request)} />
+        </ScreenView>
+        <div className="mid">
+          <Composer
+            client={client}
+            tab={tab}
+            onTab={setTab}
+            node={inspected}
+            onScreen={current !== null}
+            nodes={nodes}
+            onSelect={setSelected}
+            busy={locked}
+            target={inspected ? targetOf(inspected) : null}
+            onChoose={(node, index) => setChosen({ ref: node.ref, index })}
+            onPerform={(request) => void perform(request)}
+            distance={distance}
+            onDistance={setDistance}
+            seek={seek}
+            onSeek={startSeek}
+            onSeekAgain={() => seek && void probeScroll(seek)}
+            onSeekCancel={() => setSeek(null)}
+            appPackage={appPackage}
+            onAppPackage={setAppPackage}
+            packages={packages}
+          />
+          <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={setSelected} />
+        </div>
         <StepsPanel
           client={client}
           steps={steps}
@@ -401,7 +433,7 @@ function Workspace({
           body={
             <p>
               The recording does not start with an app step, so a replay starts from whatever screen the device shows now. A cold launch of{" "}
-              <code>{app}</code> (the App menu&apos;s app) first makes it reproducible
+              <code>{app}</code> (the app panel's) first makes it reproducible
               {session.recording ? "; it is added as step 1" : " (not recorded: recording is paused)"}.
             </p>
           }
@@ -420,11 +452,6 @@ function Workspace({
           }
           onCancel={() => setDialog(null)}
         />
-      )}
-      {notice && (
-        <div className="toast" role="status">
-          {notice}
-        </div>
       )}
     </>
   );
