@@ -45,7 +45,7 @@ class SelectorSynthesisTest {
                 // Package ownership is a predicate of every selector; the status bar is as reachable as the app.
                 assertTrue(Nodes.packageName(node.packageName!!) in selector.node.conjunction, selector.render())
                 if (result.byIndex) {
-                    // The pick counts every window's matches, in pre-order.
+                    // The pick counts every window's matches, in the driver's native (post-)order.
                     assertSame(node, matcher.matches(selector)[selector.at.index], "$name ${selector.render()}")
                 } else {
                     assertTrue(selector.pickCase == Selector.PickCase.PICK_NOT_SET, selector.render())
@@ -135,6 +135,31 @@ class SelectorSynthesisTest {
         assertEquals(SelectorKind.BY_INDEX, at("Clone", 1).kind)
         assertEquals(1, at("Clone", 1).selector.at.index)
         assertEquals(owned(Nodes.allOf(Nodes.text("Clone"), Nodes.className("android.widget.TextView"))).node, at("Clone", 1).selector.node)
+    }
+
+    @Test
+    fun `an index pick counts matches the way the driver's native plan returns them`() {
+        // A views list: the decor's LinearLayout holds rows that are LinearLayouts with nothing of
+        // their own, each wrapping a nested LinearLayout. ByMatcher returns a match after the
+        // matches inside it (post-order), so the decor comes last and the rows' inner layouts
+        // before their rows; a pre-order index would pick the next row (or the decor).
+        val linear = "android.widget.LinearLayout"
+
+        fun row(label: String) = node(className = linear, clickable = true, children = node(className = linear, children = node(text = label) + node(text = "same")))
+        val hierarchy = HierarchyParser.parse(wrap(node(className = linear, children = row("One") + row("Two") + row("Three"))))
+        val result = synthesise(hierarchy)
+        val matcher = DumpMatcher(hierarchy)
+        // Pre-order: decor, row 1, inner 1, row 2, inner 2, row 3, inner 3.
+        val layouts = hierarchy.nodes.filter { it.className == linear }
+        assertEquals(listOf(2, 1, 4, 3, 6, 5, 0).map { layouts[it] }, matcher.matches(owned(Nodes.className(linear))))
+        val decor = layouts[0]
+        val rows = listOf(layouts[1], layouts[3], layouts[5])
+        (rows + decor).forEach { node ->
+            val picked = assertNotNull(result[node.index])
+            assertEquals(SelectorKind.BY_INDEX, picked.kind, picked.selector.render())
+            assertSame(node, matcher.matches(picked.selector)[picked.selector.at.index], picked.selector.render())
+        }
+        assertEquals(listOf(1, 3, 5, 6), (rows + decor).map { result[it.index]!!.selector.at.index })
     }
 
     @Test

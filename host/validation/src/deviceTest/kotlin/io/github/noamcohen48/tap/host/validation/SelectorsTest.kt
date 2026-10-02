@@ -108,6 +108,18 @@ class SelectorsTest {
                 check(client.send(Commands.tap(eitherOnRight)).ok) { "any_of inside a conjunction failed to tap" }
                 check(client.send(Commands.waitVisible(Selectors.text("Duplicate taps: 5"))).ok)
 
+                // ByMatcher searches an ancestor relation from the ancestor down, returning a node once
+                // per matching ancestor; each button has three LinearLayout ancestors. Both plans count it once.
+                val linearLayout = Nodes.className("android.widget.LinearLayout")
+                val underLayouts = Selectors.of(Nodes.text("Duplicate action") and Nodes.ancestor(linearLayout))
+                val underLayoutsTraversal =
+                    Selectors.of(Nodes.text("Duplicate action") and Nodes.ancestor(linearLayout or Nodes.className("never.on.Screen")))
+                check(client.execute(Commands.count(underLayouts)).count == duplicates) { "an ancestor relation counted a node twice" }
+                check(client.execute(Commands.count(underLayoutsTraversal)).count == duplicates) { "traversal ancestor count disagrees" }
+                val rightUnderLayouts =
+                    Selectors.of(Nodes.androidResource(FIXTURE_PACKAGE, "right_half") and Nodes.ancestor(linearLayout))
+                check(client.send(Commands.snapshot(rightUnderLayouts)).ok) { "a unique node under nested ancestors was not exactly one" }
+
                 // Structural rejections never consume a request on the host and are INVALID_SELECTOR on the driver.
                 val emptyConjunction = Node.newBuilder().setAllOf(AllOf.getDefaultInstance()).build()
                 runCatching { client.send(Commands.exists(Selectors.of(emptyConjunction))) }.exceptionOrNull().let { error ->

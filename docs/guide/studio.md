@@ -93,6 +93,10 @@ In Act mode:
 **Pause** stops recording, but actions still run on the device. This is useful for getting the
 app into a state you do not want in the flow.
 
+A tap on a row that only an index could single out (a preference or list row with no id or
+text of its own) is recorded as a tap on its title, `text("Apps")`, which lands on the row and
+still finds it after the list scrolls.
+
 Each action is recorded after the wait that proved it could run: its element was on screen and
 matched exactly once. A selector that picks among several matches (`.first()`, `.at(i)`) waits
 for at least one match, and the action then picks.

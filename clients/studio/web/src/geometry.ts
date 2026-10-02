@@ -40,15 +40,67 @@ function area(node: ScreenNode): number {
   return (b.right - b.left) * (b.bottom - b.top);
 }
 
-/** The node a point on the frame means among `nodes`: the smallest one containing it, the
- *  deeper one on a tie (a button over its row, a leaf over its container). */
-export function hit(nodes: readonly ScreenNode[], p: Point): ScreenNode | null {
-  let best: ScreenNode | null = null;
+/** The frame's windows in dump order: a depth-0 node (a window root) starts the next one. */
+function windows(nodes: readonly ScreenNode[]): ScreenNode[][] {
+  const out: ScreenNode[][] = [];
   for (const node of nodes) {
-    if (!inside(node, p)) continue;
+    const last = out[out.length - 1];
+    if (node.depth === 0 || !last) out.push([node]);
+    else last.push(node);
+  }
+  return out;
+}
+
+/** The nodes of the window a point is on. The dump has no z-order (it lists the active window
+ *  first, then the rest top-down), so of the windows whose root contains the point this is the
+ *  smallest: a dialog, popup, keyboard or status bar over the activity behind it; the earlier one
+ *  on a tie. Nodes before any root count as one window that contains every point. */
+function windowAt(nodes: readonly ScreenNode[], p: Point): ScreenNode[] {
+  let best: ScreenNode[] = [];
+  let bestArea = Number.POSITIVE_INFINITY;
+  for (const window of windows(nodes)) {
+    const root = window[0]!;
+    if (root.depth !== 0) {
+      if (best.length === 0) best = window;
+      continue;
+    }
+    if (!inside(root, p)) continue;
+    if (best.length === 0 || area(root) < bestArea) {
+      best = window;
+      bestArea = area(root);
+    }
+  }
+  return best;
+}
+
+/** The node a point on the frame means: in the window on top there (never one behind a dialog),
+ *  the smallest node containing it that `accepts` takes, the deeper one on a tie (a button over
+ *  its row, a leaf over its container). `nodes` is the whole frame, in dump order. */
+export function hit(nodes: readonly ScreenNode[], p: Point, accepts: (node: ScreenNode) => boolean = () => true): ScreenNode | null {
+  let best: ScreenNode | null = null;
+  for (const node of windowAt(nodes, p)) {
+    if (!accepts(node) || !inside(node, p)) continue;
     if (!best || area(node) < area(best) || (area(node) === area(best) && node.depth > best.depth)) best = node;
   }
   return best;
+}
+
+/** A label to tap `row` through when its own selector is only an index pick (a preference or
+ *  list row: a layout with nothing of its own). The first non-interactive node inside it with a
+ *  selector that is not an index pick, whose centre means the row itself (`hit` among interactive
+ *  nodes): a tap there goes to the row, and the step names the row's title instead of a position
+ *  that changes when the list scrolls. `null` when it has none. */
+export function tapLabel(nodes: readonly ScreenNode[], row: ScreenNode): ScreenNode | null {
+  const start = nodes.indexOf(row);
+  if (start < 0) return null;
+  for (let i = start + 1; i < nodes.length && nodes[i]!.depth > row.depth; i++) {
+    const node = nodes[i]!;
+    if (node.interactive || !node.selector || node.byIndex || !node.bounds) continue;
+    const b = node.bounds;
+    const centre = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
+    if (hit(nodes, centre, (n) => n.interactive) === row) return node;
+  }
+  return null;
 }
 
 export const isScrollable = (node: ScreenNode) => node.flags.includes(NodeFlag.FLAG_SCROLLABLE);
@@ -59,7 +111,7 @@ export const isCheckable = (node: ScreenNode) => node.flags.includes(NodeFlag.FL
 
 /** The innermost scrollable node under a point: what the wheel over it scrolls. */
 export function scrollableAt(nodes: readonly ScreenNode[], p: Point): ScreenNode | null {
-  return hit(nodes.filter(isScrollable), p);
+  return hit(nodes, p, isScrollable);
 }
 
 /** A point on the element in client pixels, as a point on the frame in device pixels. */

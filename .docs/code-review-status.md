@@ -6,12 +6,12 @@ code at `679b5e8` (2026-09-26). In the review, ✔ means "re-checked by the revi
 
 | Status | Count |
 |---|---:|
-| Fixed | 143 |
+| Fixed | 144 |
 | Obsolete (code removed or redesigned: one schema, driver split, scroll_until removed) | 8 |
 | Partial | 0 |
-| Open | 0 |
+| Open | 1 |
 | Won't fix (accepted risk, see decisions) | 2 |
-| Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 11 |
+| Backlog (hygiene, performance or fixture coverage, not pursued now; see decisions) | 12 |
 | Deferred (synchronization is WIP, see below) | 7 |
 
 The counts cover all 171 findings; Open, Partial, Deferred, Won't fix and Backlog are exactly the rows below.
@@ -175,6 +175,9 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | DR-16 | M | Won't fix | Session secret passed as `-e tapSecret` in `am instrument` argv. Accepted under the trusted-host threat model (decisions above) | — |
 | DR-21 | L | Fixed | No common version: the driver answers HELLO with `AUTH_RESULT{ok=false, UNSUPPORTED}` before closing; the host reports it (`DriverClientTest`, `FencingTest`) | S |
 | DR-22 | L | Backlog | `dumpHierarchy` → `PAYLOAD_TOO_LARGE`, a may-have-mutated code (see P-9) | S |
+| DR-23 | M | Open | `At`/`First` count matches in a plan-dependent order: the native plan returns `ByMatcher`'s post-order (a match after the matches inside it), the traversal plan pre-order, so a nested match (a decor `LinearLayout` around `LinearLayout` rows) shifts `at(i)` by one between plans. Synthesised index picks are native-only and count in post-order (`DumpMatcher.NATIVE_ORDER`); one order for both plans needs a driver change | S–M |
+| DR-24 | H | Fixed | A native parent/ancestor relation returned a node once per matching ancestor (`ByMatcher` searches from the ancestor down): `text("Apps")` under `LinearLayout`s counted 4–6 and a tap was `AMBIGUOUS`. Such selectors are de-duplicated (`UiObject2.equals`) (`SelectorsTest`, `SelectorCompilerTest`) | S |
+| DR-25 | L | Backlog | `AccessibilityNodeInfoDumper` writes a control character (C0 but tab/LF/CR, C1, U+FDD0–FDDF) as `.`, so a synthesised `text`/`desc`/`hint` selector of such a value never matches on the device. Needs the driver's own dumper | M |
 | P-15 | L | Fixed | `swipe`/`scroll` return `done`; no fabricated boolean (`ScrollTest`) | S |
 | SY-1 | L | Deferred | `processStartUuid` and `sessionIdentity` have the same lifetime | S |
 | SY-2 | N | Deferred | `require(method == "state")` throws IAE across binder | S |

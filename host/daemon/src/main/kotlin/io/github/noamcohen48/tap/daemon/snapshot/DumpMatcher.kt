@@ -23,6 +23,9 @@ import java.util.IdentityHashMap
  *   stops at 32 levels, `BySelector` does not), so a count here is never lower than the driver's.
  * - The dump keeps nodes the driver skips (a node not visible to the user never matches on the
  *   device), so again the count here is the larger one.
+ * - Matches come in `ByMatcher`'s order, which an `At` pick counts in: windows in dump order, and
+ *   within a window *post-order* — `ByMatcher.findMatches` adds a node after searching its
+ *   children, so a match comes after the matches inside it ([NATIVE_ORDER]).
  *
  * Relation operands are memoised per dump node, so nested ancestor relations stay cheap. Not
  * thread-safe: one matcher per synthesis.
@@ -33,10 +36,10 @@ internal class DumpMatcher(
     private val nodes = hierarchy.nodes
     private val memo = IdentityHashMap<Node, HashMap<Int, Boolean>>()
 
-    /** Every node [selector] matches, in dump pre-order, ignoring its pick. */
+    /** Every node [selector] matches, in the driver's [NATIVE_ORDER], ignoring its pick. */
     fun matches(selector: Selector): List<DumpNode> {
         CommandValidation.validateSelector(selector)
-        return nodes.filter { matches(selector.node, it) }
+        return nodes.filter { matches(selector.node, it) }.sortedWith(NATIVE_ORDER)
     }
 
     /** Whether [candidate] satisfies the predicate [node]. */
@@ -112,8 +115,16 @@ internal class DumpMatcher(
             .takeWhile { it < node.subtreeEnd }
             .map { nodes[it] }
 
-    private companion object {
-        fun matchText(
+    companion object {
+        /**
+         * The order `UiDevice.findObjects` returns native-plan matches in, which an `At` pick
+         * indexes: post-order. A node's subtree ends (`subtreeEnd`) no later than its ancestors'
+         * and before its later siblings start; a node and its last descendant share the end,
+         * and the descendant comes first.
+         */
+        val NATIVE_ORDER: Comparator<DumpNode> = compareBy<DumpNode> { it.subtreeEnd }.thenByDescending { it.index }
+
+        private fun matchText(
             match: Match,
             node: DumpNode,
         ): Boolean {
@@ -137,7 +148,7 @@ internal class DumpMatcher(
             }
         }
 
-        fun flag(
+        private fun flag(
             property: NodeFlag,
             node: DumpNode,
         ): Boolean? =
