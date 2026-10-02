@@ -65,6 +65,9 @@ runs anything on the device.
   **Quick settings** (`openNotifications()` / `openQuickSettings()`). A replay sends steps back
   to back, and a system panel ignores a key sent while it is still sliding open. So after
   opening one, record a step that waits for it, such as a **Wait** for an element in it.
+  **More keys** presses another key into whatever has focus: **Enter** to submit a search after
+  setting its text, **Delete**, **Tab**, **Space**, **Escape**, **Search**, the volume keys, or
+  any Android key code (`pressKey(66)`).
 - **Composer:** the selected element (its class, its selector candidates, the first of which is
   what gets recorded, and how many elements the chosen one matches now) and, below it, the steps
   you can record on it, in three tabs, and a fourth tab for the app.
@@ -96,7 +99,8 @@ Each button runs its step on the device and records it. The composer's tabs, wit
   cancels, and the scrolls so far stay unrecorded.
 - On a text field, **Set text** (Enter) replaces the field's text in one command, **Type keys**
   taps the field, waits for focus and types, for fields that react to key events, and **Clear**
-  empties it. **Secret** keeps the value out of the recording: the step names the secret, and a
+  empties it. Turn off **Wait for focus** when the tap moves focus somewhere else, such as a
+  child or a separate input view (`typeText(…, awaitFocus = false)`). **Secret** keeps the value out of the recording: the step names the secret, and a
   replay asks for its value. Password fields default to secret.
 
 **Assert** offers the checks that hold for the element now: it exists, is enabled (or
@@ -108,7 +112,8 @@ recorded.
 checked, unchecked or focused, has a text, or the selector matches a number of elements. The
 waits on the app as a whole are in the **App** tab.
 
-**App** offers the app's package, then **Cold launch** and **Launch**, **Force stop** and
+**App** offers the app's package, then **Cold launch** and **Launch** (of the launcher activity,
+or of the **Activity** you name, such as `.ui.SettingsActivity`), **Force stop** and
 **Clear data**, **Grant** a permission, and waits until the app is in the foreground
 (`awaitVisible()`), its screen is stable, settled (the elements stop changing) or its animation
 ended (the pixels stop changing). Selecting an element on the screen switches back to **Act**.
@@ -136,7 +141,9 @@ Click a step to open it:
   screen.
 - **Value and secret:** change the text of a set text or type step, or make it secret, and
   the expected text of a text wait or assertion.
-- **Scroll until:** change the selector of the element a scroll until brings into view.
+- **Scroll until:** change the selector of the element a scroll until brings into view, its
+  direction, its distance and its maximum number of scrolls.
+- **Gesture:** change a swipe's or a scroll's direction and distance.
 - **Note:** a free-text note, kept in the file.
 - **Run** runs the step alone. **Run from here** runs it and every step after it. Move up, move
   down and delete are there too.

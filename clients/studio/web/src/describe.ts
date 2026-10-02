@@ -8,6 +8,7 @@ import { create } from "@bufbuild/protobuf";
 import { Check, Condition, type AssertionStep, type Step } from "./gen/studio_pb";
 import { Direction, StabilitySignal, SystemPanel, type Command } from "./gen/command_pb";
 import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
+import { KEY_BACK, KEY_HOME, keyName } from "./keys";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
 export const quote = (value: string) => JSON.stringify(value).replace(/\$/g, "\\$");
@@ -180,7 +181,7 @@ const DIRECTIONS: Record<Direction, string> = {
   [Direction.DIR_RIGHT]: "RIGHT",
 };
 
-const KEYS: Record<number, string> = { 3: "pressHome()", 4: "pressBack()" };
+const KEYS: Record<number, string> = { [KEY_HOME]: "pressHome()", [KEY_BACK]: "pressBack()" };
 
 const PANELS: Partial<Record<SystemPanel, string>> = {
   [SystemPanel.NOTIFICATIONS]: "openNotifications()",
@@ -266,8 +267,11 @@ function value(text: string, secret: string | undefined): string {
 function command(c: Command | undefined, secret: string | undefined): string {
   if (!c) return "(no command)";
   switch (c.op.case) {
-    case "pressKey":
-      return KEYS[c.op.value.keyCode] ?? `pressKey(${c.op.value.keyCode})`;
+    case "pressKey": {
+      const code = c.op.value.keyCode;
+      const name = keyName(code);
+      return KEYS[code] ?? `pressKey(${code}${name ? ` /* ${name} */` : ""})`;
+    }
     case "openSystemPanel":
       return PANELS[c.op.value.panel] ?? `openSystemPanel(${c.op.value.panel})`;
     case "tap":

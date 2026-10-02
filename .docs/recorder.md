@@ -184,7 +184,9 @@ no wait that is not an assertion) and made a misclick a recorded step. Now:
   selector that would be recorded. Nodes with no unique selector get a red hatched box
   (decision 8). The selection takes the active tab's colour. Under the phone, as its navigation
   bar: Back, Home, Recent apps, Notifications, Quick settings (owner, 2026-10-02: the device's
-  buttons must not blend with the element's).
+  buttons must not blend with the element's), and **More keys**: named keys (Enter, Delete, Tab,
+  Space, Escape, Search, volume) or any key code, recorded as `press_key` and shown as
+  `pressKey(66 /* Enter */)`.
 - **Composer** (middle column, top): the selected element (class, `@ref`, the ranked selector
   candidates as a radio list with their chips, the live match count of the chosen one) and four
   tabs, keys 1 / 2 / 3 / 4, each button of which runs its step and records it. The first three
@@ -193,13 +195,15 @@ no wait that is not an assertion) and made a misclick a recorded step. Now:
     node inside one, a button selects the smallest scrollable node around it, since its rows
     usually cover a list); a Distance slider (10–100 %, default 80, the SDKs' `distancePercent`;
     the SDKs have no speed) for swipes, scrolls and scroll until; Scroll until (below); on
-    editable nodes the text line (value, Secret, name, Set text, Type keys, Clear).
+    editable nodes the text line (value, Secret, name, Set text, Wait for focus + Type keys
+    (`skip_focus_wait` when off), Clear).
   - **Assert** (blue): the states the node is in now, text equals / contains (prefilled with its
     text), count (prefilled with the live count).
   - **Wait** (violet): the element waits that fit the node, text and count.
   - **App** (neutral; owner, 2026-10-02: the app's controls must not blend with the element's,
     and a panel of their own left the inspector no room): the package (suggesting the packages on
-    screen, remembered per browser, not part of the attach), Cold launch / Launch, Force stop /
+    screen, remembered per browser, not part of the attach), Cold launch / Launch (with an
+    optional activity, `AppCall.activity`), Force stop /
     Clear data, Grant a permission, and the app waits (`awaitVisible`, `awaitScreenStable`,
     `awaitSettled`, `awaitAnimationEnd`). Selecting an element on the screen leaves it for Act.
   Only what the SDKs have is offered; new gestures arrive with the SDK.
@@ -228,7 +232,8 @@ Interaction rules:
    `type_text`) for fields that react to key events.
 3. **Gestures are element-relative**, with the default distance. No gesture records a point.
 4. **Editing steps** (phase 5): reorder, delete, change the selector (another candidate, or typed
-   in with a live match count), change a value or the scroll-until target, toggle secret, insert
+   in with a live match count), change a value, the scroll-until target, a swipe's, scroll's or scroll until's direction and
+   distance and a scroll until's max scrolls, toggle secret, insert
    (new steps go after the selected step), a free-text note per step.
 5. **Replay** runs from the first step and stops at the first failure; *Run from here* and *Run
    step* for iterating. If the recording does not start with an app step, the UI offers to

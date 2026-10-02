@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { describeSelector } from "./describe";
 import { ScreenNodeSchema, DeviceState, SelectorKind, type ScreenNode } from "./gen/device_pb";
-import { BoundsSchema } from "./gen/command_pb";
+import { BoundsSchema, Direction } from "./gen/command_pb";
 import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
@@ -426,6 +426,18 @@ describe("App", () => {
     await screen.findByText('screen.element(res("search")).clearText()');
   });
 
+  it("types keys with or without waiting for focus", async () => {
+    const fake = await attached();
+    act(() => click(500, 250));
+    fireEvent.change(await within(composer()).findByLabelText("Text to enter"), { target: { value: "wool" } });
+    fireEvent.click(within(composer()).getByRole("button", { name: "Type keys" }));
+    await screen.findByText('screen.element(res("search")).typeText("wool")');
+    fireEvent.click(within(composer()).getByLabelText("Wait for focus"));
+    fireEvent.click(within(composer()).getByRole("button", { name: "Type keys" }));
+    await screen.findByText('screen.element(res("search")).typeText("wool", awaitFocus = false)');
+    expect(fake.state.performed.map((r) => r.step?.kind.case === "type" && r.step.kind.value.skipFocusWait)).toEqual([false, true]);
+  });
+
   it("Assert records a check of the screen as it is now", async () => {
     const fake = await attached();
     fireEvent.keyDown(document, { key: "2" });
@@ -520,8 +532,27 @@ describe("App", () => {
     fireEvent.click(within(device).getByRole("button", { name: "Quick settings" }));
     await screen.findByText("openQuickSettings()");
     fireEvent.click(within(device).getByRole("button", { name: "Recent apps" }));
-    await screen.findByText("pressKey(187)");
+    await screen.findByText("pressKey(187 /* Recent apps */)");
     expect(fake.state.performed.map((r) => opOf(r)?.case)).toEqual(["pressKey", "openSystemPanel", "openSystemPanel", "pressKey"]);
+  });
+
+  it("the keys menu presses a named key or any key code, and closes", async () => {
+    const fake = await attached();
+    const keys = () => within(deviceBar()).getByRole("button", { name: "More keys" });
+    fireEvent.click(keys());
+    fireEvent.click(within(screen.getByRole("group", { name: "Press a key" })).getByRole("button", { name: /^Enter/ }));
+    await screen.findByText("pressKey(66 /* Enter */)");
+    expect(screen.queryByRole("group", { name: "Press a key" })).toBeNull();
+    fireEvent.click(keys());
+    const menu = screen.getByRole("group", { name: "Press a key" });
+    expect((within(menu).getByRole("button", { name: "Press" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(menu).getByLabelText("Key code"), { target: { value: "300" } });
+    fireEvent.click(within(menu).getByRole("button", { name: "Press" }));
+    await screen.findByText("pressKey(300)");
+    fireEvent.click(keys());
+    fireEvent.keyDown(screen.getByLabelText("Key code"), { key: "Escape" });
+    expect(screen.queryByRole("group", { name: "Press a key" })).toBeNull();
+    expect(fake.state.performed.map((r) => (opOf(r)?.case === "pressKey" ? opOf(r)!.value : null))).toMatchObject([{ keyCode: 66 }, { keyCode: 300 }]);
   });
 
   it("releasing the device returns to the picker", async () => {
@@ -620,6 +651,33 @@ describe("App", () => {
       const step = fake.state.performed[0]!.step!;
       expect(step.kind.case === "app" && [step.kind.value.operation, step.kind.value.packageName]).toEqual(["force_stop", "com.example.shop"]);
       expect(window.localStorage.getItem("tap-studio.package")).toBe("com.example.shop");
+    });
+
+    it("the App tab launches an activity when one is named", async () => {
+      const fake = await attached();
+      const group = appPanel();
+      fireEvent.change(within(group).getByLabelText("Activity"), { target: { value: " .ui.SettingsActivity " } });
+      fireEvent.click(within(group).getByRole("button", { name: "Launch" }));
+      await screen.findByText('app("com.example").launch(".ui.SettingsActivity")');
+      const step = fake.state.performed[0]!.step!;
+      expect(step.kind.case === "app" && step.kind.value.activity).toBe(".ui.SettingsActivity");
+    });
+
+    it("a swipe's direction and distance are edited without running it", async () => {
+      const fake = await attached();
+      await perform(300, 450, "Swipe up");
+      await screen.findByText('screen.element(res("go")).swipe(UP)');
+      fireEvent.click(screen.getByRole("button", { name: /swipe\(UP\)/ }));
+      const editor = screen.getByRole("form", { name: "Edit the step" });
+      fireEvent.change(within(editor).getByLabelText("Direction"), { target: { value: String(Direction.DIR_LEFT) } });
+      const distance = within(editor).getByLabelText("Distance (%)");
+      fireEvent.change(distance, { target: { value: "120" } });
+      expect(within(editor).getByText("The distance is 1 to 100 percent.")).toBeTruthy();
+      expect((within(editor).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(distance, { target: { value: "50" } });
+      fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+      await screen.findByText('screen.element(res("go")).swipe(LEFT, distancePercent = 50)');
+      expect(fake.state.performed).toHaveLength(1);
     });
 
     it("a replay without an app chosen does not offer a cold launch", async () => {

@@ -53,8 +53,8 @@ User guide: `docs/guide/studio.md` (published at
   Act / Assert / Wait / App tabs, the scroll until search), `AppControls.tsx` (the App tab), `DeviceBar.tsx`,
   `controls.tsx` (rows and direction buttons), `Inspector.tsx` (properties, screen tree), `count.ts` (live
   match counts), `StepsPanel.tsx`
-  (steps, replay controls, open, export), `StepEditor.tsx` (a step's selector, value, secret and
-  note), `Dialogs.tsx`, `frames.ts` (the `Frames` stream), `replay.ts` (the `Replay` stream),
+  (steps, replay controls, open, export), `StepEditor.tsx` (a step's selector, value, secret, gesture and
+  note), `keys.ts` (the key codes the page names), `Dialogs.tsx`, `frames.ts` (the `Frames` stream), `replay.ts` (the `Replay` stream),
   `describe.ts` (steps and selectors as SDK calls), `parse.ts` (a typed selector back into the
   proto), `edit.ts` (reading and rewriting a step, its warnings), `geometry.ts` (hit-testing),
   `steps.ts` (`Perform` requests); `src/gen/` is generated. `bun run build` writes it into

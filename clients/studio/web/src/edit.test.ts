@@ -2,7 +2,9 @@ import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import { ScreenNodeSchema } from "./gen/device_pb";
 import { NodeFlag, type Selector } from "./gen/selector_pb";
-import { countLine } from "./edit";
+import { Direction } from "./gen/command_pb";
+import { countLine, stepMovement, withMovement } from "./edit";
+import * as steps from "./steps";
 import { assertsFor, waitsFor } from "./nodes";
 import { parseSelector } from "./parse";
 
@@ -49,5 +51,30 @@ describe("waitsFor and assertsFor", () => {
 
   it("offers assertions for the state the node is in now", () => {
     expect(assertsFor(node).map((o) => o.label)).toEqual(["Exists", "Is enabled", "Is unchecked"]);
+  });
+});
+
+describe("stepMovement and withMovement", () => {
+  const list = steps.synthesized(sel('res("list")'));
+  const step = (request: ReturnType<typeof steps.scroll>) => request.step!;
+
+  it("reads a scroll until's budget, the SDK defaults where it leaves them out", () => {
+    const until = step(steps.scrollUntil(list, sel('text("Row 40")'), Direction.DIR_UP));
+    expect(stepMovement(until)).toEqual({ direction: Direction.DIR_UP, distance: 80, maxScrolls: 20 });
+    const moved = withMovement(until, { direction: Direction.DIR_DOWN, distance: 50, maxScrolls: 30 });
+    expect(moved.kind.case === "scrollUntil" && [moved.kind.value.direction, moved.kind.value.distancePercent, moved.kind.value.maxScrolls]).toEqual([
+      Direction.DIR_DOWN,
+      50,
+      30,
+    ]);
+  });
+
+  it("changes a scroll or a swipe, and nothing else", () => {
+    const scroll = step(steps.scroll(list, Direction.DIR_DOWN, 40));
+    expect(stepMovement(scroll)).toEqual({ direction: Direction.DIR_DOWN, distance: 40 });
+    const moved = withMovement(scroll, { direction: Direction.DIR_RIGHT, distance: 60 });
+    const op = moved.kind.case === "action" ? moved.kind.value.command?.op : undefined;
+    expect(op?.case === "scroll" && [op.value.direction, op.value.distancePercent]).toEqual([Direction.DIR_RIGHT, 60]);
+    expect(stepMovement(step(steps.gesture(list, "tap")))).toBeNull();
   });
 });

@@ -78,12 +78,17 @@ describe("describeStep", () => {
       'screen.element(res("search")).setText(${password})',
     );
     expect(describeStep(recorded(steps.typeText(search, { text: "jo" })))).toBe('screen.element(res("search")).typeText("jo")');
+    expect(describeStep(recorded(steps.typeText(search, { text: "jo" }, { awaitFocus: false })))).toBe(
+      'screen.element(res("search")).typeText("jo", awaitFocus = false)',
+    );
+    expect(describeStep(recorded(steps.app("launch", "com.example", { activity: ".ui.Settings" })))).toBe('app("com.example").launch(".ui.Settings")');
     expect(describeStep(recorded(steps.pressKey(4)))).toBe("pressBack()");
-    expect(describeStep(recorded(steps.pressKey(66)))).toBe("pressKey(66)");
+    expect(describeStep(recorded(steps.pressKey(66)))).toBe("pressKey(66 /* Enter */)");
+    expect(describeStep(recorded(steps.pressKey(300)))).toBe("pressKey(300)");
     expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.NOTIFICATIONS)))).toBe("openNotifications()");
     expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.QUICK_SETTINGS)))).toBe("openQuickSettings()");
     expect(describeStep(recorded(steps.app("cold_launch", "com.example")))).toBe('app("com.example").coldLaunch()');
-    expect(describeStep(recorded(steps.app("grant_permission", "com.example", "android.permission.CAMERA")))).toBe(
+    expect(describeStep(recorded(steps.app("grant_permission", "com.example", { permission: "android.permission.CAMERA" })))).toBe(
       'app("com.example").grantPermission("android.permission.CAMERA")',
     );
     expect(describeStep(recorded(steps.wait(search, { condition: Condition.TEXT_EQUALS, text: "Wool" })))).toBe(

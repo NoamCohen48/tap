@@ -81,8 +81,9 @@ export function setText({ selector, origin }: Target, input: TextInput): Perform
   return request(action({ case: "setText", value: { selector, text: input.text } }, origin));
 }
 
-/** The SDKs' element `typeText`: tap, await focus, then `type_text`, for fields that react to keys. */
-export function typeText({ selector, origin }: Target, input: TextInput): PerformRequest {
+/** The SDKs' element `typeText`: tap, await focus (unless `awaitFocus` is false), then
+ *  `type_text`, for fields that react to keys. */
+export function typeText({ selector, origin }: Target, input: TextInput, { awaitFocus = true }: { awaitFocus?: boolean } = {}): PerformRequest {
   const step = create(StepSchema, {
     kind: {
       case: "type",
@@ -90,6 +91,7 @@ export function typeText({ selector, origin }: Target, input: TextInput): Perfor
         selector,
         input: "secret" in input ? { case: "secret", value: input.secret } : { case: "text", value: input.text },
         selectorOrigin: origin,
+        skipFocusWait: !awaitFocus,
       },
     },
   });
@@ -98,8 +100,10 @@ export function typeText({ selector, origin }: Target, input: TextInput): Perfor
 
 export type AppOperation = "cold_launch" | "launch" | "force_stop" | "clear_data" | "grant_permission";
 
-export function app(operation: AppOperation, packageName: string, permission?: string): PerformRequest {
-  return request(create(StepSchema, { kind: { case: "app", value: create(AppCallSchema, { operation, packageName, permission }) } }));
+/** An app step. `permission` goes with grant_permission; `activity` with the launches (absent:
+ *  the launcher activity; `.ui.Settings` is in the package). */
+export function app(operation: AppOperation, packageName: string, { permission, activity }: { permission?: string; activity?: string } = {}): PerformRequest {
+  return request(create(StepSchema, { kind: { case: "app", value: create(AppCallSchema, { operation, packageName, permission, activity }) } }));
 }
 
 /** An element wait: the condition, and the value the text and count conditions take. */

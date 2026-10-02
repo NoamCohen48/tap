@@ -5,7 +5,7 @@ import * as steps from "./steps";
 
 const LAUNCH: { operation: steps.AppOperation; label: string; title: string; primary?: boolean }[] = [
   { operation: "cold_launch", label: "Cold launch", title: "Force-stop, then launch: a new process", primary: true },
-  { operation: "launch", label: "Launch", title: "Start its launcher activity (brings a running app to the front)" },
+  { operation: "launch", label: "Launch", title: "Start the activity (brings a running app to the front)" },
 ];
 
 const STOP: { operation: steps.AppOperation; label: string; title: string }[] = [
@@ -38,6 +38,7 @@ type Props = {
 export function AppControls({ appPackage, onAppPackage, packages, busy, onPerform }: Props) {
   const id = useId();
   const [permission, setPermission] = useState("");
+  const [activity, setActivity] = useState("");
   const app = appPackage.trim();
   const usable = !!app && !busy;
   const suggested = packages.filter((p) => p !== app);
@@ -83,12 +84,29 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
             className={primary ? "btn primary" : "btn"}
             title={title}
             disabled={!usable}
-            onClick={() => onPerform(steps.app(operation, app))}
+            onClick={() => onPerform(steps.app(operation, app, { activity: activity.trim() || undefined }))}
           >
             {label}
           </button>
         ))}
       </Row>
+      <div className="crow">
+        <label className="rl" htmlFor={`${id}-activity`}>
+          Activity
+        </label>
+        <div className="actions">
+          <input
+            id={`${id}-activity`}
+            className="mono grow"
+            placeholder="The launcher activity"
+            spellCheck={false}
+            autoCapitalize="off"
+            value={activity}
+            onChange={(e) => setActivity(e.target.value)}
+          />
+        </div>
+        <div className="why">Which activity the launches start, such as .ui.SettingsActivity. Left empty, the one the home screen starts.</div>
+      </div>
       <Row label="Stop">
         {STOP.map(({ operation, label, title }) => (
           <button key={operation} type="button" className="btn" title={title} disabled={!usable} onClick={() => onPerform(steps.app(operation, app))}>
@@ -101,7 +119,7 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
         aria-label="Grant a permission"
         onSubmit={(e) => {
           e.preventDefault();
-          if (permission.trim()) onPerform(steps.app("grant_permission", app, permission.trim()));
+          if (permission.trim()) onPerform(steps.app("grant_permission", app, { permission: permission.trim() }));
         }}
       >
         <label className="rl" htmlFor={`${id}-perm`}>

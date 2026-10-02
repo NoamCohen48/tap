@@ -328,7 +328,7 @@ function ActOnElement({
             key={node.ref}
             node={node}
             disabled={!usable}
-            onSubmit={(how, input) => onPerform(how === "set" ? steps.setText(target, input) : steps.typeText(target, input))}
+            onSubmit={(how, input) => onPerform(how.how === "set" ? steps.setText(target, input) : steps.typeText(target, input, how))}
           >
             <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(target, "clearText"))}>
               Clear

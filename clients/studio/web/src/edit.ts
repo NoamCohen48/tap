@@ -3,12 +3,12 @@
 // selector changes here.
 
 import { clone, equals } from "@bufbuild/protobuf";
-import type { Command } from "./gen/command_pb";
+import type { Command, Direction } from "./gen/command_pb";
 import type { ScreenNode } from "./gen/device_pb";
 import { SelectorSchema, type Selector } from "./gen/selector_pb";
 import { Check, SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
 import { looksDynamic, type Chip } from "./nodes";
-import type { Target } from "./steps";
+import { DEFAULT_DISTANCE, DEFAULT_MAX_SCROLLS, type Target } from "./steps";
 
 /** The command message of an action on an element (every recorded op but press_key and open_system_panel). */
 function elementOp(command: Command | undefined) {
@@ -84,6 +84,32 @@ export function withSelector(step: Step, { selector, origin }: Target): Step {
 export function withScrollTarget(step: Step, target: Selector): Step {
   const copy = clone(StepSchema, step);
   if (copy.kind.case === "scrollUntil") copy.kind.value.target = target;
+  return copy;
+}
+
+/** How a swipe, a scroll or a scroll until moves: its direction and distance, and a scroll
+ *  until's scroll budget. */
+export type Movement = { direction: Direction; distance: number; maxScrolls?: number };
+
+export function stepMovement(step: Step): Movement | null {
+  if (step.kind.case === "scrollUntil") {
+    const u = step.kind.value;
+    return { direction: u.direction, distance: u.distancePercent ?? DEFAULT_DISTANCE, maxScrolls: u.maxScrolls ?? DEFAULT_MAX_SCROLLS };
+  }
+  const op = step.kind.case === "action" ? step.kind.value.command?.op : undefined;
+  if (op?.case === "scroll" || op?.case === "swipe") return { direction: op.value.direction, distance: op.value.distancePercent ?? DEFAULT_DISTANCE };
+  return null;
+}
+
+/** A copy of a swipe, scroll or scroll until moving another way. */
+export function withMovement(step: Step, { direction, distance, maxScrolls }: Movement): Step {
+  const copy = clone(StepSchema, step);
+  if (copy.kind.case === "scrollUntil") {
+    Object.assign(copy.kind.value, { direction, distancePercent: distance, maxScrolls: maxScrolls ?? copy.kind.value.maxScrolls });
+  } else if (copy.kind.case === "action") {
+    const op = copy.kind.value.command?.op;
+    if (op?.case === "scroll" || op?.case === "swipe") Object.assign(op.value, { direction, distancePercent: distance });
+  }
   return copy;
 }
 

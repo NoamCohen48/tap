@@ -2,7 +2,8 @@ import { useId, useState, type ReactNode } from "react";
 import type { ScreenNode } from "./gen/device_pb";
 import type { TextInput } from "./steps";
 
-export type TextHow = "set" | "type";
+/** Set text, or Type keys and whether it waits for the field's focus after its tap. */
+export type TextHow = { how: "set" } | { how: "type"; awaitFocus: boolean };
 
 /** The value for an editable node, and how to enter it (interaction rule 2): **Set text**
  *  (Enter) is one command with no focus dependency; **Type keys** is the SDKs' `typeText`. A
@@ -23,6 +24,7 @@ export function TextEntry({
   const [value, setValue] = useState("");
   const [secret, setSecret] = useState(node.password);
   const [name, setName] = useState(node.password ? "password" : "secret");
+  const [awaitFocus, setAwaitFocus] = useState(true);
 
   const submit = (how: TextHow) => {
     if (disabled || (secret && !name.trim())) return;
@@ -40,7 +42,7 @@ export function TextEntry({
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            submit("set");
+            submit({ how: "set" });
           }
         }}
       />
@@ -59,12 +61,23 @@ export function TextEntry({
           />
         )}
         <span className="spacer" />
-        <button type="button" className="btn primary" disabled={disabled} onClick={() => submit("set")}>
+        <button type="button" className="btn primary" disabled={disabled} onClick={() => submit({ how: "set" })}>
           Set text
         </button>
-        <button type="button" className="btn" disabled={disabled} title="Tap, wait for focus, then type key by key" onClick={() => submit("type")}>
-          Type keys
-        </button>
+        <span className="typekeys">
+          <label className="chk" title="Type keys waits until the field reports focus after its tap. Turn it off when focus goes to a child or a separate input view.">
+            <input type="checkbox" checked={awaitFocus} onChange={(e) => setAwaitFocus(e.target.checked)} /> Wait for focus
+          </label>
+          <button
+            type="button"
+            className="btn"
+            disabled={disabled}
+            title={awaitFocus ? "Tap, wait for focus, then type key by key" : "Tap, then type key by key"}
+            onClick={() => submit({ how: "type", awaitFocus })}
+          >
+            Type keys
+          </button>
+        </span>
         {children}
       </div>
     </div>
