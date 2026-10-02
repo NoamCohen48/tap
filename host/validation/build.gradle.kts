@@ -54,6 +54,7 @@ testing {
                 testTask.configure {
                     description = "Runs the device validation suite against -Ptap.serials."
                     outputs.upToDateWhen { false }
+                    outputs.cacheIf { false }
                     dependsOn(
                         ":device:driver:assembleValidationDebug",
                         ":device:driver:assembleValidationDebugAndroidTest",

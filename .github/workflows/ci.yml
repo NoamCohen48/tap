@@ -207,23 +207,31 @@ jobs:
   # (attach, snapshot, tap by ref, export) checked against its JSON export, then
   # tap-studio from the studio job's wheel (record, export, reopen, replay).
   # One serial, so the two-device tests are skipped.
+  # It waits only for the jobs that finish in under a minute (and the studio
+  # wheel it installs), not for the JVM job: it builds what it runs itself, and
+  # the two are the slowest jobs, so running them side by side is what keeps
+  # the whole run short.
   device-tests:
     name: Device tests (API 34 emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [api-contract, jvm, python, studio]
+    needs: [api-contract, studio]
     steps:
-      # ubuntu-latest ships ~14 GB of toolchains we never use; the API 34 image
-      # plus the AVD's userdata partition do not fit next to them (the emulator
-      # aborts with "Not enough space to create userdata partition").
-      - name: Free disk space
+      # The API 34 image plus the AVD's userdata partition need room (the
+      # emulator aborts with "Not enough space to create userdata partition").
+      # Current runners have ~90 GB free; only clear unused toolchains (~40 s)
+      # on a runner that does not.
+      - name: Free disk space (only when short)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
-          /opt/ghc /usr/local/.ghcup \
-                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-                      2>/dev/null || true
-          sudo docker image prune --all --force >/dev/null 2>&1 || true
           df -h / | tail -1
+          free_gb=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
+          if [ "$free_gb" -lt 30 ]; then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
+              /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+              /usr/local/share/boost 2>/dev/null || true
+            sudo docker image prune --all --force >/dev/null 2>&1 || true
+            df -h / | tail -1
+          fi
       - name: Enable KVM
         run: |
           rule='KERNEL=="kvm", GROUP="kvm", MODE="0666", '
