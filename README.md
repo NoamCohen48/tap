@@ -57,6 +57,12 @@ class CheckoutTest {
 
 You need an Android phone or emulator connected through `adb`.
 
+**Everything in one download:** the [Download page](https://noamcohen48.github.io/tap/download/)
+has one zip per platform (Linux x86-64, macOS Apple silicon, any OS with Java 17) holding the
+server, the Kotlin and Python clients, `tap-agent`, Tap Studio, the docs and an `install.sh`.
+With it, Gradle reads Tap from a local Maven repository and needs no GitHub token. To install
+the parts one by one instead:
+
 1. Download the Tap server for your system from the
    [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.0.2):
    `tap-0.0.2-linux-x86_64` (Linux), `tap-0.0.2-macos-aarch64` (macOS on Apple silicon) or

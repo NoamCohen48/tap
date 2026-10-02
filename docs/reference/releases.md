@@ -12,9 +12,15 @@ push of the tag builds and publishes that family from the tagged commit.
 | **Tap Studio** (experimental, not released yet) | `client-studio/vX.Y.Z` | `tap_studio-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **sync-sdk** (experimental, not released yet) | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | GitHub Packages |
 
-Every release also carries the complete documentation as Markdown (`tap-docs-X.Y.Z.zip` and
-`.tar.gz`: this guide, the Kotlin, Python and gRPC references, tap-agent and the changelog),
-built from the tagged commit.
+A release set also ships as **bundles**, one download per platform: the release
+`bundle/vX.Y.Z` carries `tap-X.Y.Z-linux-x86_64.zip`, `tap-X.Y.Z-macos-aarch64.zip` and
+`tap-X.Y.Z-jvm.zip`. Each holds the server for that platform, the Kotlin artifacts as a local
+Maven repository, the Python wheels (`tap-e2e`, `tap-agent`, `tap-studio`), the docs,
+`install.sh`, `INSTALL.md`, a `VERSIONS` file naming each family's version, and `SHA256SUMS`.
+The files are the released ones, repackaged; the bundle version is the server's. The complete
+documentation as Markdown (this guide, the Kotlin, Python and gRPC references, tap-agent and the
+changelog) ships only in the bundles, not on each family's release. Get them from the
+[Download](../download.md) page.
 
 The server Maven release also carries `tap-schema` (the protobuf messages `tap-api` is built on).
 
@@ -57,6 +63,8 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
 ## Where things are published
 
 - Binaries and wheels: <https://github.com/NoamCohen48/tap/releases>
+- Bundles (everything for one platform in one zip): the [Download](../download.md) page, files
+  on the `bundle/v*` releases there
 - Maven: `https://maven.pkg.github.com/NoamCohen48/tap` (GitHub Packages; reading needs a
   token with `read:packages`, see [Getting started](../guide/getting-started.md#2-kotlin-junit-5)).
 

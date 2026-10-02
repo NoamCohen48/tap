@@ -97,6 +97,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Download: download.md
   - Guide:
       - Getting started: guide/getting-started.md
       - Selectors: guide/selectors.md

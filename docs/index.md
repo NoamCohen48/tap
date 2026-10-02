@@ -40,6 +40,7 @@ pytest, and run them on real phones and emulators. You don't need to change your
     ```
 
 [Get started](guide/getting-started.md){ .md-button .md-button--primary }
+[Download](download.md){ .md-button }
 [Coding agents](guide/agents.md){ .md-button }
 
 ## Why Tap

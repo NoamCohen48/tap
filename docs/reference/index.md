@@ -14,8 +14,8 @@ guide pages are plain Markdown under `docs/` and can be served alone with `mkdoc
 The same script also produces a **Markdown edition** of everything: the guide as-is, the
 Kotlin reference through Dokka's GFM renderer, the Python reference through lazydocs, the
 gRPC reference, the `tap-agent` README and skill, and the changelog, for reading offline, in a
-repository or by a coding agent. Every GitHub Release carries it as
-`tap-docs-<version>.zip` and `tap-docs-<version>.tar.gz`, built from the tagged commit.
+repository or by a coding agent. Every [download bundle](../download.md) carries it in
+`docs/`.
 
 `tap-agent` (experimental) has no generated reference: see [Coding agents](../guide/agents.md)
 and `tap-agent --help`.
