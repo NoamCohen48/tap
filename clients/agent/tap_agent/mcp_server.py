@@ -264,6 +264,19 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """The soft keyboard: is it showing, or hide it."""
         return await call(session, lambda a: a.keyboard(action, device or None, settle=settle))
 
+    @mcp.tool(name="set_location")
+    async def set_location(
+        latitude: Annotated[float, Field(ge=-90, le=90)],
+        longitude: Annotated[float, Field(ge=-180, le=180)],
+        accuracy_m: Annotated[float | None, Field(gt=0, description="Accuracy in meters; omit for 5.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Mock the device location until release (the device's location providers report this
+        fix, and location is turned on if it was off). Call again to move it; release restores
+        the device."""
+        return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None))
+
     @mcp.tool(name="clipboard")
     async def clipboard(
         text: Annotated[str | None, Field(description="Put this on the clipboard; omit to read it.")] = None,

@@ -258,6 +258,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.conditions.append(request)
         return pb.SetSystemLocalesResponse()
 
+    def SetLocation(self, request, context):
+        self._own("set_location", request, context)
+        self.conditions.append(request)
+        return pb.SetLocationResponse()
+
     def Detach(self, request, context):
         self._own("detach", request, context)
         self.detaches.append(request.attached_device_id)

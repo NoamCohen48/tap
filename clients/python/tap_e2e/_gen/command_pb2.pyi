@@ -460,8 +460,20 @@ class SetProgress(_message.Message):
     value: float
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., value: _Optional[float] = ...) -> None: ...
 
+class SetLocation(_message.Message):
+    __slots__ = ("latitude", "longitude", "accuracy_m", "altitude_m")
+    LATITUDE_FIELD_NUMBER: _ClassVar[int]
+    LONGITUDE_FIELD_NUMBER: _ClassVar[int]
+    ACCURACY_M_FIELD_NUMBER: _ClassVar[int]
+    ALTITUDE_M_FIELD_NUMBER: _ClassVar[int]
+    latitude: float
+    longitude: float
+    accuracy_m: float
+    altitude_m: float
+    def __init__(self, latitude: _Optional[float] = ..., longitude: _Optional[float] = ..., accuracy_m: _Optional[float] = ..., altitude_m: _Optional[float] = ...) -> None: ...
+
 class Command(_message.Message):
-    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation", "dismiss_keyguard", "double_tap", "drag", "pinch", "fling", "wait_permission_prompt", "choose_permission", "hide_keyboard", "perform_ime_action", "set_clipboard", "get_clipboard", "await_toast", "perform_accessibility_action", "set_progress")
+    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation", "dismiss_keyguard", "double_tap", "drag", "pinch", "fling", "wait_permission_prompt", "choose_permission", "hide_keyboard", "perform_ime_action", "set_clipboard", "get_clipboard", "await_toast", "perform_accessibility_action", "set_progress", "set_location")
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     PRESS_KEY_FIELD_NUMBER: _ClassVar[int]
@@ -498,6 +510,7 @@ class Command(_message.Message):
     AWAIT_TOAST_FIELD_NUMBER: _ClassVar[int]
     PERFORM_ACCESSIBILITY_ACTION_FIELD_NUMBER: _ClassVar[int]
     SET_PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    SET_LOCATION_FIELD_NUMBER: _ClassVar[int]
     timeout_ms: int
     device_info: DeviceInfoQuery
     press_key: PressKey
@@ -534,7 +547,8 @@ class Command(_message.Message):
     await_toast: AwaitToast
     perform_accessibility_action: PerformAccessibilityAction
     set_progress: SetProgress
-    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ..., set_orientation: _Optional[_Union[SetOrientation, _Mapping]] = ..., set_display_rotation: _Optional[_Union[SetDisplayRotation, _Mapping]] = ..., unfreeze_rotation: _Optional[_Union[UnfreezeRotation, _Mapping]] = ..., dismiss_keyguard: _Optional[_Union[DismissKeyguard, _Mapping]] = ..., double_tap: _Optional[_Union[DoubleTap, _Mapping]] = ..., drag: _Optional[_Union[Drag, _Mapping]] = ..., pinch: _Optional[_Union[Pinch, _Mapping]] = ..., fling: _Optional[_Union[Fling, _Mapping]] = ..., wait_permission_prompt: _Optional[_Union[WaitPermissionPrompt, _Mapping]] = ..., choose_permission: _Optional[_Union[ChoosePermission, _Mapping]] = ..., hide_keyboard: _Optional[_Union[HideKeyboard, _Mapping]] = ..., perform_ime_action: _Optional[_Union[PerformImeAction, _Mapping]] = ..., set_clipboard: _Optional[_Union[SetClipboard, _Mapping]] = ..., get_clipboard: _Optional[_Union[GetClipboard, _Mapping]] = ..., await_toast: _Optional[_Union[AwaitToast, _Mapping]] = ..., perform_accessibility_action: _Optional[_Union[PerformAccessibilityAction, _Mapping]] = ..., set_progress: _Optional[_Union[SetProgress, _Mapping]] = ...) -> None: ...
+    set_location: SetLocation
+    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ..., set_orientation: _Optional[_Union[SetOrientation, _Mapping]] = ..., set_display_rotation: _Optional[_Union[SetDisplayRotation, _Mapping]] = ..., unfreeze_rotation: _Optional[_Union[UnfreezeRotation, _Mapping]] = ..., dismiss_keyguard: _Optional[_Union[DismissKeyguard, _Mapping]] = ..., double_tap: _Optional[_Union[DoubleTap, _Mapping]] = ..., drag: _Optional[_Union[Drag, _Mapping]] = ..., pinch: _Optional[_Union[Pinch, _Mapping]] = ..., fling: _Optional[_Union[Fling, _Mapping]] = ..., wait_permission_prompt: _Optional[_Union[WaitPermissionPrompt, _Mapping]] = ..., choose_permission: _Optional[_Union[ChoosePermission, _Mapping]] = ..., hide_keyboard: _Optional[_Union[HideKeyboard, _Mapping]] = ..., perform_ime_action: _Optional[_Union[PerformImeAction, _Mapping]] = ..., set_clipboard: _Optional[_Union[SetClipboard, _Mapping]] = ..., get_clipboard: _Optional[_Union[GetClipboard, _Mapping]] = ..., await_toast: _Optional[_Union[AwaitToast, _Mapping]] = ..., perform_accessibility_action: _Optional[_Union[PerformAccessibilityAction, _Mapping]] = ..., set_progress: _Optional[_Union[SetProgress, _Mapping]] = ..., set_location: _Optional[_Union[SetLocation, _Mapping]] = ...) -> None: ...
 
 class Bounds(_message.Message):
     __slots__ = ("left", "top", "right", "bottom")

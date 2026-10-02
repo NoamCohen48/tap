@@ -429,6 +429,11 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     with pytest.raises(AgentError) as empty:
         agent.condition("locale", " , ")
     assert empty.value.exit_code == EXIT_USAGE
+    assert agent.location(48.8584, 2.2945, 3.5) == "location mocked at 48.8584, 2.2945 ±3.5 m (ends on release)"
+    assert fake.devices.conditions[-1].latitude == 48.8584 and fake.devices.conditions[-1].accuracy_m == 3.5
+    with pytest.raises(AgentError) as far:
+        agent.location(95, 0)
+    assert far.value.exit_code == EXIT_USAGE
     assert agent.app("locale", "com.example") == "com.example follows the system language"
     assert agent.app("locale", "com.example", "fr-FR, en") == "com.example languages: fr-FR, en"
     assert agent.app("locale", "com.example", "system") == "com.example follows the system language"
@@ -441,7 +446,7 @@ EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
-    "condition", "accessibility_action", "set_progress",
+    "condition", "accessibility_action", "set_progress", "set_location",
 }
 
 

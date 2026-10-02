@@ -492,8 +492,15 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
         device.set_system_locales([])
     with pytest.raises(TypeError):
         device.set_system_locales("fr-FR")
-    animations, font, density, reset, dark, _, network, locales = fake.devices.conditions
+    device.set_location(48.8584, 2.2945, accuracy_m=3.5)
+    for bad in ({"latitude": 91, "longitude": 0}, {"latitude": 0, "longitude": float("nan")}):
+        with pytest.raises(ValueError):
+            device.set_location(**bad)
+    with pytest.raises(ValueError):
+        device.set_location(0, 0, accuracy_m=0)
+    animations, font, density, reset, dark, _, network, locales, location = fake.devices.conditions
     assert list(locales.locales) == ["fr-FR", "en"]
+    assert location.latitude == 48.8584 and location.accuracy_m == pytest.approx(3.5) and not location.HasField("altitude_m")
     assert animations.enabled is False and font.scale == pytest.approx(1.3)
     assert density.dpi == 320 and not reset.HasField("dpi") and dark.enabled is True
     assert network.airplane_mode is True and network.mobile_data is False and not network.HasField("wifi")

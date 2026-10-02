@@ -52,6 +52,17 @@ sealed interface StateKey {
     }
 
     /**
+     * An app-op mode of one package (`appops get|set`): `allow`, `ignore`, `deny`, `foreground`
+     * or `default`. A package with the op at its default mode reads `default`.
+     */
+    data class AppOp(
+        val packageName: String,
+        val op: String,
+    ) : StateKey {
+        override val id: String get() = "appop:$packageName/$op"
+    }
+
+    /**
      * A radio switch, `1` (on) or `0` (off): airplane mode (`cmd connectivity airplane-mode`),
      * Wi-Fi (`svc wifi`) or mobile data (`svc data`), read from their global settings.
      */
@@ -76,12 +87,19 @@ sealed interface StateKey {
             listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale").map { Setting("global", it).id }
         val FONT_SCALE = Setting("system", "font_scale").id
 
+        /** The master location switch: `0` off, `3` on (high accuracy). */
+        val LOCATION_MODE = Setting("secure", "location_mode").id
+
+        /** The driver app as the device's mock-location app. */
+        val DRIVER_MOCK_LOCATION = AppOp(DRIVER_PACKAGE, "android:mock_location").id
+
         /**
          * Captured together on the first network change, airplane mode last: restoring goes newest
          * first, so airplane mode is back before Wi-Fi and mobile data are written under it.
          */
         val NETWORK = listOf(Network.WIFI, Network.MOBILE_DATA, Network.AIRPLANE).map { it.id }
 
+        private val APP_OP = Regex("appop:([A-Za-z0-9_.]+)/([A-Za-z0-9_:]+)")
         private val SETTING = Regex("setting:(system|secure|global)/([A-Za-z0-9_.]+)")
 
         fun parse(id: String): StateKey =
@@ -90,6 +108,7 @@ sealed interface StateKey {
                 id == Density.id -> Density
                 id == SystemLocales.id -> SystemLocales
                 id.startsWith("network:") -> Network.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Bad state key $id")
+                id.startsWith("appop:") -> APP_OP.matchEntire(id)?.let { AppOp(it.groupValues[1], it.groupValues[2]) } ?: throw IllegalArgumentException("Bad state key $id")
                 id.startsWith("locale:") -> AppLocales(id.removePrefix("locale:").also { require(it.isNotBlank()) { "Bad state key $id" } })
                 else -> SETTING.matchEntire(id)?.let { Setting(it.groupValues[1], it.groupValues[2]) } ?: throw IllegalArgumentException("Bad state key $id")
             }

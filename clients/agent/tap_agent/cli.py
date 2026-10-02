@@ -112,6 +112,11 @@ def parser() -> argparse.ArgumentParser:
     p = verb("keyboard", "whether a soft keyboard shows, or hide it", on_device, settle)
     p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", default="state")
 
+    p = verb("location", "mock the device location until release", on_device)
+    p.add_argument("latitude", type=float, help="-90..90")
+    p.add_argument("longitude", type=float, help="-180..180")
+    p.add_argument("--accuracy", type=float, help="in meters (default 5)")
+
     p = verb("clipboard", "print the device clipboard, or set it", on_device)
     p.add_argument("text", nargs="?", help="put this on the clipboard (omit to print it)")
 
@@ -222,6 +227,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.progress(args.target, args.value, device, settle=settle)
     if v == "keyboard":
         return agent.keyboard(args.action, device, settle=settle)
+    if v == "location":
+        return agent.location(args.latitude, args.longitude, args.accuracy, device)
     if v == "clipboard":
         return agent.clipboard(args.text, device)
     if v == "toast":

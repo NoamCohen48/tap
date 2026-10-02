@@ -1764,6 +1764,9 @@ class TapClientTest {
                         assertFailsWith<IllegalArgumentException> { device.setNetwork() }
                         device.setSystemLocales("fr-FR", "en")
                         assertFailsWith<IllegalArgumentException> { device.setSystemLocales(emptyList()) }
+                        device.setLocation(48.8584, 2.2945, accuracyM = 3.5f)
+                        assertFailsWith<IllegalArgumentException> { device.setLocation(91.0, 0.0) }
+                        assertFailsWith<IllegalArgumentException> { device.setLocation(0.0, 0.0, accuracyM = 0f) }
                     }
                     val sent = fakeDevices.conditions
                     assertFalse((sent[0] as io.github.noamcohen48.tap.api.v1.SetAnimationsRequest).enabled)
@@ -1774,6 +1777,8 @@ class TapClientTest {
                     val network = sent[6] as io.github.noamcohen48.tap.api.v1.SetNetworkRequest
                     assertTrue(network.airplaneMode && network.hasMobileData() && !network.mobileData && !network.hasWifi())
                     assertEquals(listOf("fr-FR", "en"), (sent[7] as io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest).localesList)
+                    val location = sent[8] as io.github.noamcohen48.tap.api.v1.SetLocationRequest
+                    assertTrue(location.latitude == 48.8584 && location.accuracyM == 3.5f && !location.hasAltitudeM())
                     for (request in sent) {
                         val ids =
                             when (request) {
@@ -1783,6 +1788,7 @@ class TapClientTest {
                                 is io.github.noamcohen48.tap.api.v1.SetDarkModeRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetNetworkRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetLocationRequest -> request.clientConnectionId to request.attachedDeviceId
                                 else -> error("unexpected request $request")
                             }
                         assertEquals(connection.id to device.attachedDeviceId, ids)
@@ -2146,6 +2152,13 @@ class TapClientTest {
             request: io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest,
         ): io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse =
             io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setLocation(
+            request: io.github.noamcohen48.tap.api.v1.SetLocationRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetLocationResponse =
+            io.github.noamcohen48.tap.api.v1.SetLocationResponse
                 .getDefaultInstance()
                 .also { conditions += request }
     }

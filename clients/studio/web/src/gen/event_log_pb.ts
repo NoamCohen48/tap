@@ -27,7 +27,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file event_log.proto.
  */
 export const file_event_log: GenFile = /*@__PURE__*/
-  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKmAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiQKBmRldmljZRgKIAEoCzISLnRhcC52MS5EZXZpY2VDYWxsSAASIQoFZXJyb3IYCCABKAsyDS50YXAudjEuRXJyb3JIAYgBARIlCgdmYWlsdXJlGAkgASgLMg8udGFwLnYxLkZhaWx1cmVIAogBAUIGCgRjYWxsQggKBl9lcnJvckIKCghfZmFpbHVyZSKYAgoHQXBwQ2FsbBIRCglvcGVyYXRpb24YASABKAkSFAoMcGFja2FnZV9uYW1lGAIgASgJEhUKCGFjdGl2aXR5GAMgASgJSACIAQESFwoKcGVybWlzc2lvbhgEIAEoCUgBiAEBEhcKCnRpbWVvdXRfbXMYBSABKANIAogBARIQCgN1cmkYBiABKAlIA4gBARIUCgdhbnlfYXBwGAcgASgISASIAQESIwoGZXh0cmFzGAggAygLMhMudGFwLnYxLkludGVudEV4dHJhEg8KB2xvY2FsZXMYCSADKAlCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQgYKBF91cmlCCgoIX2FueV9hcHAimAIKCkRldmljZUNhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKB2VuYWJsZWQYAiABKAhIAIgBARIXCgpmb250X3NjYWxlGAMgASgCSAGIAQESGAoLZGVuc2l0eV9kcGkYBCABKAVIAogBARIaCg1haXJwbGFuZV9tb2RlGAUgASgISAOIAQESEQoEd2lmaRgGIAEoCEgEiAEBEhgKC21vYmlsZV9kYXRhGAcgASgISAWIAQESDwoHbG9jYWxlcxgIIAMoCUIKCghfZW5hYmxlZEINCgtfZm9udF9zY2FsZUIOCgxfZGVuc2l0eV9kcGlCEAoOX2FpcnBsYW5lX21vZGVCBwoFX3dpZmlCDgoMX21vYmlsZV9kYXRhQjMKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQg1FdmVudExvZ1Byb3RvUAFiBnByb3RvMw", [file_app, file_command, file_failure]);
+  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKmAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiQKBmRldmljZRgKIAEoCzISLnRhcC52MS5EZXZpY2VDYWxsSAASIQoFZXJyb3IYCCABKAsyDS50YXAudjEuRXJyb3JIAYgBARIlCgdmYWlsdXJlGAkgASgLMg8udGFwLnYxLkZhaWx1cmVIAogBAUIGCgRjYWxsQggKBl9lcnJvckIKCghfZmFpbHVyZSKYAgoHQXBwQ2FsbBIRCglvcGVyYXRpb24YASABKAkSFAoMcGFja2FnZV9uYW1lGAIgASgJEhUKCGFjdGl2aXR5GAMgASgJSACIAQESFwoKcGVybWlzc2lvbhgEIAEoCUgBiAEBEhcKCnRpbWVvdXRfbXMYBSABKANIAogBARIQCgN1cmkYBiABKAlIA4gBARIUCgdhbnlfYXBwGAcgASgISASIAQESIwoGZXh0cmFzGAggAygLMhMudGFwLnYxLkludGVudEV4dHJhEg8KB2xvY2FsZXMYCSADKAlCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQgYKBF91cmlCCgoIX2FueV9hcHAi4gIKCkRldmljZUNhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKB2VuYWJsZWQYAiABKAhIAIgBARIXCgpmb250X3NjYWxlGAMgASgCSAGIAQESGAoLZGVuc2l0eV9kcGkYBCABKAVIAogBARIaCg1haXJwbGFuZV9tb2RlGAUgASgISAOIAQESEQoEd2lmaRgGIAEoCEgEiAEBEhgKC21vYmlsZV9kYXRhGAcgASgISAWIAQESDwoHbG9jYWxlcxgIIAMoCRIVCghsYXRpdHVkZRgJIAEoAUgGiAEBEhYKCWxvbmdpdHVkZRgKIAEoAUgHiAEBQgoKCF9lbmFibGVkQg0KC19mb250X3NjYWxlQg4KDF9kZW5zaXR5X2RwaUIQCg5fYWlycGxhbmVfbW9kZUIHCgVfd2lmaUIOCgxfbW9iaWxlX2RhdGFCCwoJX2xhdGl0dWRlQgwKCl9sb25naXR1ZGVCMwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDUV2ZW50TG9nUHJvdG9QAWIGcHJvdG8z", [file_app, file_command, file_failure]);
 
 /**
  * @generated from message tap.v1.LoggedEvent
@@ -177,7 +177,8 @@ export const AppCallSchema: GenMessage<AppCall> = /*@__PURE__*/
 
 /**
  * A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
- * set_dark_mode, set_font_scale, set_density, set_network, set_system_locales.
+ * set_dark_mode, set_font_scale, set_density, set_network, set_system_locales,
+ * set_location.
  *
  * @generated from message tap.v1.DeviceCall
  */
@@ -231,6 +232,18 @@ export type DeviceCall = Message<"tap.v1.DeviceCall"> & {
    * @generated from field: repeated string locales = 8;
    */
   locales: string[];
+
+  /**
+   * set_location.
+   *
+   * @generated from field: optional double latitude = 9;
+   */
+  latitude?: number | undefined;
+
+  /**
+   * @generated from field: optional double longitude = 10;
+   */
+  longitude?: number | undefined;
 };
 
 /**

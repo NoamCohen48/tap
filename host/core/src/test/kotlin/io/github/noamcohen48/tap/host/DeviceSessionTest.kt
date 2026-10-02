@@ -683,6 +683,12 @@ class DeviceSessionTest {
         name: String,
         state: FakeDeviceState,
         block: suspend (DeviceSession, FakeAdb) -> Unit,
+    ) = openWithDriver(name, state) { session, adb, _ -> block(session, adb) }
+
+    private suspend fun openWithDriver(
+        name: String,
+        state: FakeDeviceState,
+        block: suspend (DeviceSession, FakeAdb, FakeDriverServer) -> Unit,
     ) = coroutineScope {
         val secret = ByteArray(32).also(SecureRandom()::nextBytes)
         val fake = FakeDriverServer(name, 1, secret, acceptAnySession = true)
@@ -693,7 +699,7 @@ class DeviceSessionTest {
             val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
             val health = withTimeout(5_000) { fake.nextFrame() }
             fake.respond(health.requestId, Responses.done(1))
-            block(withTimeout(5_000) { opening.await() }, adb)
+            block(withTimeout(5_000) { opening.await() }, adb, fake)
         } finally {
             fake.close()
         }
@@ -811,6 +817,32 @@ class DeviceSessionTest {
                 assertFailsWith<IllegalArgumentException> { session.conditions.setSystemLocales(emptyList()) }
                 assertFailsWith<IllegalArgumentException> { session.conditions.setSystemLocales(listOf("not a tag")) }
                 assertEquals("en-US", state.values[FakeDeviceState.SYSTEM_LOCALES])
+            }
+        }
+
+    @Test
+    fun `a mock location makes the driver the mock app, turns location on and both come back on detach`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.LOCATION_MODE to "0"))
+            openWithDriver("session-location", state) { session, _, fake ->
+                val setting = async(Dispatchers.IO) { session.conditions.setLocation(48.8584, 2.2945, 3.5f, null) }
+                val (frame, request) = withTimeout(5_000) { fake.nextRequest() }
+                assertEquals(48.8584, request.command.setLocation.latitude)
+                assertTrue(request.command.setLocation.hasAccuracyM() && !request.command.setLocation.hasAltitudeM())
+                // The app-op and location are on before the driver is asked.
+                assertEquals("allow", state.values[StateKey.DRIVER_MOCK_LOCATION])
+                assertEquals("3", state.values[StateKey.LOCATION_MODE])
+                fake.respond(frame.requestId, Responses.done())
+                setting.await()
+                assertEquals(
+                    listOf(SavedState(StateKey.LOCATION_MODE, "0"), SavedState(StateKey.DRIVER_MOCK_LOCATION, "default")),
+                    journalStore().read()?.savedState,
+                )
+
+                session.close(timeoutMs = 5_000)
+                assertEquals("0", state.values[StateKey.LOCATION_MODE])
+                assertEquals("default", state.values[StateKey.DRIVER_MOCK_LOCATION])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
             }
         }
 

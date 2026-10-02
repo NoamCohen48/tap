@@ -595,6 +595,27 @@ class Agent:
 
         return self._run(step)
 
+    def location(
+        self,
+        latitude: float,
+        longitude: float,
+        accuracy: float | None = None,
+        device: str | None = None,
+    ) -> str:
+        """Mocks the device location at ``latitude``, ``longitude`` (``accuracy`` in meters) until
+        release, which ends the mock and restores the device's location setting."""
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            raise AgentError(f"location takes a latitude -90..90 and a longitude -180..180, not {latitude}, {longitude}", EXIT_USAGE)
+        if accuracy is not None and not accuracy > 0:
+            raise AgentError(f"accuracy must be a positive number of meters, not {accuracy}", EXIT_USAGE)
+
+        def step() -> str:
+            self._device(device).set_location(latitude, longitude, accuracy_m=accuracy)
+            shown = f"{latitude:g}, {longitude:g}" + (f" ±{accuracy:g} m" if accuracy is not None else "")
+            return f"location mocked at {shown} (ends on release)"
+
+        return self._run(step)
+
     def clipboard(self, text: str | None = None, device: str | None = None) -> str:
         """Without ``text``: prints the device clipboard. With it: puts it on the clipboard."""
 

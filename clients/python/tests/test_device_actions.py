@@ -1,7 +1,22 @@
 # pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportMissingImports=false
 import pytest  # type: ignore[import-not-found]
 from conftest import PACKAGE, launch
-from tap_e2e import AppLifecycleError, FailureReason, Long, Orientation, PermissionChoice, ServerError, Toast, res, text, text_contains
+from tap_e2e import (
+    AppLifecycleError,
+    CommandError,
+    ErrorCode,
+    FailureReason,
+    LocationAccuracy,
+    Long,
+    Orientation,
+    PermissionChoice,
+    ServerError,
+    StandardAction,
+    Toast,
+    res,
+    text,
+    text_contains,
+)
 
 
 def test_deep_link_then_background_and_foreground_returns_to_it(tap_device):
@@ -175,3 +190,97 @@ def test_keyboard_clipboard_and_toast(tap_device):
 
     app.element(res("toast_button")).tap()
     assert app.await_toast("Saved 1") == Toast("Saved 1", PACKAGE)
+
+
+def test_accessibility_actions_and_slider_progress(tap_device):
+    """Named actions run as a screen reader runs them: standard (expand/collapse) and the app's
+    own custom actions; an action the node does not offer is refused before input, and a slider
+    takes a value in its own range and refuses one outside it."""
+    app = launch(tap_device, ".ControlsActivity")
+    header = app.element(res("details_header"))
+    assert StandardAction.EXPAND in header.snapshot().actions
+    header.perform_action(StandardAction.EXPAND)
+    app.wait(text("Details (expanded)")).visible()
+    assert StandardAction.COLLAPSE in header.snapshot().actions
+    with pytest.raises(CommandError) as refused:
+        header.perform_action(StandardAction.DISMISS)
+    assert refused.value.code is ErrorCode.ACTION_REJECTED and refused.value.detail == "ACTION_NOT_OFFERED"
+
+    card = app.element(res("message_card"))
+    assert set(card.snapshot().custom_actions) >= {"Archive", "Mark unread"}
+    card.perform_custom_action("Archive")
+    app.wait(text("Archived")).visible()
+
+    slider = app.element(res("volume_slider"))
+    assert slider.snapshot().range is not None and slider.snapshot().range.max == 100
+    slider.set_progress(55)
+    app.wait(text("Volume: 55")).visible()
+    with pytest.raises(CommandError) as outside:
+        slider.set_progress(150)
+    assert outside.value.detail == "OUT_OF_RANGE"
+
+
+def test_location_prompt_takes_approximate(tap_device):
+    """API 31+: the location dialog offers Precise / Approximate, and the choice reaches the app."""
+    if tap_device.info().api_level < 31:
+        pytest.skip("the location accuracy choice is API 31+")
+    app = launch(tap_device)
+    app.clear_data()
+    app.launch(".PermissionActivity")
+    app.element(res("request_location_permission")).tap()
+    prompt = tap_device.await_permission_prompt()
+    assert set(prompt.accuracies) == {LocationAccuracy.PRECISE, LocationAccuracy.APPROXIMATE}, prompt
+    tap_device.choose_permission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+    app.wait(text("Location approximate")).visible()
+
+
+def test_device_locale_and_mock_location_reach_the_app_then_are_restored(tap_client, tap_config):
+    """The device language reaches an app that follows the system; a mocked fix reaches the app's
+    gps listener and moves when set again; detach puts the language back."""
+    connection = tap_client.connect("locale-location")
+    try:
+        serial = (tap_config.serials or connection.available_serials())[0]
+        with connection.attach_device(serial) as device:
+            app = launch(device)
+            before = device.info().system_locales
+            target = "de-DE" if before[:1] != ("de-DE",) else "fr-FR"
+            device.set_system_locales([target, "en-US"])
+            assert device.info().system_locales[:2] == (target, "en-US")
+            app.launch(".FormActivity")
+            app.wait(text_contains(f" locale={target} ")).visible()
+
+            app.grant_permission("android.permission.ACCESS_FINE_LOCATION")
+            app.launch(".PermissionActivity")
+            device.set_location(48.8584, 2.2945, accuracy_m=3)
+            app.element(res("read_location")).tap()
+            app.wait(text("At 48.85840, 2.29450"), timeout=15).visible()
+            device.set_location(51.5007, -0.1246)
+            app.element(res("read_location")).tap()
+            app.wait(text("At 51.50070, -0.12460"), timeout=15).visible()
+        with connection.attach_device(serial) as device:
+            assert device.info().system_locales == before
+    finally:
+        connection.close()
+
+
+def test_network_switches_read_back_then_are_restored(tap_client, tap_config):
+    """Airplane mode and Wi-Fi are the device's real switches: set, read back, restored."""
+    connection = tap_client.connect("network")
+    try:
+        serial = (tap_config.serials or connection.available_serials())[0]
+        with connection.attach_device(serial) as device:
+            before = device.info()
+            if before.api_level < 29:
+                pytest.skip("network switches are API 29+")
+            device.set_network(airplane_mode=not before.airplane_mode, wifi=not before.wifi_enabled)
+            now = device.info()
+            assert (now.airplane_mode, now.wifi_enabled) == (not before.airplane_mode, not before.wifi_enabled)
+        with connection.attach_device(serial) as device:
+            now = device.info()
+            assert (now.airplane_mode, now.wifi_enabled, now.mobile_data_enabled) == (
+                before.airplane_mode,
+                before.wifi_enabled,
+                before.mobile_data_enabled,
+            )
+    finally:
+        connection.close()

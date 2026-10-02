@@ -28,6 +28,7 @@ import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
@@ -82,6 +83,7 @@ internal class DriverCommandEngine(
     private val keyboard = KeyboardCommands(instrumentation, device, objects)
     private val accessibilityActions = AccessibilityActionCommands(objects)
     private val clipboard = ClipboardCommands(instrumentation)
+    private val location = LocationCommands(instrumentation)
     private val toasts = ToastWatcher(instrumentation)
     private val queries = QueryCommands(device, objects, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
     private val screenStability = ScreenStability(instrumentation)
@@ -183,6 +185,8 @@ internal class DriverCommandEngine(
             accessibilityActions.perform(context, selectors[command.selector], command)
 
         override fun setProgress(command: SetProgress) = accessibilityActions.setProgress(context, selectors[command.selector], command.value)
+
+        override fun setLocation(command: SetLocation) = location.set(context, command)
 
         override fun setClipboard(command: SetClipboard) = clipboard.set(context, command.text)
 

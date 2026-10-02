@@ -221,6 +221,16 @@ object CommandValidation {
                 if (!command.setProgress.value.isFinite()) invalidRequest("value must be finite")
             }
 
+            OpCase.SET_LOCATION -> {
+                val location = command.setLocation
+                if (!(location.latitude in -90.0..90.0)) invalidRequest("latitude must be -90 to 90")
+                if (!(location.longitude in -180.0..180.0)) invalidRequest("longitude must be -180 to 180")
+                if (location.hasAccuracyM() && !(location.accuracyM.isFinite() && location.accuracyM > 0f)) {
+                    invalidRequest("accuracy_m must be a positive number of meters")
+                }
+                if (location.hasAltitudeM() && !location.altitudeM.isFinite()) invalidRequest("altitude_m must be finite")
+            }
+
             OpCase.OP_NOT_SET, null -> {
                 throw InvalidCommandException(ErrorCode.ERR_UNSUPPORTED, null, "No command op is set")
             }

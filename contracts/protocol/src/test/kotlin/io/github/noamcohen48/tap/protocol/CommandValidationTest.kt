@@ -117,6 +117,12 @@ class CommandValidationTest {
                 "custom action too long" to Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
                 "progress NaN" to Commands.setProgress(button, Float.NaN),
                 "progress infinite" to Commands.setProgress(button, Float.NEGATIVE_INFINITY),
+                "latitude above 90" to Commands.setLocation(90.01, 0.0),
+                "latitude NaN" to Commands.setLocation(Double.NaN, 0.0),
+                "longitude below -180" to Commands.setLocation(0.0, -180.01),
+                "zero accuracy" to Commands.setLocation(0.0, 0.0, accuracyM = 0f),
+                "infinite accuracy" to Commands.setLocation(0.0, 0.0, accuracyM = Float.POSITIVE_INFINITY),
+                "NaN altitude" to Commands.setLocation(0.0, 0.0, altitudeM = Double.NaN),
             )
         invalid.forEach { (name, command) ->
             assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
@@ -160,6 +166,8 @@ class CommandValidationTest {
             Commands.performAccessibilityAction(button, StandardAction.A11Y_PASTE),
             Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS)),
             Commands.setProgress(button, -1.5f),
+            Commands.setLocation(-90.0, 180.0, accuracyM = 0.1f, altitudeM = -400.0),
+            Commands.setLocation(90.0, -180.0),
             Commands.setClipboard(""),
             Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS)),
             Commands.getClipboard(),

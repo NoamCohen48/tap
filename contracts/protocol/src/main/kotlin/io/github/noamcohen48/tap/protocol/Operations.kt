@@ -39,6 +39,7 @@ import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
@@ -110,7 +111,7 @@ val Command.isMutation: Boolean
             OpCase.SET_ORIENTATION, OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION,
             OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG, OpCase.PINCH, OpCase.FLING,
             OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.SET_CLIPBOARD,
-            OpCase.PERFORM_ACCESSIBILITY_ACTION, OpCase.SET_PROGRESS,
+            OpCase.PERFORM_ACCESSIBILITY_ACTION, OpCase.SET_PROGRESS, OpCase.SET_LOCATION,
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
@@ -148,7 +149,7 @@ val Command.targetSelector: Selector?
             OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.SET_ORIENTATION,
             OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.SET_CLIPBOARD,
-            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.OP_NOT_SET, null,
+            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.SET_LOCATION, OpCase.OP_NOT_SET, null,
             -> null
         }
 
@@ -288,6 +289,26 @@ object Commands {
         selector: Selector,
         value: Float,
     ): Command = Command.newBuilder().setSetProgress(SetProgress.newBuilder().setSelector(selector).setValue(value)).build()
+
+    /** A mock location fix; [accuracyM] null = the driver's default, [altitudeM] null = none. */
+    fun setLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyM: Float? = null,
+        altitudeM: Double? = null,
+    ): Command =
+        Command
+            .newBuilder()
+            .setSetLocation(
+                SetLocation
+                    .newBuilder()
+                    .setLatitude(latitude)
+                    .setLongitude(longitude)
+                    .apply {
+                        accuracyM?.let(::setAccuracyM)
+                        altitudeM?.let(::setAltitudeM)
+                    },
+            ).build()
 
     fun doubleTap(selector: Selector): Command = Command.newBuilder().setDoubleTap(DoubleTap.newBuilder().setSelector(selector)).build()
 
@@ -493,6 +514,8 @@ interface CommandHandler {
 
     fun setProgress(command: SetProgress)
 
+    fun setLocation(command: SetLocation)
+
     fun setClipboard(command: SetClipboard)
 
     fun getClipboard(command: GetClipboard): String
@@ -580,6 +603,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.PERFORM_IME_ACTION -> result.setDone(done).also { handler.performImeAction(performImeAction) }
         OpCase.PERFORM_ACCESSIBILITY_ACTION -> result.setDone(done).also { handler.performAccessibilityAction(performAccessibilityAction) }
         OpCase.SET_PROGRESS -> result.setDone(done).also { handler.setProgress(setProgress) }
+        OpCase.SET_LOCATION -> result.setDone(done).also { handler.setLocation(setLocation) }
         OpCase.SET_CLIPBOARD -> result.setDone(done).also { handler.setClipboard(setClipboard) }
         OpCase.GET_CLIPBOARD -> result.setText(handler.getClipboard(getClipboard))
         OpCase.AWAIT_TOAST -> result.setToast(handler.awaitToast(awaitToast))
