@@ -198,7 +198,9 @@ full flow, using the 0.0.2 set as the example:
    the daemon's `tap-api` is out), then the rest, waits for all of them
    (native builds take up to ~1 h), and finally checks every Release page
    carries its assets — wheels/sdist for the Python families, binaries +
-   `SHA256SUMS` for the daemon, the `tap-docs-<version>` bundle everywhere.
+   `SHA256SUMS` for the daemon (the Kotlin release only has to exist; its
+   artifacts are in GitHub Packages).
+   Last, it builds the one-download bundles (`bundle/v<version>`, see below).
    Not sure about the tags? Run it first with `-f dry_run=true`: it only
    validates the tags exist and prints the plan.
 5. **If a tag push starts no run** (seen 2026-09-30: four tags pushed, zero
@@ -223,11 +225,50 @@ full flow, using the 0.0.2 set as the example:
    Then open one Release page and confirm the assets a user needs are there
    (e.g. `tap_studio-0.0.1-py3-none-any.whl` on `client-studio/v0.0.1`).
 
-`docs-bundle` runs for every family: `.github/actions/build-docs` (shared
-with `docs.yml`) builds the Markdown edition from the tagged commit, and the family's release
-attaches it as `tap-docs-<version>.zip` and `.tar.gz` (guide, Kotlin/Python/gRPC references,
-tap-agent README and skill, changelog; not `.docs/`). For the Python families the bundle stays
-out of `dist/`, which the PyPI step uploads whole. Maven goes to this repository's GitHub Packages registry
+### One-download bundles (`bundle.yml`)
+
+Users who want "everything" should not have to collect five Release pages and a GitHub
+token. After a set ships, `Release set` calls the `Bundle` workflow, which runs
+`scripts/build-bundle.sh` and publishes the Release `bundle/v<version>` (pre-release, never
+latest, tagged on the daemon tag's commit) with one zip per platform plus `SHA256SUMS`:
+
+| Zip | Server inside |
+|---|---|
+| `tap-<v>-linux-x86_64.zip` | native `server/tap` |
+| `tap-<v>-macos-aarch64.zip` | native `server/tap` |
+| `tap-<v>-jvm.zip` | `server/tap-<engine>-jvm.zip` (any OS with Java 17; the Windows route) |
+
+Each also holds `maven/` (`tap-schema`, `tap-api`, `tap-client`, `tap-junit5` with POM,
+Gradle module metadata and sources, downloaded from GitHub Packages and laid out as a Maven
+repository, so Gradle needs no token), `python/` (the `tap-e2e`, `tap-agent`, `tap-studio`
+wheels), `docs/` (the Markdown edition from `scripts/build-docs.sh`, built by the workflow's
+`docs` job from the newest tagged commit in the set), `LICENSE`,
+`install.sh` and `INSTALL.md` (`packaging/bundle/`, versions filled in), `VERSIONS` and a
+per-file `SHA256SUMS`. Nothing else is rebuilt: every other file is a released one, the daemon's
+`SHA256SUMS` is checked on download, and the build fails if `tap-client`'s POM names a
+different `tap-api` than the server's version (an inconsistent set).
+
+The bundle version defaults to the daemon tag's version (`bundle` input of `Release set`;
+`none` skips it). A family not in the set contributes its newest release. To bundle releases
+that already exist (e.g. the 0.0.2 set), run the workflow by hand:
+`gh workflow run Bundle --ref main -f version=0.0.2` (families empty = newest). A bundle
+version is never replaced; the workflow refuses an existing `bundle/v<version>`.
+
+The public entry point is the site's Download page (`docs/download.md`); its links name the
+bundle version, so bump them with the other install links at release time.
+
+`install.sh` (bash 3.2-compatible for macOS) checks `SHA256SUMS`, refuses a native bundle on
+the wrong OS/arch, installs the server into `<prefix>/bin` (default `~/.local`; the jvm
+dist is unpacked under `<prefix>/share/tap/server` and linked), the wheels into a virtual
+environment `<prefix>/share/tap/venv` (`python -m venv`, `uv` as fallback; `--venv DIR` for
+the user's own) with `tap-agent`/`tap-studio` linked into `bin`, and merges `maven/` into
+`<prefix>/share/tap/maven` (older versions stay resolvable). `--uninstall` removes it all.
+Python dependencies still come from PyPI; the bundle is not an offline installer.
+
+The per-family releases carry no docs (until 2026-10 every one attached `tap-docs-<version>.zip`
+/ `.tar.gz`; 0.0.1 and 0.0.2 still do): the Markdown edition ships only inside the bundles.
+
+Maven goes to this repository's GitHub Packages registry
 (`https://maven.pkg.github.com/NoamCohen48/tap`; readers need a token with `read:packages`
 even for public repositories). Binaries and wheels go to a GitHub Release named after the
 tag, with `SHA256SUMS` for the server. PyPI publishing is wired (trusted publishing) but off
@@ -250,6 +291,16 @@ curl -L -o tap https://github.com/NoamCohen48/tap/releases/download/daemon/v0.0.
 
 ## Open points
 
+- **Pending, once PR #17 (the bundles) is merged:** create the 0.0.2 bundle the site's
+  Download page, the README and the getting-started guide already link to, from the existing
+  0.0.2 releases:
+
+  ```bash
+  gh workflow run Bundle --ref main -f version=0.0.2
+  ```
+
+  Until it runs, those links 404. Then check that the `bundle/v0.0.2` Release has the three zips
+  and `SHA256SUMS`, and delete this item.
 - Group id and packages are `io.github.noamcohen48.tap` (decided in the 2026-09-26 review, X-4);
   changing it after a release breaks every consumer.
 - License: Apache-2.0 (owner's call, 2026-09-29: anyone may use, fork and contribute). `LICENSE`

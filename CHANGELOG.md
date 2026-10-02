@@ -6,6 +6,15 @@ experimental may change in any release.
 
 ## Unreleased
 
+Packaging:
+
+- **One-download bundles.** Each release set is also published as `bundle/vX.Y.Z` with one zip
+  per platform (linux-x86_64, macos-aarch64, jvm): server, Kotlin artifacts as a local Maven
+  repository (no GitHub token), Python wheels, docs, `install.sh` and `INSTALL.md`. The site has
+  a Download page for them.
+- **The Markdown docs moved into the bundles.** The per-family releases no longer attach
+  `tap-docs-<version>.zip` / `.tar.gz`.
+
 Breaking, in every family (protocol 5.0; `.docs/app-and-screen.md`):
 
 - **An attached device names no app.** Kotlin `connection.attachDevice(serial)` /
