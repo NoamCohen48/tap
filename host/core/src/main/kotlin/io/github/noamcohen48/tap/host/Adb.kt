@@ -652,6 +652,12 @@ open class Adb internal constructor(
         path: String,
     ): Boolean = execResult(serial, "shell", "test", "-d", shellQuote(path)).exitCode == 0
 
+    /** Whether the shell user may read [path] (system files often are not, on OEM builds). */
+    open suspend fun isReadable(
+        serial: String,
+        path: String,
+    ): Boolean = execResult(serial, "shell", "test", "-r", shellQuote(path)).exitCode == 0
+
     /** `adb push`: an adb client command with a real argv, so neither path is shell-quoted. */
     open suspend fun push(
         serial: String,
@@ -673,18 +679,20 @@ open class Adb internal constructor(
     }
 
     /**
-     * Has the media scanner (re)index [path]: MediaProvider's `scan_file` call on API 29+, the
-     * `MEDIA_SCANNER_SCAN_FILE` broadcast before. A path that is gone leaves the index.
+     * Asks the media scanner to (re)index [path]: MediaProvider's synchronous `scan_file` call on
+     * API 30+, the asynchronous `MEDIA_SCANNER_SCAN_FILE` broadcast otherwise, and when the call
+     * fails (API 29's MediaProvider wants a Uri extra `content call` cannot send, and throws). A
+     * path that is gone leaves the index. The broadcast returns before the scan: poll [mediaIndexed].
      */
     open suspend fun scanMedia(
         serial: String,
         path: String,
     ) {
-        if (apiLevel(serial) >= 29) {
-            exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(path))
-        } else {
-            exec(serial, "shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", shellQuote("file://$path"))
+        if (apiLevel(serial) >= 30) {
+            val output = exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(path))
+            if ("Exception" !in output) return
         }
+        exec(serial, "shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", shellQuote("file://$path"))
     }
 
     /** Whether the media index has an entry for the file [name] in the folder [folder] (e.g. `Pictures/Tap`). */

@@ -322,7 +322,7 @@ def test_files_round_trip_and_media_reaches_the_gallery_then_both_leave(tap_clie
             with pytest.raises(ServerError) as theirs:
                 device.push_file("/system/build.prop", b"x")
             assert theirs.value.reason is FailureReason.DEVICE_FILE
-            assert b"ro.build" in device.pull_file("/system/build.prop")
+            assert b"localhost" in device.pull_file("/system/etc/hosts")
 
             assert device.add_media(_png(), photo) == f"/sdcard/Pictures/Tap/{photo}"
             app = launch(device, ".PermissionActivity")
