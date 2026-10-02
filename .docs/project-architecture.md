@@ -111,7 +111,8 @@ tap/
 |
 +-- device/                      what runs on the Android device
 |   +-- driver/                  :device:driver — Android; the on-device driver
-|   |   +-- src/main/AndroidManifest.xml   empty app shell (package io.github.noamcohen48.tap.driver, <queries> for sync/fault providers)
+|   |   +-- src/main/AndroidManifest.xml   app shell (package io.github.noamcohen48.tap.driver, <queries> for sync/fault providers; CHANGE_CONFIGURATION, WRITE_SETTINGS, ACCESS_MOCK_LOCATION)
+|   |   +-- src/main/kotlin/.../SystemLocaleReceiver.kt  device-wide locale (receiver only shell/system may send to: CHANGE_CONFIGURATION), as Settings' language picker
 |   |   +-- src/androidTest/kotlin/io/github/noamcohen48/tap/driver/
 |   |   |   +-- TapDriverServerTest.kt   instrumentation entry point (keeps the process alive)
 |   |   |   +-- TapDriverServer.kt       SessionConfig from instrumentation args, listener, markers
@@ -127,7 +128,9 @@ tap/
 |   |   |   |                        set_orientation/set_display_rotation/unfreeze_rotation / screen + keyguard state, dismiss_keyguard / permission dialog by controller resource id
 |   |   |   +-- KeyboardCommands.kt, ClipboardCommands.kt, ToastWatcher.kt
 |   |   |   |                        keyboard_shown, hide_keyboard, perform_ime_action / set/get_clipboard (main thread, shell read permission) / await_toast (session-long accessibility listener, 32-entry buffer)
-|   |   |   +-- DeviceConditionsReader.kt  DeviceInfo read-backs: animations_enabled (global scales), dark_mode, font_scale, density_dpi (driver resources' Configuration)
+|   |   |   +-- DeviceConditionsReader.kt  DeviceInfo read-backs: animations_enabled (global scales), dark_mode, font_scale, density_dpi (driver resources' Configuration), airplane/wifi/mobile data, system_locales
+|   |   |   +-- AccessibilityActionCommands.kt  perform_accessibility_action (standard / custom, only if offered), set_progress (within the RangeInfo); ElementSnapshot actions/range
+|   |   |   +-- LocationCommands.kt   set_location: LocationManager test providers (gps, network, fused API 31+), re-sent every second
 |   |   |   +-- SyncProviderClient.kt    signature-checked ContentProvider reads with timeout
 |   |   |   +-- FaultController.kt       test-only fault injection (transport loss, late work, cancel-after-mutation)
 |   |   +-- command-engine/      :device:driver:command-engine — pure Kotlin/JVM execution state machine (no Android types)
@@ -156,8 +159,9 @@ tap/
 |   |   |   +-- DriverClient.kt      authenticated client API, PendingCommand outcome/cancellation semantics, heartbeat policy, screenshot()
 |   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
 |   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grant/revoke/isPermissionGranted/setLocales/locales/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits; launch returns after `am start -W`)
-|   |   |   +-- DeviceState.kt       SavedState + StateKey (setting:<ns>/<name>, uimode:night, wm:density, locale:<pkg>): what a session changed, journaled for restore
-|   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity: capture once, write, read back (DeviceSession.change)
+|   |   |   +-- DeviceState.kt       SavedState + StateKey (setting:<ns>/<name>, uimode:night, wm:density, locale:<pkg>, network:*, system-locales, appop:<pkg>/<op>, file:/media:<path>): what a session changed, journaled for restore
+|   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity/setNetwork/setSystemLocales/setLocation: capture once, write, read back (DeviceSession.change)
+|   |   |   +-- DeviceFiles.kt       push/pull/addMedia: path rules, never overwrite a device's file, size and media-index read-back; created files captured as absent (removed on detach)
 |   |   |   +-- ScrcpyRecorder.kt        optional host-owned, serial-scoped scrcpy child; bounded Opus/MP4/Matroska capture and cleanup
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
 |   |   |   +-- CommandException.kt  RemoteCommandException / CommandTransportException, selector rendering
@@ -181,7 +185,7 @@ tap/
 |   |   |   |   +-- ScreenSnapshotState.kt per-device latest snapshot, ref counter (`eN`, never reused), ResolveRef; UnknownRef/RefNotAddressable exceptions
 |   |   |   +-- daemon/grpc/
 |   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info/ListConnections/Events + exactly-one Observe (observing/heartbeat/closing)
-|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording
+|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording, device conditions, streamed PushFile/AddMedia (spooled to <state-dir>/uploads) and PullFile
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- EventRecording.kt          records an Execute / app call and its outcome into the owner's EventLog
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
@@ -507,6 +511,7 @@ against the `validation` driver flavor, whose instrumentation wires the fault co
 | `ScreenshotTest`, `InputTest`, `ScrollTest`, `SelectorsTest`, `ObservationTest`, `PermissionTest` | blob reassembly, text input, Compose/View scrolling, `AMBIGUOUS`/limits/relations/regex, count/snapshot/keys, permission-dialog scoping and choices |
 | `GestureTest`, `ScreenTest`, `RotationTest` | double tap, drag (`NOT_FOUND` before input), pinch, fling; sleep/wake/keyguard state; orientation and exact rotations |
 | `KeyboardTest`, `ClipboardTest`, `ToastTest` | keyboard state + hide, IME action (refused before input on an unfocused field, `REQUIRES_API_30` below API 30); clipboard round trip through the app's paste/copy; the fixture's toast text/package, lookback, `NO_TOAST` |
+| `AccessibilityActionTest`, `SystemLocaleTest`, `MockLocationTest`, `DeviceFilesTest` | standard/custom actions and `set_progress` reach the app (`ACTION_NOT_OFFERED`, `OUT_OF_RANGE`); device locale through the driver receiver, read back and restored; a mocked fix reaches the fixture and moves; push/pull round trip, media scanned and indexed, both removed by the restore |
 | `BenchmarkTest` | lookup and dump timings (`TAP_VALIDATION` lines) |
 | `DisconnectIsolationTest` | (2+ serials) one device's transport loss leaves the other untouched |
 | `LateMutationQuarantineTest` | `@Tag("reboot")`, only with `-Ptap.reboot=true`: late mutation quarantines, reboot recovery |

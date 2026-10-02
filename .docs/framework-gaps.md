@@ -156,9 +156,15 @@ hide / IME action, clipboard set/get and `awaitToast` (`KeyboardTest`, `Clipboar
 density) and per-app languages (API 33+), each read back and restored on detach or by the next
 attach after a crash (`DeviceConditionsTest`, `DeviceActionsTest` 10–11,
 `test_conditions_hold_until_detach_then_are_restored`; crash restore in `RecoverJournalTest`).
+Group 3 (`device-actions.md`) is implemented with unit and fake-device tests — network
+switches, the device-wide locale, mock location, accessibility actions and slider progress,
+the location-accuracy choice, push/pull files and gallery media — and its device tests are
+written (`SystemLocaleTest`, `MockLocationTest`, `AccessibilityActionTest`, `DeviceFilesTest`,
+`DeviceActionsTest` 12–15, Python `test_device_actions.py`) but have not run yet, so the
+device-wide locale stays listed below until they do.
 
 Missing: crash/ANR detection as codes (above), activity-result assertions, the device-wide
-locale (only the per-app language, API 33+, is controlled), and
+locale (implemented, device run pending; see above), and
 the plan's "AUT restarted during a command" fault scenario.
 
 ## Compose and WebView (plan §15, §17)

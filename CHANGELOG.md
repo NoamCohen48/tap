@@ -95,8 +95,38 @@ and the clients must be updated together to use them:
   reasons `UNSUPPORTED_API` (detail `REQUIRES_API_<n>`) and `DEVICE_SETTING`.
 - `tap-agent`: `condition [animations|dark-mode|font-scale|density] [value]` and
   `app locale <package> [tags|system]` (CLI and MCP).
+- **Network switches** (API 29+): `setNetwork(airplaneMode?, wifi?, mobileData?)` (Python
+  `set_network`; `DeviceService.SetNetwork`) turns the real switches on or off, nothing mocked;
+  read back, `DeviceInfo.airplaneMode` / `wifiEnabled` / `mobileDataEnabled`. A device reached
+  over ADB on the network refuses Wi-Fi off or airplane mode on (`DEVICE_SETTING`).
+- **Device languages**: `setSystemLocales(tags)` (Python `set_system_locales`;
+  `DeviceService.SetSystemLocales`) sets the device-wide locale list through the Tap driver app,
+  read back in `DeviceInfo.systemLocales`.
+- **Mock location**: `setLocation(latitude, longitude, accuracyM?, altitudeM?)` (Python
+  `set_location`; `DeviceService.SetLocation`, driver command `set_location`): the gps and
+  network providers (and fused, API 31+) report the fix, re-sent every second; the driver
+  becomes the mock-location app and location is turned on if it was off.
+- Network, languages and location are restored on detach like the other conditions.
+- **Accessibility actions**: `Element.performAction(StandardAction)` and
+  `performCustomAction(label)` (Python `perform_action` / `perform_custom_action`) run a node's
+  action as a screen reader does; one the node does not offer fails before input
+  (`ACTION_REJECTED` / `ACTION_NOT_OFFERED`). `Element.setProgress(value)` (`set_progress`)
+  sets a slider in its own units (`OUT_OF_RANGE` outside them). `ElementSnapshot` gains
+  `actions`, `customActions` and `range`.
+- **Location accuracy**: `choosePermission(choice, accuracy)` picks Precise or Approximate on
+  the Android 12+ location dialog; `PermissionPrompt.accuracies` lists what it offers.
+- **Files and gallery**: `pushFile(devicePath, bytes | path)`, `pullFile(devicePath[, path])`,
+  `addMedia(fileName, bytes)` / `addMedia(path)` (Python `push_file`, `pull_file`, `add_media`;
+  `DeviceService.PushFile/PullFile/AddMedia`, streamed, at most 512 MiB). Tap never overwrites a
+  device file it did not create, reads every write back, and removes what it created on detach;
+  media goes to `Pictures/Tap` or `Movies/Tap` and is indexed by the media scanner. New failure
+  reason `DEVICE_FILE`.
+- `tap-agent`: `condition airplane-mode|wifi|mobile-data|locale`, `location`, `action`,
+  `progress`, `permission --accuracy`, `push`, `pull`, `media` (CLI and MCP: `set_location`,
+  `accessibility_action`, `set_progress`, `push_file`, `pull_file`, `add_media`).
 - **Breaking** (Kotlin, Python positional): `DeviceInfo` gains `keyboardShown`, `autoRotate`,
-  `animationsEnabled`, `darkMode`, `fontScale` and `densityDpi` constructor parameters.
+  `animationsEnabled`, `darkMode`, `fontScale`, `densityDpi`, `airplaneMode`, `wifiEnabled` and
+  `mobileDataEnabled` constructor parameters (and `systemLocales`, defaulted).
 - **Breaking** (Kotlin, Python): `DeviceInfo.displayRotation` / `display_rotation` is now a
   `DisplayRotation` instead of an int (the wire field is unchanged); `DeviceInfo.orientation`
   derives portrait or landscape from the size.
