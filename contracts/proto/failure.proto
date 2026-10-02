@@ -64,6 +64,9 @@ enum FailureReason {
   FAILURE_REASON_UNSUPPORTED_API = 22;
   // The device did not take a setting: it read back another value (FAILED_PRECONDITION).
   FAILURE_REASON_DEVICE_SETTING = 23;
+  // A device file Tap cannot write or read as asked: it exists and is not this session's, its
+  // directory is missing, it is not a regular file, or it did not read back (FAILED_PRECONDITION).
+  FAILURE_REASON_DEVICE_FILE = 24;
 }
 
 message Failure {

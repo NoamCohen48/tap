@@ -509,6 +509,37 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
         assert request.client_connection_id == device.owner_connection.id
 
 
+def test_files_stream_in_chunks_both_ways_and_keep_the_failure_reason(fake, device, tmp_path):
+    big = bytes(range(256)) * 4097  # over one chunk, so the upload is split
+    local = tmp_path / "big.bin"
+    local.write_bytes(big)
+    device.push_file("/data/local/tmp/a.txt", b"hello")
+    device.push_file("/data/local/tmp/big.bin", local)
+    device.push_file("/data/local/tmp/str.bin", str(local))
+    assert device.pull_file("/data/local/tmp/a.txt") == b"hello"
+    target = tmp_path / "pulled.bin"
+    assert device.pull_file("/data/local/tmp/big.bin", target) is None
+    assert target.read_bytes() == big
+    assert [p.name for p in tmp_path.iterdir() if p.suffix == ".part"] == []
+    with pytest.raises(ServerError) as taken:
+        device.push_file("/data/local/tmp/a.txt", b"x")
+    assert taken.value.reason is FailureReason.DEVICE_FILE
+    assert device.add_media(b"\x01\x02", "cat.png") == "/sdcard/Pictures/Tap/cat.png"
+    assert device.add_media(local) == "/sdcard/Pictures/Tap/big.bin"
+    with pytest.raises(TypeError):
+        device.add_media(b"\x01")
+    with pytest.raises(TypeError):
+        device.push_file("/data/local/tmp/n", 42)
+    with pytest.raises(FileNotFoundError):
+        device.push_file("/data/local/tmp/n", tmp_path / "missing")
+    assert fake.devices.file_chunks[1:3] == [1 << 20, len(big) - (1 << 20)]
+    sizes = [h.size_bytes for h in fake.devices.file_headers if isinstance(h, pb.PushFileHeader)]
+    assert sizes == [5, len(big), len(big), 1]
+    for header in fake.devices.file_headers:
+        assert header.attached_device_id == device.attached_device_id
+        assert header.client_connection_id == device.owner_connection.id
+
+
 def test_app_locales_round_trip_through_the_app_service(fake, device):
     app = device.app("com.test")
     app.set_locales(["fr-FR", "en"])

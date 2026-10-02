@@ -82,6 +82,9 @@ class DeviceSession private constructor(
     /** Device-wide conditions (animations, dark mode, font scale, density) on this session. */
     val conditions: DeviceConditions = DeviceConditions(this)
 
+    /** Files pushed to and pulled from the device, and media added to its gallery. */
+    val files: DeviceFiles = DeviceFiles(this)
+
     /** Guards [savedState] and the journal writes that persist it. */
     private val savedStateMutex = Mutex()
     private val savedState = mutableListOf<SavedState>()
@@ -220,6 +223,9 @@ class DeviceSession private constructor(
             }
         }
     }
+
+    /** Whether this session has captured [key] (and so restores it on detach). */
+    internal suspend fun hasCaptured(key: String): Boolean = savedStateMutex.withLock { savedState.any { it.key == key } }
 
     /**
      * Captures the keys of [values], writes them and reads them back. A value the device did not

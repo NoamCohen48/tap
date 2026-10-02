@@ -59,6 +59,21 @@ service DeviceService {
   // `android:mock_location` app-op) and location is turned on when it is off; both are captured
   // and restored on detach, which ends the mock. The driver serves the fix (`set_location`).
   rpc SetLocation(SetLocationRequest) returns (SetLocationResponse);
+
+  // Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
+  // A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
+  //
+  // Copies a file to `device_path` (absolute, normalised; its directory must exist): a
+  // PushFileHeader first, then the bytes. A file already there is refused unless this attached
+  // device pushed it; the size is read back. Pushed files are deleted on detach.
+  rpc PushFile(stream PushFileRequest) returns (PushFileResponse);
+  // Streams the regular file at `device_path` back in chunks.
+  rpc PullFile(PullFileRequest) returns (stream PullFileResponse);
+  // Adds a photo or video to the gallery: an AddMediaHeader (`file_name` with a photo or video
+  // extension), then the bytes. Written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/` and
+  // indexed by the media scanner (read back); a name already there is refused unless this attached
+  // device added it. Deleted, and dropped from the index, on detach.
+  rpc AddMedia(stream AddMediaRequest) returns (AddMediaResponse);
 }
 
 // State of a listed device.
@@ -323,3 +338,51 @@ message SetLocationRequest {
 }
 
 message SetLocationResponse {}
+
+message PushFileHeader {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  string device_path = 3;
+  int64 size_bytes = 4; // exact size; the upload is rejected on mismatch
+}
+
+message PushFileRequest {
+  oneof part {
+    PushFileHeader header = 1; // first message only
+    bytes chunk = 2; // every later message
+  }
+}
+
+message PushFileResponse {}
+
+message PullFileRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  string device_path = 3;
+}
+
+// The first message carries `size_bytes`; every message may carry a chunk.
+message PullFileResponse {
+  int64 size_bytes = 1;
+  bytes chunk = 2;
+}
+
+message AddMediaHeader {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // 1-127 letters, digits, '.', '_', '-' or spaces, ending in a photo (jpg, jpeg, png, gif, webp,
+  // heic, heif, bmp) or video (mp4, 3gp, webm, mkv, mov) extension.
+  string file_name = 3;
+  int64 size_bytes = 4;
+}
+
+message AddMediaRequest {
+  oneof part {
+    AddMediaHeader header = 1;
+    bytes chunk = 2;
+  }
+}
+
+message AddMediaResponse {
+  string device_path = 1; // where the media landed
+}

@@ -616,6 +616,46 @@ class Agent:
 
         return self._run(step)
 
+    def push(self, local: str | os.PathLike[str], device_path: str, device: str | None = None) -> str:
+        """Copies the local file ``local`` to ``device_path`` on the device until release (its
+        directory must exist; a file already there that Tap did not push is refused)."""
+        source = pathlib.Path(local)
+        if not source.is_file():
+            raise AgentError(f"{source} is not a file", EXIT_USAGE)
+
+        def step() -> str:
+            self._device(device).push_file(device_path, source)
+            return f"pushed {source.stat().st_size} bytes to {device_path} (removed on release)"
+
+        return self._run(step)
+
+    def pull(self, device_path: str, out: str | os.PathLike[str] | None = None, device: str | None = None) -> str:
+        """Copies the device file ``device_path`` to ``out`` (default ``.tap/agent/<name>``) and
+        returns that path."""
+
+        def step() -> str:
+            d = self._device(device)
+            name = device_path.rstrip("/").rsplit("/", 1)[-1] or "pulled"
+            target = pathlib.Path(out) if out else self.out_dir / f"{d.serial}-{_stamp()}-{name}"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            d.pull_file(device_path, target)
+            return str(target)
+
+        return self._run(step)
+
+    def media(self, local: str | os.PathLike[str], name: str | None = None, device: str | None = None) -> str:
+        """Adds the local photo or video ``local`` to the device's gallery (as ``name``, default
+        its own name) until release, and returns its device path."""
+        source = pathlib.Path(local)
+        if not source.is_file():
+            raise AgentError(f"{source} is not a file", EXIT_USAGE)
+
+        def step() -> str:
+            path = self._device(device).add_media(source, name)
+            return f"added {path} to the gallery (removed on release)"
+
+        return self._run(step)
+
     def clipboard(self, text: str | None = None, device: str | None = None) -> str:
         """Without ``text``: prints the device clipboard. With it: puts it on the clipboard."""
 

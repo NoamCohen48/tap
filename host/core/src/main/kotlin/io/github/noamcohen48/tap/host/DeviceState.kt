@@ -63,6 +63,18 @@ sealed interface StateKey {
     }
 
     /**
+     * A file this session created on the device, captured as absent (null) before it is written,
+     * so restoring removes it: `present` while it exists. A [media] file is also in the media
+     * index, so removing it rescans its path.
+     */
+    data class DeviceFile(
+        val path: String,
+        val media: Boolean = false,
+    ) : StateKey {
+        override val id: String get() = (if (media) "media:" else "file:") + path
+    }
+
+    /**
      * A radio switch, `1` (on) or `0` (off): airplane mode (`cmd connectivity airplane-mode`),
      * Wi-Fi (`svc wifi`) or mobile data (`svc data`), read from their global settings.
      */
@@ -108,6 +120,8 @@ sealed interface StateKey {
                 id == Density.id -> Density
                 id == SystemLocales.id -> SystemLocales
                 id.startsWith("network:") -> Network.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Bad state key $id")
+                id.startsWith("file:") -> DeviceFile(id.removePrefix("file:").also { require(it.startsWith("/")) { "Bad state key $id" } })
+                id.startsWith("media:") -> DeviceFile(id.removePrefix("media:").also { require(it.startsWith("/")) { "Bad state key $id" } }, media = true)
                 id.startsWith("appop:") -> APP_OP.matchEntire(id)?.let { AppOp(it.groupValues[1], it.groupValues[2]) } ?: throw IllegalArgumentException("Bad state key $id")
                 id.startsWith("locale:") -> AppLocales(id.removePrefix("locale:").also { require(it.isNotBlank()) { "Bad state key $id" } })
                 else -> SETTING.matchEntire(id)?.let { Setting(it.groupValues[1], it.groupValues[2]) } ?: throw IllegalArgumentException("Bad state key $id")

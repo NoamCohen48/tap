@@ -119,6 +119,21 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetLocationRequest.SerializeToString,
                 response_deserializer=device__pb2.SetLocationResponse.FromString,
                 _registered_method=True)
+        self.PushFile = channel.stream_unary(
+                '/tap.v1.DeviceService/PushFile',
+                request_serializer=device__pb2.PushFileRequest.SerializeToString,
+                response_deserializer=device__pb2.PushFileResponse.FromString,
+                _registered_method=True)
+        self.PullFile = channel.unary_stream(
+                '/tap.v1.DeviceService/PullFile',
+                request_serializer=device__pb2.PullFileRequest.SerializeToString,
+                response_deserializer=device__pb2.PullFileResponse.FromString,
+                _registered_method=True)
+        self.AddMedia = channel.stream_unary(
+                '/tap.v1.DeviceService/AddMedia',
+                request_serializer=device__pb2.AddMediaRequest.SerializeToString,
+                response_deserializer=device__pb2.AddMediaResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -252,6 +267,35 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PushFile(self, request_iterator, context):
+        """Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
+        A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
+
+        Copies a file to `device_path` (absolute, normalised; its directory must exist): a
+        PushFileHeader first, then the bytes. A file already there is refused unless this attached
+        device pushed it; the size is read back. Pushed files are deleted on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PullFile(self, request, context):
+        """Streams the regular file at `device_path` back in chunks.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AddMedia(self, request_iterator, context):
+        """Adds a photo or video to the gallery: an AddMediaHeader (`file_name` with a photo or video
+        extension), then the bytes. Written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/` and
+        indexed by the media scanner (read back); a name already there is refused unless this attached
+        device added it. Deleted, and dropped from the index, on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -339,6 +383,21 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.SetLocation,
                     request_deserializer=device__pb2.SetLocationRequest.FromString,
                     response_serializer=device__pb2.SetLocationResponse.SerializeToString,
+            ),
+            'PushFile': grpc.stream_unary_rpc_method_handler(
+                    servicer.PushFile,
+                    request_deserializer=device__pb2.PushFileRequest.FromString,
+                    response_serializer=device__pb2.PushFileResponse.SerializeToString,
+            ),
+            'PullFile': grpc.unary_stream_rpc_method_handler(
+                    servicer.PullFile,
+                    request_deserializer=device__pb2.PullFileRequest.FromString,
+                    response_serializer=device__pb2.PullFileResponse.SerializeToString,
+            ),
+            'AddMedia': grpc.stream_unary_rpc_method_handler(
+                    servicer.AddMedia,
+                    request_deserializer=device__pb2.AddMediaRequest.FromString,
+                    response_serializer=device__pb2.AddMediaResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -800,6 +859,87 @@ class DeviceService:
             '/tap.v1.DeviceService/SetLocation',
             device__pb2.SetLocationRequest.SerializeToString,
             device__pb2.SetLocationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PushFile(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/tap.v1.DeviceService/PushFile',
+            device__pb2.PushFileRequest.SerializeToString,
+            device__pb2.PushFileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PullFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/tap.v1.DeviceService/PullFile',
+            device__pb2.PullFileRequest.SerializeToString,
+            device__pb2.PullFileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddMedia(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/tap.v1.DeviceService/AddMedia',
+            device__pb2.AddMediaRequest.SerializeToString,
+            device__pb2.AddMediaResponse.FromString,
             options,
             channel_credentials,
             insecure,

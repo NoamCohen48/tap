@@ -216,6 +216,9 @@ class FailureReason(enum.Enum):
     """The device's API level is too low for the call (detail ``REQUIRES_API_<n>``)."""
     DEVICE_SETTING = "DEVICE_SETTING"
     """A device setting did not read back as written (or could not be restored)."""
+    DEVICE_FILE = "DEVICE_FILE"
+    """A device file was not written or read as asked: it exists and this device handle did not
+    create it, its directory is missing, it is not a regular file, or it did not read back."""
 
 
 class WaitReason(enum.Enum):

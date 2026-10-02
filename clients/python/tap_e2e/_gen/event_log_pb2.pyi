@@ -55,7 +55,7 @@ class AppCall(_message.Message):
     def __init__(self, operation: _Optional[str] = ..., package_name: _Optional[str] = ..., activity: _Optional[str] = ..., permission: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., uri: _Optional[str] = ..., any_app: _Optional[bool] = ..., extras: _Optional[_Iterable[_Union[_app_pb2.IntentExtra, _Mapping]]] = ..., locales: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class DeviceCall(_message.Message):
-    __slots__ = ("operation", "enabled", "font_scale", "density_dpi", "airplane_mode", "wifi", "mobile_data", "locales", "latitude", "longitude")
+    __slots__ = ("operation", "enabled", "font_scale", "density_dpi", "airplane_mode", "wifi", "mobile_data", "locales", "latitude", "longitude", "device_path", "size_bytes")
     OPERATION_FIELD_NUMBER: _ClassVar[int]
     ENABLED_FIELD_NUMBER: _ClassVar[int]
     FONT_SCALE_FIELD_NUMBER: _ClassVar[int]
@@ -66,6 +66,8 @@ class DeviceCall(_message.Message):
     LOCALES_FIELD_NUMBER: _ClassVar[int]
     LATITUDE_FIELD_NUMBER: _ClassVar[int]
     LONGITUDE_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
     operation: str
     enabled: bool
     font_scale: float
@@ -76,4 +78,6 @@ class DeviceCall(_message.Message):
     locales: _containers.RepeatedScalarFieldContainer[str]
     latitude: float
     longitude: float
-    def __init__(self, operation: _Optional[str] = ..., enabled: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi: _Optional[bool] = ..., mobile_data: _Optional[bool] = ..., locales: _Optional[_Iterable[str]] = ..., latitude: _Optional[float] = ..., longitude: _Optional[float] = ...) -> None: ...
+    device_path: str
+    size_bytes: int
+    def __init__(self, operation: _Optional[str] = ..., enabled: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi: _Optional[bool] = ..., mobile_data: _Optional[bool] = ..., locales: _Optional[_Iterable[str]] = ..., latitude: _Optional[float] = ..., longitude: _Optional[float] = ..., device_path: _Optional[str] = ..., size_bytes: _Optional[int] = ...) -> None: ...

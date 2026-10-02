@@ -16,6 +16,7 @@ import io.github.noamcohen48.tap.host.AppLifecycleException
 import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DeviceBusyException
+import io.github.noamcohen48.tap.host.DeviceFileException
 import io.github.noamcohen48.tap.host.DeviceQuarantinedException
 import io.github.noamcohen48.tap.host.DeviceSettingException
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
@@ -146,6 +147,10 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
             is RecordingException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             is UnsupportedApiException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_UNSUPPORTED_API).setSerial(serial).setDetail("REQUIRES_API_$requiredApi")
+                Status.FAILED_PRECONDITION
+            }
+            is DeviceFileException -> {
+                failure.setReason(FailureReason.FAILURE_REASON_DEVICE_FILE).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
             is DeviceSettingException -> {

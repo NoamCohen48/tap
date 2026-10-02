@@ -1744,6 +1744,53 @@ class TapClientTest {
     }
 
     @Test
+    fun `files stream in chunks both ways, name the attached device and keep the failure reason`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val device = tapScope { connection.attachDevice("emulator-5554") }
+                val local = Files.createTempFile("tap-sdk-push", ".bin")
+                val pulled = Files.createTempFile("tap-sdk-pull", ".bin")
+                try {
+                    // Over one chunk, so the upload is split.
+                    val big = ByteArray((1 shl 20) + 3) { it.toByte() }
+                    Files.write(local, big)
+                    tapScope {
+                        device.pushFile("/data/local/tmp/a.txt", "hello".toByteArray())
+                        device.pushFile("/data/local/tmp/big.bin", local)
+                        assertEquals("hello", device.pullFile("/data/local/tmp/a.txt").decodeToString())
+                        device.pullFile("/data/local/tmp/big.bin", pulled)
+                        assertTrue(big.contentEquals(Files.readAllBytes(pulled)))
+                        val taken = assertFailsWith<ServerException> { device.pushFile("/data/local/tmp/a.txt", ByteArray(1)) }
+                        assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.DEVICE_FILE, taken.reason)
+                        assertEquals("/sdcard/Pictures/Tap/cat.png", device.addMedia("cat.png", byteArrayOf(1, 2)))
+                        assertEquals("/sdcard/Pictures/Tap/${local.fileName}", device.addMedia(local))
+                    }
+                    assertEquals(listOf(1 shl 20, 3), fakeDevices.fileChunks.drop(1).take(2))
+                    for (header in fakeDevices.fileHeaders) {
+                        val ids =
+                            when (header) {
+                                is io.github.noamcohen48.tap.api.v1.PushFileHeader -> header.clientConnectionId to header.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.PullFileRequest -> header.clientConnectionId to header.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.AddMediaHeader -> header.clientConnectionId to header.attachedDeviceId
+                                else -> error("unexpected request $header")
+                            }
+                        assertEquals(connection.id to device.attachedDeviceId, ids)
+                    }
+                    val sizes = fakeDevices.fileHeaders.filterIsInstance<io.github.noamcohen48.tap.api.v1.PushFileHeader>().map { it.sizeBytes }
+                    assertEquals(listOf(5L, big.size.toLong(), 1L), sizes)
+                } finally {
+                    Files.deleteIfExists(local)
+                    Files.deleteIfExists(pulled)
+                    tapScope { device.detach() }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `device conditions name the attached device and keep the failure reason`() {
         runBlocking {
             val connection = client().connect("test")
@@ -2161,6 +2208,67 @@ class TapClientTest {
             io.github.noamcohen48.tap.api.v1.SetLocationResponse
                 .getDefaultInstance()
                 .also { conditions += request }
+
+        /** Device files by path, and the headers and chunk sizes the uploads carried. */
+        val files = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        val fileHeaders = CopyOnWriteArrayList<Any>()
+        val fileChunks = CopyOnWriteArrayList<Int>()
+
+        override suspend fun pushFile(
+            requests: kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.PushFileRequest>,
+        ): io.github.noamcohen48.tap.api.v1.PushFileResponse {
+            var path = ""
+            val bytes = java.io.ByteArrayOutputStream()
+            requests.collect {
+                if (it.hasHeader()) {
+                    fileHeaders += it.header
+                    path = it.header.devicePath
+                } else {
+                    fileChunks += it.chunk.size()
+                    it.chunk.writeTo(bytes)
+                }
+            }
+            if (files.containsKey(path)) {
+                throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_DEVICE_FILE, "$path already exists", "emulator-5554")
+            }
+            files[path] = bytes.toByteArray()
+            return io.github.noamcohen48.tap.api.v1.PushFileResponse
+                .getDefaultInstance()
+        }
+
+        override fun pullFile(
+            request: io.github.noamcohen48.tap.api.v1.PullFileRequest,
+        ): kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.PullFileResponse> =
+            kotlinx.coroutines.flow.flow {
+                fileHeaders += request
+                val bytes = files[request.devicePath] ?: throw Status.NOT_FOUND.asException()
+                emit(io.github.noamcohen48.tap.api.v1.PullFileResponse.newBuilder().setSizeBytes(bytes.size.toLong()).build())
+                // Two chunks, so the client stitches them.
+                for (part in listOf(bytes.copyOfRange(0, bytes.size / 2), bytes.copyOfRange(bytes.size / 2, bytes.size))) {
+                    emit(io.github.noamcohen48.tap.api.v1.PullFileResponse.newBuilder().setChunk(com.google.protobuf.ByteString.copyFrom(part)).build())
+                }
+            }
+
+        override suspend fun addMedia(
+            requests: kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.AddMediaRequest>,
+        ): io.github.noamcohen48.tap.api.v1.AddMediaResponse {
+            var name = ""
+            val bytes = java.io.ByteArrayOutputStream()
+            requests.collect {
+                if (it.hasHeader()) {
+                    fileHeaders += it.header
+                    name = it.header.fileName
+                } else {
+                    it.chunk.writeTo(bytes)
+                }
+            }
+            val path = "/sdcard/Pictures/Tap/$name"
+            files[path] = bytes.toByteArray()
+            return io.github.noamcohen48.tap.api.v1.AddMediaResponse
+                .newBuilder()
+                .setDevicePath(path)
+                .build()
+        }
     }
 
     private class FakeApps : AppServiceGrpcKt.AppServiceCoroutineImplBase() {

@@ -73,6 +73,18 @@
     "name": "com.sun.jndi.dns.DnsContextFactory"
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.AddMediaHeader",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.AddMediaRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.AddMediaResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.AllOf",
     "allDeclaredFields": true
   },
@@ -482,6 +494,26 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.ProcessResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PullFileRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PullFileResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PushFileHeader",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PushFileRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PushFileResponse",
     "allDeclaredFields": true
   },
   {

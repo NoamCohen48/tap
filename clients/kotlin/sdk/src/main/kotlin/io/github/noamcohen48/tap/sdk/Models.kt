@@ -289,6 +289,12 @@ enum class FailureReason {
 
     /** A device setting did not read back as written (or could not be restored). */
     DEVICE_SETTING,
+
+    /**
+     * A device file was not written or read as asked: it exists and this device handle did not
+     * create it, its directory is missing, it is not a regular file, or it did not read back.
+     */
+    DEVICE_FILE,
 }
 
 /** Why a device-side wait timed out ([WaitTimeoutException.reason]). */

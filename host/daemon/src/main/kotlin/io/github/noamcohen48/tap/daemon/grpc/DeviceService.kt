@@ -1,6 +1,8 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
 import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.AddMediaRequest
+import io.github.noamcohen48.tap.api.v1.AddMediaResponse
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
@@ -21,6 +23,10 @@ import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
+import io.github.noamcohen48.tap.api.v1.PullFileRequest
+import io.github.noamcohen48.tap.api.v1.PullFileResponse
+import io.github.noamcohen48.tap.api.v1.PushFileRequest
+import io.github.noamcohen48.tap.api.v1.PushFileResponse
 import io.github.noamcohen48.tap.api.v1.ResolveRefRequest
 import io.github.noamcohen48.tap.api.v1.ResolveRefResponse
 import io.github.noamcohen48.tap.api.v1.ScreenSnapshotRequest
@@ -41,7 +47,9 @@ import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationResponse
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
+import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
+import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceConditions
 import io.github.noamcohen48.tap.host.canonicalLocales
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
@@ -56,10 +64,18 @@ import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 
 /** Diagnostic queries left out of the event log: they read the device, they do not test it. */
+/** Size of each chunk PullFile streams. */
+private const val PULL_CHUNK_BYTES = 256 * 1024
+
 private val UNLOGGED_OPS = setOf(Command.OpCase.DEVICE_INFO, Command.OpCase.DUMP_HIERARCHY)
 
 class DeviceService(
@@ -318,6 +334,150 @@ class DeviceService(
             }
             SetLocationResponse.getDefaultInstance()
         }
+
+    override suspend fun pushFile(requests: Flow<PushFileRequest>): PushFileResponse =
+        reply {
+            spooled(
+                requests,
+                header = { if (it.partCase == PushFileRequest.PartCase.HEADER) it.header else null },
+                chunk = { if (it.partCase == PushFileRequest.PartCase.CHUNK) it.chunk else null },
+                size = { it.sizeBytes },
+            ) { h, upload ->
+                argumentDevicePath(h.devicePath)
+                file(h.clientConnectionId, h.attachedDeviceId, "push_file", h.devicePath, h.sizeBytes) { it.push(upload, h.devicePath) }
+            }
+            PushFileResponse.getDefaultInstance()
+        }
+
+    /**
+     * Pulls into an owner-only file under the state dir, then streams it: the size in the first
+     * message, [PULL_CHUNK_BYTES] chunks after. Failures before the first message are statuses.
+     */
+    override fun pullFile(request: PullFileRequest): Flow<PullFileResponse> =
+        flow {
+            val target = reply { withContext(Dispatchers.IO) { uploadFile("pull") } }
+            try {
+                val size =
+                    reply {
+                        argumentDevicePath(request.devicePath)
+                        file(request.clientConnectionId, request.attachedDeviceId, "pull_file", request.devicePath, null) {
+                            it.pull(request.devicePath, target)
+                        }
+                        withContext(Dispatchers.IO) { Files.size(target) }
+                    }
+                emit(PullFileResponse.newBuilder().setSizeBytes(size).build())
+                val buffer = ByteArray(PULL_CHUNK_BYTES)
+                withContext(Dispatchers.IO) { Files.newInputStream(target) }.use { input ->
+                    while (true) {
+                        val read = withContext(Dispatchers.IO) { input.read(buffer) }
+                        if (read < 0) break
+                        if (read > 0) emit(PullFileResponse.newBuilder().setChunk(ByteString.copyFrom(buffer, 0, read)).build())
+                    }
+                }
+            } finally {
+                withContext(Dispatchers.IO) { Files.deleteIfExists(target) }
+            }
+        }
+
+    override suspend fun addMedia(requests: Flow<AddMediaRequest>): AddMediaResponse =
+        reply {
+            spooled(
+                requests,
+                header = { if (it.partCase == AddMediaRequest.PartCase.HEADER) it.header else null },
+                chunk = { if (it.partCase == AddMediaRequest.PartCase.CHUNK) it.chunk else null },
+                size = { it.sizeBytes },
+            ) { h, upload ->
+                try {
+                    DeviceFiles.mediaFolder(h.fileName)
+                } catch (invalid: IllegalArgumentException) {
+                    throw InvalidArgumentException(invalid.message ?: "file_name is invalid")
+                }
+                var path = ""
+                file(h.clientConnectionId, h.attachedDeviceId, "add_media", h.fileName, h.sizeBytes) { path = it.addMedia(upload, h.fileName) }
+                AddMediaResponse.newBuilder().setDevicePath(path).build()
+            }
+        }
+
+    private fun argumentDevicePath(path: String) {
+        try {
+            DeviceFiles.checkDevicePath(path)
+        } catch (invalid: IllegalArgumentException) {
+            throw InvalidArgumentException(invalid.message ?: "device_path is invalid")
+        }
+    }
+
+    private fun uploadFile(prefix: String): Path {
+        val uploads = daemon.config.stateDir.resolve("uploads")
+        Files.createDirectories(uploads)
+        return Files.createTempFile(uploads, prefix, ".bin").also { restrictToOwner(it) }
+    }
+
+    /**
+     * Spools a client upload (one header first, then chunks) to an owner-only file under the
+     * state dir, checks it against the header's size, runs [block] on it and deletes it.
+     */
+    private suspend fun <R, H : Any, T> spooled(
+        requests: Flow<R>,
+        header: (R) -> H?,
+        chunk: (R) -> ByteString?,
+        size: (H) -> Long,
+        block: suspend (H, Path) -> T,
+    ): T {
+        val upload = withContext(Dispatchers.IO) { uploadFile("upload") }
+        try {
+            var first: H? = null
+            var received = 0L
+            withContext(Dispatchers.IO) {
+                Files.newOutputStream(upload, StandardOpenOption.TRUNCATE_EXISTING).use { out ->
+                    requests.collect { part ->
+                        val h = header(part)
+                        val bytes = chunk(part)
+                        when {
+                            h != null -> {
+                                argument(first == null) { "the header must be sent exactly once, first" }
+                                argument(size(h) in 0..DeviceFiles.MAX_FILE_BYTES) { "size_bytes must be in 0..${DeviceFiles.MAX_FILE_BYTES}" }
+                                first = h
+                            }
+
+                            bytes != null -> {
+                                val expected = size(argumentNotNull(first) { "the header must come before any chunk" })
+                                received += bytes.size()
+                                argument(received <= expected) { "upload exceeds size_bytes $expected" }
+                                bytes.writeTo(out)
+                            }
+
+                            else -> throw InvalidArgumentException("part must be set")
+                        }
+                    }
+                }
+            }
+            val h = argumentNotNull(first) { "the header is required" }
+            argument(received == size(h)) { "upload ended after $received of ${size(h)} bytes" }
+            return block(h, upload)
+        } finally {
+            withContext(Dispatchers.IO) { Files.deleteIfExists(upload) }
+        }
+    }
+
+    /** Runs a file operation on the attached device and logs it as [operation]. */
+    private suspend fun file(
+        clientConnectionId: String,
+        attachedDeviceId: String,
+        operation: String,
+        devicePath: String,
+        sizeBytes: Long?,
+        block: suspend (DeviceFiles) -> Unit,
+    ) {
+        val attachedDevice: AttachedDevice = daemon.attachedDevice(attachedDeviceId, clientConnectionId)
+        val logged =
+            DeviceCall
+                .newBuilder()
+                .setOperation(operation)
+                .setDevicePath(devicePath)
+                .apply { if (sizeBytes != null) setSizeBytes(sizeBytes) }
+                .build()
+        attachedDevice.recorded({ setDevice(logged) }) { block(attachedDevice.deviceSession.files) }
+    }
 
     /** Runs a device-condition change on the attached device and logs it as [operation]. */
     private suspend fun condition(
