@@ -1,7 +1,8 @@
 # Device actions: roadmap and decisions
 
-Status: phases A–D, group 1 and group 2 implemented (branch `feat/device-actions`); group 1
-proven on emulator-5554 (API 34) and the Samsung (API 29); group 2 device runs pending.
+Status: phases A–D and groups 1–3 implemented (groups 1–2 on `feat/device-actions`, group 3 on
+`feat/device-actions-3`). Groups 1–2 proven on emulator-5554 (API 34) and the Samsung (API 29);
+group 3 proven on the Samsung (2026-10-02), its emulator run pending.
 Started from the pi session report (`.docs/pi-session-…html`, not committed) and continued on
 2026-09-30.
 
@@ -294,7 +295,10 @@ clients, agent). Device tests: `clients/python/tests/test_device_actions.py`,
 `samples/fixture-tests` `DeviceActionsTest` (orders 12–15) and `:host:validation`
 `AccessibilityActionTest`, `SystemLocaleTest`, `MockLocationTest`, `DeviceFilesTest`. The locale
 receiver, media scan (API 34) and the location-mode switch were probed by hand on the local
-devices; the device suites for group 3 have not run yet.
+devices. On the Samsung (85e49002, API 29) all three device suites pass (2026-10-02), after two
+fixes the first run found: API 29's media scan (the broadcast, polled) and the leaked mock
+location test providers (now removed on detach), plus `DEVICE_FILE` for an unreadable pull. The
+run on emulator-5554 (API 34) is pending.
 
 ## Later (backlog, rough priority)
 
