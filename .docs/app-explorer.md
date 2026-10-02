@@ -1,8 +1,9 @@
 # App Explorer — design handout and implementation roadmap
 
-Status: **planning only; no implementation**. The owner agreed with the direction and requested
-this handout in a separate worktree. Detailed mechanisms below are recommendations, not
-approved API contracts. Resolve the open decisions before implementing the relevant phase.
+Status: **offline foundation implemented; live exploration not implemented**. The owner
+approved starting with a Python core in `clients/explorer`, SQLite persistence, and versioned
+JSON export. Detailed mechanisms below remain recommendations unless recorded as implemented
+in the milestone section. Resolve the remaining decisions before the relevant live/AI phase.
 
 ## 1. Purpose
 
@@ -355,8 +356,8 @@ robot operation. Whether successful login is correct requires an approved expect
 
 ## 16. Implementation phases and acceptance gates
 
-No phase is implemented by this handout. Each should be a bounded change with its own tests;
-update this record with actual results, not just completed code.
+The offline milestone below implements a bounded subset of this roadmap. Each phase should
+be a separate change with its own tests; record actual results, not just completed code.
 
 ### Phase 0 — contract and configuration
 
@@ -427,13 +428,15 @@ are relative to the configured discovery policy, not a percentage of the app's t
 
 ## 18. Decisions still needed
 
-Before implementation, obtain concrete answers for:
+Offline decisions approved: Python `clients/explorer`, SQLite, versioned JSON, offline core
+before device/AI execution. The package is `tap-explorer` (development only, not tagged).
+Before live execution, AI, or robot generation, obtain concrete answers for:
 
 1. Initial target app, environment/account, and what is allowed to execute.
 2. Starting-condition and reset capabilities, including backend state.
 3. CLI-only first interface versus a required visual review surface.
 4. AI provider/model, external-image/data policy, and cost budget.
-5. Storage/export format and retention/redaction rules.
+5. Artifact retention/redaction rules and any evolution of the initial export schema.
 6. Human approval workflow for risk, state merges, and robot promotion.
 7. Robot output language/conventions and required verification threshold.
 8. Whether low-confidence/index-based interactions are allowed during discovery at all.
@@ -449,7 +452,43 @@ layering, per-serial exclusivity, exact-one mutations, strictly increasing reque
 no-replay-after-acceptance rule. Do not expand synchronization work. Do not treat this proposed
 layout/schema as an already accepted public contract.
 
-First resolve Phase 0 decisions with the owner; then implement the smallest vertical slice:
+Offline Phase 0 choices are approved. Resolve live/AI Phase 0 decisions with the owner; then
+implement the smallest device-connected vertical slice:
 known starting condition → one safe branch → persistent observation/transition → checked
 return/replay → honest report. Build outward from demonstrated behavior rather than attempting
 an autonomous whole-app crawler in one change.
+
+## 20. Offline milestone — implemented and exercised
+
+The owner selected **offline core first**: Python, SQLite, versioned JSON, no device/AI execution.
+`clients/explorer` now provides `GraphStore` and a thin local `tap-explorer` CLI:
+
+- One run per SQLite file, whole-document transactional storage and validated
+  `tap-exploration/1` metadata import/export; artifact files are not copied or read.
+- Immutable observations, explicit state classification/membership, no automatic merging.
+- Blocked-by-default candidates and recorded explicit approval.
+- Stable priority/depth/source-ID/action-ID scheduling, action and caller-supplied depth limits.
+- Intent-before-execution recording, atomic scheduling/budget checks, write serialization,
+  immutable completed outcomes, and explicit orphaned-intent recovery.
+- Global stop on unfinished/indeterminate attempts; recovery never requeues or retransmits.
+- Separately approved new trials, preserving repeated outcomes and self-loops in a multigraph.
+- Distinct command success and recognized destination; no route-verification claims.
+- CLI init/status/export/import/recover and public development-only documentation.
+
+Verification: **41 explorer tests**, and **168 combined Python client/agent/explorer unit tests**
+passed on Python 3.12. Project-scoped Pyright reports zero errors/warnings. Wheel and sdist
+build successfully. The Python CI lane installs/builds the package, runs these tests on its
+3.10/3.13 matrix, and runs its project-scoped type check (CI results must be checked separately).
+Device matrix: **not run**. No device input or AI call was made.
+
+Deliberately incomplete: no coordinator/device executor, state-signature algorithm, route
+planner, AI adapter, screen catalog, robot generation, artifact management/redaction, semantic
+scenario validation, elapsed/scroll/AI budgets, automatic reconciliation, or tagged release.
+Targets/scenarios are opaque offline metadata and must not be fed to an executor without a
+future typed validation/policy layer. An uncertain run remains blocked; opening a database does
+not assert ownership of an executor or automatically recover it. The whole-document store is
+for small offline runs and will need measured scaling work before large app crawls.
+
+Next milestone: define the fixture starting condition and explicit allowed navigation actions;
+add a public `tap-e2e` observation/execution adapter and fake-daemon tests before any separately
+requested device pilot. Preserve the stored-intent uncertainty boundary during that integration.

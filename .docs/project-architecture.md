@@ -48,6 +48,10 @@ Android driver instrumentation  (package io.github.noamcohen48.tap.driver, own U
 Application under test  (any package)          device/sync-sdk: TapSynchronization + provider
 ```
 
+`clients/explorer` (`tap-explorer`, experimental) is currently an offline Python graph store
+and CLI (SQLite, `tap-exploration/1` metadata). It has no device, daemon, or AI execution path
+yet; its future live adapter will use `tap-e2e`. See [app-explorer.md](app-explorer.md).
+
 ADB is used for setup, lifecycle, forwarding, and recovery. Ordinary UI commands travel over
 the persistent RPC connection; Tap never launches an ADB process per action.
 

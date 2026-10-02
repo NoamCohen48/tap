@@ -19,6 +19,11 @@ The repository builds six artifact families, each on its own version line:
 | **Studio** (experimental) | `client-studio/vX.Y.Z` | `tap-studio` wheel + sdist (browser inspector + recorder with the built page inside, depends on `tap-e2e`) on a GitHub Release (PyPI opt-in, after `tap-e2e`) | `clients/studio/pyproject.toml` |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
 
+`clients/explorer` (`tap-explorer`) is an **unreleased experimental development package**.
+Its initial version is in `clients/explorer/pyproject.toml`; the Python CI job builds/tests it,
+including a project-scoped Pyright check. It has no release tag family, release workflow,
+PyPI publication, or release-set entry yet. Do not tag it until those are deliberately added.
+
 ### The host daemon and the driver are one artifact (the engine)
 
 The driver APKs (`device/driver`) are not published on their own. They ride inside the

@@ -33,6 +33,11 @@ Breaking, in every family (protocol 5.0; `.docs/app-and-screen.md`):
 
 Added:
 
+- **App Explorer** (experimental development package, not released): `clients/explorer`
+  provides SQLite-backed offline exploration graphs, deterministic candidate scheduling,
+  finite action/depth budgets, explicit approvals, crash-safe attempt tracking, and
+  `tap-exploration/1` metadata import/export. No device execution or AI integration yet.
+  Guide: `docs/guide/explorer.md`.
 - **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
   `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on
   the daemon host: video (MP4), audio (Opus) or both (Matroska), bounded to 30 s with video and
