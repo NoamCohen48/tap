@@ -24,6 +24,9 @@ const val DRIVER_PACKAGE = "io.github.noamcohen48.tap.driver"
 /** The driver's instrumentation package, which carries the driver code. AGP stamps no version
  * on it (`versionName=null`, `versionCode=0`); its build is what the handshake reports. */
 const val DRIVER_TEST_PACKAGE = "$DRIVER_PACKAGE.test"
+
+/** The driver app's notification listener (the notification commands), as a flattened component. */
+const val DRIVER_NOTIFICATION_LISTENER = "$DRIVER_PACKAGE/$DRIVER_PACKAGE.TapNotificationListener"
 /**
  * Whether [packageName] is one of Tap's own driver packages. They are never an app under test or
  * a lifecycle target: stopping, clearing or uninstalling them would kill the device session.

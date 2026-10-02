@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.sdk
 
+import java.time.Instant
 import kotlin.time.Duration
 
 /*
@@ -153,6 +154,22 @@ data class Range(
 data class Toast(
     val text: String,
     val packageName: String,
+)
+
+/**
+ * An active notification ([Device.notifications], [Device.awaitNotification]): the [packageName]
+ * that posted it, its [title] and [text] (the `android.title` / `android.text` extras, null when
+ * it has none), the titles of its action buttons ([actions], what [Device.openNotification]'s
+ * `action` names), whether a swipe dismisses it ([clearable]: false for an ongoing one, such as a
+ * foreground service's), and when it was posted.
+ */
+data class Notification(
+    val packageName: String,
+    val title: String?,
+    val text: String?,
+    val actions: List<String>,
+    val clearable: Boolean,
+    val postedAt: Instant,
 )
 
 /**
@@ -328,6 +345,9 @@ enum class WaitReason {
 
     /** `awaitToast`: no matching toast was shown. */
     NO_TOAST,
+
+    /** `awaitNotification`: no matching notification was active. */
+    NO_NOTIFICATION,
     ;
 
     internal companion object {

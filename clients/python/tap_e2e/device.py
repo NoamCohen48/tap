@@ -28,6 +28,7 @@ from .models import (
     Orientation,
     MatchMode,
     LocationAccuracy,
+    Notification,
     PermissionChoice,
     PermissionPrompt,
     Recording,
@@ -611,6 +612,83 @@ class Device:
             raise WaitTimeoutError._from_result(result, what + origin, self.serial)
         return _proto.toast(result.toast)
 
+    def await_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        timeout: float | None = None,
+    ) -> Notification:
+        """Wait until a matching notification is active (one already posted counts) and return
+        the newest, within ``timeout`` (default ``timeouts.wait``).
+
+        ``title`` and ``text`` match with ``mode`` (any when ``None``); ``package_name`` narrows it
+        to one app's notifications (``App.await_notification`` passes its own). Notifications are
+        read as data from a notification listener in the Tap driver app, not from the shade, so
+        nothing opens on screen; the server gives the driver notification access for the session
+        (taken back on ``detach()``). Group summaries are left out. Raises ``WaitTimeoutError``
+        (reason ``NO_NOTIFICATION``) when none matches.
+        """
+        timeout = self.timeouts.wait if timeout is None else timeout
+        match = _notification_match(title, text, mode, package_name)
+        result = self._execute(timeout, await_notification=pb.AwaitNotification(match=match))
+        if result.HasField("error"):
+            if result.error.code != pb.ERR_WAIT_TIMEOUT:
+                raise CommandError._from_result(result, "await_notification", self.serial, None)
+            fields = [f"{name} {value!r}" for name, value in (("title", title), ("text", text)) if value is not None]
+            what = "a notification" + (f" with {' and '.join(fields)}" if fields else "")
+            origin = "" if package_name is None else f" from {package_name}"
+            raise WaitTimeoutError._from_result(result, what + origin, self.serial)
+        return _proto.notification(result.notification)
+
+    def notifications(self, timeout: float | None = None) -> list[Notification]:
+        """The active notifications, newest first (group summaries left out), as
+        ``await_notification`` reads them."""
+        result = self._execute_or_raise(timeout, list_notifications=pb.ListNotifications())
+        return [_proto.notification(n) for n in result.notifications.notifications]
+
+    def open_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        action: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        """Open the one active notification that matches (as for ``await_notification``) as a tap
+        on it in the shade does: send its content intent and, when it auto-cancels, remove it.
+
+        With ``action``, press its action button with exactly that title instead; the notification
+        stays. No match or several matches raise ``CommandError`` (``NOT_FOUND`` / ``AMBIGUOUS``),
+        and a notification that opens nothing or has no such action ``ACTION_REJECTED``
+        (``ACTION_NOT_OFFERED``), before anything is sent. What the app does then is for the test
+        to assert (an activity, say: ``foreground_activity()``).
+        """
+        request = pb.OpenNotification(match=_notification_match(title, text, mode, package_name))
+        if action is not None:
+            request.action = action
+        self._execute_or_raise(timeout, open_notification=request)
+
+    def dismiss_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        """Dismiss the one active notification that matches (as for ``await_notification``) as a
+        swipe does. No match or several matches raise ``CommandError`` (``NOT_FOUND`` /
+        ``AMBIGUOUS``), and an ongoing notification ``ACTION_REJECTED`` (``NOT_CLEARABLE``),
+        before anything changes."""
+        match = _notification_match(title, text, mode, package_name)
+        self._execute_or_raise(timeout, dismiss_notification=pb.DismissNotification(match=match))
+
     def type_text(self, value: str, timeout: float | None = None) -> None:
         """Type ``value`` as real key events into whatever has input focus now.
 
@@ -939,6 +1017,21 @@ def _file_source(
     if size > MAX_FILE_BYTES:
         raise ValueError(f"at most {MAX_FILE_BYTES} bytes are sent, not {size}")
     return size, reader
+
+
+def _notification_match(
+    title: str | None, text: str | None, mode: MatchMode, package_name: str | None
+) -> pb.NotificationMatch:
+    match = pb.NotificationMatch()
+    if title is not None:
+        match.title = title
+    if text is not None:
+        match.text = text
+    if title is not None or text is not None:
+        match.mode = _proto.match_mode(mode)
+    if package_name is not None:
+        match.package_name = package_name
+    return match
 
 
 def _upload(header, chunks: Callable[[], Iterator[bytes]], part: Callable[[bytes], object]) -> Iterator:

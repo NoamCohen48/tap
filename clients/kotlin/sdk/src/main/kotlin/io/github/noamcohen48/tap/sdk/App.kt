@@ -252,6 +252,14 @@ class App internal constructor(
         timeout: Duration = device.timeouts.wait,
     ): Toast = device.awaitToast(text, mode, packageName, timeout)
 
+    /** [Device.awaitNotification] for this package's notifications only. */
+    suspend fun awaitNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        timeout: Duration = device.timeouts.wait,
+    ): Notification = device.awaitNotification(title, text, mode, packageName, timeout)
+
     /**
      * Waits on the device until this package's focused window has stopped changing for
      * [stableFor] according to [signal]: the accessibility tree ([StabilitySignal.TREE]), the

@@ -84,6 +84,15 @@ private const val PULL_CHUNK_BYTES = 256 * 1024
 
 private val UNLOGGED_OPS = setOf(Command.OpCase.DEVICE_INFO, Command.OpCase.DUMP_HIERARCHY)
 
+/** Commands that read the driver's notification listener: the server gives it access first. */
+private val NOTIFICATION_OPS =
+    setOf(
+        Command.OpCase.AWAIT_NOTIFICATION,
+        Command.OpCase.LIST_NOTIFICATIONS,
+        Command.OpCase.OPEN_NOTIFICATION,
+        Command.OpCase.DISMISS_NOTIFICATION,
+    )
+
 class DeviceService(
     private val daemon: TapDaemon,
 ) : DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
@@ -152,6 +161,7 @@ class DeviceService(
                     resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                 } else {
                     attachedDevice.recorded({ setCommand(command) }, { it.takeIf { it.hasError() }?.error }) {
+                        if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
                         resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                     }
                 }

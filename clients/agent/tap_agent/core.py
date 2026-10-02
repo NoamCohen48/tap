@@ -26,6 +26,7 @@ from tap_e2e import (
     Element,
     LocationAccuracy,
     MatchMode,
+    Notification,
     Orientation,
     PermissionChoice,
     ServerError,
@@ -81,6 +82,8 @@ class AgentError(Exception):
         super().__init__(message)
         self.exit_code = exit_code
 
+
+NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
 
 APP_ACTIONS = (
     "launch", "cold-launch", "foreground", "background", "open-link",
@@ -709,6 +712,50 @@ class Agent:
 
         return self._run(step)
 
+    def notification(
+        self,
+        action: str = "list",
+        title: str | None = None,
+        text: str | None = None,
+        device: str | None = None,
+        contains: bool = False,
+        package: str | None = None,
+        button: str | None = None,
+        timeout: float = DEFAULT_WAIT,
+        settle: bool = False,
+    ) -> str:
+        """The device's notifications, read as data (the shade stays closed). ``list``: every
+        active one, newest first; ``await``: wait until one matches and print it; ``open``: open
+        the one that matches as a tap does (or press its ``button``); ``dismiss``: swipe it away.
+        ``title`` / ``text`` match exactly, or as parts with ``contains``; ``package`` narrows to
+        one app. Notification access is given to the driver for the session."""
+        if action not in NOTIFICATION_ACTIONS:
+            raise AgentError(f"notification takes {', '.join(NOTIFICATION_ACTIONS)}, not {action!r}", EXIT_USAGE)
+        if contains and title is None and text is None:
+            raise AgentError("notification --contains needs a title or text", EXIT_USAGE)
+        if button is not None and action != "open":
+            raise AgentError("--button is for notification open", EXIT_USAGE)
+        mode = MatchMode.CONTAINS if contains else MatchMode.EXACT
+
+        def step() -> str:
+            d = self._device(device)
+            if action == "list":
+                shown = d.notifications()
+                if package is not None:
+                    shown = [n for n in shown if n.package_name == package]
+                return "\n".join(_notification_line(n) for n in shown) or "no notifications"
+            if action == "await":
+                return _notification_line(d.await_notification(title, text, mode, package_name=package, timeout=timeout))
+            if action == "open":
+                d.open_notification(title, text, mode, package_name=package, action=button)
+                done = f"pressed {button!r} on the notification" if button else "opened the notification"
+            else:
+                d.dismiss_notification(title, text, mode, package_name=package)
+                done = "dismissed the notification"
+            return f"{done}\n{self._settled(d)}" if settle else done
+
+        return self._run(step)
+
     def permission(
         self,
         choice: str | None = None,
@@ -871,6 +918,17 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
     except ValueError:
         raise AgentError(f"density takes a dpi or reset, not {value!r}", EXIT_USAGE) from None
     return lambda d: d.set_density(dpi)
+
+
+def _notification_line(n: Notification) -> str:
+    parts = [n.package_name + ":", repr(n.title) if n.title is not None else "(no title)"]
+    if n.text is not None:
+        parts.append(f"- {n.text!r}")
+    if n.actions:
+        parts.append("[" + ", ".join(n.actions) + "]")
+    if not n.clearable:
+        parts.append("(ongoing)")
+    return " ".join(parts)
 
 
 def _switch(value: bool | None) -> str:

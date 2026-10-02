@@ -118,6 +118,15 @@ object ErrorDetail {
     // WAIT_TIMEOUT (await_toast)
     const val NO_TOAST = "NO_TOAST"
 
+    // WAIT_TIMEOUT (await_notification)
+    const val NO_NOTIFICATION = "NO_NOTIFICATION"
+
+    // ACTION_REJECTED (dismiss_notification): an ongoing notification a swipe does not dismiss
+    const val NOT_CLEARABLE = "NOT_CLEARABLE"
+
+    // UNSUPPORTED (notification ops): the driver's notification listener is not connected
+    const val NO_NOTIFICATION_ACCESS = "NO_NOTIFICATION_ACCESS"
+
     // ACTION_REJECTED before input: the node does not offer the accessibility action
     // (perform_accessibility_action, set_progress) or the value is outside its range (set_progress).
     const val ACTION_NOT_OFFERED = "ACTION_NOT_OFFERED"

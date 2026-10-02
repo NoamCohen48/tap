@@ -999,6 +999,38 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `notification access is given once and taken back on detach`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            openWithState("session-notification-listener", state) { session, _ ->
+                session.conditions.allowNotificationListener()
+                session.conditions.allowNotificationListener()
+                assertEquals("allowed", state.values[StateKey.DriverNotificationListener.id])
+                assertEquals(1, state.writes.count { it.startsWith(StateKey.DriverNotificationListener.id) })
+                assertEquals(listOf(SavedState(StateKey.DriverNotificationListener.id, "disallowed")), journalStore().read()?.savedState)
+
+                session.close(timeoutMs = 5_000)
+                assertEquals("disallowed", state.values[StateKey.DriverNotificationListener.id])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `notification access a device does not take is refused, and asked for again`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            state.stuck += StateKey.DriverNotificationListener.id
+            openWithState("session-notification-listener-stuck", state) { session, _ ->
+                assertFailsWith<DeviceSettingException> { session.conditions.allowNotificationListener() }
+                state.stuck.clear()
+                session.conditions.allowNotificationListener()
+                assertEquals("allowed", state.values[StateKey.DriverNotificationListener.id])
+                session.close(timeoutMs = 5_000)
+                assertEquals("disallowed", state.values[StateKey.DriverNotificationListener.id])
+            }
+        }
+
+    @Test
     fun `bold text below API 31 is refused before anything changes`() =
         runBlocking {
             val state = FakeDeviceState(apiLevel = 30)

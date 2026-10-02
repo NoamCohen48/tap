@@ -261,6 +261,45 @@ def test_accessibility_actions_and_progress(fake, agent):
         assert info.value.exit_code == EXIT_USAGE
 
 
+def test_notifications_are_listed_awaited_opened_and_dismissed(fake, agent):
+    agent.attach("emulator-5554")
+    sent = []
+    message = pb.DeviceNotification(package_name="com.example", title="New message", text="from Ada", actions=["Reply"], clearable=True)
+    service = pb.DeviceNotification(package_name="android", title="USB debugging connected")
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        sent.append(command)
+        if op == "list_notifications":
+            return pb.CommandResult(notifications=pb.NotificationList(notifications=[message, service]))
+        if op == "await_notification":
+            return pb.CommandResult(notification=message)
+        if op in ("open_notification", "dismiss_notification"):
+            return pb.CommandResult(done=pb.Done())
+        return None
+
+    fake.devices.responder = respond
+    assert agent.notification() == (
+        "com.example: 'New message' - 'from Ada' [Reply]\nandroid: 'USB debugging connected' (ongoing)"
+    )
+    assert agent.notification(package="android") == "android: 'USB debugging connected' (ongoing)"
+    assert agent.notification("await", "New", contains=True) == "com.example: 'New message' - 'from Ada' [Reply]"
+    assert agent.notification("open", "New message", button="Reply") == "pressed 'Reply' on the notification"
+    assert agent.notification("dismiss", text="from Ada") == "dismissed the notification"
+    assert sent[2].await_notification.match.mode == pb.MATCH_CONTAINS
+    assert sent[3].open_notification.action == "Reply"
+    assert sent[4].dismiss_notification.match.text == "from Ada"
+    for bad in (
+        lambda: agent.notification("peek"),
+        lambda: agent.notification("await", contains=True),
+        lambda: agent.notification("dismiss", "x", button="Reply"),
+    ):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+    assert len(sent) == 5
+
+
 def test_keyboard_submit_clipboard_and_toast(fake, agent):
     agent.attach("emulator-5554")
     state = {"keyboard": True, "clip": ""}
@@ -474,7 +513,7 @@ EXPECTED_TOOLS = {
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
-    "foreground_activity",
+    "foreground_activity", "notification",
 }
 
 
