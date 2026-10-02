@@ -1,9 +1,10 @@
 import { clone, equals } from "@bufbuild/protobuf";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import type { StudioClient } from "./api";
+import { useCount } from "./count";
 import { describeSelector } from "./describe";
-import { countLine, nodeFor, stepOrigin, stepSelector, stepText, takesSecret, withSelector, withText } from "./edit";
-import { errorMessage } from "./frames";
+import { DIRECTIONS } from "./controls";
+import { countLine, needsOne, nodeFor, stepMovement, stepOrigin, stepSelector, stepText, takesSecret, withMovement, withScrollTarget, withSelector, withText, type Movement } from "./edit";
 import type { ScreenNode } from "./gen/device_pb";
 import { SelectorSchema, type Selector } from "./gen/selector_pb";
 import { SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
@@ -11,31 +12,9 @@ import { candidateChips } from "./nodes";
 import { parseSelector } from "./parse";
 import type { Target } from "./steps";
 
-type Count = { state: "idle" } | { state: "counting" } | { state: "done"; count: number } | { state: "failed"; message: string };
-
-/** How many nodes the selector matches now, asked a moment after it stops changing. */
-function useCount(client: StudioClient, selector: Selector | undefined): Count {
-  const [count, setCount] = useState<Count>({ state: "idle" });
-  useEffect(() => {
-    if (!selector) return setCount({ state: "idle" });
-    let cancelled = false;
-    setCount({ state: "counting" });
-    const timer = setTimeout(() => {
-      client.count({ selector }).then(
-        (r) => !cancelled && setCount({ state: "done", count: r.count }),
-        (e: unknown) => !cancelled && setCount({ state: "failed", message: errorMessage(e) }),
-      );
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [client, selector]);
-  return count;
-}
-
-/** Edits one recorded step: its selector (another candidate of its node, or typed), the text it
- *  enters or checks (or a secret), and its note. Saving does not run it. */
+/** Edits one recorded step: its selector (another candidate of its node, or typed), what a scroll
+ *  until scrolls to, how a swipe, scroll or scroll until moves, the text it enters or checks (or a
+ *  secret), and its note. Saving does not run it. */
 export function StepEditor({
   step,
   nodes,
@@ -57,7 +36,21 @@ export function StepEditor({
   const [typedError, setTypedError] = useState<string | null>(null);
   const count = useCount(client, target?.selector);
   const counted =
-    count.state === "done" && target ? countLine(count.count, target.selector, step.kind.case === "assertion") : null;
+    count.state === "done" && target ? countLine(count.count, target.selector, needsOne(step)) : null;
+
+  const originalTarget = step.kind.case === "scrollUntil" ? step.kind.value.target : undefined;
+  const [scrollTo, setScrollTo] = useState(originalTarget ? describeSelector(originalTarget) : "");
+  const parsedScrollTo = originalTarget ? parseSelector(scrollTo) : null;
+
+  const initialMovement = stepMovement(step);
+  const [movement, setMovement] = useState<Movement | null>(initialMovement);
+  const move = (change: Partial<Movement>) => setMovement((m) => (m ? { ...m, ...change } : m));
+  const movementError =
+    movement && !(Number.isInteger(movement.distance) && movement.distance >= 1 && movement.distance <= 100)
+      ? "The distance is 1 to 100 percent."
+      : movement?.maxScrolls !== undefined && !(Number.isInteger(movement.maxScrolls) && movement.maxScrolls >= 1 && movement.maxScrolls <= 1000)
+        ? "Max scrolls is 1 to 1000."
+        : null;
 
   const initialText = stepText(step);
   const [text, setText] = useState(initialText && "text" in initialText ? initialText.text : "");
@@ -93,13 +86,64 @@ export function StepEditor({
   if (target && original && !(equals(SelectorSchema, target.selector, original) && target.origin === stepOrigin(step))) {
     edited = withSelector(edited, target);
   }
+  if (parsedScrollTo && "selector" in parsedScrollTo && originalTarget && !equals(SelectorSchema, parsedScrollTo.selector, originalTarget)) {
+    edited = withScrollTarget(edited, parsedScrollTo.selector);
+  }
+  const moved =
+    movement &&
+    initialMovement &&
+    (movement.direction !== initialMovement.direction || movement.distance !== initialMovement.distance || movement.maxScrolls !== initialMovement.maxScrolls);
+  if (moved) edited = withMovement(edited, movement);
   if (initialText) edited = withText(edited, secret !== null ? { secret: secret.trim() } : { text });
   if ((edited.note ?? "") !== note) {
     edited = clone(StepSchema, edited);
     edited.note = note || undefined;
   }
   const changed = !equals(StepSchema, edited, step) || (secret !== null && secretValue !== "");
-  const valid = !typedError && (secret === null || secret.trim() !== "");
+  const scrollToError = parsedScrollTo && "error" in parsedScrollTo ? `${parsedScrollTo.error} (at ${parsedScrollTo.at + 1})` : null;
+  const valid = !typedError && !scrollToError && !movementError && (secret === null || secret.trim() !== "");
+
+  const movementFields = movement && (
+    <>
+      <div className={movement.maxScrolls !== undefined ? "row three" : "row"}>
+        <label className="field">
+          <span>Direction</span>
+          <select value={movement.direction} onChange={(e) => move({ direction: Number(e.target.value) })}>
+            {DIRECTIONS.map((d) => (
+              <option key={d.to} value={d.direction}>
+                {d.name[0]!.toUpperCase() + d.name.slice(1)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Distance (%)</span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={Number.isNaN(movement.distance) ? "" : movement.distance}
+            aria-invalid={movementError?.startsWith("The distance") ?? false}
+            onChange={(e) => move({ distance: e.target.valueAsNumber })}
+          />
+        </label>
+        {movement.maxScrolls !== undefined && (
+          <label className="field">
+            <span>Max scrolls</span>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={Number.isNaN(movement.maxScrolls) ? "" : movement.maxScrolls}
+              aria-invalid={movementError?.startsWith("Max") ?? false}
+              onChange={(e) => move({ maxScrolls: e.target.valueAsNumber })}
+            />
+          </label>
+        )}
+      </div>
+      {movementError && <div className="count-line warn">{movementError}</div>}
+    </>
+  );
 
   return (
     <form
@@ -154,9 +198,34 @@ export function StepEditor({
         </fieldset>
       )}
 
+      {originalTarget && (
+        <fieldset>
+          <legend>Scroll until</legend>
+          <label className="field">
+            <span>Element to bring into view</span>
+            <input
+              className="mono"
+              value={scrollTo}
+              spellCheck={false}
+              aria-invalid={!!scrollToError}
+              onChange={(e) => setScrollTo(e.target.value)}
+            />
+          </label>
+          {scrollToError && <div className="count-line warn">{scrollToError}</div>}
+          {movementFields}
+        </fieldset>
+      )}
+
+      {movement && step.kind.case !== "scrollUntil" && (
+        <fieldset>
+          <legend>Gesture</legend>
+          {movementFields}
+        </fieldset>
+      )}
+
       {initialText && (
         <fieldset>
-          <legend>{step.kind.case === "assertion" ? "Expected text" : "Text"}</legend>
+          <legend>{step.kind.case === "wait" || step.kind.case === "assertion" ? "Expected text" : "Text"}</legend>
           {secret === null ? (
             <label className="field">
               <span className="sr-only">Text</span>
@@ -220,6 +289,8 @@ export function StepEditor({
               setSecret(initialText && "secret" in initialText ? initialText.secret : null);
               setSecretValue("");
               setNote(step.note ?? "");
+              setScrollTo(originalTarget ? describeSelector(originalTarget) : "");
+              setMovement(initialMovement);
             }}
           >
             Undo changes

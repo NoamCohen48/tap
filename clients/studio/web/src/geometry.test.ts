@@ -1,9 +1,9 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
-import { BoundsSchema, Direction } from "./gen/command_pb";
+import { BoundsSchema } from "./gen/command_pb";
 import { ScreenNodeSchema, type ScreenNode } from "./gen/device_pb";
 import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
-import { box, dragDirection, hit, scrollableAt, tapLabel, toFrame } from "./geometry";
+import { box, hit, scrollableAround, tapLabel, toFrame, within } from "./geometry";
 
 function node(ref: string, [left, top, right, bottom]: [number, number, number, number], extra: MessageInitShape<typeof ScreenNodeSchema> = {}): ScreenNode {
   const made = create(ScreenNodeSchema, { ref, ...extra });
@@ -73,11 +73,6 @@ describe("hit", () => {
       expect(hit(frame, { x: 100, y: 40 })?.ref).toBe("s1");
     });
   });
-
-  it("finds the scrollable node the wheel scrolls", () => {
-    expect(scrollableAt(nodes, { x: 800, y: 300 })?.ref).toBe("e1");
-    expect(scrollableAt(nodes, { x: 800, y: 2100 })).toBeNull();
-  });
 });
 
 describe("tapLabel", () => {
@@ -106,16 +101,29 @@ describe("tapLabel", () => {
   });
 });
 
+describe("within", () => {
+  it("is the nodes whose centre is inside the container, without the container", () => {
+    const list = node("e1", [0, 100, 1000, 900]);
+    const row = node("e2", [0, 750, 1000, 1000]); // partly scrolled out, centre inside
+    const below = node("e3", [0, 880, 1000, 1200]); // centre outside
+    expect(within([list, row, below], list).map((n) => n.ref)).toEqual(["e2"]);
+  });
+});
+
+describe("scrollableAround", () => {
+  it("is the smallest scrollable node holding the node", () => {
+    const page = node("e1", [0, 0, 1000, 2000], { depth: 0, flags: [NodeFlag.FLAG_SCROLLABLE] });
+    const list = node("e2", [0, 100, 1000, 900], { depth: 1, flags: [NodeFlag.FLAG_SCROLLABLE] });
+    const row = node("e3", [0, 200, 1000, 300], { depth: 2 });
+    expect(scrollableAround([page, list, row], row)?.ref).toBe("e2");
+    expect(scrollableAround([page, list, row], list)?.ref).toBe("e1");
+    expect(scrollableAround([row], row)).toBeNull();
+  });
+});
+
 describe("pointer", () => {
   it("maps a client point on the scaled picture to device pixels", () => {
     expect(toFrame({ x: 60, y: 130 }, { left: 10, top: 30, width: 270, height: 600 }, 1080, 2400)).toEqual({ x: 200, y: 400 });
   });
 
-  it("reads a drag as the direction the finger moved, and a short one as a click", () => {
-    expect(dragDirection({ x: 900, y: 500 }, { x: 200, y: 520 }, 40)).toBe(Direction.DIR_LEFT);
-    expect(dragDirection({ x: 200, y: 500 }, { x: 900, y: 450 }, 40)).toBe(Direction.DIR_RIGHT);
-    expect(dragDirection({ x: 500, y: 1500 }, { x: 520, y: 400 }, 40)).toBe(Direction.DIR_UP);
-    expect(dragDirection({ x: 500, y: 400 }, { x: 480, y: 1500 }, 40)).toBe(Direction.DIR_DOWN);
-    expect(dragDirection({ x: 500, y: 400 }, { x: 520, y: 430 }, 40)).toBeNull();
-  });
 });

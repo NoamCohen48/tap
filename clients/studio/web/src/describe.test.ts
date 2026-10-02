@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { describeSelector, describeStep, describeWait, stepKind } from "./describe";
 import { Direction, SystemPanel } from "./gen/command_pb";
 import { MatchMode, NodeFlag, Relation, SelectorSchema, TextProperty, type Node } from "./gen/selector_pb";
-import { Condition, PerformRequestSchema, StepSchema, type PerformRequest } from "./gen/studio_pb";
+import { Check, Condition, PerformRequestSchema, StepSchema, type PerformRequest } from "./gen/studio_pb";
 import * as steps from "./steps";
 
 const res = (name: string): Node => ({ kind: { case: "resource", value: { name } } }) as Node;
@@ -71,29 +71,59 @@ describe("describeStep", () => {
     expect(describeStep(recorded(steps.gesture(search, "longTap")))).toBe('screen.element(res("search")).longTap()');
     expect(describeStep(recorded(steps.scroll(search, Direction.DIR_DOWN)))).toBe('screen.element(res("search")).scroll(DOWN)');
     expect(describeStep(recorded(steps.swipe(search, Direction.DIR_LEFT)))).toBe('screen.element(res("search")).swipe(LEFT)');
+    expect(describeStep(recorded(steps.swipe(search, Direction.DIR_UP, 40)))).toBe('screen.element(res("search")).swipe(UP, distancePercent = 40)');
+    expect(describeStep(recorded(steps.scroll(search, Direction.DIR_DOWN, 80)))).toBe('screen.element(res("search")).scroll(DOWN)');
     expect(describeStep(recorded(steps.setText(search, { text: "wool" })))).toBe('screen.element(res("search")).setText("wool")');
     expect(describeStep(recorded(steps.setText(search, { secret: "password", value: "hunter2" })))).toBe(
       'screen.element(res("search")).setText(${password})',
     );
     expect(describeStep(recorded(steps.typeText(search, { text: "jo" })))).toBe('screen.element(res("search")).typeText("jo")');
+    expect(describeStep(recorded(steps.typeText(search, { text: "jo" }, { awaitFocus: false })))).toBe(
+      'screen.element(res("search")).typeText("jo", awaitFocus = false)',
+    );
+    expect(describeStep(recorded(steps.app("launch", "com.example", { activity: ".ui.Settings" })))).toBe('app("com.example").launch(".ui.Settings")');
     expect(describeStep(recorded(steps.pressKey(4)))).toBe("pressBack()");
-    expect(describeStep(recorded(steps.pressKey(66)))).toBe("pressKey(66)");
+    expect(describeStep(recorded(steps.pressKey(66)))).toBe("pressKey(66 /* Enter */)");
+    expect(describeStep(recorded(steps.pressKey(300)))).toBe("pressKey(300)");
     expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.NOTIFICATIONS)))).toBe("openNotifications()");
     expect(describeStep(recorded(steps.openSystemPanel(SystemPanel.QUICK_SETTINGS)))).toBe("openQuickSettings()");
     expect(describeStep(recorded(steps.app("cold_launch", "com.example")))).toBe('app("com.example").coldLaunch()');
-    expect(describeStep(recorded(steps.app("grant_permission", "com.example", "android.permission.CAMERA")))).toBe(
+    expect(describeStep(recorded(steps.app("grant_permission", "com.example", { permission: "android.permission.CAMERA" })))).toBe(
       'app("com.example").grantPermission("android.permission.CAMERA")',
     );
-    expect(describeStep(recorded(steps.assertion(search, { condition: Condition.TEXT_EQUALS, text: "Wool" })))).toBe(
+    expect(describeStep(recorded(steps.wait(search, { condition: Condition.TEXT_EQUALS, text: "Wool" })))).toBe(
       'screen.await(res("search")).textEquals("Wool")',
     );
-    expect(describeStep(recorded(steps.assertion(search, { condition: Condition.ONE })))).toBe('screen.await(res("search")).one()');
+    expect(describeStep(recorded(steps.wait(search, { condition: Condition.ONE })))).toBe('screen.await(res("search")).one()');
+  });
+
+  it("shows an assertion as kotlin.test around the element query", () => {
+    const shown = (expect: steps.Expect) => describeStep(recorded(steps.assertion(search, expect)));
+    expect(shown({ check: Check.EXISTS })).toBe('assertTrue(screen.element(res("search")).exists())');
+    expect(shown({ check: Check.COUNT, count: 3 })).toBe('assertEquals(3, screen.element(res("search")).count())');
+    expect(shown({ check: Check.TEXT_EQUALS, text: "Wool" })).toBe('assertEquals("Wool", screen.element(res("search")).text())');
+    expect(shown({ check: Check.TEXT_CONTAINS, text: "Wo" })).toBe('assertContains(screen.element(res("search")).text().orEmpty(), "Wo")');
+    expect(shown({ check: Check.DISABLED })).toBe('assertFalse(screen.element(res("search")).isEnabled())');
+  });
+
+  it("shows scroll until and the app waits as the SDK calls", () => {
+    const list = steps.synthesized(selector(res("list")));
+    const row = selector(match(TextProperty.PROPERTY_TEXT, "Row 40"));
+    expect(describeStep(recorded(steps.scrollUntil(list, row, Direction.DIR_DOWN)))).toBe('screen.element(res("list")).scrollUntil(text("Row 40"))');
+    expect(describeStep(recorded(steps.scrollUntil(list, row, Direction.DIR_UP)))).toBe('screen.element(res("list")).scrollUntil(text("Row 40"), UP)');
+    expect(describeStep(recorded(steps.scrollUntil(list, row, Direction.DIR_DOWN, { distance: 50, maxScrolls: 30 })))).toBe(
+      'screen.element(res("list")).scrollUntil(text("Row 40"), maxScrolls = 30, distancePercent = 50)',
+    );
+    expect(describeStep(recorded(steps.appWait("visible", "com.example")))).toBe('app("com.example").awaitVisible()');
+    expect(describeStep(recorded(steps.appWait("stable", "com.example")))).toBe('app("com.example").awaitScreenStable()');
+    expect(describeStep(recorded(steps.appWait("settled", "com.example")))).toBe('app("com.example").awaitSettled()');
+    expect(describeStep(recorded(steps.appWait("animation_end", "com.example")))).toBe('app("com.example").awaitAnimationEnd()');
   });
 
   it("runs a selector with a package predicate on that app, and one without on the screen", () => {
     const owned = steps.synthesized(selector(all(res("search"), match(TextProperty.PROPERTY_PACKAGE_NAME, "com.example"))));
     expect(describeStep(recorded(steps.gesture(owned, "tap")))).toBe('app("com.example").element(res("search")).tap()');
-    expect(describeStep(recorded(steps.assertion(owned, { condition: Condition.GONE })))).toBe('app("com.example").await(res("search")).gone()');
+    expect(describeStep(recorded(steps.wait(owned, { condition: Condition.GONE })))).toBe('app("com.example").await(res("search")).gone()');
     // Only an exact predicate in the top conjunction is the app: a nested one stays in the selector.
     const prefix = steps.synthesized(selector(all(res("a"), match(TextProperty.PROPERTY_PACKAGE_NAME, "com.", MatchMode.MATCH_STARTS_WITH))));
     expect(describeStep(recorded(steps.gesture(prefix, "tap")))).toBe(
@@ -105,7 +135,9 @@ describe("describeStep", () => {
     expect(stepKind(recorded(steps.pressKey(4)))).toBe("key");
     expect(stepKind(recorded(steps.openSystemPanel(SystemPanel.QUICK_SETTINGS)))).toBe("system");
     expect(stepKind(recorded(steps.gesture(search, "tap")))).toBe("action");
-    expect(stepKind(recorded(steps.assertion(search, { condition: Condition.VISIBLE })))).toBe("assertion");
+    expect(stepKind(recorded(steps.wait(search, { condition: Condition.VISIBLE })))).toBe("wait");
+    expect(stepKind(recorded(steps.assertion(search, { check: Check.EXISTS })))).toBe("assertion");
+    expect(stepKind(recorded(steps.appWait("settled", "com.example")))).toBe("wait");
   });
 
   it("shows the wait the studio inferred for an action", () => {

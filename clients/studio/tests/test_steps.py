@@ -9,7 +9,9 @@ from tap_e2e import CommandError, WaitTimeoutError
 from tap_e2e import proto as tap
 from tap_studio._gen import studio_pb2 as studio
 from tap_studio.recording import RecordingError
-from tap_studio.steps import outcome, prepare, revise, run
+
+from .conftest import device_answers
+from tap_studio.steps import CheckFailed, outcome, prepare, revise, run
 
 SEARCH = {"node": {"resource": {"name": "search"}}}
 ONE = {"wait_visible": {"selector": SEARCH, "exactly_one": True}}
@@ -168,13 +170,83 @@ def test_a_type_step_is_the_sdk_type_text_flow(daemon, device):
         ("CONDITION_COUNT", {"count": 1}, ["count"]),
     ],
 )
-def test_an_assertion_is_the_sdk_wait_of_the_same_name(daemon, device, condition, value, ops):
-    prepared = prepare(step(assertion={"selector": SEARCH, "condition": condition, **value}), None)
+def test_a_wait_is_the_sdk_wait_of_the_same_name(daemon, device, condition, value, ops):
+    prepared = prepare(step(wait={"selector": SEARCH, "condition": condition, **value}), None)
     daemon.devices.commands.clear()
     run(device, prepared)
     assert [c.WhichOneof("op") for c in sent(daemon)] == ops
     if condition in ("CONDITION_VISIBLE", "CONDITION_ONE"):
         assert sent(daemon)[0].wait_visible.exactly_one is (condition == "CONDITION_ONE")
+
+
+@pytest.mark.parametrize(
+    ("check", "value", "op"),
+    [
+        ("CHECK_EXISTS", {}, "exists"),
+        ("CHECK_COUNT", {"count": 1}, "count"),
+        ("CHECK_TEXT_EQUALS", {"text": "Wool socks"}, "snapshot"),
+        ("CHECK_TEXT_CONTAINS", {"text": "Wool"}, "snapshot"),
+        ("CHECK_ENABLED", {}, "snapshot"),
+        ("CHECK_CHECKED", {}, "snapshot"),
+        ("CHECK_FOCUSED", {}, "snapshot"),
+    ],
+)
+def test_an_assertion_is_one_query_with_no_wait(daemon, device, check, value, op):
+    prepared = prepare(step(assertion={"selector": SEARCH, "check": check, **value}), None)
+    daemon.devices.commands.clear()
+    run(device, prepared)
+    assert [c.WhichOneof("op") for c in sent(daemon)] == [op]
+    assert getattr(sent(daemon)[0], op).selector == json_format.ParseDict(SEARCH, tap.Selector())
+
+
+@pytest.mark.parametrize(
+    ("check", "value", "found"),
+    [
+        ("CHECK_COUNT", {"count": 2}, "expected 2 matches, found 1"),
+        ("CHECK_TEXT_EQUALS", {"text": "Wool"}, "expected text 'Wool', found 'Wool socks'"),
+        ("CHECK_TEXT_CONTAINS", {"text": "silk"}, "expected text containing 'silk', found 'Wool socks'"),
+        ("CHECK_DISABLED", {}, "expected disabled"),
+        ("CHECK_UNCHECKED", {}, "expected unchecked"),
+    ],
+)
+def test_an_assertion_that_does_not_hold_says_what_was_found(daemon, device, check, value, found):
+    with pytest.raises(CheckFailed) as caught:
+        run(device, prepare(step(assertion={"selector": SEARCH, "check": check, **value}), None))
+    assert str(caught.value).startswith(found)
+    result = outcome(3, caught.value, "emulator-5554")
+    assert result.mismatch == str(caught.value)
+    assert not result.HasField("error") and not result.HasField("failure")
+
+
+def test_scroll_until_waits_for_its_container_then_scrolls_until_the_target_exists(daemon, device):
+    target = {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Row 40"}}}
+    prepared = prepare(step(scroll_until={"container": SEARCH, "target": target, "direction": "DIR_DOWN"}), None)
+    assert (prepared.scroll_until.max_scrolls, prepared.scroll_until.distance_percent) == (20, 80)
+    found = iter([False, False, True])
+    daemon.devices.responder = lambda c: (
+        tap.CommandResult(bool=next(found)) if c.WhichOneof("op") == "exists" else device_answers(c)
+    )
+    daemon.devices.commands.clear()
+    run(device, prepared)
+    ops = [c.WhichOneof("op") for c in sent(daemon)]
+    assert ops == ["wait_visible", "exists", "scroll", "exists", "scroll", "exists"]
+    assert sent(daemon)[0].wait_visible.exactly_one
+    assert sent(daemon)[2] == command({"scroll": {"selector": SEARCH, "direction": "DIR_DOWN", "distance_percent": 80}})
+    descendant = sent(daemon)[1].exists.selector
+    assert descendant.node.WhichOneof("kind") == "all_of"  # container.descendant(target)
+
+
+def test_app_waits_are_the_sdk_app_waits(daemon, device):
+    visible = prepare(step(app_wait={"command": {"wait_app_visible": {"package_name": "com.example"}}}), None)
+    stable = prepare(step(app_wait={"command": {"wait_screen_stable": {"package_name": "com.example", "signal": "STABILITY_PIXELS"}}}), None)
+    # The SDK's defaults are made explicit, so the recording holds what was sent.
+    assert stable.app_wait.command.wait_screen_stable.stable_for_ms == 500
+    settled = prepare(step(app_wait={"command": {"wait_screen_stable": {"package_name": "com.example"}}}), None)
+    assert settled.app_wait.command.wait_screen_stable.signal == tap.STABILITY_ALL
+    daemon.devices.commands.clear()
+    run(device, visible)
+    run(device, stable)
+    assert sent(daemon) == [visible.app_wait.command, stable.app_wait.command]
 
 
 @pytest.mark.parametrize(
@@ -209,7 +281,7 @@ def test_failures_become_the_outcome(daemon, device):
         error=tap.Error(code=tap.ERR_WAIT_TIMEOUT, detail="AMBIGUOUS", match_count=2)
     )
     with pytest.raises(WaitTimeoutError) as timed_out:
-        run(device, prepare(step(assertion={"selector": SEARCH, "condition": "CONDITION_ONE"}), None))
+        run(device, prepare(step(wait={"selector": SEARCH, "condition": "CONDITION_ONE"}), None))
     error = outcome(5, timed_out.value, "emulator-5554").error
     assert (error.code, error.detail, error.match_count) == (tap.ERR_WAIT_TIMEOUT, "AMBIGUOUS", 2)
     assert "match exactly one node" in error.message

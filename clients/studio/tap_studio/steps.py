@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 from tap_e2e import (
     AppLifecycleError,
+    StabilitySignal,
     CommandError,
     Device,
     DeviceBusyError,
@@ -29,7 +30,17 @@ from ._gen import studio_pb2 as studio
 from .recording import UNTARGETED_OPS, RecordingError, picks, secret_name, validate_step
 
 DEFAULT_GESTURE_PERCENT = 80
-"""The distance ``scroll`` and ``swipe`` get when the page leaves it out, as the SDKs' default."""
+"""The distance ``scroll``, ``swipe`` and ``scroll_until`` get when the page leaves it out, as the
+SDKs' default."""
+DEFAULT_MAX_SCROLLS = 20
+"""``scroll_until``'s scroll budget when the page leaves it out, as the SDKs' default."""
+DEFAULT_STABLE_FOR_MS = 500
+"""``wait_screen_stable``'s quiet period when the page leaves it out, as the SDKs' default."""
+
+
+class CheckFailed(Exception):
+    """An assertion's query ran but its answer was not the expected one; the message says what
+    was found."""
 
 
 def prepare(step: studio.Step, secret_value: str | None) -> studio.Step:
@@ -46,6 +57,7 @@ def prepare(step: studio.Step, secret_value: str | None) -> studio.Step:
         if prepared.action.HasField("wait"):
             problems.append("action.wait is inferred by the studio: leave it out")
         problems += _complete_action(prepared.action)
+    _complete_defaults(prepared)
     problems += _problems(prepared)
     name = secret_name(prepared)
     if name is not None and secret_value is None:
@@ -71,6 +83,7 @@ def revise(step: studio.Step, secret_value: str | None) -> studio.Step:
         problems += _complete_action(action)
         if timeout is not None and action.HasField("wait"):
             action.wait.timeout_ms = timeout
+    _complete_defaults(revised)
     problems += _problems(revised)
     if secret_name(revised) is None and secret_value is not None:
         problems.append("secret_value is only for a step that names a secret")
@@ -104,9 +117,26 @@ def _complete_action(action: studio.ActionStep) -> list[str]:
     return []
 
 
+def _complete_defaults(step: studio.Step) -> None:
+    """The SDK defaults a run sends, made explicit so the recording holds what was sent."""
+    kind = step.WhichOneof("kind")
+    if kind == "scroll_until":
+        if not step.scroll_until.HasField("max_scrolls"):
+            step.scroll_until.max_scrolls = DEFAULT_MAX_SCROLLS
+        if not step.scroll_until.HasField("distance_percent"):
+            step.scroll_until.distance_percent = DEFAULT_GESTURE_PERCENT
+    elif kind == "app_wait" and step.app_wait.command.WhichOneof("op") == "wait_screen_stable":
+        wait = step.app_wait.command.wait_screen_stable
+        if not wait.HasField("stable_for_ms"):
+            wait.stable_for_ms = DEFAULT_STABLE_FOR_MS
+        if wait.signal == tap.STABILITY_UNSPECIFIED:
+            wait.signal = tap.STABILITY_ALL
+
+
 def run(device: Device, step: studio.Step, secret_value: str | None = None) -> None:
     """Runs a prepared step on ``device`` (blocking, on the device's thread). Raises the
-    ``TapError`` of the first command that failed."""
+    ``TapError`` of the first command that failed, or ``CheckFailed`` for an assertion that did
+    not hold."""
     kind = step.WhichOneof("kind")
     if kind == "app":
         _app(device, step.app)
@@ -114,8 +144,14 @@ def run(device: Device, step: studio.Step, secret_value: str | None = None) -> N
         _action(device, step.action, secret_value)
     elif kind == "type":
         _type(device, step.type, secret_value)
+    elif kind == "wait":
+        _wait(device, step.wait)
     elif kind == "assertion":
         _assertion(device, step.assertion)
+    elif kind == "scroll_until":
+        _scroll_until(device, step.scroll_until)
+    elif kind == "app_wait":
+        _app_wait(device, step.app_wait)
     else:
         raise ValueError("a step without a kind")
 
@@ -180,7 +216,7 @@ def _type(device: Device, step: studio.TypeStep, secret_value: str | None) -> No
     element.type_text(value or "", await_focus=not step.skip_focus_wait)
 
 
-def _assertion(device: Device, step: studio.AssertionStep) -> None:
+def _wait(device: Device, step: studio.WaitStep) -> None:
     wait = device.screen.wait(Selector.from_proto(step.selector))
     conditions: dict[int, Callable[[], object]] = {
         studio.CONDITION_VISIBLE: wait.visible,
@@ -198,11 +234,61 @@ def _assertion(device: Device, step: studio.AssertionStep) -> None:
     conditions[step.condition]()
 
 
-def outcome(duration_ms: int, error: TapError | None, serial: str) -> studio.Outcome:
+def _assertion(device: Device, step: studio.AssertionStep) -> None:
+    element = device.screen.element(Selector.from_proto(step.selector))
+    check = step.check
+    if check == studio.CHECK_EXISTS:
+        if not element.exists():
+            raise CheckFailed("expected at least one match, found none")
+    elif check == studio.CHECK_COUNT:
+        count = element.count()
+        if count != step.count:
+            raise CheckFailed(f"expected {step.count} matches, found {count}")
+    elif check in (studio.CHECK_TEXT_EQUALS, studio.CHECK_TEXT_CONTAINS):
+        text = element.text()
+        holds = text == step.text if check == studio.CHECK_TEXT_EQUALS else step.text in (text or "")
+        if not holds:
+            expected = "text" if check == studio.CHECK_TEXT_EQUALS else "text containing"
+            raise CheckFailed(f"expected {expected} {step.text!r}, found {text!r}")
+    elif check in (studio.CHECK_ENABLED, studio.CHECK_DISABLED):
+        if element.is_enabled() != (check == studio.CHECK_ENABLED):
+            raise CheckFailed(f"expected {'enabled' if check == studio.CHECK_ENABLED else 'disabled'}, it is not")
+    elif check in (studio.CHECK_CHECKED, studio.CHECK_UNCHECKED):
+        if element.is_checked() != (check == studio.CHECK_CHECKED):
+            raise CheckFailed(f"expected {'checked' if check == studio.CHECK_CHECKED else 'unchecked'}, it is not")
+    elif check == studio.CHECK_FOCUSED:
+        if not element.snapshot().focused:
+            raise CheckFailed("expected focused, it is not")
+    else:
+        raise ValueError(f"unknown check {check}")
+
+
+def _scroll_until(device: Device, step: studio.ScrollUntilStep) -> None:
+    wait = device.screen.wait(Selector.from_proto(step.container))
+    container = wait.visible() if picks(step.container) else wait.one()
+    container.scroll_until(
+        Selector.from_proto(step.target), _direction(step.direction), step.max_scrolls, step.distance_percent
+    )
+
+
+def _app_wait(device: Device, step: studio.AppWaitStep) -> None:
+    command = step.command
+    timeout = _seconds(command)
+    if command.WhichOneof("op") == "wait_app_visible":
+        device.app(command.wait_app_visible.package_name).await_visible(timeout)
+        return
+    wait = command.wait_screen_stable
+    signal = StabilitySignal[tap.StabilitySignal.Name(wait.signal).removeprefix("STABILITY_")]
+    device.app(wait.package_name).await_screen_stable(wait.stable_for_ms / 1000, timeout, signal)
+
+
+def outcome(duration_ms: int, error: TapError | CheckFailed | None, serial: str) -> studio.Outcome:
     """How a run went: the duration, and for a failure the driver's ``Error`` (a command or a
-    wait) or the call's ``Failure`` (the RPC failed)."""
+    wait), the call's ``Failure`` (the RPC failed) or the assertion's mismatch."""
     result = studio.Outcome(duration_ms=duration_ms)
-    if isinstance(error, CommandError):
+    if isinstance(error, CheckFailed):
+        result.mismatch = str(error)
+    elif isinstance(error, CommandError):
         result.error.code = _error_code(error.code.name)
         if error.detail is not None:
             result.error.detail = error.detail

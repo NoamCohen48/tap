@@ -33,8 +33,16 @@ EXAMPLE = {
         {"id": "s5", "note": "the confirmation screen",
          "outcome": {"duration_ms": 5003,
                      "error": {"code": "ERR_WAIT_TIMEOUT", "message": "no match", "match_count": 0}},
-         "assertion": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Order placed"}}},
-                       "condition": "CONDITION_VISIBLE"}},
+         "wait": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Order placed"}}},
+                  "condition": "CONDITION_VISIBLE"}},
+        {"id": "s6", "outcome": {"duration_ms": 40, "mismatch": "expected text 'Total: 3', found 'Total: 2'"},
+         "assertion": {"selector": SEARCH, "check": "CHECK_TEXT_EQUALS", "text": "Total: 3"}},
+        {"id": "s7", "scroll_until": {"container": {"node": {"resource": {"name": "list"}}},
+                                      "target": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Row 40"}}},
+                                      "direction": "DIR_DOWN", "max_scrolls": 20, "distance_percent": 80,
+                                      "selector_origin": "SELECTOR_ORIGIN_SYNTHESIZED"}},
+        {"id": "s8", "app_wait": {"command": {"wait_screen_stable": {"package_name": "com.example.basket",
+                                                                    "stable_for_ms": "500", "signal": "STABILITY_TREE"}}}},
     ],
 }
 
@@ -58,7 +66,9 @@ def rejects(document: dict, message: str) -> None:
 
 def test_example_round_trips_unchanged():
     recording = loads(text(EXAMPLE))
-    assert [s.WhichOneof("kind") for s in recording.steps] == ["app", "action", "type", "action", "assertion"]
+    assert [s.WhichOneof("kind") for s in recording.steps] == [
+        "app", "action", "type", "action", "wait", "assertion", "scroll_until", "app_wait",
+    ]
     assert json.loads(dumps(recording)) == EXAMPLE
     assert loads(dumps(recording)) == recording
 
@@ -119,7 +129,7 @@ def test_every_problem_is_reported_with_its_step():
     with pytest.raises(RecordingError) as caught:
         loads(text(document))
     assert caught.value.problems == [
-        "steps[0] (a): kind is required (app, action, type or assertion)",
+        "steps[0] (a): kind is required (app, action, type, wait, assertion, scroll_until or app_wait)",
         "steps[1] (a): id is used twice",
         "steps[1] (a): action tap is recorded with its wait (wait_visible)",
     ]
@@ -230,8 +240,8 @@ def test_type_step_rules():
         ("CONDITION_UNSPECIFIED", {}, False),
     ],
 )
-def test_assertion_values(condition, value, ok):
-    document = with_steps({"id": "a", "assertion": {"selector": SEARCH, "condition": condition, **value}})
+def test_wait_values(condition, value, ok):
+    document = with_steps({"id": "a", "wait": {"selector": SEARCH, "condition": condition, **value}})
     if ok:
         loads(text(document))
     else:
@@ -239,11 +249,62 @@ def test_assertion_values(condition, value, ok):
             loads(text(document))
 
 
-def test_outcome_has_at_most_one_of_error_and_failure():
+@pytest.mark.parametrize(
+    ("check", "value", "ok"),
+    [
+        ("CHECK_EXISTS", {}, True),
+        ("CHECK_EXISTS", {"count": 1}, False),
+        ("CHECK_COUNT", {"count": 0}, True),
+        ("CHECK_COUNT", {"count": -1}, False),
+        ("CHECK_COUNT", {}, False),
+        ("CHECK_TEXT_EQUALS", {"text": "Go"}, True),
+        ("CHECK_TEXT_CONTAINS", {}, False),
+        ("CHECK_FOCUSED", {}, True),
+        ("CHECK_UNSPECIFIED", {}, False),
+    ],
+)
+def test_assertion_values(check, value, ok):
+    document = with_steps({"id": "a", "assertion": {"selector": SEARCH, "check": check, **value}})
+    if ok:
+        loads(text(document))
+    else:
+        with pytest.raises(RecordingError):
+            loads(text(document))
+
+
+def test_an_assertion_written_as_a_wait_is_refused_not_read_as_one():
+    # Before waits had their own kind, `assertion` held a `condition`: such a file must not load
+    # as an assertion with no check.
+    rejects(with_steps({"id": "a", "assertion": {"selector": SEARCH, "condition": "CONDITION_VISIBLE"}}),
+            "assertion.check is required")
+
+
+def test_scroll_until_rules():
+    target = {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Row 40"}}}
+    good = {"container": SEARCH, "target": target, "direction": "DIR_UP"}
+    loads(text(with_steps({"id": "a", "scroll_until": good})))
+    rejects(with_steps({"id": "a", "scroll_until": {**good, "direction": "DIR_UNSPECIFIED"}}), "direction is required")
+    rejects(with_steps({"id": "a", "scroll_until": {"container": SEARCH, "direction": "DIR_UP"}}), "target has no node")
+    rejects(with_steps({"id": "a", "scroll_until": {**good, "max_scrolls": 1001}}), "max_scrolls must be 0..1000")
+    rejects(with_steps({"id": "a", "scroll_until": {**good, "distance_percent": 0}}), "distance_percent must be 1..100")
+
+
+def test_app_wait_rules():
+    loads(text(with_steps({"id": "a", "app_wait": {"command": {"wait_app_visible": {"package_name": "com.example"}}}})))
+    rejects(with_steps({"id": "a", "app_wait": {"command": {"press_key": {"key_code": 3}}}}),
+            "app_wait.command must be one of wait_app_visible, wait_screen_stable")
+    rejects(with_steps({"id": "a", "app_wait": {"command": {"wait_app_visible": {}}}}), "package_name is required")
+    rejects(with_steps({"id": "a", "app_wait": {"command": {"wait_screen_stable": {"package_name": "p", "stable_for_ms": "0"}}}}),
+            "stable_for_ms must be 1..30000")
+
+
+def test_outcome_has_at_most_one_of_error_failure_and_mismatch():
     step = {"id": "a", "action": {"command": {"press_key": {"key_code": 3}}}}
     rejects(with_steps({**step, "outcome": {"duration_ms": 1, "error": {"code": "ERR_NOT_FOUND"},
                                            "failure": {"reason": "FAILURE_REASON_ADB_FAILED"}}}),
-            "at most one of error and failure")
+            "at most one of error, failure and mismatch")
+    rejects(with_steps({**step, "outcome": {"duration_ms": 1, "error": {"code": "ERR_NOT_FOUND"}, "mismatch": "no"}}),
+            "at most one of error, failure and mismatch")
     loads(text(with_steps({**step, "outcome": {"duration_ms": 1, "failure": {"reason": "FAILURE_REASON_ADB_FAILED"}}})))
 
 

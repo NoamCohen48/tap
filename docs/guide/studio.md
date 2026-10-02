@@ -44,53 +44,81 @@ The printed link carries a one-time token: the page signs in with it and the stu
 anything else. It listens on `127.0.0.1` only. Ctrl-C stops it and frees the device.
 
 Without `--serial`, the page lists the server's devices: pick one and attach it. Attaching names
-no app. Enter the package of the app you work on in the **App** menu: it is what that menu
-launches, stops or clears, and the app a replay offers to cold launch first (the page remembers
-it). Selectors are not limited to it, so a recording can go through a system dialog or a second
-app.
+no app. Enter the package of the app you work on in the composer's **App** tab (it suggests the
+packages on screen): it is what the panel launches, stops, clears and waits for, and the app a replay
+offers to cold launch first (the page remembers it). Selectors are not limited to it, so a
+recording can go through a system dialog or a second app.
 The studio holds the device exclusively, as a test does, so another client cannot attach it
 until the studio releases it.
 
 ## The page
 
+You pick an element on the screen, then choose what to do with it. A click on the screen never
+runs anything on the device.
+
 - **Screen:** the latest frame with an overlay of the elements. The frame follows the device.
   While the screen is changing, the overlay turns dashed until it settles. Hovering shows the
-  selector a step would use and how many elements it matches. A red hatched box marks an
-  element with no unique selector, an accessibility gap in the app. The rail on the screen's
-  left, like the emulator's side toolbar: **Back**, **Home**, **Recent apps**,
-  **Notifications**, **Quick settings** (`openNotifications()` / `openQuickSettings()`) and the
-  **App** menu (its package, then cold launch, launch, force stop, clear data, grant permission). Each button
-  runs on the device and records its step. A replay sends steps back to back, and a system
-  panel ignores a key sent while it is still sliding open. So after opening one, record a step
-  that waits for it, such as an action on an element in it, or an **Assert** that an element
-  of the app is gone.
-- **Inspector:** the selected element's class, its selector candidates (the first is what gets
-  recorded), the actions and checks that fit it, and its properties. **Screen tree** lists every
-  element.
+  selector a step would use. A click selects the element under it; a right-click reaches every
+  element, including the ones the overlay leaves out. A red hatched box marks an element with no
+  unique selector, an accessibility gap in the app.
+  Under the phone, its own buttons: **Back**, **Home**, **Recent apps**, **Notifications** and
+  **Quick settings** (`openNotifications()` / `openQuickSettings()`). A replay sends steps back
+  to back, and a system panel ignores a key sent while it is still sliding open. So after
+  opening one, record a step that waits for it, such as a **Wait** for an element in it.
+  **More keys** presses another key into whatever has focus: **Enter** to submit a search after
+  setting its text, **Delete**, **Tab**, **Space**, **Escape**, **Search**, the volume keys, or
+  any Android key code (`pressKey(66)`).
+- **Composer:** the selected element (its class, its selector candidates, the first of which is
+  what gets recorded, and how many elements the chosen one matches now) and, below it, the steps
+  you can record on it, in three tabs, and a fourth tab for the app.
+- **Inspector:** the selected element's properties, and the **Screen tree** of every element.
 - **Steps:** the recording, each step with the wait it runs after and how it went the last time
   it ran.
 
-Clicks do what the mode in the top bar says:
+Each button runs its step on the device and records it. The composer's tabs, with their keys:
 
-| Mode | Key | A click on an element |
+| Tab | Key | What it records |
 |---|---|---|
-| **Act** | `1` | Runs the action on the device and records it. |
-| **Assert** | `2` | Records a check: visible, gone, exactly one, text equals / contains, enabled, checked, count. |
-| **Inspect** | `3` | Selects the element only. A right-click always inspects. |
+| **Act** | `1` | Something done to the element. |
+| **Assert** | `2` | A check of the element as it is now. It fails at once if the check does not hold. |
+| **Wait** | `3` | A wait for something to happen to the element, up to the device's wait timeout. |
+| **App** | `4` | Something done to the app, or a wait on it, apart from any element. |
 
-In Act mode:
+**Act** offers, for the selected element:
 
-- A click is a `tap`, and an Alt-click is a `long_tap`.
-- The mouse wheel over a scrollable element records a `scroll` on it.
-- A drag across an element records a `swipe` on it, in the drag's direction.
-- A click on a text field opens a small editor.
-    - **Set text** (Enter) replaces the field's text in one command.
-    - **Type keys** taps the field, waits for focus and types, for fields that react to key
-      events.
-    - **Secret** keeps the value out of the recording. The step names the secret, and a replay
-      asks for its value. Password fields default to secret.
+- **Tap** and **Long press**.
+- **Swipe** up, down, left or right on the element.
+- **Scroll** up, down, left or right, on a scrollable element (a list or a page that scrolls).
+  On an element inside one, such as a row of a list, **Select the … around it** selects the list.
+- **Distance:** how far the finger moves in a swipe or a scroll, in percent of the element
+  (80 % unless you change it).
+- **Scroll until**, on a scrollable element: pick a direction and the studio scrolls once, without
+  recording it. The list is outlined: click the element you were looking for inside it, or
+  **Scroll again**. The click records one step, `scrollUntil(text("Settings"))`, that scrolls
+  until that element is there; it allows 20 scrolls, or twice as many as it took you. Esc
+  cancels, and the scrolls so far stay unrecorded.
+- On a text field, **Set text** (Enter) replaces the field's text in one command, **Type keys**
+  taps the field, waits for focus and types, for fields that react to key events, and **Clear**
+  empties it. Turn off **Wait for focus** when the tap moves focus somewhere else, such as a
+  child or a separate input view (`typeText(…, awaitFocus = false)`). **Secret** keeps the value out of the recording: the step names the secret, and a
+  replay asks for its value. Password fields default to secret.
 
-**Pause** stops recording, but actions still run on the device. This is useful for getting the
+**Assert** offers the checks that hold for the element now: it exists, is enabled (or
+disabled), is checked (or unchecked), is focused; its text equals or contains a value; or the
+selector matches a number of elements. An assertion that does not hold is reported and not
+recorded.
+
+**Wait** offers waits until the element is visible, exactly one, gone, enabled, disabled,
+checked, unchecked or focused, has a text, or the selector matches a number of elements. The
+waits on the app as a whole are in the **App** tab.
+
+**App** offers the app's package, then **Cold launch** and **Launch** (of the launcher activity,
+or of the **Activity** you name, such as `.ui.SettingsActivity`), **Force stop** and
+**Clear data**, **Grant** a permission, and waits until the app is in the foreground
+(`awaitVisible()`), its screen is stable, settled (the elements stop changing) or its animation
+ended (the pixels stop changing). Selecting an element on the screen switches back to **Act**.
+
+**Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow.
 
 A tap on a row that only an index could single out (a preference or list row with no id or
@@ -111,7 +139,11 @@ Click a step to open it:
   which a test writes as `app("com.example.basket").element(…)`. Remove it to match on the
   whole screen. The line below shows how many elements the selector matches on the current
   screen.
-- **Value and secret:** change the text of a set text or type step, or make it secret.
+- **Value and secret:** change the text of a set text or type step, or make it secret, and
+  the expected text of a text wait or assertion.
+- **Scroll until:** change the selector of the element a scroll until brings into view, its
+  direction, its distance and its maximum number of scrolls.
+- **Gesture:** change a swipe's or a scroll's direction and distance.
 - **Note:** a free-text note, kept in the file.
 - **Run** runs the step alone. **Run from here** runs it and every step after it. Move up, move
   down and delete are there too.
@@ -145,8 +177,10 @@ before discarding recorded steps.
       "wait": {"wait_visible": {"selector": {"node": {"all_of": {"nodes": [{"resource": {"name": "search"}},
         {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": "com.example.basket", "mode": "MATCH_EXACT"}}]}}}, "exactly_one": true}},
       "selector_origin": "SELECTOR_ORIGIN_SYNTHESIZED"}},
-    {"id": "s3", "assertion": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "3 results"}}},
-      "condition": "CONDITION_VISIBLE"}}
+    {"id": "s3", "wait": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "3 results"}}},
+      "condition": "CONDITION_VISIBLE"}},
+    {"id": "s4", "assertion": {"selector": {"node": {"resource": {"name": "checkout"}}},
+      "check": "CHECK_ENABLED"}}
   ]
 }
 ```
@@ -166,7 +200,11 @@ or a coding agent ([tap-agent](agents.md)), write the test from it:
 |---|---|---|
 | `app` `cold_launch` | `app.coldLaunch()` | `app.cold_launch()` |
 | `action` `set_text` on `res("search")` in `com.example.basket` | `app.await(res("search")).one().setText("wool")` | `app.wait(res("search")).one().set_text("wool")` |
-| `assertion` `CONDITION_VISIBLE`, no package | `device.screen.await(text("3 results")).visible()` | `device.screen.wait(text("3 results")).visible()` |
+| `wait` `CONDITION_VISIBLE`, no package | `device.screen.await(text("3 results")).visible()` | `device.screen.wait(text("3 results")).visible()` |
+| `assertion` `CHECK_ENABLED` | `assertTrue(device.screen.element(res("checkout")).isEnabled())` | `assert device.screen.element(res("checkout")).is_enabled()` |
+| `assertion` `CHECK_TEXT_EQUALS` `"Wool"` | `assertEquals("Wool", ….text())` | `assert ….text() == "Wool"` |
+| `scroll_until` on `res("list")`, target `text("Row 40")` | `….element(res("list")).scrollUntil(text("Row 40"))` | `….element(res("list")).scroll_until(text("Row 40"))` |
+| `app_wait` `wait_app_visible` / `wait_screen_stable` | `app.awaitVisible()` / `app.awaitScreenStable()` | `app.await_visible()` / `app.await_screen_stable()` |
 
 A selector whose top-level conjunction has a `PROPERTY_PACKAGE_NAME` match is that app's:
 `app = device.app("com.example.basket")`, and the rest of the selector goes to

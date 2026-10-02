@@ -11,7 +11,7 @@ function remembered(): string {
 }
 
 /**
- * The package the App menu acts on (launch, stop, clear data, grant, and the cold launch a replay
+ * The package the app steps and app waits act on (launch, stop, clear data, grant, and the cold launch a replay
  * can start with). It is the page's choice, not the attach's: a device names no app. Remembered in
  * this browser as a convenience.
  */
