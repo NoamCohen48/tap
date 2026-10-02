@@ -464,3 +464,51 @@ class AddMediaResponse(_message.Message):
     DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
     device_path: str
     def __init__(self, device_path: _Optional[str] = ...) -> None: ...
+
+class SetStayAwakeRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "enabled")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    enabled: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., enabled: _Optional[bool] = ...) -> None: ...
+
+class SetStayAwakeResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetAccessibilityDisplayRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "high_contrast_text", "color_inversion", "bold_text")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    HIGH_CONTRAST_TEXT_FIELD_NUMBER: _ClassVar[int]
+    COLOR_INVERSION_FIELD_NUMBER: _ClassVar[int]
+    BOLD_TEXT_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    high_contrast_text: bool
+    color_inversion: bool
+    bold_text: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., high_contrast_text: _Optional[bool] = ..., color_inversion: _Optional[bool] = ..., bold_text: _Optional[bool] = ...) -> None: ...
+
+class SetAccessibilityDisplayResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetForegroundActivityRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ...) -> None: ...
+
+class GetForegroundActivityResponse(_message.Message):
+    __slots__ = ("package_name", "activity")
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    ACTIVITY_FIELD_NUMBER: _ClassVar[int]
+    package_name: str
+    activity: str
+    def __init__(self, package_name: _Optional[str] = ..., activity: _Optional[str] = ...) -> None: ...

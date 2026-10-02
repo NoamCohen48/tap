@@ -694,6 +694,14 @@ class DeviceInfo(Artifact):
     """Mobile data is switched on; ``False`` on a device without telephony."""
     system_locales: tuple[str, ...] = ()
     """The device's languages, BCP-47 tags in preference order (``Device.set_system_locales``)."""
+    stay_awake: bool = False
+    """The screen stays on while the device is plugged in (``Device.set_stay_awake``)."""
+    high_contrast_text: bool | None = None
+    """High-contrast text is on; ``None`` when the driver cannot read it."""
+    color_inversion: bool | None = None
+    """Colour inversion is on; ``None`` when the driver cannot read it."""
+    bold_text: bool = False
+    """The system font is bold (API 31+; always ``False`` below)."""
 
     media_type = "application/json"
     extension = "json"
@@ -729,6 +737,15 @@ class Toast:
 
     text: str
     package_name: str
+
+
+@dataclass(frozen=True)
+class ForegroundActivity:
+    """The activity on top of the screen (``Device.foreground_activity``): its package and its
+    fully qualified class name."""
+
+    package_name: str
+    class_name: str
 
 
 @dataclass(frozen=True)

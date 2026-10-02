@@ -59,6 +59,16 @@ service DeviceService {
   // `android:mock_location` app-op) and location is turned on when it is off; both are captured
   // and restored on detach, which ends the mock. The driver serves the fix (`set_location`).
   rpc SetLocation(SetLocationRequest) returns (SetLocationResponse);
+  // Keeps the screen on while the device is plugged in (USB, AC or wireless): Settings.Global
+  // `stay_on_while_plugged_in` 7, or 0. Captured and restored on detach.
+  rpc SetStayAwake(SetStayAwakeRequest) returns (SetStayAwakeResponse);
+  // The accessibility display settings: high-contrast text, color inversion and bold text (API
+  // 31+, else FAILED_PRECONDITION / UNSUPPORTED_API before anything changes), as Settings ›
+  // Accessibility writes them. At least one must be set. Captured and restored on detach.
+  rpc SetAccessibilityDisplay(SetAccessibilityDisplayRequest) returns (SetAccessibilityDisplayResponse);
+  // The activity on top (resumed), from `dumpsys activity activities`; empty when none is
+  // resumed (a keyguard, or between activities). Changes nothing.
+  rpc GetForegroundActivity(GetForegroundActivityRequest) returns (GetForegroundActivityResponse);
 
   // Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
   // A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
@@ -385,4 +395,34 @@ message AddMediaRequest {
 
 message AddMediaResponse {
   string device_path = 1; // where the media landed
+}
+
+message SetStayAwakeRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  bool enabled = 3;
+}
+
+message SetStayAwakeResponse {}
+
+// At least one setting must be set; an absent one is left as it is.
+message SetAccessibilityDisplayRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  optional bool high_contrast_text = 3;
+  optional bool color_inversion = 4;
+  optional bool bold_text = 5;
+}
+
+message SetAccessibilityDisplayResponse {}
+
+message GetForegroundActivityRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+// Both set, or both absent when no activity is resumed.
+message GetForegroundActivityResponse {
+  optional string package_name = 1;
+  optional string activity = 2; // the fully qualified class name
 }

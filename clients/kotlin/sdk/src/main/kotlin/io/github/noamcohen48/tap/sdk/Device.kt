@@ -30,7 +30,10 @@ import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetOrientation
@@ -499,6 +502,70 @@ class Device internal constructor(
                     }.build(),
             )
         }
+    }
+
+    /**
+     * Keeps the screen on while the device is plugged in (USB, AC or wireless), or lets it time out
+     * again, until [detach], see [setAnimations]: what Developer options › Stay awake sets. A device
+     * on ADB over USB is plugged in, so a long test does not find the screen off. Read back with
+     * [DeviceInfo.stayAwake].
+     */
+    suspend fun setStayAwake(enabled: Boolean) {
+        condition("Device.setStayAwake") {
+            setStayAwake(SetStayAwakeRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).setEnabled(enabled).build())
+        }
+    }
+
+    /**
+     * Turns the accessibility display settings on or off until [detach], see [setAnimations]; a
+     * `null` setting is left as it is. [highContrastText] draws text with an outline in black or
+     * white, [colorInversion] inverts the display's colors (screenshots stay uninverted: the
+     * inversion happens in the display pipeline), and [boldText] makes the system font bold (API
+     * 31+, [FailureReason.UNSUPPORTED_API] below, before anything changes). The values are what
+     * Settings › Accessibility writes, read back ([FailureReason.DEVICE_SETTING] when the device
+     * did not take one). Read back with [DeviceInfo.highContrastText], [DeviceInfo.colorInversion]
+     * and [DeviceInfo.boldText].
+     */
+    suspend fun setAccessibilityDisplay(
+        highContrastText: Boolean? = null,
+        colorInversion: Boolean? = null,
+        boldText: Boolean? = null,
+    ) {
+        require(highContrastText != null || colorInversion != null || boldText != null) {
+            "set at least one of highContrastText, colorInversion or boldText"
+        }
+        condition("Device.setAccessibilityDisplay") {
+            setAccessibilityDisplay(
+                SetAccessibilityDisplayRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .apply {
+                        highContrastText?.let(::setHighContrastText)
+                        colorInversion?.let(::setColorInversion)
+                        boldText?.let(::setBoldText)
+                    }.build(),
+            )
+        }
+    }
+
+    /**
+     * The activity on top of the screen (the resumed one, the focused one in multi-window), or
+     * `null` when none is resumed: the keyguard is showing, or an activity is starting. Read on
+     * the host from `dumpsys activity`; changes nothing. Use it to check that a deep link or a
+     * notification opened the right screen.
+     */
+    suspend fun foregroundActivity(): ForegroundActivity? {
+        val operation = "Device.foregroundActivity"
+        ensureTapBound(operation)
+        val response =
+            admitted(operation) {
+                mapped(serial) {
+                    client.devices
+                        .withDeadlineAfter(timeouts.lifecycle.inWholeMilliseconds + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
+                        .getForegroundActivity(
+                            GetForegroundActivityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).build(),
+                        )
+                }
+            }
+        return if (response.hasPackageName()) ForegroundActivity(response.packageName, response.activity) else null
     }
 
     /** [setSystemLocales] with the tags as arguments. */

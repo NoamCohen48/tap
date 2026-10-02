@@ -714,6 +714,18 @@ open class Adb internal constructor(
     }
 
     /**
+     * The resumed activity on top as package and fully qualified class name, from `dumpsys
+     * activity activities`: `topResumedActivity=` on API 29+ (several can be resumed in
+     * multi-window; this is the focused one), `mResumedActivity:` before. Null when none is resumed.
+     */
+    open suspend fun foregroundActivity(serial: String): Pair<String, String>? {
+        val output = exec(serial, "shell", "dumpsys", "activity", "activities")
+        val match = TOP_RESUMED.find(output) ?: RESUMED.find(output) ?: return null
+        val (packageName, activity) = match.destructured
+        return packageName to if (activity.startsWith(".")) packageName + activity else activity
+    }
+
+    /**
      * The location providers that are test providers, from `dumpsys location`: `gps provider
      * [mock]:` on API 29+, and on API 26-28 the "Mock Providers" section, where each provider's
      * name is followed by its `mHasLocation=` line.
@@ -775,7 +787,7 @@ open class Adb internal constructor(
     ) {
         if (entries.any { it.key == StateKey.ACCELEROMETER_ROTATION }) writeState(serial, StateKey.ACCELEROMETER_ROTATION, "0")
         for (entry in entries.asReversed()) writeState(serial, entry.key, entry.value)
-        val wrong = entries.mapNotNull { entry -> readState(serial, entry.key).takeIf { it != entry.value }?.let { "${entry.key}=$it (expected ${entry.value})" } }
+        val wrong = entries.mapNotNull { entry -> readState(serial, entry.key).let { actual -> "${entry.key}=$actual (expected ${entry.value})".takeIf { actual != entry.value } } }
         if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "Restoring device state on $serial did not take effect: ${wrong.joinToString()}")
     }
 
@@ -1213,6 +1225,8 @@ internal fun parseDumpsysPackage(
 }
 
 private val WHITESPACE = Regex("\\s+")
+private val TOP_RESUMED = Regex("topResumedActivity=ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
+private val RESUMED = Regex("mResumedActivity: ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
 private val MOCK_PROVIDER = Regex("([A-Za-z0-9_]+) provider \\[mock\\]:")
 private val PROVIDER_NAME = Regex("[A-Za-z0-9_]+")
 

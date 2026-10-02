@@ -155,6 +155,15 @@ data class Toast(
     val packageName: String,
 )
 
+/**
+ * The activity on top of the screen ([Device.foregroundActivity]): its app's [packageName] and
+ * its fully qualified [className].
+ */
+data class ForegroundActivity(
+    val packageName: String,
+    val className: String,
+)
+
 /** What [App.awaitScreenStable] watches for changes. */
 enum class StabilitySignal {
     /** The accessibility tree of the focused window. */

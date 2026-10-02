@@ -16,6 +16,7 @@ from .models import (
     ConnectionEntry,
     DeviceEntry,
     DeviceInfo,
+    ForegroundActivity,
     DeviceState,
     Direction,
     DisplayRotation,
@@ -194,7 +195,17 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         wifi_enabled=info.wifi_enabled,
         mobile_data_enabled=info.mobile_data_enabled,
         system_locales=tuple(info.system_locales),
+        stay_awake=info.stay_awake,
+        high_contrast_text=_optional(info, "high_contrast_text"),
+        color_inversion=_optional(info, "color_inversion"),
+        bold_text=info.bold_text,
     )
+
+
+def foreground_activity(response: pb.GetForegroundActivityResponse) -> ForegroundActivity | None:
+    if not response.HasField("package_name") or not response.HasField("activity"):
+        return None
+    return ForegroundActivity(package_name=response.package_name, class_name=response.activity)
 
 
 def toast(value: pb.Toast) -> Toast:

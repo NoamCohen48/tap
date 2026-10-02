@@ -10,6 +10,7 @@ from tap_e2e import (
     CommandError,
     DisplayRotation,
     ErrorCode,
+    ForegroundActivity,
     FailureReason,
     LocationAccuracy,
     Orientation,
@@ -498,7 +499,13 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
             device.set_location(**bad)
     with pytest.raises(ValueError):
         device.set_location(0, 0, accuracy_m=0)
-    animations, font, density, reset, dark, _, network, locales, location = fake.devices.conditions
+    device.set_stay_awake(True)
+    device.set_accessibility_display(color_inversion=True, bold_text=False)
+    with pytest.raises(ValueError):
+        device.set_accessibility_display()
+    animations, font, density, reset, dark, _, network, locales, location, awake, a11y = fake.devices.conditions
+    assert awake.enabled is True
+    assert a11y.color_inversion is True and a11y.bold_text is False and not a11y.HasField("high_contrast_text")
     assert list(locales.locales) == ["fr-FR", "en"]
     assert location.latitude == 48.8584 and location.accuracy_m == pytest.approx(3.5) and not location.HasField("altitude_m")
     assert animations.enabled is False and font.scale == pytest.approx(1.3)
@@ -507,6 +514,12 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
     for request in fake.devices.conditions:
         assert request.attached_device_id == device.attached_device_id
         assert request.client_connection_id == device.owner_connection.id
+
+
+def test_foreground_activity_is_none_when_nothing_is_resumed(fake, device):
+    assert device.foreground_activity() is None
+    fake.devices.foreground = ("com.example", "com.example.MainActivity")
+    assert device.foreground_activity() == ForegroundActivity("com.example", "com.example.MainActivity")
 
 
 def test_files_stream_in_chunks_both_ways_and_keep_the_failure_reason(fake, device, tmp_path):

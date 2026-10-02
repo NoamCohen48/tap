@@ -112,6 +112,14 @@ sealed interface StateKey {
         /** The master location switch: `0` off, `3` on (high accuracy). */
         val LOCATION_MODE = Setting("secure", "location_mode").id
 
+        /** The screen stays on while plugged in: a bit set of power sources, 0 = never. */
+        val STAY_AWAKE = Setting("global", "stay_on_while_plugged_in").id
+
+        /** The accessibility display settings: 1/0, and bold text's font weight adjustment (0 = off). */
+        val HIGH_CONTRAST_TEXT = Setting("secure", "high_text_contrast_enabled").id
+        val COLOR_INVERSION = Setting("secure", "accessibility_display_inversion_enabled").id
+        val BOLD_TEXT = Setting("secure", "font_weight_adjustment").id
+
         /** The driver app as the device's mock-location app. */
         val DRIVER_MOCK_LOCATION = AppOp(DRIVER_PACKAGE, "android:mock_location").id
 

@@ -59,7 +59,10 @@ STANDARD_ACTIONS = tuple(action.name.lower().replace("_", "-") for action in Sta
 ACCURACIES = tuple(accuracy.name.lower() for accuracy in LocationAccuracy)
 KEYBOARD_ACTIONS = ("state", "hide")
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
-CONDITIONS = ("animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale")
+CONDITIONS = (
+    "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
+    "stay-awake", "high-contrast-text", "color-inversion", "bold-text",
+)
 """The device conditions `condition` reads or changes (restored on release)."""
 
 # Exit codes shared by the CLI and reported in MCP error results.
@@ -565,7 +568,9 @@ class Agent:
     def condition(self, name: str | None = None, value: str | None = None, device: str | None = None) -> str:
         """Without ``name``: reports every device condition. With ``name`` (animations on|off,
         dark-mode on|off, font-scale 0.5..2.0, density DPI|reset, airplane-mode / wifi /
-        mobile-data on|off, locale TAGS: the device languages as comma-separated BCP-47 tags) and
+        mobile-data on|off, locale TAGS: the device languages as comma-separated BCP-47 tags,
+        stay-awake on|off: the screen stays on while plugged in, high-contrast-text /
+        color-inversion / bold-text on|off: accessibility display, bold text API 31+) and
         ``value``: changes it until release, which restores what the device had. Reports the value
         read back."""
         if name is not None:
@@ -588,6 +593,10 @@ class Agent:
                 "wifi": "on" if info.wifi_enabled else "off",
                 "mobile-data": "on" if info.mobile_data_enabled else "off",
                 "locale": ",".join(info.system_locales) or "unknown",
+                "stay-awake": "on" if info.stay_awake else "off",
+                "high-contrast-text": _switch(info.high_contrast_text),
+                "color-inversion": _switch(info.color_inversion),
+                "bold-text": "on" if info.bold_text else "off",
             }
             if name is None:
                 return ", ".join(f"{key} {shown[key]}" for key in CONDITIONS)
@@ -613,6 +622,16 @@ class Agent:
             self._device(device).set_location(latitude, longitude, accuracy_m=accuracy)
             shown = f"{latitude:g}, {longitude:g}" + (f" ±{accuracy:g} m" if accuracy is not None else "")
             return f"location mocked at {shown} (ends on release)"
+
+        return self._run(step)
+
+    def activity(self, device: str | None = None) -> str:
+        """The activity on top of the screen (package/class), or that none is resumed (the
+        keyguard is showing, or one is starting). Changes nothing."""
+
+        def step() -> str:
+            top = self._device(device).foreground_activity()
+            return "no activity is resumed" if top is None else f"{top.package_name}/{top.class_name}"
 
         return self._run(step)
 
@@ -823,7 +842,7 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
             raise AgentError("locale takes comma-separated BCP-47 tags, e.g. fr-FR,en", EXIT_USAGE)
         return lambda d: d.set_system_locales(tags)
     value = value.lower()
-    if name in ("animations", "dark-mode", "airplane-mode", "wifi", "mobile-data"):
+    if name in ("animations", "dark-mode", "airplane-mode", "wifi", "mobile-data", "stay-awake", "high-contrast-text", "color-inversion", "bold-text"):
         if value not in ("on", "off"):
             raise AgentError(f"{name} takes on or off, not {value!r}", EXIT_USAGE)
         enabled = value == "on"
@@ -833,6 +852,10 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
             "airplane-mode": lambda d: d.set_network(airplane_mode=enabled),
             "wifi": lambda d: d.set_network(wifi=enabled),
             "mobile-data": lambda d: d.set_network(mobile_data=enabled),
+            "stay-awake": lambda d: d.set_stay_awake(enabled),
+            "high-contrast-text": lambda d: d.set_accessibility_display(high_contrast_text=enabled),
+            "color-inversion": lambda d: d.set_accessibility_display(color_inversion=enabled),
+            "bold-text": lambda d: d.set_accessibility_display(bold_text=enabled),
         }
         return switch[name]
     if name == "font-scale":
@@ -848,6 +871,10 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
     except ValueError:
         raise AgentError(f"density takes a dpi or reset, not {value!r}", EXIT_USAGE) from None
     return lambda d: d.set_density(dpi)
+
+
+def _switch(value: bool | None) -> str:
+    return "unknown" if value is None else "on" if value else "off"
 
 
 def _direction(name: str) -> Direction:

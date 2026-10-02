@@ -277,6 +277,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         the device."""
         return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None))
 
+    @mcp.tool(name="foreground_activity", annotations=READ_ONLY)
+    async def foreground_activity(session: Session = "", device: Device = "") -> CallToolResult:
+        """The activity on top of the screen as package/class, or that none is resumed (the
+        keyguard shows, or one is starting). Use it to check that a link or a notification opened
+        the right screen."""
+        return await call(session, lambda a: a.activity(device or None))
+
     @mcp.tool(name="push_file")
     async def push_file(
         local_path: Annotated[str, Field(description="The file on this machine.")],
@@ -445,20 +452,26 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="condition")
     async def condition(
         name: Annotated[
-            Literal["animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale"] | None,
+            Literal[
+                "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
+                "stay-awake", "high-contrast-text", "color-inversion", "bold-text",
+            ]
+            | None,
             Field(description="The condition to read or change; omit to read them all."),
         ] = None,
         value: Annotated[
             str,
-            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
+            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/high-contrast-text/color-inversion/bold-text: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
         ] = "",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Read the device conditions (animations, dark mode, font scale, display density, airplane
-        mode, Wi-Fi, mobile data, the device languages) or change one. A change lasts until release, which restores what
-        the device had, and the result is the value read back. Dark mode and the network switches
-        need API 29+; the network switches are real (nothing is mocked)."""
+        mode, Wi-Fi, mobile data, the device languages, stay awake while plugged in, high-contrast
+        text, colour inversion, bold text) or change one. A change lasts until release, which
+        restores what the device had, and the result is the value read back. Dark mode and the
+        network switches need API 29+, bold text API 31+; the network switches are real (nothing
+        is mocked)."""
         return await call(session, lambda a: a.condition(name, value or None, device or None))
 
     @mcp.tool(name="capture", annotations=READ_ONLY)

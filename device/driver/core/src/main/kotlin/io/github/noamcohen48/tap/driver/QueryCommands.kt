@@ -98,6 +98,11 @@ internal class QueryCommands(
             .setWifiEnabled(conditions.wifiEnabled)
             .setMobileDataEnabled(conditions.mobileDataEnabled)
             .addAllSystemLocales(conditions.systemLocales)
+            .setStayAwake(conditions.stayAwake)
+            .apply {
+                conditions.highContrastText?.let(::setHighContrastText)
+                conditions.colorInversion?.let(::setColorInversion)
+            }.setBoldText(conditions.boldText)
             .build()
 
     /**

@@ -43,8 +43,14 @@ import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse
 import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationResponse
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
 import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
@@ -333,6 +339,45 @@ class DeviceService(
                 it.setLocation(request.latitude, request.longitude, accuracy, altitude)
             }
             SetLocationResponse.getDefaultInstance()
+        }
+
+    override suspend fun setStayAwake(request: SetStayAwakeRequest): SetStayAwakeResponse =
+        reply {
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_stay_awake", { enabled = request.enabled }) {
+                it.setStayAwake(request.enabled)
+            }
+            SetStayAwakeResponse.getDefaultInstance()
+        }
+
+    override suspend fun setAccessibilityDisplay(request: SetAccessibilityDisplayRequest): SetAccessibilityDisplayResponse =
+        reply {
+            val contrast = if (request.hasHighContrastText()) request.highContrastText else null
+            val inversion = if (request.hasColorInversion()) request.colorInversion else null
+            val bold = if (request.hasBoldText()) request.boldText else null
+            argument(contrast != null || inversion != null || bold != null) { "set at least one of high_contrast_text, color_inversion or bold_text" }
+            val logged: DeviceCall.Builder.() -> Unit = {
+                contrast?.let { highContrastText = it }
+                inversion?.let { colorInversion = it }
+                bold?.let { boldText = it }
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_accessibility_display", logged) {
+                it.setAccessibilityDisplay(contrast, inversion, bold)
+            }
+            SetAccessibilityDisplayResponse.getDefaultInstance()
+        }
+
+    override suspend fun getForegroundActivity(request: GetForegroundActivityRequest): GetForegroundActivityResponse =
+        reply {
+            val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val top = attachedDevice.deviceSession.foregroundActivity()
+            GetForegroundActivityResponse
+                .newBuilder()
+                .apply {
+                    top?.let { (pkg, activity) ->
+                        packageName = pkg
+                        this.activity = activity
+                    }
+                }.build()
         }
 
     override suspend fun pushFile(requests: Flow<PushFileRequest>): PushFileResponse =

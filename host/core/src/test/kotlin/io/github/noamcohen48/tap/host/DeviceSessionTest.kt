@@ -973,6 +973,59 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `stay awake and the accessibility display settings are read back and restored`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.STAY_AWAKE to "3"))
+            openWithState("session-a11y-display", state) { session, _ ->
+                session.conditions.setStayAwake(false)
+                session.conditions.setAccessibilityDisplay(highContrastText = true, colorInversion = null, boldText = true)
+                assertEquals("0", state.values[StateKey.STAY_AWAKE])
+                assertEquals("1", state.values[StateKey.HIGH_CONTRAST_TEXT])
+                assertEquals("300", state.values[StateKey.BOLD_TEXT])
+                assertFalse(StateKey.COLOR_INVERSION in state.values)
+                assertFailsWith<IllegalArgumentException> { session.conditions.setAccessibilityDisplay(null, null, null) }
+                state.stuck += StateKey.COLOR_INVERSION
+                // Never set on this device and the write ignored: absent is a mismatch, not a pass.
+                assertFailsWith<DeviceSettingException> { session.conditions.setAccessibilityDisplay(null, colorInversion = true, boldText = null) }
+                state.stuck.clear()
+
+                session.close(timeoutMs = 5_000)
+                // Never set before: removed again rather than written as off.
+                assertEquals("3", state.values[StateKey.STAY_AWAKE])
+                assertEquals(null, state.values[StateKey.HIGH_CONTRAST_TEXT])
+                assertEquals(null, state.values[StateKey.BOLD_TEXT])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `bold text below API 31 is refused before anything changes`() =
+        runBlocking {
+            val state = FakeDeviceState(apiLevel = 30)
+            openWithState("session-bold-api", state) { session, _ ->
+                val refused = assertFailsWith<UnsupportedApiException> { session.conditions.setAccessibilityDisplay(true, null, boldText = true) }
+                assertEquals(31, refused.requiredApi)
+                assertEquals(emptyList(), journalStore().read()?.savedState)
+                session.close(timeoutMs = 5_000)
+            }
+        }
+
+    @Test
+    fun `the foreground activity reads both dumpsys layouts and expands a short class name`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            val adb = FakeAdb().apply { responder = { _, command -> state.answer(command) } }
+            assertEquals(null, adb.foregroundActivity("serial"))
+            for (legacy in listOf(false, true)) {
+                state.legacyActivityDump = legacy
+                state.resumedActivity = "io.example/.ui.MainActivity"
+                assertEquals("io.example" to "io.example.ui.MainActivity", adb.foregroundActivity("serial"))
+                state.resumedActivity = "com.android.settings/com.android.settings.SubSettings"
+                assertEquals("com.android.settings" to "com.android.settings.SubSettings", adb.foregroundActivity("serial"))
+            }
+        }
+
+    @Test
     fun `wifi turned on under airplane mode is restored off under it`() =
         runBlocking {
             val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "1", FakeDeviceState.WIFI to "0", FakeDeviceState.DATA to "0"))

@@ -4,7 +4,8 @@ import io.github.noamcohen48.tap.protocol.Commands
 
 /**
  * Device-wide conditions a test may change for its session: animations, dark mode, font scale,
- * display density, the device locale, the network switches and a mock location. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
+ * display density, the device locale, the network switches, a mock location, stay-awake and the
+ * accessibility display settings. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
  * so detach restores the device as its owner left it, and is read back afterwards: a value the
  * device did not take is a [DeviceSettingException]. Apps see the new configuration as Android
  * delivers it (activities may be recreated); waiting for that is the test's business.
@@ -108,6 +109,37 @@ class DeviceConditions internal constructor(
         change(values)
     }
 
+    /**
+     * Keeps the screen on while plugged in (`stay_on_while_plugged_in` 7: USB, AC and wireless),
+     * or lets it time out (0). A device on ADB over USB is plugged in.
+     */
+    suspend fun setStayAwake(enabled: Boolean) {
+        change(mapOf(StateKey.STAY_AWAKE to if (enabled) STAY_ON_ALL else "0"))
+    }
+
+    /**
+     * High-contrast text, color inversion and bold text (API 31+) as Settings › Accessibility
+     * writes them; null leaves a setting as it is. Bold text below API 31 is refused before
+     * anything changes.
+     */
+    suspend fun setAccessibilityDisplay(
+        highContrastText: Boolean?,
+        colorInversion: Boolean?,
+        boldText: Boolean?,
+    ) {
+        require(highContrastText != null || colorInversion != null || boldText != null) {
+            "set at least one of high-contrast text, color inversion or bold text"
+        }
+        if (boldText != null) session.requireApi(BOLD_TEXT_API, "Bold text")
+        val values =
+            listOfNotNull(
+                highContrastText?.let { StateKey.HIGH_CONTRAST_TEXT to if (it) "1" else "0" },
+                colorInversion?.let { StateKey.COLOR_INVERSION to if (it) "1" else "0" },
+                boldText?.let { StateKey.BOLD_TEXT to if (it) BOLD_WEIGHT_ADJUSTMENT else "0" },
+            ).toMap()
+        change(values)
+    }
+
     private suspend fun change(values: Map<String, String?>) = session.change(values)
 
     private fun mapOfNotNull(vararg pairs: Pair<String, String?>?): Map<String, String?> = pairs.filterNotNull().toMap()
@@ -117,6 +149,14 @@ class DeviceConditions internal constructor(
 
         /** `cmd connectivity airplane-mode`; Wi-Fi and data go through `svc`, also on older APIs. */
         const val NETWORK_API = 29
+        /** `Settings.Secure.FONT_WEIGHT_ADJUSTMENT`, which the system applies to the configuration. */
+        const val BOLD_TEXT_API = 31
+
+        /** What Settings › Bold text writes (FontStyle.FONT_WEIGHT_BOLD - FONT_WEIGHT_NORMAL). */
+        const val BOLD_WEIGHT_ADJUSTMENT = "300"
+
+        /** BatteryManager.BATTERY_PLUGGED_AC | USB | WIRELESS: `svc power stayon true`. */
+        const val STAY_ON_ALL = "7"
         const val MIN_FONT_SCALE = 0.5f
         const val MAX_FONT_SCALE = 2.0f
         /** `location_mode` 3: on, high accuracy (what Settings writes when location is turned on). */
