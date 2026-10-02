@@ -199,13 +199,13 @@ class Studio:
         if request.before_step_id:
             self._index(request.before_step_id)
         started = time.monotonic()
-        failure: TapError | None = None
+        failure: TapError | steps.CheckFailed | None = None
         try:
             await worker.call(lambda: steps.run(device, step, secret_value))
-        except TapError as error:
+        except (TapError, steps.CheckFailed) as error:
             failure = error
         step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
-        recorded = self._recording_on and failure is None
+        recorded = self._recording_on and failure is None and not request.skip_recording
         if recorded:
             # Edits wait for the replay, not for a running Perform: the step it goes before may be gone.
             before = request.before_step_id if request.before_step_id and self._has_step(request.before_step_id) else ""
@@ -339,10 +339,10 @@ class Studio:
                 name = secret_name(step)
                 value = self._secrets[name] if name is not None else None
                 started = time.monotonic()
-                failure: TapError | None = None
+                failure: TapError | steps.CheckFailed | None = None
                 try:
                     await worker.call(lambda: steps.run(device, step, value))
-                except TapError as error:
+                except (TapError, steps.CheckFailed) as error:
                     failure = error
                 step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
                 yield studio.ReplayResponse(step_id=step_id, outcome=step.outcome, message=str(failure) if failure else "")

@@ -26,7 +26,15 @@ ACTION_OPS = ("tap", "long_tap", "set_text", "clear_text", "scroll", "swipe", "p
 UNTARGETED_OPS = ("press_key", "open_system_panel")
 """The action ops without a selector, so without a wait or a selector origin."""
 
+APP_WAIT_OPS = ("wait_app_visible", "wait_screen_stable")
+"""The ``tap.v1.Command`` ops an app wait step holds."""
+
+MAX_SCROLLS = 1000
+"""The most scrolls a scroll_until step may take."""
+
 _TEXT_CONDITIONS = (studio.CONDITION_TEXT_EQUALS, studio.CONDITION_TEXT_CONTAINS)
+_TEXT_CHECKS = (studio.CHECK_TEXT_EQUALS, studio.CHECK_TEXT_CONTAINS)
+_DIRECTIONS = (tap.DIR_UP, tap.DIR_DOWN, tap.DIR_LEFT, tap.DIR_RIGHT)
 _MAX_ID = 64
 
 
@@ -123,12 +131,21 @@ def _step(step: studio.Step, used: set[str]) -> list[str]:
     problems = []
     kind = step.WhichOneof("kind")
     if kind is None:
-        problems.append("kind is required (app, action, type or assertion)")
+        problems.append("kind is required (app, action, type, wait, assertion, scroll_until or app_wait)")
     else:
-        check = {"app": _app, "action": _action, "type": _type, "assertion": _assertion}[kind]
+        check = {
+            "app": _app,
+            "action": _action,
+            "type": _type,
+            "wait": _wait,
+            "assertion": _assertion,
+            "scroll_until": _scroll_until,
+            "app_wait": _app_wait,
+        }[kind]
         problems += check(getattr(step, kind), used)
-    if step.outcome.HasField("error") and step.outcome.HasField("failure"):
-        problems.append("outcome has at most one of error and failure")
+    results = [step.outcome.HasField("error"), step.outcome.HasField("failure"), bool(step.outcome.mismatch)]
+    if sum(results) > 1:
+        problems.append("outcome has at most one of error, failure and mismatch")
     return problems
 
 
@@ -202,18 +219,55 @@ def _type(step: studio.TypeStep, used: set[str]) -> list[str]:
     return problems
 
 
+def _wait(step: studio.WaitStep, used: set[str]) -> list[str]:
+    problems = [] if step.selector.HasField("node") else ["wait.selector has no node"]
+    if step.condition == studio.CONDITION_UNSPECIFIED:
+        return [*problems, "wait.condition is required"]
+    takes = "text" if step.condition in _TEXT_CONDITIONS else "count" if step.condition == studio.CONDITION_COUNT else None
+    return problems + _value(step, studio.Condition.Name(step.condition), takes)
+
+
 def _assertion(step: studio.AssertionStep, used: set[str]) -> list[str]:
     problems = [] if step.selector.HasField("node") else ["assertion.selector has no node"]
+    if step.check == studio.CHECK_UNSPECIFIED:
+        return [*problems, "assertion.check is required"]
+    takes = "text" if step.check in _TEXT_CHECKS else "count" if step.check == studio.CHECK_COUNT else None
+    return problems + _value(step, studio.Check.Name(step.check), takes)
+
+
+def _value(step: studio.WaitStep | studio.AssertionStep, name: str, takes: str | None) -> list[str]:
+    """The value a wait's condition or an assertion's check takes: text, a count ≥ 0, or none."""
     value = step.WhichOneof("value")
-    condition = studio.Condition.Name(step.condition)
-    if step.condition == studio.CONDITION_UNSPECIFIED:
-        problems.append("assertion.condition is required")
-    elif step.condition in _TEXT_CONDITIONS:
-        if value != "text":
-            problems.append(f"{condition} needs a text value")
-    elif step.condition == studio.CONDITION_COUNT:
-        if value != "count" or step.count < 0:
-            problems.append("CONDITION_COUNT needs a count ≥ 0")
-    elif value is not None:
-        problems.append(f"{condition} takes no value")
+    if takes == "text" and value != "text":
+        return [f"{name} needs a text value"]
+    if takes == "count" and (value != "count" or step.count < 0):
+        return [f"{name} needs a count ≥ 0"]
+    if takes is None and value is not None:
+        return [f"{name} takes no value"]
+    return []
+
+
+def _scroll_until(step: studio.ScrollUntilStep, used: set[str]) -> list[str]:
+    problems = []
+    if not step.container.HasField("node"):
+        problems.append("scroll_until.container has no node")
+    if not step.target.HasField("node"):
+        problems.append("scroll_until.target has no node")
+    if step.direction not in _DIRECTIONS:
+        problems.append("scroll_until.direction is required")
+    if step.HasField("max_scrolls") and not 0 <= step.max_scrolls <= MAX_SCROLLS:
+        problems.append(f"scroll_until.max_scrolls must be 0..{MAX_SCROLLS}")
+    if step.HasField("distance_percent") and not 1 <= step.distance_percent <= 100:
+        problems.append("scroll_until.distance_percent must be 1..100")
+    return problems
+
+
+def _app_wait(step: studio.AppWaitStep, used: set[str]) -> list[str]:
+    op = step.command.WhichOneof("op")
+    if op not in APP_WAIT_OPS:
+        return [f"app_wait.command must be one of {', '.join(APP_WAIT_OPS)}, not {op or 'empty'}"]
+    wait = getattr(step.command, op)
+    problems = [] if wait.package_name else [f"app_wait.command.{op}.package_name is required"]
+    if op == "wait_screen_stable" and wait.HasField("stable_for_ms") and not 1 <= wait.stable_for_ms <= 30000:
+        problems.append("wait_screen_stable.stable_for_ms must be 1..30000")
     return problems

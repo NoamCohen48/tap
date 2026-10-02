@@ -12,7 +12,7 @@ import { StepEditor } from "./StepEditor";
 
 export type LastRun = { tone: "fail" | "info" | "ok"; text: string } | null;
 
-const KIND_LABELS = { app: "app", action: "action", key: "key", system: "system", type: "type", assertion: "assert" } as const;
+const KIND_LABELS = { app: "app", action: "action", key: "key", system: "system", type: "type", assertion: "assert", wait: "wait" } as const;
 
 export function StepsPanel({
   client,
@@ -142,7 +142,7 @@ export function StepsPanel({
       )}
       <ol className="steps" ref={list}>
         {steps.length === 0 ? (
-          <li className="empty">Act on the screen to record steps, or open a recording.</li>
+          <li className="empty">Select an element on the screen, then act on it, assert or wait. Or open a recording.</li>
         ) : (
           steps.map((step, i) => {
             const kind = stepKind(step) ?? "action";
@@ -281,7 +281,7 @@ function Result({ state, outcome }: { state: StepState | undefined; outcome: Out
       </span>
     );
   if (passed(outcome)) return <span className="res">✓ {outcome.durationMs} ms</span>;
-  const why = outcome.error?.message || (outcome.failure ? "the call failed" : "failed");
+  const why = outcome.mismatch || outcome.error?.message || (outcome.failure ? "the call failed" : "failed");
   return (
     <span className="res fail" title={why}>
       ✗ failed

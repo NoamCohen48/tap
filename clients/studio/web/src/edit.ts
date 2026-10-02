@@ -6,7 +6,7 @@ import { clone, equals } from "@bufbuild/protobuf";
 import type { Command } from "./gen/command_pb";
 import type { ScreenNode } from "./gen/device_pb";
 import { SelectorSchema, type Selector } from "./gen/selector_pb";
-import { SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
+import { Check, SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
 import { looksDynamic, type Chip } from "./nodes";
 import type { Target } from "./steps";
 
@@ -26,14 +26,18 @@ function elementOp(command: Command | undefined) {
   }
 }
 
-/** The selector a step acts on or checks; `undefined` for app steps and keys. */
+/** The selector a step acts on, waits for or checks (a scroll until's container); `undefined`
+ *  for app steps, app waits and keys. */
 export function stepSelector(step: Step): Selector | undefined {
   switch (step.kind.case) {
     case "action":
       return elementOp(step.kind.value.command)?.selector;
     case "type":
+    case "wait":
     case "assertion":
       return step.kind.value.selector;
+    case "scrollUntil":
+      return step.kind.value.container;
     default:
       return undefined;
   }
@@ -43,7 +47,9 @@ export function stepOrigin(step: Step): SelectorOrigin {
   switch (step.kind.case) {
     case "action":
     case "type":
+    case "wait":
     case "assertion":
+    case "scrollUntil":
       return step.kind.value.selectorOrigin;
     default:
       return SelectorOrigin.UNSPECIFIED;
@@ -61,11 +67,23 @@ export function withSelector(step: Step, { selector, origin }: Target): Step {
       break;
     }
     case "type":
+    case "wait":
     case "assertion":
       copy.kind.value.selector = selector;
       copy.kind.value.selectorOrigin = origin;
       break;
+    case "scrollUntil":
+      copy.kind.value.container = selector;
+      copy.kind.value.selectorOrigin = origin;
+      break;
   }
+  return copy;
+}
+
+/** A copy of a scroll until step scrolling to another target. */
+export function withScrollTarget(step: Step, target: Selector): Step {
+  const copy = clone(StepSchema, step);
+  if (copy.kind.case === "scrollUntil") copy.kind.value.target = target;
   return copy;
 }
 
@@ -84,6 +102,7 @@ export function stepText(step: Step): StepText | null {
       if (input.case === "secret") return { secret: input.value };
       return { text: input.value ?? "" };
     }
+    case "wait":
     case "assertion":
       return step.kind.value.value.case === "text" ? { text: step.kind.value.value.value } : null;
     default:
@@ -105,6 +124,7 @@ export function withText(step: Step, value: StepText): Step {
     case "type":
       copy.kind.value.input = "secret" in value ? { case: "secret", value: value.secret } : { case: "text", value: value.text };
       break;
+    case "wait":
     case "assertion":
       if ("text" in value && copy.kind.value.value.case === "text") copy.kind.value.value.value = value.text;
       break;
@@ -147,14 +167,22 @@ export function stepChips(step: Step, missingSecrets: readonly string[]): Chip[]
 
 const elements = (n: number) => `${n} element${n === 1 ? "" : "s"}`;
 
+/** Whether a step needs exactly one match when it runs (or enough for its pick): actions, and
+ *  assertions that read the one match's state. Waits, `exists` and `count` take any number. */
+export function needsOne(step: Step): boolean {
+  if (step.kind.case === "wait") return false;
+  if (step.kind.case === "assertion") return step.kind.value.check !== Check.EXISTS && step.kind.value.check !== Check.COUNT;
+  return true;
+}
+
 /**
- * What a live count of the selector means for the step. `Count` counts every match whatever the
- * pick, as the driver's waits do: an action needs exactly one match, or with `.first()` /
- * `.at(i)` enough matches for the pick; an assertion needs none of that.
+ * What a live count of the selector means for a step. `Count` counts every match whatever the
+ * pick, as the driver's waits do: a step that needs one match (`one`) needs exactly one, or with
+ * `.first()` / `.at(i)` enough matches for the pick; any other step takes any number.
  */
-export function countLine(count: number, selector: Selector, assertion: boolean): { text: string; warn: boolean } {
+export function countLine(count: number, selector: Selector, one: boolean): { text: string; warn: boolean } {
   const now = `Matches ${elements(count)} now`;
-  if (assertion) return { text: `${now}.`, warn: false };
+  if (!one) return { text: `${now}.`, warn: false };
   if (selector.pick.case === "first") {
     return count > 0 ? { text: `${now}; the step uses the first.`, warn: false } : { text: `${now}.`, warn: true };
   }
@@ -164,5 +192,5 @@ export function countLine(count: number, selector: Selector, assertion: boolean)
       ? { text: `${now}; the step uses element ${index + 1}.`, warn: false }
       : { text: `${now}: .at(${index}) needs at least ${index + 1}.`, warn: true };
   }
-  return count === 1 ? { text: `${now}.`, warn: false } : { text: `${now}: an action needs exactly one when it runs.`, warn: true };
+  return count === 1 ? { text: `${now}.`, warn: false } : { text: `${now}: the step needs exactly one when it runs.`, warn: true };
 }

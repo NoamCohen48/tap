@@ -53,8 +53,9 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
 ## Decision
 
 1. **The user acts in the browser, never on the phone.** A click on the screen view is
-   hit-tested against that frame's snapshot, turned into that node's selector and sent
-   through the normal `Execute` path. Recording touches made on the device would need input or
+   hit-tested against that frame's snapshot and selects that node; the user then picks the step
+   to record in the composer, which sends it through the normal `Execute` path (2026-10-02:
+   clicks no longer act, see "Select, then choose" under The UI). Recording touches made on the device would need input or
    accessibility-event interception and a guess at which element a point meant — the
    coordinate recording this client exists to avoid. The picture is for the user; the snapshot
    is what the user acts on.
@@ -118,9 +119,15 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
    driver's waits count every match whatever the pick, so it records `await(selector).visible()`
    instead and the action applies the pick (found on the device run, phase 6).
 
-7. **Assertions are first-class steps.** An *assert mode* turns a click into a check instead of
-   an action: visible, gone, exactly one, text equals / contains, enabled, checked, count. The UI
-   nudges toward ending a flow with an assertion.
+7. **Assertions and waits are first-class steps, and they are different steps.** An
+   *assertion* checks the screen as it is now and fails at once (exists, enabled / disabled,
+   checked / unchecked, focused, text equals / contains, count), the SDKs' queries under
+   `assertTrue` / `assertEquals`. A *wait* waits up to the device's wait timeout for something to
+   happen: the SDKs' element waits (visible, exactly one, gone, enabled, disabled, checked,
+   unchecked, focused, text, count) and the app waits (`awaitVisible`, `awaitScreenStable`,
+   `awaitSettled`, `awaitAnimationEnd`). Until 2026-10-02 the recording's "assertion" was the
+   element wait; the owner asked for the two to be separate (an assertion that waits hides a slow
+   screen, a wait that is called an assertion reads wrong in a test).
 
 8. **The selector is shown and editable before it is recorded.** Hover shows the synthesised
    selector and its live match count (`Count`). The UI warns on `by_index` picks and on text that
@@ -135,11 +142,11 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
    - click → `tap`; long-press → `long_tap`;
    - typing into a node → `set_text` (default) or the SDKs' element `typeText` shape (tap,
      await focused, `type_text`);
-   - wheel or drag over a scrollable node → `scroll` on that node; a swipe gesture on a node →
-     `swipe`;
-   - back / home / recent apps / enter → `press_key`; the rail's notifications and quick
-     settings buttons → `open_system_panel` (the status bar is not swipeable in the screen: a
-     drag records a `swipe` on an element, and the status bar has no app element to hold it);
+   - scroll up / down / left / right on a scrollable node → `scroll` on that node; swipe in any
+     direction on a node → `swipe`; *scroll until* a target selector is in a scrollable node →
+     the SDKs' `Element.scrollUntil` (a `scroll_until` step);
+   - back / home / recent apps / enter → `press_key`; the notifications and quick settings
+     buttons → `open_system_panel`;
    - app lifecycle buttons → launch, cold launch, force stop, clear data, grant permission.
    Nothing takes a coordinate.
 
@@ -158,48 +165,75 @@ v1 needs no new daemon RPC for the screen: the paired-frame loop is `ScreenSnaps
 12. **One device per recording** for now; multi-role recording is a later extension of the
     step model (a `role` per step).
 
-## The UI (from the demo, `studio-demo.html`)
+## The UI
 
-Three areas and a top bar, dense, light and dark themes, Tap brand (ink `#17202A`, coral
-`#FF6A3D`).
+The first version followed the demo (`studio-demo.html`): a click mode in the top bar (Act /
+Assert / Inspect) decided what a click on the screen did, the wheel scrolled, a drag swiped,
+Alt-click long-tapped and a rail beside the phone held Back, Home, the panels and an App menu.
+The demo is kept as the record of that design; it no longer matches the page.
 
-- **Top bar:** the device; the click mode — **Act** (1), **Assert** (2),
-  **Inspect** (3); Record / Pause (paused: actions still run, nothing is recorded).
-- **Screen:** the latest frame with its overlay. Frame status: *settled*, or *changing…* with a
-  dashed, faded overlay (decision 4). Overlay filter: interactive / all nodes / off. Hover shows
-  the selector that would be recorded and its match count. Nodes with no unique selector get a
-  red hatched box: the app's accessibility gaps (decision 8). Below: Back, Home, the App menu
-  (its package — page state, remembered per browser, not part of the attach — then cold launch, launch, force stop, clear data, grant permission). No Refresh: the frame loop
-  follows the screen.
-- **Inspector:** *Element* — class, `@ref`, the ranked selector candidates as a radio list (match
-  count; *by row*, *by index*, *dynamic text* chips; candidates matching more than one node are
-  disabled), the actions and assertions that fit the node, its properties. *Screen tree* — every
-  node, filterable, click to select.
+**Select, then choose (owner, 2026-10-02).** Clicking the phone image to act made the
+recordable steps whatever a mouse gesture could express (no swipe up or down, no scroll until,
+no wait that is not an assertion) and made a misclick a recorded step. Now:
+
+- **Top bar:** the device; Record / Pause (paused: steps still run, nothing is recorded).
+- **Screen:** the latest frame with its overlay; select-only. A click selects (Act hits
+  interactive nodes, or all nodes when the overlay shows all; Assert and Wait hit every node);
+  a right-click selects from every node. Frame status: *settled*, or *changing…* with a dashed,
+  faded overlay (decision 4). Overlay filter: interactive / all nodes / off. Hover shows the
+  selector that would be recorded. Nodes with no unique selector get a red hatched box
+  (decision 8). The selection takes the active tab's colour. Under the phone, as its navigation
+  bar: Back, Home, Recent apps, Notifications, Quick settings (owner, 2026-10-02: the device's
+  buttons must not blend with the element's).
+- **Composer** (middle column, top): the selected element (class, `@ref`, the ranked selector
+  candidates as a radio list with their chips, the live match count of the chosen one) and three
+  tabs, keys 1 / 2 / 3, each button of which runs its step on the element and records it:
+  - **Act** (coral): Tap, Long press; Swipe ↑ ↓ ← →; Scroll ↑ ↓ ← → on a scrollable node (on a
+    node inside one, a button selects the smallest scrollable node around it, since its rows
+    usually cover a list); a Distance slider (10–100 %, default 80, the SDKs' `distancePercent`;
+    the SDKs have no speed) for swipes, scrolls and scroll until; Scroll until (below); on
+    editable nodes the text line (value, Secret, name, Set text, Type keys, Clear).
+  - **Assert** (blue): the states the node is in now, text equals / contains (prefilled with its
+    text), count (prefilled with the live count).
+  - **Wait** (violet): the element waits that fit the node, text and count.
+  Only what the SDKs have is offered; new gestures arrive with the SDK.
+- **App** (middle column, its own panel; owner, 2026-10-02): the package (suggesting the packages
+  on screen, remembered per browser, not part of the attach), Cold launch / Launch, Force stop /
+  Clear data, Grant a permission, and the app waits (`awaitVisible`, `awaitScreenStable`,
+  `awaitSettled`, `awaitAnimationEnd`).
+- **Inspector** (middle column, below): *Properties* and *Screen tree* (every node, filterable,
+  click to select).
 - **Steps:** each recorded step with its inferred wait (`after await(res("search")).one()`),
   warnings and outcome; move / delete; **Replay**; **Export** shows the `tap-recording/1` JSON.
 
-Interaction rules, the owner's open questions answered by default (2026-09-29; change them
-here if the owner disagrees):
+**Scroll until is shown, not typed (owner, 2026-10-02).** A first cut asked for the target as a
+typed selector. Now a direction starts a search: the studio scrolls the container once as a
+*probe* (`PerformRequest.skip_recording`: it runs, is never recorded, whether recording is on or
+not), the screen outlines the container and dims the rest, and the composer asks for the target
+with **Scroll again** and **Cancel** (Esc). A click inside the container records one
+`scroll_until` step with that element's selector as the target, the probe's direction and
+distance, and `max_scrolls` = max(20, twice the probes). Running it right away passes at once
+(the target is already in view), so what is recorded is what the user saw; a replay from the
+top scrolls as far as it needs. The probes are not undone. The target becomes the selection, so
+the next step (usually a tap) is one click.
 
-1. **Modes, not a menu per click.** Act/Assert/Inspect with number keys: recording a long flow
-   is one click per step. Right-click always inspects without acting.
-2. **Text:** clicking an editable node in Act mode opens a small popover at the node: the value,
-   *Secret*, and two buttons. **Set text** is the default (Enter): one command, no keyboard, no
-   focus dependency. **Type keys** records the SDKs' element `typeText` (tap, await focused,
+Interaction rules:
+
+1. **One click selects, one click records.** Recording a step is two clicks (element, then
+   step); repeating a step on the same element is one. Number keys switch the tab.
+2. **Text:** **Set text** is the default (Enter): one command, no keyboard, no focus
+   dependency. **Type keys** records the SDKs' element `typeText` (tap, await focused,
    `type_text`) for fields that react to key events.
-3. **Gestures are element-relative.** The wheel over a scrollable node records `scroll` on it;
-   a drag across a node records `swipe` on it in the drag's direction (default distance). Alt-click
-   is a long tap. No gesture records a point.
+3. **Gestures are element-relative**, with the default distance. No gesture records a point.
 4. **Editing steps** (phase 5): reorder, delete, change the selector (another candidate, or typed
-   in with a live match count), change a value, toggle secret, insert (new steps go after the
-   selected step), a free-text note per step.
+   in with a live match count), change a value or the scroll-until target, toggle secret, insert
+   (new steps go after the selected step), a free-text note per step.
 5. **Replay** runs from the first step and stops at the first failure; *Run from here* and *Run
    step* for iterating. If the recording does not start with an app step, the UI offers to
    prepend a cold launch, because a replay from an unknown screen is not reproducible.
-6. **Also needed** (not in the demo): device and app pickers; windows of other packages (a
-   system dialog over the app) shown with their package, and a click there records a selector
-   bound to that package; rotation (frames carry it; the overlay follows); saving and reopening a
-   recording file to continue it.
+6. Windows of other packages (a system dialog over the app) are shown with their package, and a
+   step there records a selector bound to that package; rotation (frames carry it; the overlay
+   follows); saving and reopening a recording file to continue it.
 
 ## `tap-recording/1`
 
@@ -229,8 +263,10 @@ strings (proto3 JSON).
     {"id": "s4", "action": {"command": {"press_key": {"key_code": 4}}}},
     {"id": "s5", "note": "the confirmation screen",
      "outcome": {"duration_ms": 5003, "error": {"code": "ERR_WAIT_TIMEOUT", "message": "no match", "match_count": 0}},
-     "assertion": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Order placed"}}},
-      "condition": "CONDITION_VISIBLE"}}
+     "wait": {"selector": {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Order placed"}}},
+      "condition": "CONDITION_VISIBLE"}},
+    {"id": "s6", "assertion": {"selector": {"node": {"resource": {"name": "total"}}},
+      "check": "CHECK_TEXT_EQUALS", "text": "€42"}}
   ]
 }
 ```
@@ -243,7 +279,8 @@ strings (proto3 JSON).
   code generation writes a bound selector as `app("pkg").element(…)` and an unbound one as
   `screen.element(…)`.
 - **Steps** have a unique `id` (stable across edits, ≤ 64 chars), an optional `note`, once run an
-  `outcome` (`duration_ms`, and a `tap.v1` `Error` or `Failure` when it failed; neither = passed),
+  `outcome` (`duration_ms`, and a `tap.v1` `Error` or `Failure`, or a `mismatch` message when
+  an assertion did not hold; none of them = passed),
   and exactly one kind:
   - `app`: a `tap.v1.AppCall` (the event log's message): cold_launch, launch, force_stop,
     clear_data, grant_permission.
@@ -256,10 +293,23 @@ strings (proto3 JSON).
   - `type`: the element `typeText` flow, three commands: tap `selector`, await it focused
     (unless `skip_focus_wait`, the SDKs' `await_focus = false`), then `type_text` of `text` or of
     the named `secret`. The wait before the tap is implied, as for an action.
-  - `assertion`: `selector` + `condition`, the SDKs' element waits (`CONDITION_VISIBLE`, `ONE`,
+  - `wait`: `selector` + `condition`, the SDKs' element waits (`CONDITION_VISIBLE`, `ONE`,
     `GONE`, `ENABLED`, `DISABLED`, `CHECKED`, `UNCHECKED`, `FOCUSED`, `TEXT_EQUALS` /
     `TEXT_CONTAINS` with `text`, `COUNT` with `count`), replayed as the SDK wait of the same name
     with the device's default wait timeout.
+  - `assertion`: `selector` + `check` (`CHECK_EXISTS`, `ENABLED`, `DISABLED`, `CHECKED`,
+    `UNCHECKED`, `FOCUSED`, `TEXT_EQUALS` / `TEXT_CONTAINS` with `text`, `COUNT` with `count`),
+    one query of the screen as it is (`exists`, `is_enabled`, `is_checked`, `text`, `count`, the
+    snapshot's focus), no wait. A check that does not hold is the outcome's `mismatch`, and the
+    page does not record it. A `/1` file written before 2026-10-02 whose `assertion` holds a
+    `condition` is refused ("assertion.check is required"), not read as a check: rename it to
+    `wait`.
+  - `scroll_until`: `container`, `target`, `direction`, `max_scrolls` (0..1000, default 20) and
+    `distance_percent` (1..100, default 80, as for scroll and swipe), replayed as
+    `Element.scrollUntil`: wait for exactly one container (at least one with a pick), then scroll
+    it until the target exists.
+  - `app_wait`: one `tap.v1.Command`, `wait_app_visible` or `wait_screen_stable` (with its
+    `stable_for_ms`, 1..30000, default 500, and its signal), with a package name.
   - `selector_origin` on steps with a selector: `SYNTHESIZED` (the daemon's first choice),
     `ALTERNATIVE` (another candidate the user picked) or `EDITED` (typed in). Warnings such as
     *by index* are derived from the selector itself and not stored.
@@ -358,7 +408,8 @@ daemon
      the names.
    - `--session NAME` (resume a named recording) is dropped for now: the page exports and
      will import recordings (phase 5).
-4. Front end: frame + overlay + hover + click-to-act, steps list, export.
+4. Front end: frame + overlay + hover + click-to-act, steps list, export. (Click-to-act was
+   replaced by select-then-choose on 2026-10-02; see The UI.)
    **Done 2026-09-29.** Device picker and package, then the three areas of the demo: the screen
    with its overlay, the inspector (element / screen tree) and the steps with export. Page tests
    (Vitest, 36) run the whole app against a fake `StudioService` on a Connect router transport:

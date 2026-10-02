@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { ScreenNode } from "./gen/device_pb";
 import type { TextInput } from "./steps";
 
@@ -10,13 +10,14 @@ export type TextHow = "set" | "type";
 export function TextEntry({
   node,
   onSubmit,
-  onCancel,
-  autoFocus = false,
+  disabled = false,
+  children,
 }: {
   node: ScreenNode;
   onSubmit: (how: TextHow, input: TextInput) => void;
-  onCancel?: () => void;
-  autoFocus?: boolean;
+  disabled?: boolean;
+  /** More buttons for the action line. */
+  children?: ReactNode;
 }) {
   const id = useId();
   const [value, setValue] = useState("");
@@ -24,29 +25,25 @@ export function TextEntry({
   const [name, setName] = useState(node.password ? "password" : "secret");
 
   const submit = (how: TextHow) => {
-    if (secret && !name.trim()) return;
+    if (disabled || (secret && !name.trim())) return;
     onSubmit(how, secret ? { secret: name.trim(), value } : { text: value });
   };
 
   return (
     <div className="textentry">
-      <div className="textact">
-        <input
-          type={secret ? "password" : "text"}
-          aria-label="Text to enter"
-          placeholder="Text to enter"
-          value={value}
-          autoFocus={autoFocus}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit("set");
-            }
-            if (e.key === "Escape") onCancel?.();
-          }}
-        />
-      </div>
+      <input
+        type={secret ? "password" : "text"}
+        aria-label="Text to enter"
+        placeholder="Text to enter"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit("set");
+          }
+        }}
+      />
       <div className="textact">
         <label className="chk">
           <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} /> Secret
@@ -61,19 +58,14 @@ export function TextEntry({
             onChange={(e) => setName(e.target.value)}
           />
         )}
-      </div>
-      <div className="textact">
-        <button type="button" className="btn primary" onClick={() => submit("set")}>
+        <span className="spacer" />
+        <button type="button" className="btn primary" disabled={disabled} onClick={() => submit("set")}>
           Set text
         </button>
-        <button type="button" className="btn" title="Tap, wait for focus, then type key by key" onClick={() => submit("type")}>
+        <button type="button" className="btn" disabled={disabled} title="Tap, wait for focus, then type key by key" onClick={() => submit("type")}>
           Type keys
         </button>
-        {onCancel && (
-          <button type="button" className="btn ghost" onClick={onCancel}>
-            Cancel
-          </button>
-        )}
+        {children}
       </div>
     </div>
   );

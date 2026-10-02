@@ -108,3 +108,12 @@ export const Trash = () => (
     <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
   </svg>
 );
+
+const ARROW: Record<"up" | "down" | "left" | "right", number> = { up: 0, right: 90, down: 180, left: 270 };
+
+/** A direction arrow, for swipe and scroll: an arrow with a shaft, unlike the chevrons. */
+export const Arrow = ({ to }: { to: keyof typeof ARROW }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke} style={{ transform: `rotate(${ARROW[to]}deg)` }}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </svg>
+);

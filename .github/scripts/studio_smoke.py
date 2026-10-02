@@ -5,8 +5,8 @@
 
 Installs the fixture app, starts `tap-studio --serial …`, signs in with the launch
 link, checks the page is served and frames arrive, records a cold launch, a tap, two text
-assertions, a set text, a tap picked by index, and the notification shade opened and closed
-with Back (the device rail's steps) with the checks that it covered the app and then did not, exports the recording, reopens it after
+waits, a set text, a tap picked by index, and the notification shade opened and closed
+with Back (the composer's Device steps) with the checks that it covered the app and then did not, exports the recording, reopens it after
 NewRecording and replays it. Then stops the studio with SIGTERM (the device must be released
 at once) and replays the exported file through tap-e2e in a fresh connection.
 
@@ -50,7 +50,7 @@ def act(command: tap.Command) -> studio.Step:
 
 
 def expect(selector, condition: int, value: str | None = None) -> studio.Step:
-    return studio.Step(assertion=studio.AssertionStep(selector=selector.to_proto(), condition=condition, text=value))
+    return studio.Step(wait=studio.WaitStep(selector=selector.to_proto(), condition=condition, text=value))
 
 
 def check(condition: bool, message: str) -> None:

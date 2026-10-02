@@ -58,6 +58,18 @@ const BUTTON = node("e3", [100, 400, 500, 520], {
   ],
 });
 const GAP = node("e4", [600, 400, 700, 520], { className: "android.view.View" });
+const LIST = node("e5", [100, 1000, 980, 2000], {
+  className: "androidx.recyclerview.widget.RecyclerView",
+  resourceName: "com.example:id/list",
+  flags: [NodeFlag.FLAG_ENABLED, NodeFlag.FLAG_SCROLLABLE],
+  selector: resSelector("list"),
+});
+const ROW = node("e6", [100, 1100, 980, 1200], {
+  className: "android.widget.TextView",
+  text: "Row 40",
+  interactive: false,
+  selector: create(SelectorSchema, { node: { kind: { case: "match", value: { property: TextProperty.PROPERTY_TEXT, value: "Row 40" } } } }),
+});
 
 /** A fake StudioService: one device, frames on demand, a recording kept as the studio keeps it. */
 function fakeStudio() {
@@ -109,7 +121,7 @@ function fakeStudio() {
           png: new Uint8Array([1]),
           width: WIDTH,
           height: HEIGHT,
-          nodes: [SEARCH, BUTTON, GAP],
+          nodes: [SEARCH, BUTTON, GAP, LIST, ROW],
         });
         await new Promise((resolve) => context.signal.addEventListener("abort", resolve));
       },
@@ -126,7 +138,7 @@ function fakeStudio() {
           return create(PerformResponseSchema, { step, recorded: false, message });
         }
         step.outcome = create(OutcomeSchema, { durationMs: 42 });
-        if (!state.session.recording) return create(PerformResponseSchema, { step, recorded: false });
+        if (!state.session.recording || request.skipRecording) return create(PerformResponseSchema, { step, recorded: false });
         step.id = `s${state.nextId++}`;
         const at = request.beforeStepId ? index(request.beforeStepId) : state.steps.length;
         state.steps.splice(at, 0, step);
@@ -230,13 +242,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function click(x: number, y: number, init: { altKey?: boolean } = {}) {
+/** A left click on the screen: it selects, and runs nothing. */
+function click(x: number, y: number) {
   const overlay = screen.getByTestId("overlay");
-  fireEvent.pointerDown(overlay, { button: 0, clientX: x, clientY: y, pointerId: 1, ...init });
-  fireEvent.pointerUp(overlay, { button: 0, clientX: x, clientY: y, pointerId: 1, ...init });
+  fireEvent.pointerDown(overlay, { button: 0, clientX: x, clientY: y, pointerId: 1 });
+  fireEvent.pointerUp(overlay, { button: 0, clientX: x, clientY: y, pointerId: 1 });
 }
 
-/** Attaches emulator-5554 and, unless `app` is null, picks the App menu's package. */
+const composer = () => screen.getByRole("region", { name: "Composer" });
+const deviceBar = () => screen.getByRole("toolbar", { name: "Device" });
+const appPanel = () => screen.getByRole("region", { name: "App" });
+
+/** Selects the node at the point, then presses the composer's button for it. */
+async function perform(x: number, y: number, button: string) {
+  act(() => click(x, y));
+  const control = await within(composer()).findByRole("button", { name: button });
+  fireEvent.click(control);
+}
+
+/** Attaches emulator-5554 and, unless `app` is null, enters the package in the top bar. */
 async function attached(app: string | null = "com.example") {
   const fake = fakeStudio();
   render(<App client={fake.client} />);
@@ -245,13 +269,14 @@ async function attached(app: string | null = "com.example") {
   expect((within(picker).getByRole("radio", { name: /85e49002/ }) as HTMLInputElement).disabled).toBe(true);
   fireEvent.click(within(picker).getByRole("button", { name: "Attach" }));
   await screen.findByRole("img", { name: "The device's screen" });
-  if (app !== null) {
-    fireEvent.click(screen.getByRole("button", { name: "App" }));
-    fireEvent.change(screen.getByLabelText("App package"), { target: { value: app } });
-    fireEvent.keyDown(document, { key: "Escape" });
-  }
+  if (app !== null) fireEvent.change(screen.getByLabelText("App package"), { target: { value: app } });
   return fake;
 }
+
+const opOf = (request: PerformRequest | undefined) => {
+  const kind = request?.step?.kind;
+  return kind?.case === "action" ? kind.value.command?.op : undefined;
+};
 
 describe("App", () => {
   it("shows which studio it is connected to", async () => {
@@ -277,85 +302,162 @@ describe("App", () => {
   it("attaches a device and shows its screen with the overlay", async () => {
     const fake = await attached();
     expect(fake.state.session.device?.serial).toBe("emulator-5554");
-    expect(screen.getByText(/2 interactive|3 interactive/)).toBeTruthy();
+    expect(screen.getByText(/4 interactive \/ 5 nodes/)).toBeTruthy();
     const boxes = screen.getByTestId("overlay").querySelectorAll(".ob");
-    expect(boxes).toHaveLength(3);
+    expect(boxes).toHaveLength(4);
     expect((boxes[1] as HTMLElement).style.left).toBe(`${(100 / WIDTH) * 100}%`);
     expect(screen.getByTestId("overlay").querySelectorAll(".ob.gap")).toHaveLength(1);
   });
 
-  it("records a tap on the clicked node, with the step in the list", async () => {
+  it("a click only selects; the composer's Tap records the tap", async () => {
     const fake = await attached();
     act(() => click(300, 450));
+    expect(await within(composer()).findByText("@e3")).toBeTruthy();
+    expect(screen.getByTestId("overlay").querySelector(".ob.sel")).toBeTruthy();
+    expect(fake.state.performed).toHaveLength(0);
+    fireEvent.click(within(composer()).getByRole("button", { name: "Tap" }));
     await screen.findByText('screen.element(res("go")).tap()');
     expect(fake.state.performed).toHaveLength(1);
-    const step = fake.state.performed[0]!.step!;
-    expect(step.kind.case === "action" && step.kind.value.command?.op.case).toBe("tap");
+    expect(opOf(fake.state.performed[0])?.case).toBe("tap");
     expect(screen.getByText("1 step")).toBeTruthy();
   });
 
-  it("Alt-click long-taps, and a node without a selector is only selected", async () => {
+  it("long-presses and swipes in all four directions", async () => {
     const fake = await attached();
-    act(() => click(300, 450, { altKey: true }));
+    await perform(300, 450, "Long press");
     await screen.findByText('screen.element(res("go")).longTap()');
-    act(() => click(650, 450));
-    const inspector = screen.getByRole("region", { name: "Inspector" });
-    expect(await within(inspector).findByText("@e4")).toBeTruthy();
-    expect(within(inspector).getByText(/No selector finds only this element/)).toBeTruthy();
-    expect(screen.getByText("No selector finds only this element: see the Element panel")).toBeTruthy();
+    for (const [name, shown] of [
+      ["up", "UP"],
+      ["down", "DOWN"],
+      ["left", "LEFT"],
+      ["right", "RIGHT"],
+    ]) {
+      fireEvent.click(within(composer()).getByRole("button", { name: `Swipe ${name}` }));
+      await screen.findByText(`screen.element(res("go")).swipe(${shown})`);
+    }
+    expect(fake.state.performed.map((r) => opOf(r)?.case)).toEqual(["longTap", "swipe", "swipe", "swipe", "swipe"]);
+
+    // The distance slider applies to the next gestures, and a non-default one is in the step.
+    fireEvent.change(within(composer()).getByLabelText("Distance"), { target: { value: "40" } });
+    expect(within(composer()).getByText("40 % of the element")).toBeTruthy();
+    fireEvent.click(within(composer()).getByRole("button", { name: "Swipe up" }));
+    await screen.findByText('screen.element(res("go")).swipe(UP, distancePercent = 40)');
+  });
+
+  it("scrolls only a scrollable element", async () => {
+    const fake = await attached();
+    act(() => click(300, 450));
+    expect(((await within(composer()).findByRole("button", { name: "Scroll down" })) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(composer()).getByText(/Not scrollable/)).toBeTruthy();
+    expect(within(composer()).queryByRole("button", { name: "Find by scrolling down" })).toBeNull();
+    // A row of the list (a right-click reaches it: it is not interactive) leads to the list.
+    fireEvent.contextMenu(screen.getByTestId("overlay"), { clientX: 500, clientY: 1150 });
+    fireEvent.click(await within(composer()).findByRole("button", { name: "Select the RecyclerView around it" }));
+    expect(await within(composer()).findByText("@e5")).toBeTruthy();
+    fireEvent.click(within(composer()).getByRole("button", { name: "Scroll down" }));
+    await screen.findByText('screen.element(res("list")).scroll(DOWN)');
     expect(fake.state.performed).toHaveLength(1);
   });
 
-  it("asks for the text of an editable node, and keeps a secret out of the step", async () => {
+  it("scroll until scrolls without recording, then records the element picked inside the container", async () => {
+    const fake = await attached();
+    await perform(500, 1500, "Find by scrolling up");
+    const card = await within(composer()).findByRole("region", { name: "Scroll until" });
+    await waitFor(() => expect(card.textContent).toContain('Scrolled res("list") up once.'));
+    fireEvent.click(within(card).getByRole("button", { name: /Scroll again/ }));
+    await waitFor(() => expect(card.textContent).toContain("up 2 times."));
+    expect(fake.state.performed.map((r) => [opOf(r)?.case, r.skipRecording])).toEqual([
+      ["scroll", true],
+      ["scroll", true],
+    ]);
+    expect(screen.getByText("0 steps")).toBeTruthy();
+    // The device bar and the app panel wait; a click outside the container picks nothing.
+    expect((within(deviceBar()).getByRole("button", { name: "Back" }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => click(300, 450));
+    expect(fake.state.performed).toHaveLength(2);
+
+    act(() => click(500, 1150));
+    await screen.findByText('screen.element(res("list")).scrollUntil(text("Row 40"), UP)');
+    expect(fake.state.performed[2]!.step?.kind.case).toBe("scrollUntil");
+    expect(fake.state.performed[2]!.skipRecording).toBe(false);
+    expect(within(composer()).queryByRole("region", { name: "Scroll until" })).toBeNull();
+    expect(await within(composer()).findByText("@e6")).toBeTruthy(); // the target is selected next
+  });
+
+  it("Escape ends a scroll until search without recording anything", async () => {
+    const fake = await attached();
+    await perform(500, 1500, "Find by scrolling down");
+    const card = await within(composer()).findByRole("region", { name: "Scroll until" });
+    await waitFor(() => expect(card.textContent).toContain("once."));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(within(composer()).queryByRole("region", { name: "Scroll until" })).toBeNull();
+    expect(fake.state.steps).toHaveLength(0);
+  });
+
+  it("a node without a selector is selected, explained, and cannot be acted on", async () => {
+    const fake = await attached();
+    act(() => click(650, 450));
+    expect(await within(composer()).findByText("@e4")).toBeTruthy();
+    expect(within(composer()).getByText(/No selector finds only this element/)).toBeTruthy();
+    expect(within(composer()).queryByRole("button", { name: "Tap" })).toBeNull();
+    expect(fake.state.performed).toHaveLength(0);
+  });
+
+  it("sets the text of an editable node, and keeps a secret out of the step", async () => {
     const fake = await attached();
     act(() => click(500, 250));
-    const dialog = await screen.findByRole("dialog", { name: /Text for/ });
-    fireEvent.click(within(dialog).getByLabelText("Secret"));
-    fireEvent.change(within(dialog).getByLabelText("Text to enter"), { target: { value: "hunter2" } });
-    fireEvent.keyDown(within(dialog).getByLabelText("Text to enter"), { key: "Enter" });
+    const text = await within(composer()).findByLabelText("Text to enter");
+    fireEvent.click(within(composer()).getByLabelText("Secret"));
+    fireEvent.change(text, { target: { value: "hunter2" } });
+    fireEvent.click(within(composer()).getByRole("button", { name: "Set text" }));
     await screen.findByText('screen.element(res("search")).setText(${secret})');
     const request = fake.state.performed[0]!;
     expect(request.secretValue).toBe("hunter2");
     expect(JSON.stringify(request.step, (_k, v) => (typeof v === "bigint" ? String(v) : v))).not.toContain("hunter2");
+    fireEvent.click(within(composer()).getByRole("button", { name: "Clear" }));
+    await screen.findByText('screen.element(res("search")).clearText()');
   });
 
-  it("records an assertion in assert mode", async () => {
+  it("Assert records a check of the screen as it is now", async () => {
     const fake = await attached();
     fireEvent.keyDown(document, { key: "2" });
-    act(() => click(300, 450));
-    const dialog = await screen.findByRole("dialog", { name: /Check/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Text is “Go”" }));
-    await screen.findByText('screen.await(res("go")).textEquals("Go")');
-    expect(fake.state.performed).toHaveLength(1);
+    expect(within(composer()).getByRole("tab", { name: /Assert/ }).getAttribute("aria-selected")).toBe("true");
+    await perform(300, 450, "Is enabled");
+    await screen.findByText('assertTrue(screen.element(res("go")).isEnabled())');
+    const form = within(composer()).getByRole("form", { name: "Assert text" });
+    fireEvent.click(within(form).getByRole("button", { name: "contains" }));
+    fireEvent.change(within(form).getByLabelText("Text"), { target: { value: "G" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Assert" }));
+    await screen.findByText('assertContains(screen.element(res("go")).text().orEmpty(), "G")');
+    expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["assertion", "assertion"]);
   });
 
-  it("inspect mode and right-click select without running anything", async () => {
+  it("Wait records an element wait, prefilling the count it matches now", async () => {
     const fake = await attached();
-    fireEvent.contextMenu(screen.getByTestId("overlay"), { clientX: 300, clientY: 450 });
-    const inspector = screen.getByRole("region", { name: "Inspector" });
-    expect(await within(inspector).findByText("@e3")).toBeTruthy();
-    expect(within(inspector).getByText('res("go")')).toBeTruthy();
     fireEvent.keyDown(document, { key: "3" });
-    act(() => click(500, 250));
-    expect(await within(inspector).findByText("@e2")).toBeTruthy();
-    expect(fake.state.performed).toHaveLength(0);
+    act(() => click(650, 450)); // a label: waits reach every node, but this one has no selector
+    await perform(300, 450, "Gone");
+    await screen.findByText('screen.await(res("go")).gone()');
+    const form = within(composer()).getByRole("form", { name: "Wait count" });
+    await waitFor(() => expect((within(form).getByLabelText("Count") as HTMLInputElement).value).toBe("1"));
+    fireEvent.click(within(form).getByRole("button", { name: "Wait" }));
+    await screen.findByText('screen.await(res("go")).count(1)');
+    expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["wait", "wait"]);
   });
 
-  it("a drag swipes the node it started on", async () => {
+  it("the app panel waits on the app", async () => {
     const fake = await attached();
-    const overlay = screen.getByTestId("overlay");
-    act(() => {
-      fireEvent.pointerDown(overlay, { button: 0, clientX: 450, clientY: 450, pointerId: 1 });
-      fireEvent.pointerUp(overlay, { button: 0, clientX: 120, clientY: 460, pointerId: 1 });
-    });
-    await screen.findByText('screen.element(res("go")).swipe(LEFT)');
-    expect(fake.state.performed).toHaveLength(1);
+    fireEvent.click(within(appPanel()).getByRole("button", { name: "In the foreground" }));
+    await screen.findByText('app("com.example").awaitVisible()');
+    fireEvent.click(within(appPanel()).getByRole("button", { name: "Screen stable" }));
+    await screen.findByText('app("com.example").awaitScreenStable()');
+    expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["appWait", "appWait"]);
   });
 
   it("a failed step is reported and not added", async () => {
     const fake = await attached();
     fake.state.failNext = "Timed out after 10008 ms waiting for res(go)";
-    act(() => click(300, 450));
+    await perform(300, 450, "Tap");
     expect((await screen.findByRole("alert")).textContent).toContain("Not recorded");
     expect(screen.getByText("0 steps")).toBeTruthy();
   });
@@ -364,14 +466,14 @@ describe("App", () => {
     const fake = await attached();
     fireEvent.click(screen.getByRole("button", { name: "Recording" }));
     await screen.findByText(/Recording paused/);
-    act(() => click(300, 450));
+    await perform(300, 450, "Tap");
     expect(await screen.findByText(/not recorded\./)).toBeTruthy();
     expect(fake.state.performed).toHaveLength(1);
   });
 
   it("exports the document the studio writes", async () => {
     await attached();
-    act(() => click(300, 450));
+    await perform(300, 450, "Tap");
     await screen.findByText("1 step");
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     expect((await screen.findByTestId("recording-json")).textContent).toContain('"steps": [');
@@ -394,23 +496,18 @@ describe("App", () => {
     }
   });
 
-  it("the Back button records a key press", async () => {
-    await attached();
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    await screen.findByText("pressBack()");
-  });
-
-  it("the device rail records the system panels and recent apps", async () => {
+  it("the device bar records keys and the system panels without a selection", async () => {
     const fake = await attached();
-    const rail = screen.getByRole("toolbar", { name: "Device" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Notifications" }));
+    const device = deviceBar();
+    fireEvent.click(within(device).getByRole("button", { name: "Back" }));
+    await screen.findByText("pressBack()");
+    fireEvent.click(within(device).getByRole("button", { name: "Notifications" }));
     await screen.findByText("openNotifications()");
-    fireEvent.click(within(rail).getByRole("button", { name: "Quick settings" }));
+    fireEvent.click(within(device).getByRole("button", { name: "Quick settings" }));
     await screen.findByText("openQuickSettings()");
-    fireEvent.click(within(rail).getByRole("button", { name: "Recent apps" }));
+    fireEvent.click(within(device).getByRole("button", { name: "Recent apps" }));
     await screen.findByText("pressKey(187)");
-    const ops = fake.state.performed.map((r) => (r.step?.kind.case === "action" ? r.step.kind.value.command?.op : undefined));
-    expect(ops.map((op) => op?.case)).toEqual(["openSystemPanel", "openSystemPanel", "pressKey"]);
+    expect(fake.state.performed.map((r) => opOf(r)?.case)).toEqual(["pressKey", "openSystemPanel", "openSystemPanel", "pressKey"]);
   });
 
   it("releasing the device returns to the picker", async () => {
@@ -427,19 +524,18 @@ describe("App", () => {
 
     async function recordTwo() {
       const fake = await attached();
-      act(() => click(300, 450));
+      await perform(300, 450, "Tap");
       await screen.findByText('screen.element(res("go")).tap()');
-      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      fireEvent.click(within(deviceBar()).getByRole("button", { name: "Back" }));
       await screen.findByText("pressBack()");
       return fake;
     }
 
-    it("a candidate picked in the inspector is what the next step uses", async () => {
+    it("a candidate picked in the composer is what the next step uses", async () => {
       const fake = await attached();
       fireEvent.contextMenu(screen.getByTestId("overlay"), { clientX: 300, clientY: 450 });
-      const inspector = screen.getByRole("region", { name: "Inspector" });
-      fireEvent.click(within(inspector).getByRole("radio", { name: 'text("Go")' }));
-      act(() => click(300, 450));
+      fireEvent.click(await within(composer()).findByRole("radio", { name: 'text("Go")' }));
+      fireEvent.click(within(composer()).getByRole("button", { name: "Tap" }));
       await screen.findByText('screen.element(text("Go")).tap()');
       const step = fake.state.performed[0]!.step!;
       expect(step.kind.case === "action" && step.kind.value.selectorOrigin).toBe(SelectorOrigin.ALTERNATIVE);
@@ -448,7 +544,7 @@ describe("App", () => {
     it("new steps go after the selected step", async () => {
       const fake = await recordTwo();
       fireEvent.click(screen.getByRole("button", { name: /element\(res\("go"\)\)\.tap\(\)/ }));
-      fireEvent.click(screen.getByRole("button", { name: "Home" }));
+      fireEvent.click(within(deviceBar()).getByRole("button", { name: "Home" }));
       await screen.findByText("pressHome()");
       expect(fake.state.performed[2]!.beforeStepId).toBe("s2");
       expect(listed()).toEqual(['screen.element(res("go")).tap()', "pressHome()", "pressBack()"]);
@@ -499,14 +595,13 @@ describe("App", () => {
       expect(screen.getByText("1 step")).toBeTruthy();
     });
 
-    it("the App menu acts on the package chosen in it, and nothing before one is", async () => {
+    it("the app panel acts on its package, and nothing before there is one", async () => {
       const fake = await attached(null);
-      fireEvent.click(screen.getByRole("button", { name: "App" }));
-      const menu = screen.getByRole("menu", { name: "App" });
-      expect((within(menu).getByRole("menuitem", { name: /Force stop/ }) as HTMLButtonElement).disabled).toBe(true);
-      expect((within(menu).getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(true);
-      fireEvent.change(within(menu).getByLabelText("App package"), { target: { value: " com.example.shop " } });
-      fireEvent.click(within(menu).getByRole("menuitem", { name: /Force stop/ }));
+      const group = appPanel();
+      expect((within(group).getByRole("button", { name: "Force stop" }) as HTMLButtonElement).disabled).toBe(true);
+      expect((within(group).getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText("App package"), { target: { value: " com.example.shop " } });
+      fireEvent.click(within(group).getByRole("button", { name: "Force stop" }));
       await waitFor(() => expect(fake.state.performed).toHaveLength(1));
       const step = fake.state.performed[0]!.step!;
       expect(step.kind.case === "app" && [step.kind.value.operation, step.kind.value.packageName]).toEqual(["force_stop", "com.example.shop"]);
@@ -515,7 +610,7 @@ describe("App", () => {
 
     it("a replay without an app chosen does not offer a cold launch", async () => {
       const fake = await attached(null);
-      act(() => click(300, 450));
+      await perform(300, 450, "Tap");
       await screen.findByText('screen.element(res("go")).tap()');
       fireEvent.click(screen.getByRole("button", { name: "Replay" }));
       await waitFor(() => expect(fake.state.replays).toHaveLength(1));

@@ -5,8 +5,8 @@
 // `app("…").element(…)`, a lone selector as `.andPackageName("…")`, which `parse.ts` reads.
 
 import { create } from "@bufbuild/protobuf";
-import { Condition, type Step } from "./gen/studio_pb";
-import { Direction, SystemPanel, type Command } from "./gen/command_pb";
+import { Check, Condition, type AssertionStep, type Step } from "./gen/studio_pb";
+import { Direction, StabilitySignal, SystemPanel, type Command } from "./gen/command_pb";
 import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
@@ -210,6 +210,55 @@ const CONDITIONS: Record<Condition, string> = {
   [Condition.COUNT]: "count",
 };
 
+/** An assertion as a test writes it: `kotlin.test` around the SDK's element query. */
+function assertion(a: AssertionStep): string {
+  const query = element(a.selector);
+  const text = a.value.case === "text" ? quote(a.value.value) : "";
+  switch (a.check) {
+    case Check.EXISTS:
+      return `assertTrue(${query}.exists())`;
+    case Check.COUNT:
+      return `assertEquals(${a.value.case === "count" ? a.value.value : "?"}, ${query}.count())`;
+    case Check.TEXT_EQUALS:
+      return `assertEquals(${text}, ${query}.text())`;
+    case Check.TEXT_CONTAINS:
+      return `assertContains(${query}.text().orEmpty(), ${text})`;
+    case Check.ENABLED:
+      return `assertTrue(${query}.isEnabled())`;
+    case Check.DISABLED:
+      return `assertFalse(${query}.isEnabled())`;
+    case Check.CHECKED:
+      return `assertTrue(${query}.isChecked())`;
+    case Check.UNCHECKED:
+      return `assertFalse(${query}.isChecked())`;
+    case Check.FOCUSED:
+      return `assertTrue(${query}.snapshot().focused)`;
+    default:
+      return `(no check on ${query})`;
+  }
+}
+
+const STABLE: Record<StabilitySignal, string> = {
+  [StabilitySignal.STABILITY_UNSPECIFIED]: "awaitScreenStable",
+  [StabilitySignal.STABILITY_ALL]: "awaitScreenStable",
+  [StabilitySignal.STABILITY_TREE]: "awaitSettled",
+  [StabilitySignal.STABILITY_PIXELS]: "awaitAnimationEnd",
+};
+
+function appWait(c: Command | undefined): string {
+  switch (c?.op.case) {
+    case "waitAppVisible":
+      return `app(${quote(c.op.value.packageName)}).awaitVisible()`;
+    case "waitScreenStable": {
+      const w = c.op.value;
+      const stableFor = w.stableForMs !== undefined && w.stableForMs !== 500n ? `stableFor = ${w.stableForMs}.milliseconds` : "";
+      return `app(${quote(w.packageName)}).${STABLE[w.signal]}(${stableFor})`;
+    }
+    default:
+      return `(${c?.op.case ?? "empty"} app wait)`;
+  }
+}
+
 function value(text: string, secret: string | undefined): string {
   return secret !== undefined ? `\${${secret}}` : quote(text);
 }
@@ -230,22 +279,31 @@ function command(c: Command | undefined, secret: string | undefined): string {
     case "clearText":
       return `${element(c.op.value.selector)}.clearText()`;
     case "scroll":
-      return `${element(c.op.value.selector)}.scroll(${DIRECTIONS[c.op.value.direction]})`;
-    case "swipe":
-      return `${element(c.op.value.selector)}.swipe(${DIRECTIONS[c.op.value.direction]})`;
+    case "swipe": {
+      const g = c.op.value;
+      const distance = g.distancePercent !== undefined && g.distancePercent !== 80 ? `, distancePercent = ${g.distancePercent}` : "";
+      return `${element(g.selector)}.${c.op.case}(${DIRECTIONS[g.direction]}${distance})`;
+    }
     default:
       return `(${c.op.case ?? "empty"} command)`;
   }
 }
 
-export type StepKind = "app" | "action" | "key" | "system" | "type" | "assertion";
+export type StepKind = "app" | "action" | "key" | "system" | "type" | "assertion" | "wait";
 
 export function stepKind(step: Step): StepKind | null {
-  if (step.kind.case === "action") {
-    const op = step.kind.value.command?.op.case;
-    return op === "pressKey" ? "key" : op === "openSystemPanel" ? "system" : "action";
+  switch (step.kind.case) {
+    case "action": {
+      const op = step.kind.value.command?.op.case;
+      return op === "pressKey" ? "key" : op === "openSystemPanel" ? "system" : "action";
+    }
+    case "scrollUntil":
+      return "action";
+    case "appWait":
+      return "wait";
+    default:
+      return step.kind.case ?? null;
   }
-  return step.kind.case ?? null;
 }
 
 /** The step as the SDK call it replays as. */
@@ -263,11 +321,24 @@ export function describeStep(step: Step): string {
       const input = t.input.case === "secret" ? `\${${t.input.value}}` : quote(t.input.value ?? "");
       return `${element(t.selector)}.typeText(${input}${t.skipFocusWait ? ", awaitFocus = false" : ""})`;
     }
-    case "assertion": {
-      const a = step.kind.value;
-      const argument = a.value.case === "text" ? quote(a.value.value) : a.value.case === "count" ? String(a.value.value) : "";
-      return `${awaiting(a.selector)}.${CONDITIONS[a.condition]}(${argument})`;
+    case "wait": {
+      const w = step.kind.value;
+      const argument = w.value.case === "text" ? quote(w.value.value) : w.value.case === "count" ? String(w.value.value) : "";
+      return `${awaiting(w.selector)}.${CONDITIONS[w.condition]}(${argument})`;
     }
+    case "assertion":
+      return assertion(step.kind.value);
+    case "scrollUntil": {
+      const u = step.kind.value;
+      const extra = [
+        u.direction !== Direction.DIR_DOWN ? DIRECTIONS[u.direction] : "",
+        u.maxScrolls !== undefined && u.maxScrolls !== 20 ? `maxScrolls = ${u.maxScrolls}` : "",
+        u.distancePercent !== undefined && u.distancePercent !== 80 ? `distancePercent = ${u.distancePercent}` : "",
+      ].filter(Boolean);
+      return `${element(u.container)}.scrollUntil(${[describeSelector(u.target), ...extra].join(", ")})`;
+    }
+    case "appWait":
+      return appWait(step.kind.value.command);
     default:
       return "(empty step)";
   }

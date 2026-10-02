@@ -122,6 +122,15 @@ async def test_paused_steps_run_but_are_not_recorded(attached, daemon):
     assert (await attached.perform(tap_search(), None)).recorded
 
 
+async def test_a_probe_runs_but_is_never_recorded(attached, daemon):
+    request = tap_search()
+    request.skip_recording = True
+    response = await attached.perform(request, None)
+    assert not response.recorded and response.step.id == "" and not response.message
+    assert daemon.devices.commands[-1].WhichOneof("op") == "tap"
+    await refused(attached.get_recording(pb.GetRecordingRequest(), None), Code.NOT_FOUND)
+
+
 async def test_a_secret_goes_to_the_device_and_never_into_the_recording(attached, daemon):
     request = pb.PerformRequest(
         step=step(type={"selector": SEARCH, "secret": "password", "skip_focus_wait": True}), secret_value="hunter2"
@@ -338,3 +347,13 @@ async def test_nothing_else_changes_the_recording_while_a_replay_runs(attached):
 
 async def test_replay_refuses_an_empty_recording(attached):
     await refused(anext(attached.replay(pb.ReplayRequest(), None)), Code.FAILED_PRECONDITION, "nothing to replay")
+
+
+async def test_an_assertion_that_does_not_hold_is_reported_and_not_recorded(attached, daemon):
+    wrong = pb.PerformRequest(step=step(assertion={"selector": SEARCH, "check": "CHECK_TEXT_EQUALS", "text": "Silk"}))
+    response = await attached.perform(wrong, None)
+    assert not response.recorded
+    assert response.message == "expected text 'Silk', found 'Wool socks'"
+    assert response.step.outcome.mismatch == response.message
+    right = pb.PerformRequest(step=step(assertion={"selector": SEARCH, "check": "CHECK_TEXT_EQUALS", "text": "Wool socks"}))
+    assert (await attached.perform(right, None)).recorded

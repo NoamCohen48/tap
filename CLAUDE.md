@@ -46,8 +46,9 @@ See `CONTRIBUTING.md` for build/run commands.
   screen snapshots with refs, event log, and `tap-agent` — CLI + MCP in Python on `tap-e2e`).
 - `.docs/recorder.md` — decision record (proposed): Tap Studio (`clients/studio`), a browser
   inspector + action recorder (React front end, Python back end on `tap-e2e`); element
-  interactions, never coordinates; `tap-recording/1`. `.docs/studio-demo.html` is the clickable
-  UI demo (mock app, no device) the UI section describes.
+  interactions, never coordinates; `tap-recording/1`. The page is select-then-choose
+  (an Act / Assert / Wait composer); `.docs/studio-demo.html` is the first design's click-mode
+  demo (mock app, no device), kept as a record.
 - `.docs/app-and-screen.md` — decision record: an attached device names no app; selectors have
   no scope (package ownership is a `PROPERTY_PACKAGE_NAME` predicate, `app(pkg)` / `screen` are
   client-side), and gestures refuse a covered touch point (`OBSCURED`).
