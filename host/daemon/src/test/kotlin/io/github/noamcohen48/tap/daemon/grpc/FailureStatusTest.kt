@@ -13,6 +13,7 @@ import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AppLifecycleException
 import io.github.noamcohen48.tap.host.DeviceBusyException
 import io.github.noamcohen48.tap.host.DeviceQuarantinedException
+import io.github.noamcohen48.tap.host.DeviceFileException
 import io.github.noamcohen48.tap.host.DeviceSettingException
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverStartException
@@ -61,6 +62,7 @@ class FailureStatusTest {
                 RefNotAddressableException("e9") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE),
                 UnsupportedApiException("s", 33, 29, "x") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_UNSUPPORTED_API),
                 DeviceSettingException("s", "x") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DEVICE_SETTING),
+                DeviceFileException("s", "x") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DEVICE_FILE),
             )
         for ((error, expected) in cases) {
             val (code, failure) = failureOf(error)

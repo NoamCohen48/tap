@@ -1,5 +1,8 @@
 package io.github.noamcohen48.tap.sdk
 
+import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.AddMediaHeader
+import io.github.noamcohen48.tap.api.v1.AddMediaRequest
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
@@ -17,6 +20,9 @@ import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
+import io.github.noamcohen48.tap.api.v1.PullFileRequest
+import io.github.noamcohen48.tap.api.v1.PushFileHeader
+import io.github.noamcohen48.tap.api.v1.PushFileRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
 import io.github.noamcohen48.tap.api.v1.SetClipboard
@@ -47,12 +53,21 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -61,6 +76,15 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+
+/** Largest file [Device.pushFile], [Device.pullFile] and [Device.addMedia] move (512 MiB). */
+const val MAX_FILE_BYTES = 512L shl 20
+
+/** Size of each chunk the file uploads stream. */
+private const val FILE_CHUNK_BYTES = 1 shl 20
+
+/** A file transfer's whole-call deadline: the server's 5-minute adb transfer plus the upload. */
+private const val FILE_DEADLINE_MS = 10 * 60_000L
 
 const val KEYCODE_HOME = 3
 const val KEYCODE_BACK = 4
@@ -482,6 +506,159 @@ class Device internal constructor(
         first: String,
         vararg more: String,
     ) = setSystemLocales(listOf(first, *more))
+
+    /**
+     * Copies [bytes] to [devicePath] on the device (absolute and normalised, at most 512 MiB):
+     * `/data/local/tmp/…`, or shared storage (`/sdcard/Download/…`) for an app with storage
+     * access to read. The directory must exist. A file already there is refused
+     * ([FailureReason.DEVICE_FILE]) unless this device handle pushed it, so a test never
+     * overwrites the device's own files; the size is read back. The file is deleted on [detach].
+     */
+    suspend fun pushFile(
+        devicePath: String,
+        bytes: ByteArray,
+    ) = pushFile(devicePath, bytes.size.toLong()) { bytes.inputStream() }
+
+    /** [pushFile] with the bytes of the local file [source], streamed. */
+    suspend fun pushFile(
+        devicePath: String,
+        source: Path,
+    ) {
+        require(Files.isRegularFile(source)) { "$source is not a readable file" }
+        pushFile(devicePath, Files.size(source)) { Files.newInputStream(source) }
+    }
+
+    private suspend fun pushFile(
+        devicePath: String,
+        size: Long,
+        open: () -> InputStream,
+    ) {
+        require(size <= MAX_FILE_BYTES) { "at most $MAX_FILE_BYTES bytes are pushed, not $size" }
+        val header =
+            PushFileHeader.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                .setDevicePath(devicePath).setSizeBytes(size).build()
+        fileCall("Device.pushFile") {
+            pushFile(
+                uploadParts(
+                    PushFileRequest.newBuilder().setHeader(header).build(),
+                    { PushFileRequest.newBuilder().setChunk(it).build() },
+                    open,
+                ),
+            )
+        }
+    }
+
+    /** The bytes of the regular file at [devicePath] on the device (at most 512 MiB). */
+    suspend fun pullFile(devicePath: String): ByteArray = ByteArrayOutputStream().also { pullFile(devicePath, it) }.toByteArray()
+
+    /** [pullFile] into the local file [target], replaced only once the whole file has arrived. */
+    suspend fun pullFile(
+        devicePath: String,
+        target: Path,
+    ) {
+        val absolute = target.toAbsolutePath()
+        val partial = withContext(Dispatchers.IO) { Files.createTempFile(absolute.parent, absolute.fileName.toString(), ".part") }
+        try {
+            withContext(Dispatchers.IO) { Files.newOutputStream(partial) }.use { pullFile(devicePath, it) }
+            withContext(Dispatchers.IO) { Files.move(partial, absolute, StandardCopyOption.REPLACE_EXISTING) }
+        } finally {
+            withContext(Dispatchers.IO) { Files.deleteIfExists(partial) }
+        }
+    }
+
+    private suspend fun pullFile(
+        devicePath: String,
+        out: OutputStream,
+    ) {
+        val request =
+            PullFileRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                .setDevicePath(devicePath).build()
+        fileCall("Device.pullFile") {
+            var expected = -1L
+            var received = 0L
+            pullFile(request).collect { part ->
+                if (expected < 0) expected = part.sizeBytes
+                received += part.chunk.size()
+                withContext(Dispatchers.IO) { part.chunk.writeTo(out) }
+            }
+            check(received == expected) { "pulled $received of $expected bytes of $devicePath" }
+        }
+    }
+
+    /**
+     * Adds a photo or video to the device's gallery and returns its device path: [bytes] are
+     * written as [fileName] (letters, digits, `.`, `_`, `-` or spaces, with a photo extension —
+     * jpg, jpeg, png, gif, webp, heic, heif, bmp — or a video one — mp4, 3gp, webm, mkv, mov)
+     * to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/`, and indexed by the media scanner so
+     * gallery apps and photo pickers list it (read back). A name already there is refused
+     * ([FailureReason.DEVICE_FILE]) unless this device handle added it. Deleted, and dropped
+     * from the index, on [detach]; nothing else in the gallery is touched.
+     */
+    suspend fun addMedia(
+        fileName: String,
+        bytes: ByteArray,
+    ): String = addMedia(fileName, bytes.size.toLong()) { bytes.inputStream() }
+
+    /** [addMedia] with the bytes of the local file [source], named [fileName] (its own name by default). */
+    suspend fun addMedia(
+        source: Path,
+        fileName: String = source.fileName.toString(),
+    ): String {
+        require(Files.isRegularFile(source)) { "$source is not a readable file" }
+        return addMedia(fileName, Files.size(source)) { Files.newInputStream(source) }
+    }
+
+    private suspend fun addMedia(
+        fileName: String,
+        size: Long,
+        open: () -> InputStream,
+    ): String {
+        require(size <= MAX_FILE_BYTES) { "at most $MAX_FILE_BYTES bytes are added, not $size" }
+        val header =
+            AddMediaHeader.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                .setFileName(fileName).setSizeBytes(size).build()
+        var path = ""
+        fileCall("Device.addMedia") {
+            path =
+                addMedia(
+                    uploadParts(
+                        AddMediaRequest.newBuilder().setHeader(header).build(),
+                        { AddMediaRequest.newBuilder().setChunk(it).build() },
+                        open,
+                    ),
+                ).devicePath
+        }
+        return path
+    }
+
+    private fun <R> uploadParts(
+        header: R,
+        chunk: (ByteString) -> R,
+        open: () -> InputStream,
+    ): Flow<R> =
+        flow {
+            emit(header)
+            open().use { input ->
+                val buffer = ByteArray(FILE_CHUNK_BYTES)
+                while (true) {
+                    val read = input.readNBytes(buffer, 0, buffer.size)
+                    if (read <= 0) break
+                    emit(chunk(ByteString.copyFrom(buffer, 0, read)))
+                }
+            }
+        }.flowOn(Dispatchers.IO)
+
+    private suspend fun fileCall(
+        operation: String,
+        block: suspend DeviceServiceGrpcKt.DeviceServiceCoroutineStub.() -> Unit,
+    ) {
+        ensureTapBound(operation)
+        admitted(operation) {
+            mapped(serial) {
+                client.devices.withDeadlineAfter(FILE_DEADLINE_MS, TimeUnit.MILLISECONDS).block()
+            }
+        }
+    }
 
     private suspend fun condition(
         operation: String,

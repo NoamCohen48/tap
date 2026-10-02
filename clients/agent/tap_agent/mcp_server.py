@@ -277,6 +277,38 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         the device."""
         return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None))
 
+    @mcp.tool(name="push_file")
+    async def push_file(
+        local_path: Annotated[str, Field(description="The file on this machine.")],
+        device_path: Annotated[str, Field(description="Absolute path on the device; its directory must exist (e.g. /sdcard/Download/a.pdf).")],
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Copy a local file to the device until release. A device file Tap did not push is never
+        overwritten."""
+        return await call(session, lambda a: a.push(local_path, device_path, device or None))
+
+    @mcp.tool(name="pull_file", annotations=READ_ONLY)
+    async def pull_file(
+        device_path: Annotated[str, Field(description="Absolute path of a regular file on the device.")],
+        out: Annotated[str | None, Field(description="Local file to write; omit for one under .tap/agent.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Copy a device file to this machine; returns the local path."""
+        return await call(session, lambda a: a.pull(device_path, out, device or None))
+
+    @mcp.tool(name="add_media")
+    async def add_media(
+        local_path: Annotated[str, Field(description="A photo (jpg, png, gif, webp, heic, bmp) or video (mp4, 3gp, webm, mkv, mov) on this machine.")],
+        name: Annotated[str | None, Field(description="File name on the device; omit for the local name.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Add a photo or video to the device gallery (Pictures/Tap or Movies/Tap, indexed so
+        gallery apps and photo pickers list it) until release."""
+        return await call(session, lambda a: a.media(local_path, name, device or None))
+
     @mcp.tool(name="clipboard")
     async def clipboard(
         text: Annotated[str | None, Field(description="Put this on the clipboard; omit to read it.")] = None,

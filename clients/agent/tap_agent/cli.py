@@ -117,6 +117,18 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("longitude", type=float, help="-180..180")
     p.add_argument("--accuracy", type=float, help="in meters (default 5)")
 
+    p = verb("push", "copy a local file to the device until release", on_device)
+    p.add_argument("local", help="the file on this machine")
+    p.add_argument("device_path", help="absolute path on the device; its directory must exist (e.g. /sdcard/Download/a.pdf)")
+
+    p = verb("pull", "copy a device file here and print the local path", on_device)
+    p.add_argument("device_path", help="absolute path of a regular file on the device")
+    p.add_argument("-o", "--out", help="file (default .tap/agent/<serial>-<time>-<name>)")
+
+    p = verb("media", "add a photo or video to the device gallery until release", on_device)
+    p.add_argument("local", help="the image or video on this machine (jpg, png, gif, webp, heic, bmp, mp4, 3gp, webm, mkv, mov)")
+    p.add_argument("--name", help="file name on the device (default the local name)")
+
     p = verb("clipboard", "print the device clipboard, or set it", on_device)
     p.add_argument("text", nargs="?", help="put this on the clipboard (omit to print it)")
 
@@ -229,6 +241,12 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.keyboard(args.action, device, settle=settle)
     if v == "location":
         return agent.location(args.latitude, args.longitude, args.accuracy, device)
+    if v == "push":
+        return agent.push(args.local, args.device_path, device)
+    if v == "pull":
+        return agent.pull(args.device_path, args.out, device)
+    if v == "media":
+        return agent.media(args.local, args.name, device)
     if v == "clipboard":
         return agent.clipboard(args.text, device)
     if v == "toast":

@@ -821,6 +821,84 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `a pushed file reads back, is pulled, never overwrites a device file and is removed on detach`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            state.files["/data/local/tmp/theirs.txt"] = "keep".toByteArray()
+            val local = Files.createTempFile("tap-push", ".txt").also { Files.writeString(it, "hello") }
+            val pulled = Files.createTempFile("tap-pull", ".txt")
+            try {
+                openWithState("session-files", state) { session, _ ->
+                    session.files.push(local, "/data/local/tmp/notes.txt")
+                    assertEquals("hello", state.files["/data/local/tmp/notes.txt"]?.decodeToString())
+                    assertEquals(
+                        listOf(SavedState(StateKey.DeviceFile("/data/local/tmp/notes.txt").id, null)),
+                        journalStore().read()?.savedState,
+                    )
+                    // Its own file it may replace; one it did not create it never touches.
+                    Files.writeString(local, "hello again")
+                    session.files.push(local, "/data/local/tmp/notes.txt")
+                    assertFailsWith<DeviceFileException> { session.files.push(local, "/data/local/tmp/theirs.txt") }
+                    assertFailsWith<DeviceFileException> { session.files.push(local, "/data/local/tmp/missing/notes.txt") }
+                    assertFailsWith<IllegalArgumentException> { session.files.push(local, "relative.txt") }
+                    assertFailsWith<IllegalArgumentException> { session.files.push(local, "/data/local/tmp/../notes.txt") }
+
+                    session.files.pull("/data/local/tmp/theirs.txt", pulled)
+                    assertEquals("keep", Files.readString(pulled))
+                    assertFailsWith<DeviceFileException> { session.files.pull("/data/local/tmp/absent.txt", pulled) }
+                    assertFailsWith<DeviceFileException> { session.files.pull("/data/local/tmp", pulled) }
+
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(setOf("/data/local/tmp/theirs.txt"), state.files.keys)
+                    assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+                Files.deleteIfExists(pulled)
+            }
+        }
+
+    @Test
+    fun `media goes to the gallery folders, is indexed and leaves the device and the index on detach`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            val local = Files.createTempFile("tap-media", ".bin").also { Files.write(it, byteArrayOf(1, 2, 3)) }
+            try {
+                openWithState("session-media", state) { session, _ ->
+                    assertEquals("/sdcard/Pictures/Tap/cat.jpg", session.files.addMedia(local, "cat.jpg"))
+                    assertEquals("/sdcard/Movies/Tap/clip.mp4", session.files.addMedia(local, "clip.mp4"))
+                    assertEquals(setOf("/sdcard/Pictures/Tap/cat.jpg", "/sdcard/Movies/Tap/clip.mp4"), state.mediaIndex)
+                    assertFailsWith<IllegalArgumentException> { session.files.addMedia(local, "notes.txt") }
+                    assertFailsWith<IllegalArgumentException> { session.files.addMedia(local, "../cat.jpg") }
+
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(emptySet(), state.files.keys)
+                    assertEquals(emptySet(), state.mediaIndex)
+                    assertFalse("/sdcard/Pictures/Tap" in state.directories)
+                    assertTrue("/sdcard/Pictures" in state.directories)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+            }
+        }
+
+    @Test
+    fun `media the scanner does not index is a failure, and the file still leaves on detach`() =
+        runBlocking {
+            val state = FakeDeviceState().apply { mediaScannerIgnores = true }
+            val local = Files.createTempFile("tap-media", ".bin").also { Files.write(it, byteArrayOf(1)) }
+            try {
+                openWithState("session-media-unindexed", state) { session, _ ->
+                    assertFailsWith<DeviceFileException> { session.files.addMedia(local, "cat.png") }
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(emptySet(), state.files.keys)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+            }
+        }
+
+    @Test
     fun `a mock location makes the driver the mock app, turns location on and both come back on detach`() =
         runBlocking {
             val state = FakeDeviceState(mapOf(StateKey.LOCATION_MODE to "0"))

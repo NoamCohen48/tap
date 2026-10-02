@@ -20,7 +20,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file device.proto.
  */
 export const file_device: GenFile = /*@__PURE__*/
-  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnki4wEKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIfChJkZWZhdWx0X3RpbWVvdXRfbXMYByABKANIAYgBARIdChBsZWFzZV90aW1lb3V0X21zGAggASgDSAKIAQFCFgoUX3NraXBfZHJpdmVyX2luc3RhbGxCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tcyJ5Cg5BdHRhY2hSZXNwb25zZRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhIKCmdlbmVyYXRpb24YAyABKAMSJwoLZGV2aWNlX2luZm8YBCABKAsyEi50YXAudjEuRGV2aWNlSW5mbyJJCg1EZXRhY2hSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSI/Cg5EZXRhY2hSZXNwb25zZRINCgVjbGVhbhgBIAEoCBITCgZkZXRhaWwYAiABKAlIAIgBAUIJCgdfZGV0YWlsImwKDkV4ZWN1dGVSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIgCgdjb21tYW5kGAMgASgLMg8udGFwLnYxLkNvbW1hbmQiOAoPRXhlY3V0ZVJlc3BvbnNlEiUKBnJlc3VsdBgBIAEoCzIVLnRhcC52MS5Db21tYW5kUmVzdWx0InUKEVNjcmVlbnNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMibwoSU2NyZWVuc2hvdFJlc3BvbnNlEgsKA3BuZxgBIAEoDBIOCgZzaGEyNTYYAiABKAkSEgoFd2lkdGgYAyABKAVIAIgBARITCgZoZWlnaHQYBCABKAVIAYgBAUIICgZfd2lkdGhCCQoHX2hlaWdodCKLAQoVU3RhcnRSZWNvcmRpbmdSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRINCgV2aWRlbxgDIAEoCBIUCgxhdWRpb19zb3VyY2UYBCABKAkSEwoLbWF4X3NlY29uZHMYBSABKAUiGAoWU3RhcnRSZWNvcmRpbmdSZXNwb25zZSJQChRTdG9wUmVjb3JkaW5nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiRQoVU3RvcFJlY29yZGluZ1Jlc3BvbnNlEgwKBGRhdGEYASABKAwSDgoGZm9ybWF0GAIgASgJEg4KBnNoYTI1NhgDIAEoCSJMChBEcml2ZXJMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSIiChFEcml2ZXJMb2dSZXNwb25zZRINCgVsaW5lcxgBIAMoCSKWAQoVU2NyZWVuU25hcHNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQESGwoTc2VsZWN0b3JfY2FuZGlkYXRlcxgEIAEoCEINCgtfdGltZW91dF9tcyJbChFTZWxlY3RvckNhbmRpZGF0ZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIiCgRraW5kGAIgASgOMhQudGFwLnYxLlNlbGVjdG9yS2luZCKLBAoKU2NyZWVuTm9kZRILCgNyZWYYASABKAkSDQoFZGVwdGgYAiABKAUSFgoOd2luZG93X3BhY2thZ2UYAyABKAkSFwoKY2xhc3NfbmFtZRgEIAEoCUgAiAEBEhoKDXJlc291cmNlX25hbWUYBSABKAlIAYgBARIRCgR0ZXh0GAYgASgJSAKIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgHIAEoCUgDiAEBEhEKBGhpbnQYCCABKAlIBIgBARIeCgZib3VuZHMYCSABKAsyDi50YXAudjEuQm91bmRzEh8KBWZsYWdzGAogAygOMhAudGFwLnYxLk5vZGVGbGFnEhAKCHBhc3N3b3JkGAsgASgIEhMKC2ludGVyYWN0aXZlGAwgASgIEicKCHNlbGVjdG9yGA0gASgLMhAudGFwLnYxLlNlbGVjdG9ySAWIAQESEAoIYnlfaW5kZXgYDiABKAgSIgoGY2hhbmdlGA8gASgOMhIudGFwLnYxLk5vZGVDaGFuZ2USLQoKY2FuZGlkYXRlcxgQIAMoCzIZLnRhcC52MS5TZWxlY3RvckNhbmRpZGF0ZUINCgtfY2xhc3NfbmFtZUIQCg5fcmVzb3VyY2VfbmFtZUIHCgVfdGV4dEIWChRfY29udGVudF9kZXNjcmlwdGlvbkIHCgVfaGludEILCglfc2VsZWN0b3IihwEKFlNjcmVlblNuYXBzaG90UmVzcG9uc2USEwoLc25hcHNob3RfaWQYASABKAMSIQoFbm9kZXMYAiADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIjCgdyZW1vdmVkGAMgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSEAoIcm90YXRpb24YBCABKAUiWgoRUmVzb2x2ZVJlZlJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEgsKA3JlZhgDIAEoCSJfChJSZXNvbHZlUmVmUmVzcG9uc2USIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISEAoIYnlfaW5kZXgYAiABKAgSEwoLc25hcHNob3RfaWQYAyABKAMiYQoUU2V0QW5pbWF0aW9uc1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg8KB2VuYWJsZWQYAyABKAgiFwoVU2V0QW5pbWF0aW9uc1Jlc3BvbnNlIl8KElNldERhcmtNb2RlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSDwoHZW5hYmxlZBgDIAEoCCIVChNTZXREYXJrTW9kZVJlc3BvbnNlIl4KE1NldEZvbnRTY2FsZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg0KBXNjYWxlGAMgASgCIhYKFFNldEZvbnRTY2FsZVJlc3BvbnNlImcKEVNldERlbnNpdHlSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCgNkcGkYAyABKAVIAIgBAUIGCgRfZHBpIhQKElNldERlbnNpdHlSZXNwb25zZSLBAQoRU2V0TmV0d29ya1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhoKDWFpcnBsYW5lX21vZGUYAyABKAhIAIgBARIRCgR3aWZpGAQgASgISAGIAQESGAoLbW9iaWxlX2RhdGEYBSABKAhIAogBAUIQCg5fYWlycGxhbmVfbW9kZUIHCgVfd2lmaUIOCgxfbW9iaWxlX2RhdGEiFAoSU2V0TmV0d29ya1Jlc3BvbnNlImQKF1NldFN5c3RlbUxvY2FsZXNSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIPCgdsb2NhbGVzGAMgAygJIhoKGFNldFN5c3RlbUxvY2FsZXNSZXNwb25zZSLDAQoSU2V0TG9jYXRpb25SZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCghsYXRpdHVkZRgDIAEoARIRCglsb25naXR1ZGUYBCABKAESFwoKYWNjdXJhY3lfbRgFIAEoAkgAiAEBEhcKCmFsdGl0dWRlX20YBiABKAFIAYgBAUINCgtfYWNjdXJhY3lfbUINCgtfYWx0aXR1ZGVfbSIVChNTZXRMb2NhdGlvblJlc3BvbnNlKpQBCgtEZXZpY2VTdGF0ZRIcChhERVZJQ0VfU1RBVEVfVU5TUEVDSUZJRUQQABIPCgtERVZJQ0VfRlJFRRABEhEKDURFVklDRV9MRUFTRUQQAhIWChJERVZJQ0VfUVVBUkFOVElORUQQAxISCg5ERVZJQ0VfT0ZGTElORRAEEhcKE0RFVklDRV9VTkFVVEhPUklaRUQQBSqaAQoMU2VsZWN0b3JLaW5kEh0KGVNFTEVDVE9SX0tJTkRfVU5TUEVDSUZJRUQQABIXChNTRUxFQ1RPUl9LSU5EX1BMQUlOEAESGgoWU0VMRUNUT1JfS0lORF9DT01CSU5FRBACEhoKFlNFTEVDVE9SX0tJTkRfQU5DRVNUT1IQAxIaChZTRUxFQ1RPUl9LSU5EX0JZX0lOREVYEAQqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMssJCg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlN0YXJ0UmVjb3JkaW5nEh0udGFwLnYxLlN0YXJ0UmVjb3JkaW5nUmVxdWVzdBoeLnRhcC52MS5TdGFydFJlY29yZGluZ1Jlc3BvbnNlEkwKDVN0b3BSZWNvcmRpbmcSHC50YXAudjEuU3RvcFJlY29yZGluZ1JlcXVlc3QaHS50YXAudjEuU3RvcFJlY29yZGluZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlEkwKDVNldEFuaW1hdGlvbnMSHC50YXAudjEuU2V0QW5pbWF0aW9uc1JlcXVlc3QaHS50YXAudjEuU2V0QW5pbWF0aW9uc1Jlc3BvbnNlEkYKC1NldERhcmtNb2RlEhoudGFwLnYxLlNldERhcmtNb2RlUmVxdWVzdBobLnRhcC52MS5TZXREYXJrTW9kZVJlc3BvbnNlEkkKDFNldEZvbnRTY2FsZRIbLnRhcC52MS5TZXRGb250U2NhbGVSZXF1ZXN0GhwudGFwLnYxLlNldEZvbnRTY2FsZVJlc3BvbnNlEkMKClNldERlbnNpdHkSGS50YXAudjEuU2V0RGVuc2l0eVJlcXVlc3QaGi50YXAudjEuU2V0RGVuc2l0eVJlc3BvbnNlEkMKClNldE5ldHdvcmsSGS50YXAudjEuU2V0TmV0d29ya1JlcXVlc3QaGi50YXAudjEuU2V0TmV0d29ya1Jlc3BvbnNlElUKEFNldFN5c3RlbUxvY2FsZXMSHy50YXAudjEuU2V0U3lzdGVtTG9jYWxlc1JlcXVlc3QaIC50YXAudjEuU2V0U3lzdGVtTG9jYWxlc1Jlc3BvbnNlEkYKC1NldExvY2F0aW9uEhoudGFwLnYxLlNldExvY2F0aW9uUmVxdWVzdBobLnRhcC52MS5TZXRMb2NhdGlvblJlc3BvbnNlQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
+  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnki4wEKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIfChJkZWZhdWx0X3RpbWVvdXRfbXMYByABKANIAYgBARIdChBsZWFzZV90aW1lb3V0X21zGAggASgDSAKIAQFCFgoUX3NraXBfZHJpdmVyX2luc3RhbGxCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tcyJ5Cg5BdHRhY2hSZXNwb25zZRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhIKCmdlbmVyYXRpb24YAyABKAMSJwoLZGV2aWNlX2luZm8YBCABKAsyEi50YXAudjEuRGV2aWNlSW5mbyJJCg1EZXRhY2hSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSI/Cg5EZXRhY2hSZXNwb25zZRINCgVjbGVhbhgBIAEoCBITCgZkZXRhaWwYAiABKAlIAIgBAUIJCgdfZGV0YWlsImwKDkV4ZWN1dGVSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIgCgdjb21tYW5kGAMgASgLMg8udGFwLnYxLkNvbW1hbmQiOAoPRXhlY3V0ZVJlc3BvbnNlEiUKBnJlc3VsdBgBIAEoCzIVLnRhcC52MS5Db21tYW5kUmVzdWx0InUKEVNjcmVlbnNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMibwoSU2NyZWVuc2hvdFJlc3BvbnNlEgsKA3BuZxgBIAEoDBIOCgZzaGEyNTYYAiABKAkSEgoFd2lkdGgYAyABKAVIAIgBARITCgZoZWlnaHQYBCABKAVIAYgBAUIICgZfd2lkdGhCCQoHX2hlaWdodCKLAQoVU3RhcnRSZWNvcmRpbmdSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRINCgV2aWRlbxgDIAEoCBIUCgxhdWRpb19zb3VyY2UYBCABKAkSEwoLbWF4X3NlY29uZHMYBSABKAUiGAoWU3RhcnRSZWNvcmRpbmdSZXNwb25zZSJQChRTdG9wUmVjb3JkaW5nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiRQoVU3RvcFJlY29yZGluZ1Jlc3BvbnNlEgwKBGRhdGEYASABKAwSDgoGZm9ybWF0GAIgASgJEg4KBnNoYTI1NhgDIAEoCSJMChBEcml2ZXJMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSIiChFEcml2ZXJMb2dSZXNwb25zZRINCgVsaW5lcxgBIAMoCSKWAQoVU2NyZWVuU25hcHNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQESGwoTc2VsZWN0b3JfY2FuZGlkYXRlcxgEIAEoCEINCgtfdGltZW91dF9tcyJbChFTZWxlY3RvckNhbmRpZGF0ZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIiCgRraW5kGAIgASgOMhQudGFwLnYxLlNlbGVjdG9yS2luZCKLBAoKU2NyZWVuTm9kZRILCgNyZWYYASABKAkSDQoFZGVwdGgYAiABKAUSFgoOd2luZG93X3BhY2thZ2UYAyABKAkSFwoKY2xhc3NfbmFtZRgEIAEoCUgAiAEBEhoKDXJlc291cmNlX25hbWUYBSABKAlIAYgBARIRCgR0ZXh0GAYgASgJSAKIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgHIAEoCUgDiAEBEhEKBGhpbnQYCCABKAlIBIgBARIeCgZib3VuZHMYCSABKAsyDi50YXAudjEuQm91bmRzEh8KBWZsYWdzGAogAygOMhAudGFwLnYxLk5vZGVGbGFnEhAKCHBhc3N3b3JkGAsgASgIEhMKC2ludGVyYWN0aXZlGAwgASgIEicKCHNlbGVjdG9yGA0gASgLMhAudGFwLnYxLlNlbGVjdG9ySAWIAQESEAoIYnlfaW5kZXgYDiABKAgSIgoGY2hhbmdlGA8gASgOMhIudGFwLnYxLk5vZGVDaGFuZ2USLQoKY2FuZGlkYXRlcxgQIAMoCzIZLnRhcC52MS5TZWxlY3RvckNhbmRpZGF0ZUINCgtfY2xhc3NfbmFtZUIQCg5fcmVzb3VyY2VfbmFtZUIHCgVfdGV4dEIWChRfY29udGVudF9kZXNjcmlwdGlvbkIHCgVfaGludEILCglfc2VsZWN0b3IihwEKFlNjcmVlblNuYXBzaG90UmVzcG9uc2USEwoLc25hcHNob3RfaWQYASABKAMSIQoFbm9kZXMYAiADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIjCgdyZW1vdmVkGAMgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSEAoIcm90YXRpb24YBCABKAUiWgoRUmVzb2x2ZVJlZlJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEgsKA3JlZhgDIAEoCSJfChJSZXNvbHZlUmVmUmVzcG9uc2USIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISEAoIYnlfaW5kZXgYAiABKAgSEwoLc25hcHNob3RfaWQYAyABKAMiYQoUU2V0QW5pbWF0aW9uc1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg8KB2VuYWJsZWQYAyABKAgiFwoVU2V0QW5pbWF0aW9uc1Jlc3BvbnNlIl8KElNldERhcmtNb2RlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSDwoHZW5hYmxlZBgDIAEoCCIVChNTZXREYXJrTW9kZVJlc3BvbnNlIl4KE1NldEZvbnRTY2FsZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg0KBXNjYWxlGAMgASgCIhYKFFNldEZvbnRTY2FsZVJlc3BvbnNlImcKEVNldERlbnNpdHlSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCgNkcGkYAyABKAVIAIgBAUIGCgRfZHBpIhQKElNldERlbnNpdHlSZXNwb25zZSLBAQoRU2V0TmV0d29ya1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhoKDWFpcnBsYW5lX21vZGUYAyABKAhIAIgBARIRCgR3aWZpGAQgASgISAGIAQESGAoLbW9iaWxlX2RhdGEYBSABKAhIAogBAUIQCg5fYWlycGxhbmVfbW9kZUIHCgVfd2lmaUIOCgxfbW9iaWxlX2RhdGEiFAoSU2V0TmV0d29ya1Jlc3BvbnNlImQKF1NldFN5c3RlbUxvY2FsZXNSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIPCgdsb2NhbGVzGAMgAygJIhoKGFNldFN5c3RlbUxvY2FsZXNSZXNwb25zZSLDAQoSU2V0TG9jYXRpb25SZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCghsYXRpdHVkZRgDIAEoARIRCglsb25naXR1ZGUYBCABKAESFwoKYWNjdXJhY3lfbRgFIAEoAkgAiAEBEhcKCmFsdGl0dWRlX20YBiABKAFIAYgBAUINCgtfYWNjdXJhY3lfbUINCgtfYWx0aXR1ZGVfbSIVChNTZXRMb2NhdGlvblJlc3BvbnNlInMKDlB1c2hGaWxlSGVhZGVyEhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRITCgtkZXZpY2VfcGF0aBgDIAEoCRISCgpzaXplX2J5dGVzGAQgASgDIlQKD1B1c2hGaWxlUmVxdWVzdBIoCgZoZWFkZXIYASABKAsyFi50YXAudjEuUHVzaEZpbGVIZWFkZXJIABIPCgVjaHVuaxgCIAEoDEgAQgYKBHBhcnQiEgoQUHVzaEZpbGVSZXNwb25zZSJgCg9QdWxsRmlsZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhMKC2RldmljZV9wYXRoGAMgASgJIjUKEFB1bGxGaWxlUmVzcG9uc2USEgoKc2l6ZV9ieXRlcxgBIAEoAxINCgVjaHVuaxgCIAEoDCJxCg5BZGRNZWRpYUhlYWRlchIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSEQoJZmlsZV9uYW1lGAMgASgJEhIKCnNpemVfYnl0ZXMYBCABKAMiVAoPQWRkTWVkaWFSZXF1ZXN0EigKBmhlYWRlchgBIAEoCzIWLnRhcC52MS5BZGRNZWRpYUhlYWRlckgAEg8KBWNodW5rGAIgASgMSABCBgoEcGFydCInChBBZGRNZWRpYVJlc3BvbnNlEhMKC2RldmljZV9wYXRoGAEgASgJKpQBCgtEZXZpY2VTdGF0ZRIcChhERVZJQ0VfU1RBVEVfVU5TUEVDSUZJRUQQABIPCgtERVZJQ0VfRlJFRRABEhEKDURFVklDRV9MRUFTRUQQAhIWChJERVZJQ0VfUVVBUkFOVElORUQQAxISCg5ERVZJQ0VfT0ZGTElORRAEEhcKE0RFVklDRV9VTkFVVEhPUklaRUQQBSqaAQoMU2VsZWN0b3JLaW5kEh0KGVNFTEVDVE9SX0tJTkRfVU5TUEVDSUZJRUQQABIXChNTRUxFQ1RPUl9LSU5EX1BMQUlOEAESGgoWU0VMRUNUT1JfS0lORF9DT01CSU5FRBACEhoKFlNFTEVDVE9SX0tJTkRfQU5DRVNUT1IQAxIaChZTRUxFQ1RPUl9LSU5EX0JZX0lOREVYEAQqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMo4LCg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlN0YXJ0UmVjb3JkaW5nEh0udGFwLnYxLlN0YXJ0UmVjb3JkaW5nUmVxdWVzdBoeLnRhcC52MS5TdGFydFJlY29yZGluZ1Jlc3BvbnNlEkwKDVN0b3BSZWNvcmRpbmcSHC50YXAudjEuU3RvcFJlY29yZGluZ1JlcXVlc3QaHS50YXAudjEuU3RvcFJlY29yZGluZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlEkwKDVNldEFuaW1hdGlvbnMSHC50YXAudjEuU2V0QW5pbWF0aW9uc1JlcXVlc3QaHS50YXAudjEuU2V0QW5pbWF0aW9uc1Jlc3BvbnNlEkYKC1NldERhcmtNb2RlEhoudGFwLnYxLlNldERhcmtNb2RlUmVxdWVzdBobLnRhcC52MS5TZXREYXJrTW9kZVJlc3BvbnNlEkkKDFNldEZvbnRTY2FsZRIbLnRhcC52MS5TZXRGb250U2NhbGVSZXF1ZXN0GhwudGFwLnYxLlNldEZvbnRTY2FsZVJlc3BvbnNlEkMKClNldERlbnNpdHkSGS50YXAudjEuU2V0RGVuc2l0eVJlcXVlc3QaGi50YXAudjEuU2V0RGVuc2l0eVJlc3BvbnNlEkMKClNldE5ldHdvcmsSGS50YXAudjEuU2V0TmV0d29ya1JlcXVlc3QaGi50YXAudjEuU2V0TmV0d29ya1Jlc3BvbnNlElUKEFNldFN5c3RlbUxvY2FsZXMSHy50YXAudjEuU2V0U3lzdGVtTG9jYWxlc1JlcXVlc3QaIC50YXAudjEuU2V0U3lzdGVtTG9jYWxlc1Jlc3BvbnNlEkYKC1NldExvY2F0aW9uEhoudGFwLnYxLlNldExvY2F0aW9uUmVxdWVzdBobLnRhcC52MS5TZXRMb2NhdGlvblJlc3BvbnNlEj8KCFB1c2hGaWxlEhcudGFwLnYxLlB1c2hGaWxlUmVxdWVzdBoYLnRhcC52MS5QdXNoRmlsZVJlc3BvbnNlKAESPwoIUHVsbEZpbGUSFy50YXAudjEuUHVsbEZpbGVSZXF1ZXN0GhgudGFwLnYxLlB1bGxGaWxlUmVzcG9uc2UwARI/CghBZGRNZWRpYRIXLnRhcC52MS5BZGRNZWRpYVJlcXVlc3QaGC50YXAudjEuQWRkTWVkaWFSZXNwb25zZSgBQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
 
 /**
  * One listed device. Anything richer than the serial comes from DeviceInfo after attachment.
@@ -1033,6 +1033,220 @@ export const SetLocationResponseSchema: GenMessage<SetLocationResponse> = /*@__P
   messageDesc(file_device, 36);
 
 /**
+ * @generated from message tap.v1.PushFileHeader
+ */
+export type PushFileHeader = Message<"tap.v1.PushFileHeader"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: string device_path = 3;
+   */
+  devicePath: string;
+
+  /**
+   * exact size; the upload is rejected on mismatch
+   *
+   * @generated from field: int64 size_bytes = 4;
+   */
+  sizeBytes: bigint;
+};
+
+/**
+ * Describes the message tap.v1.PushFileHeader.
+ * Use `create(PushFileHeaderSchema)` to create a new message.
+ */
+export const PushFileHeaderSchema: GenMessage<PushFileHeader> = /*@__PURE__*/
+  messageDesc(file_device, 37);
+
+/**
+ * @generated from message tap.v1.PushFileRequest
+ */
+export type PushFileRequest = Message<"tap.v1.PushFileRequest"> & {
+  /**
+   * @generated from oneof tap.v1.PushFileRequest.part
+   */
+  part: {
+    /**
+     * first message only
+     *
+     * @generated from field: tap.v1.PushFileHeader header = 1;
+     */
+    value: PushFileHeader;
+    case: "header";
+  } | {
+    /**
+     * every later message
+     *
+     * @generated from field: bytes chunk = 2;
+     */
+    value: Uint8Array;
+    case: "chunk";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.v1.PushFileRequest.
+ * Use `create(PushFileRequestSchema)` to create a new message.
+ */
+export const PushFileRequestSchema: GenMessage<PushFileRequest> = /*@__PURE__*/
+  messageDesc(file_device, 38);
+
+/**
+ * @generated from message tap.v1.PushFileResponse
+ */
+export type PushFileResponse = Message<"tap.v1.PushFileResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.PushFileResponse.
+ * Use `create(PushFileResponseSchema)` to create a new message.
+ */
+export const PushFileResponseSchema: GenMessage<PushFileResponse> = /*@__PURE__*/
+  messageDesc(file_device, 39);
+
+/**
+ * @generated from message tap.v1.PullFileRequest
+ */
+export type PullFileRequest = Message<"tap.v1.PullFileRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: string device_path = 3;
+   */
+  devicePath: string;
+};
+
+/**
+ * Describes the message tap.v1.PullFileRequest.
+ * Use `create(PullFileRequestSchema)` to create a new message.
+ */
+export const PullFileRequestSchema: GenMessage<PullFileRequest> = /*@__PURE__*/
+  messageDesc(file_device, 40);
+
+/**
+ * The first message carries `size_bytes`; every message may carry a chunk.
+ *
+ * @generated from message tap.v1.PullFileResponse
+ */
+export type PullFileResponse = Message<"tap.v1.PullFileResponse"> & {
+  /**
+   * @generated from field: int64 size_bytes = 1;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: bytes chunk = 2;
+   */
+  chunk: Uint8Array;
+};
+
+/**
+ * Describes the message tap.v1.PullFileResponse.
+ * Use `create(PullFileResponseSchema)` to create a new message.
+ */
+export const PullFileResponseSchema: GenMessage<PullFileResponse> = /*@__PURE__*/
+  messageDesc(file_device, 41);
+
+/**
+ * @generated from message tap.v1.AddMediaHeader
+ */
+export type AddMediaHeader = Message<"tap.v1.AddMediaHeader"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * 1-127 letters, digits, '.', '_', '-' or spaces, ending in a photo (jpg, jpeg, png, gif, webp,
+   * heic, heif, bmp) or video (mp4, 3gp, webm, mkv, mov) extension.
+   *
+   * @generated from field: string file_name = 3;
+   */
+  fileName: string;
+
+  /**
+   * @generated from field: int64 size_bytes = 4;
+   */
+  sizeBytes: bigint;
+};
+
+/**
+ * Describes the message tap.v1.AddMediaHeader.
+ * Use `create(AddMediaHeaderSchema)` to create a new message.
+ */
+export const AddMediaHeaderSchema: GenMessage<AddMediaHeader> = /*@__PURE__*/
+  messageDesc(file_device, 42);
+
+/**
+ * @generated from message tap.v1.AddMediaRequest
+ */
+export type AddMediaRequest = Message<"tap.v1.AddMediaRequest"> & {
+  /**
+   * @generated from oneof tap.v1.AddMediaRequest.part
+   */
+  part: {
+    /**
+     * @generated from field: tap.v1.AddMediaHeader header = 1;
+     */
+    value: AddMediaHeader;
+    case: "header";
+  } | {
+    /**
+     * @generated from field: bytes chunk = 2;
+     */
+    value: Uint8Array;
+    case: "chunk";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.v1.AddMediaRequest.
+ * Use `create(AddMediaRequestSchema)` to create a new message.
+ */
+export const AddMediaRequestSchema: GenMessage<AddMediaRequest> = /*@__PURE__*/
+  messageDesc(file_device, 43);
+
+/**
+ * @generated from message tap.v1.AddMediaResponse
+ */
+export type AddMediaResponse = Message<"tap.v1.AddMediaResponse"> & {
+  /**
+   * where the media landed
+   *
+   * @generated from field: string device_path = 1;
+   */
+  devicePath: string;
+};
+
+/**
+ * Describes the message tap.v1.AddMediaResponse.
+ * Use `create(AddMediaResponseSchema)` to create a new message.
+ */
+export const AddMediaResponseSchema: GenMessage<AddMediaResponse> = /*@__PURE__*/
+  messageDesc(file_device, 44);
+
+/**
  * State of a listed device.
  *
  * @generated from enum tap.v1.DeviceState
@@ -1332,6 +1546,44 @@ export const DeviceService: GenService<{
     methodKind: "unary";
     input: typeof SetLocationRequestSchema;
     output: typeof SetLocationResponseSchema;
+  },
+  /**
+   * Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
+   * A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
+   *
+   * Copies a file to `device_path` (absolute, normalised; its directory must exist): a
+   * PushFileHeader first, then the bytes. A file already there is refused unless this attached
+   * device pushed it; the size is read back. Pushed files are deleted on detach.
+   *
+   * @generated from rpc tap.v1.DeviceService.PushFile
+   */
+  pushFile: {
+    methodKind: "client_streaming";
+    input: typeof PushFileRequestSchema;
+    output: typeof PushFileResponseSchema;
+  },
+  /**
+   * Streams the regular file at `device_path` back in chunks.
+   *
+   * @generated from rpc tap.v1.DeviceService.PullFile
+   */
+  pullFile: {
+    methodKind: "server_streaming";
+    input: typeof PullFileRequestSchema;
+    output: typeof PullFileResponseSchema;
+  },
+  /**
+   * Adds a photo or video to the gallery: an AddMediaHeader (`file_name` with a photo or video
+   * extension), then the bytes. Written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/` and
+   * indexed by the media scanner (read back); a name already there is refused unless this attached
+   * device added it. Deleted, and dropped from the index, on detach.
+   *
+   * @generated from rpc tap.v1.DeviceService.AddMedia
+   */
+  addMedia: {
+    methodKind: "client_streaming";
+    input: typeof AddMediaRequestSchema;
+    output: typeof AddMediaResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_device, 0);

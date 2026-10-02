@@ -396,3 +396,71 @@ class SetLocationRequest(_message.Message):
 class SetLocationResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class PushFileHeader(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "device_path", "size_bytes")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    device_path: str
+    size_bytes: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., device_path: _Optional[str] = ..., size_bytes: _Optional[int] = ...) -> None: ...
+
+class PushFileRequest(_message.Message):
+    __slots__ = ("header", "chunk")
+    HEADER_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_FIELD_NUMBER: _ClassVar[int]
+    header: PushFileHeader
+    chunk: bytes
+    def __init__(self, header: _Optional[_Union[PushFileHeader, _Mapping]] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+
+class PushFileResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class PullFileRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "device_path")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    device_path: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., device_path: _Optional[str] = ...) -> None: ...
+
+class PullFileResponse(_message.Message):
+    __slots__ = ("size_bytes", "chunk")
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_FIELD_NUMBER: _ClassVar[int]
+    size_bytes: int
+    chunk: bytes
+    def __init__(self, size_bytes: _Optional[int] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+
+class AddMediaHeader(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "file_name", "size_bytes")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    file_name: str
+    size_bytes: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., file_name: _Optional[str] = ..., size_bytes: _Optional[int] = ...) -> None: ...
+
+class AddMediaRequest(_message.Message):
+    __slots__ = ("header", "chunk")
+    HEADER_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_FIELD_NUMBER: _ClassVar[int]
+    header: AddMediaHeader
+    chunk: bytes
+    def __init__(self, header: _Optional[_Union[AddMediaHeader, _Mapping]] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+
+class AddMediaResponse(_message.Message):
+    __slots__ = ("device_path",)
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    device_path: str
+    def __init__(self, device_path: _Optional[str] = ...) -> None: ...

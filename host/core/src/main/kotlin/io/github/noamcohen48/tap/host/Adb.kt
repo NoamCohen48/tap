@@ -546,6 +546,7 @@ open class Adb internal constructor(
                     ?: exec(serial, "shell", "getprop", "ro.product.locale").trim().takeUnless { it.isEmpty() }
                     ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.product.locale"), null, "", "No readable locale on $serial")
             }
+            is StateKey.DeviceFile -> fileInfo(serial, parsed.path)?.let { "present" }
             is StateKey.AppOp -> {
                 val command = listOf("shell", "appops", "get", shellQuote(parsed.packageName), shellQuote(parsed.op))
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -601,6 +602,16 @@ open class Adb internal constructor(
                         StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
                     }
                 }
+            is StateKey.DeviceFile -> {
+                // Only ever captured as absent: restoring removes what the session created.
+                check(value == null) { "a device file can only be restored as absent, not $value" }
+                exec(serial, "shell", "rm", "-f", shellQuote(parsed.path))
+                if (parsed.media) {
+                    scanMedia(serial, parsed.path)
+                    // The Tap folder the media went into, when nothing else is left in it.
+                    execResult(serial, "shell", "rmdir", shellQuote(parsed.path.substringBeforeLast('/')))
+                }
+            }
             is StateKey.AppOp ->
                 exec(serial, "shell", "appops", "set", shellQuote(parsed.packageName), shellQuote(parsed.op), shellQuote(value ?: "default"))
             StateKey.SystemLocales -> writeSystemLocales(serial, requireNotNull(value) { "system locales need a value" })
@@ -609,6 +620,83 @@ open class Adb internal constructor(
                 exec(serial, "shell", "cmd", "locale", "set-app-locales", shellQuote(parsed.packageName), "--user", "current", *locales.toTypedArray())
             }
         }
+    }
+
+    /** A device file's type and size (`stat`), or null when nothing is at [path]. */
+    open suspend fun fileInfo(
+        serial: String,
+        path: String,
+    ): DeviceFileInfo? {
+        val command = listOf("shell", "stat", "-c", "'%F|%s'", shellQuote(path))
+        val result = execResult(serial, *command.toTypedArray())
+        if (result.exitCode != 0) {
+            if ("No such file" in result.output) return null
+            throw AdbCommandException(serial, command, result.exitCode, result.output, "Unable to stat $path on $serial: ${result.output}")
+        }
+        val (type, size) = result.output.trim().split('|').takeIf { it.size == 2 }
+            ?: throw AdbCommandException(serial, command, null, result.output, "Unreadable stat of $path on $serial: ${result.output}")
+        return DeviceFileInfo(regular = type == "regular file" || type == "regular empty file", sizeBytes = size.toLongOrNull() ?: -1)
+    }
+
+    /** `mkdir -p` [path] on the device. */
+    open suspend fun makeDirectories(
+        serial: String,
+        path: String,
+    ) {
+        exec(serial, "shell", "mkdir", "-p", shellQuote(path))
+    }
+
+    /** Whether [path] is a directory on the device. */
+    open suspend fun isDirectory(
+        serial: String,
+        path: String,
+    ): Boolean = execResult(serial, "shell", "test", "-d", shellQuote(path)).exitCode == 0
+
+    /** `adb push`: an adb client command with a real argv, so neither path is shell-quoted. */
+    open suspend fun push(
+        serial: String,
+        local: Path,
+        devicePath: String,
+        timeoutMs: Long = 300_000,
+    ) {
+        exec(serial, "push", local.absolutePathString(), devicePath, timeoutMs = timeoutMs)
+    }
+
+    /** `adb pull` of [devicePath] into [local]. */
+    open suspend fun pull(
+        serial: String,
+        devicePath: String,
+        local: Path,
+        timeoutMs: Long = 300_000,
+    ) {
+        exec(serial, "pull", devicePath, local.absolutePathString(), timeoutMs = timeoutMs)
+    }
+
+    /**
+     * Has the media scanner (re)index [path]: MediaProvider's `scan_file` call on API 29+, the
+     * `MEDIA_SCANNER_SCAN_FILE` broadcast before. A path that is gone leaves the index.
+     */
+    open suspend fun scanMedia(
+        serial: String,
+        path: String,
+    ) {
+        if (apiLevel(serial) >= 29) {
+            exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(path))
+        } else {
+            exec(serial, "shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", shellQuote("file://$path"))
+        }
+    }
+
+    /** Whether the media index has an entry for the file [name] in the folder [folder] (e.g. `Pictures/Tap`). */
+    open suspend fun mediaIndexed(
+        serial: String,
+        folder: String,
+        name: String,
+    ): Boolean {
+        val where = "_display_name='$name' AND _data LIKE '%/$folder/$name'"
+        val command = listOf("shell", "content", "query", "--uri", "content://media/external/file", "--projection", "_id", "--where", shellQuote(where))
+        val output = exec(serial, *command.toTypedArray())
+        return output.lineSequence().any { it.trim().startsWith("Row:") }
     }
 
     /**
@@ -1106,3 +1194,9 @@ private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
  */
 fun shellQuote(token: String): String =
     if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"
+
+/** A device file as `stat` reports it; [sizeBytes] is -1 when unreadable. */
+data class DeviceFileInfo(
+    val regular: Boolean,
+    val sizeBytes: Long,
+)

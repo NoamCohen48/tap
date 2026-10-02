@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_SESSION_CLOSE_TIMEOUT_MS
 import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.DeviceConditions
+import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
@@ -158,6 +159,9 @@ internal interface DaemonDeviceSession {
     /** Device-wide conditions; fakes without a device leave the default. */
     val conditions: DeviceConditions get() = throw UnsupportedOperationException("no device conditions in this session")
 
+    /** Device files; fakes without a device leave the default. */
+    val files: DeviceFiles get() = throw UnsupportedOperationException("no device files in this session")
+
     /** Rejects use after sticky reap quarantine; cleanup still runs via [close]. */
     fun checkUsable()
 
@@ -184,6 +188,7 @@ private class CoreDeviceSessionAdapter(
     override fun app(packageName: String): AppLifecycle = delegate.app(packageName)
 
     override val conditions: DeviceConditions get() = delegate.conditions
+    override val files: DeviceFiles get() = delegate.files
 
     override fun checkUsable() = delegate.checkUsable()
 

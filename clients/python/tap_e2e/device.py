@@ -6,10 +6,12 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import math
+import os
+import tempfile
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from . import _gen as pb
 from . import _proto
@@ -60,6 +62,18 @@ class Timeouts:
 # Extra seconds a device RPC's gRPC deadline allows past the command's own timeout, so that a
 # command timeout arrives as a device result rather than a client-side DEADLINE_EXCEEDED.
 RPC_DEADLINE_SLACK = 60.0
+
+MAX_FILE_BYTES = 512 << 20
+"""Largest file ``push_file``, ``pull_file`` and ``add_media`` move (512 MiB)."""
+
+FILE_CHUNK_BYTES = 1 << 20
+"""Size of each chunk the file uploads stream."""
+
+_T = TypeVar("_T")
+
+FILE_DEADLINE = 600.0
+"""A file transfer's whole-call deadline: the server's 5-minute adb transfer plus the upload."""
+
 
 
 def _or(value: float | None, default: float) -> float:
@@ -399,6 +413,105 @@ class Device:
         if altitude_m is not None:
             fields["altitude_m"] = altitude_m
         self._condition("set_location", "SetLocation", pb.SetLocationRequest, **fields)
+
+    def push_file(
+        self, device_path: str, source: bytes | bytearray | memoryview | str | os.PathLike[str]
+    ) -> None:
+        """Copy a file to ``device_path`` on the device until ``detach()``.
+
+        ``source`` is the content (``bytes``) or a file on *this* machine (``str`` /
+        ``PathLike``), streamed in 1 MiB chunks; at most 512 MiB. ``device_path`` is absolute and
+        normalised: ``/data/local/tmp/…``, or shared storage (``/sdcard/Download/…``) for an app
+        with storage access to read. Its directory must exist. A file already there is refused
+        (``ServerError``, reason ``DEVICE_FILE``) unless this device handle pushed it, so a test
+        never overwrites the device's own files; the size is read back. The file is deleted on
+        ``detach()``.
+        """
+        size, chunks = _file_source(source)
+        header = pb.PushFileHeader(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            device_path=device_path,
+            size_bytes=size,
+        )
+        parts = _upload(pb.PushFileRequest(header=header), chunks, lambda c: pb.PushFileRequest(chunk=c))
+        self._file_call("push_file", lambda: self.client.device_stub.PushFile(parts, timeout=FILE_DEADLINE))
+
+    @overload
+    def pull_file(self, device_path: str) -> bytes: ...
+
+    @overload
+    def pull_file(self, device_path: str, to: str | os.PathLike[str]) -> None: ...
+
+    def pull_file(self, device_path: str, to: str | os.PathLike[str] | None = None) -> bytes | None:
+        """The regular file at ``device_path`` on the device (at most 512 MiB): its bytes, or,
+        with ``to``, written to that local file (replaced only once the whole file arrived)."""
+        request = pb.PullFileRequest(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            device_path=device_path,
+        )
+
+        def pull(write: Callable[[bytes], object]) -> None:
+            expected, received = -1, 0
+            for part in self.client.device_stub.PullFile(request, timeout=FILE_DEADLINE):
+                if expected < 0:
+                    expected = part.size_bytes
+                received += len(part.chunk)
+                write(part.chunk)
+            if received != expected:
+                raise TapError(f"pulled {received} of {expected} bytes of {device_path} from {self.serial}")
+
+        if to is None:
+            chunks: list[bytes] = []
+            self._file_call("pull_file", lambda: pull(chunks.append))
+            return b"".join(chunks)
+        target = os.path.abspath(os.fspath(to))
+        handle, partial = tempfile.mkstemp(prefix=os.path.basename(target), suffix=".part", dir=os.path.dirname(target))
+        try:
+            with os.fdopen(handle, "wb") as out:
+                self._file_call("pull_file", lambda: pull(out.write))
+            os.replace(partial, target)
+        finally:
+            if os.path.exists(partial):
+                os.remove(partial)
+        return None
+
+    def add_media(
+        self,
+        source: bytes | bytearray | memoryview | str | os.PathLike[str],
+        file_name: str | None = None,
+    ) -> str:
+        """Add a photo or video to the device's gallery until ``detach()``; return its device path.
+
+        ``source`` is the content (``bytes``, which needs ``file_name``) or a local file
+        (``file_name`` defaults to its name). ``file_name`` is letters, digits, ``.``, ``_``,
+        ``-`` or spaces with a photo extension (jpg, jpeg, png, gif, webp, heic, heif, bmp) or a
+        video one (mp4, 3gp, webm, mkv, mov): the file goes to ``/sdcard/Pictures/Tap/`` or
+        ``/sdcard/Movies/Tap/`` and the media scanner indexes it, so gallery apps and photo
+        pickers list it (read back). A name already there is refused (``ServerError``, reason
+        ``DEVICE_FILE``) unless this device handle added it. Deleted, and dropped from the
+        index, on ``detach()``; nothing else in the gallery is touched.
+        """
+        if file_name is None:
+            if isinstance(source, (bytes, bytearray, memoryview)):
+                raise TypeError("add_media of bytes needs a file_name")
+            file_name = os.path.basename(os.fspath(source))
+        size, chunks = _file_source(source)
+        header = pb.AddMediaHeader(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            file_name=file_name,
+            size_bytes=size,
+        )
+        parts = _upload(pb.AddMediaRequest(header=header), chunks, lambda c: pb.AddMediaRequest(chunk=c))
+        response = self._file_call("add_media", lambda: self.client.device_stub.AddMedia(parts, timeout=FILE_DEADLINE))
+        return response.device_path
+
+    def _file_call(self, operation: str, call: Callable[[], _T]) -> _T:
+        self._ensure_usable(operation)
+        with mapped_errors(self.serial):
+            return call()
 
     def _condition(self, operation: str, rpc: str, request_type, **fields) -> None:
         self._ensure_usable(operation)
@@ -742,3 +855,39 @@ class Device:
 
     def __repr__(self) -> str:
         return f"Device({self.serial}, generation={self.generation})"
+
+
+def _file_source(
+    source: bytes | bytearray | memoryview | str | os.PathLike[str],
+) -> tuple[int, Callable[[], Iterator[bytes]]]:
+    """The size and a chunk reader of file content (bytes) or a local file (a path)."""
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        data = bytes(source)
+        size = len(data)
+
+        def from_bytes() -> Iterator[bytes]:
+            for start in range(0, size, FILE_CHUNK_BYTES):
+                yield data[start : start + FILE_CHUNK_BYTES]
+
+        reader = from_bytes
+    elif isinstance(source, (str, os.PathLike)):
+        path = os.fspath(source)
+        size = os.path.getsize(path)  # raises for a missing file before any RPC
+
+        def from_file() -> Iterator[bytes]:
+            with open(path, "rb") as file:
+                while chunk := file.read(FILE_CHUNK_BYTES):
+                    yield chunk
+
+        reader = from_file
+    else:
+        raise TypeError(f"file content is bytes or a local path, not {type(source).__name__}")
+    if size > MAX_FILE_BYTES:
+        raise ValueError(f"at most {MAX_FILE_BYTES} bytes are sent, not {size}")
+    return size, reader
+
+
+def _upload(header, chunks: Callable[[], Iterator[bytes]], part: Callable[[bytes], object]) -> Iterator:
+    yield header
+    for chunk in chunks():
+        yield part(chunk)

@@ -1,6 +1,12 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
+import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.AddMediaHeader
+import io.github.noamcohen48.tap.api.v1.AddMediaRequest
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.PullFileRequest
+import io.github.noamcohen48.tap.api.v1.PushFileHeader
+import io.github.noamcohen48.tap.api.v1.PushFileRequest
 import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
 import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
@@ -15,12 +21,16 @@ import io.grpc.Status
 import io.grpc.StatusException
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+import kotlin.io.path.listDirectoryEntries
 
 /** Device-condition arguments are checked before the attached device is even looked up. */
 class DeviceServiceTest {
@@ -91,5 +101,55 @@ class DeviceServiceTest {
             Status.Code.NOT_FOUND,
             code { stub.setDarkMode(SetDarkModeRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setEnabled(true).build()) },
         )
+    }
+
+    private fun pushHeader(
+        path: String,
+        size: Long,
+    ) = PushFileRequest
+        .newBuilder()
+        .setHeader(PushFileHeader.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setDevicePath(path).setSizeBytes(size))
+        .build()
+
+    private fun pushChunk(bytes: Int) = PushFileRequest.newBuilder().setChunk(ByteString.copyFrom(ByteArray(bytes))).build()
+
+    private fun mediaHeader(
+        name: String,
+        size: Long,
+    ) = AddMediaRequest
+        .newBuilder()
+        .setHeader(AddMediaHeader.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setFileName(name).setSizeBytes(size))
+        .build()
+
+    private fun mediaChunk(bytes: Int) = AddMediaRequest.newBuilder().setChunk(ByteString.copyFrom(ByteArray(bytes))).build()
+
+    @Test
+    fun `malformed file uploads and paths are INVALID_ARGUMENT and leave no spool file`() {
+        fun push(vararg parts: PushFileRequest) = code { stub.pushFile(flowOf(*parts)) }
+        assertEquals(Status.Code.INVALID_ARGUMENT, push(pushChunk(2)))
+        assertEquals(Status.Code.INVALID_ARGUMENT, push(pushHeader("/data/local/tmp/a", 2), pushChunk(1)))
+        assertEquals(Status.Code.INVALID_ARGUMENT, push(pushHeader("/data/local/tmp/a", 2), pushChunk(3)))
+        assertEquals(Status.Code.INVALID_ARGUMENT, push(pushHeader("/data/local/tmp/a", 1), pushHeader("/data/local/tmp/a", 1)))
+        assertEquals(Status.Code.INVALID_ARGUMENT, push(pushHeader("/data/local/tmp/a", -1)))
+        for (path in listOf("", "a.txt", "/data/local/tmp/", "/data//a", "/data/./a", "/data/../a", "/data/a\nb")) {
+            assertEquals(Status.Code.INVALID_ARGUMENT, push(pushHeader(path, 1), pushChunk(1)), path)
+        }
+        // An empty file is a file: the header alone is a complete upload.
+        assertEquals(Status.Code.NOT_FOUND, push(pushHeader("/data/local/tmp/empty", 0)))
+        assertEquals(Status.Code.NOT_FOUND, push(pushHeader("/data/local/tmp/a", 2), pushChunk(2)))
+
+        fun media(vararg parts: AddMediaRequest) = code { stub.addMedia(flowOf(*parts)) }
+        for (name in listOf("notes.txt", "cat", "../cat.jpg", "a/cat.jpg", ".jpg", "cat'.jpg")) {
+            assertEquals(Status.Code.INVALID_ARGUMENT, media(mediaHeader(name, 1), mediaChunk(1)), name)
+        }
+        assertEquals(Status.Code.NOT_FOUND, media(mediaHeader("Cat 1.JPG", 1), mediaChunk(1)))
+        assertEquals(Status.Code.NOT_FOUND, media(mediaHeader("clip.mp4", 1), mediaChunk(1)))
+
+        fun pull(path: String) =
+            code { stub.pullFile(PullFileRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setDevicePath(path).build()).toList() }
+        assertEquals(Status.Code.INVALID_ARGUMENT, pull("relative"))
+        assertEquals(Status.Code.NOT_FOUND, pull("/data/local/tmp/a"))
+
+        assertTrue(stateDir.resolve("uploads").listDirectoryEntries().isEmpty())
     }
 }

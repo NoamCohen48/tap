@@ -1,5 +1,8 @@
 package io.github.noamcohen48.tap.host
 
+import java.nio.file.Files
+import java.nio.file.Path
+
 /**
  * The device state [Adb.readState] / [Adb.writeState] reach, keyed by [StateKey] id (null =
  * absent), answering the shell commands as the local devices print them. Writes to a key in
@@ -17,6 +20,14 @@ class FakeDeviceState(
     var localeReceiverFails: Boolean = false,
 ) {
     val values = initial.toMutableMap()
+
+    /** Device files by absolute path, the directories that exist, and the paths the media index lists. */
+    val files = mutableMapOf<String, ByteArray>()
+    val directories = mutableSetOf("/", "/sdcard", "/sdcard/Pictures", "/sdcard/Movies", "/data", "/data/local", "/data/local/tmp")
+    val mediaIndex = mutableSetOf<String>()
+
+    /** As a device whose media scanner skips files (API 29 without `scan_file`, say). */
+    var mediaScannerIgnores: Boolean = false
     val stuck = mutableSetOf<String>()
     val writes = mutableListOf<String>()
 
@@ -32,6 +43,7 @@ class FakeDeviceState(
     /** The reply to [command], or null when it is not a state command. */
     fun answer(command: String): Adb.Result? {
         val args = command.split(' ')
+        fileAnswer(command, args)?.let { return it }
         if (args.firstOrNull() != "shell") return null
         return when {
             command == "shell getprop ro.build.version.sdk" -> ok("$apiLevel\n")
@@ -89,6 +101,72 @@ class FakeDeviceState(
                 write(WIFI, if (args[3] == "enable") (if (airplane) "2" else "1") else "0")
             }
             command.startsWith("shell svc data ") -> write(DATA, if (args[3] == "enable") "1" else "0")
+            else -> null
+        }
+    }
+
+    /** The file commands [Adb] sends (paths without spaces, as the tests use). */
+    private fun fileAnswer(
+        command: String,
+        args: List<String>,
+    ): Adb.Result? {
+        fun path(token: String) = token.removeSurrounding("'")
+        return when {
+            args[0] == "push" -> {
+                val target = path(args[2])
+                if (target.substringBeforeLast('/').ifEmpty { "/" } !in directories) return Adb.Result(1, "adb: error: failed to copy: No such file or directory\n")
+                files[target] = Files.readAllBytes(Path.of(args[1]))
+                ok("1 file pushed.\n")
+            }
+            args[0] == "pull" -> {
+                val bytes = files[path(args[1])] ?: return Adb.Result(1, "adb: error: remote object does not exist\n")
+                Files.write(Path.of(args[2]), bytes)
+                ok("1 file pulled.\n")
+            }
+            command.startsWith("shell stat -c ") -> {
+                val target = path(args.last())
+                when {
+                    target in files -> ok((if (files.getValue(target).isEmpty()) "regular empty file" else "regular file") + "|${files.getValue(target).size}\n")
+                    target in directories -> ok("directory|4096\n")
+                    else -> Adb.Result(1, "stat: '$target': No such file or directory\n")
+                }
+            }
+            command.startsWith("shell test -d ") -> Adb.Result(if (path(args[3]) in directories) 0 else 1, "")
+            command.startsWith("shell mkdir -p ") -> {
+                var directory = path(args[3])
+                while (directory.isNotEmpty()) {
+                    directories += directory
+                    directory = directory.substringBeforeLast('/')
+                }
+                ok("")
+            }
+            command.startsWith("shell rm -f ") -> {
+                files.remove(path(args[3]))
+                ok("")
+            }
+            command.startsWith("shell rmdir ") -> {
+                val directory = path(args[2])
+                if (files.keys.any { it.startsWith("$directory/") }) return Adb.Result(1, "rmdir: '$directory': Directory not empty\n")
+                directories -= directory
+                ok("")
+            }
+            command.startsWith("shell content call --uri content://media/ --method scan_file ") -> {
+                val target = path(args.last())
+                if (!mediaScannerIgnores) if (target in files) mediaIndex += target else mediaIndex -= target
+                ok("Result: Bundle[{}]\n")
+            }
+            command.startsWith("shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE ") -> {
+                val target = path(args.last()).removePrefix("file://")
+                if (!mediaScannerIgnores) if (target in files) mediaIndex += target else mediaIndex -= target
+                ok("Broadcast completed: result=0\n")
+            }
+            command.startsWith("shell content query --uri content://media/external/file ") -> {
+                val where = command.replace("'\\''", "'")
+                val name = Regex("_display_name='([^']*)'").find(where)!!.groupValues[1]
+                val folder = Regex("LIKE '%/(.*)/").find(where)!!.groupValues[1]
+                val rows = mediaIndex.filter { it.endsWith("/$folder/$name") }
+                ok(if (rows.isEmpty()) "No result found.\n" else rows.mapIndexed { i, _ -> "Row: $i _id=${100 + i}" }.joinToString("\n") + "\n")
+            }
             else -> null
         }
     }

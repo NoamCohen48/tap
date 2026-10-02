@@ -439,6 +439,25 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     assert agent.app("locale", "com.example", "system") == "com.example follows the system language"
 
 
+def test_files_push_pull_and_media(fake, agent, tmp_path):
+    agent.attach("emulator-5554")
+    local = tmp_path / "cat.png"
+    local.write_bytes(b"\x89PNG")
+    assert agent.push(local, "/sdcard/Download/cat.png") == "pushed 4 bytes to /sdcard/Download/cat.png (removed on release)"
+    out = tmp_path / "back.png"
+    assert agent.pull("/sdcard/Download/cat.png", out) == str(out)
+    assert out.read_bytes() == b"\x89PNG"
+    pulled = agent.pull("/sdcard/Download/cat.png")
+    assert pulled.endswith("-cat.png") and open(pulled, "rb").read() == b"\x89PNG"
+    assert agent.media(local) == "added /sdcard/Pictures/Tap/cat.png to the gallery (removed on release)"
+    assert agent.media(local, "dog.png") == "added /sdcard/Pictures/Tap/dog.png to the gallery (removed on release)"
+    with pytest.raises(AgentError) as missing:
+        agent.push(tmp_path / "nope", "/sdcard/Download/x")
+    assert missing.value.exit_code == EXIT_USAGE
+    with pytest.raises(AgentError) as taken:
+        agent.push(local, "/sdcard/Download/cat.png")
+    assert taken.value.exit_code == EXIT_FAILED
+
 
 # --- MCP ---------------------------------------------------------------------------------------
 
@@ -446,7 +465,7 @@ EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
-    "condition", "accessibility_action", "set_progress", "set_location",
+    "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
 }
 
 
