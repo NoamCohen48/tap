@@ -43,6 +43,15 @@ sealed interface StateKey {
     }
 
     /**
+     * The device-wide locale list (Settings › Languages), comma-separated BCP-47 tags: read from
+     * `system_locales`, else `persist.sys.locale`, else the build's `ro.product.locale`; written
+     * through the driver app's `SystemLocaleReceiver`, since Android has no shell command for it.
+     */
+    data object SystemLocales : StateKey {
+        override val id: String = "system-locales"
+    }
+
+    /**
      * A radio switch, `1` (on) or `0` (off): airplane mode (`cmd connectivity airplane-mode`),
      * Wi-Fi (`svc wifi`) or mobile data (`svc data`), read from their global settings.
      */
@@ -79,6 +88,7 @@ sealed interface StateKey {
             when {
                 id == NightMode.id -> NightMode
                 id == Density.id -> Density
+                id == SystemLocales.id -> SystemLocales
                 id.startsWith("network:") -> Network.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Bad state key $id")
                 id.startsWith("locale:") -> AppLocales(id.removePrefix("locale:").also { require(it.isNotBlank()) { "Bad state key $id" } })
                 else -> SETTING.matchEntire(id)?.let { Setting(it.groupValues[1], it.groupValues[2]) } ?: throw IllegalArgumentException("Bad state key $id")

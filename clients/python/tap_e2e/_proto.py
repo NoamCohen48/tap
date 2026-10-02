@@ -193,6 +193,7 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         airplane_mode=info.airplane_mode,
         wifi_enabled=info.wifi_enabled,
         mobile_data_enabled=info.mobile_data_enabled,
+        system_locales=tuple(info.system_locales),
     )
 
 

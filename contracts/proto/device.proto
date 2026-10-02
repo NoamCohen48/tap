@@ -49,6 +49,10 @@ service DeviceService {
   // all three are captured on the first change and restored airplane mode first. A device reached
   // over ADB on the network refuses Wi-Fi off / airplane mode on (FAILED_PRECONDITION).
   rpc SetNetwork(SetNetworkRequest) returns (SetNetworkResponse);
+  // The device-wide locale list (Settings › Languages), 1 to 16 BCP-47 tags in preference order
+  // (INVALID_ARGUMENT otherwise). Android has no shell command for it: the driver app applies it
+  // as Settings' language picker does, and it is read back (`system_locales`).
+  rpc SetSystemLocales(SetSystemLocalesRequest) returns (SetSystemLocalesResponse);
 }
 
 // State of a listed device.
@@ -294,3 +298,11 @@ message SetNetworkRequest {
 }
 
 message SetNetworkResponse {}
+
+message SetSystemLocalesRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  repeated string locales = 3;
+}
+
+message SetSystemLocalesResponse {}

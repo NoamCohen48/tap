@@ -55,7 +55,7 @@ class AppCall(_message.Message):
     def __init__(self, operation: _Optional[str] = ..., package_name: _Optional[str] = ..., activity: _Optional[str] = ..., permission: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., uri: _Optional[str] = ..., any_app: _Optional[bool] = ..., extras: _Optional[_Iterable[_Union[_app_pb2.IntentExtra, _Mapping]]] = ..., locales: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class DeviceCall(_message.Message):
-    __slots__ = ("operation", "enabled", "font_scale", "density_dpi", "airplane_mode", "wifi", "mobile_data")
+    __slots__ = ("operation", "enabled", "font_scale", "density_dpi", "airplane_mode", "wifi", "mobile_data", "locales")
     OPERATION_FIELD_NUMBER: _ClassVar[int]
     ENABLED_FIELD_NUMBER: _ClassVar[int]
     FONT_SCALE_FIELD_NUMBER: _ClassVar[int]
@@ -63,6 +63,7 @@ class DeviceCall(_message.Message):
     AIRPLANE_MODE_FIELD_NUMBER: _ClassVar[int]
     WIFI_FIELD_NUMBER: _ClassVar[int]
     MOBILE_DATA_FIELD_NUMBER: _ClassVar[int]
+    LOCALES_FIELD_NUMBER: _ClassVar[int]
     operation: str
     enabled: bool
     font_scale: float
@@ -70,4 +71,5 @@ class DeviceCall(_message.Message):
     airplane_mode: bool
     wifi: bool
     mobile_data: bool
-    def __init__(self, operation: _Optional[str] = ..., enabled: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi: _Optional[bool] = ..., mobile_data: _Optional[bool] = ...) -> None: ...
+    locales: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, operation: _Optional[str] = ..., enabled: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi: _Optional[bool] = ..., mobile_data: _Optional[bool] = ..., locales: _Optional[_Iterable[str]] = ...) -> None: ...

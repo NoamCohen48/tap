@@ -109,6 +109,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetNetworkRequest.SerializeToString,
                 response_deserializer=device__pb2.SetNetworkResponse.FromString,
                 _registered_method=True)
+        self.SetSystemLocales = channel.unary_unary(
+                '/tap.v1.DeviceService/SetSystemLocales',
+                request_serializer=device__pb2.SetSystemLocalesRequest.SerializeToString,
+                response_deserializer=device__pb2.SetSystemLocalesResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -222,6 +227,15 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetSystemLocales(self, request, context):
+        """The device-wide locale list (Settings › Languages), 1 to 16 BCP-47 tags in preference order
+        (INVALID_ARGUMENT otherwise). Android has no shell command for it: the driver app applies it
+        as Settings' language picker does, and it is read back (`system_locales`).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -299,6 +313,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.SetNetwork,
                     request_deserializer=device__pb2.SetNetworkRequest.FromString,
                     response_serializer=device__pb2.SetNetworkResponse.SerializeToString,
+            ),
+            'SetSystemLocales': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetSystemLocales,
+                    request_deserializer=device__pb2.SetSystemLocalesRequest.FromString,
+                    response_serializer=device__pb2.SetSystemLocalesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -706,6 +725,33 @@ class DeviceService:
             '/tap.v1.DeviceService/SetNetwork',
             device__pb2.SetNetworkRequest.SerializeToString,
             device__pb2.SetNetworkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetSystemLocales(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetSystemLocales',
+            device__pb2.SetSystemLocalesRequest.SerializeToString,
+            device__pb2.SetSystemLocalesResponse.FromString,
             options,
             channel_credentials,
             insecure,

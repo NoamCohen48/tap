@@ -54,7 +54,7 @@ class ModelsTest {
     fun `artifacts save their bytes`(
         @TempDir dir: Path,
     ) {
-        val info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, DisplayRotation.NATURAL, null, true, false, false, true, true, false, true, 1.3f, 420, false, true, true)
+        val info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, DisplayRotation.NATURAL, null, true, false, false, true, true, false, true, 1.3f, 420, false, true, true, listOf("fr-FR", "en"))
         val json = Json.parseToJsonElement(Files.readString(info.save(dir.resolve("a/info.json")))).jsonObject
         assertEquals("34", json.getValue("apiLevel").jsonPrimitive.content)
         assertEquals("NATURAL", json.getValue("displayRotation").jsonPrimitive.content)

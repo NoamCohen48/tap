@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.host.Adb
@@ -61,6 +62,17 @@ class DeviceServiceTest {
             code { stub.setNetwork(SetNetworkRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").apply(build).build()) }
         assertEquals(Status.Code.INVALID_ARGUMENT, network {})
         assertEquals(Status.Code.NOT_FOUND, network { wifi = false })
+
+        fun systemLocales(vararg tags: String) =
+            code {
+                stub.setSystemLocales(
+                    SetSystemLocalesRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").addAllLocales(tags.toList()).build(),
+                )
+            }
+        assertEquals(Status.Code.INVALID_ARGUMENT, systemLocales())
+        assertEquals(Status.Code.INVALID_ARGUMENT, systemLocales("not a tag"))
+        assertEquals(Status.Code.INVALID_ARGUMENT, systemLocales("fr-FR", "fr-fr"))
+        assertEquals(Status.Code.NOT_FOUND, systemLocales("fr-FR", "en"))
 
         assertEquals(
             Status.Code.NOT_FOUND,

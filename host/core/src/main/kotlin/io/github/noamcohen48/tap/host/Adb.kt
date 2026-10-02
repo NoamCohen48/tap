@@ -503,7 +503,8 @@ open class Adb internal constructor(
     /**
      * Reads one piece of device state by its [StateKey] id: a `settings` value (null when the
      * device never wrote it), the night mode, the display density override (null = none) or an
-     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system), or a
+     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system), the
+     * device's locales (comma-separated BCP-47 tags), or a
      * radio switch as `1`/`0` (null when the device has no such setting, e.g. no telephony).
      */
     open suspend fun readState(
@@ -536,6 +537,14 @@ open class Adb internal constructor(
                     StateKey.Network.AIRPLANE -> if (raw == "1") "1" else "0"
                     StateKey.Network.MOBILE_DATA -> raw
                 }
+            }
+            StateKey.SystemLocales -> {
+                // A device whose locale was never changed has no system_locales: the property
+                // the system persists, then the build's default.
+                exec(serial, "shell", "settings", "get", "system", "system_locales").trim().takeUnless { it == "null" || it.isEmpty() }
+                    ?: exec(serial, "shell", "getprop", "persist.sys.locale").trim().takeUnless { it.isEmpty() }
+                    ?: exec(serial, "shell", "getprop", "ro.product.locale").trim().takeUnless { it.isEmpty() }
+                    ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.product.locale"), null, "", "No readable locale on $serial")
             }
             is StateKey.AppLocales -> {
                 val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
@@ -581,10 +590,31 @@ open class Adb internal constructor(
                         StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
                     }
                 }
+            StateKey.SystemLocales -> writeSystemLocales(serial, requireNotNull(value) { "system locales need a value" })
             is StateKey.AppLocales -> {
                 val locales = if (value.isNullOrEmpty()) emptyList() else listOf("--locales", shellQuote(value))
                 exec(serial, "shell", "cmd", "locale", "set-app-locales", shellQuote(parsed.packageName), "--user", "current", *locales.toTypedArray())
             }
+        }
+    }
+
+    /**
+     * Sets the device's locale list through the driver app's `SystemLocaleReceiver` (Android
+     * has no shell command for it), after granting the driver the two permissions Android checks
+     * for it. The broadcast's result is the receiver's: anything but `result=1` is its failure.
+     */
+    private suspend fun writeSystemLocales(
+        serial: String,
+        tags: String,
+    ) {
+        exec(serial, "shell", "pm", "grant", DRIVER_PACKAGE, "android.permission.CHANGE_CONFIGURATION")
+        exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "WRITE_SETTINGS", "allow")
+        // -f 0x20 (FLAG_INCLUDE_STOPPED_PACKAGES): the driver app may never have run on its own.
+        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.SystemLocaleReceiver", "--es", "locales", shellQuote(tags))
+        val output = exec(serial, *command.toTypedArray())
+        if (!output.contains("Broadcast completed: result=1")) {
+            val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
+            throw AdbCommandException(serial, command, null, output, "Setting the device locale on $serial failed: $reason")
         }
     }
 

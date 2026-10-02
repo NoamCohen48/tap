@@ -25,6 +25,7 @@ import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
@@ -424,6 +425,31 @@ class Device internal constructor(
             )
         }
     }
+
+    /**
+     * Sets the device's languages (Settings › Languages) until [detach], see [setAnimations]:
+     * BCP-47 tags in preference order, 1 to 16 of them (`"fr-FR"`, `"en"`). Every app that
+     * follows the system sees the change as a configuration change; an app with its own
+     * languages ([App.setLocales]) keeps them. Android has no shell command for this: the Tap
+     * driver app applies it as Settings' language picker does, and the result is read back
+     * ([FailureReason.DEVICE_SETTING] when the device reports another list). Read back with
+     * [DeviceInfo.systemLocales].
+     */
+    suspend fun setSystemLocales(locales: List<String>) {
+        require(locales.isNotEmpty()) { "set at least one locale" }
+        condition("Device.setSystemLocales") {
+            setSystemLocales(
+                SetSystemLocalesRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .addAllLocales(locales).build(),
+            )
+        }
+    }
+
+    /** [setSystemLocales] with the tags as arguments. */
+    suspend fun setSystemLocales(
+        first: String,
+        vararg more: String,
+    ) = setSystemLocales(listOf(first, *more))
 
     private suspend fun condition(
         operation: String,

@@ -1,7 +1,9 @@
 package io.github.noamcohen48.tap.sdk
 
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -138,6 +140,8 @@ data class DeviceInfo(
     val wifiEnabled: Boolean,
     /** Mobile data is switched on; false on a device without telephony. */
     val mobileDataEnabled: Boolean,
+    /** The device's languages, BCP-47 tags in preference order ([Device.setSystemLocales]). */
+    val systemLocales: List<String> = emptyList(),
 ) : Artifact {
     /** [PORTRAIT][Orientation.PORTRAIT] when the display is at least as tall as it is wide. */
     val orientation: Orientation get() = if (displayHeight >= displayWidth) Orientation.PORTRAIT else Orientation.LANDSCAPE
@@ -165,6 +169,7 @@ data class DeviceInfo(
                 put("airplaneMode", airplaneMode)
                 put("wifiEnabled", wifiEnabled)
                 put("mobileDataEnabled", mobileDataEnabled)
+                putJsonArray("systemLocales") { systemLocales.forEach(::add) }
             }.toString().encodeToByteArray()
     override val mediaType: String get() = "application/json"
     override val extension: String get() = "json"

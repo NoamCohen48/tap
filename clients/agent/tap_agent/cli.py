@@ -145,9 +145,9 @@ def parser() -> argparse.ArgumentParser:
     p = verb("screen", "screen state, or turn it on/off, or wake it and dismiss a keyguard without a PIN", on_device, settle)
     p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", default="state")
 
-    p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches): print or change until release", on_device)
+    p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches, languages): print or change until release", on_device)
     p.add_argument("name", choices=CONDITIONS, nargs="?", help="omit to print all")
-    p.add_argument("value", nargs="?", help="animations/dark-mode/airplane-mode/wifi/mobile-data: on|off; font-scale: 0.5..2.0; density: dpi or reset (omit to print)")
+    p.add_argument("value", nargs="?", help="animations/dark-mode/airplane-mode/wifi/mobile-data: on|off; font-scale: 0.5..2.0; density: dpi or reset; locale: comma-separated BCP-47 tags, e.g. fr-FR,en (omit to print)")
 
     p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
     p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")

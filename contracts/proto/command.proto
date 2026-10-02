@@ -387,6 +387,7 @@ message DeviceInfo {
   bool airplane_mode = 18; // Settings.Global.AIRPLANE_MODE_ON
   bool wifi_enabled = 19; // Settings.Global.WIFI_ON is 1, or 2 (on under airplane mode)
   bool mobile_data_enabled = 20; // Settings.Global `mobile_data`; false without telephony
+  repeated string system_locales = 21; // the system configuration's LocaleList, as BCP-47 tags
 }
 
 // A toast `await_toast` matched: its text and the package that posted it.

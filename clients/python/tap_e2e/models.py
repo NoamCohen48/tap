@@ -689,6 +689,8 @@ class DeviceInfo(Artifact):
     """Wi-Fi is switched on (also while airplane mode is on); says nothing about a connection."""
     mobile_data_enabled: bool
     """Mobile data is switched on; ``False`` on a device without telephony."""
+    system_locales: tuple[str, ...] = ()
+    """The device's languages, BCP-47 tags in preference order (``Device.set_system_locales``)."""
 
     media_type = "application/json"
     extension = "json"
