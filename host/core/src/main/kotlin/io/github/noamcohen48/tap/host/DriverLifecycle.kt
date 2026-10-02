@@ -382,6 +382,8 @@ suspend fun forceStopDriverAndVerify(
     oldPid: Int? = null,
     oldStartToken: String? = null,
 ) {
+    // A bound notification listener would bring the driver's process back after the stop.
+    adb.releaseDriverNotificationListener(serial)
     adb.forceStop(serial, DRIVER_PACKAGE)
     val deadline = System.nanoTime() + 5_000_000_000L
     while (System.nanoTime() < deadline) {

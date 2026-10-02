@@ -620,8 +620,9 @@ open class Adb internal constructor(
                 }
             }
             StateKey.DriverNotificationListener -> {
-                val verb = if (value == "allowed") "allow_listener" else "disallow_listener"
-                exec(serial, "shell", "cmd", "notification", verb, DRIVER_NOTIFICATION_LISTENER)
+                val allow = value == "allowed"
+                exec(serial, "shell", "cmd", "notification", if (allow) "allow_listener" else "disallow_listener", DRIVER_NOTIFICATION_LISTENER)
+                if (!allow) awaitDriverListenerUnbound(serial)
             }
             is StateKey.AppOp ->
                 exec(serial, "shell", "appops", "set", shellQuote(parsed.packageName), shellQuote(parsed.op), shellQuote(value ?: "default"))
@@ -748,6 +749,44 @@ open class Adb internal constructor(
      * op is allowed first, and restoring goes newest first, so the op's own saved mode is
      * written back after this.
      */
+    /**
+     * Unbinds the driver's notification listener when Android holds it bound, so the driver's
+     * process can end for good: before the driver instrumentation finishes (Android force-stops
+     * the package then) and before a force-stop. Android 10 (seen on the SM-J810G) binds a
+     * listener whose process was killed while bound again about 10 s later without checking its
+     * access, so a driver killed with its listener bound comes back as a bare listener process,
+     * and again after every later kill. Taking the access back while the listener is connected
+     * unbinds it; when the access is already gone (a listener bound that way), it is given and
+     * taken back. Leaves the access taken back: a session's saved value is restored after this.
+     */
+    open suspend fun releaseDriverNotificationListener(serial: String) {
+        if (!driverListenerBound(serial)) return
+        val key = StateKey.DriverNotificationListener.id
+        if (readState(serial, key) != "allowed") writeState(serial, key, "allowed")
+        writeState(serial, key, "disallowed")
+    }
+
+    /** Waits up to 5 s for Android to unbind the driver's listener after its access was taken back. */
+    private suspend fun awaitDriverListenerUnbound(serial: String) {
+        val deadline = System.nanoTime() + LISTENER_UNBIND_TIMEOUT_MS * 1_000_000
+        while (driverListenerBound(serial)) {
+            if (System.nanoTime() >= deadline) throw DeviceSettingException(serial, "The driver's notification listener on $serial stayed bound after its access was taken back")
+            delay(LISTENER_UNBIND_POLL_MS)
+        }
+    }
+
+    /** Whether the driver's listener is among `dumpsys notification`'s "Live notification listeners". */
+    private suspend fun driverListenerBound(serial: String): Boolean {
+        val lines = exec(serial, "shell", "dumpsys", "notification").lines()
+        val header = lines.indexOfFirst { it.trim().startsWith("Live notification listeners") }
+        if (header < 0) return false
+        val indent = lines[header].indexOfFirst { !it.isWhitespace() }
+        return lines
+            .drop(header + 1)
+            .takeWhile { line -> line.isNotBlank() && line.indexOfFirst { !it.isWhitespace() } > indent }
+            .any { "ComponentInfo{$DRIVER_NOTIFICATION_LISTENER}" in it }
+    }
+
     /**
      * The components with notification access, from `dumpsys notification`'s "Allowed notification
      * listeners:" section (colon-separated per user, `pkg/.Name` short forms expanded).
@@ -1253,6 +1292,8 @@ internal fun parseDumpsysPackage(
 }
 
 private val WHITESPACE = Regex("\\s+")
+private const val LISTENER_UNBIND_TIMEOUT_MS = 5_000L
+private const val LISTENER_UNBIND_POLL_MS = 100L
 private val TOP_RESUMED = Regex("topResumedActivity=ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
 private val RESUMED = Regex("mResumedActivity: ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
 private val MOCK_PROVIDER = Regex("([A-Za-z0-9_]+) provider \\[mock\\]:")

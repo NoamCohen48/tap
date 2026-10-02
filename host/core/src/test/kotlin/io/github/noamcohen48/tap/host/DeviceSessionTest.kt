@@ -138,6 +138,8 @@ class DeviceSessionTest {
 
         override suspend fun wakeAndDismissKeyguard(serial: String) = Unit
 
+        override suspend fun releaseDriverNotificationListener(serial: String) = Unit
+
         override suspend fun forceStop(
             serial: String,
             packageName: String,

@@ -287,7 +287,10 @@ class DeviceSession private constructor(
                     clientPoison = if (client.isPoisoned) client.poisonCause ?: IllegalStateException("poisoned") else null
                     // cleanupStep, not runCatching: a bound firing must reach withTimeoutOrNull
                     // as cancellation (finished == null below), never as a recorded failure.
-                    cleanupStep({ firstFailure = it }) { client.close() }
+                    // Before the driver ends: Android force-stops the package when the instrumentation
+                    // finishes, and a listener bound then comes back (Adb.releaseDriverNotificationListener).
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) { adb.releaseDriverNotificationListener(serial) }
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) { client.close() }
                     cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
                         restoreSavedState()
                     }

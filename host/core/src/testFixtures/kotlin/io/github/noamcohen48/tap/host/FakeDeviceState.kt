@@ -40,6 +40,13 @@ class FakeDeviceState(
     /** The location providers that are test providers, as a mock location leaves them. */
     val mockProviders = mutableSetOf<String>()
 
+    /**
+     * The driver's listener is among the live (bound) listeners: Android binds it when its access
+     * is given and unbinds it when the access is taken back, and Android 10 binds it again after its
+     * process is killed, whatever the access (set this for that).
+     */
+    var driverListenerBound: Boolean = false
+
     /** The resumed activity `dumpsys activity activities` reports (`pkg/.Name` or `pkg/full.Name`); null = none. */
     var resumedActivity: String? = null
 
@@ -107,10 +114,15 @@ class FakeDeviceState(
             }
             command == "shell dumpsys location" -> ok(locationDump())
             command == "shell dumpsys notification" -> ok(notificationDump())
-            command == "shell cmd notification allow_listener $DRIVER_NOTIFICATION_LISTENER" ->
+            command == "shell cmd notification allow_listener $DRIVER_NOTIFICATION_LISTENER" -> {
+                if (StateKey.DriverNotificationListener.id !in stuck) driverListenerBound = true
                 write(StateKey.DriverNotificationListener.id, "allowed")
-            command == "shell cmd notification disallow_listener $DRIVER_NOTIFICATION_LISTENER" ->
+            }
+            command == "shell cmd notification disallow_listener $DRIVER_NOTIFICATION_LISTENER" -> {
+                // Android unbinds on the change only: a listener bound while disallowed stays.
+                if (values[StateKey.DriverNotificationListener.id] == "allowed" && StateKey.DriverNotificationListener.id !in stuck) driverListenerBound = false
                 write(StateKey.DriverNotificationListener.id, "disallowed")
+            }
             command == "shell dumpsys activity activities" -> ok(activityDump())
             command.startsWith("shell am broadcast ") && "$DRIVER_PACKAGE/.MockLocationReceiver" in command -> {
                 val names = args[args.indexOf("remove") + 1].trim('\'').split(',')
@@ -229,7 +241,10 @@ class FakeDeviceState(
         val approved = listOfNotNull("com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener", "$DRIVER_PACKAGE/.TapNotificationListener".takeIf { values[StateKey.DriverNotificationListener.id] == "allowed" })
         return "Current Notification Manager state:\n  Notification listeners:\n    Allowed notification listeners:\n" +
             "      ${approved.joinToString(":")} (user: 0 isPrimary: true)\n" +
-            "    All notification listeners (1) enabled for current profiles:\n      ComponentInfo{com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener}\n"
+            "    All notification listeners (1) enabled for current profiles:\n      ComponentInfo{com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener}\n" +
+            "    Live notification listeners (${if (driverListenerBound) 2 else 1}):\n" +
+            "      ComponentInfo{com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener} (user 0): Proxy@1\n" +
+            (if (driverListenerBound) "      ComponentInfo{$DRIVER_NOTIFICATION_LISTENER} (user 0): Proxy@2\n" else "")
     }
 
     private fun locationDump(): String =
