@@ -1,4 +1,4 @@
-"""Experimental offline app-exploration graphs. No device or AI execution yet."""
+"""Experimental exploration graphs, with an optional bounded sample-device pilot. No AI."""
 
 from importlib.metadata import version
 

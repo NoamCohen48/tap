@@ -1,6 +1,6 @@
 {
   "include": ["tap_explorer", "tests"],
-  "extraPaths": ["."],
+  "extraPaths": [".", "../python"],
   "pythonVersion": "3.10",
   "venvPath": "../..",
   "venv": ".venv"

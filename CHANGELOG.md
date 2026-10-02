@@ -36,7 +36,11 @@ Added:
 - **App Explorer** (experimental development package, not released): `clients/explorer`
   provides SQLite-backed offline exploration graphs, deterministic candidate scheduling,
   finite action/depth budgets, explicit approvals, crash-safe attempt tracking, and
-  `tap-exploration/1` metadata import/export. No device execution or AI integration yet.
+  `tap-exploration/1` metadata import/export. Optional bounded live pilot over `tap-e2e`:
+  `tap-explorer sample` discovers the controlled `samples/explorer-app` graph from configured
+  landmarks/actions, checks observed routes with fresh trials, and saves PNG/snapshot/command
+  evidence. Two physical API 29 runs passed (8 states, 17 candidates, 29 matching tap/fill
+  attempts each). No arbitrary-app discovery, AI, automatic resume or robot generation yet.
   Guide: `docs/guide/explorer.md`.
 - **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
   `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on

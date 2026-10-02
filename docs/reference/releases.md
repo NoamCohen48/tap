@@ -52,9 +52,9 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
       screen snapshots and refs (`screen_snapshot`, `resolve_ref`), the event log
       (`event_log`, the `Events` RPC) and the `tap-events/1` export format;
     - Tap Studio: `tap-studio`, its page and the `tap-recording/1` format;
-    - App Explorer (development only, no release tag): `tap-explorer`, its offline Python
-      graph API and `tap-exploration/1` metadata format. See the
-      [offline explorer guide](../guide/explorer.md).
+    - App Explorer (development only, no release tag): `tap-explorer`, its Python graph API,
+      optional bounded sample-device pilot and `tap-exploration/1` metadata format. See the
+      [explorer guide](../guide/explorer.md).
 - A published version is never replaced: a fix is a new patch release.
 
 ## Where things are published

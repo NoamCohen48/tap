@@ -94,6 +94,7 @@ jobs:
           ./gradlew
           :device:driver:assembleDebug :device:driver:assembleAndroidTest
           :fixture-app:assembleDebug :host:daemon:installDist
+          :samples:explorer-app:assembleDebug :samples:explorer-app:lintDebug
           :host:daemon:distZip
           :host:validation:installDist
       - name: Publish Maven artifacts to the local repository (POM sanity)
@@ -257,14 +258,17 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build what the device run needs
-        run: ./gradlew :fixture-app:assembleDebug :host:daemon:installDist
+        run: >-
+          ./gradlew :fixture-app:assembleDebug :host:daemon:installDist
+          :samples:explorer-app:assembleDebug
       - uses: actions/download-artifact@v4
         with:
           name: studio-dists
           path: studio-dists
-      - name: Install the Python client, tap-agent and tap-studio
+      - name: Install the Python client, tap-agent, tap-studio and explorer
         run: |
-          python -m pip install --quiet "clients/python[dev]" "clients/agent"
+          python -m pip install --quiet "clients/python[dev]" "clients/agent" \
+            "clients/explorer[live]"
           python -m pip install --quiet studio-dists/tap_studio-*.whl
       - name: Run the device lane on the emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -290,6 +294,7 @@ jobs:
             tap-artifacts
             build/agent-smoke
             build/studio-smoke
+            build/explorer-smoke
             build/device-logs
             samples/fixture-tests/build/reports/tests
           if-no-files-found: ignore

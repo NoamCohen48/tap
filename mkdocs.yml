@@ -109,7 +109,7 @@ nav:
       - Errors and failure artifacts: guide/errors.md
       - Coding agents (tap-agent): guide/agents.md
       - Tap Studio (inspect and record): guide/studio.md
-      - App Explorer (offline foundation): guide/explorer.md
+      - App Explorer (experimental): guide/explorer.md
       - Coming from Maestro or Appium: guide/coming-from.md
   - Reference:
       - Overview: reference/index.md

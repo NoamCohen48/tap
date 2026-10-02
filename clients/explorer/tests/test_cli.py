@@ -62,3 +62,25 @@ def test_invalid_import_reports_error(tmp_path, text, capsys):
         main(["--db", str(tmp_path / "graph.db"), "import", str(source)])
     assert exc.value.code == 1
     assert "tap-explorer:" in capsys.readouterr().err
+
+
+def test_sample_missing_apk_fails_before_contacting_a_device(tmp_path, monkeypatch):
+    from tap_e2e import TapClient
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("must not contact a daemon/device without a readable sample APK")
+
+    monkeypatch.setattr(TapClient, "create", forbidden)
+    output = tmp_path / "evidence"
+    with pytest.raises(SystemExit) as failure:
+        main(["sample", "--serial", "fake", "--apk", str(tmp_path / "missing.apk"), "--out", str(output)])
+    assert failure.value.code == 1
+    assert not output.exists()
+
+
+def test_sample_rejects_offline_db_option_before_input(tmp_path):
+    with pytest.raises(SystemExit) as failure:
+        main(["--db", str(tmp_path / "graph.db"), "sample", "--serial", "fake",
+              "--apk", "missing.apk", "--out", str(tmp_path / "evidence")])
+    assert failure.value.code == 2
+    assert not (tmp_path / "graph.db").exists()

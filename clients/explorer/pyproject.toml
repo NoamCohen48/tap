@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tap-explorer"
 version = "0.0.1"
-description = "Experimental offline app exploration graph for Tap"
+description = "Experimental app exploration graph and bounded device pilot for Tap"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -13,7 +13,8 @@ license-files = ["LICENSE"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pyright>=1.1,<2"]
+live = ["tap-e2e>=0.0.2"]
+dev = ["pytest>=8", "pyright>=1.1,<2", "tap-e2e>=0.0.2"]
 
 [project.scripts]
 tap-explorer = "tap_explorer.cli:main"
