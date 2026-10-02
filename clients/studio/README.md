@@ -8,7 +8,7 @@ coordinates. The design is `.docs/recorder.md` in the repository.
 So far: pick a device and the app under test, see its screen with the element overlay, select an
 element and record a step on it from the composer (Act: tap, long press, swipe and scroll in four
 directions with a distance, scroll until shown by scrolling, text and secrets; Assert: a check of
-the element now; Wait: element waits), the app panel (launch, stop, clear, grant, app waits) and
+the element now; Wait: element waits; App: launch, stop, clear, grant, app waits) and
 the device bar under the phone, inspect an element's selector candidates and properties or the screen tree,
 choose which selector candidate a step uses or type one in the SDK's DSL (with a live match
 count), edit, insert, reorder and delete steps, replay all or part of the recording (it stops at
@@ -50,7 +50,7 @@ User guide: `docs/guide/studio.md` (published at
   generated.
 - `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, the three
   areas), `ScreenView.tsx` (frame, overlay, selecting), `Composer.tsx` (the selected element, the
-  Act / Assert / Wait tabs, the scroll until search), `AppPanel.tsx`, `DeviceBar.tsx`,
+  Act / Assert / Wait / App tabs, the scroll until search), `AppControls.tsx` (the App tab), `DeviceBar.tsx`,
   `controls.tsx` (rows and direction buttons), `Inspector.tsx` (properties, screen tree), `count.ts` (live
   match counts), `StepsPanel.tsx`
   (steps, replay controls, open, export), `StepEditor.tsx` (a step's selector, value, secret and

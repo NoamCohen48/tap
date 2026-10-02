@@ -1,6 +1,7 @@
 import { create, equals } from "@bufbuild/protobuf";
 import { useId, useState } from "react";
 import type { StudioClient } from "./api";
+import { AppControls } from "./AppControls";
 import { DIRECTIONS, Directions, Group, Row, directionName } from "./controls";
 import { useCount } from "./count";
 import { describeSelector } from "./describe";
@@ -16,10 +17,14 @@ import * as steps from "./steps";
 import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
 
-export const INTENTS: { intent: Intent; label: string; key: string; title: string }[] = [
-  { intent: "act", label: "Act", key: "1", title: "Perform an action on the element" },
-  { intent: "assert", label: "Assert", key: "2", title: "Check the element as it is now" },
-  { intent: "wait", label: "Wait", key: "3", title: "Wait until something happens to the element" },
+/** The composer's tabs: the three kinds of step on the selected element, then the app. */
+export type Tab = Intent | "app";
+
+export const TABS: { tab: Tab; label: string; key: string; title: string }[] = [
+  { tab: "act", label: "Act", key: "1", title: "Perform an action on the element" },
+  { tab: "assert", label: "Assert", key: "2", title: "Check the element as it is now" },
+  { tab: "wait", label: "Wait", key: "3", title: "Wait until something happens to the element" },
+  { tab: "app", label: "App", key: "4", title: "Launch, stop or wait for the app" },
 ];
 
 /**
@@ -39,8 +44,8 @@ export type Seek = {
 
 type Props = {
   client: StudioClient;
-  intent: Intent;
-  onIntent: (intent: Intent) => void;
+  tab: Tab;
+  onTab: (tab: Tab) => void;
   /** The selected node, as on the newest frame that had it. */
   node: ScreenNode | null;
   /** The newest frame still has it. */
@@ -63,50 +68,58 @@ type Props = {
   onSeek: (direction: Direction) => void;
   onSeekAgain: () => void;
   onSeekCancel: () => void;
+  /** The app under test (the App tab). */
+  appPackage: string;
+  onAppPackage: (pkg: string) => void;
+  /** The packages of the windows on screen, offered as the app. */
+  packages: string[];
 };
 
 /**
- * Where steps on an element are made: the selected element and its selector, then what to do with
- * it. **Act** performs an action, **Assert** checks the element as it is now, **Wait** waits until
- * something happens to it. Each runs on the device and, while recording, is added when it passes.
- * The app and the device have their own controls (the app panel, the bar under the phone).
+ * Where steps are made: the selected element and its selector, then what to do with it. **Act**
+ * performs an action, **Assert** checks the element as it is now, **Wait** waits until something
+ * happens to it. **App** is apart from any element: launch, stop or wait for the app. Each runs on
+ * the device and, while recording, is added when it passes. The device's own buttons are under
+ * the phone.
  */
 export function Composer(props: Props) {
-  const { intent, node, target } = props;
+  const { tab, node, target } = props;
   const count = useCount(props.client, props.onScreen ? target?.selector : undefined);
   const live = count.state === "done" ? count.count : null;
   const usable = !!target && props.onScreen && !props.busy;
   const panel = useId();
   return (
-    <section className={`panel composer tone-${intent}`} aria-label="Composer">
+    <section className={`panel composer tone-${tab}`} aria-label="Composer">
       <div className="intents" role="tablist" aria-label="Step kind">
-        {INTENTS.map((i) => (
+        {TABS.map((i) => (
           <button
-            key={i.intent}
+            key={i.tab}
             type="button"
             role="tab"
-            id={`${panel}-${i.intent}`}
-            data-intent={i.intent}
-            aria-selected={intent === i.intent}
+            id={`${panel}-${i.tab}`}
+            className={i.tab === "app" ? "apart" : undefined}
+            aria-selected={tab === i.tab}
             aria-controls={panel}
             aria-keyshortcuts={i.key}
-            disabled={!!props.seek && intent !== i.intent}
+            disabled={!!props.seek && tab !== i.tab}
             title={`${i.title} (key ${i.key})`}
-            onClick={() => props.onIntent(i.intent)}
+            onClick={() => props.onTab(i.tab)}
           >
             {i.label} <kbd aria-hidden="true">{i.key}</kbd>
           </button>
         ))}
       </div>
-      <div className="panel-b" role="tabpanel" id={panel} aria-labelledby={`${panel}-${intent}`}>
-        {props.seek ? (
+      <div className="panel-b" role="tabpanel" id={panel} aria-labelledby={`${panel}-${tab}`}>
+        {tab === "app" ? (
+          <AppControls appPackage={props.appPackage} onAppPackage={props.onAppPackage} packages={props.packages} busy={props.busy} onPerform={props.onPerform} />
+        ) : props.seek ? (
           <SeekCard seek={props.seek} busy={props.busy} onAgain={props.onSeekAgain} onCancel={props.onSeekCancel} />
         ) : (
           <>
             <Selected node={node} onScreen={props.onScreen} target={target} count={count} onChoose={props.onChoose} />
             {node && target && (
-              <div key={`${intent}-${node.ref}`}>
-                {intent === "act" && (
+              <div key={`${tab}-${node.ref}`}>
+                {tab === "act" && (
                   <ActOnElement
                     node={node}
                     target={target}
@@ -120,11 +133,11 @@ export function Composer(props: Props) {
                     onSeek={props.onSeek}
                   />
                 )}
-                {intent === "assert" && <AssertOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
-                {intent === "wait" && <WaitOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
+                {tab === "assert" && <AssertOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
+                {tab === "wait" && <WaitOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
               </div>
             )}
-            {intent === "assert" && node && (
+            {tab === "assert" && node && (
               <p className="hint-line">An assertion checks the element as it is now and fails at once. For something that is still on its way, use Wait.</p>
             )}
           </>
@@ -293,11 +306,14 @@ function ActOnElement({
           <output htmlFor={`${id}-distance`} className="unit">
             {distance} % of the element
           </output>
-          {distance !== steps.DEFAULT_DISTANCE && (
-            <button type="button" className="btn ghost" onClick={() => onDistance(steps.DEFAULT_DISTANCE)}>
-              Reset
-            </button>
-          )}
+          {/* Always laid out (hidden at the default), so the row keeps its height when it shows. */}
+          <button
+            type="button"
+            className={distance === steps.DEFAULT_DISTANCE ? "btn ghost idle" : "btn ghost"}
+            onClick={() => onDistance(steps.DEFAULT_DISTANCE)}
+          >
+            Reset
+          </button>
         </div>
         <div className="why">How far the finger moves in a swipe or a scroll. Short is gentle; long flings further.</div>
       </div>

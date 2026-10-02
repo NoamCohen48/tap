@@ -186,8 +186,9 @@ no wait that is not an assertion) and made a misclick a recorded step. Now:
   bar: Back, Home, Recent apps, Notifications, Quick settings (owner, 2026-10-02: the device's
   buttons must not blend with the element's).
 - **Composer** (middle column, top): the selected element (class, `@ref`, the ranked selector
-  candidates as a radio list with their chips, the live match count of the chosen one) and three
-  tabs, keys 1 / 2 / 3, each button of which runs its step on the element and records it:
+  candidates as a radio list with their chips, the live match count of the chosen one) and four
+  tabs, keys 1 / 2 / 3 / 4, each button of which runs its step and records it. The first three
+  act on the element; the fourth, set apart, on the app:
   - **Act** (coral): Tap, Long press; Swipe ↑ ↓ ← →; Scroll ↑ ↓ ← → on a scrollable node (on a
     node inside one, a button selects the smallest scrollable node around it, since its rows
     usually cover a list); a Distance slider (10–100 %, default 80, the SDKs' `distancePercent`;
@@ -196,11 +197,12 @@ no wait that is not an assertion) and made a misclick a recorded step. Now:
   - **Assert** (blue): the states the node is in now, text equals / contains (prefilled with its
     text), count (prefilled with the live count).
   - **Wait** (violet): the element waits that fit the node, text and count.
+  - **App** (neutral; owner, 2026-10-02: the app's controls must not blend with the element's,
+    and a panel of their own left the inspector no room): the package (suggesting the packages on
+    screen, remembered per browser, not part of the attach), Cold launch / Launch, Force stop /
+    Clear data, Grant a permission, and the app waits (`awaitVisible`, `awaitScreenStable`,
+    `awaitSettled`, `awaitAnimationEnd`). Selecting an element on the screen leaves it for Act.
   Only what the SDKs have is offered; new gestures arrive with the SDK.
-- **App** (middle column, its own panel; owner, 2026-10-02): the package (suggesting the packages
-  on screen, remembered per browser, not part of the attach), Cold launch / Launch, Force stop /
-  Clear data, Grant a permission, and the app waits (`awaitVisible`, `awaitScreenStable`,
-  `awaitSettled`, `awaitAnimationEnd`).
 - **Inspector** (middle column, below): *Properties* and *Screen tree* (every node, filterable,
   click to select).
 - **Steps:** each recorded step with its inferred wait (`after await(res("search")).one()`),

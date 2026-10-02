@@ -227,7 +227,7 @@ code,
   }
   /* The composer gets the room it needs, up to two thirds; the inspector has the rest. */
   .mid {
-    grid-template-rows: minmax(0, max-content) max-content minmax(120px, 1fr);
+    grid-template-rows: minmax(0, max-content) minmax(120px, 1fr);
     min-height: 0;
   }
   .mid > .composer {
@@ -588,7 +588,7 @@ code,
 }
 .intents {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   border-bottom: 1px solid var(--line);
 }
 .intents button {
@@ -776,30 +776,24 @@ code,
   margin: 0 6px;
 }
 
-/* The app panel: the package in its header, then launch, stop, permission and app waits. */
-.apppanel > .panel-h {
-  flex-wrap: nowrap;
+/* The App tab: apart from the element, so its tab sits after a rule and nothing is selected in it. */
+.composer.tone-app {
+  --tone: var(--ink);
+  --tone-soft: var(--surface-2);
 }
-.apppanel > .panel-h input.pkg {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  border-radius: 7px;
-  padding: 5px 8px;
+.intents .apart {
+  border-left: 1px solid var(--line);
 }
-.apppanel > .panel-h .btn {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 45%;
-}
-.apppanel > .panel-b {
+.appctl {
   display: grid;
   gap: 8px;
 }
-.apppanel .hint-line {
-  margin: 0;
+.appctl .use {
+  padding: 2px 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The distance slider. */
@@ -810,6 +804,10 @@ code,
   padding: 0;
   border: 0;
   background: transparent;
+}
+/* Reset keeps its place while hidden, so the row does not change height when it shows. */
+.distance .btn.idle {
+  visibility: hidden;
 }
 .distance output {
   font-variant-numeric: tabular-nums;

@@ -251,7 +251,12 @@ function click(x: number, y: number) {
 
 const composer = () => screen.getByRole("region", { name: "Composer" });
 const deviceBar = () => screen.getByRole("toolbar", { name: "Device" });
-const appPanel = () => screen.getByRole("region", { name: "App" });
+const tab = (name: string) => within(composer()).getByRole("tab", { name: new RegExp(`^${name}`) });
+/** Opens the composer's App tab and returns its controls. */
+function appPanel() {
+  fireEvent.click(tab("App"));
+  return screen.getByRole("group", { name: "App" });
+}
 
 /** Selects the node at the point, then presses the composer's button for it. */
 async function perform(x: number, y: number, button: string) {
@@ -260,7 +265,7 @@ async function perform(x: number, y: number, button: string) {
   fireEvent.click(control);
 }
 
-/** Attaches emulator-5554 and, unless `app` is null, enters the package in the top bar. */
+/** Attaches emulator-5554 and, unless `app` is null, enters the package in the App tab. */
 async function attached(app: string | null = "com.example") {
   const fake = fakeStudio();
   render(<App client={fake.client} />);
@@ -269,7 +274,10 @@ async function attached(app: string | null = "com.example") {
   expect((within(picker).getByRole("radio", { name: /85e49002/ }) as HTMLInputElement).disabled).toBe(true);
   fireEvent.click(within(picker).getByRole("button", { name: "Attach" }));
   await screen.findByRole("img", { name: "The device's screen" });
-  if (app !== null) fireEvent.change(screen.getByLabelText("App package"), { target: { value: app } });
+  if (app !== null) {
+    fireEvent.change(within(appPanel()).getByLabelText("App package"), { target: { value: app } });
+    fireEvent.click(tab("Act"));
+  }
   return fake;
 }
 
@@ -445,13 +453,19 @@ describe("App", () => {
     expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["wait", "wait"]);
   });
 
-  it("the app panel waits on the app", async () => {
+  it("the App tab waits on the app, and selecting an element leaves it", async () => {
     const fake = await attached();
-    fireEvent.click(within(appPanel()).getByRole("button", { name: "In the foreground" }));
+    const app = appPanel();
+    fireEvent.click(within(app).getByRole("button", { name: "In the foreground" }));
     await screen.findByText('app("com.example").awaitVisible()');
-    fireEvent.click(within(appPanel()).getByRole("button", { name: "Screen stable" }));
+    fireEvent.click(within(app).getByRole("button", { name: "Screen stable" }));
     await screen.findByText('app("com.example").awaitScreenStable()');
     expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["appWait", "appWait"]);
+    fireEvent.keyDown(document.body, { key: "4" });
+    expect(tab("App").getAttribute("aria-selected")).toBe("true");
+    act(() => click(300, 450));
+    expect(tab("Act").getAttribute("aria-selected")).toBe("true");
+    expect(within(composer()).getByRole("button", { name: "Tap" })).toBeTruthy();
   });
 
   it("a failed step is reported and not added", async () => {
@@ -595,12 +609,12 @@ describe("App", () => {
       expect(screen.getByText("1 step")).toBeTruthy();
     });
 
-    it("the app panel acts on its package, and nothing before there is one", async () => {
+    it("the App tab acts on its package, and nothing before there is one", async () => {
       const fake = await attached(null);
       const group = appPanel();
       expect((within(group).getByRole("button", { name: "Force stop" }) as HTMLButtonElement).disabled).toBe(true);
       expect((within(group).getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(true);
-      fireEvent.change(screen.getByLabelText("App package"), { target: { value: " com.example.shop " } });
+      fireEvent.change(within(group).getByLabelText("App package"), { target: { value: " com.example.shop " } });
       fireEvent.click(within(group).getByRole("button", { name: "Force stop" }));
       await waitFor(() => expect(fake.state.performed).toHaveLength(1));
       const step = fake.state.performed[0]!.step!;

@@ -20,13 +20,12 @@ import {
   type Session,
   type Step,
 } from "./gen/studio_pb";
-import { AppPanel } from "./AppPanel";
-import { Composer, INTENTS, type Seek } from "./Composer";
+import { Composer, TABS, type Seek, type Tab } from "./Composer";
 import { DeviceBar } from "./DeviceBar";
 import type { Direction } from "./gen/command_pb";
 import { Eject, Logo } from "./icons";
 import { Inspector } from "./Inspector";
-import { ScreenView, type Intent, type OverlayFilter } from "./ScreenView";
+import { ScreenView, type OverlayFilter } from "./ScreenView";
 import { useReplay, type ReplayRequest } from "./replay";
 import * as stepsApi from "./steps";
 import { synthesized, type Target } from "./steps";
@@ -106,7 +105,7 @@ function Workspace({
   const { frame, error } = useFrames(client, device.serial);
   const [appPackage, setAppPackage] = useAppPackage();
   const app = appPackage.trim();
-  const [intent, setIntent] = useState<Intent>("act");
+  const [tab, setTab] = useState<Tab>("act");
   const [overlay, setOverlay] = useState<OverlayFilter>("interactive");
   const [selected, setSelected] = useState<ScreenNode | null>(null);
   // The candidate picked in the composer for one node; steps on other nodes use their first.
@@ -154,8 +153,8 @@ function Workspace({
         setSeek(null);
         return;
       }
-      const chosen = INTENTS.find((i) => i.key === e.key);
-      if (chosen && !searching.current) setIntent(chosen.intent);
+      const chosen = TABS.find((t) => t.key === e.key);
+      if (chosen && !searching.current) setTab(chosen.tab);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -350,12 +349,17 @@ function Workspace({
         <ScreenView
           frame={frame}
           error={error}
-          intent={intent}
+          intent={tab === "app" ? "act" : tab}
           overlay={overlay}
           onOverlay={setOverlay}
           selectedRef={inspected?.ref ?? null}
           busy={locked}
-          onSelect={(node) => (seek ? void pickTarget(seek, node) : setSelected(node))}
+          onSelect={(node) => {
+            if (seek) return void pickTarget(seek, node);
+            setSelected(node);
+            // Picking an element is for a step on it: leave the App tab.
+            setTab((t) => (t === "app" ? "act" : t));
+          }}
           targetOf={targetOf}
           seeking={seeking}
         >
@@ -364,8 +368,8 @@ function Workspace({
         <div className="mid">
           <Composer
             client={client}
-            intent={intent}
-            onIntent={setIntent}
+            tab={tab}
+            onTab={setTab}
             node={inspected}
             onScreen={current !== null}
             nodes={nodes}
@@ -380,8 +384,10 @@ function Workspace({
             onSeek={startSeek}
             onSeekAgain={() => seek && void probeScroll(seek)}
             onSeekCancel={() => setSeek(null)}
+            appPackage={appPackage}
+            onAppPackage={setAppPackage}
+            packages={packages}
           />
-          <AppPanel appPackage={appPackage} onAppPackage={setAppPackage} packages={packages} busy={locked || !!seek} onPerform={(request) => void perform(request)} />
           <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={setSelected} />
         </div>
         <StepsPanel

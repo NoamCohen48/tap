@@ -44,8 +44,8 @@ The printed link carries a one-time token: the page signs in with it and the stu
 anything else. It listens on `127.0.0.1` only. Ctrl-C stops it and frees the device.
 
 Without `--serial`, the page lists the server's devices: pick one and attach it. Attaching names
-no app. Enter the package of the app you work on in the **App** panel (it suggests the packages
-on screen): it is what the panel launches, stops, clears and waits for, and the app a replay
+no app. Enter the package of the app you work on in the composer's **App** tab (it suggests the
+packages on screen): it is what the panel launches, stops, clears and waits for, and the app a replay
 offers to cold launch first (the page remembers it). Selectors are not limited to it, so a
 recording can go through a system dialog or a second app.
 The studio holds the device exclusively, as a test does, so another client cannot attach it
@@ -67,11 +67,7 @@ runs anything on the device.
   opening one, record a step that waits for it, such as a **Wait** for an element in it.
 - **Composer:** the selected element (its class, its selector candidates, the first of which is
   what gets recorded, and how many elements the chosen one matches now) and, below it, the steps
-  you can record on it, in three tabs.
-- **App:** the app's package, then **Cold launch** and **Launch**, **Force stop** and **Clear
-  data**, **Grant** a permission, and waits until the app is in the foreground
-  (`awaitVisible()`), its screen is stable, settled (the elements stop changing) or its
-  animation ended (the pixels stop changing).
+  you can record on it, in three tabs, and a fourth tab for the app.
 - **Inspector:** the selected element's properties, and the **Screen tree** of every element.
 - **Steps:** the recording, each step with the wait it runs after and how it went the last time
   it ran.
@@ -83,6 +79,7 @@ Each button runs its step on the device and records it. The composer's tabs, wit
 | **Act** | `1` | Something done to the element. |
 | **Assert** | `2` | A check of the element as it is now. It fails at once if the check does not hold. |
 | **Wait** | `3` | A wait for something to happen to the element, up to the device's wait timeout. |
+| **App** | `4` | Something done to the app, or a wait on it, apart from any element. |
 
 **Act** offers, for the selected element:
 
@@ -109,7 +106,12 @@ recorded.
 
 **Wait** offers waits until the element is visible, exactly one, gone, enabled, disabled,
 checked, unchecked or focused, has a text, or the selector matches a number of elements. The
-waits on the app as a whole are in the **App** panel.
+waits on the app as a whole are in the **App** tab.
+
+**App** offers the app's package, then **Cold launch** and **Launch**, **Force stop** and
+**Clear data**, **Grant** a permission, and waits until the app is in the foreground
+(`awaitVisible()`), its screen is stable, settled (the elements stop changing) or its animation
+ended (the pixels stop changing). Selecting an element on the screen switches back to **Act**.
 
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow.
