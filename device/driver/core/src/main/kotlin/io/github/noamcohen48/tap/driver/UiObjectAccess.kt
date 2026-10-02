@@ -81,7 +81,11 @@ internal class UiObjectAccess(
             }
         }
 
-    /** Up to [limit] matches in accessibility traversal order. The caller recycles them. */
+    /**
+     * Up to [limit] matches, each window in order. The native plan keeps `ByMatcher`'s order,
+     * post-order (a match after the matches inside it); the traversal plan walks pre-order
+     * (DR-23 in `.docs/code-review-status.md`). The caller recycles them.
+     */
     private fun findObjects(
         compiled: CompiledSelector,
         limit: Int,
