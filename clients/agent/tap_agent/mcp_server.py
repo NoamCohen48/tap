@@ -217,6 +217,40 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         have input focus (tap it first). Android 11 (API 30)+."""
         return await call(session, lambda a: a.submit(target, device or None, settle=settle))
 
+    @mcp.tool(name="accessibility_action")
+    async def accessibility_action(
+        target: Target,
+        name: Annotated[
+            str,
+            Field(
+                description="A standard action (expand, collapse, dismiss, scroll-forward, scroll-backward, page-down, "
+                "show-on-screen, context-click, select, copy, paste, ...) or, with custom, the custom action's label. "
+                "Omit to list what the node offers."
+            ),
+        ] = "",
+        custom: Annotated[bool, Field(description="name is a custom action's label (e.g. 'Archive').")] = False,
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Perform an accessibility action on a node as a screen reader does (no touch), or list
+        the actions it offers and its range. Use it for what a node offers instead of a gesture:
+        expand/collapse a section, a list item's custom "Archive"/"Delete". An action the node does
+        not offer fails before anything happens."""
+        return await call(session, lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle))
+
+    @mcp.tool(name="set_progress")
+    async def set_progress(
+        target: Target,
+        value: Annotated[float, Field(description="The value in the node's own units (see accessibility_action's range).")],
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Set a slider (SeekBar, Slider, RatingBar) to an exact value through accessibility
+        ACTION_SET_PROGRESS. A value outside the node's range fails before anything happens."""
+        return await call(session, lambda a: a.progress(target, value, device or None, settle=settle))
+
     @mcp.tool(name="keyboard")
     async def keyboard(
         action: Annotated[
@@ -229,6 +263,59 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     ) -> CallToolResult:
         """The soft keyboard: is it showing, or hide it."""
         return await call(session, lambda a: a.keyboard(action, device or None, settle=settle))
+
+    @mcp.tool(name="set_location")
+    async def set_location(
+        latitude: Annotated[float, Field(ge=-90, le=90)],
+        longitude: Annotated[float, Field(ge=-180, le=180)],
+        accuracy_m: Annotated[float | None, Field(gt=0, description="Accuracy in meters; omit for 5.")] = None,
+        altitude_m: Annotated[float | None, Field(description="Altitude in meters; omit for none.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Mock the device location until release (the device's location providers report this
+        fix, and location is turned on if it was off). Call again to move it; release restores
+        the device."""
+        return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None, altitude=altitude_m))
+
+    @mcp.tool(name="foreground_activity", annotations=READ_ONLY)
+    async def foreground_activity(session: Session = "", device: Device = "") -> CallToolResult:
+        """The activity on top of the screen as package/class, or that none is resumed (the
+        keyguard shows, or one is starting). Use it to check that a link or a notification opened
+        the right screen."""
+        return await call(session, lambda a: a.activity(device or None))
+
+    @mcp.tool(name="push_file")
+    async def push_file(
+        local_path: Annotated[str, Field(description="The file on this machine.")],
+        device_path: Annotated[str, Field(description="Absolute path on the device; its directory must exist (e.g. /sdcard/Download/a.pdf).")],
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Copy a local file to the device until release. A device file Tap did not push is never
+        overwritten."""
+        return await call(session, lambda a: a.push(local_path, device_path, device or None))
+
+    @mcp.tool(name="pull_file", annotations=READ_ONLY)
+    async def pull_file(
+        device_path: Annotated[str, Field(description="Absolute path of a regular file on the device.")],
+        out: Annotated[str | None, Field(description="Local file to write; omit for one under .tap/agent.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Copy a device file to this machine; returns the local path."""
+        return await call(session, lambda a: a.pull(device_path, out, device or None))
+
+    @mcp.tool(name="add_media")
+    async def add_media(
+        local_path: Annotated[str, Field(description="A photo (jpg, png, gif, webp, heic, bmp) or video (mp4, 3gp, webm, mkv, mov) on this machine.")],
+        name: Annotated[str | None, Field(description="File name on the device; omit for the local name.")] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Add a photo or video to the device gallery (Pictures/Tap or Movies/Tap, indexed so
+        gallery apps and photo pickers list it) until release."""
+        return await call(session, lambda a: a.media(local_path, name, device or None))
 
     @mcp.tool(name="clipboard")
     async def clipboard(
@@ -252,6 +339,33 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         Toasts never appear in snapshot: use this to check one."""
         return await call(
             session, lambda a: a.toast(text or None, device or None, contains=contains, package=package or None, timeout=timeout_seconds)
+        )
+
+    @mcp.tool(name="notification")
+    async def notification(
+        action: Annotated[
+            Literal["list", "await", "open", "dismiss"],
+            Field(description="list: every active notification; await: wait for one and return it; open: tap it (or press button); dismiss: swipe it away."),
+        ] = "list",
+        title: Annotated[str, Field(description="The notification's title; omit to match any.")] = "",
+        text: Annotated[str, Field(description="The notification's text; omit to match any.")] = "",
+        contains: Annotated[bool, Field(description="title/text are only part of it.")] = False,
+        package: Annotated[str, Field(description="Only this package's notifications; omit for any app's.")] = "",
+        button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
+        timeout_seconds: Annotated[float, Field(gt=0, le=600, description="await only.")] = 10,
+        settle: Settle = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """The device's notifications as data (the shade stays closed; they never appear in
+        snapshot). open and dismiss need exactly one match. The driver gets notification access
+        for the session."""
+        return await call(
+            session,
+            lambda a: a.notification(
+                action, title or None, text or None, device or None, contains=contains, package=package or None,
+                button=button or None, timeout=timeout_seconds, settle=settle,
+            ),
         )
 
     @mcp.tool(name="press_key")
@@ -312,13 +426,19 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="The button to press: allow, allow-foreground-only, allow-one-time, deny, ...; omit to list them."),
         ] = "",
         timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        accuracy: Annotated[
+            Literal["precise", "approximate"] | None,
+            Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
+        ] = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Android's runtime-permission dialog: without a choice, wait for it and list the buttons
-        it offers; with one, press that button."""
-        return await call(session, lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle))
+        (and location accuracies) it offers; with one, press that button."""
+        return await call(
+            session, lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle, accuracy=accuracy)
+        )
 
     @mcp.tool(name="wait_for", annotations=READ_ONLY)
     async def wait_for(
@@ -360,19 +480,26 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="condition")
     async def condition(
         name: Annotated[
-            Literal["animations", "dark-mode", "font-scale", "density"] | None,
+            Literal[
+                "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
+                "stay-awake", "high-contrast-text", "color-inversion", "bold-text",
+            ]
+            | None,
             Field(description="The condition to read or change; omit to read them all."),
         ] = None,
         value: Annotated[
             str,
-            Field(description="animations/dark-mode: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset. Omit to read."),
+            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/high-contrast-text/color-inversion/bold-text: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
         ] = "",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Read the device conditions (animations, dark mode, font scale, display density) or
-        change one. A change lasts until release, which restores what the device had, and the
-        result is the value read back. Dark mode needs API 29+."""
+        """Read the device conditions (animations, dark mode, font scale, display density, airplane
+        mode, Wi-Fi, mobile data, the device languages, stay awake while plugged in, high-contrast
+        text, colour inversion, bold text) or change one. A change lasts until release, which
+        restores what the device had, and the result is the value read back. Dark mode and the
+        network switches need API 29+, bold text API 31+; the network switches are real (nothing
+        is mocked)."""
         return await call(session, lambda a: a.condition(name, value or None, device or None))
 
     @mcp.tool(name="capture", annotations=READ_ONLY)
@@ -395,6 +522,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             ),
         ] = "",
         any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
+        extras: Annotated[
+            list[str],
+            Field(
+                description="launch/cold-launch: intent extras as KEY=VALUE (a string) or KEY:TYPE=VALUE, "
+                "TYPE one of string, int, long, float, bool (e.g. item:long=42)."
+            ),
+        ] = [],
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -405,7 +539,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release)."""
         return await call(
-            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app)
+            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras)
         )
 
     @mcp.tool(name="export", annotations=READ_ONLY)

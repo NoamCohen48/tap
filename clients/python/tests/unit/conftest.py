@@ -157,6 +157,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.deny: bool = False
         self.png = b"\x89PNG fake"
         self.conditions: list = []
+        self.foreground: tuple[str, str] | None = None
+        # Device files by path; the headers and chunk sizes the uploads carried.
+        self.files: dict[str, bytes] = {}
+        self.file_headers: list = []
+        self.file_chunks: list[int] = []
         self.corrupt_png = False
         # Accepted attaches per client connection id.
         self.attached: dict[str, list[pb.AttachRequest]] = {}
@@ -247,6 +252,75 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         if request.HasField("dpi") and request.dpi == 999:
             fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DEVICE_SETTING, "density read back 420")
         return pb.SetDensityResponse()
+
+    def SetNetwork(self, request, context):
+        self._own("set_network", request, context)
+        self.conditions.append(request)
+        return pb.SetNetworkResponse()
+
+    def SetSystemLocales(self, request, context):
+        self._own("set_system_locales", request, context)
+        self.conditions.append(request)
+        return pb.SetSystemLocalesResponse()
+
+    def SetLocation(self, request, context):
+        self._own("set_location", request, context)
+        self.conditions.append(request)
+        return pb.SetLocationResponse()
+
+    def SetStayAwake(self, request, context):
+        self._own("set_stay_awake", request, context)
+        self.conditions.append(request)
+        return pb.SetStayAwakeResponse()
+
+    def SetAccessibilityDisplay(self, request, context):
+        self._own("set_accessibility_display", request, context)
+        self.conditions.append(request)
+        return pb.SetAccessibilityDisplayResponse()
+
+    def GetForegroundActivity(self, request, context):
+        self._own("foreground_activity", request, context)
+        if self.foreground is None:
+            return pb.GetForegroundActivityResponse()
+        return pb.GetForegroundActivityResponse(package_name=self.foreground[0], activity=self.foreground[1])
+
+    def _receive(self, requests) -> tuple:
+        header, data = None, bytearray()
+        for part in requests:
+            if part.HasField("header"):
+                header = part.header
+                self.file_headers.append(header)
+            else:
+                self.file_chunks.append(len(part.chunk))
+                data += part.chunk
+        return header, bytes(data)
+
+    def PushFile(self, request_iterator, context):
+        header, data = self._receive(request_iterator)
+        self._own("push_file", header, context)
+        if header.device_path in self.files:
+            fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DEVICE_FILE, f"{header.device_path} exists")
+        self.files[header.device_path] = data
+        return pb.PushFileResponse()
+
+    def PullFile(self, request, context):
+        self._own("pull_file", request, context)
+        self.file_headers.append(request)
+        data = self.files.get(request.device_path)
+        if data is None:
+            fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DEVICE_FILE, "no such file")
+        yield pb.PullFileResponse(size_bytes=len(data))
+        # Two chunks, so the client stitches them.
+        half = len(data) // 2
+        yield pb.PullFileResponse(chunk=data[:half])
+        yield pb.PullFileResponse(chunk=data[half:])
+
+    def AddMedia(self, request_iterator, context):
+        header, data = self._receive(request_iterator)
+        self._own("add_media", header, context)
+        path = f"/sdcard/Pictures/Tap/{header.file_name}"
+        self.files[path] = data
+        return pb.AddMediaResponse(device_path=path)
 
     def Detach(self, request, context):
         self._own("detach", request, context)

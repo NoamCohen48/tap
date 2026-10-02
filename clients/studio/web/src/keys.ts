@@ -4,6 +4,8 @@
 export const KEY_HOME = 3;
 export const KEY_BACK = 4;
 export const KEY_APP_SWITCH = 187;
+export const KEY_SLEEP = 223;
+export const KEY_WAKEUP = 224;
 
 /** The keys the menu offers, by what they are for: entering text, then the hardware keys. */
 export const KEYS: { code: number; name: string; title: string }[] = [
@@ -20,6 +22,8 @@ export const KEYS: { code: number; name: string; title: string }[] = [
 const NAMES: Record<number, string> = {
   ...Object.fromEntries(KEYS.map((k) => [k.code, k.name])),
   [KEY_APP_SWITCH]: "Recent apps",
+  [KEY_SLEEP]: "Sleep",
+  [KEY_WAKEUP]: "Wake up",
 };
 
 /** The name of a key code the page knows, if any. */

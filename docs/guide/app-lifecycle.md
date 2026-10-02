@@ -97,6 +97,21 @@ Two options, in order of preference:
    device.choose_permission(PermissionChoice.DENY)
    ```
 
+   The location dialog of Android 12+ also asks how precise the location may be:
+   `prompt.accuracies` lists the `LocationAccuracy` radios it shows (`PRECISE`,
+   `APPROXIMATE`; empty on other dialogs), and `device.choosePermission(choice, accuracy)`
+   selects one before pressing the button. An accuracy the dialog does not offer is
+   `NOT_FOUND` before any input.
+
+   ```kotlin
+   device.choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+   app.await(text("Approximate location")).visible()
+   ```
+
+   ```python
+   device.choose_permission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+   ```
+
    For anything else in the dialog, its elements belong to `prompt.packageName` (the window's
    package; Google builds name it `com.google.android.permissioncontroller`): reach them with
    `device.app(prompt.packageName).element(...)` as described in

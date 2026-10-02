@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { describeSelector } from "./describe";
 import { ScreenNodeSchema, DeviceState, SelectorKind, type ScreenNode } from "./gen/device_pb";
-import { BoundsSchema, Direction } from "./gen/command_pb";
+import { BoundsSchema, Direction, RangeType, StandardAction } from "./gen/command_pb";
 import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
@@ -125,6 +125,18 @@ function fakeStudio() {
         });
         await new Promise((resolve) => context.signal.addEventListener("abort", resolve));
       },
+      describeElement: (request) =>
+        describeSelector(request.selector) === 'res("go")'
+          ? { actions: [StandardAction.A11Y_FOCUS], customActions: ["Archive"], range: { type: RangeType.RANGE_INT, min: 0, max: 10, current: 4 } }
+          : { actions: [], customActions: [] },
+      getDeviceStatus: () => ({
+        info: { screenOn: true, displayRotation: 0, autoRotate: true, animationsEnabled: true, fontScale: 1, densityDpi: 420, systemLocales: ["en-US"] },
+        foregroundPackage: "com.example",
+        foregroundActivity: "com.example.MainActivity",
+      }),
+      listNotifications: () => ({
+        notifications: [{ packageName: "com.example", title: "New message", text: "from Ada", actions: ["Mark as read"], clearable: true }],
+      }),
       count: (request) => {
         state.counted.push(describeSelector(request.selector));
         return { count: describeSelector(request.selector).startsWith("className") ? 3 : 1 };
@@ -478,6 +490,126 @@ describe("App", () => {
     act(() => click(300, 450));
     expect(tab("Act").getAttribute("aria-selected")).toBe("true");
     expect(within(composer()).getByRole("button", { name: "Tap" })).toBeTruthy();
+  });
+
+  it("double-taps, pinches, flings, submits, and uses what accessibility offers", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Double tap");
+    await screen.findByText('screen.element(res("go")).doubleTap()');
+    fireEvent.click(within(composer()).getByRole("button", { name: "Open" }));
+    await screen.findByText('screen.element(res("go")).pinchOpen()');
+    fireEvent.click(await within(composer()).findByRole("button", { name: "Archive" }));
+    await screen.findByText('screen.element(res("go")).performCustomAction("Archive")');
+    fireEvent.click(within(composer()).getByRole("button", { name: "Focus" }));
+    await screen.findByText('screen.element(res("go")).performAction(StandardAction.FOCUS)');
+    fireEvent.change(within(composer()).getByLabelText("Value"), { target: { value: "7" } });
+    fireEvent.click(within(composer()).getByRole("button", { name: "Set" }));
+    await screen.findByText('screen.element(res("go")).setProgress(7f)');
+
+    await perform(500, 1500, "Fling down");
+    await screen.findByText('screen.element(res("list")).fling(DOWN)');
+    await perform(500, 250, "Submit");
+    await screen.findByText('screen.element(res("search")).imeAction()');
+    expect(fake.state.performed.map((r) => opOf(r)?.case)).toEqual([
+      "doubleTap",
+      "pinch",
+      "performAccessibilityAction",
+      "performAccessibilityAction",
+      "setProgress",
+      "fling",
+      "performImeAction",
+    ]);
+  });
+
+  it("Drag to… records a drag onto the element picked next; Escape cancels it", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Drag to…");
+    expect(await within(composer()).findByRole("region", { name: "Drag" })).toBeTruthy();
+    expect(screen.getByTestId("overlay").parentElement!.querySelector(".container-box.source")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(within(composer()).queryByRole("region", { name: "Drag" })).toBeNull());
+    expect(fake.state.performed).toHaveLength(0);
+
+    fireEvent.click(within(composer()).getByRole("button", { name: "Drag to…" }));
+    act(() => click(300, 450)); // itself: refused
+    expect(await within(composer()).findByText(/the element being dragged/)).toBeTruthy();
+    act(() => click(500, 250));
+    await screen.findByText('screen.element(res("go")).dragTo(res("search"))');
+    expect(within(composer()).queryByRole("region", { name: "Drag" })).toBeNull();
+  });
+
+  it("the Device tab reads the device back and records what is chosen", async () => {
+    const fake = await attached();
+    fireEvent.keyDown(document.body, { key: "5" });
+    const device = screen.getByRole("group", { name: "Device" });
+    expect(await within(device).findByText("com.example/com.example.MainActivity")).toBeTruthy();
+    const animations = within(device).getByRole("group", { name: "Animations" });
+    expect(within(animations).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(animations).getByRole("button", { name: "Off" }));
+    await screen.findByText("setAnimations(false)");
+    fireEvent.click(within(device).getByRole("button", { name: "Landscape" }));
+    await screen.findByText("setOrientation(Orientation.LANDSCAPE)");
+    fireEvent.click(within(device).getByRole("button", { name: "Wake" }));
+    await screen.findByText("wake()");
+    fireEvent.click(await within(device).findByRole("button", { name: "Mark as read" }));
+    await screen.findByText('openNotification(title = "New message", packageName = "com.example", action = "Mark as read")');
+    fireEvent.click(within(device).getByRole("button", { name: "Dialog shown" }));
+    await screen.findByText("awaitPermissionPrompt()");
+    fireEvent.click(within(device).getByRole("button", { name: "Choose" }));
+    await screen.findByText("choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY)");
+    const front = within(device).getByRole("form", { name: "Assert the foreground activity" });
+    fireEvent.click(within(front).getByRole("button", { name: "Assert" }));
+    await screen.findByText('assertEquals(ForegroundActivity("com.example", "com.example.MainActivity"), foregroundActivity())');
+    const place = within(device).getByRole("form", { name: "Location" });
+    fireEvent.change(within(place).getByLabelText("Latitude"), { target: { value: "51.5" } });
+    fireEvent.change(within(place).getByLabelText("Longitude"), { target: { value: "-0.12" } });
+    fireEvent.click(within(place).getByRole("button", { name: "Set" }));
+    await screen.findByText("setLocation(51.5, -0.12)");
+    expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual([
+      "device",
+      "action",
+      "action",
+      "action",
+      "deviceWait",
+      "action",
+      "deviceAssertion",
+      "device",
+    ]);
+    // Picking an element leaves the Device tab.
+    act(() => click(300, 450));
+    expect(tab("Act").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("the App tab brings the app back, opens links, revokes, sets its languages and launches with extras", async () => {
+    const fake = await attached();
+    const app = appPanel();
+    fireEvent.click(within(app).getByRole("button", { name: "Foreground" }));
+    await screen.findByText('app("com.example").foreground()');
+    fireEvent.click(within(app).getByRole("button", { name: "Background" }));
+    await screen.findByText("pressHome()");
+    const link = within(app).getByRole("form", { name: "Open a link" });
+    fireEvent.change(within(link).getByLabelText("Link"), { target: { value: "app://item/1" } });
+    fireEvent.click(within(link).getByRole("button", { name: "Open" }));
+    await screen.findByText('app("com.example").openLink("app://item/1")');
+    const permission = within(app).getByRole("form", { name: "Grant or revoke a permission" });
+    fireEvent.change(within(permission).getByLabelText("Permission"), { target: { value: "android.permission.CAMERA" } });
+    fireEvent.click(within(permission).getByRole("button", { name: "Revoke" }));
+    await screen.findByText('app("com.example").revokePermission("android.permission.CAMERA")');
+    const languages = within(app).getByRole("form", { name: "App languages" });
+    fireEvent.change(within(languages).getByLabelText("Languages"), { target: { value: "fr-FR, en-US" } });
+    fireEvent.click(within(languages).getByRole("button", { name: "Set" }));
+    await screen.findByText('app("com.example").setLocales(listOf("fr-FR", "en-US"))');
+
+    fireEvent.click(within(app).getByRole("button", { name: "Add extra" }));
+    const extra = within(app).getByRole("group", { name: "Extra 1" });
+    fireEvent.change(within(extra).getByLabelText("Key"), { target: { value: "count" } });
+    fireEvent.change(within(extra).getByLabelText("Type"), { target: { value: "int" } });
+    fireEvent.change(within(extra).getByLabelText("Value"), { target: { value: "x" } });
+    expect((within(app).getByRole("button", { name: "Launch" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(extra).getByLabelText("Value"), { target: { value: "3" } });
+    fireEvent.click(within(app).getByRole("button", { name: "Launch" }));
+    await screen.findByText('app("com.example").launch(extras = mapOf("count" to 3))');
+    expect(fake.state.performed).toHaveLength(6);
   });
 
   it("a failed step is reported and not added", async () => {

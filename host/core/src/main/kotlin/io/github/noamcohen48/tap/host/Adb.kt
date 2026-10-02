@@ -503,7 +503,9 @@ open class Adb internal constructor(
     /**
      * Reads one piece of device state by its [StateKey] id: a `settings` value (null when the
      * device never wrote it), the night mode, the display density override (null = none) or an
-     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system).
+     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system), the
+     * device's locales (comma-separated BCP-47 tags), or a
+     * radio switch as `1`/`0` (null when the device has no such setting, e.g. no telephony).
      */
     open suspend fun readState(
         serial: String,
@@ -527,6 +529,37 @@ open class Adb internal constructor(
                     line.trim().removePrefix("Override density:").takeIf { it != line.trim() }?.trim()
                 }
             }
+            is StateKey.Network -> {
+                val raw = exec(serial, "shell", "settings", "get", "global", parsed.setting).trim().takeUnless { it == "null" }
+                when (parsed) {
+                    // wifi_on: 1 on, 2 on while airplane mode is on, 3 off by airplane mode (back on with it), 0 off.
+                    StateKey.Network.WIFI -> raw?.let { if (it == "1" || it == "2") "1" else "0" } ?: "0"
+                    StateKey.Network.AIRPLANE -> if (raw == "1") "1" else "0"
+                    StateKey.Network.MOBILE_DATA -> raw
+                }
+            }
+            StateKey.SystemLocales -> {
+                // A device whose locale was never changed has no system_locales: the property
+                // the system persists, then the build's default.
+                exec(serial, "shell", "settings", "get", "system", "system_locales").trim().takeUnless { it == "null" || it.isEmpty() }
+                    ?: exec(serial, "shell", "getprop", "persist.sys.locale").trim().takeUnless { it.isEmpty() }
+                    ?: exec(serial, "shell", "getprop", "ro.product.locale").trim().takeUnless { it.isEmpty() }
+                    ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.product.locale"), null, "", "No readable locale on $serial")
+            }
+            is StateKey.DeviceFile -> fileInfo(serial, parsed.path)?.let { "present" }
+            StateKey.MockLocationProviders -> mockLocationProviders(serial).sorted().joinToString(",")
+            StateKey.DriverNotificationListener -> if (DRIVER_NOTIFICATION_LISTENER in approvedNotificationListeners(serial)) "allowed" else "disallowed"
+            is StateKey.AppOp -> {
+                val command = listOf("shell", "appops", "get", shellQuote(parsed.packageName), shellQuote(parsed.op))
+                val output = exec(serial, *command.toTypedArray()).trim()
+                // "MOCK_LOCATION: allow; time=…", or "No operations." when the op is at its default.
+                if (output.startsWith("No operations")) {
+                    "default"
+                } else {
+                    output.lineSequence().firstNotNullOfOrNull { line -> Regex("^[A-Za-z_:]+: (\\w+)").find(line.trim())?.groupValues?.get(1) }
+                        ?: throw AdbCommandException(serial, command, null, output, "Unreadable app-op ${parsed.op} of ${parsed.packageName} on $serial: $output")
+                }
+            }
             is StateKey.AppLocales -> {
                 val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -542,7 +575,11 @@ open class Adb internal constructor(
      */
     open suspend fun nightModeLocked(serial: String): Boolean = "mNightModeLocked=true" in exec(serial, "shell", "dumpsys", "uimode")
 
-    /** Writes one piece of device state read by [readState]; null removes it (`settings delete`, `wm density reset`). */
+    /**
+     * Writes one piece of device state read by [readState]; null removes it (`settings delete`,
+     * `wm density reset`). Radio switches are flipped through their services, never by writing
+     * the setting, which would not move the radio.
+     */
     open suspend fun writeState(
         serial: String,
         key: String,
@@ -557,10 +594,252 @@ open class Adb internal constructor(
                 }
             StateKey.NightMode -> exec(serial, "shell", "cmd", "uimode", "night", shellQuote(requireNotNull(value) { "night mode needs a value" }))
             StateKey.Density -> exec(serial, "shell", "wm", "density", value?.let(::shellQuote) ?: "reset")
+            // Null: the device had no such switch to put back.
+            is StateKey.Network ->
+                if (value != null) {
+                    val verb = if (value == "1") "enable" else "disable"
+                    when (parsed) {
+                        StateKey.Network.AIRPLANE -> exec(serial, "shell", "cmd", "connectivity", "airplane-mode", verb)
+                        StateKey.Network.WIFI -> exec(serial, "shell", "svc", "wifi", verb)
+                        StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
+                    }
+                }
+            StateKey.MockLocationProviders -> {
+                val keep = value.orEmpty().split(',').filter(String::isNotEmpty).toSet()
+                val remove = mockLocationProviders(serial) - keep
+                if (remove.isNotEmpty()) removeTestProviders(serial, remove.sorted())
+            }
+            is StateKey.DeviceFile -> {
+                // Only ever captured as absent: restoring removes what the session created.
+                check(value == null) { "a device file can only be restored as absent, not $value" }
+                exec(serial, "shell", "rm", "-f", shellQuote(parsed.path))
+                if (parsed.media) {
+                    scanMedia(serial, parsed.path)
+                    // The Tap folder the media went into, when nothing else is left in it.
+                    execResult(serial, "shell", "rmdir", shellQuote(parsed.path.substringBeforeLast('/')))
+                }
+            }
+            StateKey.DriverNotificationListener -> {
+                val allow = value == "allowed"
+                exec(serial, "shell", "cmd", "notification", if (allow) "allow_listener" else "disallow_listener", DRIVER_NOTIFICATION_LISTENER)
+                if (!allow) awaitDriverListenerUnbound(serial)
+            }
+            is StateKey.AppOp ->
+                exec(serial, "shell", "appops", "set", shellQuote(parsed.packageName), shellQuote(parsed.op), shellQuote(value ?: "default"))
+            StateKey.SystemLocales -> writeSystemLocales(serial, requireNotNull(value) { "system locales need a value" })
             is StateKey.AppLocales -> {
                 val locales = if (value.isNullOrEmpty()) emptyList() else listOf("--locales", shellQuote(value))
                 exec(serial, "shell", "cmd", "locale", "set-app-locales", shellQuote(parsed.packageName), "--user", "current", *locales.toTypedArray())
             }
+        }
+    }
+
+    /** A device file's type and size (`stat`), or null when nothing is at [path]. */
+    open suspend fun fileInfo(
+        serial: String,
+        path: String,
+    ): DeviceFileInfo? {
+        val command = listOf("shell", "stat", "-c", "'%F|%s'", shellQuote(path))
+        val result = execResult(serial, *command.toTypedArray())
+        if (result.exitCode != 0) {
+            if ("No such file" in result.output) return null
+            throw AdbCommandException(serial, command, result.exitCode, result.output, "Unable to stat $path on $serial: ${result.output}")
+        }
+        val (type, size) = result.output.trim().split('|').takeIf { it.size == 2 }
+            ?: throw AdbCommandException(serial, command, null, result.output, "Unreadable stat of $path on $serial: ${result.output}")
+        return DeviceFileInfo(regular = type == "regular file" || type == "regular empty file", sizeBytes = size.toLongOrNull() ?: -1)
+    }
+
+    /** `mkdir -p` [path] on the device. */
+    open suspend fun makeDirectories(
+        serial: String,
+        path: String,
+    ) {
+        exec(serial, "shell", "mkdir", "-p", shellQuote(path))
+    }
+
+    /** Whether [path] is a directory on the device. */
+    open suspend fun isDirectory(
+        serial: String,
+        path: String,
+    ): Boolean = execResult(serial, "shell", "test", "-d", shellQuote(path)).exitCode == 0
+
+    /** Whether the shell user may read [path] (system files often are not, on OEM builds). */
+    open suspend fun isReadable(
+        serial: String,
+        path: String,
+    ): Boolean = execResult(serial, "shell", "test", "-r", shellQuote(path)).exitCode == 0
+
+    /** `adb push`: an adb client command with a real argv, so neither path is shell-quoted. */
+    open suspend fun push(
+        serial: String,
+        local: Path,
+        devicePath: String,
+        timeoutMs: Long = 300_000,
+    ) {
+        exec(serial, "push", local.absolutePathString(), devicePath, timeoutMs = timeoutMs)
+    }
+
+    /** `adb pull` of [devicePath] into [local]. */
+    open suspend fun pull(
+        serial: String,
+        devicePath: String,
+        local: Path,
+        timeoutMs: Long = 300_000,
+    ) {
+        exec(serial, "pull", devicePath, local.absolutePathString(), timeoutMs = timeoutMs)
+    }
+
+    /**
+     * Asks the media scanner to (re)index [path]: MediaProvider's synchronous `scan_file` call on
+     * API 30+, the asynchronous `MEDIA_SCANNER_SCAN_FILE` broadcast otherwise, and when the call
+     * fails (API 29's MediaProvider wants a Uri extra `content call` cannot send, and throws). A
+     * path that is gone leaves the index. The broadcast returns before the scan: poll [mediaIndexed].
+     */
+    open suspend fun scanMedia(
+        serial: String,
+        path: String,
+    ) {
+        if (apiLevel(serial) >= 30) {
+            val output = exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(path))
+            if ("Exception" !in output) return
+        }
+        exec(serial, "shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", shellQuote("file://$path"))
+    }
+
+    /** Whether the media index has an entry for the file [name] in the folder [folder] (e.g. `Pictures/Tap`). */
+    open suspend fun mediaIndexed(
+        serial: String,
+        folder: String,
+        name: String,
+    ): Boolean {
+        val where = "_display_name='$name' AND _data LIKE '%/$folder/$name'"
+        val command = listOf("shell", "content", "query", "--uri", "content://media/external/file", "--projection", "_id", "--where", shellQuote(where))
+        val output = exec(serial, *command.toTypedArray())
+        return output.lineSequence().any { it.trim().startsWith("Row:") }
+    }
+
+    /**
+     * The resumed activity on top as package and fully qualified class name, from `dumpsys
+     * activity activities`: `topResumedActivity=` on API 29+ (several can be resumed in
+     * multi-window; this is the focused one), `mResumedActivity:` before. Null when none is resumed.
+     */
+    open suspend fun foregroundActivity(serial: String): Pair<String, String>? {
+        val output = exec(serial, "shell", "dumpsys", "activity", "activities")
+        val match = TOP_RESUMED.find(output) ?: RESUMED.find(output) ?: return null
+        val (packageName, activity) = match.destructured
+        return packageName to if (activity.startsWith(".")) packageName + activity else activity
+    }
+
+    /**
+     * The location providers that are test providers, from `dumpsys location`: `gps provider
+     * [mock]:` on API 29+, and on API 26-28 the "Mock Providers" section, where each provider's
+     * name is followed by its `mHasLocation=` line.
+     */
+    private suspend fun mockLocationProviders(serial: String): Set<String> {
+        val lines = exec(serial, "shell", "dumpsys", "location").lines().map(String::trim)
+        val current = lines.mapNotNull { MOCK_PROVIDER.matchEntire(it)?.groupValues?.get(1) }
+        val legacy = lines.zipWithNext().filter { (name, next) -> next.startsWith("mHasLocation=") && PROVIDER_NAME.matches(name) }.map { it.first }
+        return (current + legacy).toSet()
+    }
+
+    /**
+     * Removes the test providers [names] through the driver app's `MockLocationReceiver`, which
+     * needs the mock-location app-op (LocationManager ignores the call silently without it): the
+     * op is allowed first, and restoring goes newest first, so the op's own saved mode is
+     * written back after this.
+     */
+    /**
+     * Unbinds the driver's notification listener when Android holds it bound, so the driver's
+     * process can end for good: before the driver instrumentation finishes (Android force-stops
+     * the package then) and before a force-stop. Android 10 (seen on the SM-J810G) binds a
+     * listener whose process was killed while bound again about 10 s later without checking its
+     * access, so a driver killed with its listener bound comes back as a bare listener process,
+     * and again after every later kill. Taking the access back while the listener is connected
+     * unbinds it; when the access is already gone (a listener bound that way), it is given and
+     * taken back. Leaves the access taken back: a session's saved value is restored after this.
+     */
+    open suspend fun releaseDriverNotificationListener(serial: String) {
+        if (!driverListenerBound(serial)) return
+        val key = StateKey.DriverNotificationListener.id
+        if (readState(serial, key) != "allowed") writeState(serial, key, "allowed")
+        writeState(serial, key, "disallowed")
+    }
+
+    /** Waits up to 5 s for Android to unbind the driver's listener after its access was taken back. */
+    private suspend fun awaitDriverListenerUnbound(serial: String) {
+        val deadline = System.nanoTime() + LISTENER_UNBIND_TIMEOUT_MS * 1_000_000
+        while (driverListenerBound(serial)) {
+            if (System.nanoTime() >= deadline) throw DeviceSettingException(serial, "The driver's notification listener on $serial stayed bound after its access was taken back")
+            delay(LISTENER_UNBIND_POLL_MS)
+        }
+    }
+
+    /** Whether the driver's listener is among `dumpsys notification`'s "Live notification listeners". */
+    private suspend fun driverListenerBound(serial: String): Boolean {
+        val lines = exec(serial, "shell", "dumpsys", "notification").lines()
+        val header = lines.indexOfFirst { it.trim().startsWith("Live notification listeners") }
+        if (header < 0) return false
+        val indent = lines[header].indexOfFirst { !it.isWhitespace() }
+        return lines
+            .drop(header + 1)
+            .takeWhile { line -> line.isNotBlank() && line.indexOfFirst { !it.isWhitespace() } > indent }
+            .any { "ComponentInfo{$DRIVER_NOTIFICATION_LISTENER}" in it }
+    }
+
+    /**
+     * The components with notification access, from `dumpsys notification`'s "Allowed notification
+     * listeners:" section (colon-separated per user, `pkg/.Name` short forms expanded).
+     */
+    private suspend fun approvedNotificationListeners(serial: String): Set<String> {
+        val output = exec(serial, "shell", "dumpsys", "notification")
+        val lines = output.lines()
+        val header = lines.indexOfFirst { it.trim() == "Allowed notification listeners:" }
+        if (header < 0) {
+            throw AdbCommandException(serial, listOf("shell", "dumpsys", "notification"), null, output.take(2_000), "No notification listener list in dumpsys notification on $serial")
+        }
+        val indent = lines[header].indexOfFirst { !it.isWhitespace() }
+        return lines
+            .drop(header + 1)
+            .takeWhile { line -> line.isNotBlank() && line.indexOfFirst { !it.isWhitespace() } > indent }
+            .flatMap { line -> line.trim().substringBefore(" (").split(':') }
+            .filter { '/' in it }
+            .map { component ->
+                val (pkg, cls) = component.split('/', limit = 2)
+                if (cls.startsWith(".")) "$pkg/$pkg$cls" else component
+            }.toSet()
+    }
+
+    private suspend fun removeTestProviders(
+        serial: String,
+        names: List<String>,
+    ) {
+        exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "android:mock_location", "allow")
+        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.MockLocationReceiver", "--es", "remove", shellQuote(names.joinToString(",")))
+        val output = exec(serial, *command.toTypedArray())
+        if (!output.contains("Broadcast completed: result=1")) {
+            val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
+            throw AdbCommandException(serial, command, null, output, "Removing the mock location providers on $serial failed: $reason")
+        }
+    }
+
+    /**
+     * Sets the device's locale list through the driver app's `SystemLocaleReceiver` (Android
+     * has no shell command for it), after granting the driver the two permissions Android checks
+     * for it. The broadcast's result is the receiver's: anything but `result=1` is its failure.
+     */
+    private suspend fun writeSystemLocales(
+        serial: String,
+        tags: String,
+    ) {
+        exec(serial, "shell", "pm", "grant", DRIVER_PACKAGE, "android.permission.CHANGE_CONFIGURATION")
+        exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "WRITE_SETTINGS", "allow")
+        // -f 0x20 (FLAG_INCLUDE_STOPPED_PACKAGES): the driver app may never have run on its own.
+        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.SystemLocaleReceiver", "--es", "locales", shellQuote(tags))
+        val output = exec(serial, *command.toTypedArray())
+        if (!output.contains("Broadcast completed: result=1")) {
+            val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
+            throw AdbCommandException(serial, command, null, output, "Setting the device locale on $serial failed: $reason")
         }
     }
 
@@ -575,7 +854,7 @@ open class Adb internal constructor(
     ) {
         if (entries.any { it.key == StateKey.ACCELEROMETER_ROTATION }) writeState(serial, StateKey.ACCELEROMETER_ROTATION, "0")
         for (entry in entries.asReversed()) writeState(serial, entry.key, entry.value)
-        val wrong = entries.mapNotNull { entry -> readState(serial, entry.key).takeIf { it != entry.value }?.let { "${entry.key}=$it (expected ${entry.value})" } }
+        val wrong = entries.mapNotNull { entry -> readState(serial, entry.key).let { actual -> "${entry.key}=$actual (expected ${entry.value})".takeUnless { StateKey.holds(entry.key, entry.value, actual) } } }
         if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "Restoring device state on $serial did not take effect: ${wrong.joinToString()}")
     }
 
@@ -723,16 +1002,24 @@ open class Adb internal constructor(
     }
 
     /**
-     * Whether any activity of [packageName] is still in the activity manager's hierarchy
-     * (`dumpsys activity activities`, its `* Hist #n: ActivityRecord{… u0 <package>/…}` lines),
-     * including one that is only exiting. The process can be gone while one still is.
+     * Whether a task or an activity of [packageName] is still in the activity manager's hierarchy
+     * (`dumpsys activity activities`): a `* Hist #n: ActivityRecord{… u0 <package>/…}` line,
+     * including one that is only exiting, or a `* Task{… A=<uid>:<package> …}` header (`TaskRecord`,
+     * `A=<package>` before API 29; `I=<package>/…` without an affinity). The process can be gone
+     * while either still is. After `pm clear` or a force-stop the records go at once but the
+     * emptied task lingers until its destroy timeout, which then kills whatever process of the
+     * app is running: one a launch started in that window, which leaves that launch waiting
+     * ~40 s for Android to start the app again (`Destroy timeout of remove-task … Killing …:
+     * remove task`). A task under a custom `taskAffinity` is not recognised by its header.
      */
-    open suspend fun hasActivities(
+    open suspend fun hasTaskOrActivity(
         serial: String,
         packageName: String,
     ): Boolean {
-        val record = Regex("""^\s*\* Hist\s+#\d+: ActivityRecord\{\S+ u\d+ ${Regex.escape(packageName)}/""")
-        return exec(serial, "shell", "dumpsys", "activity", "activities").lineSequence().any { record.containsMatchIn(it) }
+        val name = Regex.escape(packageName)
+        val record = Regex("""^\s*\* Hist\s+#\d+: ActivityRecord\{\S+ u\d+ $name/""")
+        val task = Regex("""^\s*\* (?:Task|TaskRecord)\{\S+ #\d+ .*?\b(?:A=(?:\d+:)?$name(?=[\s}])|I=$name/)""")
+        return exec(serial, "shell", "dumpsys", "activity", "activities").lineSequence().any { record.containsMatchIn(it) || task.containsMatchIn(it) }
     }
 
     /**
@@ -1013,6 +1300,12 @@ internal fun parseDumpsysPackage(
 }
 
 private val WHITESPACE = Regex("\\s+")
+private const val LISTENER_UNBIND_TIMEOUT_MS = 5_000L
+private const val LISTENER_UNBIND_POLL_MS = 100L
+private val TOP_RESUMED = Regex("topResumedActivity=ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
+private val RESUMED = Regex("mResumedActivity: ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
+private val MOCK_PROVIDER = Regex("([A-Za-z0-9_]+) provider \\[mock\\]:")
+private val PROVIDER_NAME = Regex("[A-Za-z0-9_]+")
 
 private val DUMPSYS_VERSION_CODE = Regex("""^versionCode=(\d+)""")
 
@@ -1039,3 +1332,9 @@ private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
  */
 fun shellQuote(token: String): String =
     if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"
+
+/** A device file as `stat` reports it; [sizeBytes] is -1 when unreadable. */
+data class DeviceFileInfo(
+    val regular: Boolean,
+    val sizeBytes: Long,
+)

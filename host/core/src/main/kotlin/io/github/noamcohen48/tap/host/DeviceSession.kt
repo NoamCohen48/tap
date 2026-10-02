@@ -82,6 +82,15 @@ class DeviceSession private constructor(
     /** Device-wide conditions (animations, dark mode, font scale, density) on this session. */
     val conditions: DeviceConditions = DeviceConditions(this)
 
+    /** Files pushed to and pulled from the device, and media added to its gallery. */
+    val files: DeviceFiles = DeviceFiles(this)
+
+    /**
+     * The resumed activity on top, as package and fully qualified class name; null when none is
+     * resumed (a keyguard, or between activities).
+     */
+    suspend fun foregroundActivity(): Pair<String, String>? = guardAdb { adb.foregroundActivity(serial) }
+
     /** Guards [savedState] and the journal writes that persist it. */
     private val savedStateMutex = Mutex()
     private val savedState = mutableListOf<SavedState>()
@@ -221,6 +230,9 @@ class DeviceSession private constructor(
         }
     }
 
+    /** Whether this session has captured [key] (and so restores it on detach). */
+    internal suspend fun hasCaptured(key: String): Boolean = savedStateMutex.withLock { savedState.any { it.key == key } }
+
     /**
      * Captures the keys of [values], writes them and reads them back. A value the device did not
      * take is a [DeviceSettingException]; what was captured is still restored on detach.
@@ -229,7 +241,9 @@ class DeviceSession private constructor(
         captureBeforeChange(values.keys.toList())
         guardAdb {
             values.forEach { (key, value) -> adb.writeState(serial, key, value) }
-            val wrong = values.mapNotNull { (key, value) -> adb.readState(serial, key).takeIf { it != value }?.let { "$key=$it (expected $value)" } }
+            // Compared as values: a setting the device reports absent (null) is a mismatch too.
+            // Restoring compares the same way (StateKey.holds).
+            val wrong = values.mapNotNull { (key, value) -> adb.readState(serial, key).let { actual -> "$key=$actual (expected $value)".takeUnless { StateKey.holds(key, value, actual) } } }
             if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "The device did not take the change on $serial: ${wrong.joinToString()}")
         }
     }
@@ -274,7 +288,10 @@ class DeviceSession private constructor(
                     clientPoison = if (client.isPoisoned) client.poisonCause ?: IllegalStateException("poisoned") else null
                     // cleanupStep, not runCatching: a bound firing must reach withTimeoutOrNull
                     // as cancellation (finished == null below), never as a recorded failure.
-                    cleanupStep({ firstFailure = it }) { client.close() }
+                    // Before the driver ends: Android force-stops the package when the instrumentation
+                    // finishes, and a listener bound then comes back (Adb.releaseDriverNotificationListener).
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) { adb.releaseDriverNotificationListener(serial) }
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) { client.close() }
                     cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
                         restoreSavedState()
                     }

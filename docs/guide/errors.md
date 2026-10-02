@@ -12,6 +12,12 @@ into another:
 | `DeviceQuarantinedException` | `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
 | `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FailureReason.DRIVER_START_FAILED`); branch on it, not on the message |
 
+Server `reason`s about the device itself: `UNSUPPORTED_API` (the device's Android version is
+too old for the call; the detail is `REQUIRES_API_<n>`), `DEVICE_SETTING` (a device condition
+did not read back as written, for example a dark mode the device locks), and `DEVICE_FILE` (a
+file push, pull or gallery add was refused: the file exists and Tap did not create it, its
+directory is missing, it is not a regular file, or it did not read back).
+
 All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of
 course, yours.
 
@@ -47,7 +53,7 @@ The codes, grouped by what they tell you:
 | Code | Meaning / details |
 |---|---|
 | `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS` |
-| `ACTION_REJECTED` | Android refused the input: the node refused set-text, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing) |
+| `ACTION_REJECTED` | Android refused the input: the node refused set-text or an accessibility action, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing). Three details are refusals *before* any input, so nothing changed: `KEYGUARD_SECURE` (`dismissKeyguard` on a PIN, pattern or password), `ACTION_NOT_OFFERED` (`performAction`, `performCustomAction` or `setProgress` on a node that does not offer that action) and `OUT_OF_RANGE` (`setProgress` outside the node's range) |
 | `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance)) |
 
 **Waits:**

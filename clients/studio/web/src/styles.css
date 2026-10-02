@@ -588,7 +588,8 @@ code,
 }
 .intents {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Three element tabs, then App and Device apart after a rule. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
 }
 .intents button {
@@ -838,6 +839,178 @@ code,
 .intents .apart {
   border-left: 1px solid var(--line);
 }
+
+/* The Device tab: like App, apart from any element. */
+.composer.tone-device {
+  --tone: var(--ink);
+  --tone-soft: var(--surface-2);
+}
+.devctl {
+  display: grid;
+  gap: 16px;
+}
+/* The read-back: what the device is now, which the choices below mark. */
+.now {
+  display: flex;
+  align-items: center;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.now-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+}
+.now-l::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+.now-msg {
+  color: var(--muted);
+  flex: 1;
+}
+.now dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+.now dl > div {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+.now dl > .wide {
+  flex-basis: 100%;
+}
+.now dt {
+  color: var(--muted);
+}
+.now dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+/* A choice's current value: pressed, with the read-back's dot. */
+.seg.choice button.now-v::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: 1px;
+}
+.seg.choice button:not([disabled]):hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.seg.choice button + button {
+  border-left: 1px solid var(--line);
+}
+.devctl select,
+.appctl select {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 4px 6px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+/* The notifications shown now, each with what can be done to it. */
+.notes-list {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.notes-list p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+.notes-list p.bad {
+  color: var(--bad);
+}
+.notes-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+.notes-list li {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.n-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  font-size: 13px;
+  min-width: 0;
+}
+.n-text span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.n-text .n-pkg {
+  font-size: 11px;
+  color: var(--faint);
+}
+/* Location: four labelled numbers. */
+.actions.place .field {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.actions.place .field input {
+  width: 11ch;
+  font-variant-numeric: tabular-nums;
+}
+/* Launch extras: key, type, value rows. */
+.extras {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.extra {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.extra input {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 5px 8px;
+  width: 14ch;
+  min-width: 0;
+}
+.extra input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
 .appctl {
   display: grid;
   gap: 8px;
@@ -902,6 +1075,12 @@ code,
   background: rgba(255, 106, 61, 0.06);
   box-shadow: 0 0 0 9999px rgba(11, 15, 20, 0.35);
   pointer-events: none;
+}
+/* A drag's source: outlined, the rest of the screen left clear to pick where it drops. */
+.container-box.source {
+  border-style: solid;
+  box-shadow: none;
+  background: rgba(255, 106, 61, 0.14);
 }
 .seeking .overlay {
   cursor: crosshair;
@@ -1184,7 +1363,8 @@ code,
 }
 .kind.k-app,
 .kind.k-key,
-.kind.k-system {
+.kind.k-system,
+.kind.k-device {
   color: var(--muted);
 }
 .step code {

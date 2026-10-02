@@ -100,15 +100,85 @@ and the clients must be updated together to use them:
   server.
 - Rotation, the device conditions and app languages are captured before the session's first
   change, journaled, and restored on detach; when the server died first, the next attach
-  restores them (a restore that does not read back quarantines the device). New failure
+  restores them (a restore that does not read back quarantines the device; a setting
+  Android writes back at its default once deleted, `font_scale` 1.0, counts as restored). New failure
   reasons `UNSUPPORTED_API` (detail `REQUIRES_API_<n>`) and `DEVICE_SETTING`.
 - `tap-agent`: `condition [animations|dark-mode|font-scale|density] [value]` and
   `app locale <package> [tags|system]` (CLI and MCP).
+- **Network switches** (API 29+): `setNetwork(airplaneMode?, wifi?, mobileData?)` (Python
+  `set_network`; `DeviceService.SetNetwork`) turns the real switches on or off, nothing mocked;
+  read back, `DeviceInfo.airplaneMode` / `wifiEnabled` / `mobileDataEnabled`. A device reached
+  over ADB on the network refuses Wi-Fi off or airplane mode on (`DEVICE_SETTING`).
+- **Device languages**: `setSystemLocales(tags)` (Python `set_system_locales`;
+  `DeviceService.SetSystemLocales`) sets the device-wide locale list through the Tap driver app,
+  read back in `DeviceInfo.systemLocales`.
+- **Mock location**: `setLocation(latitude, longitude, accuracyM?, altitudeM?)` (Python
+  `set_location`; `DeviceService.SetLocation`, driver command `set_location`): the gps and
+  network providers (and fused, API 31+) report the fix, re-sent every second; the driver
+  becomes the mock-location app and location is turned on if it was off. Detach removes the
+  test providers again (they outlive the driver and its app-op).
+- Network, languages and location are restored on detach like the other conditions.
+- **Accessibility actions**: `Element.performAction(StandardAction)` and
+  `performCustomAction(label)` (Python `perform_action` / `perform_custom_action`) run a node's
+  action as a screen reader does; one the node does not offer fails before input
+  (`ACTION_REJECTED` / `ACTION_NOT_OFFERED`). `Element.setProgress(value)` (`set_progress`)
+  sets a slider in its own units (`OUT_OF_RANGE` outside them). `ElementSnapshot` gains
+  `actions`, `customActions` and `range`.
+- **Location accuracy**: `choosePermission(choice, accuracy)` picks Precise or Approximate on
+  the Android 12+ location dialog; `PermissionPrompt.accuracies` lists what it offers.
+- **Files and gallery**: `pushFile(devicePath, bytes | path)`, `pullFile(devicePath[, path])`,
+  `addMedia(fileName, bytes)` / `addMedia(path)` (Python `push_file`, `pull_file`, `add_media`;
+  `DeviceService.PushFile/PullFile/AddMedia`, streamed, at most 512 MiB). Tap never overwrites a
+  device file it did not create, reads every write back, and removes what it created on detach;
+  media goes to `Pictures/Tap` or `Movies/Tap` and is indexed by the media scanner. New failure
+  reason `DEVICE_FILE`.
+- `tap-agent`: `condition airplane-mode|wifi|mobile-data|locale`, `location`, `action`,
+  `progress`, `permission --accuracy`, `push`, `pull`, `media` (CLI and MCP: `set_location`,
+  `accessibility_action`, `set_progress`, `push_file`, `pull_file`, `add_media`).
+- **Notifications as data**: `awaitNotification`, `notifications()`, `openNotification(…,
+  action?)` and `dismissNotification` (Python `await_notification`, `notifications`,
+  `open_notification`, `dismiss_notification`; `App.awaitNotification` for one app's; driver
+  commands `await_notification`, `list_notifications`, `open_notification`,
+  `dismiss_notification`) read the notifications through a notification listener in the Tap
+  driver app, which gets notification access for the session and loses it on detach. Open and
+  dismiss act on exactly one match; an ongoing notification is not dismissed (`NOT_CLEARABLE`).
+  New `Notification` model and wait reason `NO_NOTIFICATION`.
+- **Stay awake and accessibility display**: `setStayAwake(enabled)` and
+  `setAccessibilityDisplay(highContrastText?, colorInversion?, boldText?)` (bold text API 31+;
+  Python `set_stay_awake`, `set_accessibility_display`; `DeviceService.SetStayAwake`,
+  `SetAccessibilityDisplay`), restored on detach; `DeviceInfo` reports `stayAwake`,
+  `highContrastText`, `colorInversion`, `boldText`.
+- `foregroundActivity()` (Python `foreground_activity()`; `DeviceService.GetForegroundActivity`):
+  the resumed activity on top, or null.
+- Fixed: a setting the device reported absent after a change or a restore was taken as read
+  back; it is now a `DEVICE_SETTING` failure.
+- `tap-agent`: `notification [list|await|open|dismiss]`, `activity`, `condition
+  stay-awake|high-contrast-text|color-inversion|bold-text` (CLI and MCP: `notification`,
+  `foreground_activity`).
 - **Breaking** (Kotlin, Python positional): `DeviceInfo` gains `keyboardShown`, `autoRotate`,
-  `animationsEnabled`, `darkMode`, `fontScale` and `densityDpi` constructor parameters.
+  `animationsEnabled`, `darkMode`, `fontScale`, `densityDpi`, `airplaneMode`, `wifiEnabled` and
+  `mobileDataEnabled` constructor parameters (and `systemLocales`, defaulted).
 - **Breaking** (Kotlin, Python): `DeviceInfo.displayRotation` / `display_rotation` is now a
   `DisplayRotation` instead of an int (the wire field is unchanged); `DeviceInfo.orientation`
   derives portrait or landscape from the size.
+- Tap Studio records every device action: on an element, double tap, drag to, pinch, fling,
+  submit (IME action), its accessibility and custom actions and a range's value; in the App tab,
+  foreground, background, open link, revoke, the app's languages and launch extras; and a new
+  **Device** tab (key 5) that reads the device back and records rotation, wake/sleep/unlock, the
+  keyboard and clipboard, the permission dialog, notifications and toasts, the conditions and a
+  mock location, and device assertions (foreground activity, keyboard, clipboard).
+  `tap-recording/1` gains the `device_wait`, `device` and `device_assertion` steps; the studio
+  API gains `DescribeElement`, `GetDeviceStatus` and `ListNotifications`.
+- The event log's `set_location` call records the `accuracy_m` and `altitude_m` it gave.
+- `tap-agent`: `app launch|cold-launch --extra KEY[:TYPE]=VALUE` (MCP `extras`) and
+  `location --altitude` (MCP `altitude_m`).
+
+Fixed:
+
+- Server: `forceStop` and `clearData` return only once the app's task is gone too, not just its
+  process and activities. Android removes the emptied task about a second later and kills the
+  app's running process with it: a launch right after `clearData` lost its new process and
+  waited ~40 s for Android to start the app again (the launch timed out).
 
 ## 0.0.2 — 2026-09-30 (alpha)
 

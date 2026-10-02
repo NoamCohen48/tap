@@ -4,6 +4,7 @@ schema needs a matching model constant; until then it maps to the model's "unkno
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
 
 from google.protobuf import json_format
@@ -16,6 +17,8 @@ from .models import (
     ConnectionEntry,
     DeviceEntry,
     DeviceInfo,
+    ForegroundActivity,
+    Notification,
     DeviceState,
     Direction,
     DisplayRotation,
@@ -29,8 +32,12 @@ from .models import (
     NodeChange,
     NodeFlag,
     Orientation,
+    LocationAccuracy,
     PermissionChoice,
     PermissionPrompt,
+    Range,
+    RangeType,
+    StandardAction,
     ScreenNode,
     ScreenSnapshot,
     SelectorCandidate,
@@ -73,7 +80,20 @@ def permission_choice(value: PermissionChoice) -> int:
 def permission_prompt(prompt: pb.PermissionPrompt) -> PermissionPrompt:
     """Choices this client version does not know are left out."""
     known = (_named(PermissionChoice, pb.PermissionChoice, c, "PERMISSION_", None) for c in prompt.choices)
-    return PermissionPrompt(package_name=prompt.package_name, choices=tuple(c for c in known if c is not None))
+    accuracies = (_named(LocationAccuracy, pb.LocationAccuracy, a, "LOCATION_", None) for a in prompt.accuracies)
+    return PermissionPrompt(
+        package_name=prompt.package_name,
+        choices=tuple(c for c in known if c is not None),
+        accuracies=tuple(a for a in accuracies if a is not None),
+    )
+
+
+def location_accuracy(value: LocationAccuracy) -> int:
+    return pb.LocationAccuracy.Value(f"LOCATION_{value.name}")
+
+
+def standard_action(value: StandardAction) -> int:
+    return pb.StandardAction.Value(f"A11Y_{value.name}")
 
 
 def stability_signal(signal: StabilitySignal) -> int:
@@ -136,6 +156,21 @@ def element_snapshot(snapshot: pb.ElementSnapshot) -> ElementSnapshot:
         selected=snapshot.selected,
         child_count=snapshot.child_count,
         showing_hint=snapshot.showing_hint,
+        # Actions this client version does not know are left out.
+        actions=tuple(
+            a for a in (_named(StandardAction, pb.StandardAction, n, "A11Y_", None) for n in snapshot.actions) if a is not None
+        ),
+        custom_actions=tuple(snapshot.custom_actions),
+        range=(
+            Range(
+                type=_named(RangeType, pb.RangeType, snapshot.range.type, "RANGE_", RangeType.UNKNOWN),
+                min=round(snapshot.range.min, 6),
+                max=round(snapshot.range.max, 6),
+                current=round(snapshot.range.current, 6),
+            )
+            if snapshot.HasField("range")
+            else None
+        ),
     )
 
 
@@ -158,7 +193,32 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         dark_mode=info.dark_mode,
         font_scale=round(info.font_scale, 6),
         density_dpi=info.density_dpi,
+        airplane_mode=info.airplane_mode,
+        wifi_enabled=info.wifi_enabled,
+        mobile_data_enabled=info.mobile_data_enabled,
+        system_locales=tuple(info.system_locales),
+        stay_awake=info.stay_awake,
+        high_contrast_text=_optional(info, "high_contrast_text"),
+        color_inversion=_optional(info, "color_inversion"),
+        bold_text=info.bold_text,
     )
+
+
+def notification(value: pb.DeviceNotification) -> Notification:
+    return Notification(
+        package_name=value.package_name,
+        title=_optional(value, "title"),
+        text=_optional(value, "text"),
+        actions=tuple(value.actions),
+        clearable=value.clearable,
+        posted_at=datetime.datetime.fromtimestamp(value.posted_at_ms / 1000, tz=datetime.timezone.utc),
+    )
+
+
+def foreground_activity(response: pb.GetForegroundActivityResponse) -> ForegroundActivity | None:
+    if not response.HasField("package_name") or not response.HasField("activity"):
+        return None
+    return ForegroundActivity(package_name=response.package_name, class_name=response.activity)
 
 
 def toast(value: pb.Toast) -> Toast:

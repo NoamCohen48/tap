@@ -8,10 +8,12 @@ import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Scroll
+import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
@@ -89,6 +91,48 @@ class Element internal constructor(
      */
     suspend fun imeAction(timeout: Duration? = null) {
         run(timeout) { performImeAction = PerformImeAction.newBuilder().setSelector(target).build() }
+    }
+
+    /**
+     * Performs a standard accessibility [action] on the one matching node, as a screen reader
+     * does: no touch, so a covered node is no obstacle. The node must offer it
+     * ([ElementSnapshot.actions]); otherwise `ACTION_REJECTED` / `ACTION_NOT_OFFERED` before any
+     * input. A node that refuses an offered action is `ACTION_REJECTED`. Only Android's answer is
+     * reported: assert what the app did.
+     */
+    suspend fun performAction(
+        action: StandardAction,
+        timeout: Duration? = null,
+    ) {
+        run(timeout) { performAccessibilityAction = PerformAccessibilityAction.newBuilder().setSelector(target).setStandard(action.toProto()).build() }
+    }
+
+    /**
+     * Performs the custom accessibility action labelled [label] (exactly) on the one matching
+     * node: the "Archive" or "Delete" a list item offers screen reader users instead of a swipe
+     * ([ElementSnapshot.customActions]). Not offered, or offered twice under that label:
+     * `ACTION_REJECTED` / `ACTION_NOT_OFFERED` before any input.
+     */
+    suspend fun performCustomAction(
+        label: String,
+        timeout: Duration? = null,
+    ) {
+        run(timeout) { performAccessibilityAction = PerformAccessibilityAction.newBuilder().setSelector(target).setCustom(label).build() }
+    }
+
+    /**
+     * Sets the one matching range node (SeekBar, Slider, RatingBar) to [value] in its own units
+     * ([ElementSnapshot.range]) through accessibility `ACTION_SET_PROGRESS`: exact, where a drag
+     * would land on whatever pixel maps to. A node without the action, or a value outside its
+     * min..max, is `ACTION_REJECTED` (`ACTION_NOT_OFFERED` / `OUT_OF_RANGE`) before any input;
+     * the view is not left to clamp it.
+     */
+    suspend fun setProgress(
+        value: Float,
+        timeout: Duration? = null,
+    ) {
+        require(value.isFinite()) { "value must be finite, not $value" }
+        run(timeout) { setProgress = SetProgress.newBuilder().setSelector(target).setValue(value).build() }
     }
 
     /**

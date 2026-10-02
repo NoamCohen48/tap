@@ -127,6 +127,10 @@ never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
   regenerate proto stubs instead of hand-merging them), run the relevant local checks, then
   `git push -u origin HEAD --force-with-lease` and `gh pr create` (or push again to update an
   open PR). One task per PR; the PR title becomes the squash commit title.
+- Each PR is exactly one commit: squash the branch into one (`git reset --soft origin/main` and
+  commit again) before pushing, and amend that commit, then force-push with `--force-with-lease`,
+  for later changes. A task is never split across several PRs: no stacked PRs, no PR per phase or
+  group; a task that grows keeps growing its one PR.
 - PR body: what changed and why, the checks run, and a `Device matrix: run / not run` line
   (device tests only when the user asked). No co-author or "Generated with" lines.
 - When asked to update a PR because `main` moved: rebase onto `origin/main` again and

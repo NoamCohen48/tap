@@ -44,6 +44,46 @@ service DeviceService {
   rpc SetFontScale(SetFontScaleRequest) returns (SetFontScaleResponse);
   // `wm density`: an override in dpi (100 to 1000), or absent for the display's physical density.
   rpc SetDensity(SetDensityRequest) returns (SetDensityResponse);
+  // Airplane mode (`cmd connectivity airplane-mode`), Wi-Fi (`svc wifi`) and mobile data
+  // (`svc data`): the real switches, nothing mocked. API 29+. Airplane mode is written first;
+  // all three are captured on the first change and restored airplane mode first. A device reached
+  // over ADB on the network refuses Wi-Fi off / airplane mode on (FAILED_PRECONDITION).
+  rpc SetNetwork(SetNetworkRequest) returns (SetNetworkResponse);
+  // The device-wide locale list (Settings › Languages), 1 to 16 BCP-47 tags in preference order
+  // (INVALID_ARGUMENT otherwise). Android has no shell command for it: the driver app applies it
+  // as Settings' language picker does, and it is read back (`system_locales`).
+  rpc SetSystemLocales(SetSystemLocalesRequest) returns (SetSystemLocalesResponse);
+  // Mock location: the device reports this fix from its location providers until detach.
+  // `latitude` -90..90, `longitude` -180..180, `accuracy_m` > 0 (default 5), `altitude_m` finite
+  // (INVALID_ARGUMENT otherwise). The driver app becomes the mock-location app (its
+  // `android:mock_location` app-op) and location is turned on when it is off; both are captured
+  // and restored on detach, which ends the mock. The driver serves the fix (`set_location`).
+  rpc SetLocation(SetLocationRequest) returns (SetLocationResponse);
+  // Keeps the screen on while the device is plugged in (USB, AC or wireless): Settings.Global
+  // `stay_on_while_plugged_in` 7, or 0. Captured and restored on detach.
+  rpc SetStayAwake(SetStayAwakeRequest) returns (SetStayAwakeResponse);
+  // The accessibility display settings: high-contrast text, color inversion and bold text (API
+  // 31+, else FAILED_PRECONDITION / UNSUPPORTED_API before anything changes), as Settings ›
+  // Accessibility writes them. At least one must be set. Captured and restored on detach.
+  rpc SetAccessibilityDisplay(SetAccessibilityDisplayRequest) returns (SetAccessibilityDisplayResponse);
+  // The activity on top (resumed), from `dumpsys activity activities`; empty when none is
+  // resumed (a keyguard, or between activities). Changes nothing.
+  rpc GetForegroundActivity(GetForegroundActivityRequest) returns (GetForegroundActivityResponse);
+
+  // Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
+  // A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
+  //
+  // Copies a file to `device_path` (absolute, normalised; its directory must exist): a
+  // PushFileHeader first, then the bytes. A file already there is refused unless this attached
+  // device pushed it; the size is read back. Pushed files are deleted on detach.
+  rpc PushFile(stream PushFileRequest) returns (PushFileResponse);
+  // Streams the regular file at `device_path` back in chunks.
+  rpc PullFile(PullFileRequest) returns (stream PullFileResponse);
+  // Adds a photo or video to the gallery: an AddMediaHeader (`file_name` with a photo or video
+  // extension), then the bytes. Written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/` and
+  // indexed by the media scanner (read back); a name already there is refused unless this attached
+  // device added it. Deleted, and dropped from the index, on detach.
+  rpc AddMedia(stream AddMediaRequest) returns (AddMediaResponse);
 }
 
 // State of a listed device.
@@ -278,3 +318,111 @@ message SetDensityRequest {
 }
 
 message SetDensityResponse {}
+
+// At least one switch must be set; an absent one is left as it is.
+message SetNetworkRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  optional bool airplane_mode = 3;
+  optional bool wifi = 4;
+  optional bool mobile_data = 5;
+}
+
+message SetNetworkResponse {}
+
+message SetSystemLocalesRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  repeated string locales = 3;
+}
+
+message SetSystemLocalesResponse {}
+
+message SetLocationRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  double latitude = 3;
+  double longitude = 4;
+  optional float accuracy_m = 5;
+  optional double altitude_m = 6;
+}
+
+message SetLocationResponse {}
+
+message PushFileHeader {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  string device_path = 3;
+  int64 size_bytes = 4; // exact size; the upload is rejected on mismatch
+}
+
+message PushFileRequest {
+  oneof part {
+    PushFileHeader header = 1; // first message only
+    bytes chunk = 2; // every later message
+  }
+}
+
+message PushFileResponse {}
+
+message PullFileRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  string device_path = 3;
+}
+
+// The first message carries `size_bytes`; every message may carry a chunk.
+message PullFileResponse {
+  int64 size_bytes = 1;
+  bytes chunk = 2;
+}
+
+message AddMediaHeader {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // 1-127 letters, digits, '.', '_', '-' or spaces, ending in a photo (jpg, jpeg, png, gif, webp,
+  // heic, heif, bmp) or video (mp4, 3gp, webm, mkv, mov) extension.
+  string file_name = 3;
+  int64 size_bytes = 4;
+}
+
+message AddMediaRequest {
+  oneof part {
+    AddMediaHeader header = 1;
+    bytes chunk = 2;
+  }
+}
+
+message AddMediaResponse {
+  string device_path = 1; // where the media landed
+}
+
+message SetStayAwakeRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  bool enabled = 3;
+}
+
+message SetStayAwakeResponse {}
+
+// At least one setting must be set; an absent one is left as it is.
+message SetAccessibilityDisplayRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  optional bool high_contrast_text = 3;
+  optional bool color_inversion = 4;
+  optional bool bold_text = 5;
+}
+
+message SetAccessibilityDisplayResponse {}
+
+message GetForegroundActivityRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+// Both set, or both absent when no activity is resumed.
+message GetForegroundActivityResponse {
+  optional string package_name = 1;
+  optional string activity = 2; // the fully qualified class name
+}

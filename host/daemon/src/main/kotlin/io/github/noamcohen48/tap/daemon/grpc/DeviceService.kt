@@ -1,6 +1,8 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
 import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.AddMediaRequest
+import io.github.noamcohen48.tap.api.v1.AddMediaResponse
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
@@ -21,6 +23,10 @@ import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
+import io.github.noamcohen48.tap.api.v1.PullFileRequest
+import io.github.noamcohen48.tap.api.v1.PullFileResponse
+import io.github.noamcohen48.tap.api.v1.PushFileRequest
+import io.github.noamcohen48.tap.api.v1.PushFileResponse
 import io.github.noamcohen48.tap.api.v1.ResolveRefRequest
 import io.github.noamcohen48.tap.api.v1.ResolveRefResponse
 import io.github.noamcohen48.tap.api.v1.ScreenSnapshotRequest
@@ -35,8 +41,23 @@ import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityResponse
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse
+import io.github.noamcohen48.tap.api.v1.SetLocationRequest
+import io.github.noamcohen48.tap.api.v1.SetLocationResponse
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
+import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
+import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceConditions
+import io.github.noamcohen48.tap.host.canonicalLocales
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
 import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
@@ -49,11 +70,28 @@ import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 
 /** Diagnostic queries left out of the event log: they read the device, they do not test it. */
+/** Size of each chunk PullFile streams. */
+private const val PULL_CHUNK_BYTES = 256 * 1024
+
 private val UNLOGGED_OPS = setOf(Command.OpCase.DEVICE_INFO, Command.OpCase.DUMP_HIERARCHY)
+
+/** Commands that read the driver's notification listener: the server gives it access first. */
+private val NOTIFICATION_OPS =
+    setOf(
+        Command.OpCase.AWAIT_NOTIFICATION,
+        Command.OpCase.LIST_NOTIFICATIONS,
+        Command.OpCase.OPEN_NOTIFICATION,
+        Command.OpCase.DISMISS_NOTIFICATION,
+    )
 
 class DeviceService(
     private val daemon: TapDaemon,
@@ -123,6 +161,7 @@ class DeviceService(
                     resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                 } else {
                     attachedDevice.recorded({ setCommand(command) }, { it.takeIf { it.hasError() }?.error }) {
+                        if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
                         resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                     }
                 }
@@ -261,6 +300,241 @@ class DeviceService(
             }
             SetDensityResponse.getDefaultInstance()
         }
+
+    override suspend fun setNetwork(request: SetNetworkRequest): SetNetworkResponse =
+        reply {
+            val airplane = if (request.hasAirplaneMode()) request.airplaneMode else null
+            val wifi = if (request.hasWifi()) request.wifi else null
+            val data = if (request.hasMobileData()) request.mobileData else null
+            argument(airplane != null || wifi != null || data != null) { "set at least one of airplane_mode, wifi or mobile_data" }
+            val logged: DeviceCall.Builder.() -> Unit = {
+                airplane?.let { airplaneMode = it }
+                wifi?.let { this.wifi = it }
+                data?.let { mobileData = it }
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_network", logged) {
+                it.setNetwork(airplane, wifi, data)
+            }
+            SetNetworkResponse.getDefaultInstance()
+        }
+
+    override suspend fun setSystemLocales(request: SetSystemLocalesRequest): SetSystemLocalesResponse =
+        reply {
+            argument(request.localesCount > 0) { "set at least one locale" }
+            val locales =
+                try {
+                    canonicalLocales(request.localesList)
+                } catch (bad: IllegalArgumentException) {
+                    throw InvalidArgumentException(bad.message ?: "invalid locales")
+                }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_system_locales", { addAllLocales(request.localesList) }) {
+                it.setSystemLocales(locales)
+            }
+            SetSystemLocalesResponse.getDefaultInstance()
+        }
+
+    override suspend fun setLocation(request: SetLocationRequest): SetLocationResponse =
+        reply {
+            val accuracy = if (request.hasAccuracyM()) request.accuracyM else null
+            val altitude = if (request.hasAltitudeM()) request.altitudeM else null
+            argument(request.latitude in -90.0..90.0) { "latitude must be -90 to 90, not ${request.latitude}" }
+            argument(request.longitude in -180.0..180.0) { "longitude must be -180 to 180, not ${request.longitude}" }
+            argument(accuracy == null || (accuracy.isFinite() && accuracy > 0f)) { "accuracy_m must be a positive number of meters, not $accuracy" }
+            argument(altitude == null || altitude.isFinite()) { "altitude_m must be finite, not $altitude" }
+            val logged: DeviceCall.Builder.() -> Unit = {
+                latitude = request.latitude
+                longitude = request.longitude
+                accuracy?.let { accuracyM = it }
+                altitude?.let { altitudeM = it }
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_location", logged) {
+                it.setLocation(request.latitude, request.longitude, accuracy, altitude)
+            }
+            SetLocationResponse.getDefaultInstance()
+        }
+
+    override suspend fun setStayAwake(request: SetStayAwakeRequest): SetStayAwakeResponse =
+        reply {
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_stay_awake", { enabled = request.enabled }) {
+                it.setStayAwake(request.enabled)
+            }
+            SetStayAwakeResponse.getDefaultInstance()
+        }
+
+    override suspend fun setAccessibilityDisplay(request: SetAccessibilityDisplayRequest): SetAccessibilityDisplayResponse =
+        reply {
+            val contrast = if (request.hasHighContrastText()) request.highContrastText else null
+            val inversion = if (request.hasColorInversion()) request.colorInversion else null
+            val bold = if (request.hasBoldText()) request.boldText else null
+            argument(contrast != null || inversion != null || bold != null) { "set at least one of high_contrast_text, color_inversion or bold_text" }
+            val logged: DeviceCall.Builder.() -> Unit = {
+                contrast?.let { highContrastText = it }
+                inversion?.let { colorInversion = it }
+                bold?.let { boldText = it }
+            }
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_accessibility_display", logged) {
+                it.setAccessibilityDisplay(contrast, inversion, bold)
+            }
+            SetAccessibilityDisplayResponse.getDefaultInstance()
+        }
+
+    override suspend fun getForegroundActivity(request: GetForegroundActivityRequest): GetForegroundActivityResponse =
+        reply {
+            val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val top = attachedDevice.deviceSession.foregroundActivity()
+            GetForegroundActivityResponse
+                .newBuilder()
+                .apply {
+                    top?.let { (pkg, activity) ->
+                        packageName = pkg
+                        this.activity = activity
+                    }
+                }.build()
+        }
+
+    override suspend fun pushFile(requests: Flow<PushFileRequest>): PushFileResponse =
+        reply {
+            spooled(
+                requests,
+                header = { if (it.partCase == PushFileRequest.PartCase.HEADER) it.header else null },
+                chunk = { if (it.partCase == PushFileRequest.PartCase.CHUNK) it.chunk else null },
+                size = { it.sizeBytes },
+            ) { h, upload ->
+                argumentDevicePath(h.devicePath)
+                file(h.clientConnectionId, h.attachedDeviceId, "push_file", h.devicePath, h.sizeBytes) { it.push(upload, h.devicePath) }
+            }
+            PushFileResponse.getDefaultInstance()
+        }
+
+    /**
+     * Pulls into an owner-only file under the state dir, then streams it: the size in the first
+     * message, [PULL_CHUNK_BYTES] chunks after. Failures before the first message are statuses.
+     */
+    override fun pullFile(request: PullFileRequest): Flow<PullFileResponse> =
+        flow {
+            val target = reply { withContext(Dispatchers.IO) { uploadFile("pull") } }
+            try {
+                val size =
+                    reply {
+                        argumentDevicePath(request.devicePath)
+                        file(request.clientConnectionId, request.attachedDeviceId, "pull_file", request.devicePath, null) {
+                            it.pull(request.devicePath, target)
+                        }
+                        withContext(Dispatchers.IO) { Files.size(target) }
+                    }
+                emit(PullFileResponse.newBuilder().setSizeBytes(size).build())
+                val buffer = ByteArray(PULL_CHUNK_BYTES)
+                withContext(Dispatchers.IO) { Files.newInputStream(target) }.use { input ->
+                    while (true) {
+                        val read = withContext(Dispatchers.IO) { input.read(buffer) }
+                        if (read < 0) break
+                        if (read > 0) emit(PullFileResponse.newBuilder().setChunk(ByteString.copyFrom(buffer, 0, read)).build())
+                    }
+                }
+            } finally {
+                withContext(Dispatchers.IO) { Files.deleteIfExists(target) }
+            }
+        }
+
+    override suspend fun addMedia(requests: Flow<AddMediaRequest>): AddMediaResponse =
+        reply {
+            spooled(
+                requests,
+                header = { if (it.partCase == AddMediaRequest.PartCase.HEADER) it.header else null },
+                chunk = { if (it.partCase == AddMediaRequest.PartCase.CHUNK) it.chunk else null },
+                size = { it.sizeBytes },
+            ) { h, upload ->
+                try {
+                    DeviceFiles.mediaFolder(h.fileName)
+                } catch (invalid: IllegalArgumentException) {
+                    throw InvalidArgumentException(invalid.message ?: "file_name is invalid")
+                }
+                var path = ""
+                file(h.clientConnectionId, h.attachedDeviceId, "add_media", h.fileName, h.sizeBytes) { path = it.addMedia(upload, h.fileName) }
+                AddMediaResponse.newBuilder().setDevicePath(path).build()
+            }
+        }
+
+    private fun argumentDevicePath(path: String) {
+        try {
+            DeviceFiles.checkDevicePath(path)
+        } catch (invalid: IllegalArgumentException) {
+            throw InvalidArgumentException(invalid.message ?: "device_path is invalid")
+        }
+    }
+
+    private fun uploadFile(prefix: String): Path {
+        val uploads = daemon.config.stateDir.resolve("uploads")
+        Files.createDirectories(uploads)
+        return Files.createTempFile(uploads, prefix, ".bin").also { restrictToOwner(it) }
+    }
+
+    /**
+     * Spools a client upload (one header first, then chunks) to an owner-only file under the
+     * state dir, checks it against the header's size, runs [block] on it and deletes it.
+     */
+    private suspend fun <R, H : Any, T> spooled(
+        requests: Flow<R>,
+        header: (R) -> H?,
+        chunk: (R) -> ByteString?,
+        size: (H) -> Long,
+        block: suspend (H, Path) -> T,
+    ): T {
+        val upload = withContext(Dispatchers.IO) { uploadFile("upload") }
+        try {
+            var first: H? = null
+            var received = 0L
+            withContext(Dispatchers.IO) {
+                Files.newOutputStream(upload, StandardOpenOption.TRUNCATE_EXISTING).use { out ->
+                    requests.collect { part ->
+                        val h = header(part)
+                        val bytes = chunk(part)
+                        when {
+                            h != null -> {
+                                argument(first == null) { "the header must be sent exactly once, first" }
+                                argument(size(h) in 0..DeviceFiles.MAX_FILE_BYTES) { "size_bytes must be in 0..${DeviceFiles.MAX_FILE_BYTES}" }
+                                first = h
+                            }
+
+                            bytes != null -> {
+                                val expected = size(argumentNotNull(first) { "the header must come before any chunk" })
+                                received += bytes.size()
+                                argument(received <= expected) { "upload exceeds size_bytes $expected" }
+                                bytes.writeTo(out)
+                            }
+
+                            else -> throw InvalidArgumentException("part must be set")
+                        }
+                    }
+                }
+            }
+            val h = argumentNotNull(first) { "the header is required" }
+            argument(received == size(h)) { "upload ended after $received of ${size(h)} bytes" }
+            return block(h, upload)
+        } finally {
+            withContext(Dispatchers.IO) { Files.deleteIfExists(upload) }
+        }
+    }
+
+    /** Runs a file operation on the attached device and logs it as [operation]. */
+    private suspend fun file(
+        clientConnectionId: String,
+        attachedDeviceId: String,
+        operation: String,
+        devicePath: String,
+        sizeBytes: Long?,
+        block: suspend (DeviceFiles) -> Unit,
+    ) {
+        val attachedDevice: AttachedDevice = daemon.attachedDevice(attachedDeviceId, clientConnectionId)
+        val logged =
+            DeviceCall
+                .newBuilder()
+                .setOperation(operation)
+                .setDevicePath(devicePath)
+                .apply { if (sizeBytes != null) setSizeBytes(sizeBytes) }
+                .build()
+        attachedDevice.recorded({ setDevice(logged) }) { block(attachedDevice.deviceSession.files) }
+    }
 
     /** Runs a device-condition change on the attached device and logs it as [operation]. */
     private suspend fun condition(

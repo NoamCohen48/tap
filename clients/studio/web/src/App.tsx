@@ -20,7 +20,7 @@ import {
   type Session,
   type Step,
 } from "./gen/studio_pb";
-import { Composer, TABS, type Seek, type Tab } from "./Composer";
+import { Composer, TABS, type DragFrom, type Seek, type Tab } from "./Composer";
 import { DeviceBar } from "./DeviceBar";
 import type { Direction } from "./gen/command_pb";
 import { Eject, Logo } from "./icons";
@@ -118,8 +118,10 @@ function Workspace({
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [distance, setDistance] = useState(stepsApi.DEFAULT_DISTANCE);
   const [seek, setSeek] = useState<Seek | null>(null);
-  const searching = useRef(false); // for the key handler: the tab cannot change during a search
-  searching.current = seek !== null;
+  const [drag, setDrag] = useState<DragFrom | null>(null);
+  const [revision, setRevision] = useState(0);
+  const searching = useRef(false); // for the key handler: the tab cannot change during a search or a drag
+  searching.current = seek !== null || drag !== null;
   const { steps } = recording;
 
   const onOutcome = useCallback((stepId: string, outcome: Outcome) => {
@@ -151,6 +153,7 @@ function Workspace({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "Escape") {
         setSeek(null);
+        setDrag(null);
         return;
       }
       const chosen = TABS.find((t) => t.key === e.key);
@@ -204,6 +207,7 @@ function Workspace({
       } finally {
         running.current = false;
         setBusy(false);
+        setRevision((n) => n + 1);
       }
     },
     [client, replay, selectedStep, steps],
@@ -300,6 +304,19 @@ function Workspace({
     }
   };
 
+  const startDrag = () => {
+    const source = inspected && targetOf(inspected);
+    if (inspected && source) setDrag({ source, node: inspected });
+  };
+
+  /** Where the drag drops: record it from the source to the picked element. */
+  const pickDrop = async (d: DragFrom, node: ScreenNode) => {
+    const target = targetOf(node);
+    if (!target) return setDrag({ ...d, note: "That element has no selector of its own: pick another." });
+    if (node.ref === d.node.ref) return setDrag({ ...d, note: "That is the element being dragged: pick where it drops." });
+    if (await perform(stepsApi.drag(d.source, target.selector))) setDrag(null);
+  };
+
   const nodes = frame?.nodes ?? [];
   const packages = [...new Set(nodes.map((n) => n.windowPackage).filter(Boolean))];
   const current = selected ? (nodes.find((n) => n.ref === selected.ref) ?? null) : null;
@@ -349,21 +366,23 @@ function Workspace({
         <ScreenView
           frame={frame}
           error={error}
-          intent={tab === "app" ? "act" : tab}
+          intent={tab === "app" || tab === "device" ? "act" : tab}
           overlay={overlay}
           onOverlay={setOverlay}
           selectedRef={inspected?.ref ?? null}
           busy={locked}
           onSelect={(node) => {
             if (seek) return void pickTarget(seek, node);
+            if (drag) return void pickDrop(drag, node);
             setSelected(node);
-            // Picking an element is for a step on it: leave the App tab.
-            setTab((t) => (t === "app" ? "act" : t));
+            // Picking an element is for a step on it: leave the App and Device tabs.
+            setTab((t) => (t === "app" || t === "device" ? "act" : t));
           }}
           targetOf={targetOf}
           seeking={seeking}
+          dragging={drag ? (nodes.find((n) => n.ref === drag.node.ref) ?? drag.node) : null}
         >
-          <DeviceBar disabled={locked || !!seek} onPerform={(request) => void perform(request)} />
+          <DeviceBar disabled={locked || !!seek || !!drag} onPerform={(request) => void perform(request)} />
         </ScreenView>
         <div className="mid">
           <Composer
@@ -384,6 +403,10 @@ function Workspace({
             onSeek={startSeek}
             onSeekAgain={() => seek && void probeScroll(seek)}
             onSeekCancel={() => setSeek(null)}
+            drag={drag}
+            onDrag={startDrag}
+            onDragCancel={() => setDrag(null)}
+            revision={revision}
             appPackage={appPackage}
             onAppPackage={setAppPackage}
             packages={packages}

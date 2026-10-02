@@ -8,10 +8,14 @@ import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
+import io.github.noamcohen48.tap.api.v1.NotificationMatch
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
@@ -173,6 +177,7 @@ object CommandValidation {
                 if (choice == PermissionChoice.PERMISSION_CHOICE_UNSPECIFIED || choice == PermissionChoice.UNRECOGNIZED) {
                     invalidRequest("A known permission choice is required")
                 }
+                if (command.choosePermission.accuracy == LocationAccuracy.UNRECOGNIZED) invalidRequest("Unknown location accuracy")
             }
 
             OpCase.SET_CLIPBOARD -> {
@@ -198,6 +203,48 @@ object CommandValidation {
                 if (toast.hasPackageName()) requirePackage(toast.packageName)
             }
 
+            OpCase.AWAIT_NOTIFICATION -> validateMatch(command.awaitNotification.match)
+
+            OpCase.OPEN_NOTIFICATION -> {
+                val open = command.openNotification
+                validateMatch(open.match)
+                if (open.hasAction()) {
+                    if (open.action.isEmpty()) invalidRequest("action must not be empty")
+                    if (open.action.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("action must be at most $MAX_SELECTOR_STRING_CHARS chars")
+                }
+            }
+
+            OpCase.DISMISS_NOTIFICATION -> validateMatch(command.dismissNotification.match)
+
+            OpCase.PERFORM_ACCESSIBILITY_ACTION -> {
+                val action = command.performAccessibilityAction
+                when (action.actionCase) {
+                    PerformAccessibilityAction.ActionCase.STANDARD ->
+                        if (action.standard == StandardAction.STANDARD_ACTION_UNSPECIFIED || action.standard == StandardAction.UNRECOGNIZED) {
+                            invalidRequest("A known standard action is required")
+                        }
+                    PerformAccessibilityAction.ActionCase.CUSTOM -> {
+                        if (action.custom.isEmpty()) invalidRequest("custom must not be empty")
+                        if (action.custom.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("custom must be at most $MAX_SELECTOR_STRING_CHARS chars")
+                    }
+                    PerformAccessibilityAction.ActionCase.ACTION_NOT_SET, null -> invalidRequest("standard or custom is required")
+                }
+            }
+
+            OpCase.SET_PROGRESS -> {
+                if (!command.setProgress.value.isFinite()) invalidRequest("value must be finite")
+            }
+
+            OpCase.SET_LOCATION -> {
+                val location = command.setLocation
+                if (!(location.latitude in -90.0..90.0)) invalidRequest("latitude must be -90 to 90")
+                if (!(location.longitude in -180.0..180.0)) invalidRequest("longitude must be -180 to 180")
+                if (location.hasAccuracyM() && !(location.accuracyM.isFinite() && location.accuracyM > 0f)) {
+                    invalidRequest("accuracy_m must be a positive number of meters")
+                }
+                if (location.hasAltitudeM() && !location.altitudeM.isFinite()) invalidRequest("altitude_m must be finite")
+            }
+
             OpCase.OP_NOT_SET, null -> {
                 throw InvalidCommandException(ErrorCode.ERR_UNSUPPORTED, null, "No command op is set")
             }
@@ -206,6 +253,7 @@ object CommandValidation {
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.TAP, OpCase.LONG_TAP, OpCase.CLEAR_TEXT,
             OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.GET_CLIPBOARD,
+            OpCase.LIST_NOTIFICATIONS,
             -> {
                 Unit
             }
@@ -369,6 +417,28 @@ object CommandValidation {
                 }
             !seen.add(key)
         }
+    }
+
+    /** A title and text (≤ 1024 chars, a valid regex under REGEX), a mode only with one of them. */
+    private fun validateMatch(match: NotificationMatch) {
+        if (match.mode == MatchMode.UNRECOGNIZED) invalidRequest("Unknown match mode")
+        val strings =
+            buildList {
+                if (match.hasTitle()) add("title" to match.title)
+                if (match.hasText()) add("text" to match.text)
+            }
+        for ((name, value) in strings) {
+            if (value.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("$name must be at most $MAX_SELECTOR_STRING_CHARS chars")
+            if (match.mode == MatchMode.MATCH_REGEX) {
+                try {
+                    Pattern.compile(value)
+                } catch (error: PatternSyntaxException) {
+                    invalidRequest("Invalid regex '$value': ${error.message}")
+                }
+            }
+        }
+        if (strings.isEmpty() && match.mode != MatchMode.MATCH_UNSPECIFIED) invalidRequest("mode needs a title or text")
+        if (match.hasPackageName()) requirePackage(match.packageName)
     }
 
     private fun requirePackage(packageName: String) {

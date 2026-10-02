@@ -3,25 +3,34 @@ package io.github.noamcohen48.tap.samples
 import io.github.noamcohen48.tap.junit5.TapTest
 import io.github.noamcohen48.tap.junit5.tapTest
 import io.github.noamcohen48.tap.sdk.AppLifecycleException
+import io.github.noamcohen48.tap.sdk.CommandException
 import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.DeviceInfo
+import io.github.noamcohen48.tap.sdk.ErrorCode
 import io.github.noamcohen48.tap.sdk.FailureReason
+import io.github.noamcohen48.tap.sdk.ForegroundActivity
+import io.github.noamcohen48.tap.sdk.LocationAccuracy
+import io.github.noamcohen48.tap.sdk.MatchMode
 import io.github.noamcohen48.tap.sdk.Orientation
 import io.github.noamcohen48.tap.sdk.PermissionChoice
 import io.github.noamcohen48.tap.sdk.ServerException
+import io.github.noamcohen48.tap.sdk.StandardAction
 import io.github.noamcohen48.tap.sdk.Toast
 import io.github.noamcohen48.tap.sdk.res
 import io.github.noamcohen48.tap.sdk.text
 import io.github.noamcohen48.tap.sdk.textContains
 import org.junit.jupiter.api.Assumptions.assumeFalse
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 @TapTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -255,7 +264,181 @@ class DeviceActionsTest {
         }
     }
 
+    /**
+     * Named actions run as a screen reader runs them: standard and the app's own custom ones; an
+     * action the node does not offer is refused before input, and a slider takes a value in its
+     * range and refuses one outside it.
+     */
+    @Test
+    @Order(12)
+    fun accessibilityActionsAndSliderProgress(device: Device): Unit {
+        tapTest {
+            val app = Fixture.launch(device, ".ControlsActivity")
+            val header = app.element(res("details_header"))
+            assertTrue(StandardAction.EXPAND in header.snapshot().actions)
+            header.performAction(StandardAction.EXPAND)
+            app.await(text("Details (expanded)")).visible()
+            val refused = assertFailsSuspend<CommandException> { header.performAction(StandardAction.DISMISS) }
+            assertEquals(ErrorCode.ACTION_REJECTED to "ACTION_NOT_OFFERED", refused.code to refused.detail)
+
+            val card = app.element(res("message_card"))
+            assertTrue(card.snapshot().customActions.containsAll(listOf("Archive", "Mark unread")))
+            card.performCustomAction("Archive")
+            app.await(text("Archived")).visible()
+
+            val slider = app.element(res("volume_slider"))
+            assertEquals(100f, slider.snapshot().range?.max)
+            slider.setProgress(55f)
+            app.await(text("Volume: 55")).visible()
+            assertEquals("OUT_OF_RANGE", assertFailsSuspend<CommandException> { slider.setProgress(150f) }.detail)
+        }
+    }
+
+    /** API 31+: the location dialog offers Precise / Approximate, and the choice reaches the app. */
+    @Test
+    @Order(13)
+    fun locationPromptTakesApproximate(device: Device): Unit {
+        tapTest {
+            assumeTrue(device.info().apiLevel >= 31, "the location accuracy choice is API 31+")
+            val app = Fixture.launch(device)
+            app.clearData()
+            app.launch(".PermissionActivity")
+            app.element(res("request_location_permission")).tap()
+            val prompt = device.awaitPermissionPrompt()
+            assertEquals(setOf(LocationAccuracy.PRECISE, LocationAccuracy.APPROXIMATE), prompt.accuracies.toSet())
+            device.choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+            app.await(text("Location approximate")).visible()
+        }
+    }
+
+    /**
+     * The device language reaches an app that follows the system, a mocked fix reaches the app's
+     * gps listener, a pushed file pulls back and added media is in the app's gallery query.
+     */
+    @Test
+    @Order(14)
+    fun localeLocationFilesAndMediaHoldForTheTest(device: Device): Unit {
+        tapTest {
+            val app = Fixture.launch(device)
+            val before = device.info()
+            localeBefore[device.serial] = before.systemLocales
+            val target = if (before.systemLocales.firstOrNull() == "de-DE") "fr-FR" else "de-DE"
+            device.setSystemLocales(target, "en-US")
+            assertEquals(listOf(target, "en-US"), device.info().systemLocales.take(2))
+            app.launch(".FormActivity")
+            app.await(textContains(" locale=$target ")).visible()
+
+            app.grantPermission("android.permission.ACCESS_FINE_LOCATION")
+            app.launch(".PermissionActivity")
+            device.setLocation(48.8584, 2.2945, accuracyM = 3f)
+            app.element(res("read_location")).tap()
+            app.await(text("At 48.85840, 2.29450"), 15.seconds).visible()
+
+            val payload = ByteArray(3 shl 20) { (it % 251).toByte() }
+            device.pushFile(PUSHED, payload)
+            assertContentEquals(payload, device.pullFile(PUSHED))
+            val refused = assertFailsSuspend<ServerException> { device.pushFile("/system/build.prop", byteArrayOf(1)) }
+            assertEquals(FailureReason.DEVICE_FILE, refused.reason)
+
+            assertEquals("/sdcard/Pictures/Tap/$PHOTO", device.addMedia(PHOTO, Fixture.PNG))
+            app.grantPermission(if (before.apiLevel >= 33) "android.permission.READ_MEDIA_IMAGES" else "android.permission.READ_EXTERNAL_STORAGE")
+            app.launch(".PermissionActivity")
+            app.element(res("read_gallery")).tap()
+            app.await(textContains(PHOTO)).visible()
+        }
+    }
+
+    /** Detach put the language back and removed the pushed file and the media. */
+    @Test
+    @Order(15)
+    fun localeFilesAndMediaAreRestoredAfterTheTest(device: Device): Unit {
+        tapTest {
+            val before = localeBefore[device.serial] ?: return@tapTest
+            assertEquals(before, device.info().systemLocales)
+            assertEquals(FailureReason.DEVICE_FILE, assertFailsSuspend<ServerException> { device.pullFile(PUSHED) }.reason)
+            val app = Fixture.launch(device, ".PermissionActivity")
+            app.element(res("read_gallery")).tap()
+            val shown = app.await(res("gallery_value").andText("Gallery", MatchMode.CONTAINS)).visible().text().orEmpty()
+            assertFalse(PHOTO in shown, shown)
+        }
+    }
+
+    /**
+     * Stay awake and the accessibility display settings read back while the test holds them; the
+     * fixture's notifications are read as data, a button and the notification itself open the
+     * app's link screen (the auto-cancel one goes away), an ongoing one cannot be dismissed, and
+     * a match of both is refused as ambiguous before anything is sent.
+     */
+    @Test
+    @Order(16)
+    fun displaySettingsAndNotificationsHoldForTheTest(device: Device): Unit {
+        tapTest {
+            val before = device.info()
+            displayBefore[device.serial] = before
+            device.setStayAwake(!before.stayAwake)
+            val bold = before.apiLevel >= 31
+            device.setAccessibilityDisplay(highContrastText = true, colorInversion = true, boldText = if (bold) true else null)
+            val held = device.info()
+            assertEquals(!before.stayAwake, held.stayAwake)
+            assertEquals(listOf(true, true, bold), listOf(held.highContrastText, held.colorInversion, held.boldText))
+            // Stay awake off lets the screen time out at once on a device left idle: the rest needs it on.
+            device.setStayAwake(true)
+            device.wake()
+            device.dismissKeyguard()
+
+            val app = Fixture.launch(device, ".FormActivity")
+            if (before.apiLevel >= 33) app.grantPermission("android.permission.POST_NOTIFICATIONS")
+            app.await(res("notify_button")).visible().tap()
+            val message = app.awaitNotification("New message")
+            assertEquals("from Ada" to listOf("Mark as read"), message.text to message.actions)
+            assertTrue(message.clearable)
+            val mine = device.notifications().filter { it.packageName == Fixture.PACKAGE }
+            assertEquals(setOf("New message", "Syncing"), mine.map { it.title }.toSet())
+            assertFalse(mine.single { it.title == "Syncing" }.clearable)
+
+            val ongoing = assertFailsSuspend<CommandException> { device.dismissNotification("Syncing", packageName = Fixture.PACKAGE) }
+            assertEquals(ErrorCode.ACTION_REJECTED to "NOT_CLEARABLE", ongoing.code to ongoing.detail)
+            assertEquals(ErrorCode.AMBIGUOUS, assertFailsSuspend<CommandException> { device.openNotification(packageName = Fixture.PACKAGE) }.code)
+
+            device.openNotification("New message", packageName = Fixture.PACKAGE, action = "Mark as read")
+            app.await(text("Link: tapfixture://link/read")).visible()
+            device.openNotification("New message", packageName = Fixture.PACKAGE)
+            app.await(text("Link: tapfixture://link/notification")).visible()
+            assertEquals(ForegroundActivity(Fixture.PACKAGE, "${Fixture.PACKAGE}.LinkActivity"), device.foregroundActivity())
+            device.awaitUntil("the opened notification auto-cancelled", observe = { device.notifications().joinToString { it.title.orEmpty() } }) {
+                device.notifications().none { it.packageName == Fixture.PACKAGE && it.title == "New message" }
+            }
+
+            app.coldLaunch(".FormActivity") // the task's top is the link screen now
+            app.await(res("notify_button")).visible().tap()
+            app.awaitNotification("New message")
+            device.dismissNotification("New message", packageName = Fixture.PACKAGE)
+            device.awaitUntil("the notification dismissed", observe = { device.notifications().joinToString { it.title.orEmpty() } }) {
+                device.notifications().none { it.packageName == Fixture.PACKAGE && it.title == "New message" }
+            }
+            app.forceStop()
+        }
+    }
+
+    /** Detach put stay awake and the accessibility display settings back. */
+    @Test
+    @Order(17)
+    fun displaySettingsAreRestoredAfterTheTest(device: Device): Unit {
+        tapTest {
+            val before = displayBefore[device.serial] ?: return@tapTest
+            val now = device.info()
+            assertEquals(
+                listOf(before.stayAwake, before.highContrastText, before.colorInversion, before.boldText),
+                listOf(now.stayAwake, now.highContrastText, now.colorInversion, now.boldText),
+            )
+        }
+    }
+
     private companion object {
+        val displayBefore = ConcurrentHashMap<String, DeviceInfo>()
+        const val PUSHED = "/data/local/tmp/tap-sample-pushed.bin"
+        const val PHOTO = "tap-sample.png"
+        val localeBefore = ConcurrentHashMap<String, List<String>>()
         val rotationBefore = ConcurrentHashMap<String, DeviceInfo>()
         val conditionsBefore = ConcurrentHashMap<String, DeviceInfo>()
         val localesBefore = ConcurrentHashMap<String, List<String>>()

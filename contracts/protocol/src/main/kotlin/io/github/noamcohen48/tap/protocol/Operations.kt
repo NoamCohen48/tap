@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.protocol
 
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
@@ -9,8 +10,10 @@ import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DismissNotification
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.Done
 import io.github.noamcohen48.tap.api.v1.DoubleTap
@@ -22,12 +25,20 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
+import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MatchMode
+import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.NotificationMatch
+import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetProgress
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
@@ -35,6 +46,7 @@ import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
@@ -106,11 +118,14 @@ val Command.isMutation: Boolean
             OpCase.SET_ORIENTATION, OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION,
             OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG, OpCase.PINCH, OpCase.FLING,
             OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.SET_CLIPBOARD,
+            OpCase.PERFORM_ACCESSIBILITY_ACTION, OpCase.SET_PROGRESS, OpCase.SET_LOCATION,
+            OpCase.OPEN_NOTIFICATION, OpCase.DISMISS_NOTIFICATION,
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.WAIT_APP_VISIBLE, OpCase.WAIT_SCREEN_STABLE,
-            OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.OP_NOT_SET, null,
+            OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST,
+            OpCase.AWAIT_NOTIFICATION, OpCase.LIST_NOTIFICATIONS, OpCase.OP_NOT_SET, null,
             -> false
         }
 
@@ -137,11 +152,14 @@ val Command.targetSelector: Selector?
             OpCase.PINCH -> pinch.selector
             OpCase.FLING -> fling.selector
             OpCase.PERFORM_IME_ACTION -> performImeAction.selector
+            OpCase.PERFORM_ACCESSIBILITY_ACTION -> performAccessibilityAction.selector
+            OpCase.SET_PROGRESS -> setProgress.selector
             OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.TYPE_TEXT, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
             OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.SET_ORIENTATION,
             OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.SET_CLIPBOARD,
-            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.OP_NOT_SET, null,
+            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.SET_LOCATION, OpCase.AWAIT_NOTIFICATION,
+            OpCase.LIST_NOTIFICATIONS, OpCase.OPEN_NOTIFICATION, OpCase.DISMISS_NOTIFICATION, OpCase.OP_NOT_SET, null,
             -> null
         }
 
@@ -174,8 +192,10 @@ object Commands {
     fun waitPermissionPrompt(): Command =
         Command.newBuilder().setWaitPermissionPrompt(WaitPermissionPrompt.getDefaultInstance()).build()
 
-    fun choosePermission(choice: PermissionChoice): Command =
-        Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoice(choice)).build()
+    fun choosePermission(
+        choice: PermissionChoice,
+        accuracy: LocationAccuracy = LocationAccuracy.LOCATION_ACCURACY_UNSPECIFIED,
+    ): Command = Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoice(choice).setAccuracy(accuracy)).build()
 
     fun hideKeyboard(): Command = Command.newBuilder().setHideKeyboard(HideKeyboard.getDefaultInstance()).build()
 
@@ -195,6 +215,37 @@ object Commands {
                 packageName?.let { setPackageName(it) }
             },
         ).build()
+
+    /** A notification matching [match] (any active one when every field is null), the newest. */
+    fun awaitNotification(match: NotificationMatch = NotificationMatch.getDefaultInstance()): Command =
+        Command.newBuilder().setAwaitNotification(AwaitNotification.newBuilder().setMatch(match)).build()
+
+    fun listNotifications(): Command = Command.newBuilder().setListNotifications(ListNotifications.getDefaultInstance()).build()
+
+    /** Opens the one notification matching [match]: its content intent, or the button titled [action]. */
+    fun openNotification(
+        match: NotificationMatch,
+        action: String? = null,
+    ): Command =
+        Command.newBuilder().setOpenNotification(
+            OpenNotification.newBuilder().setMatch(match).apply { action?.let { setAction(it) } },
+        ).build()
+
+    fun dismissNotification(match: NotificationMatch): Command =
+        Command.newBuilder().setDismissNotification(DismissNotification.newBuilder().setMatch(match)).build()
+
+    /** The notifications from [packageName] whose title and text match under [mode]; null fields match anything. */
+    fun notificationMatch(
+        packageName: String? = null,
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.MATCH_UNSPECIFIED,
+    ): NotificationMatch =
+        NotificationMatch.newBuilder().setMode(mode).apply {
+            packageName?.let { setPackageName(it) }
+            title?.let { setTitle(it) }
+            text?.let { setText(it) }
+        }.build()
 
     fun dumpHierarchy(): Command = Command.newBuilder().setDumpHierarchy(DumpHierarchy.getDefaultInstance()).build()
 
@@ -262,6 +313,43 @@ object Commands {
 
     fun performImeAction(selector: Selector): Command =
         Command.newBuilder().setPerformImeAction(PerformImeAction.newBuilder().setSelector(selector)).build()
+
+    fun performAccessibilityAction(
+        selector: Selector,
+        action: StandardAction,
+    ): Command =
+        Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(selector).setStandard(action)).build()
+
+    fun performCustomAction(
+        selector: Selector,
+        label: String,
+    ): Command =
+        Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(selector).setCustom(label)).build()
+
+    fun setProgress(
+        selector: Selector,
+        value: Float,
+    ): Command = Command.newBuilder().setSetProgress(SetProgress.newBuilder().setSelector(selector).setValue(value)).build()
+
+    /** A mock location fix; [accuracyM] null = the driver's default, [altitudeM] null = none. */
+    fun setLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyM: Float? = null,
+        altitudeM: Double? = null,
+    ): Command =
+        Command
+            .newBuilder()
+            .setSetLocation(
+                SetLocation
+                    .newBuilder()
+                    .setLatitude(latitude)
+                    .setLongitude(longitude)
+                    .apply {
+                        accuracyM?.let(::setAccuracyM)
+                        altitudeM?.let(::setAltitudeM)
+                    },
+            ).build()
 
     fun doubleTap(selector: Selector): Command = Command.newBuilder().setDoubleTap(DoubleTap.newBuilder().setSelector(selector)).build()
 
@@ -463,11 +551,25 @@ interface CommandHandler {
 
     fun performImeAction(command: PerformImeAction)
 
+    fun performAccessibilityAction(command: PerformAccessibilityAction)
+
+    fun setProgress(command: SetProgress)
+
+    fun setLocation(command: SetLocation)
+
     fun setClipboard(command: SetClipboard)
 
     fun getClipboard(command: GetClipboard): String
 
     fun awaitToast(command: AwaitToast): Toast
+
+    fun awaitNotification(command: AwaitNotification): DeviceNotification
+
+    fun listNotifications(command: ListNotifications): NotificationList
+
+    fun openNotification(command: OpenNotification)
+
+    fun dismissNotification(command: DismissNotification)
 
     fun setOrientation(command: SetOrientation)
 
@@ -548,9 +650,16 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.CHOOSE_PERMISSION -> result.setDone(done).also { handler.choosePermission(choosePermission) }
         OpCase.HIDE_KEYBOARD -> result.setDone(done).also { handler.hideKeyboard(hideKeyboard) }
         OpCase.PERFORM_IME_ACTION -> result.setDone(done).also { handler.performImeAction(performImeAction) }
+        OpCase.PERFORM_ACCESSIBILITY_ACTION -> result.setDone(done).also { handler.performAccessibilityAction(performAccessibilityAction) }
+        OpCase.SET_PROGRESS -> result.setDone(done).also { handler.setProgress(setProgress) }
+        OpCase.SET_LOCATION -> result.setDone(done).also { handler.setLocation(setLocation) }
         OpCase.SET_CLIPBOARD -> result.setDone(done).also { handler.setClipboard(setClipboard) }
         OpCase.GET_CLIPBOARD -> result.setText(handler.getClipboard(getClipboard))
         OpCase.AWAIT_TOAST -> result.setToast(handler.awaitToast(awaitToast))
+        OpCase.AWAIT_NOTIFICATION -> result.setNotification(handler.awaitNotification(awaitNotification))
+        OpCase.LIST_NOTIFICATIONS -> result.setNotifications(handler.listNotifications(listNotifications))
+        OpCase.OPEN_NOTIFICATION -> result.setDone(done).also { handler.openNotification(openNotification) }
+        OpCase.DISMISS_NOTIFICATION -> result.setDone(done).also { handler.dismissNotification(dismissNotification) }
         OpCase.OP_NOT_SET, null -> throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "No command op this driver knows is set")
     }
     return result

@@ -1033,6 +1033,137 @@ class TapClientTest {
     }
 
     @Test
+    fun `accessibility actions, progress and location accuracy send their typed commands`() {
+        runBlocking {
+            fakeDevices.executeResponder = { request ->
+                val result = CommandResult.newBuilder()
+                when (request.command.opCase) {
+                    Command.OpCase.SNAPSHOT ->
+                        result
+                            .setSnapshot(
+                                io.github.noamcohen48.tap.api.v1.ElementSnapshot
+                                    .newBuilder()
+                                    .addActions(io.github.noamcohen48.tap.api.v1.StandardAction.A11Y_COLLAPSE)
+                                    .addActionsValue(999)
+                                    .addCustomActions("Archive")
+                                    .setRange(
+                                        io.github.noamcohen48.tap.api.v1.Range
+                                            .newBuilder()
+                                            .setType(io.github.noamcohen48.tap.api.v1.RangeType.RANGE_INT)
+                                            .setMax(100f)
+                                            .setCurrent(20f),
+                                    ),
+                            ).build()
+                    Command.OpCase.PERFORM_ACCESSIBILITY_ACTION, Command.OpCase.SET_PROGRESS, Command.OpCase.CHOOSE_PERMISSION ->
+                        result.setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        val card = device.screen.element(res("card"))
+                        val snapshot = card.snapshot()
+                        assertEquals(listOf(StandardAction.COLLAPSE), snapshot.actions)
+                        assertEquals(listOf("Archive"), snapshot.customActions)
+                        assertEquals(Range(RangeType.INT, 0f, 100f, 20f), snapshot.range)
+                        card.performAction(StandardAction.EXPAND)
+                        card.performCustomAction("Archive")
+                        card.setProgress(55f)
+                        assertFailsWith<IllegalArgumentException> { card.setProgress(Float.NaN) }
+                        device.choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
+                        val commands = fakeDevices.executeRequests.map { it.command }
+                        val (standard, custom) = commands.filter { it.hasPerformAccessibilityAction() }.map { it.performAccessibilityAction }
+                        assertEquals(io.github.noamcohen48.tap.api.v1.StandardAction.A11Y_EXPAND, standard.standard)
+                        assertEquals(res("card").proto, standard.selector)
+                        assertEquals("Archive", custom.custom)
+                        assertEquals(55f, commands.single { it.hasSetProgress() }.setProgress.value)
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.LocationAccuracy.LOCATION_APPROXIMATE,
+                            commands.single { it.hasChoosePermission() }.choosePermission.accuracy,
+                        )
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `notifications are matched, listed, opened and dismissed through Execute`() {
+        runBlocking {
+            val message =
+                io.github.noamcohen48.tap.api.v1.DeviceNotification
+                    .newBuilder()
+                    .setPackageName("com.test")
+                    .setTitle("New message")
+                    .addActions("Reply")
+                    .setClearable(true)
+                    .setPostedAtMs(1_790_000_000_000)
+                    .build()
+            fakeDevices.executeResponder = { request ->
+                val result = CommandResult.newBuilder()
+                when (request.command.opCase) {
+                    Command.OpCase.AWAIT_NOTIFICATION -> result.setNotification(message).build()
+                    Command.OpCase.LIST_NOTIFICATIONS ->
+                        result.setNotifications(io.github.noamcohen48.tap.api.v1.NotificationList.newBuilder().addNotifications(message)).build()
+                    Command.OpCase.OPEN_NOTIFICATION, Command.OpCase.DISMISS_NOTIFICATION -> result.setDone(Done.getDefaultInstance()).build()
+                    else -> null
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        val expected = Notification("com.test", "New message", null, listOf("Reply"), true, java.time.Instant.ofEpochMilli(1_790_000_000_000))
+                        assertEquals(expected, device.app("com.test").awaitNotification("New", mode = MatchMode.STARTS_WITH))
+                        assertEquals(listOf(expected), device.notifications())
+                        device.openNotification(title = "New message", action = "Reply")
+                        device.dismissNotification(text = "Sync", packageName = "android")
+                        val commands = fakeDevices.executeRequests.map { it.command }
+                        val awaited = commands.single { it.hasAwaitNotification() }.awaitNotification.match
+                        assertEquals("New", awaited.title)
+                        assertEquals(io.github.noamcohen48.tap.api.v1.MatchMode.MATCH_STARTS_WITH, awaited.mode)
+                        assertEquals("com.test", awaited.packageName)
+                        assertFalse(awaited.hasText())
+                        val opened = commands.single { it.hasOpenNotification() }.openNotification
+                        assertEquals("Reply", opened.action)
+                        assertFalse(opened.match.hasPackageName())
+                        val dismissed = commands.single { it.hasDismissNotification() }.dismissNotification.match
+                        assertEquals("Sync", dismissed.text)
+                        assertEquals("android", dismissed.packageName)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
+    fun `awaitNotification timeout carries NO_NOTIFICATION`() {
+        val none =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("NO_NOTIFICATION")
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(none).build() }) { it.awaitNotification(title = "New message") }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.NO_NOTIFICATION, failure.reason)
+        assertTrue("title \"New message\"" in failure.message.orEmpty(), failure.message)
+    }
+
+    @Test
     fun `awaitToast timeout carries NO_TOAST`() {
         val none =
             io.github.noamcohen48.tap.api.v1.Error
@@ -1681,6 +1812,53 @@ class TapClientTest {
     }
 
     @Test
+    fun `files stream in chunks both ways, name the attached device and keep the failure reason`() {
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val device = tapScope { connection.attachDevice("emulator-5554") }
+                val local = Files.createTempFile("tap-sdk-push", ".bin")
+                val pulled = Files.createTempFile("tap-sdk-pull", ".bin")
+                try {
+                    // Over one chunk, so the upload is split.
+                    val big = ByteArray((1 shl 20) + 3) { it.toByte() }
+                    Files.write(local, big)
+                    tapScope {
+                        device.pushFile("/data/local/tmp/a.txt", "hello".toByteArray())
+                        device.pushFile("/data/local/tmp/big.bin", local)
+                        assertEquals("hello", device.pullFile("/data/local/tmp/a.txt").decodeToString())
+                        device.pullFile("/data/local/tmp/big.bin", pulled)
+                        assertTrue(big.contentEquals(Files.readAllBytes(pulled)))
+                        val taken = assertFailsWith<ServerException> { device.pushFile("/data/local/tmp/a.txt", ByteArray(1)) }
+                        assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.DEVICE_FILE, taken.reason)
+                        assertEquals("/sdcard/Pictures/Tap/cat.png", device.addMedia("cat.png", byteArrayOf(1, 2)))
+                        assertEquals("/sdcard/Pictures/Tap/${local.fileName}", device.addMedia(local))
+                    }
+                    assertEquals(listOf(1 shl 20, 3), fakeDevices.fileChunks.drop(1).take(2))
+                    for (header in fakeDevices.fileHeaders) {
+                        val ids =
+                            when (header) {
+                                is io.github.noamcohen48.tap.api.v1.PushFileHeader -> header.clientConnectionId to header.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.PullFileRequest -> header.clientConnectionId to header.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.AddMediaHeader -> header.clientConnectionId to header.attachedDeviceId
+                                else -> error("unexpected request $header")
+                            }
+                        assertEquals(connection.id to device.attachedDeviceId, ids)
+                    }
+                    val sizes = fakeDevices.fileHeaders.filterIsInstance<io.github.noamcohen48.tap.api.v1.PushFileHeader>().map { it.sizeBytes }
+                    assertEquals(listOf(5L, big.size.toLong(), 1L), sizes)
+                } finally {
+                    Files.deleteIfExists(local)
+                    Files.deleteIfExists(pulled)
+                    tapScope { device.detach() }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `device conditions name the attached device and keep the failure reason`() {
         runBlocking {
             val connection = client().connect("test")
@@ -1697,6 +1875,19 @@ class TapClientTest {
                         assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.UNSUPPORTED_API, old.reason)
                         val stuck = assertFailsWith<ServerException> { device.setDensity(999) }
                         assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.DEVICE_SETTING, stuck.reason)
+                        device.setNetwork(airplaneMode = true, mobileData = false)
+                        assertFailsWith<IllegalArgumentException> { device.setNetwork() }
+                        device.setSystemLocales("fr-FR", "en")
+                        assertFailsWith<IllegalArgumentException> { device.setSystemLocales(emptyList()) }
+                        device.setLocation(48.8584, 2.2945, accuracyM = 3.5f)
+                        assertFailsWith<IllegalArgumentException> { device.setLocation(91.0, 0.0) }
+                        assertFailsWith<IllegalArgumentException> { device.setLocation(0.0, 0.0, accuracyM = 0f) }
+                        device.setStayAwake(true)
+                        device.setAccessibilityDisplay(highContrastText = true, boldText = false)
+                        assertFailsWith<IllegalArgumentException> { device.setAccessibilityDisplay() }
+                        assertEquals(ForegroundActivity("io.example", "io.example.MainActivity"), device.foregroundActivity())
+                        fakeDevices.foreground = null
+                        assertEquals(null, device.foregroundActivity())
                     }
                     val sent = fakeDevices.conditions
                     assertFalse((sent[0] as io.github.noamcohen48.tap.api.v1.SetAnimationsRequest).enabled)
@@ -1704,6 +1895,14 @@ class TapClientTest {
                     assertEquals(320, (sent[2] as io.github.noamcohen48.tap.api.v1.SetDensityRequest).dpi)
                     assertFalse((sent[3] as io.github.noamcohen48.tap.api.v1.SetDensityRequest).hasDpi())
                     assertTrue((sent[4] as io.github.noamcohen48.tap.api.v1.SetDarkModeRequest).enabled)
+                    val network = sent[6] as io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+                    assertTrue(network.airplaneMode && network.hasMobileData() && !network.mobileData && !network.hasWifi())
+                    assertEquals(listOf("fr-FR", "en"), (sent[7] as io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest).localesList)
+                    val location = sent[8] as io.github.noamcohen48.tap.api.v1.SetLocationRequest
+                    assertTrue(location.latitude == 48.8584 && location.accuracyM == 3.5f && !location.hasAltitudeM())
+                    assertTrue((sent[9] as io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest).enabled)
+                    val display = sent[10] as io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
+                    assertTrue(display.highContrastText && display.hasBoldText() && !display.boldText && !display.hasColorInversion())
                     for (request in sent) {
                         val ids =
                             when (request) {
@@ -1711,6 +1910,11 @@ class TapClientTest {
                                 is io.github.noamcohen48.tap.api.v1.SetFontScaleRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetDensityRequest -> request.clientConnectionId to request.attachedDeviceId
                                 is io.github.noamcohen48.tap.api.v1.SetDarkModeRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetNetworkRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetLocationRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest -> request.clientConnectionId to request.attachedDeviceId
+                                is io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest -> request.clientConnectionId to request.attachedDeviceId
                                 else -> error("unexpected request $request")
                             }
                         assertEquals(connection.id to device.attachedDeviceId, ids)
@@ -2063,6 +2267,108 @@ class TapClientTest {
             }
             return io.github.noamcohen48.tap.api.v1.SetDensityResponse
                 .getDefaultInstance()
+        }
+
+        var foreground: Pair<String, String>? = "io.example" to "io.example.MainActivity"
+
+        override suspend fun setStayAwake(request: io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest): io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse =
+            io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setAccessibilityDisplay(
+            request: io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse =
+            io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun getForegroundActivity(
+            request: io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest,
+        ): io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse =
+            io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
+                .newBuilder()
+                .apply { foreground?.let { (pkg, activity) -> setPackageName(pkg).setActivity(activity) } }
+                .build()
+
+        override suspend fun setNetwork(request: io.github.noamcohen48.tap.api.v1.SetNetworkRequest): io.github.noamcohen48.tap.api.v1.SetNetworkResponse =
+            io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setSystemLocales(
+            request: io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse =
+            io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        override suspend fun setLocation(
+            request: io.github.noamcohen48.tap.api.v1.SetLocationRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetLocationResponse =
+            io.github.noamcohen48.tap.api.v1.SetLocationResponse
+                .getDefaultInstance()
+                .also { conditions += request }
+
+        /** Device files by path, and the headers and chunk sizes the uploads carried. */
+        val files = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        val fileHeaders = CopyOnWriteArrayList<Any>()
+        val fileChunks = CopyOnWriteArrayList<Int>()
+
+        override suspend fun pushFile(
+            requests: kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.PushFileRequest>,
+        ): io.github.noamcohen48.tap.api.v1.PushFileResponse {
+            var path = ""
+            val bytes = java.io.ByteArrayOutputStream()
+            requests.collect {
+                if (it.hasHeader()) {
+                    fileHeaders += it.header
+                    path = it.header.devicePath
+                } else {
+                    fileChunks += it.chunk.size()
+                    it.chunk.writeTo(bytes)
+                }
+            }
+            if (files.containsKey(path)) {
+                throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_DEVICE_FILE, "$path already exists", "emulator-5554")
+            }
+            files[path] = bytes.toByteArray()
+            return io.github.noamcohen48.tap.api.v1.PushFileResponse
+                .getDefaultInstance()
+        }
+
+        override fun pullFile(
+            request: io.github.noamcohen48.tap.api.v1.PullFileRequest,
+        ): kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.PullFileResponse> =
+            kotlinx.coroutines.flow.flow {
+                fileHeaders += request
+                val bytes = files[request.devicePath] ?: throw Status.NOT_FOUND.asException()
+                emit(io.github.noamcohen48.tap.api.v1.PullFileResponse.newBuilder().setSizeBytes(bytes.size.toLong()).build())
+                // Two chunks, so the client stitches them.
+                for (part in listOf(bytes.copyOfRange(0, bytes.size / 2), bytes.copyOfRange(bytes.size / 2, bytes.size))) {
+                    emit(io.github.noamcohen48.tap.api.v1.PullFileResponse.newBuilder().setChunk(com.google.protobuf.ByteString.copyFrom(part)).build())
+                }
+            }
+
+        override suspend fun addMedia(
+            requests: kotlinx.coroutines.flow.Flow<io.github.noamcohen48.tap.api.v1.AddMediaRequest>,
+        ): io.github.noamcohen48.tap.api.v1.AddMediaResponse {
+            var name = ""
+            val bytes = java.io.ByteArrayOutputStream()
+            requests.collect {
+                if (it.hasHeader()) {
+                    fileHeaders += it.header
+                    name = it.header.fileName
+                } else {
+                    it.chunk.writeTo(bytes)
+                }
+            }
+            val path = "/sdcard/Pictures/Tap/$name"
+            files[path] = bytes.toByteArray()
+            return io.github.noamcohen48.tap.api.v1.AddMediaResponse
+                .newBuilder()
+                .setDevicePath(path)
+                .build()
         }
     }
 

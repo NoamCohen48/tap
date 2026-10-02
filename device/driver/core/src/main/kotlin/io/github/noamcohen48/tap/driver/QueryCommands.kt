@@ -63,7 +63,12 @@ internal class QueryCommands(
                 .setSelected(element.isSelected)
                 .setChildCount(element.childCount)
                 .setShowingHint(node.isShowingHintText)
-                .build()
+                .apply {
+                    val (standard, custom) = AccessibilityActionCommands.offered(node)
+                    addAllActions(standard)
+                    addAllCustomActions(custom)
+                    AccessibilityActionCommands.range(node)?.let(::setRange)
+                }.build()
         } finally {
             element.recycle()
         }
@@ -89,6 +94,15 @@ internal class QueryCommands(
             .setDarkMode(conditions.darkMode)
             .setFontScale(conditions.fontScale)
             .setDensityDpi(conditions.densityDpi)
+            .setAirplaneMode(conditions.airplaneMode)
+            .setWifiEnabled(conditions.wifiEnabled)
+            .setMobileDataEnabled(conditions.mobileDataEnabled)
+            .addAllSystemLocales(conditions.systemLocales)
+            .setStayAwake(conditions.stayAwake)
+            .apply {
+                conditions.highContrastText?.let(::setHighContrastText)
+                conditions.colorInversion?.let(::setColorInversion)
+            }.setBoldText(conditions.boldText)
             .build()
 
     /**

@@ -5,18 +5,22 @@ import com.google.protobuf.MessageLite
 import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Toast
+import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
 import io.github.noamcohen48.tap.wire.v1.Authentication
 import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
@@ -129,8 +133,35 @@ class GoldenWireTest {
             "request-choose-permission" to (
                 envelope(Requests.of(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY))) to Request::parseFrom
             ),
+            "request-choose-permission-accuracy" to (
+                envelope(
+                    Requests.of(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE)),
+                ) to Request::parseFrom
+            ),
+            "request-perform-accessibility-action" to (
+                envelope(Requests.of(Commands.performAccessibilityAction(Selectors.resource("details"), StandardAction.A11Y_EXPAND))) to
+                    Request::parseFrom
+            ),
+            "request-perform-custom-action" to (
+                envelope(Requests.of(Commands.performCustomAction(Selectors.resource("card"), "Archive"))) to Request::parseFrom
+            ),
+            "request-set-location" to (
+                envelope(Requests.of(Commands.setLocation(48.8584, 2.2945, accuracyM = 3.5f, altitudeM = 35.0))) to Request::parseFrom
+            ),
+            "request-set-progress" to (envelope(Requests.of(Commands.setProgress(Selectors.resource("volume"), 42.5f))) to Request::parseFrom),
             "request-await-toast" to (
                 envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom
+            ),
+            "request-await-notification" to (
+                envelope(Requests.of(Commands.awaitNotification(Commands.notificationMatch(AUT, "New message", "from Ada", MatchMode.MATCH_CONTAINS)))) to
+                    Request::parseFrom
+            ),
+            "request-open-notification-action" to (
+                envelope(Requests.of(Commands.openNotification(Commands.notificationMatch(AUT, title = "New message"), action = "Reply"))) to
+                    Request::parseFrom
+            ),
+            "request-dismiss-notification" to (
+                envelope(Requests.of(Commands.dismissNotification(Commands.notificationMatch(text = "Syncing")))) to Request::parseFrom
             ),
             "request-set-clipboard" to (envelope(Requests.of(Commands.setClipboard("copied 42"))) to Request::parseFrom),
             "request-type-text" to (envelope(Requests.of(Commands.typeText("keys 42"))) to Request::parseFrom),
@@ -248,6 +279,23 @@ class GoldenWireTest {
             ),
             "response-toast" to (
                 result { setToast(Toast.newBuilder().setText("Saved").setPackageName(AUT)) } to Response::parseFrom
+            ),
+            "response-notifications" to (
+                result {
+                    setNotifications(
+                        NotificationList.newBuilder()
+                            .addNotifications(
+                                DeviceNotification.newBuilder()
+                                    .setPackageName(AUT)
+                                    .setTitle("New message")
+                                    .setText("from Ada")
+                                    .addActions("Reply")
+                                    .addActions("Mark as read")
+                                    .setClearable(true)
+                                    .setPostedAtMs(1_790_000_000_000),
+                            ).addNotifications(DeviceNotification.newBuilder().setPackageName("android").setPostedAtMs(1_789_999_999_000)),
+                    )
+                } to Response::parseFrom
             ),
             "response-permission-prompt" to (
                 result {

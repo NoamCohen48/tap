@@ -50,6 +50,14 @@ class Check(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CHECK_CHECKED: _ClassVar[Check]
     CHECK_UNCHECKED: _ClassVar[Check]
     CHECK_FOCUSED: _ClassVar[Check]
+
+class DeviceCheck(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    DEVICE_CHECK_UNSPECIFIED: _ClassVar[DeviceCheck]
+    DEVICE_CHECK_FOREGROUND_ACTIVITY: _ClassVar[DeviceCheck]
+    DEVICE_CHECK_KEYBOARD_SHOWN: _ClassVar[DeviceCheck]
+    DEVICE_CHECK_KEYBOARD_HIDDEN: _ClassVar[DeviceCheck]
+    DEVICE_CHECK_CLIPBOARD_EQUALS: _ClassVar[DeviceCheck]
 SELECTOR_ORIGIN_UNSPECIFIED: SelectorOrigin
 SELECTOR_ORIGIN_SYNTHESIZED: SelectorOrigin
 SELECTOR_ORIGIN_ALTERNATIVE: SelectorOrigin
@@ -76,6 +84,11 @@ CHECK_DISABLED: Check
 CHECK_CHECKED: Check
 CHECK_UNCHECKED: Check
 CHECK_FOCUSED: Check
+DEVICE_CHECK_UNSPECIFIED: DeviceCheck
+DEVICE_CHECK_FOREGROUND_ACTIVITY: DeviceCheck
+DEVICE_CHECK_KEYBOARD_SHOWN: DeviceCheck
+DEVICE_CHECK_KEYBOARD_HIDDEN: DeviceCheck
+DEVICE_CHECK_CLIPBOARD_EQUALS: DeviceCheck
 
 class InfoRequest(_message.Message):
     __slots__ = ()
@@ -206,6 +219,46 @@ class CountResponse(_message.Message):
     COUNT_FIELD_NUMBER: _ClassVar[int]
     count: int
     def __init__(self, count: _Optional[int] = ...) -> None: ...
+
+class DescribeElementRequest(_message.Message):
+    __slots__ = ("selector",)
+    SELECTOR_FIELD_NUMBER: _ClassVar[int]
+    selector: _selector_pb2.Selector
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ...) -> None: ...
+
+class DescribeElementResponse(_message.Message):
+    __slots__ = ("actions", "custom_actions", "range")
+    ACTIONS_FIELD_NUMBER: _ClassVar[int]
+    CUSTOM_ACTIONS_FIELD_NUMBER: _ClassVar[int]
+    RANGE_FIELD_NUMBER: _ClassVar[int]
+    actions: _containers.RepeatedScalarFieldContainer[_command_pb2.StandardAction]
+    custom_actions: _containers.RepeatedScalarFieldContainer[str]
+    range: _command_pb2.Range
+    def __init__(self, actions: _Optional[_Iterable[_Union[_command_pb2.StandardAction, str]]] = ..., custom_actions: _Optional[_Iterable[str]] = ..., range: _Optional[_Union[_command_pb2.Range, _Mapping]] = ...) -> None: ...
+
+class GetDeviceStatusRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetDeviceStatusResponse(_message.Message):
+    __slots__ = ("info", "foreground_package", "foreground_activity")
+    INFO_FIELD_NUMBER: _ClassVar[int]
+    FOREGROUND_PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    FOREGROUND_ACTIVITY_FIELD_NUMBER: _ClassVar[int]
+    info: _command_pb2.DeviceInfo
+    foreground_package: str
+    foreground_activity: str
+    def __init__(self, info: _Optional[_Union[_command_pb2.DeviceInfo, _Mapping]] = ..., foreground_package: _Optional[str] = ..., foreground_activity: _Optional[str] = ...) -> None: ...
+
+class ListNotificationsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ListNotificationsResponse(_message.Message):
+    __slots__ = ("notifications",)
+    NOTIFICATIONS_FIELD_NUMBER: _ClassVar[int]
+    notifications: _containers.RepeatedCompositeFieldContainer[_command_pb2.DeviceNotification]
+    def __init__(self, notifications: _Optional[_Iterable[_Union[_command_pb2.DeviceNotification, _Mapping]]] = ...) -> None: ...
 
 class PerformRequest(_message.Message):
     __slots__ = ("step", "secret_value", "before_step_id", "skip_recording")
@@ -383,7 +436,7 @@ class RecordedDevice(_message.Message):
     def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ...) -> None: ...
 
 class Step(_message.Message):
-    __slots__ = ("id", "note", "outcome", "app", "action", "type", "wait", "assertion", "scroll_until", "app_wait")
+    __slots__ = ("id", "note", "outcome", "app", "action", "type", "wait", "assertion", "scroll_until", "app_wait", "device_wait", "device", "device_assertion")
     ID_FIELD_NUMBER: _ClassVar[int]
     NOTE_FIELD_NUMBER: _ClassVar[int]
     OUTCOME_FIELD_NUMBER: _ClassVar[int]
@@ -394,6 +447,9 @@ class Step(_message.Message):
     ASSERTION_FIELD_NUMBER: _ClassVar[int]
     SCROLL_UNTIL_FIELD_NUMBER: _ClassVar[int]
     APP_WAIT_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_WAIT_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_ASSERTION_FIELD_NUMBER: _ClassVar[int]
     id: str
     note: str
     outcome: Outcome
@@ -404,7 +460,10 @@ class Step(_message.Message):
     assertion: AssertionStep
     scroll_until: ScrollUntilStep
     app_wait: AppWaitStep
-    def __init__(self, id: _Optional[str] = ..., note: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., app: _Optional[_Union[_event_log_pb2.AppCall, _Mapping]] = ..., action: _Optional[_Union[ActionStep, _Mapping]] = ..., type: _Optional[_Union[TypeStep, _Mapping]] = ..., wait: _Optional[_Union[WaitStep, _Mapping]] = ..., assertion: _Optional[_Union[AssertionStep, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntilStep, _Mapping]] = ..., app_wait: _Optional[_Union[AppWaitStep, _Mapping]] = ...) -> None: ...
+    device_wait: DeviceWaitStep
+    device: _event_log_pb2.DeviceCall
+    device_assertion: DeviceAssertionStep
+    def __init__(self, id: _Optional[str] = ..., note: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., app: _Optional[_Union[_event_log_pb2.AppCall, _Mapping]] = ..., action: _Optional[_Union[ActionStep, _Mapping]] = ..., type: _Optional[_Union[TypeStep, _Mapping]] = ..., wait: _Optional[_Union[WaitStep, _Mapping]] = ..., assertion: _Optional[_Union[AssertionStep, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntilStep, _Mapping]] = ..., app_wait: _Optional[_Union[AppWaitStep, _Mapping]] = ..., device_wait: _Optional[_Union[DeviceWaitStep, _Mapping]] = ..., device: _Optional[_Union[_event_log_pb2.DeviceCall, _Mapping]] = ..., device_assertion: _Optional[_Union[DeviceAssertionStep, _Mapping]] = ...) -> None: ...
 
 class ActionStep(_message.Message):
     __slots__ = ("command", "wait", "secret", "selector_origin")
@@ -481,6 +540,20 @@ class AppWaitStep(_message.Message):
     COMMAND_FIELD_NUMBER: _ClassVar[int]
     command: _command_pb2.Command
     def __init__(self, command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ...) -> None: ...
+
+class DeviceWaitStep(_message.Message):
+    __slots__ = ("command",)
+    COMMAND_FIELD_NUMBER: _ClassVar[int]
+    command: _command_pb2.Command
+    def __init__(self, command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ...) -> None: ...
+
+class DeviceAssertionStep(_message.Message):
+    __slots__ = ("check", "text")
+    CHECK_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    check: DeviceCheck
+    text: str
+    def __init__(self, check: _Optional[_Union[DeviceCheck, str]] = ..., text: _Optional[str] = ...) -> None: ...
 
 class Outcome(_message.Message):
     __slots__ = ("duration_ms", "error", "failure", "mismatch")

@@ -20,7 +20,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file device.proto.
  */
 export const file_device: GenFile = /*@__PURE__*/
-  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnki4wEKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIfChJkZWZhdWx0X3RpbWVvdXRfbXMYByABKANIAYgBARIdChBsZWFzZV90aW1lb3V0X21zGAggASgDSAKIAQFCFgoUX3NraXBfZHJpdmVyX2luc3RhbGxCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tcyJ5Cg5BdHRhY2hSZXNwb25zZRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhIKCmdlbmVyYXRpb24YAyABKAMSJwoLZGV2aWNlX2luZm8YBCABKAsyEi50YXAudjEuRGV2aWNlSW5mbyJJCg1EZXRhY2hSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSI/Cg5EZXRhY2hSZXNwb25zZRINCgVjbGVhbhgBIAEoCBITCgZkZXRhaWwYAiABKAlIAIgBAUIJCgdfZGV0YWlsImwKDkV4ZWN1dGVSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIgCgdjb21tYW5kGAMgASgLMg8udGFwLnYxLkNvbW1hbmQiOAoPRXhlY3V0ZVJlc3BvbnNlEiUKBnJlc3VsdBgBIAEoCzIVLnRhcC52MS5Db21tYW5kUmVzdWx0InUKEVNjcmVlbnNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMibwoSU2NyZWVuc2hvdFJlc3BvbnNlEgsKA3BuZxgBIAEoDBIOCgZzaGEyNTYYAiABKAkSEgoFd2lkdGgYAyABKAVIAIgBARITCgZoZWlnaHQYBCABKAVIAYgBAUIICgZfd2lkdGhCCQoHX2hlaWdodCKLAQoVU3RhcnRSZWNvcmRpbmdSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRINCgV2aWRlbxgDIAEoCBIUCgxhdWRpb19zb3VyY2UYBCABKAkSEwoLbWF4X3NlY29uZHMYBSABKAUiGAoWU3RhcnRSZWNvcmRpbmdSZXNwb25zZSJQChRTdG9wUmVjb3JkaW5nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiRQoVU3RvcFJlY29yZGluZ1Jlc3BvbnNlEgwKBGRhdGEYASABKAwSDgoGZm9ybWF0GAIgASgJEg4KBnNoYTI1NhgDIAEoCSJMChBEcml2ZXJMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSIiChFEcml2ZXJMb2dSZXNwb25zZRINCgVsaW5lcxgBIAMoCSKWAQoVU2NyZWVuU25hcHNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQESGwoTc2VsZWN0b3JfY2FuZGlkYXRlcxgEIAEoCEINCgtfdGltZW91dF9tcyJbChFTZWxlY3RvckNhbmRpZGF0ZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIiCgRraW5kGAIgASgOMhQudGFwLnYxLlNlbGVjdG9yS2luZCKLBAoKU2NyZWVuTm9kZRILCgNyZWYYASABKAkSDQoFZGVwdGgYAiABKAUSFgoOd2luZG93X3BhY2thZ2UYAyABKAkSFwoKY2xhc3NfbmFtZRgEIAEoCUgAiAEBEhoKDXJlc291cmNlX25hbWUYBSABKAlIAYgBARIRCgR0ZXh0GAYgASgJSAKIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgHIAEoCUgDiAEBEhEKBGhpbnQYCCABKAlIBIgBARIeCgZib3VuZHMYCSABKAsyDi50YXAudjEuQm91bmRzEh8KBWZsYWdzGAogAygOMhAudGFwLnYxLk5vZGVGbGFnEhAKCHBhc3N3b3JkGAsgASgIEhMKC2ludGVyYWN0aXZlGAwgASgIEicKCHNlbGVjdG9yGA0gASgLMhAudGFwLnYxLlNlbGVjdG9ySAWIAQESEAoIYnlfaW5kZXgYDiABKAgSIgoGY2hhbmdlGA8gASgOMhIudGFwLnYxLk5vZGVDaGFuZ2USLQoKY2FuZGlkYXRlcxgQIAMoCzIZLnRhcC52MS5TZWxlY3RvckNhbmRpZGF0ZUINCgtfY2xhc3NfbmFtZUIQCg5fcmVzb3VyY2VfbmFtZUIHCgVfdGV4dEIWChRfY29udGVudF9kZXNjcmlwdGlvbkIHCgVfaGludEILCglfc2VsZWN0b3IihwEKFlNjcmVlblNuYXBzaG90UmVzcG9uc2USEwoLc25hcHNob3RfaWQYASABKAMSIQoFbm9kZXMYAiADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIjCgdyZW1vdmVkGAMgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSEAoIcm90YXRpb24YBCABKAUiWgoRUmVzb2x2ZVJlZlJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEgsKA3JlZhgDIAEoCSJfChJSZXNvbHZlUmVmUmVzcG9uc2USIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISEAoIYnlfaW5kZXgYAiABKAgSEwoLc25hcHNob3RfaWQYAyABKAMiYQoUU2V0QW5pbWF0aW9uc1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg8KB2VuYWJsZWQYAyABKAgiFwoVU2V0QW5pbWF0aW9uc1Jlc3BvbnNlIl8KElNldERhcmtNb2RlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSDwoHZW5hYmxlZBgDIAEoCCIVChNTZXREYXJrTW9kZVJlc3BvbnNlIl4KE1NldEZvbnRTY2FsZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg0KBXNjYWxlGAMgASgCIhYKFFNldEZvbnRTY2FsZVJlc3BvbnNlImcKEVNldERlbnNpdHlSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCgNkcGkYAyABKAVIAIgBAUIGCgRfZHBpIhQKElNldERlbnNpdHlSZXNwb25zZSqUAQoLRGV2aWNlU3RhdGUSHAoYREVWSUNFX1NUQVRFX1VOU1BFQ0lGSUVEEAASDwoLREVWSUNFX0ZSRUUQARIRCg1ERVZJQ0VfTEVBU0VEEAISFgoSREVWSUNFX1FVQVJBTlRJTkVEEAMSEgoOREVWSUNFX09GRkxJTkUQBBIXChNERVZJQ0VfVU5BVVRIT1JJWkVEEAUqmgEKDFNlbGVjdG9yS2luZBIdChlTRUxFQ1RPUl9LSU5EX1VOU1BFQ0lGSUVEEAASFwoTU0VMRUNUT1JfS0lORF9QTEFJThABEhoKFlNFTEVDVE9SX0tJTkRfQ09NQklORUQQAhIaChZTRUxFQ1RPUl9LSU5EX0FOQ0VTVE9SEAMSGgoWU0VMRUNUT1JfS0lORF9CWV9JTkRFWBAEKl8KCk5vZGVDaGFuZ2USGwoXTk9ERV9DSEFOR0VfVU5TUEVDSUZJRUQQABIOCgpOT0RFX0FEREVEEAESEgoOTk9ERV9VTkNIQU5HRUQQAhIQCgxOT0RFX1JFTU9WRUQQAzLnBwoNRGV2aWNlU2VydmljZRJGCgtMaXN0RGV2aWNlcxIaLnRhcC52MS5MaXN0RGV2aWNlc1JlcXVlc3QaGy50YXAudjEuTGlzdERldmljZXNSZXNwb25zZRI3CgZBdHRhY2gSFS50YXAudjEuQXR0YWNoUmVxdWVzdBoWLnRhcC52MS5BdHRhY2hSZXNwb25zZRI3CgZEZXRhY2gSFS50YXAudjEuRGV0YWNoUmVxdWVzdBoWLnRhcC52MS5EZXRhY2hSZXNwb25zZRI6CgdFeGVjdXRlEhYudGFwLnYxLkV4ZWN1dGVSZXF1ZXN0GhcudGFwLnYxLkV4ZWN1dGVSZXNwb25zZRJDCgpTY3JlZW5zaG90EhkudGFwLnYxLlNjcmVlbnNob3RSZXF1ZXN0GhoudGFwLnYxLlNjcmVlbnNob3RSZXNwb25zZRJACglEcml2ZXJMb2cSGC50YXAudjEuRHJpdmVyTG9nUmVxdWVzdBoZLnRhcC52MS5Ecml2ZXJMb2dSZXNwb25zZRJPCg5TdGFydFJlY29yZGluZxIdLnRhcC52MS5TdGFydFJlY29yZGluZ1JlcXVlc3QaHi50YXAudjEuU3RhcnRSZWNvcmRpbmdSZXNwb25zZRJMCg1TdG9wUmVjb3JkaW5nEhwudGFwLnYxLlN0b3BSZWNvcmRpbmdSZXF1ZXN0Gh0udGFwLnYxLlN0b3BSZWNvcmRpbmdSZXNwb25zZRJPCg5TY3JlZW5TbmFwc2hvdBIdLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlcXVlc3QaHi50YXAudjEuU2NyZWVuU25hcHNob3RSZXNwb25zZRJDCgpSZXNvbHZlUmVmEhkudGFwLnYxLlJlc29sdmVSZWZSZXF1ZXN0GhoudGFwLnYxLlJlc29sdmVSZWZSZXNwb25zZRJMCg1TZXRBbmltYXRpb25zEhwudGFwLnYxLlNldEFuaW1hdGlvbnNSZXF1ZXN0Gh0udGFwLnYxLlNldEFuaW1hdGlvbnNSZXNwb25zZRJGCgtTZXREYXJrTW9kZRIaLnRhcC52MS5TZXREYXJrTW9kZVJlcXVlc3QaGy50YXAudjEuU2V0RGFya01vZGVSZXNwb25zZRJJCgxTZXRGb250U2NhbGUSGy50YXAudjEuU2V0Rm9udFNjYWxlUmVxdWVzdBocLnRhcC52MS5TZXRGb250U2NhbGVSZXNwb25zZRJDCgpTZXREZW5zaXR5EhkudGFwLnYxLlNldERlbnNpdHlSZXF1ZXN0GhoudGFwLnYxLlNldERlbnNpdHlSZXNwb25zZUIxCiBpby5naXRodWIubm9hbWNvaGVuNDgudGFwLmFwaS52MUILRGV2aWNlUHJvdG9QAWIGcHJvdG8z", [file_command, file_selector]);
+  fileDesc("CgxkZXZpY2UucHJvdG8SBnRhcC52MSKzAQoLRGV2aWNlRW50cnkSDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEiEKFGNsaWVudF9jb25uZWN0aW9uX2lkGAMgASgJSACIAQESHgoRcXVhcmFudGluZV9yZWFzb24YBCABKAlIAYgBAUIXChVfY2xpZW50X2Nvbm5lY3Rpb25faWRCFAoSX3F1YXJhbnRpbmVfcmVhc29uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI7ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiQKB2RldmljZXMYASADKAsyEy50YXAudjEuRGV2aWNlRW50cnki4wEKDUF0dGFjaFJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDgoGc2VyaWFsGAIgASgJEiAKE3NraXBfZHJpdmVyX2luc3RhbGwYBCABKAhIAIgBARIfChJkZWZhdWx0X3RpbWVvdXRfbXMYByABKANIAYgBARIdChBsZWFzZV90aW1lb3V0X21zGAggASgDSAKIAQFCFgoUX3NraXBfZHJpdmVyX2luc3RhbGxCFQoTX2RlZmF1bHRfdGltZW91dF9tc0ITChFfbGVhc2VfdGltZW91dF9tcyJ5Cg5BdHRhY2hSZXNwb25zZRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhIKCmdlbmVyYXRpb24YAyABKAMSJwoLZGV2aWNlX2luZm8YBCABKAsyEi50YXAudjEuRGV2aWNlSW5mbyJJCg1EZXRhY2hSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSI/Cg5EZXRhY2hSZXNwb25zZRINCgVjbGVhbhgBIAEoCBITCgZkZXRhaWwYAiABKAlIAIgBAUIJCgdfZGV0YWlsImwKDkV4ZWN1dGVSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIgCgdjb21tYW5kGAMgASgLMg8udGFwLnYxLkNvbW1hbmQiOAoPRXhlY3V0ZVJlc3BvbnNlEiUKBnJlc3VsdBgBIAEoCzIVLnRhcC52MS5Db21tYW5kUmVzdWx0InUKEVNjcmVlbnNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMibwoSU2NyZWVuc2hvdFJlc3BvbnNlEgsKA3BuZxgBIAEoDBIOCgZzaGEyNTYYAiABKAkSEgoFd2lkdGgYAyABKAVIAIgBARITCgZoZWlnaHQYBCABKAVIAYgBAUIICgZfd2lkdGhCCQoHX2hlaWdodCKLAQoVU3RhcnRSZWNvcmRpbmdSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRINCgV2aWRlbxgDIAEoCBIUCgxhdWRpb19zb3VyY2UYBCABKAkSEwoLbWF4X3NlY29uZHMYBSABKAUiGAoWU3RhcnRSZWNvcmRpbmdSZXNwb25zZSJQChRTdG9wUmVjb3JkaW5nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkiRQoVU3RvcFJlY29yZGluZ1Jlc3BvbnNlEgwKBGRhdGEYASABKAwSDgoGZm9ybWF0GAIgASgJEg4KBnNoYTI1NhgDIAEoCSJMChBEcml2ZXJMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSIiChFEcml2ZXJMb2dSZXNwb25zZRINCgVsaW5lcxgBIAMoCSKWAQoVU2NyZWVuU25hcHNob3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIXCgp0aW1lb3V0X21zGAMgASgDSACIAQESGwoTc2VsZWN0b3JfY2FuZGlkYXRlcxgEIAEoCEINCgtfdGltZW91dF9tcyJbChFTZWxlY3RvckNhbmRpZGF0ZRIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIiCgRraW5kGAIgASgOMhQudGFwLnYxLlNlbGVjdG9yS2luZCKLBAoKU2NyZWVuTm9kZRILCgNyZWYYASABKAkSDQoFZGVwdGgYAiABKAUSFgoOd2luZG93X3BhY2thZ2UYAyABKAkSFwoKY2xhc3NfbmFtZRgEIAEoCUgAiAEBEhoKDXJlc291cmNlX25hbWUYBSABKAlIAYgBARIRCgR0ZXh0GAYgASgJSAKIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgHIAEoCUgDiAEBEhEKBGhpbnQYCCABKAlIBIgBARIeCgZib3VuZHMYCSABKAsyDi50YXAudjEuQm91bmRzEh8KBWZsYWdzGAogAygOMhAudGFwLnYxLk5vZGVGbGFnEhAKCHBhc3N3b3JkGAsgASgIEhMKC2ludGVyYWN0aXZlGAwgASgIEicKCHNlbGVjdG9yGA0gASgLMhAudGFwLnYxLlNlbGVjdG9ySAWIAQESEAoIYnlfaW5kZXgYDiABKAgSIgoGY2hhbmdlGA8gASgOMhIudGFwLnYxLk5vZGVDaGFuZ2USLQoKY2FuZGlkYXRlcxgQIAMoCzIZLnRhcC52MS5TZWxlY3RvckNhbmRpZGF0ZUINCgtfY2xhc3NfbmFtZUIQCg5fcmVzb3VyY2VfbmFtZUIHCgVfdGV4dEIWChRfY29udGVudF9kZXNjcmlwdGlvbkIHCgVfaGludEILCglfc2VsZWN0b3IihwEKFlNjcmVlblNuYXBzaG90UmVzcG9uc2USEwoLc25hcHNob3RfaWQYASABKAMSIQoFbm9kZXMYAiADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIjCgdyZW1vdmVkGAMgAygLMhIudGFwLnYxLlNjcmVlbk5vZGUSEAoIcm90YXRpb24YBCABKAUiWgoRUmVzb2x2ZVJlZlJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEgsKA3JlZhgDIAEoCSJfChJSZXNvbHZlUmVmUmVzcG9uc2USIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISEAoIYnlfaW5kZXgYAiABKAgSEwoLc25hcHNob3RfaWQYAyABKAMiYQoUU2V0QW5pbWF0aW9uc1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg8KB2VuYWJsZWQYAyABKAgiFwoVU2V0QW5pbWF0aW9uc1Jlc3BvbnNlIl8KElNldERhcmtNb2RlUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSDwoHZW5hYmxlZBgDIAEoCCIVChNTZXREYXJrTW9kZVJlc3BvbnNlIl4KE1NldEZvbnRTY2FsZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg0KBXNjYWxlGAMgASgCIhYKFFNldEZvbnRTY2FsZVJlc3BvbnNlImcKEVNldERlbnNpdHlSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCgNkcGkYAyABKAVIAIgBAUIGCgRfZHBpIhQKElNldERlbnNpdHlSZXNwb25zZSLBAQoRU2V0TmV0d29ya1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhoKDWFpcnBsYW5lX21vZGUYAyABKAhIAIgBARIRCgR3aWZpGAQgASgISAGIAQESGAoLbW9iaWxlX2RhdGEYBSABKAhIAogBAUIQCg5fYWlycGxhbmVfbW9kZUIHCgVfd2lmaUIOCgxfbW9iaWxlX2RhdGEiFAoSU2V0TmV0d29ya1Jlc3BvbnNlImQKF1NldFN5c3RlbUxvY2FsZXNSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIPCgdsb2NhbGVzGAMgAygJIhoKGFNldFN5c3RlbUxvY2FsZXNSZXNwb25zZSLDAQoSU2V0TG9jYXRpb25SZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCghsYXRpdHVkZRgDIAEoARIRCglsb25naXR1ZGUYBCABKAESFwoKYWNjdXJhY3lfbRgFIAEoAkgAiAEBEhcKCmFsdGl0dWRlX20YBiABKAFIAYgBAUINCgtfYWNjdXJhY3lfbUINCgtfYWx0aXR1ZGVfbSIVChNTZXRMb2NhdGlvblJlc3BvbnNlInMKDlB1c2hGaWxlSGVhZGVyEhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRITCgtkZXZpY2VfcGF0aBgDIAEoCRISCgpzaXplX2J5dGVzGAQgASgDIlQKD1B1c2hGaWxlUmVxdWVzdBIoCgZoZWFkZXIYASABKAsyFi50YXAudjEuUHVzaEZpbGVIZWFkZXJIABIPCgVjaHVuaxgCIAEoDEgAQgYKBHBhcnQiEgoQUHVzaEZpbGVSZXNwb25zZSJgCg9QdWxsRmlsZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhMKC2RldmljZV9wYXRoGAMgASgJIjUKEFB1bGxGaWxlUmVzcG9uc2USEgoKc2l6ZV9ieXRlcxgBIAEoAxINCgVjaHVuaxgCIAEoDCJxCg5BZGRNZWRpYUhlYWRlchIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSEQoJZmlsZV9uYW1lGAMgASgJEhIKCnNpemVfYnl0ZXMYBCABKAMiVAoPQWRkTWVkaWFSZXF1ZXN0EigKBmhlYWRlchgBIAEoCzIWLnRhcC52MS5BZGRNZWRpYUhlYWRlckgAEg8KBWNodW5rGAIgASgMSABCBgoEcGFydCInChBBZGRNZWRpYVJlc3BvbnNlEhMKC2RldmljZV9wYXRoGAEgASgJImAKE1NldFN0YXlBd2FrZVJlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg8KB2VuYWJsZWQYAyABKAgiFgoUU2V0U3RheUF3YWtlUmVzcG9uc2Ui6gEKHlNldEFjY2Vzc2liaWxpdHlEaXNwbGF5UmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSHwoSaGlnaF9jb250cmFzdF90ZXh0GAMgASgISACIAQESHAoPY29sb3JfaW52ZXJzaW9uGAQgASgISAGIAQESFgoJYm9sZF90ZXh0GAUgASgISAKIAQFCFQoTX2hpZ2hfY29udHJhc3RfdGV4dEISChBfY29sb3JfaW52ZXJzaW9uQgwKCl9ib2xkX3RleHQiIQofU2V0QWNjZXNzaWJpbGl0eURpc3BsYXlSZXNwb25zZSJYChxHZXRGb3JlZ3JvdW5kQWN0aXZpdHlSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCSJvCh1HZXRGb3JlZ3JvdW5kQWN0aXZpdHlSZXNwb25zZRIZCgxwYWNrYWdlX25hbWUYASABKAlIAIgBARIVCghhY3Rpdml0eRgCIAEoCUgBiAEBQg8KDV9wYWNrYWdlX25hbWVCCwoJX2FjdGl2aXR5KpQBCgtEZXZpY2VTdGF0ZRIcChhERVZJQ0VfU1RBVEVfVU5TUEVDSUZJRUQQABIPCgtERVZJQ0VfRlJFRRABEhEKDURFVklDRV9MRUFTRUQQAhIWChJERVZJQ0VfUVVBUkFOVElORUQQAxISCg5ERVZJQ0VfT0ZGTElORRAEEhcKE0RFVklDRV9VTkFVVEhPUklaRUQQBSqaAQoMU2VsZWN0b3JLaW5kEh0KGVNFTEVDVE9SX0tJTkRfVU5TUEVDSUZJRUQQABIXChNTRUxFQ1RPUl9LSU5EX1BMQUlOEAESGgoWU0VMRUNUT1JfS0lORF9DT01CSU5FRBACEhoKFlNFTEVDVE9SX0tJTkRfQU5DRVNUT1IQAxIaChZTRUxFQ1RPUl9LSU5EX0JZX0lOREVYEAQqXwoKTm9kZUNoYW5nZRIbChdOT0RFX0NIQU5HRV9VTlNQRUNJRklFRBAAEg4KCk5PREVfQURERUQQARISCg5OT0RFX1VOQ0hBTkdFRBACEhAKDE5PREVfUkVNT1ZFRBADMqsNCg1EZXZpY2VTZXJ2aWNlEkYKC0xpc3REZXZpY2VzEhoudGFwLnYxLkxpc3REZXZpY2VzUmVxdWVzdBobLnRhcC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEjcKBkF0dGFjaBIVLnRhcC52MS5BdHRhY2hSZXF1ZXN0GhYudGFwLnYxLkF0dGFjaFJlc3BvbnNlEjcKBkRldGFjaBIVLnRhcC52MS5EZXRhY2hSZXF1ZXN0GhYudGFwLnYxLkRldGFjaFJlc3BvbnNlEjoKB0V4ZWN1dGUSFi50YXAudjEuRXhlY3V0ZVJlcXVlc3QaFy50YXAudjEuRXhlY3V0ZVJlc3BvbnNlEkMKClNjcmVlbnNob3QSGS50YXAudjEuU2NyZWVuc2hvdFJlcXVlc3QaGi50YXAudjEuU2NyZWVuc2hvdFJlc3BvbnNlEkAKCURyaXZlckxvZxIYLnRhcC52MS5Ecml2ZXJMb2dSZXF1ZXN0GhkudGFwLnYxLkRyaXZlckxvZ1Jlc3BvbnNlEk8KDlN0YXJ0UmVjb3JkaW5nEh0udGFwLnYxLlN0YXJ0UmVjb3JkaW5nUmVxdWVzdBoeLnRhcC52MS5TdGFydFJlY29yZGluZ1Jlc3BvbnNlEkwKDVN0b3BSZWNvcmRpbmcSHC50YXAudjEuU3RvcFJlY29yZGluZ1JlcXVlc3QaHS50YXAudjEuU3RvcFJlY29yZGluZ1Jlc3BvbnNlEk8KDlNjcmVlblNuYXBzaG90Eh0udGFwLnYxLlNjcmVlblNuYXBzaG90UmVxdWVzdBoeLnRhcC52MS5TY3JlZW5TbmFwc2hvdFJlc3BvbnNlEkMKClJlc29sdmVSZWYSGS50YXAudjEuUmVzb2x2ZVJlZlJlcXVlc3QaGi50YXAudjEuUmVzb2x2ZVJlZlJlc3BvbnNlEkwKDVNldEFuaW1hdGlvbnMSHC50YXAudjEuU2V0QW5pbWF0aW9uc1JlcXVlc3QaHS50YXAudjEuU2V0QW5pbWF0aW9uc1Jlc3BvbnNlEkYKC1NldERhcmtNb2RlEhoudGFwLnYxLlNldERhcmtNb2RlUmVxdWVzdBobLnRhcC52MS5TZXREYXJrTW9kZVJlc3BvbnNlEkkKDFNldEZvbnRTY2FsZRIbLnRhcC52MS5TZXRGb250U2NhbGVSZXF1ZXN0GhwudGFwLnYxLlNldEZvbnRTY2FsZVJlc3BvbnNlEkMKClNldERlbnNpdHkSGS50YXAudjEuU2V0RGVuc2l0eVJlcXVlc3QaGi50YXAudjEuU2V0RGVuc2l0eVJlc3BvbnNlEkMKClNldE5ldHdvcmsSGS50YXAudjEuU2V0TmV0d29ya1JlcXVlc3QaGi50YXAudjEuU2V0TmV0d29ya1Jlc3BvbnNlElUKEFNldFN5c3RlbUxvY2FsZXMSHy50YXAudjEuU2V0U3lzdGVtTG9jYWxlc1JlcXVlc3QaIC50YXAudjEuU2V0U3lzdGVtTG9jYWxlc1Jlc3BvbnNlEkYKC1NldExvY2F0aW9uEhoudGFwLnYxLlNldExvY2F0aW9uUmVxdWVzdBobLnRhcC52MS5TZXRMb2NhdGlvblJlc3BvbnNlEkkKDFNldFN0YXlBd2FrZRIbLnRhcC52MS5TZXRTdGF5QXdha2VSZXF1ZXN0GhwudGFwLnYxLlNldFN0YXlBd2FrZVJlc3BvbnNlEmoKF1NldEFjY2Vzc2liaWxpdHlEaXNwbGF5EiYudGFwLnYxLlNldEFjY2Vzc2liaWxpdHlEaXNwbGF5UmVxdWVzdBonLnRhcC52MS5TZXRBY2Nlc3NpYmlsaXR5RGlzcGxheVJlc3BvbnNlEmQKFUdldEZvcmVncm91bmRBY3Rpdml0eRIkLnRhcC52MS5HZXRGb3JlZ3JvdW5kQWN0aXZpdHlSZXF1ZXN0GiUudGFwLnYxLkdldEZvcmVncm91bmRBY3Rpdml0eVJlc3BvbnNlEj8KCFB1c2hGaWxlEhcudGFwLnYxLlB1c2hGaWxlUmVxdWVzdBoYLnRhcC52MS5QdXNoRmlsZVJlc3BvbnNlKAESPwoIUHVsbEZpbGUSFy50YXAudjEuUHVsbEZpbGVSZXF1ZXN0GhgudGFwLnYxLlB1bGxGaWxlUmVzcG9uc2UwARI/CghBZGRNZWRpYRIXLnRhcC52MS5BZGRNZWRpYVJlcXVlc3QaGC50YXAudjEuQWRkTWVkaWFSZXNwb25zZSgBQjEKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgtEZXZpY2VQcm90b1ABYgZwcm90bzM", [file_command, file_selector]);
 
 /**
  * One listed device. Anything richer than the serial comes from DeviceInfo after attachment.
@@ -886,6 +886,507 @@ export const SetDensityResponseSchema: GenMessage<SetDensityResponse> = /*@__PUR
   messageDesc(file_device, 30);
 
 /**
+ * At least one switch must be set; an absent one is left as it is.
+ *
+ * @generated from message tap.v1.SetNetworkRequest
+ */
+export type SetNetworkRequest = Message<"tap.v1.SetNetworkRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: optional bool airplane_mode = 3;
+   */
+  airplaneMode?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool wifi = 4;
+   */
+  wifi?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool mobile_data = 5;
+   */
+  mobileData?: boolean | undefined;
+};
+
+/**
+ * Describes the message tap.v1.SetNetworkRequest.
+ * Use `create(SetNetworkRequestSchema)` to create a new message.
+ */
+export const SetNetworkRequestSchema: GenMessage<SetNetworkRequest> = /*@__PURE__*/
+  messageDesc(file_device, 31);
+
+/**
+ * @generated from message tap.v1.SetNetworkResponse
+ */
+export type SetNetworkResponse = Message<"tap.v1.SetNetworkResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.SetNetworkResponse.
+ * Use `create(SetNetworkResponseSchema)` to create a new message.
+ */
+export const SetNetworkResponseSchema: GenMessage<SetNetworkResponse> = /*@__PURE__*/
+  messageDesc(file_device, 32);
+
+/**
+ * @generated from message tap.v1.SetSystemLocalesRequest
+ */
+export type SetSystemLocalesRequest = Message<"tap.v1.SetSystemLocalesRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: repeated string locales = 3;
+   */
+  locales: string[];
+};
+
+/**
+ * Describes the message tap.v1.SetSystemLocalesRequest.
+ * Use `create(SetSystemLocalesRequestSchema)` to create a new message.
+ */
+export const SetSystemLocalesRequestSchema: GenMessage<SetSystemLocalesRequest> = /*@__PURE__*/
+  messageDesc(file_device, 33);
+
+/**
+ * @generated from message tap.v1.SetSystemLocalesResponse
+ */
+export type SetSystemLocalesResponse = Message<"tap.v1.SetSystemLocalesResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.SetSystemLocalesResponse.
+ * Use `create(SetSystemLocalesResponseSchema)` to create a new message.
+ */
+export const SetSystemLocalesResponseSchema: GenMessage<SetSystemLocalesResponse> = /*@__PURE__*/
+  messageDesc(file_device, 34);
+
+/**
+ * @generated from message tap.v1.SetLocationRequest
+ */
+export type SetLocationRequest = Message<"tap.v1.SetLocationRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: double latitude = 3;
+   */
+  latitude: number;
+
+  /**
+   * @generated from field: double longitude = 4;
+   */
+  longitude: number;
+
+  /**
+   * @generated from field: optional float accuracy_m = 5;
+   */
+  accuracyM?: number | undefined;
+
+  /**
+   * @generated from field: optional double altitude_m = 6;
+   */
+  altitudeM?: number | undefined;
+};
+
+/**
+ * Describes the message tap.v1.SetLocationRequest.
+ * Use `create(SetLocationRequestSchema)` to create a new message.
+ */
+export const SetLocationRequestSchema: GenMessage<SetLocationRequest> = /*@__PURE__*/
+  messageDesc(file_device, 35);
+
+/**
+ * @generated from message tap.v1.SetLocationResponse
+ */
+export type SetLocationResponse = Message<"tap.v1.SetLocationResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.SetLocationResponse.
+ * Use `create(SetLocationResponseSchema)` to create a new message.
+ */
+export const SetLocationResponseSchema: GenMessage<SetLocationResponse> = /*@__PURE__*/
+  messageDesc(file_device, 36);
+
+/**
+ * @generated from message tap.v1.PushFileHeader
+ */
+export type PushFileHeader = Message<"tap.v1.PushFileHeader"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: string device_path = 3;
+   */
+  devicePath: string;
+
+  /**
+   * exact size; the upload is rejected on mismatch
+   *
+   * @generated from field: int64 size_bytes = 4;
+   */
+  sizeBytes: bigint;
+};
+
+/**
+ * Describes the message tap.v1.PushFileHeader.
+ * Use `create(PushFileHeaderSchema)` to create a new message.
+ */
+export const PushFileHeaderSchema: GenMessage<PushFileHeader> = /*@__PURE__*/
+  messageDesc(file_device, 37);
+
+/**
+ * @generated from message tap.v1.PushFileRequest
+ */
+export type PushFileRequest = Message<"tap.v1.PushFileRequest"> & {
+  /**
+   * @generated from oneof tap.v1.PushFileRequest.part
+   */
+  part: {
+    /**
+     * first message only
+     *
+     * @generated from field: tap.v1.PushFileHeader header = 1;
+     */
+    value: PushFileHeader;
+    case: "header";
+  } | {
+    /**
+     * every later message
+     *
+     * @generated from field: bytes chunk = 2;
+     */
+    value: Uint8Array;
+    case: "chunk";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.v1.PushFileRequest.
+ * Use `create(PushFileRequestSchema)` to create a new message.
+ */
+export const PushFileRequestSchema: GenMessage<PushFileRequest> = /*@__PURE__*/
+  messageDesc(file_device, 38);
+
+/**
+ * @generated from message tap.v1.PushFileResponse
+ */
+export type PushFileResponse = Message<"tap.v1.PushFileResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.PushFileResponse.
+ * Use `create(PushFileResponseSchema)` to create a new message.
+ */
+export const PushFileResponseSchema: GenMessage<PushFileResponse> = /*@__PURE__*/
+  messageDesc(file_device, 39);
+
+/**
+ * @generated from message tap.v1.PullFileRequest
+ */
+export type PullFileRequest = Message<"tap.v1.PullFileRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: string device_path = 3;
+   */
+  devicePath: string;
+};
+
+/**
+ * Describes the message tap.v1.PullFileRequest.
+ * Use `create(PullFileRequestSchema)` to create a new message.
+ */
+export const PullFileRequestSchema: GenMessage<PullFileRequest> = /*@__PURE__*/
+  messageDesc(file_device, 40);
+
+/**
+ * The first message carries `size_bytes`; every message may carry a chunk.
+ *
+ * @generated from message tap.v1.PullFileResponse
+ */
+export type PullFileResponse = Message<"tap.v1.PullFileResponse"> & {
+  /**
+   * @generated from field: int64 size_bytes = 1;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: bytes chunk = 2;
+   */
+  chunk: Uint8Array;
+};
+
+/**
+ * Describes the message tap.v1.PullFileResponse.
+ * Use `create(PullFileResponseSchema)` to create a new message.
+ */
+export const PullFileResponseSchema: GenMessage<PullFileResponse> = /*@__PURE__*/
+  messageDesc(file_device, 41);
+
+/**
+ * @generated from message tap.v1.AddMediaHeader
+ */
+export type AddMediaHeader = Message<"tap.v1.AddMediaHeader"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * 1-127 letters, digits, '.', '_', '-' or spaces, ending in a photo (jpg, jpeg, png, gif, webp,
+   * heic, heif, bmp) or video (mp4, 3gp, webm, mkv, mov) extension.
+   *
+   * @generated from field: string file_name = 3;
+   */
+  fileName: string;
+
+  /**
+   * @generated from field: int64 size_bytes = 4;
+   */
+  sizeBytes: bigint;
+};
+
+/**
+ * Describes the message tap.v1.AddMediaHeader.
+ * Use `create(AddMediaHeaderSchema)` to create a new message.
+ */
+export const AddMediaHeaderSchema: GenMessage<AddMediaHeader> = /*@__PURE__*/
+  messageDesc(file_device, 42);
+
+/**
+ * @generated from message tap.v1.AddMediaRequest
+ */
+export type AddMediaRequest = Message<"tap.v1.AddMediaRequest"> & {
+  /**
+   * @generated from oneof tap.v1.AddMediaRequest.part
+   */
+  part: {
+    /**
+     * @generated from field: tap.v1.AddMediaHeader header = 1;
+     */
+    value: AddMediaHeader;
+    case: "header";
+  } | {
+    /**
+     * @generated from field: bytes chunk = 2;
+     */
+    value: Uint8Array;
+    case: "chunk";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.v1.AddMediaRequest.
+ * Use `create(AddMediaRequestSchema)` to create a new message.
+ */
+export const AddMediaRequestSchema: GenMessage<AddMediaRequest> = /*@__PURE__*/
+  messageDesc(file_device, 43);
+
+/**
+ * @generated from message tap.v1.AddMediaResponse
+ */
+export type AddMediaResponse = Message<"tap.v1.AddMediaResponse"> & {
+  /**
+   * where the media landed
+   *
+   * @generated from field: string device_path = 1;
+   */
+  devicePath: string;
+};
+
+/**
+ * Describes the message tap.v1.AddMediaResponse.
+ * Use `create(AddMediaResponseSchema)` to create a new message.
+ */
+export const AddMediaResponseSchema: GenMessage<AddMediaResponse> = /*@__PURE__*/
+  messageDesc(file_device, 44);
+
+/**
+ * @generated from message tap.v1.SetStayAwakeRequest
+ */
+export type SetStayAwakeRequest = Message<"tap.v1.SetStayAwakeRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: bool enabled = 3;
+   */
+  enabled: boolean;
+};
+
+/**
+ * Describes the message tap.v1.SetStayAwakeRequest.
+ * Use `create(SetStayAwakeRequestSchema)` to create a new message.
+ */
+export const SetStayAwakeRequestSchema: GenMessage<SetStayAwakeRequest> = /*@__PURE__*/
+  messageDesc(file_device, 45);
+
+/**
+ * @generated from message tap.v1.SetStayAwakeResponse
+ */
+export type SetStayAwakeResponse = Message<"tap.v1.SetStayAwakeResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.SetStayAwakeResponse.
+ * Use `create(SetStayAwakeResponseSchema)` to create a new message.
+ */
+export const SetStayAwakeResponseSchema: GenMessage<SetStayAwakeResponse> = /*@__PURE__*/
+  messageDesc(file_device, 46);
+
+/**
+ * At least one setting must be set; an absent one is left as it is.
+ *
+ * @generated from message tap.v1.SetAccessibilityDisplayRequest
+ */
+export type SetAccessibilityDisplayRequest = Message<"tap.v1.SetAccessibilityDisplayRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: optional bool high_contrast_text = 3;
+   */
+  highContrastText?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool color_inversion = 4;
+   */
+  colorInversion?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool bold_text = 5;
+   */
+  boldText?: boolean | undefined;
+};
+
+/**
+ * Describes the message tap.v1.SetAccessibilityDisplayRequest.
+ * Use `create(SetAccessibilityDisplayRequestSchema)` to create a new message.
+ */
+export const SetAccessibilityDisplayRequestSchema: GenMessage<SetAccessibilityDisplayRequest> = /*@__PURE__*/
+  messageDesc(file_device, 47);
+
+/**
+ * @generated from message tap.v1.SetAccessibilityDisplayResponse
+ */
+export type SetAccessibilityDisplayResponse = Message<"tap.v1.SetAccessibilityDisplayResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.SetAccessibilityDisplayResponse.
+ * Use `create(SetAccessibilityDisplayResponseSchema)` to create a new message.
+ */
+export const SetAccessibilityDisplayResponseSchema: GenMessage<SetAccessibilityDisplayResponse> = /*@__PURE__*/
+  messageDesc(file_device, 48);
+
+/**
+ * @generated from message tap.v1.GetForegroundActivityRequest
+ */
+export type GetForegroundActivityRequest = Message<"tap.v1.GetForegroundActivityRequest"> & {
+  /**
+   * @generated from field: string client_connection_id = 1;
+   */
+  clientConnectionId: string;
+
+  /**
+   * @generated from field: string attached_device_id = 2;
+   */
+  attachedDeviceId: string;
+};
+
+/**
+ * Describes the message tap.v1.GetForegroundActivityRequest.
+ * Use `create(GetForegroundActivityRequestSchema)` to create a new message.
+ */
+export const GetForegroundActivityRequestSchema: GenMessage<GetForegroundActivityRequest> = /*@__PURE__*/
+  messageDesc(file_device, 49);
+
+/**
+ * Both set, or both absent when no activity is resumed.
+ *
+ * @generated from message tap.v1.GetForegroundActivityResponse
+ */
+export type GetForegroundActivityResponse = Message<"tap.v1.GetForegroundActivityResponse"> & {
+  /**
+   * @generated from field: optional string package_name = 1;
+   */
+  packageName?: string | undefined;
+
+  /**
+   * the fully qualified class name
+   *
+   * @generated from field: optional string activity = 2;
+   */
+  activity?: string | undefined;
+};
+
+/**
+ * Describes the message tap.v1.GetForegroundActivityResponse.
+ * Use `create(GetForegroundActivityResponseSchema)` to create a new message.
+ */
+export const GetForegroundActivityResponseSchema: GenMessage<GetForegroundActivityResponse> = /*@__PURE__*/
+  messageDesc(file_device, 50);
+
+/**
  * State of a listed device.
  *
  * @generated from enum tap.v1.DeviceState
@@ -1146,6 +1647,117 @@ export const DeviceService: GenService<{
     methodKind: "unary";
     input: typeof SetDensityRequestSchema;
     output: typeof SetDensityResponseSchema;
+  },
+  /**
+   * Airplane mode (`cmd connectivity airplane-mode`), Wi-Fi (`svc wifi`) and mobile data
+   * (`svc data`): the real switches, nothing mocked. API 29+. Airplane mode is written first;
+   * all three are captured on the first change and restored airplane mode first. A device reached
+   * over ADB on the network refuses Wi-Fi off / airplane mode on (FAILED_PRECONDITION).
+   *
+   * @generated from rpc tap.v1.DeviceService.SetNetwork
+   */
+  setNetwork: {
+    methodKind: "unary";
+    input: typeof SetNetworkRequestSchema;
+    output: typeof SetNetworkResponseSchema;
+  },
+  /**
+   * The device-wide locale list (Settings › Languages), 1 to 16 BCP-47 tags in preference order
+   * (INVALID_ARGUMENT otherwise). Android has no shell command for it: the driver app applies it
+   * as Settings' language picker does, and it is read back (`system_locales`).
+   *
+   * @generated from rpc tap.v1.DeviceService.SetSystemLocales
+   */
+  setSystemLocales: {
+    methodKind: "unary";
+    input: typeof SetSystemLocalesRequestSchema;
+    output: typeof SetSystemLocalesResponseSchema;
+  },
+  /**
+   * Mock location: the device reports this fix from its location providers until detach.
+   * `latitude` -90..90, `longitude` -180..180, `accuracy_m` > 0 (default 5), `altitude_m` finite
+   * (INVALID_ARGUMENT otherwise). The driver app becomes the mock-location app (its
+   * `android:mock_location` app-op) and location is turned on when it is off; both are captured
+   * and restored on detach, which ends the mock. The driver serves the fix (`set_location`).
+   *
+   * @generated from rpc tap.v1.DeviceService.SetLocation
+   */
+  setLocation: {
+    methodKind: "unary";
+    input: typeof SetLocationRequestSchema;
+    output: typeof SetLocationResponseSchema;
+  },
+  /**
+   * Keeps the screen on while the device is plugged in (USB, AC or wireless): Settings.Global
+   * `stay_on_while_plugged_in` 7, or 0. Captured and restored on detach.
+   *
+   * @generated from rpc tap.v1.DeviceService.SetStayAwake
+   */
+  setStayAwake: {
+    methodKind: "unary";
+    input: typeof SetStayAwakeRequestSchema;
+    output: typeof SetStayAwakeResponseSchema;
+  },
+  /**
+   * The accessibility display settings: high-contrast text, color inversion and bold text (API
+   * 31+, else FAILED_PRECONDITION / UNSUPPORTED_API before anything changes), as Settings ›
+   * Accessibility writes them. At least one must be set. Captured and restored on detach.
+   *
+   * @generated from rpc tap.v1.DeviceService.SetAccessibilityDisplay
+   */
+  setAccessibilityDisplay: {
+    methodKind: "unary";
+    input: typeof SetAccessibilityDisplayRequestSchema;
+    output: typeof SetAccessibilityDisplayResponseSchema;
+  },
+  /**
+   * The activity on top (resumed), from `dumpsys activity activities`; empty when none is
+   * resumed (a keyguard, or between activities). Changes nothing.
+   *
+   * @generated from rpc tap.v1.DeviceService.GetForegroundActivity
+   */
+  getForegroundActivity: {
+    methodKind: "unary";
+    input: typeof GetForegroundActivityRequestSchema;
+    output: typeof GetForegroundActivityResponseSchema;
+  },
+  /**
+   * Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
+   * A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
+   *
+   * Copies a file to `device_path` (absolute, normalised; its directory must exist): a
+   * PushFileHeader first, then the bytes. A file already there is refused unless this attached
+   * device pushed it; the size is read back. Pushed files are deleted on detach.
+   *
+   * @generated from rpc tap.v1.DeviceService.PushFile
+   */
+  pushFile: {
+    methodKind: "client_streaming";
+    input: typeof PushFileRequestSchema;
+    output: typeof PushFileResponseSchema;
+  },
+  /**
+   * Streams the regular file at `device_path` back in chunks.
+   *
+   * @generated from rpc tap.v1.DeviceService.PullFile
+   */
+  pullFile: {
+    methodKind: "server_streaming";
+    input: typeof PullFileRequestSchema;
+    output: typeof PullFileResponseSchema;
+  },
+  /**
+   * Adds a photo or video to the gallery: an AddMediaHeader (`file_name` with a photo or video
+   * extension), then the bytes. Written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/` and
+   * indexed by the media scanner (read back); a name already there is refused unless this attached
+   * device added it. Deleted, and dropped from the index, on detach.
+   *
+   * @generated from rpc tap.v1.DeviceService.AddMedia
+   */
+  addMedia: {
+    methodKind: "client_streaming";
+    input: typeof AddMediaRequestSchema;
+    output: typeof AddMediaResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_device, 0);

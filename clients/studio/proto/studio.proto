@@ -45,6 +45,19 @@ service StudioService {
   rpc Count(CountRequest) returns (CountResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // What the one node a selector matches offers: its accessibility actions and its range, so the
+  // page offers only the actions and progress values it can take. NOT_FOUND / FAILED_PRECONDITION
+  // when the selector does not match exactly one node.
+  rpc DescribeElement(DescribeElementRequest) returns (DescribeElementResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The device as it is now (the Device tab's read-back): its settings and the resumed activity.
+  rpc GetDeviceStatus(GetDeviceStatusRequest) returns (GetDeviceStatusResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The active notifications, newest first, to pick one to wait for, open or dismiss. The daemon
+  // gives the driver notification access for the attachment (taken back on release).
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
   // Runs one step on the attached device and, while recording, adds it when it passed.
   rpc Perform(PerformRequest) returns (PerformResponse);
   // Replaces a recorded step without running it. NOT_FOUND for an unknown id.
@@ -170,6 +183,34 @@ message CountRequest {
 message CountResponse {
   // Capped at 1000, as the driver's count.
   int32 count = 1;
+}
+
+message DescribeElementRequest {
+  tap.v1.Selector selector = 1;
+}
+
+message DescribeElementResponse {
+  // The standard accessibility actions the node offers (`Element.performAction`).
+  repeated tap.v1.StandardAction actions = 1;
+  // The custom actions it offers, by label (`Element.performCustomAction`).
+  repeated string custom_actions = 2;
+  // A range node's (SeekBar, Slider, RatingBar) range: `Element.setProgress` takes min..max.
+  optional tap.v1.Range range = 3;
+}
+
+message GetDeviceStatusRequest {}
+
+message GetDeviceStatusResponse {
+  tap.v1.DeviceInfo info = 1;
+  // The resumed activity (`Device.foregroundActivity`); both absent when none is resumed.
+  optional string foreground_package = 2;
+  optional string foreground_activity = 3;
+}
+
+message ListNotificationsRequest {}
+
+message ListNotificationsResponse {
+  repeated tap.v1.DeviceNotification notifications = 1;
 }
 
 // ---- steps ------------------------------------------------------------------------------------
@@ -333,8 +374,10 @@ message Step {
   Outcome outcome = 3;
   // Required.
   oneof kind {
-    // An app lifecycle call: cold_launch, launch, force_stop, clear_data or grant_permission
-    // (`permission` with grant_permission only; `activity` with the launches only).
+    // An app call: cold_launch, launch, foreground, force_stop, clear_data, grant_permission,
+    // revoke_permission, open_link or set_locales (`permission` with the two permission calls
+    // only; `activity` and `extras` with the launches only; `uri`, required, and `any_app` with
+    // open_link only; `locales` with set_locales only, none = follow the system again).
     tap.v1.AppCall app = 10;
     ActionStep action = 11;
     TypeStep type = 12;
@@ -342,21 +385,34 @@ message Step {
     AssertionStep assertion = 14;
     ScrollUntilStep scroll_until = 15;
     AppWaitStep app_wait = 16;
+    DeviceWaitStep device_wait = 17;
+    // A device condition held until the device is released (or the replay's session ends), which
+    // restores what the device had: set_animations, set_dark_mode, set_font_scale, set_density,
+    // set_network, set_system_locales, set_location, set_stay_awake or set_accessibility_display,
+    // with the fields `tap.v1.DeviceCall` lists for each. The file calls (push_file, pull_file,
+    // add_media) need a host file and are not steps.
+    tap.v1.DeviceCall device = 18;
+    DeviceAssertionStep device_assertion = 19;
   }
 }
 
 // One command; a command with a selector is preceded by the wait that proved it could run.
 message ActionStep {
-  // tap, long_tap, set_text, clear_text, scroll, swipe, press_key or open_system_panel.
+  // On an element: tap, long_tap, double_tap, set_text, clear_text, scroll, swipe, fling, pinch,
+  // drag, perform_ime_action, perform_accessibility_action or set_progress. On the device, with no
+  // selector: press_key, open_system_panel, set_orientation, set_display_rotation,
+  // unfreeze_rotation, dismiss_keyguard, hide_keyboard, set_clipboard, choose_permission,
+  // open_notification or dismiss_notification.
   tap.v1.Command command = 1;
-  // For every op but press_key and open_system_panel (and only then): `wait_visible` of the command's selector, with
+  // For every op on an element (and only then): `wait_visible` of the command's selector, with
   // `exactly_one` unless the selector has a `first` or `at` pick (waits count every match, so a
   // picked selector waits for at least one and the command picks). A replayer sends `wait` then
   // `command`, unchanged.
   tap.v1.Command wait = 2;
   // set_text only: the name of the secret whose value is the text; `set_text.text` is then empty.
   optional string secret = 3;
-  // Unspecified for press_key and open_system_panel.
+  // Unspecified for the ops on the device. A drag's destination is its own: resolved by the driver
+  // on the same screen, it needs no wait.
   SelectorOrigin selector_origin = 4;
 }
 
@@ -463,6 +519,31 @@ message ScrollUntilStep {
 // `awaitSettled` for STABILITY_TREE and `awaitAnimationEnd` for STABILITY_PIXELS).
 message AppWaitStep {
   tap.v1.Command command = 1;
+}
+
+// A device wait, one command with no selector: `await_toast` (`Device.awaitToast`),
+// `await_notification` (`Device.awaitNotification`) or `wait_permission_prompt`
+// (`Device.awaitPermissionPrompt`), within its `timeout_ms` or the device's wait timeout.
+message DeviceWaitStep {
+  tap.v1.Command command = 1;
+}
+
+// What a device assertion checks, once and at once.
+enum DeviceCheck {
+  DEVICE_CHECK_UNSPECIFIED = 0;
+  // foregroundActivity() is `text`, as "package/class" (the class as Android names it).
+  DEVICE_CHECK_FOREGROUND_ACTIVITY = 1;
+  DEVICE_CHECK_KEYBOARD_SHOWN = 2; // keyboardShown()
+  DEVICE_CHECK_KEYBOARD_HIDDEN = 3; // !keyboardShown()
+  DEVICE_CHECK_CLIPBOARD_EQUALS = 4; // clipboard() == text
+}
+
+// An assertion on the device rather than an element: one query, no waiting.
+message DeviceAssertionStep {
+  // Required.
+  DeviceCheck check = 1;
+  // Set exactly for FOREGROUND_ACTIVITY (non-empty, with a "/") and CLIPBOARD_EQUALS.
+  optional string text = 2;
 }
 
 // At most one of `error`, `failure` and `mismatch`; none means the step passed.

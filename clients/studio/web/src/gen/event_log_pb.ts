@@ -27,7 +27,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file event_log.proto.
  */
 export const file_event_log: GenFile = /*@__PURE__*/
-  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKmAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiQKBmRldmljZRgKIAEoCzISLnRhcC52MS5EZXZpY2VDYWxsSAASIQoFZXJyb3IYCCABKAsyDS50YXAudjEuRXJyb3JIAYgBARIlCgdmYWlsdXJlGAkgASgLMg8udGFwLnYxLkZhaWx1cmVIAogBAUIGCgRjYWxsQggKBl9lcnJvckIKCghfZmFpbHVyZSKYAgoHQXBwQ2FsbBIRCglvcGVyYXRpb24YASABKAkSFAoMcGFja2FnZV9uYW1lGAIgASgJEhUKCGFjdGl2aXR5GAMgASgJSACIAQESFwoKcGVybWlzc2lvbhgEIAEoCUgBiAEBEhcKCnRpbWVvdXRfbXMYBSABKANIAogBARIQCgN1cmkYBiABKAlIA4gBARIUCgdhbnlfYXBwGAcgASgISASIAQESIwoGZXh0cmFzGAggAygLMhMudGFwLnYxLkludGVudEV4dHJhEg8KB2xvY2FsZXMYCSADKAlCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQgYKBF91cmlCCgoIX2FueV9hcHAikwEKCkRldmljZUNhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKB2VuYWJsZWQYAiABKAhIAIgBARIXCgpmb250X3NjYWxlGAMgASgCSAGIAQESGAoLZGVuc2l0eV9kcGkYBCABKAVIAogBAUIKCghfZW5hYmxlZEINCgtfZm9udF9zY2FsZUIOCgxfZGVuc2l0eV9kcGlCMwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDUV2ZW50TG9nUHJvdG9QAWIGcHJvdG8z", [file_app, file_command, file_failure]);
+  fileDesc("Cg9ldmVudF9sb2cucHJvdG8SBnRhcC52MSKmAgoLTG9nZ2VkRXZlbnQSCwoDc2VxGAEgASgDEhMKC2F0X2Vwb2NoX21zGAIgASgDEhMKC2R1cmF0aW9uX21zGAMgASgDEg4KBnNlcmlhbBgEIAEoCRIiCgdjb21tYW5kGAYgASgLMg8udGFwLnYxLkNvbW1hbmRIABIeCgNhcHAYByABKAsyDy50YXAudjEuQXBwQ2FsbEgAEiQKBmRldmljZRgKIAEoCzISLnRhcC52MS5EZXZpY2VDYWxsSAASIQoFZXJyb3IYCCABKAsyDS50YXAudjEuRXJyb3JIAYgBARIlCgdmYWlsdXJlGAkgASgLMg8udGFwLnYxLkZhaWx1cmVIAogBAUIGCgRjYWxsQggKBl9lcnJvckIKCghfZmFpbHVyZSKYAgoHQXBwQ2FsbBIRCglvcGVyYXRpb24YASABKAkSFAoMcGFja2FnZV9uYW1lGAIgASgJEhUKCGFjdGl2aXR5GAMgASgJSACIAQESFwoKcGVybWlzc2lvbhgEIAEoCUgBiAEBEhcKCnRpbWVvdXRfbXMYBSABKANIAogBARIQCgN1cmkYBiABKAlIA4gBARIUCgdhbnlfYXBwGAcgASgISASIAQESIwoGZXh0cmFzGAggAygLMhMudGFwLnYxLkludGVudEV4dHJhEg8KB2xvY2FsZXMYCSADKAlCCwoJX2FjdGl2aXR5Qg0KC19wZXJtaXNzaW9uQg0KC190aW1lb3V0X21zQgYKBF91cmlCCgoIX2FueV9hcHAilAUKCkRldmljZUNhbGwSEQoJb3BlcmF0aW9uGAEgASgJEhQKB2VuYWJsZWQYAiABKAhIAIgBARIXCgpmb250X3NjYWxlGAMgASgCSAGIAQESGAoLZGVuc2l0eV9kcGkYBCABKAVIAogBARIaCg1haXJwbGFuZV9tb2RlGAUgASgISAOIAQESEQoEd2lmaRgGIAEoCEgEiAEBEhgKC21vYmlsZV9kYXRhGAcgASgISAWIAQESDwoHbG9jYWxlcxgIIAMoCRIVCghsYXRpdHVkZRgJIAEoAUgGiAEBEhYKCWxvbmdpdHVkZRgKIAEoAUgHiAEBEhgKC2RldmljZV9wYXRoGAsgASgJSAiIAQESFwoKc2l6ZV9ieXRlcxgMIAEoA0gJiAEBEh8KEmhpZ2hfY29udHJhc3RfdGV4dBgNIAEoCEgKiAEBEhwKD2NvbG9yX2ludmVyc2lvbhgOIAEoCEgLiAEBEhYKCWJvbGRfdGV4dBgPIAEoCEgMiAEBEhcKCmFjY3VyYWN5X20YECABKAJIDYgBARIXCgphbHRpdHVkZV9tGBEgASgBSA6IAQFCCgoIX2VuYWJsZWRCDQoLX2ZvbnRfc2NhbGVCDgoMX2RlbnNpdHlfZHBpQhAKDl9haXJwbGFuZV9tb2RlQgcKBV93aWZpQg4KDF9tb2JpbGVfZGF0YUILCglfbGF0aXR1ZGVCDAoKX2xvbmdpdHVkZUIOCgxfZGV2aWNlX3BhdGhCDQoLX3NpemVfYnl0ZXNCFQoTX2hpZ2hfY29udHJhc3RfdGV4dEISChBfY29sb3JfaW52ZXJzaW9uQgwKCl9ib2xkX3RleHRCDQoLX2FjY3VyYWN5X21CDQoLX2FsdGl0dWRlX21CMwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCDUV2ZW50TG9nUHJvdG9QAWIGcHJvdG8z", [file_app, file_command, file_failure]);
 
 /**
  * @generated from message tap.v1.LoggedEvent
@@ -177,7 +177,8 @@ export const AppCallSchema: GenMessage<AppCall> = /*@__PURE__*/
 
 /**
  * A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
- * set_dark_mode, set_font_scale, set_density.
+ * set_dark_mode, set_font_scale, set_density, set_network, set_system_locales,
+ * set_location, push_file, pull_file, add_media, set_stay_awake, set_accessibility_display.
  *
  * @generated from message tap.v1.DeviceCall
  */
@@ -207,6 +208,83 @@ export type DeviceCall = Message<"tap.v1.DeviceCall"> & {
    * @generated from field: optional int32 density_dpi = 4;
    */
   densityDpi?: number | undefined;
+
+  /**
+   * set_network: the switches the call set.
+   *
+   * @generated from field: optional bool airplane_mode = 5;
+   */
+  airplaneMode?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool wifi = 6;
+   */
+  wifi?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool mobile_data = 7;
+   */
+  mobileData?: boolean | undefined;
+
+  /**
+   * set_system_locales.
+   *
+   * @generated from field: repeated string locales = 8;
+   */
+  locales: string[];
+
+  /**
+   * set_location (with accuracy_m / altitude_m below).
+   *
+   * @generated from field: optional double latitude = 9;
+   */
+  latitude?: number | undefined;
+
+  /**
+   * @generated from field: optional double longitude = 10;
+   */
+  longitude?: number | undefined;
+
+  /**
+   * push_file / pull_file / add_media: the device file and its size.
+   *
+   * @generated from field: optional string device_path = 11;
+   */
+  devicePath?: string | undefined;
+
+  /**
+   * @generated from field: optional int64 size_bytes = 12;
+   */
+  sizeBytes?: bigint | undefined;
+
+  /**
+   * set_accessibility_display: the settings the call set (set_stay_awake uses `enabled`).
+   *
+   * @generated from field: optional bool high_contrast_text = 13;
+   */
+  highContrastText?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool color_inversion = 14;
+   */
+  colorInversion?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool bold_text = 15;
+   */
+  boldText?: boolean | undefined;
+
+  /**
+   * set_location: the accuracy and altitude the call gave.
+   *
+   * @generated from field: optional float accuracy_m = 16;
+   */
+  accuracyM?: number | undefined;
+
+  /**
+   * @generated from field: optional double altitude_m = 17;
+   */
+  altitudeM?: number | undefined;
 };
 
 /**

@@ -29,6 +29,8 @@ class FakeAdb(
         synchronized(recorded) { recorded += "$serial: $command" }
         if (command in hangOn) awaitCancellation()
         responder?.invoke(serial, command)?.let { return it }
+        // Every driver force-stop first looks for a bound notification listener: none, by default.
+        if (command == "shell dumpsys notification" && command !in replies) return ok("")
         return replies[command] ?: error("unexpected adb -s $serial $command")
     }
 }

@@ -156,10 +156,25 @@ hide / IME action, clipboard set/get and `awaitToast` (`KeyboardTest`, `Clipboar
 density) and per-app languages (API 33+), each read back and restored on detach or by the next
 attach after a crash (`DeviceConditionsTest`, `DeviceActionsTest` 10–11,
 `test_conditions_hold_until_detach_then_are_restored`; crash restore in `RecoverJournalTest`).
+Group 3 (`device-actions.md`) is implemented with unit and fake-device tests — network
+switches, the device-wide locale, mock location, accessibility actions and slider progress,
+the location-accuracy choice, push/pull files and gallery media — and its device tests are
+written (`SystemLocaleTest`, `MockLocationTest`, `AccessibilityActionTest`, `DeviceFilesTest`,
+`DeviceActionsTest` 12–15, Python `test_device_actions.py`). They pass on the Samsung (API 29,
+2026-10-02); the emulator (API 34) run is pending, so the device-wide locale stays listed below
+until it passes there too.
+Group 4 is implemented with unit and fake-device tests — notifications as data (await, list,
+open, dismiss through the driver app's notification listener), stay awake, the accessibility
+display settings and the foreground activity — and its device tests are written
+(`NotificationListenerTest`, `DeviceActionsTest` 16–17, Python `test_device_actions.py`). They
+pass on the Samsung (API 29, 2026-10-02); the emulator (API 34) run is pending, so notifications
+stay listed below until they pass there too.
 
 Missing: crash/ANR detection as codes (above), activity-result assertions, the device-wide
-locale (only the per-app language, API 33+, is controlled), and
-the plan's "AUT restarted during a command" fault scenario.
+locale (implemented, passing on API 29, API 34 run pending; see above), and
+the plan's "AUT restarted during a command" fault scenario, and group 4 on API 34
+(opening a notification's intent with background-start options, the display settings'
+read-back; passing on API 29, emulator run pending).
 
 ## Compose and WebView (plan §15, §17)
 

@@ -195,7 +195,9 @@ def test_rotate_screen_and_permission_report_what_the_device_says(fake, agent):
         if op == "wait_permission_prompt":
             return pb.CommandResult(
                 permission_prompt=pb.PermissionPrompt(
-                    package_name="com.android.permissioncontroller", choices=[pb.PERMISSION_ALLOW_FOREGROUND_ONLY, pb.PERMISSION_DENY]
+                    package_name="com.android.permissioncontroller",
+                    choices=[pb.PERMISSION_ALLOW_FOREGROUND_ONLY, pb.PERMISSION_DENY],
+                    accuracies=[pb.LOCATION_PRECISE, pb.LOCATION_APPROXIMATE],
                 )
             )
         return None
@@ -213,13 +215,89 @@ def test_rotate_screen_and_permission_report_what_the_device_says(fake, agent):
     assert fake.devices.commands[-3].press_key.key_code == 224
     agent.screen("off")
     assert fake.devices.commands[-2].press_key.key_code == 223
-    assert agent.permission() == "permission dialog (com.android.permissioncontroller) offers: allow-foreground-only, deny"
+    assert agent.permission() == (
+        "permission dialog (com.android.permissioncontroller) offers: allow-foreground-only, deny; accuracy: precise, approximate"
+    )
     assert agent.permission("allow-one-time") == "pressed allow-one-time"
     assert fake.devices.commands[-1].choose_permission.choice == pb.PERMISSION_ALLOW_ONE_TIME
-    for bad in (lambda: agent.rotate("sideways"), lambda: agent.screen("dim"), lambda: agent.permission("maybe")):
+    assert fake.devices.commands[-1].choose_permission.accuracy == pb.LOCATION_ACCURACY_UNSPECIFIED
+    assert agent.permission("allow-foreground-only", accuracy="approximate") == "pressed allow-foreground-only (approximate)"
+    assert fake.devices.commands[-1].choose_permission.accuracy == pb.LOCATION_APPROXIMATE
+    for bad in (
+        lambda: agent.rotate("sideways"),
+        lambda: agent.screen("dim"),
+        lambda: agent.permission("maybe"),
+        lambda: agent.permission(accuracy="precise"),
+        lambda: agent.permission("allow", accuracy="exact"),
+    ):
         with pytest.raises(AgentError) as info:
             bad()
         assert info.value.exit_code == EXIT_USAGE
+
+
+def test_accessibility_actions_and_progress(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(
+            snapshot=pb.ElementSnapshot(
+                actions=[pb.A11Y_EXPAND, pb.A11Y_SCROLL_FORWARD],
+                custom_actions=["Archive"],
+                range=pb.Range(type=pb.RANGE_INT, min=0, max=100, current=20),
+            )
+        )
+        if command.HasField("snapshot")
+        else None
+    )
+    assert agent.action("id=card") == "id=card offers: expand, scroll-forward, 'Archive'\nrange 0..100, now 20 (int)"
+    assert agent.action("id=card", "expand") == "performed expand on id=card"
+    assert fake.devices.commands[-1].perform_accessibility_action.standard == pb.A11Y_EXPAND
+    assert agent.action("id=card", "Archive", custom=True) == "performed 'Archive' on id=card"
+    assert fake.devices.commands[-1].perform_accessibility_action.custom == "Archive"
+    assert agent.progress("id=volume", 55) == "set progress 55 on id=volume"
+    assert fake.devices.commands[-1].set_progress.value == 55
+    for bad in (lambda: agent.action("id=card", "explode"), lambda: agent.action("id=card", custom=True)):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+
+
+def test_notifications_are_listed_awaited_opened_and_dismissed(fake, agent):
+    agent.attach("emulator-5554")
+    sent = []
+    message = pb.DeviceNotification(package_name="com.example", title="New message", text="from Ada", actions=["Reply"], clearable=True)
+    service = pb.DeviceNotification(package_name="android", title="USB debugging connected")
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        sent.append(command)
+        if op == "list_notifications":
+            return pb.CommandResult(notifications=pb.NotificationList(notifications=[message, service]))
+        if op == "await_notification":
+            return pb.CommandResult(notification=message)
+        if op in ("open_notification", "dismiss_notification"):
+            return pb.CommandResult(done=pb.Done())
+        return None
+
+    fake.devices.responder = respond
+    assert agent.notification() == (
+        "com.example: 'New message' - 'from Ada' [Reply]\nandroid: 'USB debugging connected' (ongoing)"
+    )
+    assert agent.notification(package="android") == "android: 'USB debugging connected' (ongoing)"
+    assert agent.notification("await", "New", contains=True) == "com.example: 'New message' - 'from Ada' [Reply]"
+    assert agent.notification("open", "New message", button="Reply") == "pressed 'Reply' on the notification"
+    assert agent.notification("dismiss", text="from Ada") == "dismissed the notification"
+    assert sent[2].await_notification.match.mode == pb.MATCH_CONTAINS
+    assert sent[3].open_notification.action == "Reply"
+    assert sent[4].dismiss_notification.match.text == "from Ada"
+    for bad in (
+        lambda: agent.notification("peek"),
+        lambda: agent.notification("await", contains=True),
+        lambda: agent.notification("dismiss", "x", button="Reply"),
+    ):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+    assert len(sent) == 5
 
 
 def test_keyboard_submit_clipboard_and_toast(fake, agent):
@@ -357,11 +435,14 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
 def test_condition_reads_back_and_app_locale(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda command: (
-        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320))
+        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320, wifi_enabled=True, system_locales=["fr-FR", "en"], color_inversion=True))
         if command.HasField("device_info")
         else None
     )
-    assert agent.condition() == "animations off, dark-mode off, font-scale 1.25, density 320 dpi"
+    assert agent.condition() == (
+        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en, "
+        "stay-awake off, high-contrast-text unknown, color-inversion on, bold-text off"
+    )
     assert agent.condition("animations", "off") == "animations off (restored on release)"
     assert agent.condition("font_scale", "1.25") == "font-scale 1.25 (restored on release)"
     assert agent.condition("density", "reset") == "density 320 dpi (restored on release)"
@@ -381,10 +462,50 @@ def test_condition_reads_back_and_app_locale(fake, agent):
             bad()
         assert info.value.exit_code == EXIT_USAGE
     assert len(fake.devices.conditions) == 4
+    assert agent.condition("mobile-data", "off") == "mobile-data off (restored on release)"
+    assert fake.devices.conditions[-1].mobile_data is False and not fake.devices.conditions[-1].HasField("wifi")
+    assert agent.condition("locale", "fr-FR, en") == "locale fr-FR,en (restored on release)"
+    assert list(fake.devices.conditions[-1].locales) == ["fr-FR", "en"]
+    with pytest.raises(AgentError) as empty:
+        agent.condition("locale", " , ")
+    assert empty.value.exit_code == EXIT_USAGE
+    assert agent.condition("color-inversion", "on") == "color-inversion on (restored on release)"
+    assert fake.devices.conditions[-1].color_inversion is True and not fake.devices.conditions[-1].HasField("bold_text")
+    assert agent.condition("stay_awake", "on") == "stay-awake off (restored on release)"
+    assert fake.devices.conditions[-1].enabled is True
+    assert agent.activity() == "no activity is resumed"
+    fake.devices.foreground = ("com.example", "com.example.MainActivity")
+    assert agent.activity() == "com.example/com.example.MainActivity"
+    assert agent.location(48.8584, 2.2945, 3.5) == "location mocked at 48.8584, 2.2945 ±3.5 m (ends on release)"
+    assert fake.devices.conditions[-1].latitude == 48.8584 and fake.devices.conditions[-1].accuracy_m == 3.5
+    assert agent.location(48.8584, 2.2945, device=None, altitude=35) == "location mocked at 48.8584, 2.2945, 35 m up (ends on release)"
+    assert fake.devices.conditions[-1].altitude_m == 35 and not fake.devices.conditions[-1].HasField("accuracy_m")
+    with pytest.raises(AgentError) as far:
+        agent.location(95, 0)
+    assert far.value.exit_code == EXIT_USAGE
     assert agent.app("locale", "com.example") == "com.example follows the system language"
     assert agent.app("locale", "com.example", "fr-FR, en") == "com.example languages: fr-FR, en"
     assert agent.app("locale", "com.example", "system") == "com.example follows the system language"
 
+
+def test_files_push_pull_and_media(fake, agent, tmp_path):
+    agent.attach("emulator-5554")
+    local = tmp_path / "cat.png"
+    local.write_bytes(b"\x89PNG")
+    assert agent.push(local, "/sdcard/Download/cat.png") == "pushed 4 bytes to /sdcard/Download/cat.png (removed on release)"
+    out = tmp_path / "back.png"
+    assert agent.pull("/sdcard/Download/cat.png", out) == str(out)
+    assert out.read_bytes() == b"\x89PNG"
+    pulled = agent.pull("/sdcard/Download/cat.png")
+    assert pulled.endswith("-cat.png") and open(pulled, "rb").read() == b"\x89PNG"
+    assert agent.media(local) == "added /sdcard/Pictures/Tap/cat.png to the gallery (removed on release)"
+    assert agent.media(local, "dog.png") == "added /sdcard/Pictures/Tap/dog.png to the gallery (removed on release)"
+    with pytest.raises(AgentError) as missing:
+        agent.push(tmp_path / "nope", "/sdcard/Download/x")
+    assert missing.value.exit_code == EXIT_USAGE
+    with pytest.raises(AgentError) as taken:
+        agent.push(local, "/sdcard/Download/cat.png")
+    assert taken.value.exit_code == EXIT_FAILED
 
 
 # --- MCP ---------------------------------------------------------------------------------------
@@ -393,7 +514,8 @@ EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
-    "condition",
+    "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
+    "foreground_activity", "notification",
 }
 
 
@@ -452,3 +574,27 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert not result.is_error and result.content[0].text.startswith("opened example://x")
         result = await client.call_tool("export", {})
         assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text
+
+
+def test_launch_extras_are_typed_and_checked(fake, agent, capsys):
+    agent.attach("emulator-5554")
+    assert agent.app("launch", "com.example", ".Item", extras=["user=ada", "n:int=3", "id:long=42", "ratio:float=0.5", "on:bool=true"]) == "launched com.example"
+    request = fake.apps.launches[-1]
+    shown = {e.key: (e.WhichOneof("value"), getattr(e, e.WhichOneof("value"))) for e in request.extras}
+    assert shown == {
+        "user": ("string_value", "ada"),
+        "n": ("int_value", 3),
+        "id": ("long_value", 42),
+        "ratio": ("float_value", 0.5),
+        "on": ("bool_value", True),
+    }
+    agent.app("cold-launch", "com.example", extras=["url=a=b"])
+    assert [(e.key, e.string_value) for e in fake.apps.cold_launches[-1].extras] == [("url", "a=b")]
+    for bad in (["novalue"], ["n:int=x"], ["n:int=3000000000"], ["x:short=1"], ["b:bool=yes"], ["f:float=nan"], ["k=1", "k=2"], ["=v"]):
+        with pytest.raises(AgentError) as info:
+            agent.app("launch", "com.example", extras=bad)
+        assert info.value.exit_code == EXIT_USAGE, bad
+    with pytest.raises(AgentError) as info:
+        agent.app("stop", "com.example", extras=["a=b"])
+    assert info.value.exit_code == EXIT_USAGE
+    assert len(fake.apps.launches) == 1

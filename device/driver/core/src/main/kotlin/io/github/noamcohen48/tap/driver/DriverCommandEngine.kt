@@ -2,13 +2,16 @@ package io.github.noamcohen48.tap.driver
 
 import android.app.Instrumentation
 import androidx.test.uiautomator.UiDevice
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
 import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DismissNotification
 import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
@@ -17,15 +20,21 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
+import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
@@ -78,8 +87,11 @@ internal class DriverCommandEngine(
     private val permissions = PermissionCommands(device)
     private val waits = WaitCommands(device, objects)
     private val keyboard = KeyboardCommands(instrumentation, device, objects)
+    private val accessibilityActions = AccessibilityActionCommands(objects)
     private val clipboard = ClipboardCommands(instrumentation)
+    private val location = LocationCommands(instrumentation)
     private val toasts = ToastWatcher(instrumentation)
+    private val notifications = NotificationCommands(instrumentation)
     private val queries = QueryCommands(device, objects, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
     private val screenStability = ScreenStability(instrumentation)
     private val artifacts = ArtifactCommands(instrumentation, device)
@@ -170,17 +182,32 @@ internal class DriverCommandEngine(
 
         override fun waitPermissionPrompt(command: WaitPermissionPrompt): PermissionPrompt = permissions.waitPrompt(context)
 
-        override fun choosePermission(command: ChoosePermission) = permissions.choose(context, command.choice)
+        override fun choosePermission(command: ChoosePermission) = permissions.choose(context, command.choice, command.accuracy)
 
         override fun hideKeyboard(command: HideKeyboard) = keyboard.hide(context)
 
         override fun performImeAction(command: PerformImeAction) = keyboard.performImeAction(context, selectors[command.selector])
+
+        override fun performAccessibilityAction(command: PerformAccessibilityAction) =
+            accessibilityActions.perform(context, selectors[command.selector], command)
+
+        override fun setProgress(command: SetProgress) = accessibilityActions.setProgress(context, selectors[command.selector], command.value)
+
+        override fun setLocation(command: SetLocation) = location.set(context, command)
 
         override fun setClipboard(command: SetClipboard) = clipboard.set(context, command.text)
 
         override fun getClipboard(command: GetClipboard): String = clipboard.get(context)
 
         override fun awaitToast(command: AwaitToast): Toast = toasts.await(context, command)
+
+        override fun awaitNotification(command: AwaitNotification): DeviceNotification = notifications.await(context, command.match)
+
+        override fun listNotifications(command: ListNotifications): NotificationList = notifications.list(context)
+
+        override fun openNotification(command: OpenNotification) = notifications.open(context, command)
+
+        override fun dismissNotification(command: DismissNotification) = notifications.dismiss(context, command.match)
 
         override fun dumpHierarchy(command: DumpHierarchy): String = artifacts.dumpHierarchy()
 

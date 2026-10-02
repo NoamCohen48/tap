@@ -104,6 +104,51 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetDensityRequest.SerializeToString,
                 response_deserializer=device__pb2.SetDensityResponse.FromString,
                 _registered_method=True)
+        self.SetNetwork = channel.unary_unary(
+                '/tap.v1.DeviceService/SetNetwork',
+                request_serializer=device__pb2.SetNetworkRequest.SerializeToString,
+                response_deserializer=device__pb2.SetNetworkResponse.FromString,
+                _registered_method=True)
+        self.SetSystemLocales = channel.unary_unary(
+                '/tap.v1.DeviceService/SetSystemLocales',
+                request_serializer=device__pb2.SetSystemLocalesRequest.SerializeToString,
+                response_deserializer=device__pb2.SetSystemLocalesResponse.FromString,
+                _registered_method=True)
+        self.SetLocation = channel.unary_unary(
+                '/tap.v1.DeviceService/SetLocation',
+                request_serializer=device__pb2.SetLocationRequest.SerializeToString,
+                response_deserializer=device__pb2.SetLocationResponse.FromString,
+                _registered_method=True)
+        self.SetStayAwake = channel.unary_unary(
+                '/tap.v1.DeviceService/SetStayAwake',
+                request_serializer=device__pb2.SetStayAwakeRequest.SerializeToString,
+                response_deserializer=device__pb2.SetStayAwakeResponse.FromString,
+                _registered_method=True)
+        self.SetAccessibilityDisplay = channel.unary_unary(
+                '/tap.v1.DeviceService/SetAccessibilityDisplay',
+                request_serializer=device__pb2.SetAccessibilityDisplayRequest.SerializeToString,
+                response_deserializer=device__pb2.SetAccessibilityDisplayResponse.FromString,
+                _registered_method=True)
+        self.GetForegroundActivity = channel.unary_unary(
+                '/tap.v1.DeviceService/GetForegroundActivity',
+                request_serializer=device__pb2.GetForegroundActivityRequest.SerializeToString,
+                response_deserializer=device__pb2.GetForegroundActivityResponse.FromString,
+                _registered_method=True)
+        self.PushFile = channel.stream_unary(
+                '/tap.v1.DeviceService/PushFile',
+                request_serializer=device__pb2.PushFileRequest.SerializeToString,
+                response_deserializer=device__pb2.PushFileResponse.FromString,
+                _registered_method=True)
+        self.PullFile = channel.unary_stream(
+                '/tap.v1.DeviceService/PullFile',
+                request_serializer=device__pb2.PullFileRequest.SerializeToString,
+                response_deserializer=device__pb2.PullFileResponse.FromString,
+                _registered_method=True)
+        self.AddMedia = channel.stream_unary(
+                '/tap.v1.DeviceService/AddMedia',
+                request_serializer=device__pb2.AddMediaRequest.SerializeToString,
+                response_deserializer=device__pb2.AddMediaResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceServiceServicer:
@@ -207,6 +252,90 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetNetwork(self, request, context):
+        """Airplane mode (`cmd connectivity airplane-mode`), Wi-Fi (`svc wifi`) and mobile data
+        (`svc data`): the real switches, nothing mocked. API 29+. Airplane mode is written first;
+        all three are captured on the first change and restored airplane mode first. A device reached
+        over ADB on the network refuses Wi-Fi off / airplane mode on (FAILED_PRECONDITION).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetSystemLocales(self, request, context):
+        """The device-wide locale list (Settings › Languages), 1 to 16 BCP-47 tags in preference order
+        (INVALID_ARGUMENT otherwise). Android has no shell command for it: the driver app applies it
+        as Settings' language picker does, and it is read back (`system_locales`).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetLocation(self, request, context):
+        """Mock location: the device reports this fix from its location providers until detach.
+        `latitude` -90..90, `longitude` -180..180, `accuracy_m` > 0 (default 5), `altitude_m` finite
+        (INVALID_ARGUMENT otherwise). The driver app becomes the mock-location app (its
+        `android:mock_location` app-op) and location is turned on when it is off; both are captured
+        and restored on detach, which ends the mock. The driver serves the fix (`set_location`).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetStayAwake(self, request, context):
+        """Keeps the screen on while the device is plugged in (USB, AC or wireless): Settings.Global
+        `stay_on_while_plugged_in` 7, or 0. Captured and restored on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetAccessibilityDisplay(self, request, context):
+        """The accessibility display settings: high-contrast text, color inversion and bold text (API
+        31+, else FAILED_PRECONDITION / UNSUPPORTED_API before anything changes), as Settings ›
+        Accessibility writes them. At least one must be set. Captured and restored on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetForegroundActivity(self, request, context):
+        """The activity on top (resumed), from `dumpsys activity activities`; empty when none is
+        resumed (a keyguard, or between activities). Changes nothing.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PushFile(self, request_iterator, context):
+        """Files. The bytes travel in the call (never a path on the server's machine), at most 512 MiB.
+        A file Tap cannot write or read as asked is FAILED_PRECONDITION / DEVICE_FILE.
+
+        Copies a file to `device_path` (absolute, normalised; its directory must exist): a
+        PushFileHeader first, then the bytes. A file already there is refused unless this attached
+        device pushed it; the size is read back. Pushed files are deleted on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PullFile(self, request, context):
+        """Streams the regular file at `device_path` back in chunks.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AddMedia(self, request_iterator, context):
+        """Adds a photo or video to the gallery: an AddMediaHeader (`file_name` with a photo or video
+        extension), then the bytes. Written to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/` and
+        indexed by the media scanner (read back); a name already there is refused unless this attached
+        device added it. Deleted, and dropped from the index, on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -279,6 +408,51 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.SetDensity,
                     request_deserializer=device__pb2.SetDensityRequest.FromString,
                     response_serializer=device__pb2.SetDensityResponse.SerializeToString,
+            ),
+            'SetNetwork': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetNetwork,
+                    request_deserializer=device__pb2.SetNetworkRequest.FromString,
+                    response_serializer=device__pb2.SetNetworkResponse.SerializeToString,
+            ),
+            'SetSystemLocales': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetSystemLocales,
+                    request_deserializer=device__pb2.SetSystemLocalesRequest.FromString,
+                    response_serializer=device__pb2.SetSystemLocalesResponse.SerializeToString,
+            ),
+            'SetLocation': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetLocation,
+                    request_deserializer=device__pb2.SetLocationRequest.FromString,
+                    response_serializer=device__pb2.SetLocationResponse.SerializeToString,
+            ),
+            'SetStayAwake': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetStayAwake,
+                    request_deserializer=device__pb2.SetStayAwakeRequest.FromString,
+                    response_serializer=device__pb2.SetStayAwakeResponse.SerializeToString,
+            ),
+            'SetAccessibilityDisplay': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetAccessibilityDisplay,
+                    request_deserializer=device__pb2.SetAccessibilityDisplayRequest.FromString,
+                    response_serializer=device__pb2.SetAccessibilityDisplayResponse.SerializeToString,
+            ),
+            'GetForegroundActivity': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetForegroundActivity,
+                    request_deserializer=device__pb2.GetForegroundActivityRequest.FromString,
+                    response_serializer=device__pb2.GetForegroundActivityResponse.SerializeToString,
+            ),
+            'PushFile': grpc.stream_unary_rpc_method_handler(
+                    servicer.PushFile,
+                    request_deserializer=device__pb2.PushFileRequest.FromString,
+                    response_serializer=device__pb2.PushFileResponse.SerializeToString,
+            ),
+            'PullFile': grpc.unary_stream_rpc_method_handler(
+                    servicer.PullFile,
+                    request_deserializer=device__pb2.PullFileRequest.FromString,
+                    response_serializer=device__pb2.PullFileResponse.SerializeToString,
+            ),
+            'AddMedia': grpc.stream_unary_rpc_method_handler(
+                    servicer.AddMedia,
+                    request_deserializer=device__pb2.AddMediaRequest.FromString,
+                    response_serializer=device__pb2.AddMediaResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -659,6 +833,249 @@ class DeviceService:
             '/tap.v1.DeviceService/SetDensity',
             device__pb2.SetDensityRequest.SerializeToString,
             device__pb2.SetDensityResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetNetwork(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetNetwork',
+            device__pb2.SetNetworkRequest.SerializeToString,
+            device__pb2.SetNetworkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetSystemLocales(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetSystemLocales',
+            device__pb2.SetSystemLocalesRequest.SerializeToString,
+            device__pb2.SetSystemLocalesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetLocation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetLocation',
+            device__pb2.SetLocationRequest.SerializeToString,
+            device__pb2.SetLocationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetStayAwake(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetStayAwake',
+            device__pb2.SetStayAwakeRequest.SerializeToString,
+            device__pb2.SetStayAwakeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetAccessibilityDisplay(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetAccessibilityDisplay',
+            device__pb2.SetAccessibilityDisplayRequest.SerializeToString,
+            device__pb2.SetAccessibilityDisplayResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetForegroundActivity(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/GetForegroundActivity',
+            device__pb2.GetForegroundActivityRequest.SerializeToString,
+            device__pb2.GetForegroundActivityResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PushFile(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/tap.v1.DeviceService/PushFile',
+            device__pb2.PushFileRequest.SerializeToString,
+            device__pb2.PushFileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PullFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/tap.v1.DeviceService/PullFile',
+            device__pb2.PullFileRequest.SerializeToString,
+            device__pb2.PullFileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddMedia(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/tap.v1.DeviceService/AddMedia',
+            device__pb2.AddMediaRequest.SerializeToString,
+            device__pb2.AddMediaResponse.FromString,
             options,
             channel_credentials,
             insecure,

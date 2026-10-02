@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from . import _gen as pb
 from . import _proto
 from .client import mapped_errors
-from .models import AppProcess, Long, MatchMode, StabilitySignal, Toast
+from .models import AppProcess, Long, MatchMode, Notification, StabilitySignal, Toast
 from .element import Element, ElementWait
 from .selectors import Selector
 
@@ -201,6 +201,17 @@ class App:
         """``Device.await_toast`` for this package's toasts only: on Android 11+ a text toast is
         drawn by SystemUI but still reported under the app that posted it."""
         return self.device.await_toast(text, mode, package_name=self.package_name, timeout=timeout)
+
+    def await_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        timeout: float | None = None,
+    ) -> Notification:
+        """``Device.await_notification`` for this package's notifications only."""
+        return self.device.await_notification(title, text, mode, package_name=self.package_name, timeout=timeout)
 
     def await_screen_stable(
         self,

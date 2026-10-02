@@ -21,7 +21,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file command.proto.
  */
 export const file_command: GenFile = /*@__PURE__*/
-  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCI6Cg5TZXRPcmllbnRhdGlvbhIoCgtvcmllbnRhdGlvbhgBIAEoDjITLnRhcC52MS5PcmllbnRhdGlvbiI/ChJTZXREaXNwbGF5Um90YXRpb24SKQoIcm90YXRpb24YASABKA4yFy50YXAudjEuRGlzcGxheVJvdGF0aW9uIhIKEFVuZnJlZXplUm90YXRpb24iEQoPRGlzbWlzc0tleWd1YXJkIg8KDUR1bXBIaWVyYXJjaHkiLAoGRXhpc3RzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIisKBUNvdW50EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi4KCFNuYXBzaG90EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkYKC1dhaXRWaXNpYmxlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhMKC2V4YWN0bHlfb25lGAIgASgIIi4KCFdhaXRHb25lEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIiYKDldhaXRBcHBWaXNpYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSJ/ChBXYWl0U2NyZWVuU3RhYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRIaCg1zdGFibGVfZm9yX21zGAIgASgDSACIAQESJwoGc2lnbmFsGAMgASgOMhcudGFwLnYxLlN0YWJpbGl0eVNpZ25hbEIQCg5fc3RhYmxlX2Zvcl9tcyIpCgNUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiLQoHTG9uZ1RhcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciI7CgdTZXRUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEgwKBHRleHQYAiABKAkiGAoIVHlwZVRleHQSDAoEdGV4dBgCIAEoCSIvCglDbGVhclRleHQSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IihQEKBVN3aXBlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IoYBCgZTY3JvbGwSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbhIdChBkaXN0YW5jZV9wZXJjZW50GAMgASgFSACIAQFCEwoRX2Rpc3RhbmNlX3BlcmNlbnQiLwoJRG91YmxlVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkwKBERyYWcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIAoGdGFyZ2V0GAIgASgLMhAudGFwLnYxLlNlbGVjdG9yIngKBVBpbmNoEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEikKCWRpcmVjdGlvbhgCIAEoDjIWLnRhcC52MS5QaW5jaERpcmVjdGlvbhIUCgdwZXJjZW50GAMgASgFSACIAQFCCgoIX3BlcmNlbnQiUQoFRmxpbmcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbiIWChRXYWl0UGVybWlzc2lvblByb21wdCI8ChBDaG9vc2VQZXJtaXNzaW9uEigKBmNob2ljZRgBIAEoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlIg4KDEhpZGVLZXlib2FyZCI2ChBQZXJmb3JtSW1lQWN0aW9uEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIhwKDFNldENsaXBib2FyZBIMCgR0ZXh0GAEgASgJIg4KDEdldENsaXBib2FyZCJ1CgpBd2FpdFRvYXN0EhEKBHRleHQYASABKAlIAIgBARIfCgRtb2RlGAIgASgOMhEudGFwLnYxLk1hdGNoTW9kZRIZCgxwYWNrYWdlX25hbWUYAyABKAlIAYgBAUIHCgVfdGV4dEIPCg1fcGFja2FnZV9uYW1lIt4LCgdDb21tYW5kEhcKCnRpbWVvdXRfbXMYASABKANIAYgBARIuCgtkZXZpY2VfaW5mbxgDIAEoCzIXLnRhcC52MS5EZXZpY2VJbmZvUXVlcnlIABIlCglwcmVzc19rZXkYBCABKAsyEC50YXAudjEuUHJlc3NLZXlIABIvCg5kdW1wX2hpZXJhcmNoeRgGIAEoCzIVLnRhcC52MS5EdW1wSGllcmFyY2h5SAASIAoGZXhpc3RzGAcgASgLMg4udGFwLnYxLkV4aXN0c0gAEh4KBWNvdW50GAggASgLMg0udGFwLnYxLkNvdW50SAASJAoIc25hcHNob3QYCSABKAsyEC50YXAudjEuU25hcHNob3RIABIrCgx3YWl0X3Zpc2libGUYCiABKAsyEy50YXAudjEuV2FpdFZpc2libGVIABIlCgl3YWl0X2dvbmUYCyABKAsyEC50YXAudjEuV2FpdEdvbmVIABIyChB3YWl0X2FwcF92aXNpYmxlGAwgASgLMhYudGFwLnYxLldhaXRBcHBWaXNpYmxlSAASNgoSd2FpdF9zY3JlZW5fc3RhYmxlGA0gASgLMhgudGFwLnYxLldhaXRTY3JlZW5TdGFibGVIABIaCgN0YXAYDiABKAsyCy50YXAudjEuVGFwSAASIwoIbG9uZ190YXAYDyABKAsyDy50YXAudjEuTG9uZ1RhcEgAEiMKCHNldF90ZXh0GBAgASgLMg8udGFwLnYxLlNldFRleHRIABIlCgl0eXBlX3RleHQYESABKAsyEC50YXAudjEuVHlwZVRleHRIABInCgpjbGVhcl90ZXh0GBIgASgLMhEudGFwLnYxLkNsZWFyVGV4dEgAEh4KBXN3aXBlGBMgASgLMg0udGFwLnYxLlN3aXBlSAASIAoGc2Nyb2xsGBQgASgLMg4udGFwLnYxLlNjcm9sbEgAEjQKEW9wZW5fc3lzdGVtX3BhbmVsGBggASgLMhcudGFwLnYxLk9wZW5TeXN0ZW1QYW5lbEgAEjEKD3NldF9vcmllbnRhdGlvbhgZIAEoCzIWLnRhcC52MS5TZXRPcmllbnRhdGlvbkgAEjoKFHNldF9kaXNwbGF5X3JvdGF0aW9uGBogASgLMhoudGFwLnYxLlNldERpc3BsYXlSb3RhdGlvbkgAEjUKEXVuZnJlZXplX3JvdGF0aW9uGBsgASgLMhgudGFwLnYxLlVuZnJlZXplUm90YXRpb25IABIzChBkaXNtaXNzX2tleWd1YXJkGBwgASgLMhcudGFwLnYxLkRpc21pc3NLZXlndWFyZEgAEicKCmRvdWJsZV90YXAYHSABKAsyES50YXAudjEuRG91YmxlVGFwSAASHAoEZHJhZxgeIAEoCzIMLnRhcC52MS5EcmFnSAASHgoFcGluY2gYHyABKAsyDS50YXAudjEuUGluY2hIABIeCgVmbGluZxggIAEoCzINLnRhcC52MS5GbGluZ0gAEj4KFndhaXRfcGVybWlzc2lvbl9wcm9tcHQYISABKAsyHC50YXAudjEuV2FpdFBlcm1pc3Npb25Qcm9tcHRIABI1ChFjaG9vc2VfcGVybWlzc2lvbhgiIAEoCzIYLnRhcC52MS5DaG9vc2VQZXJtaXNzaW9uSAASLQoNaGlkZV9rZXlib2FyZBgjIAEoCzIULnRhcC52MS5IaWRlS2V5Ym9hcmRIABI2ChJwZXJmb3JtX2ltZV9hY3Rpb24YJCABKAsyGC50YXAudjEuUGVyZm9ybUltZUFjdGlvbkgAEi0KDXNldF9jbGlwYm9hcmQYJSABKAsyFC50YXAudjEuU2V0Q2xpcGJvYXJkSAASLQoNZ2V0X2NsaXBib2FyZBgmIAEoCzIULnRhcC52MS5HZXRDbGlwYm9hcmRIABIpCgthd2FpdF90b2FzdBgnIAEoCzISLnRhcC52MS5Bd2FpdFRvYXN0SABCBAoCb3BCDQoLX3RpbWVvdXRfbXMiQgoGQm91bmRzEgwKBGxlZnQYASABKAUSCwoDdG9wGAIgASgFEg0KBXJpZ2h0GAMgASgFEg4KBmJvdHRvbRgEIAEoBSL6AwoPRWxlbWVudFNuYXBzaG90EhcKCmNsYXNzX25hbWUYASABKAlIAIgBARIZCgxwYWNrYWdlX25hbWUYAiABKAlIAYgBARIaCg1yZXNvdXJjZV9uYW1lGAMgASgJSAKIAQESEQoEdGV4dBgEIAEoCUgDiAEBEiAKE2NvbnRlbnRfZGVzY3JpcHRpb24YBSABKAlIBIgBARIRCgRoaW50GAYgASgJSAWIAQESHgoGYm91bmRzGAcgASgLMg4udGFwLnYxLkJvdW5kcxIRCgljaGVja2FibGUYCCABKAgSDwoHY2hlY2tlZBgJIAEoCBIRCgljbGlja2FibGUYCiABKAgSDwoHZW5hYmxlZBgLIAEoCBIRCglmb2N1c2FibGUYDCABKAgSDwoHZm9jdXNlZBgNIAEoCBIWCg5sb25nX2NsaWNrYWJsZRgOIAEoCBISCgpzY3JvbGxhYmxlGA8gASgIEhAKCHNlbGVjdGVkGBAgASgIEhMKC2NoaWxkX2NvdW50GBEgASgFEhQKDHNob3dpbmdfaGludBgSIAEoCEINCgtfY2xhc3NfbmFtZUIPCg1fcGFja2FnZV9uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50IpoDCgpEZXZpY2VJbmZvEhEKCWFwaV9sZXZlbBgBIAEoBRIUCgxtYW51ZmFjdHVyZXIYAiABKAkSDQoFbW9kZWwYAyABKAkSDwoHcHJvZHVjdBgEIAEoCRIVCg1kaXNwbGF5X3dpZHRoGAUgASgFEhYKDmRpc3BsYXlfaGVpZ2h0GAYgASgFEhgKEGRpc3BsYXlfcm90YXRpb24YByABKAUSHAoPY3VycmVudF9wYWNrYWdlGAggASgJSACIAQESEQoJc2NyZWVuX29uGAkgASgIEhcKD2tleWd1YXJkX2xvY2tlZBgKIAEoCBIXCg9rZXlndWFyZF9zZWN1cmUYCyABKAgSFgoOa2V5Ym9hcmRfc2hvd24YDCABKAgSEwoLYXV0b19yb3RhdGUYDSABKAgSGgoSYW5pbWF0aW9uc19lbmFibGVkGA4gASgIEhEKCWRhcmtfbW9kZRgPIAEoCBISCgpmb250X3NjYWxlGBAgASgCEhMKC2RlbnNpdHlfZHBpGBEgASgFQhIKEF9jdXJyZW50X3BhY2thZ2UiKwoFVG9hc3QSDAoEdGV4dBgBIAEoCRIUCgxwYWNrYWdlX25hbWUYAiABKAkiUwoQUGVybWlzc2lvblByb21wdBIUCgxwYWNrYWdlX25hbWUYASABKAkSKQoHY2hvaWNlcxgCIAMoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlIgYKBERvbmUilAEKBUVycm9yEh8KBGNvZGUYASABKA4yES50YXAudjEuRXJyb3JDb2RlEhMKBmRldGFpbBgCIAEoCUgAiAEBEhQKB21lc3NhZ2UYAyABKAlIAYgBARIYCgttYXRjaF9jb3VudBgEIAEoBUgCiAEBQgkKB19kZXRhaWxCCgoIX21lc3NhZ2VCDgoMX21hdGNoX2NvdW50Iv0CCg1Db21tYW5kUmVzdWx0EhMKC2R1cmF0aW9uX21zGAEgASgDEhIKCnJlcXVlc3RfaWQYAiABKAMSGgoSc2Vzc2lvbl9nZW5lcmF0aW9uGAMgASgDEhwKBGRvbmUYBCABKAsyDC50YXAudjEuRG9uZUgAEg4KBGJvb2wYBSABKAhIABIPCgVjb3VudBgHIAEoBUgAEg4KBHRleHQYCCABKAlIABIrCghzbmFwc2hvdBgJIAEoCzIXLnRhcC52MS5FbGVtZW50U25hcHNob3RIABIpCgtkZXZpY2VfaW5mbxgKIAEoCzISLnRhcC52MS5EZXZpY2VJbmZvSAASHgoFZXJyb3IYDSABKAsyDS50YXAudjEuRXJyb3JIABI1ChFwZXJtaXNzaW9uX3Byb21wdBgOIAEoCzIYLnRhcC52MS5QZXJtaXNzaW9uUHJvbXB0SAASHgoFdG9hc3QYDyABKAsyDS50YXAudjEuVG9hc3RIAEIJCgdvdXRjb21lKqkFCglFcnJvckNvZGUSEwoPRVJSX1VOU1BFQ0lGSUVEEAASFwoTRVJSX0lOVkFMSURfUkVRVUVTVBABEhgKFEVSUl9JTlZBTElEX1NFTEVDVE9SEAISEwoPRVJSX1VOU1VQUE9SVEVEEAMSFwoTRVJSX1VOQVVUSEVOVElDQVRFRBAEEhgKFEVSUl9TRVNTSU9OX01JU01BVENIEAUSGgoWRVJSX0RVUExJQ0FURV9PUl9TVEFMRRAGEhIKDkVSUl9PVkVSTE9BREVEEAcSFAoQRVJSX0FVVF9NSVNNQVRDSBAIEhEKDUVSUl9OT1RfRk9VTkQQCRIRCg1FUlJfQU1CSUdVT1VTEAoSGAoURVJSX05PVF9JTlRFUkFDVEFCTEUQCxIcChhFUlJfU1RBTEVfRFVSSU5HX0NPTU1BTkQQDBIXChNFUlJfQUNUSU9OX1JFSkVDVEVEEA0SFAoQRVJSX1dBSVRfVElNRU9VVBAOEhEKDUVSUl9DQU5DRUxMRUQQDxIZChVFUlJfREVBRExJTkVfRVhDRUVERUQQEBIZChVFUlJfQVVUX05PVF9JTlNUQUxMRUQQERITCg9FUlJfQVVUX0NSQVNIRUQQEhIPCgtFUlJfQVVUX0FOUhATEiEKHUVSUl9TWU5DX1BST1ZJREVSX1VOQVZBSUxBQkxFEBQSGAoURVJSX0RSSVZFUl9VTkhFQUxUSFkQFRIWChJFUlJfVFJBTlNQT1JUX0xPU1QQFhIVChFFUlJfSU5ERVRFUk1JTkFURRAXEiAKHEVSUl9BUlRJRkFDVF9UUkFOU0ZFUl9GQUlMRUQQGBIZChVFUlJfUEFZTE9BRF9UT09fTEFSR0UQGRIQCgxFUlJfSU5URVJOQUwQGhIPCgtFUlJfVU5LTk9XThAbKlcKCURpcmVjdGlvbhITCg9ESVJfVU5TUEVDSUZJRUQQABIKCgZESVJfVVAQARIMCghESVJfRE9XThACEgwKCERJUl9MRUZUEAMSDQoJRElSX1JJR0hUEAQqaQoPU3RhYmlsaXR5U2lnbmFsEhkKFVNUQUJJTElUWV9VTlNQRUNJRklFRBAAEhIKDlNUQUJJTElUWV9UUkVFEAESFAoQU1RBQklMSVRZX1BJWEVMUxACEhEKDVNUQUJJTElUWV9BTEwQAypsCgtTeXN0ZW1QYW5lbBIcChhTWVNURU1fUEFORUxfVU5TUEVDSUZJRUQQABIeChpTWVNURU1fUEFORUxfTk9USUZJQ0FUSU9OUxABEh8KG1NZU1RFTV9QQU5FTF9RVUlDS19TRVRUSU5HUxACKl8KC09yaWVudGF0aW9uEhsKF09SSUVOVEFUSU9OX1VOU1BFQ0lGSUVEEAASGAoUT1JJRU5UQVRJT05fUE9SVFJBSVQQARIZChVPUklFTlRBVElPTl9MQU5EU0NBUEUQAiqqAQoPRGlzcGxheVJvdGF0aW9uEiAKHERJU1BMQVlfUk9UQVRJT05fVU5TUEVDSUZJRUQQABIcChhESVNQTEFZX1JPVEFUSU9OX05BVFVSQUwQARIZChVESVNQTEFZX1JPVEFUSU9OX0xFRlQQAhIgChxESVNQTEFZX1JPVEFUSU9OX1VQU0lERV9ET1dOEAMSGgoWRElTUExBWV9ST1RBVElPTl9SSUdIVBAEKkgKDlBpbmNoRGlyZWN0aW9uEhUKEVBJTkNIX1VOU1BFQ0lGSUVEEAASDgoKUElOQ0hfT1BFThABEg8KC1BJTkNIX0NMT1NFEAIq5gIKEFBlcm1pc3Npb25DaG9pY2USIQodUEVSTUlTU0lPTl9DSE9JQ0VfVU5TUEVDSUZJRUQQABIUChBQRVJNSVNTSU9OX0FMTE9XEAESJAogUEVSTUlTU0lPTl9BTExPV19GT1JFR1JPVU5EX09OTFkQAhIdChlQRVJNSVNTSU9OX0FMTE9XX09ORV9USU1FEAMSGwoXUEVSTUlTU0lPTl9BTExPV19BTFdBWVMQBBIdChlQRVJNSVNTSU9OX0FMTE9XX1NFTEVDVEVEEAUSGAoUUEVSTUlTU0lPTl9BTExPV19BTEwQBhITCg9QRVJNSVNTSU9OX0RFTlkQBxImCiJQRVJNSVNTSU9OX0RFTllfQU5EX0RPTlRfQVNLX0FHQUlOEAgSIwofUEVSTUlTU0lPTl9LRUVQX0ZPUkVHUk9VTkRfT05MWRAJEhwKGFBFUk1JU1NJT05fS0VFUF9PTkVfVElNRRAKQjIKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgxDb21tYW5kUHJvdG9QAWIGcHJvdG8z", [file_selector]);
+  fileDesc("Cg1jb21tYW5kLnByb3RvEgZ0YXAudjEiEQoPRGV2aWNlSW5mb1F1ZXJ5IhwKCFByZXNzS2V5EhAKCGtleV9jb2RlGAEgASgFIjUKD09wZW5TeXN0ZW1QYW5lbBIiCgVwYW5lbBgBIAEoDjITLnRhcC52MS5TeXN0ZW1QYW5lbCI6Cg5TZXRPcmllbnRhdGlvbhIoCgtvcmllbnRhdGlvbhgBIAEoDjITLnRhcC52MS5PcmllbnRhdGlvbiI/ChJTZXREaXNwbGF5Um90YXRpb24SKQoIcm90YXRpb24YASABKA4yFy50YXAudjEuRGlzcGxheVJvdGF0aW9uIhIKEFVuZnJlZXplUm90YXRpb24iEQoPRGlzbWlzc0tleWd1YXJkIg8KDUR1bXBIaWVyYXJjaHkiLAoGRXhpc3RzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIisKBUNvdW50EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIi4KCFNuYXBzaG90EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkYKC1dhaXRWaXNpYmxlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEhMKC2V4YWN0bHlfb25lGAIgASgIIi4KCFdhaXRHb25lEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIiYKDldhaXRBcHBWaXNpYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCSJ/ChBXYWl0U2NyZWVuU3RhYmxlEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRIaCg1zdGFibGVfZm9yX21zGAIgASgDSACIAQESJwoGc2lnbmFsGAMgASgOMhcudGFwLnYxLlN0YWJpbGl0eVNpZ25hbEIQCg5fc3RhYmxlX2Zvcl9tcyIpCgNUYXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiLQoHTG9uZ1RhcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciI7CgdTZXRUZXh0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEgwKBHRleHQYAiABKAkiGAoIVHlwZVRleHQSDAoEdGV4dBgCIAEoCSIvCglDbGVhclRleHQSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IihQEKBVN3aXBlEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiQKCWRpcmVjdGlvbhgCIAEoDjIRLnRhcC52MS5EaXJlY3Rpb24SHQoQZGlzdGFuY2VfcGVyY2VudBgDIAEoBUgAiAEBQhMKEV9kaXN0YW5jZV9wZXJjZW50IoYBCgZTY3JvbGwSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbhIdChBkaXN0YW5jZV9wZXJjZW50GAMgASgFSACIAQFCEwoRX2Rpc3RhbmNlX3BlcmNlbnQiLwoJRG91YmxlVGFwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIkwKBERyYWcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISIAoGdGFyZ2V0GAIgASgLMhAudGFwLnYxLlNlbGVjdG9yIngKBVBpbmNoEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEikKCWRpcmVjdGlvbhgCIAEoDjIWLnRhcC52MS5QaW5jaERpcmVjdGlvbhIUCgdwZXJjZW50GAMgASgFSACIAQFCCgoIX3BlcmNlbnQiUQoFRmxpbmcSIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISJAoJZGlyZWN0aW9uGAIgASgOMhEudGFwLnYxLkRpcmVjdGlvbiIWChRXYWl0UGVybWlzc2lvblByb21wdCJoChBDaG9vc2VQZXJtaXNzaW9uEigKBmNob2ljZRgBIAEoDjIYLnRhcC52MS5QZXJtaXNzaW9uQ2hvaWNlEioKCGFjY3VyYWN5GAIgASgOMhgudGFwLnYxLkxvY2F0aW9uQWNjdXJhY3kiDgoMSGlkZUtleWJvYXJkIjYKEFBlcmZvcm1JbWVBY3Rpb24SIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3IiHAoMU2V0Q2xpcGJvYXJkEgwKBHRleHQYASABKAkiDgoMR2V0Q2xpcGJvYXJkInUKCkF3YWl0VG9hc3QSEQoEdGV4dBgBIAEoCUgAiAEBEh8KBG1vZGUYAiABKA4yES50YXAudjEuTWF0Y2hNb2RlEhkKDHBhY2thZ2VfbmFtZRgDIAEoCUgBiAEBQgcKBV90ZXh0Qg8KDV9wYWNrYWdlX25hbWUiiAEKGlBlcmZvcm1BY2Nlc3NpYmlsaXR5QWN0aW9uEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEioKCHN0YW5kYXJkGAIgASgOMhYudGFwLnYxLlN0YW5kYXJkQWN0aW9uSAASEAoGY3VzdG9tGAMgASgJSABCCAoGYWN0aW9uIkAKC1NldFByb2dyZXNzEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEg0KBXZhbHVlGAIgASgCIoIBCgtTZXRMb2NhdGlvbhIQCghsYXRpdHVkZRgBIAEoARIRCglsb25naXR1ZGUYAiABKAESFwoKYWNjdXJhY3lfbRgDIAEoAkgAiAEBEhcKCmFsdGl0dWRlX20YBCABKAFIAYgBAUINCgtfYWNjdXJhY3lfbUINCgtfYWx0aXR1ZGVfbSKaAQoRTm90aWZpY2F0aW9uTWF0Y2gSGQoMcGFja2FnZV9uYW1lGAEgASgJSACIAQESEgoFdGl0bGUYAiABKAlIAYgBARIRCgR0ZXh0GAMgASgJSAKIAQESHwoEbW9kZRgEIAEoDjIRLnRhcC52MS5NYXRjaE1vZGVCDwoNX3BhY2thZ2VfbmFtZUIICgZfdGl0bGVCBwoFX3RleHQiPQoRQXdhaXROb3RpZmljYXRpb24SKAoFbWF0Y2gYASABKAsyGS50YXAudjEuTm90aWZpY2F0aW9uTWF0Y2giEwoRTGlzdE5vdGlmaWNhdGlvbnMiXAoQT3Blbk5vdGlmaWNhdGlvbhIoCgVtYXRjaBgBIAEoCzIZLnRhcC52MS5Ob3RpZmljYXRpb25NYXRjaBITCgZhY3Rpb24YAiABKAlIAIgBAUIJCgdfYWN0aW9uIj8KE0Rpc21pc3NOb3RpZmljYXRpb24SKAoFbWF0Y2gYASABKAsyGS50YXAudjEuTm90aWZpY2F0aW9uTWF0Y2gi6g4KB0NvbW1hbmQSFwoKdGltZW91dF9tcxgBIAEoA0gBiAEBEi4KC2RldmljZV9pbmZvGAMgASgLMhcudGFwLnYxLkRldmljZUluZm9RdWVyeUgAEiUKCXByZXNzX2tleRgEIAEoCzIQLnRhcC52MS5QcmVzc0tleUgAEi8KDmR1bXBfaGllcmFyY2h5GAYgASgLMhUudGFwLnYxLkR1bXBIaWVyYXJjaHlIABIgCgZleGlzdHMYByABKAsyDi50YXAudjEuRXhpc3RzSAASHgoFY291bnQYCCABKAsyDS50YXAudjEuQ291bnRIABIkCghzbmFwc2hvdBgJIAEoCzIQLnRhcC52MS5TbmFwc2hvdEgAEisKDHdhaXRfdmlzaWJsZRgKIAEoCzITLnRhcC52MS5XYWl0VmlzaWJsZUgAEiUKCXdhaXRfZ29uZRgLIAEoCzIQLnRhcC52MS5XYWl0R29uZUgAEjIKEHdhaXRfYXBwX3Zpc2libGUYDCABKAsyFi50YXAudjEuV2FpdEFwcFZpc2libGVIABI2ChJ3YWl0X3NjcmVlbl9zdGFibGUYDSABKAsyGC50YXAudjEuV2FpdFNjcmVlblN0YWJsZUgAEhoKA3RhcBgOIAEoCzILLnRhcC52MS5UYXBIABIjCghsb25nX3RhcBgPIAEoCzIPLnRhcC52MS5Mb25nVGFwSAASIwoIc2V0X3RleHQYECABKAsyDy50YXAudjEuU2V0VGV4dEgAEiUKCXR5cGVfdGV4dBgRIAEoCzIQLnRhcC52MS5UeXBlVGV4dEgAEicKCmNsZWFyX3RleHQYEiABKAsyES50YXAudjEuQ2xlYXJUZXh0SAASHgoFc3dpcGUYEyABKAsyDS50YXAudjEuU3dpcGVIABIgCgZzY3JvbGwYFCABKAsyDi50YXAudjEuU2Nyb2xsSAASNAoRb3Blbl9zeXN0ZW1fcGFuZWwYGCABKAsyFy50YXAudjEuT3BlblN5c3RlbVBhbmVsSAASMQoPc2V0X29yaWVudGF0aW9uGBkgASgLMhYudGFwLnYxLlNldE9yaWVudGF0aW9uSAASOgoUc2V0X2Rpc3BsYXlfcm90YXRpb24YGiABKAsyGi50YXAudjEuU2V0RGlzcGxheVJvdGF0aW9uSAASNQoRdW5mcmVlemVfcm90YXRpb24YGyABKAsyGC50YXAudjEuVW5mcmVlemVSb3RhdGlvbkgAEjMKEGRpc21pc3Nfa2V5Z3VhcmQYHCABKAsyFy50YXAudjEuRGlzbWlzc0tleWd1YXJkSAASJwoKZG91YmxlX3RhcBgdIAEoCzIRLnRhcC52MS5Eb3VibGVUYXBIABIcCgRkcmFnGB4gASgLMgwudGFwLnYxLkRyYWdIABIeCgVwaW5jaBgfIAEoCzINLnRhcC52MS5QaW5jaEgAEh4KBWZsaW5nGCAgASgLMg0udGFwLnYxLkZsaW5nSAASPgoWd2FpdF9wZXJtaXNzaW9uX3Byb21wdBghIAEoCzIcLnRhcC52MS5XYWl0UGVybWlzc2lvblByb21wdEgAEjUKEWNob29zZV9wZXJtaXNzaW9uGCIgASgLMhgudGFwLnYxLkNob29zZVBlcm1pc3Npb25IABItCg1oaWRlX2tleWJvYXJkGCMgASgLMhQudGFwLnYxLkhpZGVLZXlib2FyZEgAEjYKEnBlcmZvcm1faW1lX2FjdGlvbhgkIAEoCzIYLnRhcC52MS5QZXJmb3JtSW1lQWN0aW9uSAASLQoNc2V0X2NsaXBib2FyZBglIAEoCzIULnRhcC52MS5TZXRDbGlwYm9hcmRIABItCg1nZXRfY2xpcGJvYXJkGCYgASgLMhQudGFwLnYxLkdldENsaXBib2FyZEgAEikKC2F3YWl0X3RvYXN0GCcgASgLMhIudGFwLnYxLkF3YWl0VG9hc3RIABJKChxwZXJmb3JtX2FjY2Vzc2liaWxpdHlfYWN0aW9uGCggASgLMiIudGFwLnYxLlBlcmZvcm1BY2Nlc3NpYmlsaXR5QWN0aW9uSAASKwoMc2V0X3Byb2dyZXNzGCkgASgLMhMudGFwLnYxLlNldFByb2dyZXNzSAASKwoMc2V0X2xvY2F0aW9uGCogASgLMhMudGFwLnYxLlNldExvY2F0aW9uSAASNwoSYXdhaXRfbm90aWZpY2F0aW9uGCsgASgLMhkudGFwLnYxLkF3YWl0Tm90aWZpY2F0aW9uSAASNwoSbGlzdF9ub3RpZmljYXRpb25zGCwgASgLMhkudGFwLnYxLkxpc3ROb3RpZmljYXRpb25zSAASNQoRb3Blbl9ub3RpZmljYXRpb24YLSABKAsyGC50YXAudjEuT3Blbk5vdGlmaWNhdGlvbkgAEjsKFGRpc21pc3Nfbm90aWZpY2F0aW9uGC4gASgLMhsudGFwLnYxLkRpc21pc3NOb3RpZmljYXRpb25IAEIECgJvcEINCgtfdGltZW91dF9tcyJCCgZCb3VuZHMSDAoEbGVmdBgBIAEoBRILCgN0b3AYAiABKAUSDQoFcmlnaHQYAyABKAUSDgoGYm90dG9tGAQgASgFIugECg9FbGVtZW50U25hcHNob3QSFwoKY2xhc3NfbmFtZRgBIAEoCUgAiAEBEhkKDHBhY2thZ2VfbmFtZRgCIAEoCUgBiAEBEhoKDXJlc291cmNlX25hbWUYAyABKAlIAogBARIRCgR0ZXh0GAQgASgJSAOIAQESIAoTY29udGVudF9kZXNjcmlwdGlvbhgFIAEoCUgEiAEBEhEKBGhpbnQYBiABKAlIBYgBARIeCgZib3VuZHMYByABKAsyDi50YXAudjEuQm91bmRzEhEKCWNoZWNrYWJsZRgIIAEoCBIPCgdjaGVja2VkGAkgASgIEhEKCWNsaWNrYWJsZRgKIAEoCBIPCgdlbmFibGVkGAsgASgIEhEKCWZvY3VzYWJsZRgMIAEoCBIPCgdmb2N1c2VkGA0gASgIEhYKDmxvbmdfY2xpY2thYmxlGA4gASgIEhIKCnNjcm9sbGFibGUYDyABKAgSEAoIc2VsZWN0ZWQYECABKAgSEwoLY2hpbGRfY291bnQYESABKAUSFAoMc2hvd2luZ19oaW50GBIgASgIEicKB2FjdGlvbnMYEyADKA4yFi50YXAudjEuU3RhbmRhcmRBY3Rpb24SFgoOY3VzdG9tX2FjdGlvbnMYFCADKAkSIQoFcmFuZ2UYFSABKAsyDS50YXAudjEuUmFuZ2VIBogBAUINCgtfY2xhc3NfbmFtZUIPCg1fcGFja2FnZV9uYW1lQhAKDl9yZXNvdXJjZV9uYW1lQgcKBV90ZXh0QhYKFF9jb250ZW50X2Rlc2NyaXB0aW9uQgcKBV9oaW50QggKBl9yYW5nZSJTCgVSYW5nZRIfCgR0eXBlGAEgASgOMhEudGFwLnYxLlJhbmdlVHlwZRILCgNtaW4YAiABKAISCwoDbWF4GAMgASgCEg8KB2N1cnJlbnQYBCABKAIijQUKCkRldmljZUluZm8SEQoJYXBpX2xldmVsGAEgASgFEhQKDG1hbnVmYWN0dXJlchgCIAEoCRINCgVtb2RlbBgDIAEoCRIPCgdwcm9kdWN0GAQgASgJEhUKDWRpc3BsYXlfd2lkdGgYBSABKAUSFgoOZGlzcGxheV9oZWlnaHQYBiABKAUSGAoQZGlzcGxheV9yb3RhdGlvbhgHIAEoBRIcCg9jdXJyZW50X3BhY2thZ2UYCCABKAlIAIgBARIRCglzY3JlZW5fb24YCSABKAgSFwoPa2V5Z3VhcmRfbG9ja2VkGAogASgIEhcKD2tleWd1YXJkX3NlY3VyZRgLIAEoCBIWCg5rZXlib2FyZF9zaG93bhgMIAEoCBITCgthdXRvX3JvdGF0ZRgNIAEoCBIaChJhbmltYXRpb25zX2VuYWJsZWQYDiABKAgSEQoJZGFya19tb2RlGA8gASgIEhIKCmZvbnRfc2NhbGUYECABKAISEwoLZGVuc2l0eV9kcGkYESABKAUSFQoNYWlycGxhbmVfbW9kZRgSIAEoCBIUCgx3aWZpX2VuYWJsZWQYEyABKAgSGwoTbW9iaWxlX2RhdGFfZW5hYmxlZBgUIAEoCBIWCg5zeXN0ZW1fbG9jYWxlcxgVIAMoCRISCgpzdGF5X2F3YWtlGBYgASgIEh8KEmhpZ2hfY29udHJhc3RfdGV4dBgXIAEoCEgBiAEBEhwKD2NvbG9yX2ludmVyc2lvbhgYIAEoCEgCiAEBEhEKCWJvbGRfdGV4dBgZIAEoCEISChBfY3VycmVudF9wYWNrYWdlQhUKE19oaWdoX2NvbnRyYXN0X3RleHRCEgoQX2NvbG9yX2ludmVyc2lvbiKeAQoSRGV2aWNlTm90aWZpY2F0aW9uEhQKDHBhY2thZ2VfbmFtZRgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBEhEKBHRleHQYAyABKAlIAYgBARIPCgdhY3Rpb25zGAQgAygJEhEKCWNsZWFyYWJsZRgFIAEoCBIUCgxwb3N0ZWRfYXRfbXMYBiABKANCCAoGX3RpdGxlQgcKBV90ZXh0IkUKEE5vdGlmaWNhdGlvbkxpc3QSMQoNbm90aWZpY2F0aW9ucxgBIAMoCzIaLnRhcC52MS5EZXZpY2VOb3RpZmljYXRpb24iKwoFVG9hc3QSDAoEdGV4dBgBIAEoCRIUCgxwYWNrYWdlX25hbWUYAiABKAkigQEKEFBlcm1pc3Npb25Qcm9tcHQSFAoMcGFja2FnZV9uYW1lGAEgASgJEikKB2Nob2ljZXMYAiADKA4yGC50YXAudjEuUGVybWlzc2lvbkNob2ljZRIsCgphY2N1cmFjaWVzGAMgAygOMhgudGFwLnYxLkxvY2F0aW9uQWNjdXJhY3kiBgoERG9uZSKUAQoFRXJyb3ISHwoEY29kZRgBIAEoDjIRLnRhcC52MS5FcnJvckNvZGUSEwoGZGV0YWlsGAIgASgJSACIAQESFAoHbWVzc2FnZRgDIAEoCUgBiAEBEhgKC21hdGNoX2NvdW50GAQgASgFSAKIAQFCCQoHX2RldGFpbEIKCghfbWVzc2FnZUIOCgxfbWF0Y2hfY291bnQi5AMKDUNvbW1hbmRSZXN1bHQSEwoLZHVyYXRpb25fbXMYASABKAMSEgoKcmVxdWVzdF9pZBgCIAEoAxIaChJzZXNzaW9uX2dlbmVyYXRpb24YAyABKAMSHAoEZG9uZRgEIAEoCzIMLnRhcC52MS5Eb25lSAASDgoEYm9vbBgFIAEoCEgAEg8KBWNvdW50GAcgASgFSAASDgoEdGV4dBgIIAEoCUgAEisKCHNuYXBzaG90GAkgASgLMhcudGFwLnYxLkVsZW1lbnRTbmFwc2hvdEgAEikKC2RldmljZV9pbmZvGAogASgLMhIudGFwLnYxLkRldmljZUluZm9IABIeCgVlcnJvchgNIAEoCzINLnRhcC52MS5FcnJvckgAEjUKEXBlcm1pc3Npb25fcHJvbXB0GA4gASgLMhgudGFwLnYxLlBlcm1pc3Npb25Qcm9tcHRIABIeCgV0b2FzdBgPIAEoCzINLnRhcC52MS5Ub2FzdEgAEjIKDG5vdGlmaWNhdGlvbhgQIAEoCzIaLnRhcC52MS5EZXZpY2VOb3RpZmljYXRpb25IABIxCg1ub3RpZmljYXRpb25zGBEgASgLMhgudGFwLnYxLk5vdGlmaWNhdGlvbkxpc3RIAEIJCgdvdXRjb21lKqkFCglFcnJvckNvZGUSEwoPRVJSX1VOU1BFQ0lGSUVEEAASFwoTRVJSX0lOVkFMSURfUkVRVUVTVBABEhgKFEVSUl9JTlZBTElEX1NFTEVDVE9SEAISEwoPRVJSX1VOU1VQUE9SVEVEEAMSFwoTRVJSX1VOQVVUSEVOVElDQVRFRBAEEhgKFEVSUl9TRVNTSU9OX01JU01BVENIEAUSGgoWRVJSX0RVUExJQ0FURV9PUl9TVEFMRRAGEhIKDkVSUl9PVkVSTE9BREVEEAcSFAoQRVJSX0FVVF9NSVNNQVRDSBAIEhEKDUVSUl9OT1RfRk9VTkQQCRIRCg1FUlJfQU1CSUdVT1VTEAoSGAoURVJSX05PVF9JTlRFUkFDVEFCTEUQCxIcChhFUlJfU1RBTEVfRFVSSU5HX0NPTU1BTkQQDBIXChNFUlJfQUNUSU9OX1JFSkVDVEVEEA0SFAoQRVJSX1dBSVRfVElNRU9VVBAOEhEKDUVSUl9DQU5DRUxMRUQQDxIZChVFUlJfREVBRExJTkVfRVhDRUVERUQQEBIZChVFUlJfQVVUX05PVF9JTlNUQUxMRUQQERITCg9FUlJfQVVUX0NSQVNIRUQQEhIPCgtFUlJfQVVUX0FOUhATEiEKHUVSUl9TWU5DX1BST1ZJREVSX1VOQVZBSUxBQkxFEBQSGAoURVJSX0RSSVZFUl9VTkhFQUxUSFkQFRIWChJFUlJfVFJBTlNQT1JUX0xPU1QQFhIVChFFUlJfSU5ERVRFUk1JTkFURRAXEiAKHEVSUl9BUlRJRkFDVF9UUkFOU0ZFUl9GQUlMRUQQGBIZChVFUlJfUEFZTE9BRF9UT09fTEFSR0UQGRIQCgxFUlJfSU5URVJOQUwQGhIPCgtFUlJfVU5LTk9XThAbKlcKCURpcmVjdGlvbhITCg9ESVJfVU5TUEVDSUZJRUQQABIKCgZESVJfVVAQARIMCghESVJfRE9XThACEgwKCERJUl9MRUZUEAMSDQoJRElSX1JJR0hUEAQqaQoPU3RhYmlsaXR5U2lnbmFsEhkKFVNUQUJJTElUWV9VTlNQRUNJRklFRBAAEhIKDlNUQUJJTElUWV9UUkVFEAESFAoQU1RBQklMSVRZX1BJWEVMUxACEhEKDVNUQUJJTElUWV9BTEwQAypsCgtTeXN0ZW1QYW5lbBIcChhTWVNURU1fUEFORUxfVU5TUEVDSUZJRUQQABIeChpTWVNURU1fUEFORUxfTk9USUZJQ0FUSU9OUxABEh8KG1NZU1RFTV9QQU5FTF9RVUlDS19TRVRUSU5HUxACKl8KC09yaWVudGF0aW9uEhsKF09SSUVOVEFUSU9OX1VOU1BFQ0lGSUVEEAASGAoUT1JJRU5UQVRJT05fUE9SVFJBSVQQARIZChVPUklFTlRBVElPTl9MQU5EU0NBUEUQAiqqAQoPRGlzcGxheVJvdGF0aW9uEiAKHERJU1BMQVlfUk9UQVRJT05fVU5TUEVDSUZJRUQQABIcChhESVNQTEFZX1JPVEFUSU9OX05BVFVSQUwQARIZChVESVNQTEFZX1JPVEFUSU9OX0xFRlQQAhIgChxESVNQTEFZX1JPVEFUSU9OX1VQU0lERV9ET1dOEAMSGgoWRElTUExBWV9ST1RBVElPTl9SSUdIVBAEKkgKDlBpbmNoRGlyZWN0aW9uEhUKEVBJTkNIX1VOU1BFQ0lGSUVEEAASDgoKUElOQ0hfT1BFThABEg8KC1BJTkNIX0NMT1NFEAIq5gIKEFBlcm1pc3Npb25DaG9pY2USIQodUEVSTUlTU0lPTl9DSE9JQ0VfVU5TUEVDSUZJRUQQABIUChBQRVJNSVNTSU9OX0FMTE9XEAESJAogUEVSTUlTU0lPTl9BTExPV19GT1JFR1JPVU5EX09OTFkQAhIdChlQRVJNSVNTSU9OX0FMTE9XX09ORV9USU1FEAMSGwoXUEVSTUlTU0lPTl9BTExPV19BTFdBWVMQBBIdChlQRVJNSVNTSU9OX0FMTE9XX1NFTEVDVEVEEAUSGAoUUEVSTUlTU0lPTl9BTExPV19BTEwQBhITCg9QRVJNSVNTSU9OX0RFTlkQBxImCiJQRVJNSVNTSU9OX0RFTllfQU5EX0RPTlRfQVNLX0FHQUlOEAgSIwofUEVSTUlTU0lPTl9LRUVQX0ZPUkVHUk9VTkRfT05MWRAJEhwKGFBFUk1JU1NJT05fS0VFUF9PTkVfVElNRRAKKmUKEExvY2F0aW9uQWNjdXJhY3kSIQodTE9DQVRJT05fQUNDVVJBQ1lfVU5TUEVDSUZJRUQQABIUChBMT0NBVElPTl9QUkVDSVNFEAESGAoUTE9DQVRJT05fQVBQUk9YSU1BVEUQAiqIBAoOU3RhbmRhcmRBY3Rpb24SHwobU1RBTkRBUkRfQUNUSU9OX1VOU1BFQ0lGSUVEEAASDwoLQTExWV9FWFBBTkQQARIRCg1BMTFZX0NPTExBUFNFEAISEAoMQTExWV9ESVNNSVNTEAMSFwoTQTExWV9TQ1JPTExfRk9SV0FSRBAEEhgKFEExMVlfU0NST0xMX0JBQ0tXQVJEEAUSEgoOQTExWV9TQ1JPTExfVVAQBhIUChBBMTFZX1NDUk9MTF9ET1dOEAcSFAoQQTExWV9TQ1JPTExfTEVGVBAIEhUKEUExMVlfU0NST0xMX1JJR0hUEAkSEAoMQTExWV9QQUdFX1VQEAoSEgoOQTExWV9QQUdFX0RPV04QCxISCg5BMTFZX1BBR0VfTEVGVBAMEhMKD0ExMVlfUEFHRV9SSUdIVBANEhcKE0ExMVlfU0hPV19PTl9TQ1JFRU4QDhIWChJBMTFZX0NPTlRFWFRfQ0xJQ0sQDxIXChNBMTFZX1BSRVNTX0FORF9IT0xEEBASDwoLQTExWV9TRUxFQ1QQERIYChRBMTFZX0NMRUFSX1NFTEVDVElPThASEg4KCkExMVlfRk9DVVMQExIUChBBMTFZX0NMRUFSX0ZPQ1VTEBQSDQoJQTExWV9DT1BZEBUSDAoIQTExWV9DVVQQFhIOCgpBMTFZX1BBU1RFEBcqWgoJUmFuZ2VUeXBlEhoKFlJBTkdFX1RZUEVfVU5TUEVDSUZJRUQQABINCglSQU5HRV9JTlQQARIPCgtSQU5HRV9GTE9BVBACEhEKDVJBTkdFX1BFUkNFTlQQA0IyCiBpby5naXRodWIubm9hbWNvaGVuNDgudGFwLmFwaS52MUIMQ29tbWFuZFByb3RvUAFiBnByb3RvMw", [file_selector]);
 
 /**
  * @generated from message tap.v1.DeviceInfoQuery
@@ -556,14 +556,23 @@ export const WaitPermissionPromptSchema: GenMessage<WaitPermissionPrompt> = /*@_
 
 /**
  * Taps the dialog's button for `choice`; it must be offered, exactly once.
+ * With `accuracy`, the dialog's radio for it is selected first; it must be offered too (both are
+ * found before any input). UNSPECIFIED leaves the accuracy as the dialog shows it.
  *
  * @generated from message tap.v1.ChoosePermission
  */
 export type ChoosePermission = Message<"tap.v1.ChoosePermission"> & {
   /**
+   * not UNSPECIFIED
+   *
    * @generated from field: tap.v1.PermissionChoice choice = 1;
    */
   choice: PermissionChoice;
+
+  /**
+   * @generated from field: tap.v1.LocationAccuracy accuracy = 2;
+   */
+  accuracy: LocationAccuracy;
 };
 
 /**
@@ -672,6 +681,232 @@ export type AwaitToast = Message<"tap.v1.AwaitToast"> & {
  */
 export const AwaitToastSchema: GenMessage<AwaitToast> = /*@__PURE__*/
   messageDesc(file_command, 32);
+
+/**
+ * An accessibility action on the one matching node, as a screen reader performs it (no touch,
+ * so no occlusion check): a standard action, or a custom one by its exact label (≤ 1024 chars).
+ * The node must offer it: ACTION_REJECTED (ACTION_NOT_OFFERED) before input otherwise.
+ *
+ * @generated from message tap.v1.PerformAccessibilityAction
+ */
+export type PerformAccessibilityAction = Message<"tap.v1.PerformAccessibilityAction"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+
+  /**
+   * @generated from oneof tap.v1.PerformAccessibilityAction.action
+   */
+  action: {
+    /**
+     * not UNSPECIFIED
+     *
+     * @generated from field: tap.v1.StandardAction standard = 2;
+     */
+    value: StandardAction;
+    case: "standard";
+  } | {
+    /**
+     * @generated from field: string custom = 3;
+     */
+    value: string;
+    case: "custom";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.v1.PerformAccessibilityAction.
+ * Use `create(PerformAccessibilityActionSchema)` to create a new message.
+ */
+export const PerformAccessibilityActionSchema: GenMessage<PerformAccessibilityAction> = /*@__PURE__*/
+  messageDesc(file_command, 33);
+
+/**
+ * `ACTION_SET_PROGRESS` on the one matching range node (SeekBar, Slider, RatingBar): `value` in
+ * the node's own RangeInfo units, finite and within its min..max. A node without the action or
+ * a value outside the range is ACTION_REJECTED (ACTION_NOT_OFFERED / OUT_OF_RANGE) before input.
+ *
+ * @generated from message tap.v1.SetProgress
+ */
+export type SetProgress = Message<"tap.v1.SetProgress"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+
+  /**
+   * @generated from field: float value = 2;
+   */
+  value: number;
+};
+
+/**
+ * Describes the message tap.v1.SetProgress.
+ * Use `create(SetProgressSchema)` to create a new message.
+ */
+export const SetProgressSchema: GenMessage<SetProgress> = /*@__PURE__*/
+  messageDesc(file_command, 34);
+
+/**
+ * Mock location: the gps and network providers (and fused, API 31+) report this fix, as
+ * LocationManager test providers the driver owns, sent again every second until the driver
+ * stops or the next set_location. `latitude` -90..90, `longitude` -180..180, `accuracy_m` > 0
+ * (default 5 m), `altitude_m` absent = no altitude. The driver app needs the mock-location app-op
+ * (the host's DeviceService.SetLocation grants it first); without it Android refuses
+ * (ERR_ACTION_REJECTED).
+ *
+ * @generated from message tap.v1.SetLocation
+ */
+export type SetLocation = Message<"tap.v1.SetLocation"> & {
+  /**
+   * @generated from field: double latitude = 1;
+   */
+  latitude: number;
+
+  /**
+   * @generated from field: double longitude = 2;
+   */
+  longitude: number;
+
+  /**
+   * @generated from field: optional float accuracy_m = 3;
+   */
+  accuracyM?: number | undefined;
+
+  /**
+   * @generated from field: optional double altitude_m = 4;
+   */
+  altitudeM?: number | undefined;
+};
+
+/**
+ * Describes the message tap.v1.SetLocation.
+ * Use `create(SetLocationSchema)` to create a new message.
+ */
+export const SetLocationSchema: GenMessage<SetLocation> = /*@__PURE__*/
+  messageDesc(file_command, 35);
+
+/**
+ * Which notifications a notification op means; every field given must match (none: any).
+ * `package_name` exactly; `title` and `text` (≤ 1024 chars each) under `mode` (default exact).
+ * The notifications are what a NotificationListenerService in the driver app sees: the server
+ * gives the driver notification access (`cmd notification allow_listener`) before the first
+ * notification op and takes it back on detach. Group summaries are left out.
+ *
+ * @generated from message tap.v1.NotificationMatch
+ */
+export type NotificationMatch = Message<"tap.v1.NotificationMatch"> & {
+  /**
+   * @generated from field: optional string package_name = 1;
+   */
+  packageName?: string | undefined;
+
+  /**
+   * @generated from field: optional string title = 2;
+   */
+  title?: string | undefined;
+
+  /**
+   * @generated from field: optional string text = 3;
+   */
+  text?: string | undefined;
+
+  /**
+   * @generated from field: tap.v1.MatchMode mode = 4;
+   */
+  mode: MatchMode;
+};
+
+/**
+ * Describes the message tap.v1.NotificationMatch.
+ * Use `create(NotificationMatchSchema)` to create a new message.
+ */
+export const NotificationMatchSchema: GenMessage<NotificationMatch> = /*@__PURE__*/
+  messageDesc(file_command, 36);
+
+/**
+ * Waits until a matching notification is active (one already posted counts) and returns the
+ * newest; WAIT_TIMEOUT (NO_NOTIFICATION) otherwise. No input.
+ *
+ * @generated from message tap.v1.AwaitNotification
+ */
+export type AwaitNotification = Message<"tap.v1.AwaitNotification"> & {
+  /**
+   * @generated from field: tap.v1.NotificationMatch match = 1;
+   */
+  match?: NotificationMatch | undefined;
+};
+
+/**
+ * Describes the message tap.v1.AwaitNotification.
+ * Use `create(AwaitNotificationSchema)` to create a new message.
+ */
+export const AwaitNotificationSchema: GenMessage<AwaitNotification> = /*@__PURE__*/
+  messageDesc(file_command, 37);
+
+/**
+ * The active notifications, newest first. No input.
+ *
+ * @generated from message tap.v1.ListNotifications
+ */
+export type ListNotifications = Message<"tap.v1.ListNotifications"> & {
+};
+
+/**
+ * Describes the message tap.v1.ListNotifications.
+ * Use `create(ListNotificationsSchema)` to create a new message.
+ */
+export const ListNotificationsSchema: GenMessage<ListNotifications> = /*@__PURE__*/
+  messageDesc(file_command, 38);
+
+/**
+ * Opens the one matching notification as a tap on it in the shade does: sends its content
+ * intent and, when it auto-cancels, removes it. With `action` (≤ 1024 chars), sends the intent
+ * of its action button with exactly that title instead, and the notification stays. NOT_FOUND /
+ * AMBIGUOUS, or ACTION_REJECTED (ACTION_NOT_OFFERED) when it has no content intent or no such
+ * action, before anything is sent.
+ *
+ * @generated from message tap.v1.OpenNotification
+ */
+export type OpenNotification = Message<"tap.v1.OpenNotification"> & {
+  /**
+   * @generated from field: tap.v1.NotificationMatch match = 1;
+   */
+  match?: NotificationMatch | undefined;
+
+  /**
+   * @generated from field: optional string action = 2;
+   */
+  action?: string | undefined;
+};
+
+/**
+ * Describes the message tap.v1.OpenNotification.
+ * Use `create(OpenNotificationSchema)` to create a new message.
+ */
+export const OpenNotificationSchema: GenMessage<OpenNotification> = /*@__PURE__*/
+  messageDesc(file_command, 39);
+
+/**
+ * Dismisses the one matching notification as a swipe does. NOT_FOUND / AMBIGUOUS, or
+ * ACTION_REJECTED (NOT_CLEARABLE) for an ongoing one, before anything changes.
+ *
+ * @generated from message tap.v1.DismissNotification
+ */
+export type DismissNotification = Message<"tap.v1.DismissNotification"> & {
+  /**
+   * @generated from field: tap.v1.NotificationMatch match = 1;
+   */
+  match?: NotificationMatch | undefined;
+};
+
+/**
+ * Describes the message tap.v1.DismissNotification.
+ * Use `create(DismissNotificationSchema)` to create a new message.
+ */
+export const DismissNotificationSchema: GenMessage<DismissNotification> = /*@__PURE__*/
+  messageDesc(file_command, 40);
 
 /**
  * One protocol request minus session identity (the server owns session id, generation and
@@ -888,6 +1123,48 @@ export type Command = Message<"tap.v1.Command"> & {
      */
     value: AwaitToast;
     case: "awaitToast";
+  } | {
+    /**
+     * @generated from field: tap.v1.PerformAccessibilityAction perform_accessibility_action = 40;
+     */
+    value: PerformAccessibilityAction;
+    case: "performAccessibilityAction";
+  } | {
+    /**
+     * @generated from field: tap.v1.SetProgress set_progress = 41;
+     */
+    value: SetProgress;
+    case: "setProgress";
+  } | {
+    /**
+     * @generated from field: tap.v1.SetLocation set_location = 42;
+     */
+    value: SetLocation;
+    case: "setLocation";
+  } | {
+    /**
+     * @generated from field: tap.v1.AwaitNotification await_notification = 43;
+     */
+    value: AwaitNotification;
+    case: "awaitNotification";
+  } | {
+    /**
+     * @generated from field: tap.v1.ListNotifications list_notifications = 44;
+     */
+    value: ListNotifications;
+    case: "listNotifications";
+  } | {
+    /**
+     * @generated from field: tap.v1.OpenNotification open_notification = 45;
+     */
+    value: OpenNotification;
+    case: "openNotification";
+  } | {
+    /**
+     * @generated from field: tap.v1.DismissNotification dismiss_notification = 46;
+     */
+    value: DismissNotification;
+    case: "dismissNotification";
   } | { case: undefined; value?: undefined };
 };
 
@@ -896,7 +1173,7 @@ export type Command = Message<"tap.v1.Command"> & {
  * Use `create(CommandSchema)` to create a new message.
  */
 export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
-  messageDesc(file_command, 33);
+  messageDesc(file_command, 41);
 
 /**
  * Screen-pixel rectangle.
@@ -930,7 +1207,7 @@ export type Bounds = Message<"tap.v1.Bounds"> & {
  * Use `create(BoundsSchema)` to create a new message.
  */
 export const BoundsSchema: GenMessage<Bounds> = /*@__PURE__*/
-  messageDesc(file_command, 34);
+  messageDesc(file_command, 42);
 
 /**
  * State of one matched node at the instant of `snapshot`.
@@ -1030,6 +1307,25 @@ export type ElementSnapshot = Message<"tap.v1.ElementSnapshot"> & {
    * @generated from field: bool showing_hint = 18;
    */
   showingHint: boolean;
+
+  /**
+   * The standard actions (of StandardAction) and the custom actions (by label) the node offers.
+   *
+   * @generated from field: repeated tap.v1.StandardAction actions = 19;
+   */
+  actions: StandardAction[];
+
+  /**
+   * @generated from field: repeated string custom_actions = 20;
+   */
+  customActions: string[];
+
+  /**
+   * A range node's (SeekBar, Slider, RatingBar, ProgressBar) RangeInfo.
+   *
+   * @generated from field: optional tap.v1.Range range = 21;
+   */
+  range?: Range | undefined;
 };
 
 /**
@@ -1037,7 +1333,39 @@ export type ElementSnapshot = Message<"tap.v1.ElementSnapshot"> & {
  * Use `create(ElementSnapshotSchema)` to create a new message.
  */
 export const ElementSnapshotSchema: GenMessage<ElementSnapshot> = /*@__PURE__*/
-  messageDesc(file_command, 35);
+  messageDesc(file_command, 43);
+
+/**
+ * @generated from message tap.v1.Range
+ */
+export type Range = Message<"tap.v1.Range"> & {
+  /**
+   * @generated from field: tap.v1.RangeType type = 1;
+   */
+  type: RangeType;
+
+  /**
+   * @generated from field: float min = 2;
+   */
+  min: number;
+
+  /**
+   * @generated from field: float max = 3;
+   */
+  max: number;
+
+  /**
+   * @generated from field: float current = 4;
+   */
+  current: number;
+};
+
+/**
+ * Describes the message tap.v1.Range.
+ * Use `create(RangeSchema)` to create a new message.
+ */
+export const RangeSchema: GenMessage<Range> = /*@__PURE__*/
+  messageDesc(file_command, 44);
 
 /**
  * Static facts about the device plus the package currently owning the focused window.
@@ -1147,6 +1475,61 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
    * @generated from field: int32 density_dpi = 17;
    */
   densityDpi: number;
+
+  /**
+   * Settings.Global.AIRPLANE_MODE_ON
+   *
+   * @generated from field: bool airplane_mode = 18;
+   */
+  airplaneMode: boolean;
+
+  /**
+   * Settings.Global.WIFI_ON is 1, or 2 (on under airplane mode)
+   *
+   * @generated from field: bool wifi_enabled = 19;
+   */
+  wifiEnabled: boolean;
+
+  /**
+   * Settings.Global `mobile_data`; false without telephony
+   *
+   * @generated from field: bool mobile_data_enabled = 20;
+   */
+  mobileDataEnabled: boolean;
+
+  /**
+   * the system configuration's LocaleList, as BCP-47 tags
+   *
+   * @generated from field: repeated string system_locales = 21;
+   */
+  systemLocales: string[];
+
+  /**
+   * Settings.Global.STAY_ON_WHILE_PLUGGED_IN is not 0
+   *
+   * @generated from field: bool stay_awake = 22;
+   */
+  stayAwake: boolean;
+
+  /**
+   * Settings.Secure `high_text_contrast_enabled` / `accessibility_display_inversion_enabled`;
+   * absent when Android does not let the driver read them.
+   *
+   * @generated from field: optional bool high_contrast_text = 23;
+   */
+  highContrastText?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool color_inversion = 24;
+   */
+  colorInversion?: boolean | undefined;
+
+  /**
+   * Configuration.fontWeightAdjustment > 0 (API 31+; false below)
+   *
+   * @generated from field: bool bold_text = 25;
+   */
+  boldText: boolean;
 };
 
 /**
@@ -1154,7 +1537,70 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
  * Use `create(DeviceInfoSchema)` to create a new message.
  */
 export const DeviceInfoSchema: GenMessage<DeviceInfo> = /*@__PURE__*/
-  messageDesc(file_command, 36);
+  messageDesc(file_command, 45);
+
+/**
+ * An active notification: the package that posted it, its title and text (Notification extras
+ * `android.title` / `android.text`, absent when it has none), the titles of its action buttons,
+ * whether a swipe can dismiss it, and when it was posted (wall clock, epoch milliseconds).
+ *
+ * @generated from message tap.v1.DeviceNotification
+ */
+export type DeviceNotification = Message<"tap.v1.DeviceNotification"> & {
+  /**
+   * @generated from field: string package_name = 1;
+   */
+  packageName: string;
+
+  /**
+   * @generated from field: optional string title = 2;
+   */
+  title?: string | undefined;
+
+  /**
+   * @generated from field: optional string text = 3;
+   */
+  text?: string | undefined;
+
+  /**
+   * @generated from field: repeated string actions = 4;
+   */
+  actions: string[];
+
+  /**
+   * @generated from field: bool clearable = 5;
+   */
+  clearable: boolean;
+
+  /**
+   * @generated from field: int64 posted_at_ms = 6;
+   */
+  postedAtMs: bigint;
+};
+
+/**
+ * Describes the message tap.v1.DeviceNotification.
+ * Use `create(DeviceNotificationSchema)` to create a new message.
+ */
+export const DeviceNotificationSchema: GenMessage<DeviceNotification> = /*@__PURE__*/
+  messageDesc(file_command, 46);
+
+/**
+ * @generated from message tap.v1.NotificationList
+ */
+export type NotificationList = Message<"tap.v1.NotificationList"> & {
+  /**
+   * @generated from field: repeated tap.v1.DeviceNotification notifications = 1;
+   */
+  notifications: DeviceNotification[];
+};
+
+/**
+ * Describes the message tap.v1.NotificationList.
+ * Use `create(NotificationListSchema)` to create a new message.
+ */
+export const NotificationListSchema: GenMessage<NotificationList> = /*@__PURE__*/
+  messageDesc(file_command, 47);
 
 /**
  * A toast `await_toast` matched: its text and the package that posted it.
@@ -1178,7 +1624,7 @@ export type Toast = Message<"tap.v1.Toast"> & {
  * Use `create(ToastSchema)` to create a new message.
  */
 export const ToastSchema: GenMessage<Toast> = /*@__PURE__*/
-  messageDesc(file_command, 37);
+  messageDesc(file_command, 48);
 
 /**
  * The runtime-permission dialog on screen: the package of its window (what a selector's package
@@ -1197,6 +1643,13 @@ export type PermissionPrompt = Message<"tap.v1.PermissionPrompt"> & {
    * @generated from field: repeated tap.v1.PermissionChoice choices = 2;
    */
   choices: PermissionChoice[];
+
+  /**
+   * The location accuracies the dialog offers to pick (empty when it asks for none).
+   *
+   * @generated from field: repeated tap.v1.LocationAccuracy accuracies = 3;
+   */
+  accuracies: LocationAccuracy[];
 };
 
 /**
@@ -1204,7 +1657,7 @@ export type PermissionPrompt = Message<"tap.v1.PermissionPrompt"> & {
  * Use `create(PermissionPromptSchema)` to create a new message.
  */
 export const PermissionPromptSchema: GenMessage<PermissionPrompt> = /*@__PURE__*/
-  messageDesc(file_command, 38);
+  messageDesc(file_command, 49);
 
 /**
  * The command ran to completion and has nothing else to report.
@@ -1219,7 +1672,7 @@ export type Done = Message<"tap.v1.Done"> & {
  * Use `create(DoneSchema)` to create a new message.
  */
 export const DoneSchema: GenMessage<Done> = /*@__PURE__*/
-  messageDesc(file_command, 39);
+  messageDesc(file_command, 50);
 
 /**
  * A failed command. Driver-side failures and driver-transport loss are data (including
@@ -1261,7 +1714,7 @@ export type Error = Message<"tap.v1.Error"> & {
  * Use `create(ErrorSchema)` to create a new message.
  */
 export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
-  messageDesc(file_command, 40);
+  messageDesc(file_command, 51);
 
 /**
  * One protocol response: exactly one `outcome`, named like the protocol result `kind`.
@@ -1351,6 +1804,22 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
      */
     value: Toast;
     case: "toast";
+  } | {
+    /**
+     * await_notification
+     *
+     * @generated from field: tap.v1.DeviceNotification notification = 16;
+     */
+    value: DeviceNotification;
+    case: "notification";
+  } | {
+    /**
+     * list_notifications
+     *
+     * @generated from field: tap.v1.NotificationList notifications = 17;
+     */
+    value: NotificationList;
+    case: "notifications";
   } | { case: undefined; value?: undefined };
 };
 
@@ -1359,7 +1828,7 @@ export type CommandResult = Message<"tap.v1.CommandResult"> & {
  * Use `create(CommandResultSchema)` to create a new message.
  */
 export const CommandResultSchema: GenMessage<CommandResult> = /*@__PURE__*/
-  messageDesc(file_command, 41);
+  messageDesc(file_command, 52);
 
 /**
  * Closed error taxonomy shared with the device protocol; `Error.detail` refines it with a
@@ -1804,4 +2273,212 @@ export enum PermissionChoice {
  */
 export const PermissionChoiceSchema: GenEnum<PermissionChoice> = /*@__PURE__*/
   enumDesc(file_command, 7);
+
+/**
+ * The Precise / Approximate radio buttons of the location dialog (API 31+, when the app asks for
+ * fine location).
+ *
+ * @generated from enum tap.v1.LocationAccuracy
+ */
+export enum LocationAccuracy {
+  /**
+   * @generated from enum value: LOCATION_ACCURACY_UNSPECIFIED = 0;
+   */
+  LOCATION_ACCURACY_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: LOCATION_PRECISE = 1;
+   */
+  LOCATION_PRECISE = 1,
+
+  /**
+   * @generated from enum value: LOCATION_APPROXIMATE = 2;
+   */
+  LOCATION_APPROXIMATE = 2,
+}
+
+/**
+ * Describes the enum tap.v1.LocationAccuracy.
+ */
+export const LocationAccuracySchema: GenEnum<LocationAccuracy> = /*@__PURE__*/
+  enumDesc(file_command, 8);
+
+/**
+ * A standard accessibility action that takes no arguments (`AccessibilityNodeInfo.AccessibilityAction`),
+ * as a screen reader performs it. Click and long click are not here: `tap` / `long_tap` touch.
+ *
+ * @generated from enum tap.v1.StandardAction
+ */
+export enum StandardAction {
+  /**
+   * @generated from enum value: STANDARD_ACTION_UNSPECIFIED = 0;
+   */
+  STANDARD_ACTION_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: A11Y_EXPAND = 1;
+   */
+  A11Y_EXPAND = 1,
+
+  /**
+   * @generated from enum value: A11Y_COLLAPSE = 2;
+   */
+  A11Y_COLLAPSE = 2,
+
+  /**
+   * @generated from enum value: A11Y_DISMISS = 3;
+   */
+  A11Y_DISMISS = 3,
+
+  /**
+   * @generated from enum value: A11Y_SCROLL_FORWARD = 4;
+   */
+  A11Y_SCROLL_FORWARD = 4,
+
+  /**
+   * @generated from enum value: A11Y_SCROLL_BACKWARD = 5;
+   */
+  A11Y_SCROLL_BACKWARD = 5,
+
+  /**
+   * @generated from enum value: A11Y_SCROLL_UP = 6;
+   */
+  A11Y_SCROLL_UP = 6,
+
+  /**
+   * @generated from enum value: A11Y_SCROLL_DOWN = 7;
+   */
+  A11Y_SCROLL_DOWN = 7,
+
+  /**
+   * @generated from enum value: A11Y_SCROLL_LEFT = 8;
+   */
+  A11Y_SCROLL_LEFT = 8,
+
+  /**
+   * @generated from enum value: A11Y_SCROLL_RIGHT = 9;
+   */
+  A11Y_SCROLL_RIGHT = 9,
+
+  /**
+   * API 29+
+   *
+   * @generated from enum value: A11Y_PAGE_UP = 10;
+   */
+  A11Y_PAGE_UP = 10,
+
+  /**
+   * API 29+
+   *
+   * @generated from enum value: A11Y_PAGE_DOWN = 11;
+   */
+  A11Y_PAGE_DOWN = 11,
+
+  /**
+   * API 29+
+   *
+   * @generated from enum value: A11Y_PAGE_LEFT = 12;
+   */
+  A11Y_PAGE_LEFT = 12,
+
+  /**
+   * API 29+
+   *
+   * @generated from enum value: A11Y_PAGE_RIGHT = 13;
+   */
+  A11Y_PAGE_RIGHT = 13,
+
+  /**
+   * @generated from enum value: A11Y_SHOW_ON_SCREEN = 14;
+   */
+  A11Y_SHOW_ON_SCREEN = 14,
+
+  /**
+   * @generated from enum value: A11Y_CONTEXT_CLICK = 15;
+   */
+  A11Y_CONTEXT_CLICK = 15,
+
+  /**
+   * API 30+
+   *
+   * @generated from enum value: A11Y_PRESS_AND_HOLD = 16;
+   */
+  A11Y_PRESS_AND_HOLD = 16,
+
+  /**
+   * @generated from enum value: A11Y_SELECT = 17;
+   */
+  A11Y_SELECT = 17,
+
+  /**
+   * @generated from enum value: A11Y_CLEAR_SELECTION = 18;
+   */
+  A11Y_CLEAR_SELECTION = 18,
+
+  /**
+   * input focus
+   *
+   * @generated from enum value: A11Y_FOCUS = 19;
+   */
+  A11Y_FOCUS = 19,
+
+  /**
+   * @generated from enum value: A11Y_CLEAR_FOCUS = 20;
+   */
+  A11Y_CLEAR_FOCUS = 20,
+
+  /**
+   * @generated from enum value: A11Y_COPY = 21;
+   */
+  A11Y_COPY = 21,
+
+  /**
+   * @generated from enum value: A11Y_CUT = 22;
+   */
+  A11Y_CUT = 22,
+
+  /**
+   * @generated from enum value: A11Y_PASTE = 23;
+   */
+  A11Y_PASTE = 23,
+}
+
+/**
+ * Describes the enum tap.v1.StandardAction.
+ */
+export const StandardActionSchema: GenEnum<StandardAction> = /*@__PURE__*/
+  enumDesc(file_command, 9);
+
+/**
+ * How a range node counts (`AccessibilityNodeInfo.RangeInfo`).
+ *
+ * @generated from enum tap.v1.RangeType
+ */
+export enum RangeType {
+  /**
+   * @generated from enum value: RANGE_TYPE_UNSPECIFIED = 0;
+   */
+  RANGE_TYPE_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: RANGE_INT = 1;
+   */
+  RANGE_INT = 1,
+
+  /**
+   * @generated from enum value: RANGE_FLOAT = 2;
+   */
+  RANGE_FLOAT = 2,
+
+  /**
+   * @generated from enum value: RANGE_PERCENT = 3;
+   */
+  RANGE_PERCENT = 3,
+}
+
+/**
+ * Describes the enum tap.v1.RangeType.
+ */
+export const RangeTypeSchema: GenEnum<RangeType> = /*@__PURE__*/
+  enumDesc(file_command, 10);
 
