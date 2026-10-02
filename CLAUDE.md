@@ -57,6 +57,9 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
   host-owned scrcpy child (`StartRecording`), its measured timing limits, the pre-merge review,
   and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).
+- `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
+  foreground/background/deep links, permission dialogs, gestures), the group in progress with its
+  per-action design and upstream comparison, and the prioritised backlog.
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /

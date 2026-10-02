@@ -1,22 +1,37 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.AttachRequest
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
+import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DismissKeyguard
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
+import io.github.noamcohen48.tap.api.v1.GetClipboard
+import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
+import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
+import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
+import io.github.noamcohen48.tap.api.v1.SetDensityRequest
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TypeText
+import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
+import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -46,6 +61,8 @@ import kotlin.time.Duration.Companion.seconds
 
 const val KEYCODE_HOME = 3
 const val KEYCODE_BACK = 4
+const val KEYCODE_SLEEP = 223
+const val KEYCODE_WAKEUP = 224
 const val DEFAULT_GESTURE_PERCENT = 80
 
 /**
@@ -222,6 +239,204 @@ class Device internal constructor(
 
     private suspend fun openSystemPanel(panel: SystemPanel) {
         executeOrThrow { openSystemPanel = OpenSystemPanel.newBuilder().setPanel(panel).build() }
+    }
+
+    /**
+     * Rotates the display to [orientation] geometry, whatever the device's natural orientation,
+     * and freezes it there until [unfreezeRotation]. Fails only when Android refuses the request;
+     * the call then waits briefly for the display to turn. The foreground app may pin its own
+     * orientation and keep the display where it wants it: assert with [info] (`orientation`,
+     * `displayRotation`). The rotation settings the device had before the session's first
+     * rotation call are restored when the device is detached.
+     */
+    suspend fun setOrientation(orientation: Orientation) {
+        executeOrThrow { setOrientation = SetOrientation.newBuilder().setOrientation(orientation.toProto()).build() }
+    }
+
+    /** Rotates the display to the exact [rotation] and freezes it there; otherwise as [setOrientation]. */
+    suspend fun setDisplayRotation(rotation: DisplayRotation) {
+        executeOrThrow { setDisplayRotation = SetDisplayRotation.newBuilder().setRotation(rotation.toProto()).build() }
+    }
+
+    /** Hands rotation back to the device's sensor (auto-rotate), without choosing a rotation. */
+    suspend fun unfreezeRotation() {
+        executeOrThrow { unfreezeRotation = UnfreezeRotation.getDefaultInstance() }
+    }
+
+    /** Turns the screen on (`KEYCODE_WAKEUP`; nothing happens when it is on). The keyguard may still show: see [dismissKeyguard]. */
+    suspend fun wake() = pressKey(KEYCODE_WAKEUP)
+
+    /** Turns the screen off (`KEYCODE_SLEEP`; nothing happens when it is off). */
+    suspend fun sleep() = pressKey(KEYCODE_SLEEP)
+
+    /**
+     * Dismisses a keyguard that has no PIN, pattern or password (`wm dismiss-keyguard`); with no
+     * keyguard showing it sends nothing. A secure keyguard fails with `ACTION_REJECTED` /
+     * `KEYGUARD_SECURE` before any input: Tap never unlocks one. [info] reports the state.
+     */
+    suspend fun dismissKeyguard() {
+        executeOrThrow { dismissKeyguard = DismissKeyguard.getDefaultInstance() }
+    }
+
+    /**
+     * Waits until a runtime-permission dialog shows and returns the choices it offers. Buttons
+     * are recognised by the permission controller's resource ids, never by label or position.
+     * Throws [WaitTimeoutException] (`NO_PERMISSION_PROMPT`) when none appears within [timeout].
+     */
+    suspend fun awaitPermissionPrompt(timeout: Duration = timeouts.wait): PermissionPrompt {
+        ensureTapBound("Device.awaitPermissionPrompt")
+        return admitted("Device.awaitPermissionPrompt") {
+            val result = rpcExecute(timeout) { waitPermissionPrompt = WaitPermissionPrompt.getDefaultInstance() }
+            if (result.hasError()) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) {
+                    throw CommandException(result, "wait_permission_prompt", serial, null)
+                }
+                throw WaitTimeoutException.of(result, "a permission dialog", serial)
+            }
+            result.permissionPrompt.toModel()
+        }
+    }
+
+    /**
+     * Taps the permission dialog's button for [choice] (`NOT_FOUND` before any input when the
+     * dialog does not offer it). Only the tap is reported: assert the outcome, e.g. the dialog
+     * gone and the app's state.
+     */
+    suspend fun choosePermission(
+        choice: PermissionChoice,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) { choosePermission = ChoosePermission.newBuilder().setChoice(choice.toProto()).build() }
+    }
+
+    /** Whether a soft keyboard (any input method's window) is on screen; [info] reports the same. */
+    suspend fun keyboardShown(): Boolean = info().keyboardShown
+
+    /**
+     * Hides the soft keyboard with one Back key, which the keyboard consumes; with no keyboard
+     * showing nothing is sent, so Back never reaches the app. Only the key is reported: assert
+     * [keyboardShown] when it matters.
+     */
+    suspend fun hideKeyboard(timeout: Duration? = null) {
+        executeOrThrow(timeout) { hideKeyboard = HideKeyboard.getDefaultInstance() }
+    }
+
+    /** Puts [text] on the device clipboard as plain text (at most 4096 characters). */
+    suspend fun setClipboard(
+        text: String,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) { setClipboard = SetClipboard.newBuilder().setText(text).build() }
+    }
+
+    /** The device clipboard as text; `""` when it is empty or holds nothing that reads as text. */
+    suspend fun clipboard(timeout: Duration? = null): String =
+        executeOrThrow(timeout) { getClipboard = GetClipboard.getDefaultInstance() }.text
+
+    /**
+     * Turns the window, transition and animator animations off (all three scales 0) or on (all
+     * 1) for this session. Like every device condition below, the value the device had before
+     * the session's first change is restored on [detach] (or by the next attach when the daemon
+     * died first), and the change is read back: a value the device did not take throws
+     * [ServerException] ([FailureReason.DEVICE_SETTING]). [info] reports
+     * [DeviceInfo.animationsEnabled].
+     */
+    suspend fun setAnimations(enabled: Boolean) {
+        condition("Device.setAnimations") {
+            setAnimations(
+                SetAnimationsRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled).build(),
+            )
+        }
+    }
+
+    /**
+     * Dark theme on or off (`cmd uimode night`) until [detach], see [setAnimations]. API 29+:
+     * below, [ServerException] ([FailureReason.UNSUPPORTED_API]). Read back with [DeviceInfo.darkMode].
+     */
+    suspend fun setDarkMode(enabled: Boolean) {
+        condition("Device.setDarkMode") {
+            setDarkMode(
+                SetDarkModeRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled).build(),
+            )
+        }
+    }
+
+    /**
+     * The system font scale, 0.5 to 2.0 (1.0 = default), until [detach], see [setAnimations].
+     * Read back with [DeviceInfo.fontScale].
+     */
+    suspend fun setFontScale(scale: Float) {
+        condition("Device.setFontScale") {
+            setFontScale(
+                SetFontScaleRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setScale(scale).build(),
+            )
+        }
+    }
+
+    /**
+     * Overrides the display density with [dpi] (100 to 1000), or with `null` goes back to the
+     * display's physical density, until [detach], see [setAnimations]. Read back with
+     * [DeviceInfo.densityDpi].
+     */
+    suspend fun setDensity(dpi: Int?) {
+        condition("Device.setDensity") {
+            setDensity(
+                SetDensityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .apply { if (dpi != null) setDpi(dpi) }.build(),
+            )
+        }
+    }
+
+    private suspend fun condition(
+        operation: String,
+        block: suspend DeviceServiceGrpcKt.DeviceServiceCoroutineStub.() -> Unit,
+    ) {
+        ensureTapBound(operation)
+        admitted(operation) {
+            mapped(serial) {
+                client.devices
+                    .withDeadlineAfter(timeouts.lifecycle.inWholeMilliseconds + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
+                    .block()
+            }
+        }
+    }
+
+    /**
+     * Waits for a toast and returns it: one shown in the last 3.5 s (the longest a toast stays up)
+     * or arriving within [timeout]. [text] matches with [mode] (any text when null); a toast from
+     * any package counts unless [packageName] names one ([App.awaitToast] passes its own). Not
+     * consuming: the same toast can satisfy two calls in a row. Throws [WaitTimeoutException]
+     * (`NO_TOAST`) when none matches.
+     */
+    suspend fun awaitToast(
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        timeout: Duration = timeouts.wait,
+    ): Toast {
+        ensureTapBound("Device.awaitToast")
+        return admitted("Device.awaitToast") {
+            val result =
+                rpcExecute(timeout) {
+                    awaitToast =
+                        AwaitToast
+                            .newBuilder()
+                            .apply {
+                                text?.let { setText(it).setMode(mode.toProto()) }
+                                packageName?.let(::setPackageName)
+                            }.build()
+                }
+            if (result.hasError()) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) throw CommandException(result, "await_toast", serial, null)
+                val what = text?.let { "a toast \"$it\"" } ?: "a toast"
+                val from = packageName?.let { " from $it" }.orEmpty()
+                throw WaitTimeoutException.of(result, what + from, serial)
+            }
+            result.toast.toModel()
+        }
     }
 
     /**

@@ -27,10 +27,74 @@ enum class MatchMode {
 }
 
 /**
- * Gesture direction: where the finger moves for [Element.swipe], the content edge scrolled
- * towards for [Element.scroll] (`DOWN` reveals content below).
+ * Gesture direction: where the finger moves for [Element.swipe], the content edge moved
+ * towards for [Element.scroll] and [Element.fling] (`DOWN` reveals content below).
  */
 enum class Direction { UP, DOWN, LEFT, RIGHT }
+
+/** Display geometry: taller than wide, or wider than tall ([Device.setOrientation], [DeviceInfo.orientation]). */
+enum class Orientation { PORTRAIT, LANDSCAPE }
+
+/**
+ * Clockwise display rotation relative to the device's natural orientation (portrait on phones,
+ * often landscape on tablets): `Surface.ROTATION_0` / `_90` / `_180` / `_270`.
+ */
+enum class DisplayRotation { NATURAL, LEFT, UPSIDE_DOWN, RIGHT }
+
+/**
+ * A button of the runtime-permission dialog, by what it grants ([Device.awaitPermissionPrompt],
+ * [Device.choosePermission]). Which ones a dialog offers depends on the permission, the Android
+ * version and the device's permission controller.
+ */
+enum class PermissionChoice {
+    /** "Allow". */
+    ALLOW,
+
+    /** "While using the app". */
+    ALLOW_FOREGROUND_ONLY,
+
+    /** "Only this time". */
+    ALLOW_ONE_TIME,
+
+    /** "Allow all the time" (background location on Android 10). */
+    ALLOW_ALWAYS,
+
+    /** "Select photos and videos" (partial media access, Android 14). */
+    ALLOW_SELECTED,
+
+    /** "Allow all" (media, Android 14). */
+    ALLOW_ALL,
+
+    /** "Don't allow" / "Deny". */
+    DENY,
+
+    /** "Deny & don't ask again" / "Don't allow" on a repeated request. */
+    DENY_AND_DONT_ASK_AGAIN,
+
+    /** "Keep while app is in use": refuses an upgrade to background access. */
+    KEEP_FOREGROUND_ONLY,
+
+    /** "Keep only this time": refuses an upgrade of a one-time grant. */
+    KEEP_ONE_TIME,
+}
+
+/**
+ * The runtime-permission dialog on screen: the [packageName] of its window (`device.app(packageName)`
+ * reaches its other elements) and the [choices] it offers, in [PermissionChoice] order.
+ */
+data class PermissionPrompt(
+    val packageName: String,
+    val choices: List<PermissionChoice>,
+)
+
+/**
+ * A toast [Device.awaitToast] saw: its [text] and the [packageName] that showed it (on Android 11+
+ * a text toast is drawn by SystemUI but still reported under the app that posted it).
+ */
+data class Toast(
+    val text: String,
+    val packageName: String,
+)
 
 /** What [App.awaitScreenStable] watches for changes. */
 enum class StabilitySignal {
@@ -160,9 +224,14 @@ enum class FailureReason {
 
     /** The ref's node had no selector that matched it alone. */
     REF_NOT_ADDRESSABLE,
+
+    /** The device's API level is too low for the call (detail `REQUIRES_API_<n>`). */
+    UNSUPPORTED_API,
+
+    /** A device setting did not read back as written (or could not be restored). */
+    DEVICE_SETTING,
 }
 
-/** A device's state in [TapClient.devices]. Only [FREE] and [LEASED] devices can be attached. */
 /** Why a device-side wait timed out ([WaitTimeoutException.reason]). */
 enum class WaitReason {
     /** `visible` / `one`: nothing matched. */
@@ -179,6 +248,12 @@ enum class WaitReason {
 
     /** `App.awaitVisible` / `App.awaitScreenStable`: the package never owned the focused window. */
     APP_NOT_VISIBLE,
+
+    /** `awaitPermissionPrompt`: no runtime-permission dialog showed a known choice. */
+    NO_PERMISSION_PROMPT,
+
+    /** `awaitToast`: no matching toast was shown. */
+    NO_TOAST,
     ;
 
     internal companion object {
@@ -186,6 +261,7 @@ enum class WaitReason {
     }
 }
 
+/** A device's state in [TapClient.devices]. Only [FREE] and [LEASED] devices can be attached. */
 enum class DeviceState {
     /** Online and not held by any session. */
     FREE,

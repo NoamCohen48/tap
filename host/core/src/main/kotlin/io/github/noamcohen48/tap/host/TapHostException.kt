@@ -74,3 +74,17 @@ class AdbTimeoutException(
     val command: List<String>,
     message: String,
 ) : TapHostException(message)
+
+/** The device's API level is below [requiredApi], which the operation needs. */
+class UnsupportedApiException(
+    val serial: String,
+    val requiredApi: Int,
+    val apiLevel: Int,
+    what: String,
+) : TapHostException("$what needs API $requiredApi; $serial runs API $apiLevel")
+
+/** A device or app setting did not read back as written: the device did not take it. */
+class DeviceSettingException(
+    val serial: String,
+    message: String,
+) : TapHostException(message)

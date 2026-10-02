@@ -112,12 +112,23 @@ object ErrorDetail {
 
     // NOT_INTERACTABLE: the gesture's touch point is inside a window above the target's.
     const val OBSCURED = "OBSCURED"
+    // WAIT_TIMEOUT (wait_permission_prompt)
+    const val NO_PERMISSION_PROMPT = "NO_PERMISSION_PROMPT"
+
+    // WAIT_TIMEOUT (await_toast)
+    const val NO_TOAST = "NO_TOAST"
+
+    // UNSUPPORTED (perform_ime_action below API 30)
+    const val REQUIRES_API_30 = "REQUIRES_API_30"
 
     // ACTION_REJECTED / STALE_DURING_COMMAND / INDETERMINATE (key input)
     const val KEY_RELEASE_FAILED = "KEY_RELEASE_FAILED"
     const val PARTIAL_INPUT = "PARTIAL_INPUT"
     const val TARGET_GONE = "TARGET_GONE"
     const val TARGET_AMBIGUOUS = "TARGET_AMBIGUOUS"
+
+    // ACTION_REJECTED (dismiss_keyguard): a PIN, pattern or password is set
+    const val KEYGUARD_SECURE = "KEYGUARD_SECURE"
 
     // AUT_MISMATCH (synchronization identity)
     const val PROCESS_RESTARTED = "PROCESS_RESTARTED"

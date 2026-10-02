@@ -220,8 +220,9 @@ Clients cannot pick a driver per attach.
 ## Devices
 
 - API 26 and up, emulator or physical, visible to `adb devices` as `device`.
-- Turn off animations on physical devices you use routinely (`settings put global
-  *_animation_scale 0`); Tap does not do it for you, and `awaitAnimationEnd` will simply take
-  longer otherwise.
+- Animations stay as the device has them. Turn them off for a test with
+  `device.setAnimations(false)` (restored on detach, see
+  [Device conditions](actions-and-waits.md#device-conditions)), or on devices you use routinely
+  with `settings put global *_animation_scale 0`; with them on, `awaitAnimationEnd` takes longer.
 - On emulators used in CI, `settings put secure hide_error_dialogs 1` keeps an unrelated
   system ANR from stealing the focused window from your app.

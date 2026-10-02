@@ -288,3 +288,59 @@ class ResolveRefResponse(_message.Message):
     by_index: bool
     snapshot_id: int
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., by_index: _Optional[bool] = ..., snapshot_id: _Optional[int] = ...) -> None: ...
+
+class SetAnimationsRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "enabled")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    enabled: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., enabled: _Optional[bool] = ...) -> None: ...
+
+class SetAnimationsResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetDarkModeRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "enabled")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    enabled: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., enabled: _Optional[bool] = ...) -> None: ...
+
+class SetDarkModeResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetFontScaleRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "scale")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    SCALE_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    scale: float
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., scale: _Optional[float] = ...) -> None: ...
+
+class SetFontScaleResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetDensityRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "dpi")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    DPI_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    dpi: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., dpi: _Optional[int] = ...) -> None: ...
+
+class SetDensityResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...

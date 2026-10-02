@@ -79,6 +79,14 @@ class DeviceSession private constructor(
 
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
+    /** Device-wide conditions (animations, dark mode, font scale, density) on this session. */
+    val conditions: DeviceConditions = DeviceConditions(this)
+
+    /** Guards [savedState] and the journal writes that persist it. */
+    private val savedStateMutex = Mutex()
+    private val savedState = mutableListOf<SavedState>()
+    private var cachedApiLevel: Int? = null
+
     private val reapUncertain = AtomicReference<AdbReapUncertainException?>()
 
     /** Records sticky reap uncertainty; further session/app use is rejected, close quarantines. */
@@ -177,9 +185,65 @@ class DeviceSession private constructor(
      * survive across calls for `awaitIdle` to stay guarded against a restarted process.
      */
     fun app(packageName: String): AppLifecycle {
+        require(!isDriverPackage(packageName)) { "$packageName is Tap's driver, not an app lifecycle target" }
         checkAdmissible()
         return apps.computeIfAbsent(packageName) { AppLifecycle(this, it) }
     }
+
+    /** The device's API level, read once per session. */
+    internal suspend fun apiLevel(): Int = cachedApiLevel ?: guardAdb { adb.apiLevel(serial) }.also { cachedApiLevel = it }
+
+    /** Throws [UnsupportedApiException] below [required]. */
+    internal suspend fun requireApi(
+        required: Int,
+        what: String,
+    ) {
+        val level = apiLevel()
+        if (level < required) throw UnsupportedApiException(serial, required, level, what)
+    }
+
+    /**
+     * Captures the [keys] this session has not captured yet, as they are now, and journals them
+     * before the caller changes anything: the first value is the one detach restores, whatever
+     * the session changes in between, and a daemon that dies leaves the record for the next
+     * attach.
+     */
+    internal suspend fun captureBeforeChange(keys: List<String>) {
+        savedStateMutex.withLock {
+            val missing = keys.filter { key -> savedState.none { it.key == key } }
+            if (missing.isEmpty()) return
+            guardAdb {
+                val captured = missing.map { SavedState(it, adb.readState(serial, it)) }
+                savedState += captured
+                journal = journal.copy(savedState = savedState.toList(), updatedAtEpochMs = System.currentTimeMillis())
+                store.write(journal)
+            }
+        }
+    }
+
+    /**
+     * Captures the keys of [values], writes them and reads them back. A value the device did not
+     * take is a [DeviceSettingException]; what was captured is still restored on detach.
+     */
+    internal suspend fun change(values: Map<String, String?>) {
+        captureBeforeChange(values.keys.toList())
+        guardAdb {
+            values.forEach { (key, value) -> adb.writeState(serial, key, value) }
+            val wrong = values.mapNotNull { (key, value) -> adb.readState(serial, key).takeIf { it != value }?.let { "$key=$it (expected $value)" } }
+            if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "The device did not take the change on $serial: ${wrong.joinToString()}")
+        }
+    }
+
+    /** Writes back everything this session changed. Throws into cleanup/quarantine; the journal keeps the record then. */
+    private suspend fun restoreSavedState() {
+        savedStateMutex.withLock {
+            if (savedState.isEmpty()) return
+            adb.restoreState(serial, savedState.toList())
+            savedState.clear()
+        }
+    }
+
+    private suspend fun captureRotation() = captureBeforeChange(StateKey.ROTATION)
 
     private val closeStarted = AtomicBoolean(false)
     private val cancellationCleanupScheduled = AtomicBoolean(false)
@@ -212,6 +276,9 @@ class DeviceSession private constructor(
                     // as cancellation (finished == null below), never as a recorded failure.
                     cleanupStep({ firstFailure = it }) { client.close() }
                     cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
+                        restoreSavedState()
+                    }
+                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
                         adb.removeForward(serial, hostPort)
                     }
                     cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
@@ -242,6 +309,8 @@ class DeviceSession private constructor(
                 store.write(
                     journal.copy(
                         state = state,
+                        // A failed or timed-out restore keeps what is still to put back.
+                        savedState = savedState.toList(),
                         quarantineReason =
                             (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" }
                                 ?: clientPoison?.let { "DRIVER_CONNECTION_POISONED: ${it.message}" },
@@ -292,7 +361,7 @@ class DeviceSession private constructor(
             try {
                 val bootId = adb.bootId(serial)
                 observedBootId = bootId
-                val prior = recoverJournal(adb, serial, bootId, store)
+                val prior = recoverJournal(adb, serial, bootId, store)?.let { restorePriorState(adb, serial, store, it) }
                 observedPrior = prior
                 adb.wakeAndDismissKeyguard(serial)
                 if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
@@ -368,6 +437,7 @@ class DeviceSession private constructor(
                     // same sticky poison/closing state under the transport mutex, before any ID or
                     // frame. Standalone clients keep the no-op default.
                     session.client.bindSessionGate(session::checkAdmissible)
+                    session.client.bindRotationMutationHook(session::captureRotation)
                     leaseOwnedBySession = true
                     // Cancellation may arrive after READY but before the caller accepts the
                     // returned value. Keep the deterministic seam non-cancellable, then use a
@@ -550,4 +620,32 @@ internal fun findReapUncertain(error: Throwable): AdbReapUncertainException? {
         current.suppressed.forEach(queue::add)
     }
     return null
+}
+
+/**
+ * Writes back the device state a previous session changed and never restored (its daemon died
+ * before detach), then clears it from the journal. A restore that does not take quarantines:
+ * the device is not in the state its owner left it in.
+ */
+internal suspend fun restorePriorState(
+    adb: Adb,
+    serial: String,
+    store: SessionJournalStore,
+    prior: SessionJournal,
+): SessionJournal {
+    if (prior.savedState.isEmpty()) return prior
+    try {
+        adb.restoreState(serial, prior.savedState)
+    } catch (error: Exception) {
+        if (error is AdbReapUncertainException) throw error
+        store.write(
+            prior.copy(
+                state = JournalState.QUARANTINED,
+                quarantineReason = "DEVICE_STATE_RESTORE_FAILED: ${error.message}",
+                updatedAtEpochMs = System.currentTimeMillis(),
+            ),
+        )
+        throw DeviceQuarantinedException(serial, "Device state a previous session changed on $serial could not be restored; device quarantined", error)
+    }
+    return prior.copy(savedState = emptyList(), updatedAtEpochMs = System.currentTimeMillis()).also(store::write)
 }

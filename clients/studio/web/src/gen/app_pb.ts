@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file app.proto.
  */
 export const file_app: GenFile = /*@__PURE__*/
-  fileDesc("CglhcHAucHJvdG8SBnRhcC52MSJbCglBcHBUYXJnZXQSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhQKDHBhY2thZ2VfbmFtZRgDIAEoCSIzCg9Qcm9jZXNzSWRlbnRpdHkSCwoDcGlkGAEgASgFEhMKC3N0YXJ0X3Rva2VuGAIgASgJImsKDUluc3RhbGxIZWFkZXISHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIXCgp0aW1lb3V0X21zGAIgASgDSACIAQESEgoKc2l6ZV9ieXRlcxgDIAEoA0INCgtfdGltZW91dF9tcyJSCg5JbnN0YWxsUmVxdWVzdBInCgZoZWFkZXIYASABKAsyFS50YXAudjEuSW5zdGFsbEhlYWRlckgAEg8KBWNodW5rGAIgASgMSABCBgoEcGFydCIRCg9JbnN0YWxsUmVzcG9uc2UiMgoQVW5pbnN0YWxsUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0IhMKEVVuaW5zdGFsbFJlc3BvbnNlIjQKEklzSW5zdGFsbGVkUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0IigKE0lzSW5zdGFsbGVkUmVzcG9uc2USEQoJaW5zdGFsbGVkGAEgASgIIloKEEZvcmNlU3RvcFJlcXVlc3QSHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIXCgp0aW1lb3V0X21zGAIgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMiEwoRRm9yY2VTdG9wUmVzcG9uc2UiWgoQQ2xlYXJEYXRhUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0EhcKCnRpbWVvdXRfbXMYAiABKANIAIgBAUINCgtfdGltZW91dF9tcyITChFDbGVhckRhdGFSZXNwb25zZSJMChZHcmFudFBlcm1pc3Npb25SZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQSEgoKcGVybWlzc2lvbhgCIAEoCSIZChdHcmFudFBlcm1pc3Npb25SZXNwb25zZSJ7Cg1MYXVuY2hSZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQSFQoIYWN0aXZpdHkYAiABKAlIAIgBARIXCgp0aW1lb3V0X21zGAMgASgDSAGIAQFCCwoJX2FjdGl2aXR5Qg0KC190aW1lb3V0X21zIhAKDkxhdW5jaFJlc3BvbnNlIn8KEUNvbGRMYXVuY2hSZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQSFQoIYWN0aXZpdHkYAiABKAlIAIgBARIXCgp0aW1lb3V0X21zGAMgASgDSAGIAQFCCwoJX2FjdGl2aXR5Qg0KC190aW1lb3V0X21zIj4KEkNvbGRMYXVuY2hSZXNwb25zZRIoCgdwcm9jZXNzGAEgASgLMhcudGFwLnYxLlByb2Nlc3NJZGVudGl0eSJYCg5Qcm9jZXNzUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0EhcKCnRpbWVvdXRfbXMYAiABKANIAIgBAUINCgtfdGltZW91dF9tcyI7Cg9Qcm9jZXNzUmVzcG9uc2USKAoHcHJvY2VzcxgBIAEoCzIXLnRhcC52MS5Qcm9jZXNzSWRlbnRpdHkiMgoQSXNSdW5uaW5nUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0IiQKEUlzUnVubmluZ1Jlc3BvbnNlEg8KB3J1bm5pbmcYASABKAgiiAEKEEF3YWl0SWRsZVJlcXVlc3QSHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIXCgp0aW1lb3V0X21zGAIgASgDSACIAQESGgoNc3RhYmxlX2Zvcl9tcxgDIAEoA0gBiAEBQg0KC190aW1lb3V0X21zQhAKDl9zdGFibGVfZm9yX21zIhMKEUF3YWl0SWRsZVJlc3BvbnNlMuoFCgpBcHBTZXJ2aWNlEjwKB0luc3RhbGwSFi50YXAudjEuSW5zdGFsbFJlcXVlc3QaFy50YXAudjEuSW5zdGFsbFJlc3BvbnNlKAESQAoJVW5pbnN0YWxsEhgudGFwLnYxLlVuaW5zdGFsbFJlcXVlc3QaGS50YXAudjEuVW5pbnN0YWxsUmVzcG9uc2USRgoLSXNJbnN0YWxsZWQSGi50YXAudjEuSXNJbnN0YWxsZWRSZXF1ZXN0GhsudGFwLnYxLklzSW5zdGFsbGVkUmVzcG9uc2USQAoJRm9yY2VTdG9wEhgudGFwLnYxLkZvcmNlU3RvcFJlcXVlc3QaGS50YXAudjEuRm9yY2VTdG9wUmVzcG9uc2USQAoJQ2xlYXJEYXRhEhgudGFwLnYxLkNsZWFyRGF0YVJlcXVlc3QaGS50YXAudjEuQ2xlYXJEYXRhUmVzcG9uc2USUgoPR3JhbnRQZXJtaXNzaW9uEh4udGFwLnYxLkdyYW50UGVybWlzc2lvblJlcXVlc3QaHy50YXAudjEuR3JhbnRQZXJtaXNzaW9uUmVzcG9uc2USNwoGTGF1bmNoEhUudGFwLnYxLkxhdW5jaFJlcXVlc3QaFi50YXAudjEuTGF1bmNoUmVzcG9uc2USQwoKQ29sZExhdW5jaBIZLnRhcC52MS5Db2xkTGF1bmNoUmVxdWVzdBoaLnRhcC52MS5Db2xkTGF1bmNoUmVzcG9uc2USOgoHUHJvY2VzcxIWLnRhcC52MS5Qcm9jZXNzUmVxdWVzdBoXLnRhcC52MS5Qcm9jZXNzUmVzcG9uc2USQAoJSXNSdW5uaW5nEhgudGFwLnYxLklzUnVubmluZ1JlcXVlc3QaGS50YXAudjEuSXNSdW5uaW5nUmVzcG9uc2USQAoJQXdhaXRJZGxlEhgudGFwLnYxLkF3YWl0SWRsZVJlcXVlc3QaGS50YXAudjEuQXdhaXRJZGxlUmVzcG9uc2VCLgogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCCEFwcFByb3RvUAFiBnByb3RvMw");
+  fileDesc("CglhcHAucHJvdG8SBnRhcC52MSJbCglBcHBUYXJnZXQSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEhQKDHBhY2thZ2VfbmFtZRgDIAEoCSIzCg9Qcm9jZXNzSWRlbnRpdHkSCwoDcGlkGAEgASgFEhMKC3N0YXJ0X3Rva2VuGAIgASgJImsKDUluc3RhbGxIZWFkZXISHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIXCgp0aW1lb3V0X21zGAIgASgDSACIAQESEgoKc2l6ZV9ieXRlcxgDIAEoA0INCgtfdGltZW91dF9tcyJSCg5JbnN0YWxsUmVxdWVzdBInCgZoZWFkZXIYASABKAsyFS50YXAudjEuSW5zdGFsbEhlYWRlckgAEg8KBWNodW5rGAIgASgMSABCBgoEcGFydCIRCg9JbnN0YWxsUmVzcG9uc2UiMgoQVW5pbnN0YWxsUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0IhMKEVVuaW5zdGFsbFJlc3BvbnNlIjQKEklzSW5zdGFsbGVkUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0IigKE0lzSW5zdGFsbGVkUmVzcG9uc2USEQoJaW5zdGFsbGVkGAEgASgIIloKEEZvcmNlU3RvcFJlcXVlc3QSHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIXCgp0aW1lb3V0X21zGAIgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMiEwoRRm9yY2VTdG9wUmVzcG9uc2UiWgoQQ2xlYXJEYXRhUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0EhcKCnRpbWVvdXRfbXMYAiABKANIAIgBAUINCgtfdGltZW91dF9tcyITChFDbGVhckRhdGFSZXNwb25zZSJMChZHcmFudFBlcm1pc3Npb25SZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQSEgoKcGVybWlzc2lvbhgCIAEoCSIZChdHcmFudFBlcm1pc3Npb25SZXNwb25zZSJNChdSZXZva2VQZXJtaXNzaW9uUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0EhIKCnBlcm1pc3Npb24YAiABKAkiGgoYUmV2b2tlUGVybWlzc2lvblJlc3BvbnNlIlAKGklzUGVybWlzc2lvbkdyYW50ZWRSZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQSEgoKcGVybWlzc2lvbhgCIAEoCSIuChtJc1Blcm1pc3Npb25HcmFudGVkUmVzcG9uc2USDwoHZ3JhbnRlZBgBIAEoCCJEChFTZXRMb2NhbGVzUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0Eg8KB2xvY2FsZXMYAiADKAkiFAoSU2V0TG9jYWxlc1Jlc3BvbnNlIjMKEUdldExvY2FsZXNSZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQiJQoSR2V0TG9jYWxlc1Jlc3BvbnNlEg8KB2xvY2FsZXMYASADKAkikwEKC0ludGVudEV4dHJhEgsKA2tleRgBIAEoCRIWCgxzdHJpbmdfdmFsdWUYAiABKAlIABIUCgpib29sX3ZhbHVlGAMgASgISAASEwoJaW50X3ZhbHVlGAQgASgFSAASFAoKbG9uZ192YWx1ZRgFIAEoA0gAEhUKC2Zsb2F0X3ZhbHVlGAYgASgCSABCBwoFdmFsdWUioAEKDUxhdW5jaFJlcXVlc3QSHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIVCghhY3Rpdml0eRgCIAEoCUgAiAEBEhcKCnRpbWVvdXRfbXMYAyABKANIAYgBARIjCgZleHRyYXMYBCADKAsyEy50YXAudjEuSW50ZW50RXh0cmFCCwoJX2FjdGl2aXR5Qg0KC190aW1lb3V0X21zIhAKDkxhdW5jaFJlc3BvbnNlIqQBChFDb2xkTGF1bmNoUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0EhUKCGFjdGl2aXR5GAIgASgJSACIAQESFwoKdGltZW91dF9tcxgDIAEoA0gBiAEBEiMKBmV4dHJhcxgEIAMoCzITLnRhcC52MS5JbnRlbnRFeHRyYUILCglfYWN0aXZpdHlCDQoLX3RpbWVvdXRfbXMiPgoSQ29sZExhdW5jaFJlc3BvbnNlEigKB3Byb2Nlc3MYASABKAsyFy50YXAudjEuUHJvY2Vzc0lkZW50aXR5IlsKEUZvcmVncm91bmRSZXF1ZXN0Eh4KA2FwcBgBIAEoCzIRLnRhcC52MS5BcHBUYXJnZXQSFwoKdGltZW91dF9tcxgCIAEoA0gAiAEBQg0KC190aW1lb3V0X21zIhQKEkZvcmVncm91bmRSZXNwb25zZSJ3Cg9PcGVuTGlua1JlcXVlc3QSHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBILCgN1cmkYAiABKAkSDwoHYW55X2FwcBgDIAEoCBIXCgp0aW1lb3V0X21zGAQgASgDSACIAQFCDQoLX3RpbWVvdXRfbXMiNgoQT3BlbkxpbmtSZXNwb25zZRIVCghhY3Rpdml0eRgBIAEoCUgAiAEBQgsKCV9hY3Rpdml0eSJYCg5Qcm9jZXNzUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0EhcKCnRpbWVvdXRfbXMYAiABKANIAIgBAUINCgtfdGltZW91dF9tcyI7Cg9Qcm9jZXNzUmVzcG9uc2USKAoHcHJvY2VzcxgBIAEoCzIXLnRhcC52MS5Qcm9jZXNzSWRlbnRpdHkiMgoQSXNSdW5uaW5nUmVxdWVzdBIeCgNhcHAYASABKAsyES50YXAudjEuQXBwVGFyZ2V0IiQKEUlzUnVubmluZ1Jlc3BvbnNlEg8KB3J1bm5pbmcYASABKAgiiAEKEEF3YWl0SWRsZVJlcXVlc3QSHgoDYXBwGAEgASgLMhEudGFwLnYxLkFwcFRhcmdldBIXCgp0aW1lb3V0X21zGAIgASgDSACIAQESGgoNc3RhYmxlX2Zvcl9tcxgDIAEoA0gBiAEBQg0KC190aW1lb3V0X21zQhAKDl9zdGFibGVfZm9yX21zIhMKEUF3YWl0SWRsZVJlc3BvbnNlMq8JCgpBcHBTZXJ2aWNlEjwKB0luc3RhbGwSFi50YXAudjEuSW5zdGFsbFJlcXVlc3QaFy50YXAudjEuSW5zdGFsbFJlc3BvbnNlKAESQAoJVW5pbnN0YWxsEhgudGFwLnYxLlVuaW5zdGFsbFJlcXVlc3QaGS50YXAudjEuVW5pbnN0YWxsUmVzcG9uc2USRgoLSXNJbnN0YWxsZWQSGi50YXAudjEuSXNJbnN0YWxsZWRSZXF1ZXN0GhsudGFwLnYxLklzSW5zdGFsbGVkUmVzcG9uc2USQAoJRm9yY2VTdG9wEhgudGFwLnYxLkZvcmNlU3RvcFJlcXVlc3QaGS50YXAudjEuRm9yY2VTdG9wUmVzcG9uc2USQAoJQ2xlYXJEYXRhEhgudGFwLnYxLkNsZWFyRGF0YVJlcXVlc3QaGS50YXAudjEuQ2xlYXJEYXRhUmVzcG9uc2USUgoPR3JhbnRQZXJtaXNzaW9uEh4udGFwLnYxLkdyYW50UGVybWlzc2lvblJlcXVlc3QaHy50YXAudjEuR3JhbnRQZXJtaXNzaW9uUmVzcG9uc2USVQoQUmV2b2tlUGVybWlzc2lvbhIfLnRhcC52MS5SZXZva2VQZXJtaXNzaW9uUmVxdWVzdBogLnRhcC52MS5SZXZva2VQZXJtaXNzaW9uUmVzcG9uc2USXgoTSXNQZXJtaXNzaW9uR3JhbnRlZBIiLnRhcC52MS5Jc1Blcm1pc3Npb25HcmFudGVkUmVxdWVzdBojLnRhcC52MS5Jc1Blcm1pc3Npb25HcmFudGVkUmVzcG9uc2USQwoKU2V0TG9jYWxlcxIZLnRhcC52MS5TZXRMb2NhbGVzUmVxdWVzdBoaLnRhcC52MS5TZXRMb2NhbGVzUmVzcG9uc2USQwoKR2V0TG9jYWxlcxIZLnRhcC52MS5HZXRMb2NhbGVzUmVxdWVzdBoaLnRhcC52MS5HZXRMb2NhbGVzUmVzcG9uc2USNwoGTGF1bmNoEhUudGFwLnYxLkxhdW5jaFJlcXVlc3QaFi50YXAudjEuTGF1bmNoUmVzcG9uc2USQwoKQ29sZExhdW5jaBIZLnRhcC52MS5Db2xkTGF1bmNoUmVxdWVzdBoaLnRhcC52MS5Db2xkTGF1bmNoUmVzcG9uc2USQwoKRm9yZWdyb3VuZBIZLnRhcC52MS5Gb3JlZ3JvdW5kUmVxdWVzdBoaLnRhcC52MS5Gb3JlZ3JvdW5kUmVzcG9uc2USPQoIT3BlbkxpbmsSFy50YXAudjEuT3BlbkxpbmtSZXF1ZXN0GhgudGFwLnYxLk9wZW5MaW5rUmVzcG9uc2USOgoHUHJvY2VzcxIWLnRhcC52MS5Qcm9jZXNzUmVxdWVzdBoXLnRhcC52MS5Qcm9jZXNzUmVzcG9uc2USQAoJSXNSdW5uaW5nEhgudGFwLnYxLklzUnVubmluZ1JlcXVlc3QaGS50YXAudjEuSXNSdW5uaW5nUmVzcG9uc2USQAoJQXdhaXRJZGxlEhgudGFwLnYxLkF3YWl0SWRsZVJlcXVlc3QaGS50YXAudjEuQXdhaXRJZGxlUmVzcG9uc2VCLgogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCCEFwcFByb3RvUAFiBnByb3RvMw");
 
 /**
  * The package an App call acts on, on a device the calling connection has attached.
@@ -317,6 +317,215 @@ export const GrantPermissionResponseSchema: GenMessage<GrantPermissionResponse> 
   messageDesc(file_app, 14);
 
 /**
+ * @generated from message tap.v1.RevokePermissionRequest
+ */
+export type RevokePermissionRequest = Message<"tap.v1.RevokePermissionRequest"> & {
+  /**
+   * @generated from field: tap.v1.AppTarget app = 1;
+   */
+  app?: AppTarget | undefined;
+
+  /**
+   * @generated from field: string permission = 2;
+   */
+  permission: string;
+};
+
+/**
+ * Describes the message tap.v1.RevokePermissionRequest.
+ * Use `create(RevokePermissionRequestSchema)` to create a new message.
+ */
+export const RevokePermissionRequestSchema: GenMessage<RevokePermissionRequest> = /*@__PURE__*/
+  messageDesc(file_app, 15);
+
+/**
+ * @generated from message tap.v1.RevokePermissionResponse
+ */
+export type RevokePermissionResponse = Message<"tap.v1.RevokePermissionResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.RevokePermissionResponse.
+ * Use `create(RevokePermissionResponseSchema)` to create a new message.
+ */
+export const RevokePermissionResponseSchema: GenMessage<RevokePermissionResponse> = /*@__PURE__*/
+  messageDesc(file_app, 16);
+
+/**
+ * @generated from message tap.v1.IsPermissionGrantedRequest
+ */
+export type IsPermissionGrantedRequest = Message<"tap.v1.IsPermissionGrantedRequest"> & {
+  /**
+   * @generated from field: tap.v1.AppTarget app = 1;
+   */
+  app?: AppTarget | undefined;
+
+  /**
+   * @generated from field: string permission = 2;
+   */
+  permission: string;
+};
+
+/**
+ * Describes the message tap.v1.IsPermissionGrantedRequest.
+ * Use `create(IsPermissionGrantedRequestSchema)` to create a new message.
+ */
+export const IsPermissionGrantedRequestSchema: GenMessage<IsPermissionGrantedRequest> = /*@__PURE__*/
+  messageDesc(file_app, 17);
+
+/**
+ * @generated from message tap.v1.IsPermissionGrantedResponse
+ */
+export type IsPermissionGrantedResponse = Message<"tap.v1.IsPermissionGrantedResponse"> & {
+  /**
+   * @generated from field: bool granted = 1;
+   */
+  granted: boolean;
+};
+
+/**
+ * Describes the message tap.v1.IsPermissionGrantedResponse.
+ * Use `create(IsPermissionGrantedResponseSchema)` to create a new message.
+ */
+export const IsPermissionGrantedResponseSchema: GenMessage<IsPermissionGrantedResponse> = /*@__PURE__*/
+  messageDesc(file_app, 18);
+
+/**
+ * @generated from message tap.v1.SetLocalesRequest
+ */
+export type SetLocalesRequest = Message<"tap.v1.SetLocalesRequest"> & {
+  /**
+   * @generated from field: tap.v1.AppTarget app = 1;
+   */
+  app?: AppTarget | undefined;
+
+  /**
+   * At most 16 well-formed, distinct BCP-47 tags (`fr-FR`, `pt-BR`, `zh-Hant-TW`).
+   *
+   * @generated from field: repeated string locales = 2;
+   */
+  locales: string[];
+};
+
+/**
+ * Describes the message tap.v1.SetLocalesRequest.
+ * Use `create(SetLocalesRequestSchema)` to create a new message.
+ */
+export const SetLocalesRequestSchema: GenMessage<SetLocalesRequest> = /*@__PURE__*/
+  messageDesc(file_app, 19);
+
+/**
+ * @generated from message tap.v1.SetLocalesResponse
+ */
+export type SetLocalesResponse = Message<"tap.v1.SetLocalesResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.SetLocalesResponse.
+ * Use `create(SetLocalesResponseSchema)` to create a new message.
+ */
+export const SetLocalesResponseSchema: GenMessage<SetLocalesResponse> = /*@__PURE__*/
+  messageDesc(file_app, 20);
+
+/**
+ * @generated from message tap.v1.GetLocalesRequest
+ */
+export type GetLocalesRequest = Message<"tap.v1.GetLocalesRequest"> & {
+  /**
+   * @generated from field: tap.v1.AppTarget app = 1;
+   */
+  app?: AppTarget | undefined;
+};
+
+/**
+ * Describes the message tap.v1.GetLocalesRequest.
+ * Use `create(GetLocalesRequestSchema)` to create a new message.
+ */
+export const GetLocalesRequestSchema: GenMessage<GetLocalesRequest> = /*@__PURE__*/
+  messageDesc(file_app, 21);
+
+/**
+ * @generated from message tap.v1.GetLocalesResponse
+ */
+export type GetLocalesResponse = Message<"tap.v1.GetLocalesResponse"> & {
+  /**
+   * @generated from field: repeated string locales = 1;
+   */
+  locales: string[];
+};
+
+/**
+ * Describes the message tap.v1.GetLocalesResponse.
+ * Use `create(GetLocalesResponseSchema)` to create a new message.
+ */
+export const GetLocalesResponseSchema: GenMessage<GetLocalesResponse> = /*@__PURE__*/
+  messageDesc(file_app, 22);
+
+/**
+ * One `am start` extra. `key`: 1..256 chars, no whitespace or control characters.
+ *
+ * @generated from message tap.v1.IntentExtra
+ */
+export type IntentExtra = Message<"tap.v1.IntentExtra"> & {
+  /**
+   * @generated from field: string key = 1;
+   */
+  key: string;
+
+  /**
+   * @generated from oneof tap.v1.IntentExtra.value
+   */
+  value: {
+    /**
+     * --es (≤ 4096 chars)
+     *
+     * @generated from field: string string_value = 2;
+     */
+    value: string;
+    case: "stringValue";
+  } | {
+    /**
+     * --ez
+     *
+     * @generated from field: bool bool_value = 3;
+     */
+    value: boolean;
+    case: "boolValue";
+  } | {
+    /**
+     * --ei
+     *
+     * @generated from field: int32 int_value = 4;
+     */
+    value: number;
+    case: "intValue";
+  } | {
+    /**
+     * --el
+     *
+     * @generated from field: int64 long_value = 5;
+     */
+    value: bigint;
+    case: "longValue";
+  } | {
+    /**
+     * --ef (finite)
+     *
+     * @generated from field: float float_value = 6;
+     */
+    value: number;
+    case: "floatValue";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.v1.IntentExtra.
+ * Use `create(IntentExtraSchema)` to create a new message.
+ */
+export const IntentExtraSchema: GenMessage<IntentExtra> = /*@__PURE__*/
+  messageDesc(file_app, 23);
+
+/**
  * @generated from message tap.v1.LaunchRequest
  */
 export type LaunchRequest = Message<"tap.v1.LaunchRequest"> & {
@@ -336,6 +545,13 @@ export type LaunchRequest = Message<"tap.v1.LaunchRequest"> & {
    * @generated from field: optional int64 timeout_ms = 3;
    */
   timeoutMs?: bigint | undefined;
+
+  /**
+   * ≤ 64, distinct keys
+   *
+   * @generated from field: repeated tap.v1.IntentExtra extras = 4;
+   */
+  extras: IntentExtra[];
 };
 
 /**
@@ -343,7 +559,7 @@ export type LaunchRequest = Message<"tap.v1.LaunchRequest"> & {
  * Use `create(LaunchRequestSchema)` to create a new message.
  */
 export const LaunchRequestSchema: GenMessage<LaunchRequest> = /*@__PURE__*/
-  messageDesc(file_app, 15);
+  messageDesc(file_app, 24);
 
 /**
  * @generated from message tap.v1.LaunchResponse
@@ -356,7 +572,7 @@ export type LaunchResponse = Message<"tap.v1.LaunchResponse"> & {
  * Use `create(LaunchResponseSchema)` to create a new message.
  */
 export const LaunchResponseSchema: GenMessage<LaunchResponse> = /*@__PURE__*/
-  messageDesc(file_app, 16);
+  messageDesc(file_app, 25);
 
 /**
  * @generated from message tap.v1.ColdLaunchRequest
@@ -378,6 +594,13 @@ export type ColdLaunchRequest = Message<"tap.v1.ColdLaunchRequest"> & {
    * @generated from field: optional int64 timeout_ms = 3;
    */
   timeoutMs?: bigint | undefined;
+
+  /**
+   * as LaunchRequest
+   *
+   * @generated from field: repeated tap.v1.IntentExtra extras = 4;
+   */
+  extras: IntentExtra[];
 };
 
 /**
@@ -385,7 +608,7 @@ export type ColdLaunchRequest = Message<"tap.v1.ColdLaunchRequest"> & {
  * Use `create(ColdLaunchRequestSchema)` to create a new message.
  */
 export const ColdLaunchRequestSchema: GenMessage<ColdLaunchRequest> = /*@__PURE__*/
-  messageDesc(file_app, 17);
+  messageDesc(file_app, 26);
 
 /**
  * @generated from message tap.v1.ColdLaunchResponse
@@ -402,7 +625,99 @@ export type ColdLaunchResponse = Message<"tap.v1.ColdLaunchResponse"> & {
  * Use `create(ColdLaunchResponseSchema)` to create a new message.
  */
 export const ColdLaunchResponseSchema: GenMessage<ColdLaunchResponse> = /*@__PURE__*/
-  messageDesc(file_app, 18);
+  messageDesc(file_app, 27);
+
+/**
+ * @generated from message tap.v1.ForegroundRequest
+ */
+export type ForegroundRequest = Message<"tap.v1.ForegroundRequest"> & {
+  /**
+   * @generated from field: tap.v1.AppTarget app = 1;
+   */
+  app?: AppTarget | undefined;
+
+  /**
+   * @generated from field: optional int64 timeout_ms = 2;
+   */
+  timeoutMs?: bigint | undefined;
+};
+
+/**
+ * Describes the message tap.v1.ForegroundRequest.
+ * Use `create(ForegroundRequestSchema)` to create a new message.
+ */
+export const ForegroundRequestSchema: GenMessage<ForegroundRequest> = /*@__PURE__*/
+  messageDesc(file_app, 28);
+
+/**
+ * @generated from message tap.v1.ForegroundResponse
+ */
+export type ForegroundResponse = Message<"tap.v1.ForegroundResponse"> & {
+};
+
+/**
+ * Describes the message tap.v1.ForegroundResponse.
+ * Use `create(ForegroundResponseSchema)` to create a new message.
+ */
+export const ForegroundResponseSchema: GenMessage<ForegroundResponse> = /*@__PURE__*/
+  messageDesc(file_app, 29);
+
+/**
+ * @generated from message tap.v1.OpenLinkRequest
+ */
+export type OpenLinkRequest = Message<"tap.v1.OpenLinkRequest"> & {
+  /**
+   * @generated from field: tap.v1.AppTarget app = 1;
+   */
+  app?: AppTarget | undefined;
+
+  /**
+   * an absolute URI (scheme required); ≤ 2048 chars, no whitespace or control characters
+   *
+   * @generated from field: string uri = 2;
+   */
+  uri: string;
+
+  /**
+   * false: only the package may handle it (`-p`), so no chooser can appear. true: Android
+   * resolves it as a tapped link would — another app, the browser, or a chooser.
+   *
+   * @generated from field: bool any_app = 3;
+   */
+  anyApp: boolean;
+
+  /**
+   * @generated from field: optional int64 timeout_ms = 4;
+   */
+  timeoutMs?: bigint | undefined;
+};
+
+/**
+ * Describes the message tap.v1.OpenLinkRequest.
+ * Use `create(OpenLinkRequestSchema)` to create a new message.
+ */
+export const OpenLinkRequestSchema: GenMessage<OpenLinkRequest> = /*@__PURE__*/
+  messageDesc(file_app, 30);
+
+/**
+ * @generated from message tap.v1.OpenLinkResponse
+ */
+export type OpenLinkResponse = Message<"tap.v1.OpenLinkResponse"> & {
+  /**
+   * The activity Android reports it started or delivered the link to (`package/class`); absent
+   * when `am start` names none.
+   *
+   * @generated from field: optional string activity = 1;
+   */
+  activity?: string | undefined;
+};
+
+/**
+ * Describes the message tap.v1.OpenLinkResponse.
+ * Use `create(OpenLinkResponseSchema)` to create a new message.
+ */
+export const OpenLinkResponseSchema: GenMessage<OpenLinkResponse> = /*@__PURE__*/
+  messageDesc(file_app, 31);
 
 /**
  * @generated from message tap.v1.ProcessRequest
@@ -424,7 +739,7 @@ export type ProcessRequest = Message<"tap.v1.ProcessRequest"> & {
  * Use `create(ProcessRequestSchema)` to create a new message.
  */
 export const ProcessRequestSchema: GenMessage<ProcessRequest> = /*@__PURE__*/
-  messageDesc(file_app, 19);
+  messageDesc(file_app, 32);
 
 /**
  * @generated from message tap.v1.ProcessResponse
@@ -441,7 +756,7 @@ export type ProcessResponse = Message<"tap.v1.ProcessResponse"> & {
  * Use `create(ProcessResponseSchema)` to create a new message.
  */
 export const ProcessResponseSchema: GenMessage<ProcessResponse> = /*@__PURE__*/
-  messageDesc(file_app, 20);
+  messageDesc(file_app, 33);
 
 /**
  * @generated from message tap.v1.IsRunningRequest
@@ -458,7 +773,7 @@ export type IsRunningRequest = Message<"tap.v1.IsRunningRequest"> & {
  * Use `create(IsRunningRequestSchema)` to create a new message.
  */
 export const IsRunningRequestSchema: GenMessage<IsRunningRequest> = /*@__PURE__*/
-  messageDesc(file_app, 21);
+  messageDesc(file_app, 34);
 
 /**
  * @generated from message tap.v1.IsRunningResponse
@@ -475,7 +790,7 @@ export type IsRunningResponse = Message<"tap.v1.IsRunningResponse"> & {
  * Use `create(IsRunningResponseSchema)` to create a new message.
  */
 export const IsRunningResponseSchema: GenMessage<IsRunningResponse> = /*@__PURE__*/
-  messageDesc(file_app, 22);
+  messageDesc(file_app, 35);
 
 /**
  * @generated from message tap.v1.AwaitIdleRequest
@@ -504,7 +819,7 @@ export type AwaitIdleRequest = Message<"tap.v1.AwaitIdleRequest"> & {
  * Use `create(AwaitIdleRequestSchema)` to create a new message.
  */
 export const AwaitIdleRequestSchema: GenMessage<AwaitIdleRequest> = /*@__PURE__*/
-  messageDesc(file_app, 23);
+  messageDesc(file_app, 36);
 
 /**
  * @generated from message tap.v1.AwaitIdleResponse
@@ -517,7 +832,7 @@ export type AwaitIdleResponse = Message<"tap.v1.AwaitIdleResponse"> & {
  * Use `create(AwaitIdleResponseSchema)` to create a new message.
  */
 export const AwaitIdleResponseSchema: GenMessage<AwaitIdleResponse> = /*@__PURE__*/
-  messageDesc(file_app, 24);
+  messageDesc(file_app, 37);
 
 /**
  * @generated from service tap.v1.AppService
@@ -583,6 +898,48 @@ export const AppService: GenService<{
     output: typeof GrantPermissionResponseSchema;
   },
   /**
+   * `pm revoke` a runtime permission, verified like a grant. Android kills the app's process.
+   *
+   * @generated from rpc tap.v1.AppService.RevokePermission
+   */
+  revokePermission: {
+    methodKind: "unary";
+    input: typeof RevokePermissionRequestSchema;
+    output: typeof RevokePermissionResponseSchema;
+  },
+  /**
+   * Whether `dumpsys package` lists the permission as granted to the package (a read; not logged).
+   *
+   * @generated from rpc tap.v1.AppService.IsPermissionGranted
+   */
+  isPermissionGranted: {
+    methodKind: "unary";
+    input: typeof IsPermissionGrantedRequestSchema;
+    output: typeof IsPermissionGrantedResponseSchema;
+  },
+  /**
+   * The app's own languages (`cmd locale set-app-locales`, API 33+; FAILED_PRECONDITION,
+   * UNSUPPORTED_API below), BCP-47 tags in preference order; empty = follow the system. Read
+   * back after the change; restored on detach like the device conditions.
+   *
+   * @generated from rpc tap.v1.AppService.SetLocales
+   */
+  setLocales: {
+    methodKind: "unary";
+    input: typeof SetLocalesRequestSchema;
+    output: typeof SetLocalesResponseSchema;
+  },
+  /**
+   * The app's own languages now (`cmd locale get-app-locales`); empty = it follows the system.
+   *
+   * @generated from rpc tap.v1.AppService.GetLocales
+   */
+  getLocales: {
+    methodKind: "unary";
+    input: typeof GetLocalesRequestSchema;
+    output: typeof GetLocalesResponseSchema;
+  },
+  /**
    * Start the activity (or the launcher) and wait for the package to own the focused window.
    *
    * @generated from rpc tap.v1.AppService.Launch
@@ -601,6 +958,27 @@ export const AppService: GenService<{
     methodKind: "unary";
     input: typeof ColdLaunchRequestSchema;
     output: typeof ColdLaunchResponseSchema;
+  },
+  /**
+   * `am start -W` of the launcher intent, as the home screen does: the app's existing task comes
+   * back as it was left; with no task, the launcher activity starts.
+   *
+   * @generated from rpc tap.v1.AppService.Foreground
+   */
+  foreground: {
+    methodKind: "unary";
+    input: typeof ForegroundRequestSchema;
+    output: typeof ForegroundResponseSchema;
+  },
+  /**
+   * `am start -W -a android.intent.action.VIEW -d <uri>`, limited to the package unless `any_app`.
+   *
+   * @generated from rpc tap.v1.AppService.OpenLink
+   */
+  openLink: {
+    methodKind: "unary";
+    input: typeof OpenLinkRequestSchema;
+    output: typeof OpenLinkResponseSchema;
   },
   /**
    * The single current process identity.

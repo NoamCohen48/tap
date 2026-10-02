@@ -91,7 +91,7 @@ is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Resp
 | `Disconnect(client_connection_id)` → `{attached_devices_detached}` | Explicit teardown. |
 | `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
 | `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, generation). How a later process (`tap` CLI) finds a held connection by name. |
-| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent), and install / uninstall / force-stop / clear-data / grant / launch / cold launch (`AppCall{operation, package_name, activity?, permission?, timeout_ms?}`), each with serial, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
+| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent), and install / uninstall / force-stop / clear-data / grant / revoke / launch / cold launch / foreground / open link (`AppCall{operation, package_name, activity?, permission?, timeout_ms?, uri?, any_app?, extras}`), each with serial, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
 
 A connection whose Observe is not open 30 s after `Connect` is reaped. A client that crashes
 between Connect and Observe therefore cannot leak a connection.
@@ -117,6 +117,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 | `ScreenSnapshot(…, timeout_ms?, selector_candidates)` → `{snapshot_id, nodes, removed, rotation}` | A compact outline parsed from the diagnostic hierarchy dump (every window root, visible nodes, pre-order). Each `ScreenNode` has a ref `eN`, depth, window package, class, resource name, text, description, hint, bounds, the true flags, `interactive`, and a selector the daemon synthesised that matched only this node in the dump (absent when none; `by_index` when it needed an `At` pick). With `selector_candidates` each node also carries `candidates`: every `SelectorCandidate{selector, kind}` that matched only it, best first (the first is `selector`); a candidate that only adds predicates to an earlier one is left out, and a `SELECTOR_KIND_BY_INDEX` pick appears only when nothing else is unique. Off by default: it costs more synthesis and a bigger reply, and only an inspector needs it. Refs are aligned with the device's previous snapshot: unchanged nodes keep their ref and are `NODE_UNCHANGED`, new ones get fresh numbers and are `NODE_ADDED`, gone ones are listed in `removed`. A ref is never reused for another node. |
 | `ResolveRef(…, ref)` → `{selector, by_index, snapshot_id}` | The selector a ref of the latest snapshot names; the caller sends it in an ordinary `Execute`, where the driver still demands exactly one match. Unknown ref: `NOT_FOUND` / `UNKNOWN_REF`. A node without a selector: `FAILED_PRECONDITION` / `REF_NOT_ADDRESSABLE`. |
 | `Detach(…)` → `{clean, detail?}` | `clean=false` means cleanup timed out or the session was quarantined, and `detail` says why. |
+| `SetAnimations(…, enabled)` / `SetDarkMode(…, enabled)` / `SetFontScale(…, scale)` / `SetDensity(…, dpi?)` → `{}` | Device conditions, held until detach (see *Saved device state* below). Animations: the three `Settings.Global` animation scales all `0` or all `1`. Dark mode: `cmd uimode night yes|no`, API 29+ (below: `FAILED_PRECONDITION` / `UNSUPPORTED_API`, detail `REQUIRES_API_29`, nothing changed); a device that locks the day/night mode (`mNightModeLocked=true`, Samsung One UI) ignores it, which fails the read-back (`DEVICE_SETTING`, the message names the lock). Font scale: `settings put system font_scale`, 0.5..2.0. Density: `wm density <dpi>` (100..1000) or, with `dpi` absent, `wm density reset`. Out-of-range or non-finite arguments are `INVALID_ARGUMENT` before the device is looked up. Every change is read back over ADB; a value the device did not take is `FAILED_PRECONDITION` / `DEVICE_SETTING`. Logged as `DeviceCall{operation, enabled? / font_scale? / density_dpi?}`. |
 
 `Command`:
 
@@ -165,11 +166,30 @@ wire types:
 - `OpenSystemPanel` (`Command` field 24, `SystemPanel` enum) opens the notification shade or
   quick settings; `SYSTEM_PANEL_UNSPECIFIED` is `INVALID_ARGUMENT`. Added within protocol 4.0
   (additive; a driver without it does not advertise `open_system_panel`).
+- The device actions were added with protocol 5.0 (they were never released under 4.0).
+  Rotation: `SetOrientation` (25) chooses portable
+  portrait/landscape geometry, `SetDisplayRotation` (26) chooses an exact natural-relative
+  rotation, and `UnfreezeRotation` (27) releases the sensor lock. The host lazily captures the
+  two Android rotation settings before the first such mutation and restores them during detach;
+  a failed restoration makes cleanup visible and quarantines the session rather than silently
+  releasing a device with changed state. The driver reports only whether Android accepted the
+  rotation (after a bounded 2 s settle wait); what the display did is in `DeviceInfo`.
+- Also in the device-actions set: `DismissKeyguard` (28), `DoubleTap` (29),
+  `Drag` (30, a source `selector` and a `target`, both exactly one match before input), `Pinch`
+  (31, `PinchDirection`, `percent`), `Fling` (32), `WaitPermissionPrompt` (33, result
+  `CommandResult.permission_prompt` = `PermissionPrompt{package_name, choices}`) and
+  `ChoosePermission` (34, `PermissionChoice`). `DeviceInfo` gained `screen_on` (9),
+  `keyguard_locked` (10) and `keyguard_secure` (11). Waking and sleeping the screen are
+  `PressKey` 224 / 223 (the SDKs' `wake`/`sleep`); there is no command for them. Errors:
+  `ACTION_REJECTED`/`KEYGUARD_SECURE`, `WAIT_TIMEOUT`/`NO_PERMISSION_PROMPT`
+  (`.docs/protocol-contract.md`).
 
 ### AppService: AUT lifecycle
 
 Each request carries an `AppTarget{client_connection_id, attached_device_id, package_name}` and has
-its own response message. The RPCs are:
+its own response message. `package_name` may be any package except Tap's driver packages
+(`io.github.noamcohen48.tap.driver` and its `.test`), which are `INVALID_ARGUMENT` before the
+device is looked up: stopping, clearing or uninstalling them would end the session. The RPCs are:
 
 - `Install` is client-streaming.
   - The first message is an `InstallHeader{app, timeout_ms?, size_bytes}`; every later message
@@ -178,10 +198,37 @@ its own response message. The RPCs are:
     a missing or repeated header, a size outside 1 B..1 GiB, and any mismatch with `size_bytes`.
   - It then installs the file and deletes it.
 - `Uninstall`, `IsInstalled`, `ForceStop`, `ClearData`, `GrantPermission`.
-- `Launch` and `ColdLaunch` take an optional `activity`, where absent means the launcher.
+- `RevokePermission(permission)`: `pm revoke`, then proof from `dumpsys package` that the
+  permission no longer reads as granted (`APP_LIFECYCLE` otherwise); a blank permission is
+  `INVALID_ARGUMENT`. Android kills the app's process when a runtime permission is revoked.
+- `IsPermissionGranted(permission)` → `granted`: whether `dumpsys package` lists the permission
+  as `granted=true` for the package (the check grant and revoke use). A read: not logged; a
+  blank permission is `INVALID_ARGUMENT`.
+- `SetLocales(locales)` / `GetLocales()` → `locales`: the app's own languages (`cmd locale
+  set-app-locales|get-app-locales <pkg> --user current`, API 33+; below, `FAILED_PRECONDITION`
+  / `UNSUPPORTED_API` with detail `REQUIRES_API_33`). Tags are checked and canonicalized on the
+  server (`Locale.Builder().setLanguageTag(…).toLanguageTag()`, at most 16, no repeats; anything
+  else is `INVALID_ARGUMENT`, because Android accepts ill-formed tags); an empty list makes the
+  app follow the system. The change is read back (`DEVICE_SETTING` otherwise) and held until
+  detach like the device conditions. `SetLocales` is logged as `set_locales` with `locales`;
+  `GetLocales` is a read and not logged.
+- `Launch` and `ColdLaunch` take an optional `activity`, where absent means the launcher, and
+  `extras`: `IntentExtra{key, string | bool | int32 | int64 | float}` sent as `am start
+  --es/--ez/--ei/--el/--ef` (shell-quoted). At most 64, distinct keys of 1..256 characters
+  without whitespace or control characters, a value set, strings ≤ 4 096 characters without
+  NUL, floats finite; anything else is `INVALID_ARGUMENT` before the device is looked up.
   `ColdLaunch` returns `ProcessIdentity{pid, start_token}`, a verified new process. Both
   return once `am start -W` does; they do not wait for the app's window (a client that needs
   it calls `WAIT_APP_VISIBLE` / `WAIT_SCREEN_STABLE`).
+- `Foreground` sends the launcher intent (`am start -W -a MAIN -c LAUNCHER -f 0x10200000 -n
+  <launcher activity>`), as the home screen does: an existing task comes back as it was left,
+  back stack included; with no task the launcher activity starts. `APP_LIFECYCLE` when `am
+  start` reports a failure.
+- `OpenLink(uri, any_app)` sends a VIEW intent for `uri` (`am start -W -a VIEW -d`), limited to
+  the package (`-p`) unless `any_app`, and returns the `activity` `am start` reports
+  (`package/class`), or none. The `uri` must be absolute (a scheme), 1..2048 characters, with no
+  whitespace or control characters (`INVALID_ARGUMENT`); no app handling it is `APP_LIFECYCLE`.
+  With `any_app` a chooser may appear; Tap never taps it.
 - `Process`, `IsRunning`.
 - `AwaitIdle(stable_for_ms?)`, where the default is 200 ms.
 
@@ -211,6 +258,8 @@ failure, a client-side deadline).
 | Host-issued driver command failed | `FAILED_PRECONDITION` | `DRIVER_COMMAND` |
 | Duplicate Observe, daemon closing | `FAILED_PRECONDITION` | `DAEMON_PRECONDITION` |
 | Ref not in the latest snapshot / ref without a selector | `NOT_FOUND` / `FAILED_PRECONDITION` | `UNKNOWN_REF` / `REF_NOT_ADDRESSABLE` |
+| Device below the call's API level | `FAILED_PRECONDITION` | `UNSUPPORTED_API` (detail `REQUIRES_API_<n>`) |
+| A device setting did not read back as written | `FAILED_PRECONDITION` | `DEVICE_SETTING` |
 | Session unusable (poisoned driver connection) | `ABORTED` | `SESSION_UNUSABLE` |
 | Driver start failure | `UNAVAILABLE` | `DRIVER_START_FAILED` |
 | ADB command failure, gated ADB runner | `UNAVAILABLE` | `ADB_FAILED` |
@@ -253,6 +302,18 @@ grpc-kotlin `*CoroutineImplBase` classes. They only unwrap the request, call `Ta
     the gRPC call — so a call longer than the idle timeout never has its connection ended
     under it. The idle clock restarts when the last running call finishes.
   - Expiry is an ordinary `disconnectClient(…, "idle for Nms")`.
+- **Saved device state:**
+  - Rotation, the device conditions and app languages share one mechanism. Before the session's
+    first change of a value, the server reads it (`settings get`, `cmd uimode night`, `wm
+    density`, `cmd locale get-app-locales`) and appends it to the journal's `savedState`
+    (`{key, value}`; keys `setting:<namespace>/<name>`, `uimode:night`, `wm:density`,
+    `locale:<package>`; a null value = absent). Later changes of the same value capture nothing.
+  - Detach writes the values back newest first (locking auto-rotate first when rotation is
+    among them), reads every one back, then clears `savedState`. A value that does not come
+    back fails the detach and quarantines the device.
+  - When the daemon died before detach, the next attach restores the journaled values right
+    after journal recovery; one that does not come back quarantines with reason
+    `DEVICE_STATE_RESTORE_FAILED: …`. A journal without saved state omits the field.
 - **Detach / close:**
   - Each device close has a bounded budget. The `DeviceSession` gets that budget minus a small
     margin, so its own cleanup finishes before the daemon gives up on it.

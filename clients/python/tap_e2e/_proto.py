@@ -4,26 +4,33 @@ schema needs a matching model constant; until then it maps to the model's "unkno
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from google.protobuf import json_format
 
 from . import _gen as pb
 from .models import (
     AppProcess,
     AttachedDeviceEntry,
-    ConnectionEntry,
     Bounds,
+    ConnectionEntry,
     DeviceEntry,
     DeviceInfo,
     DeviceState,
     Direction,
+    DisplayRotation,
     ElementSnapshot,
     ErrorCode,
     EventLog,
     FailureReason,
     LoggedEvent,
+    Long,
     MatchMode,
     NodeChange,
     NodeFlag,
+    Orientation,
+    PermissionChoice,
+    PermissionPrompt,
     ScreenNode,
     ScreenSnapshot,
     SelectorCandidate,
@@ -31,6 +38,7 @@ from .models import (
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
+    Toast,
     WaitReason,
 )
 
@@ -48,6 +56,24 @@ def match_mode(mode: MatchMode) -> int:
 
 def direction(value: Direction) -> int:
     return pb.Direction.Value(f"DIR_{value.name}")
+
+
+def orientation(value: Orientation) -> int:
+    return pb.Orientation.Value(f"ORIENTATION_{value.name}")
+
+
+def display_rotation(value: DisplayRotation) -> int:
+    return pb.DisplayRotation.Value(f"DISPLAY_ROTATION_{value.name}")
+
+
+def permission_choice(value: PermissionChoice) -> int:
+    return pb.PermissionChoice.Value(f"PERMISSION_{value.name}")
+
+
+def permission_prompt(prompt: pb.PermissionPrompt) -> PermissionPrompt:
+    """Choices this client version does not know are left out."""
+    known = (_named(PermissionChoice, pb.PermissionChoice, c, "PERMISSION_", None) for c in prompt.choices)
+    return PermissionPrompt(package_name=prompt.package_name, choices=tuple(c for c in known if c is not None))
 
 
 def stability_signal(signal: StabilitySignal) -> int:
@@ -121,9 +147,48 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         product=info.product,
         display_width=info.display_width,
         display_height=info.display_height,
-        display_rotation=info.display_rotation,
+        display_rotation=list(DisplayRotation)[info.display_rotation & 3],
         current_package=_optional(info, "current_package"),
+        screen_on=info.screen_on,
+        keyguard_locked=info.keyguard_locked,
+        keyguard_secure=info.keyguard_secure,
+        keyboard_shown=info.keyboard_shown,
+        auto_rotate=info.auto_rotate,
+        animations_enabled=info.animations_enabled,
+        dark_mode=info.dark_mode,
+        font_scale=round(info.font_scale, 6),
+        density_dpi=info.density_dpi,
     )
+
+
+def toast(value: pb.Toast) -> Toast:
+    return Toast(text=value.text, package_name=value.package_name)
+
+
+def intent_extras(extras: Mapping[str, object]) -> list[pb.IntentExtra]:
+    """``am start`` extras: ``str``, ``bool``, ``int`` (32-bit), ``float`` (32-bit) or ``Long``;
+    anything else, or an ``int`` outside 32 bits, fails before the call."""
+    out = []
+    for key, value in extras.items():
+        extra = pb.IntentExtra(key=key)
+        if isinstance(value, str):
+            extra.string_value = value
+        elif isinstance(value, bool):
+            extra.bool_value = value
+        elif isinstance(value, Long):
+            extra.long_value = value.value
+        elif isinstance(value, int):
+            if not -(2**31) <= value < 2**31:
+                raise ValueError(f"intent extra {key!r} = {value} does not fit in 32 bits; use tap_e2e.Long({value})")
+            extra.int_value = value
+        elif isinstance(value, float):
+            extra.float_value = value
+        else:
+            raise TypeError(
+                f"intent extra {key!r} is a {type(value).__name__}; use str, bool, int, float or tap_e2e.Long"
+            )
+        out.append(extra)
+    return out
 
 
 def device_entry(entry: pb.DeviceEntry) -> DeviceEntry:

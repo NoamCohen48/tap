@@ -19,10 +19,14 @@ from tap_e2e import (
     CommandError,
     ConnectionEntry,
     Device,
+    DisplayRotation,
     Direction,
     ErrorCode,
     FailureReason,
     Element,
+    MatchMode,
+    Orientation,
+    PermissionChoice,
     ServerError,
     TapClient,
     TapConnection,
@@ -42,6 +46,17 @@ SETTLE_STABLE_FOR = 0.5
 SETTLE_TIMEOUT = 10.0
 PANELS = ("notifications", "quick-settings")
 """The system panels `panel` opens."""
+ROTATIONS = ("portrait", "landscape", "natural", "left", "upside-down", "right", "auto")
+"""What `rotate` takes: a geometry, an exact rotation, or `auto` (back to the sensor)."""
+SCREEN_ACTIONS = ("state", "on", "off", "unlock")
+"""What `screen` does: report, wake, sleep, or wake and dismiss a keyguard without a PIN."""
+PERMISSION_CHOICES = tuple(choice.name.lower().replace("_", "-") for choice in PermissionChoice)
+"""The permission-dialog buttons `permission` can press."""
+PINCHES = ("open", "close")
+KEYBOARD_ACTIONS = ("state", "hide")
+"""What `keyboard` does: report whether a soft keyboard shows, or hide it."""
+CONDITIONS = ("animations", "dark-mode", "font-scale", "density")
+"""The device conditions `condition` reads or changes (restored on release)."""
 
 # Exit codes shared by the CLI and reported in MCP error results.
 EXIT_OK = 0
@@ -60,7 +75,10 @@ class AgentError(Exception):
         self.exit_code = exit_code
 
 
-APP_ACTIONS = ("launch", "cold-launch", "stop", "clear", "install", "uninstall", "grant", "running")
+APP_ACTIONS = (
+    "launch", "cold-launch", "foreground", "background", "open-link",
+    "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale",
+)
 
 
 def _hint(error: TapError) -> str:
@@ -340,9 +358,15 @@ class Agent:
 
     # --- actions --------------------------------------------------------------------------------
 
-    def tap(self, target: str, device: str | None = None, long: bool = False, settle: bool = False) -> str:
+    def tap(
+        self, target: str, device: str | None = None, long: bool = False, settle: bool = False, double: bool = False
+    ) -> str:
+        if long and double:
+            raise AgentError("tap is either long or double, not both", EXIT_USAGE)
         if long:
             return self._act(device, target, "long-tapped", lambda e: e.long_tap(), settle)
+        if double:
+            return self._act(device, target, "double-tapped", lambda e: e.double_tap(), settle)
         return self._act(device, target, "tapped", lambda e: e.tap(), settle)
 
     def fill(self, target: str, text: str, device: str | None = None, settle: bool = False) -> str:
@@ -361,6 +385,40 @@ class Agent:
         """One swipe across the node, the finger moving towards ``direction``."""
         resolved = _direction(direction)
         return self._act(device, target, f"swiped {direction}", lambda e: e.swipe(resolved), settle)
+
+    def fling(self, target: str, direction: str, device: str | None = None, settle: bool = False) -> str:
+        """One fast swipe towards ``direction``'s content edge, as for scroll; content may keep moving."""
+        resolved = _direction(direction)
+        return self._act(device, target, f"flung {direction}", lambda e: e.fling(resolved), settle)
+
+    def pinch(self, target: str, how: str, percent: int = 80, device: str | None = None, settle: bool = False) -> str:
+        """Two fingers moving apart (``open``, zoom in) or together (``close``) across ``percent`` of the node."""
+        how = how.strip().lower()
+        if how not in PINCHES:
+            raise AgentError(f"pinch must be open or close, not {how!r}", EXIT_USAGE)
+        if not 1 <= percent <= 100:
+            raise AgentError(f"percent must be 1..100, not {percent}", EXIT_USAGE)
+        if how == "open":
+            return self._act(device, target, f"pinched open {percent}%", lambda e: e.pinch_open(percent), settle)
+        return self._act(device, target, f"pinched closed {percent}%", lambda e: e.pinch_close(percent), settle)
+
+    def submit(self, target: str, device: str | None = None, settle: bool = False) -> str:
+        """Runs a focused text field's keyboard action (Search, Go, Send, Done, ...) as the
+        keyboard's action key does. API 30+."""
+        return self._act(device, target, "submitted", lambda e: e.ime_action(), settle)
+
+    def drag(self, target: str, destination: str, device: str | None = None, settle: bool = False) -> str:
+        """Long-press ``target``, move to the centre of ``destination`` and drop it there."""
+
+        def step() -> str:
+            d = self._device(device)
+            source, described = self._element(d, target)
+            onto, onto_described = self._element(d, destination)
+            source.drag_to(onto.selector)
+            text = f"dragged {described} onto {onto_described}"
+            return f"{text}\n{self._settled(d)}" if settle else text
+
+        return self._run(step)
 
     def type(self, text: str, device: str | None = None, settle: bool = False) -> str:
         """Types real key events into whatever has input focus."""
@@ -400,6 +458,157 @@ class Agent:
 
         return self._run(step)
 
+    def rotate(self, how: str, device: str | None = None, settle: bool = False) -> str:
+        """Rotates the display (``portrait``/``landscape`` geometry or an exact ``natural``/``left``/
+        ``upside-down``/``right``) and keeps it there, or hands it back to the sensor (``auto``).
+        Reports where the display is afterwards: the app may pin its own orientation."""
+        how = how.strip().lower().replace("_", "-")
+        if how not in ROTATIONS:
+            raise AgentError(f"rotate takes {', '.join(ROTATIONS)}, not {how!r}", EXIT_USAGE)
+
+        def step() -> str:
+            d = self._device(device)
+            if how == "auto":
+                d.unfreeze_rotation()
+            elif how in ("portrait", "landscape"):
+                d.set_orientation(Orientation[how.upper()])
+            else:
+                d.set_display_rotation(DisplayRotation[how.upper().replace("-", "_")])
+            info = d.info()
+            text = (
+                f"rotated {how}: display {info.orientation.name.lower()}, "
+                f"{info.display_rotation.name.lower().replace('_', '-')} ({info.display_width}x{info.display_height})"
+            )
+            return f"{text}\n{self._settled(d)}" if settle else text
+
+        return self._run(step)
+
+    def screen(self, action: str = "state", device: str | None = None, settle: bool = False) -> str:
+        """``state`` reports whether the screen is on and the keyguard showing; ``on`` wakes it,
+        ``off`` turns it off, ``unlock`` wakes it and dismisses a keyguard without a PIN, pattern
+        or password (a secure one is refused, never unlocked)."""
+        action = action.strip().lower()
+        if action not in SCREEN_ACTIONS:
+            raise AgentError(f"screen takes {', '.join(SCREEN_ACTIONS)}, not {action!r}", EXIT_USAGE)
+
+        def step() -> str:
+            d = self._device(device)
+            if action in ("on", "unlock"):
+                d.wake()
+            if action == "off":
+                d.sleep()
+            if action == "unlock":
+                d.dismiss_keyguard()
+            info = d.info()
+            keyguard = "not showing"
+            if info.keyguard_locked:
+                keyguard = "showing (secure: needs the PIN, pattern or password)" if info.keyguard_secure else "showing"
+            text = f"screen {'on' if info.screen_on else 'off'}, keyguard {keyguard}"
+            return f"{text}\n{self._settled(d)}" if settle and action != "state" else text
+
+        return self._run(step)
+
+    def keyboard(self, action: str = "state", device: str | None = None, settle: bool = False) -> str:
+        """``state`` reports whether a soft keyboard is on screen; ``hide`` hides it (one Back key,
+        sent only when a keyboard shows)."""
+        action = action.strip().lower()
+        if action not in KEYBOARD_ACTIONS:
+            raise AgentError(f"keyboard takes {' or '.join(KEYBOARD_ACTIONS)}, not {action!r}", EXIT_USAGE)
+
+        def step() -> str:
+            d = self._device(device)
+            if action == "hide":
+                d.hide_keyboard()
+            text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
+            return f"{text}\n{self._settled(d)}" if settle and action == "hide" else text
+
+        return self._run(step)
+
+    def condition(self, name: str | None = None, value: str | None = None, device: str | None = None) -> str:
+        """Without ``name``: reports every device condition. With ``name`` (animations on|off,
+        dark-mode on|off, font-scale 0.5..2.0, density DPI|reset) and ``value``: changes it until
+        release, which restores what the device had. Reports the value read back."""
+        if name is not None:
+            name = name.strip().lower().replace("_", "-")
+            if name not in CONDITIONS:
+                raise AgentError(f"condition takes {', '.join(CONDITIONS)}, not {name!r}", EXIT_USAGE)
+        change = None if value is None else _condition_change(name or "", value.strip().lower())
+
+        def step() -> str:
+            d = self._device(device)
+            if change is not None:
+                change(d)
+            info = d.info()
+            shown = {
+                "animations": "on" if info.animations_enabled else "off",
+                "dark-mode": "on" if info.dark_mode else "off",
+                "font-scale": f"{info.font_scale:g}",
+                "density": f"{info.density_dpi} dpi",
+            }
+            if name is None:
+                return ", ".join(f"{key} {shown[key]}" for key in CONDITIONS)
+            return f"{name} {shown[name]}" + (" (restored on release)" if change is not None else "")
+
+        return self._run(step)
+
+    def clipboard(self, text: str | None = None, device: str | None = None) -> str:
+        """Without ``text``: prints the device clipboard. With it: puts it on the clipboard."""
+
+        def step() -> str:
+            d = self._device(device)
+            if text is None:
+                return d.clipboard()
+            d.set_clipboard(text)
+            return f"clipboard set ({len(text)} characters)"
+
+        return self._run(step)
+
+    def toast(
+        self,
+        text: str | None = None,
+        device: str | None = None,
+        contains: bool = False,
+        package: str | None = None,
+        timeout: float = DEFAULT_WAIT,
+    ) -> str:
+        """Waits for a toast of any app (only ``package``'s when given), shown in the last 3.5 s
+        or arriving within ``timeout``; ``text`` must match it exactly, or be part of it with
+        ``contains``."""
+        if contains and text is None:
+            raise AgentError("toast --contains needs a text", EXIT_USAGE)
+
+        def step() -> str:
+            d = self._device(device)
+            mode = MatchMode.CONTAINS if contains else MatchMode.EXACT
+            seen = d.await_toast(text, mode, package_name=package, timeout=timeout)
+            return f"toast {seen.text!r} from {seen.package_name}"
+
+        return self._run(step)
+
+    def permission(
+        self, choice: str | None = None, device: str | None = None, timeout: float = DEFAULT_WAIT, settle: bool = False
+    ) -> str:
+        """Without ``choice``: waits for a runtime-permission dialog and lists the buttons it
+        offers. With one (``allow``, ``allow-foreground-only``, ``deny``, ...): presses it."""
+        chosen = None
+        if choice is not None:
+            name = choice.strip().upper().replace("-", "_")
+            if name not in PermissionChoice.__members__:
+                raise AgentError(f"permission takes {', '.join(PERMISSION_CHOICES)}, not {choice!r}", EXIT_USAGE)
+            chosen = PermissionChoice[name]
+
+        def step() -> str:
+            d = self._device(device)
+            if chosen is None:
+                prompt = d.await_permission_prompt(timeout)
+                offered = ", ".join(c.name.lower().replace("_", "-") for c in prompt.choices)
+                return f"permission dialog ({prompt.package_name}) offers: {offered}"
+            d.choose_permission(chosen)
+            text = f"pressed {choice}"
+            return f"{text}\n{self._settled(d)}" if settle else text
+
+        return self._run(step)
+
     def wait(self, target: str, device: str | None = None, state: str = "visible", timeout: float = DEFAULT_WAIT) -> str:
         """Waits on the device until the target is visible, gone, or matches exactly one node."""
         if state not in ("visible", "gone", "one"):
@@ -414,13 +623,24 @@ class Agent:
 
         return self._run(step)
 
-    def app(self, action: str, package: str, argument: str | None = None, device: str | None = None) -> str:
-        """App lifecycle for ``package``: launch [activity], cold-launch [activity], stop, clear,
-        install APK, uninstall, grant PERMISSION, running."""
+    def app(
+        self,
+        action: str,
+        package: str,
+        argument: str | None = None,
+        device: str | None = None,
+        any_app: bool = False,
+    ) -> str:
+        """App lifecycle for ``package``: launch [activity], cold-launch
+        [activity], foreground, background, open-link URI (``any_app``: any app may handle it),
+        stop, clear, install APK, uninstall, grant PERMISSION, revoke PERMISSION, granted PERMISSION, running,
+        locale [TAGS] (prints the app's languages; comma-separated BCP-47 tags set them, ``system``
+        makes the app follow the system again; API 33+, restored on release)."""
         if action not in APP_ACTIONS:
             raise AgentError(f"unknown app action {action!r} (known: {', '.join(APP_ACTIONS)})", EXIT_USAGE)
-        if action in ("install", "grant") and not argument:
-            raise AgentError(f"app {action} needs an argument ({'APK path' if action == 'install' else 'permission'})", EXIT_USAGE)
+        needs = {"install": "APK path", "grant": "permission", "revoke": "permission", "granted": "permission", "open-link": "URI"}
+        if action in needs and not argument:
+            raise AgentError(f"app {action} needs an argument ({needs[action]})", EXIT_USAGE)
 
         def step() -> str:
             app = self._device(device).app(package)
@@ -431,6 +651,15 @@ class Agent:
             if action == "cold-launch":
                 process = app.cold_launch(argument)
                 return f"cold-launched {name} (pid {process.pid})"
+            if action == "foreground":
+                app.foreground()
+                return f"brought {name} to the foreground"
+            if action == "background":
+                app.background()
+                return f"sent {name} to the background (pressed home)"
+            if action == "open-link":
+                activity = app.open_link(argument, any_app=any_app)  # type: ignore[arg-type]
+                return f"opened {argument}" + (f" in {activity}" if activity else "")
             if action == "stop":
                 app.force_stop()
                 return f"stopped {name}"
@@ -446,9 +675,45 @@ class Agent:
             if action == "grant":
                 app.grant_permission(argument)  # type: ignore[arg-type]
                 return f"granted {argument} to {name}"
+            if action == "revoke":
+                app.revoke_permission(argument)  # type: ignore[arg-type]
+                return f"revoked {argument} from {name} (Android stops its process)"
+            if action == "granted":
+                granted = app.is_permission_granted(argument)  # type: ignore[arg-type]
+                return f"{argument} is {'granted' if granted else 'not granted'} to {name}"
+            if action == "locale":
+                if argument is not None:
+                    tags = [] if argument.strip().lower() == "system" else [t.strip() for t in argument.split(",") if t.strip()]
+                    app.set_locales(tags)
+                locales = app.locales()
+                return f"{name} languages: {', '.join(locales)}" if locales else f"{name} follows the system language"
             return f"{name} is {'running' if app.is_running() else 'not running'}"
 
         return self._run(step)
+
+
+def _condition_change(name: str, value: str) -> Callable[[Device], None]:
+    """The device call that sets condition ``name`` to ``value``, checked before any call."""
+    if not name:
+        raise AgentError("condition: name the condition to change", EXIT_USAGE)
+    if name in ("animations", "dark-mode"):
+        if value not in ("on", "off"):
+            raise AgentError(f"{name} takes on or off, not {value!r}", EXIT_USAGE)
+        enabled = value == "on"
+        return (lambda d: d.set_animations(enabled)) if name == "animations" else (lambda d: d.set_dark_mode(enabled))
+    if name == "font-scale":
+        try:
+            scale = float(value)
+        except ValueError:
+            raise AgentError(f"font-scale takes a number (1.0 = default), not {value!r}", EXIT_USAGE) from None
+        return lambda d: d.set_font_scale(scale)
+    if value == "reset":
+        return lambda d: d.set_density(None)
+    try:
+        dpi = int(value)
+    except ValueError:
+        raise AgentError(f"density takes a dpi or reset, not {value!r}", EXIT_USAGE) from None
+    return lambda d: d.set_density(dpi)
 
 
 def _direction(name: str) -> Direction:

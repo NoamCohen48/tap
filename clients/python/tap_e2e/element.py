@@ -84,6 +84,43 @@ class Element:
         """Long click on the one matching node."""
         self._run(timeout, long_tap=pb.LongTap(selector=self._target))
 
+    def double_tap(self, timeout: float | None = None) -> None:
+        """Two taps at the centre of the one matching node's visible bounds, inside Android's
+        double-tap window."""
+        self._run(timeout, double_tap=pb.DoubleTap(selector=self._target))
+
+    def ime_action(self, timeout: float | None = None) -> None:
+        """Run the one matching text field's keyboard action (Search, Go, Send, Done, … as the
+        app configured it) exactly as the keyboard's action key does, through accessibility
+        ``ACTION_IME_ENTER``. API 30+: older devices raise ``CommandError`` (``UNSUPPORTED`` /
+        ``REQUIRES_API_30``) before any input, since pressing Enter is not equivalent. The field
+        must have input focus (tap it first): Android offers the action only then, and a node
+        that does not offer it raises ``ACTION_REJECTED`` before any input."""
+        self._run(timeout, perform_ime_action=pb.PerformImeAction(selector=self._target))
+
+    def drag_to(self, destination: Selector, timeout: float | None = None) -> None:
+        """Press the one matching node until it is a long press, move the finger to the centre of
+        the one node matching ``destination`` (resolved on the same screen, before any input),
+        hold there briefly and lift. Nothing is reported about what the app did with the drop."""
+        self._run(timeout, drag=pb.Drag(selector=self._target, target=destination._proto))
+
+    def pinch_open(self, percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> None:
+        """Two fingers moving apart from the one matching node's centre, across ``percent`` of its size."""
+        self._pinch(pb.PINCH_OPEN, percent, timeout)
+
+    def pinch_close(self, percent: int = DEFAULT_GESTURE_PERCENT, timeout: float | None = None) -> None:
+        """Two fingers moving together towards the one matching node's centre, across ``percent`` of its size."""
+        self._pinch(pb.PINCH_CLOSE, percent, timeout)
+
+    def _pinch(self, direction: int, percent: int, timeout: float | None) -> None:
+        self._run(timeout, pinch=pb.Pinch(selector=self._target, direction=direction, percent=percent))
+
+    def fling(self, direction: Direction, timeout: float | None = None) -> None:
+        """One fast swipe across the one matching node towards ``direction``'s content edge (as for
+        ``scroll``: ``DOWN`` flings towards content below). Returns once the finger lifts; the
+        content may keep moving, so wait for what you need next."""
+        self._run(timeout, fling=pb.Fling(selector=self._target, direction=_proto.direction(direction)))
+
     def set_text(self, value: str, timeout: float | None = None) -> None:
         """Accessibility text replacement (``ACTION_SET_TEXT``) on the one matching node.
 

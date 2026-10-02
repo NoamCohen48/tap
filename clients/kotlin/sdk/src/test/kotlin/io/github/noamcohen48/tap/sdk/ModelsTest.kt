@@ -54,9 +54,19 @@ class ModelsTest {
     fun `artifacts save their bytes`(
         @TempDir dir: Path,
     ) {
-        val info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, 0, null)
+        val info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, DisplayRotation.NATURAL, null, true, false, false, true, true, false, true, 1.3f, 420)
         val json = Json.parseToJsonElement(Files.readString(info.save(dir.resolve("a/info.json")))).jsonObject
         assertEquals("34", json.getValue("apiLevel").jsonPrimitive.content)
+        assertEquals("NATURAL", json.getValue("displayRotation").jsonPrimitive.content)
+        assertEquals("true", json.getValue("screenOn").jsonPrimitive.content)
+        assertEquals("true", json.getValue("keyboardShown").jsonPrimitive.content)
+        assertEquals("true", json.getValue("autoRotate").jsonPrimitive.content)
+        assertEquals("false", json.getValue("animationsEnabled").jsonPrimitive.content)
+        assertEquals("true", json.getValue("darkMode").jsonPrimitive.content)
+        assertEquals("1.3", json.getValue("fontScale").jsonPrimitive.content)
+        assertEquals("420", json.getValue("densityDpi").jsonPrimitive.content)
+        assertEquals(Orientation.PORTRAIT, info.orientation)
+        assertEquals(Orientation.LANDSCAPE, info.copy(displayWidth = 2400, displayHeight = 1080).orientation)
         assertEquals("null", json.getValue("currentPackage").toString())
         assertEquals("<a/>", Files.readString(Hierarchy("<a/>").save(dir.resolve("h.xml"))))
         assertEquals("one\ntwo", Files.readString(DriverLog(listOf("one", "two")).save(dir.resolve("d.txt"))))

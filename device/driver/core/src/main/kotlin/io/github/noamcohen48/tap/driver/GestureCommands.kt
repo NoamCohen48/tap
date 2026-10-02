@@ -6,7 +6,10 @@ import android.graphics.Point
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.Pinch
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Swipe
@@ -16,7 +19,12 @@ import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.DEFAULT_GESTURE_PERCENT
 
-/** Single-target gestures (`tap`, `long_tap`, `swipe`, `scroll`), `press_key` and `open_system_panel`. */
+/**
+ * Element gestures (`tap`, `long_tap`, `double_tap`, `drag`, `swipe`, `scroll`, `fling`,
+ * `pinch`), `press_key` and `open_system_panel`. Every gesture resolves each element it uses
+ * to exactly one match before any input, and reports only whether the input was injected: what
+ * the app did with it is for the test to observe.
+ */
 internal class GestureCommands(
     private val instrumentation: Instrumentation,
     private val device: UiDevice,
@@ -24,6 +32,7 @@ internal class GestureCommands(
     private val reachability: TouchReachability,
     private val faults: FaultHooks,
 ) {
+    private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
     /** Clicks the one matching node, whatever its state: what the app does with it is for the test. */
     fun tap(
         context: CommandContext,
@@ -41,6 +50,75 @@ internal class GestureCommands(
         target: CompiledSelector,
     ) = gesture(context, target, TouchPoints::center) { element ->
         element.longClick()
+    }
+
+    /** Two taps on the element's visible centre as one gesture (Android's double-tap timing). */
+    fun doubleTap(
+        context: CommandContext,
+        target: CompiledSelector,
+    ) = gesture(context, target, TouchPoints::center) { element ->
+        pointer.doubleTap(element.visibleCenter)
+    }
+
+    /**
+     * Long-presses the source element's centre, moves to the destination element's centre, holds
+     * and releases. Both elements resolve to exactly one match before any input; the destination
+     * is only needed for its centre, so it is released before the gesture starts.
+     */
+    fun drag(
+        context: CommandContext,
+        source: CompiledSelector,
+        destination: CompiledSelector,
+    ) {
+        context.checkpoint()
+        val to =
+            objects.resolveTarget(destination).let { element ->
+                try {
+                    element.visibleCenter
+                } finally {
+                    element.recycle()
+                }
+            }
+        gesture(context, source, TouchPoints::center) { element -> pointer.drag(element.visibleCenter, to) }
+    }
+
+    /**
+     * Two fingers apart ([PinchDirection.PINCH_OPEN]) or together across the element. The
+     * occlusion check uses the element's centre, where the fingers start or end.
+     */
+    fun pinch(
+        context: CommandContext,
+        command: Pinch,
+        target: CompiledSelector,
+    ) = gesture(context, target, TouchPoints::center) { element ->
+        val percent = fraction(if (command.hasPercent()) command.percent else DEFAULT_GESTURE_PERCENT)
+        when (command.direction) {
+            PinchDirection.PINCH_OPEN -> element.pinchOpen(percent)
+            PinchDirection.PINCH_CLOSE -> element.pinchClose(percent)
+            else -> throw CommandFailure(ErrorCode.ERR_INVALID_REQUEST, message = "A pinch direction is required")
+        }
+    }
+
+    /**
+     * A fast swipe across the whole element towards the content edge [Fling.getDirection] names
+     * (as `scroll`: DOWN reveals content below, so the finger moves up). Unlike
+     * `UiObject2.fling`, it does not wait for scrolling to end or guess whether more content is
+     * left: that is for the test to observe.
+     */
+    fun fling(
+        context: CommandContext,
+        command: Fling,
+        target: CompiledSelector,
+    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element ->
+        val finger =
+            when (uiDirection(command.direction)) {
+                androidx.test.uiautomator.Direction.UP -> androidx.test.uiautomator.Direction.DOWN
+                androidx.test.uiautomator.Direction.DOWN -> androidx.test.uiautomator.Direction.UP
+                androidx.test.uiautomator.Direction.LEFT -> androidx.test.uiautomator.Direction.RIGHT
+                androidx.test.uiautomator.Direction.RIGHT -> androidx.test.uiautomator.Direction.LEFT
+            }
+        val density = instrumentation.context.resources.displayMetrics.density
+        element.swipe(finger, 1f, (FLING_SPEED_DP_PER_S * density).toInt())
     }
 
     /** Finger gesture across the element. */
@@ -129,5 +207,10 @@ internal class GestureCommands(
         } finally {
             element.recycle()
         }
+    }
+
+    private companion object {
+        /** AndroidX `UiObject2` default fling speed. */
+        const val FLING_SPEED_DP_PER_S = 7_500
     }
 }

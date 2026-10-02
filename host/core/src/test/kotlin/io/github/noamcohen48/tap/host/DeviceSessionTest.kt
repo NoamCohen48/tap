@@ -2,13 +2,16 @@ package io.github.noamcohen48.tap.host
 
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.IntentExtra
+import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameType
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.wire.v1.Request
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -17,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.concurrent.CountDownLatch
@@ -623,6 +627,216 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `rotation mutation captures once and close restores the initial lock`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-rotation", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                var accelerometer = 1
+                var userRotation = 2
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    when {
+                        command == "shell settings get system accelerometer_rotation" -> ok(accelerometer.toString())
+                        command == "shell settings get system user_rotation" -> ok(userRotation.toString())
+                        command.startsWith("shell settings put system accelerometer_rotation ") -> {
+                            accelerometer = command.substringAfterLast(' ').toInt()
+                            ok("")
+                        }
+                        command.startsWith("shell settings put system user_rotation ") -> {
+                            userRotation = command.substringAfterLast(' ').toInt()
+                            ok("")
+                        }
+                        else -> priorResponder?.invoke(requestSerial, command)
+                    }
+                }
+                val processes = mutableListOf<FakeProcess>()
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, processes)) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Responses.done(1))
+                val session = withTimeout(5_000) { opening.await() }
+
+                val rotating = async(Dispatchers.IO) {
+                    session.client.execute(Commands.setOrientation(Orientation.ORIENTATION_LANDSCAPE))
+                }
+                val (frame, request) = withTimeout(5_000) { fake.nextRequest() }
+                assertTrue(request.command.hasSetOrientation())
+                // Model the device-side mutation after the host captured the initial values.
+                accelerometer = 0
+                userRotation = 1
+                fake.respond(frame.requestId, Responses.done(1))
+                rotating.await()
+
+                session.close(timeoutMs = 5_000)
+                assertEquals(1, accelerometer)
+                assertEquals(2, userRotation)
+                assertEquals(2, adb.calls.count { it.endsWith("settings get system accelerometer_rotation") })
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            } finally {
+                fake.close()
+            }
+        }
+
+    /** Opens a session over [adb] with the fake driver's health check answered. */
+    private suspend fun openWithState(
+        name: String,
+        state: FakeDeviceState,
+        block: suspend (DeviceSession, FakeAdb) -> Unit,
+    ) = coroutineScope {
+        val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+        val fake = FakeDriverServer(name, 1, secret, acceptAnySession = true)
+        try {
+            val adb = openAdb(fake.port)
+            val priorResponder = adb.responder
+            adb.responder = { requestSerial, command -> state.answer(command) ?: priorResponder?.invoke(requestSerial, command) }
+            val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
+            val health = withTimeout(5_000) { fake.nextFrame() }
+            fake.respond(health.requestId, Responses.done(1))
+            block(withTimeout(5_000) { opening.await() }, adb)
+        } finally {
+            fake.close()
+        }
+    }
+
+    @Test
+    fun `conditions capture the first value, journal it and close restores it`() =
+        runBlocking {
+            val animations = StateKey.ANIMATIONS
+            val state =
+                FakeDeviceState(
+                    mapOf(animations[0] to "1.0", animations[1] to "1.0", StateKey.FONT_SCALE to "1.1", StateKey.NightMode.id to "no"),
+                )
+            openWithState("session-conditions", state) { session, _ ->
+                session.conditions.setAnimations(false)
+                session.conditions.setFontScale(1.3f)
+                session.conditions.setFontScale(1.5f)
+                session.conditions.setDarkMode(true)
+                session.conditions.setDensity(320)
+                session.app("com.example").setLocales(listOf("fr-fr", "en"))
+                assertEquals(listOf("fr-FR", "en"), session.app("com.example").locales())
+                assertEquals("0", state.values[animations[2]])
+                assertEquals("1.5", state.values[StateKey.FONT_SCALE])
+                assertEquals("yes", state.values[StateKey.NightMode.id])
+                assertEquals("320", state.values[StateKey.Density.id])
+
+                val journaled = journalStore().read()?.savedState.orEmpty()
+                assertEquals(
+                    animations.zip(listOf("1.0", "1.0", null)).map { SavedState(it.first, it.second) } +
+                        listOf(
+                            SavedState(StateKey.FONT_SCALE, "1.1"),
+                            SavedState(StateKey.NightMode.id, "no"),
+                            SavedState(StateKey.Density.id, null),
+                            SavedState(StateKey.AppLocales("com.example").id, ""),
+                        ),
+                    journaled,
+                )
+
+                session.close(timeoutMs = 5_000)
+                assertEquals(
+                    mapOf(
+                        animations[0] to "1.0",
+                        animations[1] to "1.0",
+                        animations[2] to null,
+                        StateKey.FONT_SCALE to "1.1",
+                        StateKey.NightMode.id to "no",
+                        StateKey.Density.id to null,
+                        StateKey.AppLocales("com.example").id to "",
+                    ),
+                    state.values,
+                )
+                val closed = journalStore().read()
+                assertEquals(JournalState.CLOSED, closed?.state)
+                assertEquals(emptyList(), closed?.savedState)
+                val file = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(serial.encodeToByteArray()) + ".json"
+                assertFalse("savedState" in Files.readString(tempDir.resolve("sessions").resolve(file)))
+            }
+        }
+
+    @Test
+    fun `a condition below its API level is refused before anything is captured`() =
+        runBlocking {
+            val state = FakeDeviceState(apiLevel = 28)
+            openWithState("session-conditions-api", state) { session, adb ->
+                val refused = assertFailsWith<UnsupportedApiException> { session.conditions.setDarkMode(true) }
+                assertEquals(29, refused.requiredApi)
+                assertFailsWith<UnsupportedApiException> { session.app("com.example").setLocales(listOf("fr-FR")) }
+                assertFailsWith<IllegalArgumentException> { session.app("com.example").setLocales(listOf("not a tag")) }
+                assertTrue(adb.calls.none { "uimode" in it || "locale" in it }, "${adb.calls}")
+                assertEquals(1, adb.calls.count { it.endsWith("getprop ro.build.version.sdk") })
+                assertEquals(emptyList(), journalStore().read()?.savedState)
+                session.close(timeoutMs = 5_000)
+            }
+        }
+
+    @Test
+    fun `dark mode on a device that locks it is refused and says so`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.NightMode.id to "no"), nightModeLocked = true)
+            openWithState("session-conditions-night-locked", state) { session, _ ->
+                val refused = assertFailsWith<DeviceSettingException> { session.conditions.setDarkMode(true) }
+                assertTrue("locks the day/night mode" in refused.message.orEmpty(), refused.message)
+                session.close(timeoutMs = 5_000)
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `a value the device does not take is reported and the original still comes back`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.FONT_SCALE to "1.0"))
+            openWithState("session-conditions-stuck", state) { session, _ ->
+                state.stuck += StateKey.FONT_SCALE
+                state.values[StateKey.FONT_SCALE] = "1.15"
+                val failure = assertFailsWith<DeviceSettingException> { session.conditions.setFontScale(1.3f) }
+                assertTrue("font_scale=1.15 (expected 1.3)" in failure.message.orEmpty(), failure.message)
+                state.stuck.clear()
+                session.close(timeoutMs = 5_000)
+                assertEquals("1.15", state.values[StateKey.FONT_SCALE])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `rotation restoration failure is visible and quarantines`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-rotation-failure", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    when (command) {
+                        "shell settings get system accelerometer_rotation" -> ok("0")
+                        "shell settings get system user_rotation" -> ok("2")
+                        "shell settings put system accelerometer_rotation 0" ->
+                            throw AdbCommandException(requestSerial, command.split(' '), 1, "denied")
+                        else -> priorResponder?.invoke(requestSerial, command)
+                    }
+                }
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Responses.done(1))
+                val session = withTimeout(5_000) { opening.await() }
+
+                val rotating = async(Dispatchers.IO) {
+                    session.client.execute(Commands.setOrientation(Orientation.ORIENTATION_PORTRAIT))
+                }
+                val (frame, request) = withTimeout(5_000) { fake.nextRequest() }
+                assertTrue(request.command.hasSetOrientation())
+                fake.respond(frame.requestId, Responses.done(1))
+                rotating.await()
+
+                assertFailsWith<AdbCommandException> { session.close(timeoutMs = 5_000) }
+                val record = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, record?.state)
+                assertTrue(record?.quarantineReason?.contains("SESSION_CLEANUP_UNCERTAIN") == true)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
     fun `captured client after poison emits no frame`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
@@ -1015,6 +1229,9 @@ class DeviceSessionTest {
             AmStartOutput.failure("Starting: x\njava.lang.SecurityException: Permission Denial: starting Intent"),
         )
         assertEquals("Status: error", AmStartOutput.failure("Starting: x\nStatus: error"))
+        assertEquals("com.x.exceptions/.ErrorActivity", AmStartOutput.activity(ok))
+        assertNull(AmStartOutput.activity("Starting: Intent { cmp=a/.B }\nStatus: ok\nComplete"))
+        assertNull(AmStartOutput.activity("Status: ok\nActivity: unknown\nComplete"))
     }
 
     @Test
@@ -1076,6 +1293,94 @@ class DeviceSessionTest {
                 }
                 // Nothing answers driver frames here: a visibility wait would time out and fail the launch.
                 withTimeout(5_000) { session.app("com.example").launch(".Main", timeoutMs = 2_000) }
+                session.close(timeoutMs = 5_000)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `foreground sends the launcher intent, openLink reports the started activity, the driver is no app`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-foreground-link", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val session = openSession(adb, fake)
+                val priorResponder = adb.responder
+                val starts = java.util.concurrent.CopyOnWriteArrayList<String>()
+                adb.responder = { serial, command ->
+                    when {
+                        command.startsWith("shell cmd package resolve-activity") -> ok("priority=0\ncom.example/.Main")
+                        command.startsWith("shell am start") -> {
+                            starts += command
+                            when {
+                                "missing://" in command -> ok("Starting: Intent { act=android.intent.action.VIEW }\nError: Activity not started, unable to resolve Intent")
+                                "-p com.example" in command -> ok("Starting: Intent { dat=test://orders/42 }\nStatus: ok\nActivity: com.example/.Orders\nComplete")
+                                else -> ok("Starting: Intent { cmp=com.example/.Main }\nStatus: ok\nComplete")
+                            }
+                        }
+                        else -> priorResponder?.invoke(serial, command)
+                    }
+                }
+                val app = session.app("com.example")
+                app.foreground(timeoutMs = 2_000)
+                assertEquals("com.example/.Orders", app.openLink("test://orders/42", anyApp = false, timeoutMs = 2_000))
+                assertNull(app.openLink("https://example.com/a?b=1&c=2", anyApp = true, timeoutMs = 2_000))
+                val failure = assertFailsWith<AppLifecycleException> { app.openLink("missing://x", anyApp = false, timeoutMs = 2_000) }
+                assertTrue("unable to resolve Intent" in failure.message.orEmpty(), failure.message)
+                assertEquals(
+                    listOf(
+                        "shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n com.example/.Main",
+                        "shell am start -W -a android.intent.action.VIEW -d test://orders/42 -p com.example",
+                        "shell am start -W -a android.intent.action.VIEW -d 'https://example.com/a?b=1&c=2'",
+                        "shell am start -W -a android.intent.action.VIEW -d missing://x -p com.example",
+                    ),
+                    starts,
+                )
+                for (driver in listOf(DRIVER_PACKAGE, DRIVER_TEST_PACKAGE)) {
+                    assertFailsWith<IllegalArgumentException> { session.app(driver) }
+                }
+                session.close(timeoutMs = 5_000)
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
+    fun `launch carries its extras, revokePermission is proven by dumpsys`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-extras-revoke", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val session = openSession(adb, fake)
+                val priorResponder = adb.responder
+                val starts = java.util.concurrent.CopyOnWriteArrayList<String>()
+                var granted = "granted=true"
+                adb.responder = { serial, command ->
+                    when {
+                        command.startsWith("shell am start") -> {
+                            starts += command
+                            ok("Starting: Intent { cmp=com.example/.Main }\nStatus: ok\nComplete")
+                        }
+                        command.startsWith("shell pm revoke") -> ok("")
+                        command == "shell dumpsys package com.example" -> ok("    android.permission.CAMERA: $granted, flags=[ USER_SET ]")
+                        else -> priorResponder?.invoke(serial, command)
+                    }
+                }
+                val app = session.app("com.example")
+                val extras =
+                    listOf(
+                        IntentExtra.newBuilder().setKey("query").setStringValue("shoes red").build(),
+                        IntentExtra.newBuilder().setKey("id").setLongValue(42).build(),
+                    )
+                app.launch(".Main", timeoutMs = 2_000, extras = extras)
+                assertEquals(listOf("shell am start -W --es query 'shoes red' --el id 42 -n com.example/.Main"), starts)
+                val stillGranted = assertFailsWith<AppLifecycleException> { app.revokePermission("android.permission.CAMERA") }
+                assertTrue("still granted" in stillGranted.message.orEmpty(), stillGranted.message)
+                granted = "granted=false"
+                app.revokePermission("android.permission.CAMERA")
                 session.close(timeoutMs = 5_000)
             } finally {
                 fake.close()

@@ -24,6 +24,12 @@ const val DRIVER_PACKAGE = "io.github.noamcohen48.tap.driver"
 /** The driver's instrumentation package, which carries the driver code. AGP stamps no version
  * on it (`versionName=null`, `versionCode=0`); its build is what the handshake reports. */
 const val DRIVER_TEST_PACKAGE = "$DRIVER_PACKAGE.test"
+/**
+ * Whether [packageName] is one of Tap's own driver packages. They are never an app under test or
+ * a lifecycle target: stopping, clearing or uninstalling them would kill the device session.
+ */
+fun isDriverPackage(packageName: String): Boolean = packageName == DRIVER_PACKAGE || packageName == DRIVER_TEST_PACKAGE
+
 const val DRIVER_TEST_RUNNER = "$DRIVER_TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner"
 const val DEVICE_PORT = 27183
 val DEVICE_PORT_RANGE = 27183..27187

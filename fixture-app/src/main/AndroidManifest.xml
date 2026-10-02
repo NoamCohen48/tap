@@ -37,6 +37,26 @@
             android:name=".OcclusionActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustNothing|stateHidden" />
+        <activity
+            android:name=".GestureActivity"
+            android:exported="true" />
+        <activity
+            android:name=".FormActivity"
+            android:exported="true"
+            android:windowSoftInputMode="stateHidden" />
+        <!-- Deep links: tapfixture://link/anything. -->
+        <activity
+            android:name=".LinkActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="link"
+                    android:scheme="tapfixture" />
+            </intent-filter>
+        </activity>
         <!-- Synchronization state comes from the :sync-sdk manifest (authority <applicationId>.tap-sync). -->
         <provider
             android:name=".FixtureFaultProvider"

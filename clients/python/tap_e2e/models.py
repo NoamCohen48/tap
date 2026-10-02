@@ -40,6 +40,51 @@ class Direction(enum.Enum):
     RIGHT = "RIGHT"
 
 
+class Orientation(enum.Enum):
+    """Display geometry: portrait is at least as tall as it is wide, whatever the device's natural
+    orientation (``Device.set_orientation``, ``DeviceInfo.orientation``)."""
+
+    PORTRAIT = "PORTRAIT"
+    LANDSCAPE = "LANDSCAPE"
+
+
+class DisplayRotation(enum.Enum):
+    """Display rotation relative to the device's natural orientation, named like AndroidX
+    ``UiDevice``: ``LEFT`` is ``Surface.ROTATION_90``, ``UPSIDE_DOWN`` 180, ``RIGHT`` 270."""
+
+    NATURAL = "NATURAL"
+    LEFT = "LEFT"
+    UPSIDE_DOWN = "UPSIDE_DOWN"
+    RIGHT = "RIGHT"
+
+
+class PermissionChoice(enum.Enum):
+    """A button of Android's runtime-permission dialog. Which ones a dialog offers depends on the
+    permission, the Android version and whether it was asked before
+    (``Device.await_permission_prompt``)."""
+
+    ALLOW = "ALLOW"
+    """"Allow" (API 29 and older, and permissions without a foreground/one-time split)."""
+    ALLOW_FOREGROUND_ONLY = "ALLOW_FOREGROUND_ONLY"
+    """"While using the app"."""
+    ALLOW_ONE_TIME = "ALLOW_ONE_TIME"
+    """"Only this time" (API 30+)."""
+    ALLOW_ALWAYS = "ALLOW_ALWAYS"
+    """"Allow all the time" (background location on API 29)."""
+    ALLOW_SELECTED = "ALLOW_SELECTED"
+    """"Select photos and videos" (API 34+ partial media access)."""
+    ALLOW_ALL = "ALLOW_ALL"
+    """"Allow all" (API 34+ media access)."""
+    DENY = "DENY"
+    """"Deny" / "Don't allow"."""
+    DENY_AND_DONT_ASK_AGAIN = "DENY_AND_DONT_ASK_AGAIN"
+    """"Deny & don't ask again" (API 29/30 on a repeated request)."""
+    KEEP_FOREGROUND_ONLY = "KEEP_FOREGROUND_ONLY"
+    """"Keep while using the app" when an upgrade to background access is offered."""
+    KEEP_ONE_TIME = "KEEP_ONE_TIME"
+    """"Keep only this time" when an upgrade is offered."""
+
+
 class StabilitySignal(enum.Enum):
     """What ``App.await_screen_stable`` watches: the accessibility tree, the window pixels
     (0.5 % tolerance) or both."""
@@ -109,6 +154,10 @@ class FailureReason(enum.Enum):
     DAEMON_PRECONDITION = "DAEMON_PRECONDITION"
     UNKNOWN_REF = "UNKNOWN_REF"
     REF_NOT_ADDRESSABLE = "REF_NOT_ADDRESSABLE"
+    UNSUPPORTED_API = "UNSUPPORTED_API"
+    """The device's API level is too low for the call (detail ``REQUIRES_API_<n>``)."""
+    DEVICE_SETTING = "DEVICE_SETTING"
+    """A device setting did not read back as written (or could not be restored)."""
 
 
 class WaitReason(enum.Enum):
@@ -125,6 +174,11 @@ class WaitReason(enum.Enum):
     APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
     """``App.await_visible`` / ``App.await_screen_stable``: the package never owned the focused
     window."""
+    NO_PERMISSION_PROMPT = "NO_PERMISSION_PROMPT"
+    """``await_permission_prompt``: no runtime-permission dialog showed a known choice."""
+
+    NO_TOAST = "NO_TOAST"
+    """``await_toast``: no matching toast was shown."""
 
 
 class DeviceState(enum.Enum):
@@ -535,8 +589,8 @@ class Hierarchy(Artifact):
 
 @dataclass(frozen=True)
 class DeviceInfo(Artifact):
-    """Static facts about the device plus the package owning the focused window
-    (``Device.info()``). ``display_rotation`` is 0-3 quarter turns. Serialized as JSON."""
+    """Static facts about the device plus its current display, screen and focus state
+    (``Device.info()``). Serialized as JSON."""
 
     api_level: int
     manufacturer: str
@@ -544,15 +598,75 @@ class DeviceInfo(Artifact):
     product: str
     display_width: int
     display_height: int
-    display_rotation: int
+    display_rotation: DisplayRotation
     current_package: str | None
+    """The package owning the focused window, when there is one."""
+    screen_on: bool
+    """The screen is on (interactive)."""
+    keyguard_locked: bool
+    """The keyguard (lock screen) is showing."""
+    keyguard_secure: bool
+    """A PIN, pattern or password is set: Tap cannot dismiss this keyguard."""
+    keyboard_shown: bool
+    """A soft keyboard (any input method's window) is on screen."""
+    auto_rotate: bool
+    """Auto-rotate is on: the sensor turns the display (off while a rotation is frozen)."""
+    animations_enabled: bool
+    """Window, transition or animator animations run (any of the three scales is not 0)."""
+    dark_mode: bool
+    """The UI is in night mode (dark theme)."""
+    font_scale: float
+    """The font scale apps see (1.0 = the default size)."""
+    density_dpi: int
+    """The display density apps see, in dpi."""
 
     media_type = "application/json"
     extension = "json"
 
     @property
+    def orientation(self) -> Orientation:
+        """``PORTRAIT`` when the display is at least as tall as it is wide."""
+        return Orientation.PORTRAIT if self.display_height >= self.display_width else Orientation.LANDSCAPE
+
+    @property
     def bytes(self) -> builtins.bytes:
-        return json.dumps(asdict(self)).encode()
+        fields = asdict(self)
+        fields["display_rotation"] = self.display_rotation.value
+        return json.dumps(fields).encode()
+
+
+@dataclass(frozen=True)
+class PermissionPrompt:
+    """A runtime-permission dialog on screen (``Device.await_permission_prompt``): the package
+    of its window (what ``in_package`` scopes its other elements with) and the choices it
+    offers, in ``PermissionChoice`` order."""
+
+    package_name: str
+    choices: tuple[PermissionChoice, ...]
+
+
+@dataclass(frozen=True)
+class Toast:
+    """A toast ``Device.await_toast`` saw: its text and the package that showed it (on Android
+    11+ a text toast is drawn by SystemUI but still reported under the app that posted it)."""
+
+    text: str
+    package_name: str
+
+
+@dataclass(frozen=True)
+class Long:
+    """An ``int`` sent as a 64-bit intent extra (``am start --el``), for an app that reads it with
+    ``getLongExtra``: a plain ``int`` extra is 32-bit, and ``getLongExtra`` on it returns the
+    default. ``App.launch(extras={"id": Long(42)})``."""
+
+    value: int
+
+    def __post_init__(self) -> None:
+        if isinstance(self.value, bool) or not isinstance(self.value, int):
+            raise TypeError(f"Long needs an int, not {type(self.value).__name__}")
+        if not -(2**63) <= self.value < 2**63:
+            raise ValueError(f"{self.value} does not fit in 64 bits")
 
 
 class DriverLog(Artifact):

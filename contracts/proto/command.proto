@@ -75,12 +75,59 @@ enum SystemPanel {
   SYSTEM_PANEL_QUICK_SETTINGS = 2; // the quick settings panel
 }
 
+// Portable geometry, independent of the device's natural orientation.
+enum Orientation {
+  ORIENTATION_UNSPECIFIED = 0;
+  ORIENTATION_PORTRAIT = 1;
+  ORIENTATION_LANDSCAPE = 2;
+}
+
+// Exact clockwise display rotation relative to the device's natural orientation.
+enum DisplayRotation {
+  DISPLAY_ROTATION_UNSPECIFIED = 0;
+  DISPLAY_ROTATION_NATURAL = 1;
+  DISPLAY_ROTATION_LEFT = 2;
+  DISPLAY_ROTATION_UPSIDE_DOWN = 3;
+  DISPLAY_ROTATION_RIGHT = 4;
+}
+
+// Opposite finger movements for `pinch`: OPEN spreads two fingers apart (zoom in), CLOSE brings
+// them together (zoom out).
+enum PinchDirection {
+  PINCH_UNSPECIFIED = 0;
+  PINCH_OPEN = 1;
+  PINCH_CLOSE = 2;
+}
+
+// A button of the runtime-permission dialog, by what it grants. Which ones a dialog offers depends
+// on the permission, the Android version and the controller build (`wait_permission_prompt`).
+enum PermissionChoice {
+  PERMISSION_CHOICE_UNSPECIFIED = 0;
+  PERMISSION_ALLOW = 1; // "Allow"
+  PERMISSION_ALLOW_FOREGROUND_ONLY = 2; // "While using the app"
+  PERMISSION_ALLOW_ONE_TIME = 3; // "Only this time"
+  PERMISSION_ALLOW_ALWAYS = 4; // "Allow all the time" (API 29 background location)
+  PERMISSION_ALLOW_SELECTED = 5; // "Select photos and videos" (API 34 partial media access)
+  PERMISSION_ALLOW_ALL = 6; // "Allow all" (API 34 media)
+  PERMISSION_DENY = 7; // "Don't allow" / "Deny"
+  PERMISSION_DENY_AND_DONT_ASK_AGAIN = 8; // "Deny & don't ask again"
+  PERMISSION_KEEP_FOREGROUND_ONLY = 9; // "Keep while app is in use" (an upgrade request refused)
+  PERMISSION_KEEP_ONE_TIME = 10; // "Keep only this time" (an upgrade request refused)
+}
+
 // ---- commands: one message per operation, each carrying only its own arguments -----------------
 
 message DeviceInfoQuery {}
 message PressKey { int32 key_code = 1; } // an Android KeyEvent key code, ≥ 0
 // Opens `panel` (the accessibility global action); no target. Back or Home close it.
 message OpenSystemPanel { SystemPanel panel = 1; } // not UNSPECIFIED
+// Sets portable geometry or an exact natural-relative rotation and freezes sensor rotation.
+message SetOrientation { Orientation orientation = 1; } // not UNSPECIFIED
+message SetDisplayRotation { DisplayRotation rotation = 1; } // not UNSPECIFIED
+// Releases the sensor lock without selecting a new rotation.
+message UnfreezeRotation {}
+// Dismisses a keyguard that has no PIN, pattern or password; a secure one is refused, never unlocked.
+message DismissKeyguard {}
 message DumpHierarchy {}
 
 message Exists { Selector selector = 1; }
@@ -120,6 +167,46 @@ message Scroll {
   Direction direction = 2;
   optional int32 distance_percent = 3; // 1..100; default 80
 }
+// Two taps on the element's visible centre within Android's double-tap window, as one gesture.
+message DoubleTap { Selector selector = 1; }
+// Press and hold on `selector`'s centre until it becomes a long press, move to `target`'s centre,
+// hold there, release: one gesture. Both resolve to exactly one element before input starts.
+message Drag {
+  Selector selector = 1;
+  Selector target = 2;
+}
+// Two fingers across the element's bounds, moving `percent` of its size (1..100; default 80).
+message Pinch {
+  Selector selector = 1;
+  PinchDirection direction = 2;
+  optional int32 percent = 3;
+}
+// A fast swipe across the element. `direction` is the content edge moved towards, as for `scroll`.
+message Fling {
+  Selector selector = 1;
+  Direction direction = 2;
+}
+// Waits for a runtime-permission dialog and reports the choices it offers. No input.
+message WaitPermissionPrompt {}
+// Taps the dialog's button for `choice`; it must be offered, exactly once.
+message ChoosePermission { PermissionChoice choice = 1; } // not UNSPECIFIED
+// Hides the on-screen keyboard: one Back key when an input-method window is showing, nothing
+// otherwise.
+message HideKeyboard {}
+// The keyboard's action key (Search, Go, Done, …) on the field: `ACTION_IME_ENTER`, API 30+.
+message PerformImeAction { Selector selector = 1; }
+// Replaces the primary clip with plain `text` (≤ 4096 chars).
+message SetClipboard { string text = 1; }
+// Reads the primary clip as plain text (`text` result; "" when the clipboard is empty).
+message GetClipboard {}
+// Waits for a toast. `text` (≤ 1024 chars) is compared under `mode` (default exact); absent =
+// any text. `package_name` absent = a toast from any package. A toast posted up to 3.5 s before
+// the command (the longest one stays up) counts.
+message AwaitToast {
+  optional string text = 1;
+  MatchMode mode = 2;
+  optional string package_name = 3;
+}
 
 // One protocol request minus session identity (the server owns session id, generation and
 // request ids). Exactly one `op` must be set; its case name is the protocol `op`.
@@ -144,6 +231,21 @@ message Command {
     Swipe swipe = 19;
     Scroll scroll = 20;
     OpenSystemPanel open_system_panel = 24;
+    SetOrientation set_orientation = 25;
+    SetDisplayRotation set_display_rotation = 26;
+    UnfreezeRotation unfreeze_rotation = 27;
+    DismissKeyguard dismiss_keyguard = 28;
+    DoubleTap double_tap = 29;
+    Drag drag = 30;
+    Pinch pinch = 31;
+    Fling fling = 32;
+    WaitPermissionPrompt wait_permission_prompt = 33;
+    ChoosePermission choose_permission = 34;
+    HideKeyboard hide_keyboard = 35;
+    PerformImeAction perform_ime_action = 36;
+    SetClipboard set_clipboard = 37;
+    GetClipboard get_clipboard = 38;
+    AwaitToast await_toast = 39;
   }
 }
 
@@ -191,6 +293,29 @@ message DeviceInfo {
   int32 display_height = 6;
   int32 display_rotation = 7;
   optional string current_package = 8;
+  bool screen_on = 9; // PowerManager.isInteractive
+  bool keyguard_locked = 10; // KeyguardManager.isKeyguardLocked
+  bool keyguard_secure = 11; // a PIN, pattern or password is set
+  bool keyboard_shown = 12; // an input-method window is on screen
+  bool auto_rotate = 13; // Settings.System.ACCELEROMETER_ROTATION: the sensor picks the rotation
+  bool animations_enabled = 14; // any of the three animation scales is not 0
+  bool dark_mode = 15; // the current configuration is night (UI_MODE_NIGHT_YES)
+  float font_scale = 16; // Configuration.fontScale
+  int32 density_dpi = 17; // Configuration.densityDpi
+}
+
+// A toast `await_toast` matched: its text and the package that posted it.
+message Toast {
+  string text = 1;
+  string package_name = 2;
+}
+
+// The runtime-permission dialog on screen: the package of its window (what a selector's package
+// scope names; Google builds rename the controller, so it differs from the resource ids' package)
+// and the choices it offers, in PermissionChoice order.
+message PermissionPrompt {
+  string package_name = 1;
+  repeated PermissionChoice choices = 2;
 }
 
 // The command ran to completion and has nothing else to report.
@@ -218,9 +343,11 @@ message CommandResult {
     Done done = 4;
     bool bool = 5; // exists
     int32 count = 7; // count, capped at 1000
-    string text = 8; // dump_hierarchy
+    string text = 8; // dump_hierarchy, get_clipboard
     ElementSnapshot snapshot = 9;
     DeviceInfo device_info = 10;
     Error error = 13;
+    PermissionPrompt permission_prompt = 14;
+    Toast toast = 15;
   }
 }

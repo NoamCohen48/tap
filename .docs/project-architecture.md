@@ -121,7 +121,13 @@ tap/
 |   |   |   +-- UiObjectAccess.kt        resolve/hasObject/count/containerHasObject per MatchLimit
 |   |   |   +-- TouchReachability.kt     OBSCURED check (touch point in the target's window) + TouchPoints
 |   |   |   +-- GestureCommands.kt, TextInputCommands.kt, KeyInput.kt, QueryCommands.kt, WaitCommands.kt, ScreenStability.kt, ArtifactCommands.kt
-|   |   |   |                        tap, longTap, swipe, scroll / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
+|   |   |   |                        tap, longTap, swipe, scroll, doubleTap, drag, pinch, fling / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
+|   |   |   +-- PointerGestures.kt       injected touchscreen strokes (double tap, drag); always lifts or cancels the pointer
+|   |   |   +-- RotationCommands.kt, ScreenCommands.kt, PermissionCommands.kt
+|   |   |   |                        set_orientation/set_display_rotation/unfreeze_rotation / screen + keyguard state, dismiss_keyguard / permission dialog by controller resource id
+|   |   |   +-- KeyboardCommands.kt, ClipboardCommands.kt, ToastWatcher.kt
+|   |   |   |                        keyboard_shown, hide_keyboard, perform_ime_action / set/get_clipboard (main thread, shell read permission) / await_toast (session-long accessibility listener, 32-entry buffer)
+|   |   |   +-- DeviceConditionsReader.kt  DeviceInfo read-backs: animations_enabled (global scales), dark_mode, font_scale, density_dpi (driver resources' Configuration)
 |   |   |   +-- SyncProviderClient.kt    signature-checked ContentProvider reads with timeout
 |   |   |   +-- FaultController.kt       test-only fault injection (transport loss, late work, cancel-after-mutation)
 |   |   +-- command-engine/      :device:driver:command-engine — pure Kotlin/JVM execution state machine (no Android types)
@@ -149,7 +155,9 @@ tap/
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
 |   |   |   +-- DriverClient.kt      authenticated client API, PendingCommand outcome/cancellation semantics, heartbeat policy, screenshot()
 |   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
-|   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grantPermission/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits; launch returns after `am start -W`)
+|   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grant/revoke/isPermissionGranted/setLocales/locales/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits; launch returns after `am start -W`)
+|   |   |   +-- DeviceState.kt       SavedState + StateKey (setting:<ns>/<name>, uimode:night, wm:density, locale:<pkg>): what a session changed, journaled for restore
+|   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity: capture once, write, read back (DeviceSession.change)
 |   |   |   +-- ScrcpyRecorder.kt        optional host-owned, serial-scoped scrcpy child; bounded Opus/MP4/Matroska capture and cleanup
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
 |   |   |   +-- CommandException.kt  RemoteCommandException / CommandTransportException, selector rendering
@@ -229,6 +237,7 @@ tap/
 |       +-- Fixture.kt           fixture facts + install-once/cold-launch helper
 |       +-- MainScreenTest.kt    taps, text input, Compose list scrolling, ambiguity, app-owned sync, wait diagnostics, back key
 |       +-- LifecycleTest.kt     cold launch identity, force-stop, clear-data, DEVICE_INFO
+|       +-- DeviceActionsTest.kt deep link, background/foreground, gestures, permission prompt, screen/keyguard, rotation hold + restore on detach
 |       +-- MultiDeviceTest.kt   @TapDevices("left","right") concurrent two-device journey
 |       +-- MotionTest.kt        awaitAnimationEnd / awaitAppSettled: wait out an animation, time out on a ticking screen
 |       +-- DeviceReuseTest.kt   @TapTest(deviceLifetime = PER_CLASS): one device across the class, replaced once detached
@@ -241,12 +250,15 @@ tap/
     |   +-- ViewListActivity.kt      native ListView with end-of-content
     |   +-- AmbiguityActivity.kt     duplicate buttons/fields/scroll views, gesture target, prefilled field
     |   +-- PermissionActivity.kt    real runtime permission dialog
+    |   +-- GestureActivity.kt       double-tap counter, drag-and-drop card, pinch-zoom target
+    |   +-- LinkActivity.kt          deep-link target (tapfixture://link/...) showing the URI
+    |   +-- FormActivity.kt          search field (IME action), copy/paste, toast button, typed launch extras, camera permission state
     |   +-- MotionActivity.kt        2 s handler-driven animation and an endless 100 ms ticker (screen-stability waits)
     |   +-- OcclusionActivity.kt     a popup over half a button and a button under the keyboard (adjustNothing) for OBSCURED
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults
     |   +-- FixtureFaultProvider.kt  delayed-mutation hook for the late-work fault (authority ...fixture.fault)
     |   +-- FixtureApplication.kt    Application + FaultTapCounter
-    +-- src/main/res/layout/         activity_main, activity_view_list, activity_ambiguity, activity_permission, activity_motion
+    +-- src/main/res/layout/         activity_main, activity_view_list, activity_ambiguity, activity_permission, activity_motion, activity_gesture, activity_link
 ```
 
 Gradle projects: `:contracts:protocol`, `:contracts:api`, `:device:driver`,
@@ -424,9 +436,11 @@ start UUID or session identity changes.
 `SessionJournalStore(root=~/.tap/sessions, serial)` takes a machine-wide file lock per serial
 and writes an fsync'd, atomically replaced JSON journal with `JournalState`
 (`CREATING → ACTIVE → READY → CLOSED`, or `BROKEN`/`QUARANTINED`), boot ID, session ID,
-generation, device/host port, driver PID + start token, and driver instance ID. Startup
+generation, device/host port, driver PID + start token, driver instance ID, and `savedState`
+(device values the session changed, as they were before; omitted when empty). Startup
 recovery (`recoverJournal`) removes only exact journal-owned forwards after proving the old
-driver identity is gone; anything it cannot prove is quarantined.
+driver identity is gone; anything it cannot prove is quarantined. `restorePriorState` then writes back the `savedState`
+a dead session left (quarantine `DEVICE_STATE_RESTORE_FAILED` if it does not read back).
 
 ### Driver lifecycle and DeviceSession
 
@@ -490,7 +504,9 @@ against the `validation` driver flavor, whose instrumentation wires the fault co
 | `CancellationTest` / `CancelAfterMutationTest` | queued/running cancel; cancel after the mutation gate is ignored, counter advances once |
 | `HeartbeatTest` | driver poisons and exits when the host stops sending |
 | `AutLifecycleTest` | sync busy/idle; the driver survives AUT force-stop/clear-data; restart detected |
-| `ScreenshotTest`, `InputTest`, `ScrollTest`, `SelectorsTest`, `ObservationTest`, `PermissionTest` | blob reassembly, text input, Compose/View scrolling, `AMBIGUOUS`/limits/relations/regex, count/snapshot/keys, permission-dialog scoping |
+| `ScreenshotTest`, `InputTest`, `ScrollTest`, `SelectorsTest`, `ObservationTest`, `PermissionTest` | blob reassembly, text input, Compose/View scrolling, `AMBIGUOUS`/limits/relations/regex, count/snapshot/keys, permission-dialog scoping and choices |
+| `GestureTest`, `ScreenTest`, `RotationTest` | double tap, drag (`NOT_FOUND` before input), pinch, fling; sleep/wake/keyguard state; orientation and exact rotations |
+| `KeyboardTest`, `ClipboardTest`, `ToastTest` | keyboard state + hide, IME action (refused before input on an unfocused field, `REQUIRES_API_30` below API 30); clipboard round trip through the app's paste/copy; the fixture's toast text/package, lookback, `NO_TOAST` |
 | `BenchmarkTest` | lookup and dump timings (`TAP_VALIDATION` lines) |
 | `DisconnectIsolationTest` | (2+ serials) one device's transport loss leaves the other untouched |
 | `LateMutationQuarantineTest` | `@Tag("reboot")`, only with `-Ptap.reboot=true`: late mutation quarantines, reboot recovery |

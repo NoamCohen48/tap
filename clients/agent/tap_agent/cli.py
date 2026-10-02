@@ -8,7 +8,20 @@ from collections.abc import Sequence
 from importlib import resources
 
 from . import render
-from .core import EXIT_OK, EXIT_USAGE, PANELS, Agent, AgentError, APP_ACTIONS
+from .core import (
+    APP_ACTIONS,
+    CONDITIONS,
+    EXIT_OK,
+    EXIT_USAGE,
+    KEYBOARD_ACTIONS,
+    PANELS,
+    PERMISSION_CHOICES,
+    PINCHES,
+    ROTATIONS,
+    SCREEN_ACTIONS,
+    Agent,
+    AgentError,
+)
 from .targets import SELECTOR_KEYS, UsageError, parse_duration
 
 DESCRIPTION = """\
@@ -69,7 +82,9 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("tap", "tap a node", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
-    p.add_argument("--long", action="store_true", help="long-press instead")
+    kind = p.add_mutually_exclusive_group()
+    kind.add_argument("--long", action="store_true", help="long-press instead")
+    kind.add_argument("--double", action="store_true", help="double-tap instead")
 
     p = verb("fill", "replace a field's text (no key events)", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
@@ -81,19 +96,58 @@ def parser() -> argparse.ArgumentParser:
     p = verb("clear", "clear a field's text", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
 
+    p = verb("submit", "run a focused field's keyboard action (Search, Go, Send, Done, …); API 30+", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+
+    p = verb("keyboard", "whether a soft keyboard shows, or hide it", on_device, settle)
+    p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", default="state")
+
+    p = verb("clipboard", "print the device clipboard, or set it", on_device)
+    p.add_argument("text", nargs="?", help="put this on the clipboard (omit to print it)")
+
     for name, help in (
         ("scroll", "scroll a node towards a content edge (down reveals content below)"),
         ("swipe", "swipe across a node, the finger moving in the direction"),
+        ("fling", "fling a node towards a content edge, as for scroll; content may keep moving"),
     ):
         p = verb(name, help, on_device, settle)
         p.add_argument("target", help=TARGET_HELP)
         p.add_argument("direction", choices=("up", "down", "left", "right"))
+
+    p = verb("drag", "long-press a node, move it onto another node and drop it", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+    p.add_argument("destination", help="where to drop it: " + TARGET_HELP)
+
+    p = verb("pinch", "pinch a node open (fingers apart, zoom in) or closed", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+    p.add_argument("how", choices=PINCHES)
+    p.add_argument("--percent", type=int, default=80, help="how far across the node, 1..100 (default 80)")
 
     p = verb("key", "press a key: back, home, recents, enter, tab, delete, … or a key code", on_device, settle)
     p.add_argument("name")
 
     p = verb("panel", "open the notification shade or quick settings (key back closes it)", on_device, settle)
     p.add_argument("name", choices=PANELS)
+
+    p = verb("rotate", "rotate the display and keep it there (auto: back to the sensor)", on_device, settle)
+    p.add_argument("how", choices=ROTATIONS)
+
+    p = verb("screen", "screen state, or turn it on/off, or wake it and dismiss a keyguard without a PIN", on_device, settle)
+    p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", default="state")
+
+    p = verb("condition", "device conditions (animations, dark mode, font scale, density): print or change until release", on_device)
+    p.add_argument("name", choices=CONDITIONS, nargs="?", help="omit to print all")
+    p.add_argument("value", nargs="?", help="animations/dark-mode: on|off; font-scale: 0.5..2.0; density: dpi or reset (omit to print)")
+
+    p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
+    p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")
+    p.add_argument("--timeout", type=_duration, default=10.0, help="how long to wait for the dialog (default 10s)")
+
+    p = verb("toast", "wait for a toast (shown in the last 3.5s or coming) and print it", on_device)
+    p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
+    p.add_argument("--contains", action="store_true", help="text is only part of the toast")
+    p.add_argument("--package", help="only this package's toasts (default: any app's)")
+    p.add_argument("--timeout", type=_duration, default=10.0, help="default 10s")
 
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
@@ -115,7 +169,8 @@ def parser() -> argparse.ArgumentParser:
     p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device)
     p.add_argument("action", choices=APP_ACTIONS)
     p.add_argument("package")
-    p.add_argument("argument", nargs="?", help="activity (launch), APK path (install) or permission (grant)")
+    p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
+    p.add_argument("--any-app", action="store_true", help="open-link: let any app handle the link, not only this one")
 
     p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
     p.add_argument("-o", "--out", help="write it to this file instead")
@@ -141,21 +196,43 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT)
     if v == "tap":
-        return agent.tap(args.target, device, long=args.long, settle=settle)
+        return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double)
     if v == "fill":
         return agent.fill(args.target, args.text, device, settle=settle)
     if v == "type":
         return agent.type(args.text, device, settle=settle)
     if v == "clear":
         return agent.clear(args.target, device, settle=settle)
+    if v == "submit":
+        return agent.submit(args.target, device, settle=settle)
+    if v == "keyboard":
+        return agent.keyboard(args.action, device, settle=settle)
+    if v == "clipboard":
+        return agent.clipboard(args.text, device)
+    if v == "toast":
+        return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout)
     if v == "scroll":
         return agent.scroll(args.target, args.direction, device, settle=settle)
     if v == "swipe":
         return agent.swipe(args.target, args.direction, device, settle=settle)
+    if v == "fling":
+        return agent.fling(args.target, args.direction, device, settle=settle)
+    if v == "drag":
+        return agent.drag(args.target, args.destination, device, settle=settle)
+    if v == "pinch":
+        return agent.pinch(args.target, args.how, args.percent, device, settle=settle)
     if v == "key":
         return agent.key(args.name, device, settle=settle)
     if v == "panel":
         return agent.panel(args.name, device, settle=settle)
+    if v == "rotate":
+        return agent.rotate(args.how, device, settle=settle)
+    if v == "condition":
+        return agent.condition(args.name, args.value, device)
+    if v == "screen":
+        return agent.screen(args.action, device, settle=settle)
+    if v == "permission":
+        return agent.permission(args.choice, device, args.timeout, settle=settle)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout)
     if v == "settle":
@@ -167,7 +244,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "export":
         return agent.export(args.out)
     if v == "app":
-        return agent.app(args.action, args.package, args.argument, device)
+        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app)
     raise AssertionError(v)
 
 

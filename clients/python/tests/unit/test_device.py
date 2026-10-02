@@ -6,9 +6,23 @@ from __future__ import annotations
 import grpc
 import pytest  # type: ignore[import-not-found]
 
-from tap_e2e import CommandError, ErrorCode, ServerError, TapError, TapClient, WaitTimeoutError
+from tap_e2e import (
+    CommandError,
+    DisplayRotation,
+    ErrorCode,
+    FailureReason,
+    Orientation,
+    PermissionChoice,
+    PermissionPrompt,
+    ServerError,
+    TapError,
+    TapClient,
+    Toast,
+    WaitReason,
+    WaitTimeoutError,
+)
 from tap_e2e import _gen as pb
-from tap_e2e import res, text
+from tap_e2e import DOWN, STARTS_WITH, Long, res, text
 
 from .conftest import TOKEN
 
@@ -263,6 +277,207 @@ def test_open_notifications_and_quick_settings_send_the_system_panel_command(fak
     device.open_notifications()
     device.open_quick_settings()
     assert panels == [pb.SYSTEM_PANEL_NOTIFICATIONS, pb.SYSTEM_PANEL_QUICK_SETTINGS]
+
+
+def test_rotation_methods_send_one_typed_mutation_each(fake, device):
+    commands: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.WhichOneof("op") not in (
+            "set_orientation",
+            "set_display_rotation",
+            "unfreeze_rotation",
+        ):
+            return None
+        commands.append(command)
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    device.set_orientation(Orientation.LANDSCAPE)
+    device.set_display_rotation(DisplayRotation.UPSIDE_DOWN)
+    device.unfreeze_rotation()
+
+    assert [command.WhichOneof("op") for command in commands] == [
+        "set_orientation",
+        "set_display_rotation",
+        "unfreeze_rotation",
+    ]
+    assert commands[0].set_orientation.orientation == pb.ORIENTATION_LANDSCAPE
+    assert commands[1].set_display_rotation.rotation == pb.DISPLAY_ROTATION_UPSIDE_DOWN
+
+
+def test_screen_permission_and_gesture_methods_send_their_typed_commands(fake, device):
+    sent = ("press_key", "dismiss_keyguard", "wait_permission_prompt", "choose_permission", "double_tap", "drag", "pinch", "fling")
+    commands: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        op = command.WhichOneof("op")
+        if op not in sent:
+            return None
+        commands.append(command)
+        if op == "wait_permission_prompt":
+            return pb.CommandResult(
+                permission_prompt=pb.PermissionPrompt(
+                    package_name="com.android.permissioncontroller",
+                    choices=[pb.PERMISSION_ALLOW_FOREGROUND_ONLY, pb.PERMISSION_DENY],
+                )
+            )
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    device.wake()
+    device.sleep()
+    device.dismiss_keyguard()
+    assert device.await_permission_prompt() == PermissionPrompt(
+        "com.android.permissioncontroller", (PermissionChoice.ALLOW_FOREGROUND_ONLY, PermissionChoice.DENY)
+    )
+    device.choose_permission(PermissionChoice.DENY_AND_DONT_ASK_AGAIN)
+    card = device.screen.element(res("card"))
+    card.double_tap()
+    card.drag_to(res("bin"))
+    card.pinch_open()
+    card.pinch_close(percent=40)
+    card.fling(DOWN)
+
+    assert [c.WhichOneof("op") for c in commands] == [
+        "press_key", "press_key", "dismiss_keyguard", "wait_permission_prompt", "choose_permission",
+        "double_tap", "drag", "pinch", "pinch", "fling",
+    ]
+    assert [c.press_key.key_code for c in commands[:2]] == [224, 223]
+    assert commands[4].choose_permission.choice == pb.PERMISSION_DENY_AND_DONT_ASK_AGAIN
+    assert commands[6].drag.selector == res("card")._proto
+    assert commands[6].drag.target == res("bin")._proto
+    assert [(c.pinch.direction, c.pinch.percent) for c in commands[7:9]] == [(pb.PINCH_OPEN, 80), (pb.PINCH_CLOSE, 40)]
+    assert commands[9].fling.direction == pb.DIR_DOWN
+
+
+def test_await_permission_prompt_timeout_carries_no_permission_prompt(fake, device):
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="NO_PERMISSION_PROMPT"))
+        if command.HasField("wait_permission_prompt")
+        else None
+    )
+    with pytest.raises(WaitTimeoutError) as timeout:
+        device.await_permission_prompt(timeout=0.5)
+    assert timeout.value.reason is WaitReason.NO_PERMISSION_PROMPT
+
+
+def test_keyboard_clipboard_and_toast_methods_send_their_typed_commands(fake, device):
+    commands: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        op = command.WhichOneof("op")
+        commands.append(command)
+        if op == "get_clipboard":
+            return pb.CommandResult(text="copied")
+        if op == "await_toast":
+            return pb.CommandResult(toast=pb.Toast(text="Saved", package_name="com.test"))
+        if op == "device_info":
+            return pb.CommandResult(device_info=pb.DeviceInfo(api_level=34, keyboard_shown=True))
+        if op in ("hide_keyboard", "perform_ime_action", "set_clipboard"):
+            return pb.CommandResult(done=pb.Done())
+        return None
+
+    fake.devices.responder = respond
+    assert device.keyboard_shown()
+    device.hide_keyboard()
+    device.screen.element(res("search")).ime_action()
+    device.set_clipboard("hello")
+    assert device.clipboard() == "copied"
+    assert device.await_toast() == Toast("Saved", "com.test")
+    device.app("com.test").await_toast("Sav", STARTS_WITH)
+    device.await_toast(package_name="com.android.systemui")
+
+    toasts = [c.await_toast for c in commands if c.HasField("await_toast")]
+    assert not toasts[0].HasField("text") and toasts[0].mode == pb.MATCH_UNSPECIFIED
+    assert not toasts[0].HasField("package_name")
+    assert (toasts[1].text, toasts[1].mode, toasts[1].package_name) == ("Sav", pb.MATCH_STARTS_WITH, "com.test")
+    assert toasts[2].package_name == "com.android.systemui"
+    [ime] = [c for c in commands if c.HasField("perform_ime_action")]
+    assert ime.perform_ime_action.selector == res("search")._proto
+    [clip] = [c for c in commands if c.HasField("set_clipboard")]
+    assert clip.set_clipboard.text == "hello"
+    assert any(c.HasField("hide_keyboard") for c in commands)
+
+
+def test_await_toast_timeout_carries_no_toast(fake, device):
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="NO_TOAST"))
+        if command.HasField("await_toast")
+        else None
+    )
+    with pytest.raises(WaitTimeoutError) as timeout:
+        device.await_toast("Saved", timeout=0.5)
+    assert timeout.value.reason is WaitReason.NO_TOAST
+
+
+def test_launch_extras_and_revoke_permission_reach_the_app_service(fake, device):
+    app = device.app("com.test")
+    app.launch(extras={"q": "shoes", "id": Long(42)})
+    app.cold_launch(".Main", extras={"flag": True})
+    app.revoke_permission("android.permission.CAMERA")
+    assert app.is_permission_granted("android.permission.CAMERA")
+    assert not app.is_permission_granted("android.permission.RECORD_AUDIO")
+    with pytest.raises(TypeError):
+        app.launch(extras={"bad": None})
+    [launch] = fake.apps.launches
+    assert [(e.key, e.WhichOneof("value")) for e in launch.extras] == [("q", "string_value"), ("id", "long_value")]
+    [cold] = fake.apps.cold_launches
+    assert cold.activity == ".Main" and cold.extras[0].bool_value is True
+    [revoke] = fake.apps.revokes
+    assert revoke.permission == "android.permission.CAMERA" and revoke.app.package_name == "com.test"
+
+
+def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, device):
+    device.set_animations(False)
+    device.set_font_scale(1.3)
+    device.set_density(320)
+    device.set_density(None)
+    with pytest.raises(ServerError) as old:
+        device.set_dark_mode(True)
+    assert old.value.code == "FAILED_PRECONDITION" and old.value.reason is FailureReason.UNSUPPORTED_API
+    with pytest.raises(ServerError) as stuck:
+        device.set_density(999)
+    assert stuck.value.reason is FailureReason.DEVICE_SETTING
+    animations, font, density, reset, dark, _ = fake.devices.conditions
+    assert animations.enabled is False and font.scale == pytest.approx(1.3)
+    assert density.dpi == 320 and not reset.HasField("dpi") and dark.enabled is True
+    for request in fake.devices.conditions:
+        assert request.attached_device_id == device.attached_device_id
+        assert request.client_connection_id == device.owner_connection.id
+
+
+def test_app_locales_round_trip_through_the_app_service(fake, device):
+    app = device.app("com.test")
+    app.set_locales(["fr-FR", "en"])
+    assert app.locales() == ["fr-FR", "en"]
+    app.set_locales([])
+    assert app.locales() == []
+    with pytest.raises(TypeError):
+        app.set_locales("fr-FR")
+
+
+def test_foreground_background_and_open_link_reach_the_app_service(fake, device):
+    keys: list[int] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if not command.HasField("press_key"):
+            return None
+        keys.append(command.press_key.key_code)
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    app = device.app("com.test")
+    app.background()
+    app.foreground(timeout=7)
+    assert app.open_link("test://orders/42") == "com.test/.Link"
+    assert app.open_link("https://example.com/x", any_app=True) is None
+    assert keys == [3]
+    assert [request.timeout_ms for request in fake.apps.foregrounds] == [7_000]
+    assert [(r.uri, r.any_app, r.app.package_name) for r in fake.apps.links] == [
+        ("test://orders/42", False, "com.test"),
+        ("https://example.com/x", True, "com.test"),
+    ]
 
 
 def test_scroll_until_gives_up_after_max_scrolls(fake, device):

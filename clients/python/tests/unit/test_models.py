@@ -2,16 +2,23 @@
 # pyright: reportAttributeAccessIssue=false
 
 import json
+from dataclasses import replace
+
+import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import (
     DeviceInfo,
     DeviceState,
     Direction,
+    DisplayRotation,
     DriverLog,
     ErrorCode,
     FailureReason,
     Hierarchy,
+    Long,
     MatchMode,
+    Orientation,
+    PermissionChoice,
     Screenshot,
     StabilitySignal,
 )
@@ -40,6 +47,43 @@ def test_every_argument_enum_maps_to_a_proto_value():
     assert [n for _, n in _known(pb.MatchMode)] == [_proto.match_mode(m) for m in MatchMode]
     assert [n for _, n in _known(pb.Direction)] == [_proto.direction(d) for d in Direction]
     assert [n for _, n in _known(pb.StabilitySignal)] == [_proto.stability_signal(s) for s in StabilitySignal]
+    assert [name.removeprefix("ORIENTATION_") for name, _ in _known(pb.Orientation)] == [value.name for value in Orientation]
+    assert [name.removeprefix("DISPLAY_ROTATION_") for name, _ in _known(pb.DisplayRotation)] == [
+        value.name for value in DisplayRotation
+    ]
+    assert [n for _, n in _known(pb.PermissionChoice)] == [_proto.permission_choice(c) for c in PermissionChoice]
+    assert [n for _, n in _known(pb.Orientation)] == [_proto.orientation(o) for o in Orientation]
+    assert [n for _, n in _known(pb.DisplayRotation)] == [_proto.display_rotation(r) for r in DisplayRotation]
+
+
+def test_device_info_maps_rotation_and_screen_state():
+    info = _proto.device_info(
+        pb.DeviceInfo(display_width=2400, display_height=1080, display_rotation=3, screen_on=True, keyguard_locked=True)
+    )
+    assert info.display_rotation is DisplayRotation.RIGHT
+    assert info.orientation is Orientation.LANDSCAPE
+    assert (info.screen_on, info.keyguard_locked, info.keyguard_secure) == (True, True, False)
+
+
+def test_intent_extras_keep_their_type_and_refuse_what_am_start_cannot_carry():
+    extras = _proto.intent_extras({"q": "shoes", "flag": True, "count": -3, "id": Long(9_000_000_000), "ratio": 0.5})
+    assert [e.WhichOneof("value") for e in extras] == ["string_value", "bool_value", "int_value", "long_value", "float_value"]
+    assert (extras[1].bool_value, extras[2].int_value, extras[3].long_value, extras[4].float_value) == (True, -3, 9_000_000_000, 0.5)
+    with pytest.raises(ValueError, match="Long"):
+        _proto.intent_extras({"id": 2**31})
+    with pytest.raises(TypeError):
+        _proto.intent_extras({"list": [1]})
+    with pytest.raises(TypeError):
+        Long(True)
+    with pytest.raises(ValueError):
+        Long(2**63)
+
+
+def test_a_permission_prompt_leaves_out_choices_this_client_does_not_know():
+    prompt = _proto.permission_prompt(
+        pb.PermissionPrompt(package_name="com.android.permissioncontroller", choices=[pb.PERMISSION_DENY, 99, pb.PERMISSION_ALLOW])
+    )
+    assert prompt.choices == (PermissionChoice.DENY, PermissionChoice.ALLOW)
 
 
 def test_a_screenshot_reads_its_size_from_the_png_header():
@@ -50,8 +94,14 @@ def test_a_screenshot_reads_its_size_from_the_png_header():
 
 
 def test_artifacts_save_their_bytes(tmp_path):
-    info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, 0, None)
+    info = DeviceInfo(34, "Google", "Pixel", "sdk", 1080, 2400, DisplayRotation.NATURAL, None, True, False, False, True, True, False, True, 1.3, 420)
     saved = json.loads(info.save(tmp_path / "a" / "info.json").read_text())
     assert saved["api_level"] == 34 and saved["current_package"] is None
+    assert saved["display_rotation"] == "NATURAL" and saved["screen_on"] is True
+    assert saved["keyboard_shown"] is True and saved["auto_rotate"] is True
+    assert saved["animations_enabled"] is False and saved["dark_mode"] is True
+    assert saved["font_scale"] == 1.3 and saved["density_dpi"] == 420
+    assert info.orientation is Orientation.PORTRAIT
+    assert replace(info, display_width=2400, display_height=1080).orientation is Orientation.LANDSCAPE
     assert Hierarchy("<a/>").save(tmp_path / "h.xml").read_text() == "<a/>"
     assert DriverLog(["one", "two"]).save(tmp_path / "d.txt").read_text() == "one\ntwo"

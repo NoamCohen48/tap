@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.host
 
+import io.github.noamcohen48.tap.api.v1.IntentExtra
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -433,6 +434,151 @@ open class Adb internal constructor(
     /** The kernel's boot identity; changes exactly when the device reboots. */
     open suspend fun bootId(serial: String): String = exec(serial, "shell", "cat", "/proc/sys/kernel/random/boot_id")
 
+    /**
+     * Captures the two system settings Android uses for default-display sensor rotation. A
+     * setting the device has never written reads as `null` and is captured as absent.
+     */
+    open suspend fun rotationState(serial: String): RotationState {
+        suspend fun read(
+            name: String,
+            range: IntRange,
+        ): Int? {
+            val output = exec(serial, "shell", "settings", "get", "system", name).trim()
+            if (output == "null") return null
+            return output.toIntOrNull()?.takeIf { it in range }
+                ?: throw AdbCommandException(
+                    serial,
+                    listOf("shell", "settings", "get", "system", name),
+                    null,
+                    output,
+                    "Invalid $name value on $serial: $output",
+                )
+        }
+        return RotationState(
+            accelerometerRotation = read("accelerometer_rotation", 0..1),
+            userRotation = read("user_rotation", 0..3),
+        )
+    }
+
+    /**
+     * Restores a captured rotation state and reads it back. The numeric rotation is written while
+     * the sensor is locked, then the original lock; an absent setting is deleted again.
+     */
+    open suspend fun restoreRotationState(
+        serial: String,
+        state: RotationState,
+    ) {
+        suspend fun write(
+            name: String,
+            value: Int?,
+        ) {
+            if (value == null) {
+                exec(serial, "shell", "settings", "delete", "system", name)
+            } else {
+                exec(serial, "shell", "settings", "put", "system", name, value.toString())
+            }
+        }
+        exec(serial, "shell", "settings", "put", "system", "accelerometer_rotation", "0")
+        write("user_rotation", state.userRotation)
+        write("accelerometer_rotation", state.accelerometerRotation)
+        val observed = rotationState(serial)
+        if (observed != state) {
+            throw AdbCommandException(
+                serial,
+                listOf("shell", "settings", "put", "system", "accelerometer_rotation/user_rotation"),
+                null,
+                "observed=$observed expected=$state",
+                "Rotation state restoration did not take effect on $serial",
+            )
+        }
+    }
+
+    /** The device's API level (`ro.build.version.sdk`). */
+    open suspend fun apiLevel(serial: String): Int {
+        val output = exec(serial, "shell", "getprop", "ro.build.version.sdk").trim()
+        return output.toIntOrNull()
+            ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.build.version.sdk"), null, output, "Unreadable API level on $serial: $output")
+    }
+
+    /**
+     * Reads one piece of device state by its [StateKey] id: a `settings` value (null when the
+     * device never wrote it), the night mode, the display density override (null = none) or an
+     * app's own locales (comma-separated BCP-47 tags, empty = it follows the system).
+     */
+    open suspend fun readState(
+        serial: String,
+        key: String,
+    ): String? =
+        when (val parsed = StateKey.parse(key)) {
+            is StateKey.Setting -> {
+                exec(serial, "shell", "settings", "get", parsed.namespace, parsed.name).trim().takeUnless { it == "null" }
+            }
+            StateKey.NightMode -> {
+                val output = exec(serial, "shell", "cmd", "uimode", "night").trim()
+                output.removePrefix("Night mode: ").takeIf { it != output && it.isNotBlank() }
+                    ?: throw AdbCommandException(serial, listOf("shell", "cmd", "uimode", "night"), null, output, "Unreadable night mode on $serial: $output")
+            }
+            StateKey.Density -> {
+                val output = exec(serial, "shell", "wm", "density")
+                if (!output.contains("Physical density:")) {
+                    throw AdbCommandException(serial, listOf("shell", "wm", "density"), null, output, "Unreadable density on $serial: $output")
+                }
+                output.lineSequence().firstNotNullOfOrNull { line ->
+                    line.trim().removePrefix("Override density:").takeIf { it != line.trim() }?.trim()
+                }
+            }
+            is StateKey.AppLocales -> {
+                val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
+                val output = exec(serial, *command.toTypedArray()).trim()
+                // "Locales for <pkg> for user -2 are [fr-FR,en-US]"; an unknown package prints another line.
+                val list = output.substringAfterLast(" are [", "").takeIf { output.endsWith("]") }?.removeSuffix("]")
+                list ?: throw AdbCommandException(serial, command, null, output, "Unreadable locales of ${parsed.packageName} on $serial: $output")
+            }
+        }
+
+    /**
+     * Whether the device locks the day/night mode (`dumpsys uimode`: `mNightModeLocked=true`,
+     * as Samsung's One UI does): `cmd uimode night` is then accepted and ignored.
+     */
+    open suspend fun nightModeLocked(serial: String): Boolean = "mNightModeLocked=true" in exec(serial, "shell", "dumpsys", "uimode")
+
+    /** Writes one piece of device state read by [readState]; null removes it (`settings delete`, `wm density reset`). */
+    open suspend fun writeState(
+        serial: String,
+        key: String,
+        value: String?,
+    ) {
+        when (val parsed = StateKey.parse(key)) {
+            is StateKey.Setting ->
+                if (value == null) {
+                    exec(serial, "shell", "settings", "delete", parsed.namespace, parsed.name)
+                } else {
+                    exec(serial, "shell", "settings", "put", parsed.namespace, parsed.name, shellQuote(value))
+                }
+            StateKey.NightMode -> exec(serial, "shell", "cmd", "uimode", "night", shellQuote(requireNotNull(value) { "night mode needs a value" }))
+            StateKey.Density -> exec(serial, "shell", "wm", "density", value?.let(::shellQuote) ?: "reset")
+            is StateKey.AppLocales -> {
+                val locales = if (value.isNullOrEmpty()) emptyList() else listOf("--locales", shellQuote(value))
+                exec(serial, "shell", "cmd", "locale", "set-app-locales", shellQuote(parsed.packageName), "--user", "current", *locales.toTypedArray())
+            }
+        }
+    }
+
+    /**
+     * Writes [entries] back, newest first, and reads every one back; a value that did not take is
+     * a [DeviceSettingException]. When the rotation lock is among them, the sensor is locked
+     * first so the numeric rotation is written while it cannot move.
+     */
+    open suspend fun restoreState(
+        serial: String,
+        entries: List<SavedState>,
+    ) {
+        if (entries.any { it.key == StateKey.ACCELEROMETER_ROTATION }) writeState(serial, StateKey.ACCELEROMETER_ROTATION, "0")
+        for (entry in entries.asReversed()) writeState(serial, entry.key, entry.value)
+        val wrong = entries.mapNotNull { entry -> readState(serial, entry.key).takeIf { it != entry.value }?.let { "${entry.key}=$it (expected ${entry.value})" } }
+        if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "Restoring device state on $serial did not take effect: ${wrong.joinToString()}")
+    }
+
     /** Whether a TCP socket is listening on [port] (IPv4 or IPv6), from `/proc/net/tcp*`. */
     open suspend fun isPortListening(
         serial: String,
@@ -550,6 +696,14 @@ open class Adb internal constructor(
         exec(serial, "shell", "pm", "grant", shellQuote(packageName), shellQuote(permission))
     }
 
+    open suspend fun revokePermission(
+        serial: String,
+        packageName: String,
+        permission: String,
+    ) {
+        exec(serial, "shell", "pm", "revoke", shellQuote(packageName), shellQuote(permission))
+    }
+
     /** Whether `dumpsys package` lists [permission] as `granted=true` for [packageName]. */
     open suspend fun isPermissionGranted(
         serial: String,
@@ -581,12 +735,57 @@ open class Adb internal constructor(
         return exec(serial, "shell", "dumpsys", "activity", "activities").lineSequence().any { record.containsMatchIn(it) }
     }
 
-    /** `am start -W -n component`; returns the raw output (`AmStartOutput` reads its `Status:`/`Error:` lines). */
+    /**
+     * `am start -W -n component`, with [extras] as `--es/--ez/--ei/--el/--ef` arguments; returns
+     * the raw output (`AmStartOutput` reads its `Status:`/`Error:` lines).
+     */
     open suspend fun startActivity(
         serial: String,
         component: String,
         timeoutMs: Long,
-    ): String = exec(serial, "shell", "am", "start", "-W", "-n", shellQuote(component), timeoutMs = timeoutMs)
+        extras: List<IntentExtra> = emptyList(),
+    ): String {
+        val args = listOf("shell", "am", "start", "-W") + extras.flatMap(::extraArguments) + listOf("-n", shellQuote(component))
+        return exec(serial, *args.toTypedArray(), timeoutMs = timeoutMs)
+    }
+
+    /**
+     * `am start -W` of [component]'s launcher intent (MAIN/LAUNCHER, `NEW_TASK |
+     * RESET_TASK_IF_NEEDED`), exactly what a home screen sends; returns the raw output.
+     */
+    open suspend fun startLauncherIntent(
+        serial: String,
+        component: String,
+        timeoutMs: Long,
+    ): String =
+        exec(
+            serial,
+            "shell",
+            "am",
+            "start",
+            "-W",
+            "-a",
+            "android.intent.action.MAIN",
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "-f",
+            "0x10200000",
+            "-n",
+            shellQuote(component),
+            timeoutMs = timeoutMs,
+        )
+
+    /** `am start -W` of a VIEW intent for [uri], limited to [packageName] when given; returns the raw output. */
+    open suspend fun startView(
+        serial: String,
+        uri: String,
+        packageName: String?,
+        timeoutMs: Long,
+    ): String {
+        val target = packageName?.let { listOf("-p", shellQuote(it)) } ?: emptyList()
+        val args = listOf("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", shellQuote(uri)) + target
+        return exec(serial, *args.toTypedArray(), timeoutMs = timeoutMs)
+    }
 
     /** The package's MAIN/LAUNCHER activity as `package/activity`, or null when it has none. */
     open suspend fun launcherActivity(
@@ -721,6 +920,12 @@ const val ADB_PERMITS_PER_SERIAL = 1
  */
 const val ADB_GLOBAL_PERMITS = 4
 
+/** Default-display rotation settings; null = the setting is absent on the device. */
+data class RotationState(
+    val accelerometerRotation: Int?,
+    val userRotation: Int?,
+)
+
 /** One row of `adb devices`: [rawState] is the tool's own word (`device`, `offline`,
  * `unauthorized`, `recovery`, `no permissions (...)`, ...), [state] its classification. */
 data class AdbDevice(
@@ -810,6 +1015,20 @@ internal fun parseDumpsysPackage(
 private val WHITESPACE = Regex("\\s+")
 
 private val DUMPSYS_VERSION_CODE = Regex("""^versionCode=(\d+)""")
+
+/** One `am start` extra: the flag of its type, its key and its value, each a shell argument. */
+private fun extraArguments(extra: IntentExtra): List<String> {
+    val (flag, value) =
+        when (extra.valueCase) {
+            IntentExtra.ValueCase.STRING_VALUE -> "--es" to extra.stringValue
+            IntentExtra.ValueCase.BOOL_VALUE -> "--ez" to extra.boolValue.toString()
+            IntentExtra.ValueCase.INT_VALUE -> "--ei" to extra.intValue.toString()
+            IntentExtra.ValueCase.LONG_VALUE -> "--el" to extra.longValue.toString()
+            IntentExtra.ValueCase.FLOAT_VALUE -> "--ef" to extra.floatValue.toString()
+            else -> throw IllegalArgumentException("Intent extra ${extra.key} has no value")
+        }
+    return listOf(flag, shellQuote(extra.key), shellQuote(value))
+}
 
 private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
 

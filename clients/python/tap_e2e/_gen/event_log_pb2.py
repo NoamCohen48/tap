@@ -22,11 +22,12 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from . import app_pb2 as app__pb2
 from . import command_pb2 as command__pb2
 from . import failure_pb2 as failure__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0f\x65vent_log.proto\x12\x06tap.v1\x1a\rcommand.proto\x1a\rfailure.proto\"\x80\x02\n\x0bLoggedEvent\x12\x0b\n\x03seq\x18\x01 \x01(\x03\x12\x13\n\x0b\x61t_epoch_ms\x18\x02 \x01(\x03\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x03\x12\x0e\n\x06serial\x18\x04 \x01(\t\x12\"\n\x07\x63ommand\x18\x06 \x01(\x0b\x32\x0f.tap.v1.CommandH\x00\x12\x1e\n\x03\x61pp\x18\x07 \x01(\x0b\x32\x0f.tap.v1.AppCallH\x00\x12!\n\x05\x65rror\x18\x08 \x01(\x0b\x32\r.tap.v1.ErrorH\x01\x88\x01\x01\x12%\n\x07\x66\x61ilure\x18\t \x01(\x0b\x32\x0f.tap.v1.FailureH\x02\x88\x01\x01\x42\x06\n\x04\x63\x61llB\x08\n\x06_errorB\n\n\x08_failure\"\xa6\x01\n\x07\x41ppCall\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x14\n\x0cpackage_name\x18\x02 \x01(\t\x12\x15\n\x08\x61\x63tivity\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x17\n\npermission\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x17\n\ntimeout_ms\x18\x05 \x01(\x03H\x02\x88\x01\x01\x42\x0b\n\t_activityB\r\n\x0b_permissionB\r\n\x0b_timeout_msB3\n io.github.noamcohen48.tap.api.v1B\rEventLogProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0f\x65vent_log.proto\x12\x06tap.v1\x1a\tapp.proto\x1a\rcommand.proto\x1a\rfailure.proto\"\xa6\x02\n\x0bLoggedEvent\x12\x0b\n\x03seq\x18\x01 \x01(\x03\x12\x13\n\x0b\x61t_epoch_ms\x18\x02 \x01(\x03\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x03\x12\x0e\n\x06serial\x18\x04 \x01(\t\x12\"\n\x07\x63ommand\x18\x06 \x01(\x0b\x32\x0f.tap.v1.CommandH\x00\x12\x1e\n\x03\x61pp\x18\x07 \x01(\x0b\x32\x0f.tap.v1.AppCallH\x00\x12$\n\x06\x64\x65vice\x18\n \x01(\x0b\x32\x12.tap.v1.DeviceCallH\x00\x12!\n\x05\x65rror\x18\x08 \x01(\x0b\x32\r.tap.v1.ErrorH\x01\x88\x01\x01\x12%\n\x07\x66\x61ilure\x18\t \x01(\x0b\x32\x0f.tap.v1.FailureH\x02\x88\x01\x01\x42\x06\n\x04\x63\x61llB\x08\n\x06_errorB\n\n\x08_failure\"\x98\x02\n\x07\x41ppCall\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x14\n\x0cpackage_name\x18\x02 \x01(\t\x12\x15\n\x08\x61\x63tivity\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x17\n\npermission\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x17\n\ntimeout_ms\x18\x05 \x01(\x03H\x02\x88\x01\x01\x12\x10\n\x03uri\x18\x06 \x01(\tH\x03\x88\x01\x01\x12\x14\n\x07\x61ny_app\x18\x07 \x01(\x08H\x04\x88\x01\x01\x12#\n\x06\x65xtras\x18\x08 \x03(\x0b\x32\x13.tap.v1.IntentExtra\x12\x0f\n\x07locales\x18\t \x03(\tB\x0b\n\t_activityB\r\n\x0b_permissionB\r\n\x0b_timeout_msB\x06\n\x04_uriB\n\n\x08_any_app\"\x93\x01\n\nDeviceCall\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x14\n\x07\x65nabled\x18\x02 \x01(\x08H\x00\x88\x01\x01\x12\x17\n\nfont_scale\x18\x03 \x01(\x02H\x01\x88\x01\x01\x12\x18\n\x0b\x64\x65nsity_dpi\x18\x04 \x01(\x05H\x02\x88\x01\x01\x42\n\n\x08_enabledB\r\n\x0b_font_scaleB\x0e\n\x0c_density_dpiB3\n io.github.noamcohen48.tap.api.v1B\rEventLogProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,8 +35,10 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'event_log_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n io.github.noamcohen48.tap.api.v1B\rEventLogProtoP\001'
-  _globals['_LOGGEDEVENT']._serialized_start=58
-  _globals['_LOGGEDEVENT']._serialized_end=314
-  _globals['_APPCALL']._serialized_start=317
-  _globals['_APPCALL']._serialized_end=483
+  _globals['_LOGGEDEVENT']._serialized_start=69
+  _globals['_LOGGEDEVENT']._serialized_end=363
+  _globals['_APPCALL']._serialized_start=366
+  _globals['_APPCALL']._serialized_end=646
+  _globals['_DEVICECALL']._serialized_start=649
+  _globals['_DEVICECALL']._serialized_end=796
 # @@protoc_insertion_point(module_scope)

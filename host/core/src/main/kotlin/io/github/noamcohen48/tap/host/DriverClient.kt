@@ -79,11 +79,18 @@ class DriverClient private constructor(
      * command admission consults the same sticky session state, so previously captured references
      * cannot bypass a later poison. Internal bind-once state, never a public mutable hook. */
     private var sessionGate: (() -> Unit)? = null
+    private var beforeRotationMutation: (suspend () -> Unit)? = null
 
     /** Binds the owning session's usability check exactly once; later binds fail. */
     internal fun bindSessionGate(gate: () -> Unit) {
         check(sessionGate == null) { "DriverClient session gate is already bound" }
         sessionGate = gate
+    }
+
+    /** Binds the lazy host-side capture that makes session teardown restore rotation state. */
+    internal fun bindRotationMutationHook(hook: suspend () -> Unit) {
+        check(beforeRotationMutation == null) { "DriverClient rotation hook is already bound" }
+        beforeRotationMutation = hook
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -107,6 +114,13 @@ class DriverClient private constructor(
         private set
 
     companion object {
+        private val ROTATION_OPS =
+            setOf(
+                Command.OpCase.SET_ORIENTATION,
+                Command.OpCase.SET_DISPLAY_ROTATION,
+                Command.OpCase.UNFREEZE_ROTATION,
+            )
+
         /**
          * Connects to the forwarded driver port and authenticates. [overallDeadlineNanos] bounds
          * the TCP connect and the handshake only; the returned client's commands, heartbeat and
@@ -459,6 +473,9 @@ class DriverClient private constructor(
             "timeoutMs must be between 0 and $MAX_REQUEST_TIMEOUT_MS"
         }
         CommandValidation.validate(request)
+        if (request.bodyCase == Request.BodyCase.COMMAND && request.command.opCase in ROTATION_OPS) {
+            beforeRotationMutation?.invoke()
+        }
         return transport.submit(request.withEnvelope(sessionId, generation, timeoutMs)) { sessionGate?.invoke() }
     }
 

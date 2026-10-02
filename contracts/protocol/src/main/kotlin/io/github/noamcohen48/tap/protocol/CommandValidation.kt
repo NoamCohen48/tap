@@ -5,10 +5,14 @@ import com.google.re2j.PatternSyntaxException
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Command.OpCase
 import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
@@ -138,6 +142,61 @@ object CommandValidation {
                 if (panel == SystemPanel.SYSTEM_PANEL_UNSPECIFIED || panel == SystemPanel.UNRECOGNIZED) invalidRequest("A panel is required")
             }
 
+            OpCase.SET_ORIENTATION -> {
+                val orientation = command.setOrientation.orientation
+                if (orientation == Orientation.ORIENTATION_UNSPECIFIED || orientation == Orientation.UNRECOGNIZED) {
+                    invalidRequest("A known orientation is required")
+                }
+            }
+
+            OpCase.SET_DISPLAY_ROTATION -> {
+                val rotation = command.setDisplayRotation.rotation
+                if (rotation == DisplayRotation.DISPLAY_ROTATION_UNSPECIFIED || rotation == DisplayRotation.UNRECOGNIZED) {
+                    invalidRequest("A known display rotation is required")
+                }
+            }
+
+            OpCase.PINCH -> {
+                val direction = command.pinch.direction
+                if (direction == PinchDirection.PINCH_UNSPECIFIED || direction == PinchDirection.UNRECOGNIZED) {
+                    invalidRequest("A pinch direction is required")
+                }
+                if (command.pinch.hasPercent() && command.pinch.percent !in 1..100) invalidRequest("percent must be in 1..100")
+            }
+
+            OpCase.FLING -> {
+                requireDirection(command.fling.direction)
+            }
+
+            OpCase.CHOOSE_PERMISSION -> {
+                val choice = command.choosePermission.choice
+                if (choice == PermissionChoice.PERMISSION_CHOICE_UNSPECIFIED || choice == PermissionChoice.UNRECOGNIZED) {
+                    invalidRequest("A known permission choice is required")
+                }
+            }
+
+            OpCase.SET_CLIPBOARD -> {
+                val text = command.setClipboard.text
+                if (text.length > MAX_CLIPBOARD_CHARS) invalidRequest("text must be at most $MAX_CLIPBOARD_CHARS chars")
+            }
+
+            OpCase.AWAIT_TOAST -> {
+                val toast = command.awaitToast
+                if (toast.mode == MatchMode.UNRECOGNIZED) invalidRequest("Unknown match mode")
+                if (toast.hasText()) {
+                    if (toast.text.length > MAX_SELECTOR_STRING_CHARS) invalidRequest("text must be at most $MAX_SELECTOR_STRING_CHARS chars")
+                    if (toast.mode == MatchMode.MATCH_REGEX) {
+                        try {
+                            Pattern.compile(toast.text)
+                        } catch (error: PatternSyntaxException) {
+                            invalidRequest("Invalid regex '${toast.text}': ${error.message}")
+                        }
+                    }
+                } else if (toast.mode != MatchMode.MATCH_UNSPECIFIED) {
+                    invalidRequest("mode needs text")
+                }
+                if (toast.hasPackageName()) requirePackage(toast.packageName)
+            }
 
             OpCase.OP_NOT_SET, null -> {
                 throw InvalidCommandException(ErrorCode.ERR_UNSUPPORTED, null, "No command op is set")
@@ -145,11 +204,14 @@ object CommandValidation {
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.TAP, OpCase.LONG_TAP, OpCase.CLEAR_TEXT,
+            OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG,
+            OpCase.WAIT_PERMISSION_PROMPT, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.GET_CLIPBOARD,
             -> {
                 Unit
             }
         }
         command.targetSelector?.let { checkPresent(command, it) }
+        if (command.opCase == OpCase.DRAG) checkPresent(command, command.drag.target)
         command.selectors.forEach { validateSelector(it) }
     }
 
