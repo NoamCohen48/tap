@@ -154,6 +154,22 @@ class EventsRequest(_message.Message):
     after_seq: int
     def __init__(self, client_connection_id: _Optional[str] = ..., after_seq: _Optional[int] = ...) -> None: ...
 
+class WatchEventsRequest(_message.Message):
+    __slots__ = ("observed_connection_id", "after_seq")
+    OBSERVED_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    AFTER_SEQ_FIELD_NUMBER: _ClassVar[int]
+    observed_connection_id: str
+    after_seq: int
+    def __init__(self, observed_connection_id: _Optional[str] = ..., after_seq: _Optional[int] = ...) -> None: ...
+
+class WatchEventsResponse(_message.Message):
+    __slots__ = ("events", "closing")
+    EVENTS_FIELD_NUMBER: _ClassVar[int]
+    CLOSING_FIELD_NUMBER: _ClassVar[int]
+    events: EventsResponse
+    closing: Closing
+    def __init__(self, events: _Optional[_Union[EventsResponse, _Mapping]] = ..., closing: _Optional[_Union[Closing, _Mapping]] = ...) -> None: ...
+
 class EventsResponse(_message.Message):
     __slots__ = ("events", "dropped")
     EVENTS_FIELD_NUMBER: _ClassVar[int]

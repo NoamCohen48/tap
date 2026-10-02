@@ -21,7 +21,12 @@ was imported. The implementation remains independently written.
   commit `0ebd2540a33c674194d59357a48287629b8377a9` (MIT). CLI, MCP server and Node API that
   lets coding agents drive and verify apps on iOS/Android/HarmonyOS/web/desktop.
 
-The first three repositories identify their audited source as Apache-2.0, the last two as MIT.
+- [Genymobile/scrcpy 4.1](https://github.com/Genymobile/scrcpy/tree/2926c06c5dc3064ae6d8db706f1a98a37cfcf3f0),
+  commit `2926c06c5dc3064ae6d8db706f1a98a37cfcf3f0` (Apache-2.0). The passive video
+  source reads this revision's socket framing; older protocol headers are incompatible.
+
+Appium, Maestro and scrcpy identify their audited source as Apache-2.0; openatx and
+agent-device as MIT.
 File history and headers must still be checked before any future source import.
 
 ## Decision matrix
@@ -50,6 +55,15 @@ File history and headers must still be checked before any future source import.
 | Agent-facing surface | agent-device exposes `snapshot` (accessibility tree as `@eN [role] "name"` refs, `-i` interactive-only), `press/fill @ref --settle` returning a **diff** of the tree, `screenshot`, `verify`, logs/video/traces as evidence, `.ad` replay scripts, one execution path shared by CLI, MCP and the typed client. | **ADAPT** as the design reference for a future *agent adapter over the Tap server*: snapshot-as-diagnostic with stable serialisation, settle-then-diff as an explicit call, evidence bundle shape, CLI/MCP/typed-client parity. | This is a consumer of a driver, not a driver: Tap would expose it as another client of `tap.v1`, never inside `host/`. |
 | Ref-addressed elements | agent-device addresses nodes by refs that are valid only until the next snapshot/diff, and every settle re-dumps the tree. | **DO NOT COPY** into the test SDKs. | Refs are persistent node handles by another name and need a hierarchy dump per step — both invariants Tap keeps out of the hot path. An agent adapter may hold refs *on the adapter side*, translating each ref to a selector before calling the service. |
 | Device state actions (group 3) | Maestro sets the device locale through a broadcast receiver in its driver app, mocks location through test providers (`setLocation`/`travel`) and adds media with `addMedia` (push + media scan); Appium toggles network with `svc`/`cmd connectivity` and pushes/pulls files over adb. | **ADAPT** the locale receiver (Tap's driver app, `CHANGE_CONFIGURATION`), test-provider mock location, `svc`/`cmd connectivity` switches and push + `scan_file` media. | Every change is journaled and read back (`DEVICE_SETTING` on a mismatch) and restored on detach; media and files are only ever created, never overwritten, and removed again. Bytes stream through the server, which never gets a host path. No code was copied; details in `.docs/device-actions.md`. |
+
+### Passive encoded video (2026-10-02)
+
+**ADAPT** scrcpy 4.1's video-only socket framing, independently implemented in
+`ScrcpyVideoProtocol`. No source was copied and no server binary is bundled. Each
+source uses its own SCID, JAR path and forward; controls, audio and screen wake are
+explicitly disabled. The SDK/driver is not involved. The optional server must match 4.1.
+See [shared-video.md](shared-video.md) for passive matrix evidence, the tested short-argv
+Samsung compatibility constraint, cleanup checks, and what remains unverified.
 
 ## Immediate implementation order
 

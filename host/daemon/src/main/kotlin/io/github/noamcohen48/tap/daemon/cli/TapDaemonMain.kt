@@ -180,7 +180,10 @@ private fun serve(
             .addService(ClientConnectionService(daemon))
             .addService(DeviceService(daemon))
             .addService(AppService(daemon))
-            .intercept(TokenAuthInterceptor(token))
+            .addService(
+                io.github.noamcohen48.tap.daemon.grpc
+                    .VideoService(daemon),
+            ).intercept(TokenAuthInterceptor(token))
             .maxInboundMessageSize(8 * 1024 * 1024)
             .build()
             .start()
@@ -276,8 +279,7 @@ private const val START_TIMEOUT_MS = 30_000L
 private enum class Probe { OK, REJECTED, DOWN }
 
 /** The descriptor in [stateDir], if the daemon it names answers `Info` with its token. */
-private fun liveDaemon(stateDir: Path): DaemonDescriptor? =
-    DaemonDescriptor.read(stateDir)?.takeIf { probe(it) == Probe.OK }
+private fun liveDaemon(stateDir: Path): DaemonDescriptor? = DaemonDescriptor.read(stateDir)?.takeIf { probe(it) == Probe.OK }
 
 /**
  * `Info` against the descriptor's port with its token. [Probe.REJECTED] means something else
@@ -341,10 +343,12 @@ internal fun status(
             out("running 127.0.0.1:${descriptor.port} pid=${descriptor.pid} version=${descriptor.daemonVersion} adb=${descriptor.adb}")
             0
         }
+
         Probe.REJECTED -> {
             out("stale descriptor: port ${descriptor.port} is served by something else")
             1
         }
+
         Probe.DOWN -> {
             out("not responding: daemon pid ${descriptor.pid} at 127.0.0.1:${descriptor.port} does not answer")
             1
@@ -368,7 +372,14 @@ internal fun stop(
     val handle = ProcessHandle.of(descriptor.pid).orElse(null)
     val probe = probe(descriptor)
     if (probe != Probe.OK || handle == null) {
-        val why = if (probe == Probe.REJECTED) "port ${descriptor.port} rejects its token" else "daemon pid ${descriptor.pid} does not answer"
+        val why =
+            if (probe ==
+                Probe.REJECTED
+            ) {
+                "port ${descriptor.port} rejects its token"
+            } else {
+                "daemon pid ${descriptor.pid} does not answer"
+            }
         out("stale descriptor ($why); removing it, signalling nothing")
         DaemonDescriptor.deleteIfOwned(stateDir, descriptor.token)
         return 0

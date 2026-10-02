@@ -19,6 +19,12 @@ The repository builds six artifact families, each on its own version line:
 | **Studio** (experimental) | `client-studio/vX.Y.Z` | `tap-studio` wheel + sdist (browser inspector + recorder with the built page inside, depends on `tap-e2e`) on a GitHub Release (PyPI opt-in, after `tap-e2e`) | `clients/studio/pyproject.toml` |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
 
+`clients/watcher` adds an experimental `tap-watcher` wheel with its built page,
+versioned in its `pyproject.toml` (currently 0.0.1). The `watcher` CI job checks codegen,
+page/backend tests and wheel contents on Python 3.10/3.13, and uploads `watcher-dists`.
+Source installation is documented in `docs/guide/watcher.md`; tag-driven watcher releases
+are not configured yet, so do not claim a published download or PyPI install.
+
 ### The host daemon and the driver are one artifact (the engine)
 
 The driver APKs (`device/driver`) are not published on their own. They ride inside the

@@ -3,9 +3,9 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.AttachedDeviceEntry
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Closing
-import io.github.noamcohen48.tap.api.v1.ConnectionEntry
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
+import io.github.noamcohen48.tap.api.v1.ConnectionEntry
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.EventsRequest
@@ -19,6 +19,8 @@ import io.github.noamcohen48.tap.api.v1.ListConnectionsResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.WatchEventsRequest
+import io.github.noamcohen48.tap.api.v1.WatchEventsResponse
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.protocol.HOST_BUILD_ID
 import io.github.noamcohen48.tap.protocol.PROTOCOL_VERSION_ORDER
@@ -83,7 +85,37 @@ class ClientConnectionService(
         reply {
             argument(request.afterSeq >= 0) { "after_seq must be >= 0" }
             val (events, dropped) = daemon.eventLog(request.clientConnectionId).after(request.afterSeq)
-            EventsResponse.newBuilder().addAllEvents(events).setDropped(dropped).build()
+            EventsResponse
+                .newBuilder()
+                .addAllEvents(events)
+                .setDropped(dropped)
+                .build()
+        }
+
+    /** Reads another connection's log without claiming Observe or renewing its idle timeout. */
+    override fun watchEvents(request: WatchEventsRequest): Flow<WatchEventsResponse> =
+        flow {
+            reply {
+                argument(request.afterSeq >= 0) { "after_seq must be >= 0" }
+                daemon.sharedEventLog(request.observedConnectionId).watch(request.afterSeq).collect { update ->
+                    emit(
+                        WatchEventsResponse
+                            .newBuilder()
+                            .apply {
+                                if (update.closingReason != null) {
+                                    closing = Closing.newBuilder().setReason(update.closingReason).build()
+                                } else {
+                                    events =
+                                        EventsResponse
+                                            .newBuilder()
+                                            .addAllEvents(update.events)
+                                            .setDropped(update.dropped)
+                                            .build()
+                                }
+                            }.build(),
+                    )
+                }
+            }
         }
 
     /**

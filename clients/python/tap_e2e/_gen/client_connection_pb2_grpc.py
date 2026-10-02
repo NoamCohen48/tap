@@ -64,6 +64,11 @@ class ClientConnectionServiceStub:
                 request_serializer=client__connection__pb2.EventsRequest.SerializeToString,
                 response_deserializer=client__connection__pb2.EventsResponse.FromString,
                 _registered_method=True)
+        self.WatchEvents = channel.unary_stream(
+                '/tap.v1.ClientConnectionService/WatchEvents',
+                request_serializer=client__connection__pb2.WatchEventsRequest.SerializeToString,
+                response_deserializer=client__connection__pb2.WatchEventsResponse.FromString,
+                _registered_method=True)
 
 
 class ClientConnectionServiceServicer:
@@ -113,6 +118,14 @@ class ClientConnectionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchEvents(self, request, context):
+        """Shared read: retained backlog followed by live events. Does not own the observed
+        connection, renew its idle timeout, or disconnect it when the reader leaves.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ClientConnectionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -145,6 +158,11 @@ def add_ClientConnectionServiceServicer_to_server(servicer, server):
                     servicer.Events,
                     request_deserializer=client__connection__pb2.EventsRequest.FromString,
                     response_serializer=client__connection__pb2.EventsResponse.SerializeToString,
+            ),
+            'WatchEvents': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchEvents,
+                    request_deserializer=client__connection__pb2.WatchEventsRequest.FromString,
+                    response_serializer=client__connection__pb2.WatchEventsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -309,6 +327,33 @@ class ClientConnectionService:
             '/tap.v1.ClientConnectionService/Events',
             client__connection__pb2.EventsRequest.SerializeToString,
             client__connection__pb2.EventsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchEvents(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/tap.v1.ClientConnectionService/WatchEvents',
+            client__connection__pb2.WatchEventsRequest.SerializeToString,
+            client__connection__pb2.WatchEventsResponse.FromString,
             options,
             channel_credentials,
             insecure,

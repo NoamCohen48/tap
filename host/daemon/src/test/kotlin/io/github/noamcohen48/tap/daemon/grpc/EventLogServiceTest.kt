@@ -6,7 +6,6 @@ import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Done
-import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.EventsRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
@@ -21,6 +20,7 @@ import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.FakeDriverServer
+import io.github.noamcohen48.tap.host.MediaClock
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.Selectors
@@ -42,6 +42,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 /** Execute calls land in the owning connection's event log with their outcome; `Events` reads it. */
 class EventLogServiceTest {
@@ -64,7 +65,13 @@ class EventLogServiceTest {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
             FakeDriverServer("log-session", 3, secret).use { driver ->
                 val client = DriverClient.connect(driver.port, "log-session", 3, secret, serial = "log-serial", heartbeatIntervalMs = 0)
-                val config = DaemonConfig(adb = object : Adb("fake-adb") {}, stateDir = Files.createTempDirectory("tap-events"), driver = null, log = {})
+                val config =
+                    DaemonConfig(
+                        adb = object : Adb("fake-adb") {},
+                        stateDir = Files.createTempDirectory("tap-events"),
+                        driver = null,
+                        log = {},
+                    )
                 val opener =
                     object : DeviceSessionOpener {
                         override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession = Device(client)
@@ -114,7 +121,13 @@ class EventLogServiceTest {
                     }
 
                     suspend fun events(after: Long = 0) =
-                        connections.events(EventsRequest.newBuilder().setClientConnectionId(connection.id).setAfterSeq(after).build())
+                        connections.events(
+                            EventsRequest
+                                .newBuilder()
+                                .setClientConnectionId(connection.id)
+                                .setAfterSeq(after)
+                                .build(),
+                        )
 
                     val tap = Commands.tap(Selectors.text("OK"))
                     execute(tap, CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
@@ -130,6 +143,12 @@ class EventLogServiceTest {
                     assertEquals(tap, first.command)
                     assertEquals("log-serial", first.serial)
                     assertTrue(first.atEpochMs > 0)
+                    for (event in all.eventsList) {
+                        assertEquals(MediaClock.id, event.clockId)
+                        assertTrue(event.hasStartedMonotonicNs() && event.hasFinishedMonotonicNs())
+                        assertTrue(event.finishedMonotonicNs >= event.startedMonotonicNs)
+                        assertEquals((event.finishedMonotonicNs - event.startedMonotonicNs) / 1_000_000L, event.durationMs)
+                    }
                     assertFalse(first.hasError() || first.hasFailure())
                     assertEquals(missing, second.command)
                     assertEquals(ErrorCode.ERR_NOT_FOUND, second.error.code)

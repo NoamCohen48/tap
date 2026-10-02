@@ -92,6 +92,17 @@ is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Resp
 | `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
 | `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, generation). How a later process (`tap` CLI) finds a held connection by name. |
 | `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent), and install / uninstall / force-stop / clear-data / grant / revoke / launch / cold launch / foreground / open link (`AppCall{operation, package_name, activity?, permission?, timeout_ms?, uri?, any_app?, extras}`), each with serial, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
+| `WatchEvents(observed_connection_id, after_seq)` → stream `{events | closing}` | Shared authenticated read: retained backlog first (possibly empty), then live events with `seq > after_seq`. Does not create a connection, claim Observe, renew owner activity, or detach on reader cancellation. Backlog/live registration is atomic. Each reader has a bounded 128-update queue; a slow reader receives `RESOURCE_EXHAUSTED` / `DAEMON_PRECONDITION` and can reconnect with its last received sequence number. `dropped` reports retained-log evictions, so gaps must remain visible. The owner disconnecting sends `closing{reason}` after queued events and ends the stream. Unknown connection: `NOT_FOUND`; negative cursor: `INVALID_ARGUMENT`. Anyone with the daemon token can read selectors and typed text already recorded in the log. |
+
+`LoggedEvent` also carries optional `started_monotonic_ns` / `finished_monotonic_ns`
+and a `clock_id`. Start is measured at logging-wrapper entry, after validation and before constructing
+the event/invoking its block. End is measured after outcome classification, immediately
+before appending the event, not after gRPC response delivery. These include the block's
+queue/transport waits in `:host:core`'s process-local `MediaClock`; duration is their
+nanosecond difference rounded down to milliseconds. They are **not** device execution
+or capture times. Compare them with video receipt only when clock ids match. Older
+daemons omit these fields; never infer monotonic alignment from epoch start/duration.
+A restarted process has a new clock id. Cancelled calls remain unlogged.
 
 A connection whose Observe is not open 30 s after `Connect` is reaped. A client that crashes
 between Connect and Observe therefore cannot leak a connection.
@@ -264,6 +275,30 @@ device is looked up: stopping, clearing or uninstalling them would end the sessi
 
 All of them delegate to `AppLifecycle` in `:host:core`.
 
+### VideoService: shared passive screen video
+
+`video.proto` adds authenticated `WatchVideo(serial)`, a server stream independent of
+attachments and client connections. It checks inventory but never attaches, claims
+Observe, renews owner idle time, enables screenshots, wakes the display or sends input.
+One optional scrcpy 4.1 producer serves all readers for that serial (`TAP_VIDEO_SERVER`,
+default `/usr/share/scrcpy/scrcpy-server`; not bundled). Source details and evidence are
+in [shared-video.md](shared-video.md).
+
+`WatchVideoResponse` contains a `VideoHeader` or `VideoFrame`. Header: stream and clock
+identity, encoded dimensions, Annex B SPS/PPS. Frame: sequence, original device PTS in
+microseconds, key flag, Annex B access unit, full-packet host receipt monotonic nanoseconds
+and epoch milliseconds. These are not device input/capture timestamps. A changed header
+resets decoding/retention; clocks are comparable only within the same clock identity.
+
+Subscriptions atomically register and snapshot header/keyframe preroll, then receive
+live packets. Retention is 120 seconds / 32 MiB with whole-GOP eviction. Limits: four
+producers, eight readers per producer; each reader queue is 128 updates / 4 MiB. Slow
+readers receive RESOURCE_EXHAUSTED, never blocking the producer or owner. Cancellation
+removes only that reader; last-reader exit stops capture. A stopping producer cannot be
+replaced before cleanup ends; unproven cleanup gates that serial. Daemon shutdown stops
+all producers within its existing deadline. Optional capture failures are UNAVAILABLE
+with DAEMON_PRECONDITION. No owner or journal state is changed.
+
 ### Failures (`failure.proto`, `daemon/grpc/common.kt` `Throwable.toStatus()`)
 
 Every non-OK status carries a serialized `tap.v1.Failure` in the binary trailer
@@ -376,5 +411,5 @@ A conforming client:
 ## 6. Not implemented
 
 - No remote (non-loopback) mode.
-- No event stream beyond heartbeats and `closing`. Per-connection structured events (plan §19)
-  belong here when they are built.
+- No shared live video stream yet. `WatchEvents` supplies connection action logs; optional
+  test markers remain deferred.

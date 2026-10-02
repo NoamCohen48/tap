@@ -1,9 +1,10 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
-import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.LoggedEvent
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
+import io.github.noamcohen48.tap.host.MediaClock
 import kotlinx.coroutines.CancellationException
+import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 /**
  * Runs [block] (a call on this device that was already validated) and appends it to the owning
@@ -16,13 +17,20 @@ internal suspend fun <T> AttachedDevice.recorded(
     errorOf: (T) -> CommandError? = { null },
     block: suspend () -> T,
 ): T {
+    val started = MediaClock.nowNs()
     val event =
         LoggedEvent
             .newBuilder()
             .setAtEpochMs(System.currentTimeMillis())
             .setSerial(deviceSession.serial)
+            .setStartedMonotonicNs(started)
+            .setClockId(MediaClock.id)
             .apply(call)
-    val started = System.nanoTime()
+
+    fun finish() {
+        val finished = MediaClock.nowNs()
+        events.append(event.setFinishedMonotonicNs(finished).setDurationMs((finished - started) / 1_000_000L))
+    }
     val result =
         try {
             block()
@@ -31,10 +39,10 @@ internal suspend fun <T> AttachedDevice.recorded(
         } catch (error: Throwable) {
             val status = error.toStatus()
             status.trailers?.get(FAILURE_TRAILER)?.let { event.failure = it }
-            events.append(event.setDurationMs((System.nanoTime() - started) / 1_000_000L))
+            finish()
             throw status
         }
     errorOf(result)?.let { event.error = it }
-    events.append(event.setDurationMs((System.nanoTime() - started) / 1_000_000L))
+    finish()
     return result
 }

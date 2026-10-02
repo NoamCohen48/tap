@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.daemon.core.DaemonPreconditionException
+import io.github.noamcohen48.tap.daemon.core.EventReaderOverflowException
 import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
 import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
@@ -13,7 +14,6 @@ import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
 import io.github.noamcohen48.tap.host.AdbTimeoutException
 import io.github.noamcohen48.tap.host.AppLifecycleException
-import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DeviceBusyException
 import io.github.noamcohen48.tap.host.DeviceFileException
@@ -22,6 +22,7 @@ import io.github.noamcohen48.tap.host.DeviceSettingException
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverStartException
 import io.github.noamcohen48.tap.host.HostWaitTimeoutException
+import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.RemoteCommandException
 import io.github.noamcohen48.tap.host.SessionUnusableException
 import io.github.noamcohen48.tap.host.UnsupportedApiException
@@ -117,48 +118,81 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
     val failure = Failure.newBuilder()
     val status: Status =
         when (this) {
-            is UnknownClientConnectionException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_CLIENT_CONNECTION }
-            is UnknownAttachedDeviceException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_ATTACHED_DEVICE }
-            is NotOwnerException -> Status.PERMISSION_DENIED.also { failure.reason = FailureReason.FAILURE_REASON_NOT_OWNER }
-            is InvalidArgumentException, is InvalidCommandException ->
+            is UnknownClientConnectionException -> {
+                Status.NOT_FOUND.also {
+                    failure.reason =
+                        FailureReason.FAILURE_REASON_UNKNOWN_CLIENT_CONNECTION
+                }
+            }
+
+            is UnknownAttachedDeviceException -> {
+                Status.NOT_FOUND.also {
+                    failure.reason =
+                        FailureReason.FAILURE_REASON_UNKNOWN_ATTACHED_DEVICE
+                }
+            }
+
+            is NotOwnerException -> {
+                Status.PERMISSION_DENIED.also { failure.reason = FailureReason.FAILURE_REASON_NOT_OWNER }
+            }
+
+            is InvalidArgumentException, is InvalidCommandException -> {
                 Status.INVALID_ARGUMENT.also { failure.reason = FailureReason.FAILURE_REASON_INVALID_ARGUMENT }
+            }
+
             // A busy device is a precondition failure when no wait was asked for, a timeout when it was.
             is DeviceBusyException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_BUSY).setSerial(serial).setWaitedMs(waitedMs)
                 if (waitedMs > 0) Status.DEADLINE_EXCEEDED else Status.FAILED_PRECONDITION
             }
+
             is HostWaitTimeoutException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_HOST_WAIT_TIMEOUT).setSerial(serial).setWaitedMs(elapsedMs)
                 Status.DEADLINE_EXCEEDED
             }
+
             is AdbTimeoutException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_TIMEOUT).setSerial(serial.orEmpty())
                 Status.DEADLINE_EXCEEDED
             }
+
             is DeviceQuarantinedException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_QUARANTINED).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
+
             is AdbReapUncertainException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_REAP_UNCERTAIN).setSerial(serial.orEmpty())
                 Status.FAILED_PRECONDITION
             }
-            is AppLifecycleException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_APP_LIFECYCLE }
-            is RecordingException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+
+            is AppLifecycleException -> {
+                Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_APP_LIFECYCLE }
+            }
+
+            is RecordingException -> {
+                Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
             is UnsupportedApiException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_UNSUPPORTED_API).setSerial(serial).setDetail("REQUIRES_API_$requiredApi")
                 Status.FAILED_PRECONDITION
             }
+
             is DeviceFileException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_FILE).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
+
             is DeviceSettingException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_SETTING).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
-            is DriverBuildMismatchException ->
+
+            is DriverBuildMismatchException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_BUILD_MISMATCH }
+            }
+
             is RemoteCommandException -> {
                 failure
                     .setReason(FailureReason.FAILURE_REASON_DRIVER_COMMAND)
@@ -167,29 +201,48 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                     .setDetail(detail.orEmpty())
                 Status.FAILED_PRECONDITION
             }
+
             is CommandTransportException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DRIVER_TRANSPORT).setSerial(serial.orEmpty()).setErrorCode(code)
                 Status.UNAVAILABLE
             }
-            is DaemonPreconditionException ->
+
+            is EventReaderOverflowException -> {
+                Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
+            is DaemonPreconditionException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
-            is UnknownRefException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_REF }
-            is RefNotAddressableException ->
+            }
+
+            is UnknownRefException -> {
+                Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_REF }
+            }
+
+            is RefNotAddressableException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE }
+            }
+
             // The session is unusable: detach and attach again.
             is SessionUnusableException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_SESSION_UNUSABLE).setSerial(serial)
                 Status.ABORTED
             }
-            is DriverStartException -> Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_START_FAILED }
+
+            is DriverStartException -> {
+                Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_START_FAILED }
+            }
+
             is AdbCommandException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_FAILED).setSerial(serial.orEmpty())
                 Status.UNAVAILABLE
             }
+
             is AdbRunnerGatedException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_FAILED).setSerial(attemptSerial.orEmpty())
                 Status.UNAVAILABLE
             }
+
             else -> {
                 System.err.println("[tap] INTERNAL: unexpected ${this::class.qualifiedName}")
                 printStackTrace()

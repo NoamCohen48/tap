@@ -23,6 +23,7 @@ Test process (any language)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
 +-- clients/agent    tap-agent: CLI + MCP server for coding agents, over tap-e2e (.docs/agent-surface.md)
 +-- clients/studio   tap-studio (experimental): browser inspector + action recorder, over tap-e2e (.docs/recorder.md)
++-- clients/watcher  tap-watcher (experimental): read-only shared action/video viewer, playback and clip export
         |
         | gRPC over loopback  (contracts/proto/*.proto, package tap.v1)
         v
@@ -648,6 +649,15 @@ first, then `TAP_*` environment). Driver APKs come from the server's bundle.
 Class-level JUnit parallelism is safe: each device's lock serialises its `DeviceSession`s, and the
 sample suite runs its classes concurrently across two devices. Several JVMs (or a JVM and a
 pytest run) respect each other because the lock is a file under the shared state dir.
+
+### Standalone watcher (`clients/watcher/`)
+
+Python/Connect loopback server and React/Bun page. Uses generic authenticated inventory,
+`WatchEvents` and `VideoService.WatchVideo`; it creates no owner connection or attachment.
+`host/core` owns passive scrcpy 4.1 framing/capture and the shared process clock;
+`host/daemon/core/SharedVideo` owns per-serial bounded producers/readers and preroll.
+WebCodecs playback retains encoded packets; PyAV muxes MP4+JSON clip ZIPs locally.
+Public usage/limits: `docs/guide/watcher.md`; design/evidence: `.docs/shared-video.md`.
 
 ### Python binding (`clients/python/`)
 

@@ -23,7 +23,7 @@ import subprocess
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 import grpc
 
@@ -42,7 +42,14 @@ from .errors import (
     TapError,
     WaitTimeoutError,
 )
-from .models import ConnectionEntry, DeviceEntry, DeviceState, EventLog, FailureReason, ServerInfo
+from .models import (
+    ConnectionEntry,
+    DeviceEntry,
+    DeviceState,
+    EventLog,
+    FailureReason,
+    ServerInfo,
+)
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -75,10 +82,11 @@ def _read_descriptor(directory: pathlib.Path) -> dict | None:
     return descriptor
 
 
-class _CallDetails(NamedTuple):
+@dataclass(frozen=True)
+class _CallDetails(grpc.ClientCallDetails):
     method: str
     timeout: float | None
-    metadata: list[tuple[str, str]] | None
+    metadata: tuple[tuple[str, str | bytes], ...] | None
     credentials: grpc.CallCredentials | None
     wait_for_ready: bool | None
     compression: grpc.Compression | None
@@ -96,7 +104,7 @@ class _BearerToken(
         self._header = ("authorization", f"Bearer {token}")
 
     def _details(self, details: grpc.ClientCallDetails) -> _CallDetails:
-        metadata = [*(details.metadata or []), self._header]
+        metadata = (*(details.metadata or ()), self._header)
         return _CallDetails(
             details.method,
             details.timeout,
@@ -249,8 +257,14 @@ def _failure(error: grpc.RpcError) -> pb.Failure:
     """The ``tap-failure-bin`` trailer of ``error``; an empty ``Failure`` (reason UNSPECIFIED)
     when the status did not come from the daemon (a proxy, a transport failure, a cancel)."""
     trailers = error.trailing_metadata() if hasattr(error, "trailing_metadata") else None
-    for key, value in trailers or ():
-        if key == FAILURE_TRAILER:
+    for trailer in trailers or ():
+        # RpcError's stubs expose key/value attributes; Call implementations also
+        # return ordinary metadata tuples. Accept both without casting away the type.
+        if isinstance(trailer, tuple):
+            key, value = trailer
+        else:
+            key, value = trailer.key, trailer.value
+        if key == FAILURE_TRAILER and isinstance(value, bytes):
             return pb.Failure.FromString(value)
     return pb.Failure()
 

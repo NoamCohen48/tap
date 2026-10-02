@@ -33,6 +33,9 @@ service ClientConnectionService {
   // The connection's event log (`event_log.proto`) after `after_seq`. Kept for every connection,
   // the last 2000 events; renews a held connection like any call naming it.
   rpc Events(EventsRequest) returns (EventsResponse);
+  // Shared read: retained backlog followed by live events. Does not own the observed
+  // connection, renew its idle timeout, or disconnect it when the reader leaves.
+  rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse);
 }
 
 message ConnectRequest {
@@ -141,6 +144,23 @@ message EventsRequest {
   string client_connection_id = 1;
   // Only events with a larger `seq`; 0 for all that are kept.
   int64 after_seq = 2;
+}
+
+message WatchEventsRequest {
+  // The connection to read, not an identity owned by the subscriber.
+  string observed_connection_id = 1;
+  // Only events with a larger seq; 0 for the retained backlog. Must be >= 0.
+  int64 after_seq = 2;
+}
+
+message WatchEventsResponse {
+  oneof update {
+    // First the retained backlog (possibly empty), then live batches. Sequence
+    // numbers and dropped counts have the same meaning as EventsResponse.
+    EventsResponse events = 1;
+    // Connection ended. The stream completes normally after this update.
+    Closing closing = 2;
+  }
 }
 
 message EventsResponse {

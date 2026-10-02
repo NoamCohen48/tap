@@ -12,8 +12,8 @@ import io.github.noamcohen48.tap.host.DeviceSessionConfig
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
-import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.host.ScrcpyRecorder
+import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -216,7 +216,9 @@ class AttachedDevice internal constructor(
     val recording: ScrcpyRecorder,
 ) {
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
-    internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
+    internal val screen =
+        io.github.noamcohen48.tap.daemon.snapshot
+            .ScreenSnapshotState()
 }
 
 /** The last [capacity] lines of an attached device's driver output, kept for artifacts. */
@@ -291,6 +293,14 @@ class TapDaemon internal constructor(
     private val clientConnectionsById = HashMap<String, ConnectedClient>()
     private val attachedDevicesById = HashMap<String, AttachedDevice>()
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal val video =
+        SharedVideo { serial ->
+            io.github.noamcohen48.tap.host.ScrcpyVideoSource(
+                config.adb,
+                serial,
+                Path.of(System.getenv("TAP_VIDEO_SERVER") ?: "/usr/share/scrcpy/scrcpy-server"),
+            )
+        }
     private var closing = false
 
     /** Serials whose bundled driver this daemon process already installed. */
@@ -327,7 +337,8 @@ class TapDaemon internal constructor(
         val id = connection.id
         cleanupScope.launch {
             delay(observeGraceMs)
-            val unobserved = synchronized(lifecycleLock) { clientConnectionsById[id]?.let { !it.closed && it.observeOwner == null } ?: false }
+            val unobserved =
+                synchronized(lifecycleLock) { clientConnectionsById[id]?.let { !it.closed && it.observeOwner == null } ?: false }
             if (unobserved) disconnectClient(id, "no Observe stream within ${observeGraceMs}ms")
         }
         return connection
@@ -344,6 +355,9 @@ class TapDaemon internal constructor(
         markInUse(id)
         return connection.events
     }
+
+    /** Shared read: does not count as owner activity or renew the held connection's idle timeout. */
+    fun sharedEventLog(id: String): EventLog = clientConnection(id).events
 
     /** Every live connection with its attached devices, in no particular order. */
     fun connections(): List<ConnectionInfo> {
@@ -497,12 +511,13 @@ class TapDaemon internal constructor(
             // one device's bound, not the sum.
             val timeoutMs = deadlineNanos?.let { minOf(perAttachedDeviceMs, remainingMs(it).coerceAtLeast(1L)) } ?: perAttachedDeviceMs
             coroutineScope {
-                devices.map { attachedDevice ->
-                    async {
-                        val detail = closeAttachedDevice(attachedDevice, timeoutMs, shutdown = totalTimeoutMs != null)
-                        config.log("attached device ${attachedDevice.id} detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
-                    }
-                }.awaitAll()
+                devices
+                    .map { attachedDevice ->
+                        async {
+                            val detail = closeAttachedDevice(attachedDevice, timeoutMs, shutdown = totalTimeoutMs != null)
+                            config.log("attached device ${attachedDevice.id} detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
+                        }
+                    }.awaitAll()
             }
             config.log("connection $id disconnected ($reason): attachedDevices=${devices.size}")
             return@withContext devices.size
@@ -511,8 +526,12 @@ class TapDaemon internal constructor(
     private data class Snapshot(
         val attachedDevices: List<AttachedDevice>,
         val hooks: List<(String) -> Unit>,
+        val events: EventLog,
     ) {
-        fun endObserve(reason: String) = hooks.forEach { hook -> runCatching { hook(reason) } }
+        fun endObserve(reason: String) {
+            events.close(reason)
+            hooks.forEach { hook -> runCatching { hook(reason) } }
+        }
     }
 
     /**
@@ -537,7 +556,7 @@ class TapDaemon internal constructor(
         val hooks = connection.onDisconnect.toList()
         connection.onDisconnect.clear()
         connection.observeOwner = null
-        return Snapshot(owned, hooks)
+        return Snapshot(owned, hooks, connection.events)
     }
 
     /** Called with [lifecycleLock] held; scans and removes every device owned by [connectionId]. */
@@ -590,11 +609,12 @@ class TapDaemon internal constructor(
     ) {
         cleanupScope.launch {
             // Detached cleanup already runs in its own job; pass the full core close bound.
-            val outcome = runCatching {
-                val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
-                val coreError = runCatching { device.deviceSession.close(timeoutMs.coerceAtLeast(1L)) }.exceptionOrNull()?.message
-                listOfNotNull(audioError, coreError).takeIf { it.isNotEmpty() }?.joinToString("; ")
-            }
+            val outcome =
+                runCatching {
+                    val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
+                    val coreError = runCatching { device.deviceSession.close(timeoutMs.coerceAtLeast(1L)) }.exceptionOrNull()?.message
+                    listOfNotNull(audioError, coreError).takeIf { it.isNotEmpty() }?.joinToString("; ")
+                }
             val detail = outcome.getOrNull() ?: outcome.exceptionOrNull()?.message
             config.log("$label detached cleanup finished" + (detail?.let { " (quarantined: $it)" } ?: ""))
         }
@@ -602,7 +622,11 @@ class TapDaemon internal constructor(
 
     /** Stop scrcpy before releasing this session's serial lock. An audio failure does not skip
      * driver cleanup; both diagnostics are preserved in the detach detail. */
-    private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long, shutdown: Boolean): String? {
+    private suspend fun closeAttachedDevice(
+        device: AttachedDevice,
+        timeoutMs: Long,
+        shutdown: Boolean,
+    ): String? {
         if (!shutdown) {
             // Outside shutdown nothing imposes a deadline, so the recorder does not borrow the
             // driver's: reaping scrcpy always ends (SIGTERM, then SIGKILL), and a slow scrcpy must
@@ -618,7 +642,14 @@ class TapDaemon internal constructor(
         // shutdown deadlines. Even an audio failure must not skip journal/driver close.
         val remainingMs = (timeoutMs - elapsedMs).coerceAtLeast(1L)
         val sessionError = closeDeviceBounded(device.deviceSession, remainingMs, "attached device ${device.id}")
-        val audioTimeout = if (elapsedMs >= timeoutMs) "AUDIO_CLEANUP_TIMEOUT: attached device ${device.id} exceeded ${timeoutMs}ms" else null
+        val audioTimeout =
+            if (elapsedMs >=
+                timeoutMs
+            ) {
+                "AUDIO_CLEANUP_TIMEOUT: attached device ${device.id} exceeded ${timeoutMs}ms"
+            } else {
+                null
+            }
         return listOfNotNull(audioError, audioTimeout, sessionError).takeIf { it.isNotEmpty() }?.joinToString("; ")
     }
 
@@ -637,7 +668,11 @@ class TapDaemon internal constructor(
         val live = synchronized(lifecycleLock) { attachedDevicesById.values.toList() }
         return listed.map { device ->
             val serial = device.serial
-            if (device.state != AdbDeviceState.ONLINE) return@map DeviceEntry(serial, DeviceStatus.Unavailable(device.state, device.rawState))
+            if (device.state !=
+                AdbDeviceState.ONLINE
+            ) {
+                return@map DeviceEntry(serial, DeviceStatus.Unavailable(device.state, device.rawState))
+            }
             val store = SessionJournalStore(config.journalRoot, serial)
             val status =
                 quarantine(store)?.let { DeviceStatus.Quarantined(it) }
@@ -710,7 +745,11 @@ class TapDaemon internal constructor(
                 opener.open(deviceConfig)
             } catch (error: Throwable) {
                 // A build mismatch means the cached install is wrong: the next attach reinstalls.
-                if (installedBundled || error is DriverBuildMismatchException) synchronized(lifecycleLock) { driverInstalled.remove(serial) }
+                if (installedBundled ||
+                    error is DriverBuildMismatchException
+                ) {
+                    synchronized(lifecycleLock) { driverInstalled.remove(serial) }
+                }
                 throw error
             }
         // Registration is one lifecycle transaction. If disconnect wins while attachment is
@@ -723,7 +762,12 @@ class TapDaemon internal constructor(
                 } else {
                     val attachedDevice =
                         AttachedDevice(
-                            UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events,
+                            UUID.randomUUID().toString(),
+                            ownerConnectionId,
+                            device,
+                            options.defaultTimeoutMs,
+                            log,
+                            owner.events,
                             deps.scrcpyLaunch?.let { ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable, it) }
                                 ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
                         )
@@ -804,6 +848,7 @@ class TapDaemon internal constructor(
     suspend fun close(timeoutMs: Long = shutdownTotalMs) {
         withContext(NonCancellable) {
             val deadlineNanos = deadlineAfterMs(timeoutMs)
+            video.stop()
             val ids =
                 synchronized(lifecycleLock) {
                     closing = true
@@ -846,6 +891,7 @@ class TapDaemon internal constructor(
                     )
                 }.onFailure { config.log("connection $id shutdown failed: ${it.message}") }
             }
+            video.awaitStop(remainingMs(deadlineNanos))
         }
     }
 

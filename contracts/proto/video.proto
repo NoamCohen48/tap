@@ -1,0 +1,35 @@
+// Shared passive screen video, independent of attachment and connection ownership.
+syntax = "proto3";
+package tap.v1;
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+
+service VideoService {
+  // One producer per serial, shared by readers. Cancellation releases only this reader.
+  // Optional: requires the pinned scrcpy 4.1 server on the host. No input or screen wake.
+  rpc WatchVideo(WatchVideoRequest) returns (stream WatchVideoResponse);
+}
+message WatchVideoRequest { string serial = 1; }
+message VideoHeader {
+  string stream_id = 1;
+  string clock_id = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  // H.264 Annex B SPS/PPS. A new header resets the decoder and retained playback window.
+  bytes configuration = 5;
+}
+message VideoFrame {
+  uint64 seq = 1;
+  int64 pts_us = 2;
+  bool key_frame = 3;
+  bytes data = 4;
+  // Host full-packet receipt, NOT device capture or input execution time.
+  int64 received_monotonic_ns = 5;
+  int64 received_epoch_ms = 6;
+}
+message WatchVideoResponse {
+  oneof update {
+    VideoHeader header = 1;
+    VideoFrame frame = 2;
+  }
+}

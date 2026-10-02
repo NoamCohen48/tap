@@ -1,0 +1,26 @@
+// Browser ↔ standalone watcher. No attachment or mutation methods.
+syntax = "proto3";
+package tap.watcher.v1;
+
+import "client_connection.proto";
+import "device.proto";
+import "video.proto";
+
+service WatcherService {
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse);
+  rpc WatchVideo(tap.v1.WatchVideoRequest) returns (stream tap.v1.WatchVideoResponse);
+}
+
+message ListDevicesRequest {}
+message ListDevicesResponse {
+  repeated tap.v1.DeviceEntry devices = 1;
+  repeated tap.v1.ConnectionEntry connections = 2;
+}
+message WatchEventsRequest {
+  string observed_connection_id = 1;
+  int64 after_seq = 2;
+}
+message WatchEventsResponse {
+  tap.v1.WatchEventsResponse update = 1;
+}
