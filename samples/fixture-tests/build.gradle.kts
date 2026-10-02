@@ -24,6 +24,8 @@ tasks.test {
     enabled = serials.isPresent
     dependsOn(":fixture-app:assembleDebug", ":host:daemon:installDist")
     outputs.upToDateWhen { false }
+    // A device run's result is never reusable: keep it out of the build cache too.
+    outputs.cacheIf { false }
     systemProperty("tap.serials", serials.getOrElse(""))
     systemProperty("tap.bin", daemonBin.asFile.absolutePath)
     // Starts the JVM dist built here unless a server is already running; stops it again if it started it.
