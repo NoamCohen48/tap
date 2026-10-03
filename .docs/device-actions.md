@@ -401,11 +401,18 @@ there; the run's `device-test-artifacts` hold the logcat and per-test evidence.
   the scanner inserting `/storage/emulated/0/Pictures/Tap/tap-sample.png` into
   `content://media/internal/file` and failing ("doesn't appear under [/system/media, …]"). Cause
   not found; possibly a freshly booted emulator only.
-- *Run the `forceStop`/`clearData` task wait on the Samsung (API 29).* `Adb.hasTaskOrActivity`
-  now also waits for the app's emptied task (Android's delayed task removal killed a launch
-  started right after `clearData`). The API 29 `TaskRecord` format is unit-tested but not seen
-  on a device: if one keeps an empty task listed after a force-stop, `forceStop` times out.
-  A task under a custom `taskAffinity` is not recognised by its header.
+- *Launch right after `clearData` is still raced.* `pm clear` force-removes the app's activity
+  records at once; the emptied task is removed by a destroy timeout about a second later, which
+  kills the app's running process: the one a launch has just started. That launch then waits
+  ~40 s and `am start -W` times out (logcat: `Destroy timeout of remove-task … Killing <pid>:
+  remove task`, then `Displayed … +39s`). `forceStop`/`clearData` now also wait until
+  `dumpsys activity activities` lists no task of the package (`Adb.hasTaskOrActivity`), which
+  fixed it in `LifecycleTest` and `permissionPromptIsAnsweredByChoice`, but not always: in run
+  37102138550 `locationPromptTakesApproximate` lost its launch to task #37, which the dump no
+  longer listed while it waited for removal. Find a signal that shows the pending removal (try
+  `dumpsys activity recents`, `am stack list` / `cmd activity`, or the `wm_task_removed` event
+  log) on the emulator and the Samsung. Also check the API 29 `TaskRecord` header on a device;
+  a task under a custom `taskAffinity` is not recognised by its header.
 
 **Element extras**
 - Fling `canScrollMore` (whether the content can still move after a fling).
