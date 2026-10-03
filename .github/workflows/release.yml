@@ -9,6 +9,8 @@ name: Release
 #                         (PyPI when enabled)
 #   client-studio/v1.2.3  tap-studio (browser inspector + recorder, page built in) wheel + sdist
 #                         on a GitHub Release (PyPI when enabled)
+#   client-watcher/v1.2.3 tap-watcher (read-only activity + video viewer, page built in) wheel +
+#                         sdist on a GitHub Release (PyPI when enabled)
 #   sync-sdk/v1.2.3       tap-sync-sdk (AAR) to GitHub Packages
 # The documentation is not attached here: it ships in the one-download bundles (bundle.yml).
 # The tag's version must equal the one in gradle.properties / pyproject.toml.
@@ -20,6 +22,7 @@ on:
       - "client-python/v*"
       - "client-agent/v*"
       - "client-studio/v*"
+      - "client-watcher/v*"
       - "sync-sdk/v*"
   # Manual fallback: tag pushes normally trigger the run above, but when
   # GitHub drops the event (seen 2026-09-30: four tags pushed, no runs),
@@ -395,6 +398,70 @@ jobs:
             Requires a `tap` daemon of engine version ${{
             needs.resolve.outputs.engine }} or later (tag `daemon/v${{
             needs.resolve.outputs.engine }}`), started with `tap start`.
+      # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
+      - name: Publish to PyPI
+        if: vars.PUBLISH_TO_PYPI == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  # ---- client-watcher/v* --------------------------------------------------------------------
+  client-watcher:
+    name: tap-watcher
+    needs: resolve
+    if: needs.resolve.outputs.family == 'client-watcher'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The page is built into the package (tap_watcher/static) before the wheel.
+      - name: Test and build
+        run: |
+          (cd clients/watcher/web && bun install --frozen-lockfile)
+          python -m pip install --quiet build "clients/python[dev]" \
+          "clients/watcher[dev]"
+          python clients/watcher/scripts/gen_protos.py --check
+          (cd clients/watcher/web && bun run test && bun run build)
+          python -m pytest -q clients/watcher/tests
+          python -m build --outdir dist clients/watcher
+          version="${{ needs.resolve.outputs.version }}"
+          wheel="dist/tap_watcher-${version}-py3-none-any.whl"
+          python -m zipfile -l "$wheel" | grep -q "tap_watcher/static/index.html"
+          python -m pip install --quiet --force-reinstall --no-deps "$wheel"
+          python -c "import tap_watcher, sys; sys.exit(tap_watcher.__version__ != '${version}')"
+          tap-watcher --version
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: tap-watcher ${{ needs.resolve.outputs.version }}
+          files: dist/*
+          body: |
+            tap-watcher (experimental): a read-only browser view of what
+            every connection does on each device, next to the device's
+            screen video, with clips, recordings and a Library. It never
+            attaches or sends commands, so it can watch any test run. It
+            depends on `tap-e2e`, which is not on PyPI yet: install the
+            `tap-e2e` wheel from its `client-python/v*` release first, then
+
+            ```bash
+            pip install https://github.com/${{ github.repository
+            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_watcher-${{
+            needs.resolve.outputs.version }}-py3-none-any.whl
+            tap-watcher
+            ```
+            Requires a `tap` daemon of engine version ${{
+            needs.resolve.outputs.engine }} or later (tag `daemon/v${{
+            needs.resolve.outputs.engine }}`), started with `tap start`;
+            the screen video also needs `tap start --scrcpy-server JAR`
+            (a scrcpy 4.1 server).
       # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
       - name: Publish to PyPI
         if: vars.PUBLISH_TO_PYPI == 'true'

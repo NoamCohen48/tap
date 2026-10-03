@@ -112,12 +112,21 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
     [Tap Studio](studio/index.md){ .md-button }
 
+=== "Watch a run"
+
+    `tap-watcher` shows every device in your browser while your tests run: which test process
+    holds it, each action it runs, and the device's screen as video. Look back at the seconds
+    before a failure, compare the screen before and after an action, and save clips. It only
+    watches, so the tests run exactly as they would without it.
+
+    [tap-watcher](watcher/index.md){ .md-button }
+
 ## How it works
 
 <div class="tap-flow" role="list" aria-label="How a Tap command reaches the device">
   <div class="tap-flow__box" role="listitem">
     <strong>Your tests and tools</strong>
-    <span>JUnit 5, pytest, tap-agent, Tap Studio</span>
+    <span>JUnit 5, pytest, tap-agent, Tap Studio, tap-watcher</span>
   </div>
   <div class="tap-flow__arrow" aria-hidden="true">gRPC</div>
   <div class="tap-flow__box tap-flow__box--accent" role="listitem">
@@ -138,7 +147,7 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
 You start the server once (`tap start`). Every client talks to it, so tests in Kotlin and Python,
 an agent and Studio share the same devices without stepping on each other: a device is held by
-one of them at a time. The driver is a separate app, so it survives your app being force-stopped
+one of them at a time, and `tap-watcher` can watch all of them. The driver is a separate app, so it survives your app being force-stopped
 or cleared. [Architecture](development/architecture.md) has the details.
 
 ## Why Tap

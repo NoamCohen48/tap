@@ -23,6 +23,7 @@ Test process (any language)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
 +-- clients/agent    tap-agent: CLI + MCP server for coding agents, over tap-e2e (.docs/agent-surface.md)
 +-- clients/studio   tap-studio (experimental): browser inspector + action recorder, over tap-e2e (.docs/recorder.md)
++-- clients/watcher  tap-watcher (experimental): read-only activity/video viewer, look-back, clips and recordings
         |
         | gRPC over loopback  (contracts/proto/*.proto, package tap.v1)
         v
@@ -89,7 +90,7 @@ tap/
 |
 +-- contracts/                   what the three components agree on
 |   +-- proto/                   the one protobuf schema; single source for every generated binding
-|   |   +-- *.proto              package tap.v1 (public): selector, command, failure, client_connection, device, app
+|   |   +-- *.proto              package tap.v1 (public): selector, command, failure, client_connection, device, app, event_log, watch
 |   |   +-- wire/wire.proto      package tap.wire.v1 (internal): TAP1 payloads — handshake, Request(Command)/Response(CommandResult), host-internal ops, blob metadata
 |   |   +-- buf.yaml, BREAKING_BASELINE   lint/breaking config; commit before which CI skips `buf breaking` (the deliberate 3.0 break)
 |   +-- conformance/client-conformance.json   defaults + failure-reason → exception table loaded by the daemon, Kotlin and Python unit suites
@@ -179,6 +180,8 @@ tap/
 |   |   |   |   +-- TapDaemon.kt       ConnectedClient/attached-device registries, device list, bounded teardown
 |   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted per build id, or a `--driver-apk` override
 |   |   |   |   +-- EventLog.kt        per-connection bounded event log (`Events`, `.docs/agent-surface.md` decision 3)
+|   |   |   |   +-- ActivityLog.kt     daemon-wide activity log (connections, attachments, logged calls) behind `Watch`
+|   |   |   |   +-- SharedVideo.kt     one scrcpy video producer per serial, preroll snapshot, bounded readers (`WatchVideo`)
 |   |   |   +-- daemon/snapshot/       screen snapshots with refs (`.docs/agent-surface.md` decision 2); diagnostic only, never on the action path
 |   |   |   |   +-- HierarchyParser.kt   hand XML parser for the UiAutomator dump (no DTD/entities: XXE-safe, no JAXP in the native image) → pre-order DumpNodes
 |   |   |   |   +-- DumpMatcher.kt       the driver's native-plan selector semantics (package predicate, resources, relations) evaluated over a dump
@@ -190,11 +193,12 @@ tap/
 |   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info/ListConnections/Events + exactly-one Observe (observing/heartbeat/closing)
 |   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording, device conditions, streamed PushFile/AddMedia (spooled to <state-dir>/uploads) and PullFile
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
+|   |   |       +-- WatchService.kt             read-only Watch (activity) and WatchVideo; names no connection
 |   |   |       +-- EventRecording.kt          records an Execute / app call and its outcome into the owner's EventLog
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
 |   |   |       +-- common.kt                  Defaults (echoed in Info), suspend reply wrapper, exception → status + `tap-failure-bin` Failure trailer
 |   |   +-- src/main/resources/META-INF/native-image/  reachability metadata recorded with the tracing agent
-|   |   +-- src/test/kotlin/...      core: TapDaemonLifecycleTest; cli: CliTest, DaemonDescriptorTest; grpc: ClientConnectionServiceTest, AppServiceTest, FailureStatusTest,
+|   |   +-- src/test/kotlin/...      core: TapDaemonLifecycleTest, ActivityLogTest; cli: CliTest, DaemonDescriptorTest; grpc: ClientConnectionServiceTest, AppServiceTest, FailureStatusTest, WatchServiceTest,
 |   |   |                            ScreenSnapshotServiceTest; snapshot: HierarchyParserTest, SelectorSynthesisTest, ScreenSnapshotStateTest
 |   |   +-- src/test/resources/snapshot/  fixture-app hierarchy dumps recorded on emulator-5554 (API 34) and 85e49002 (API 29)
 |   +-- validation/              :host:validation — device validation suite + `tap-product-probe` (exe)
@@ -648,6 +652,36 @@ first, then `TAP_*` environment). Driver APKs come from the server's bundle.
 Class-level JUnit parallelism is safe: each device's lock serialises its `DeviceSession`s, and the
 sample suite runs its classes concurrently across two devices. Several JVMs (or a JVM and a
 pytest run) respect each other because the lock is a file under the shared state dir.
+
+### Standalone watcher (`clients/watcher/`)
+
+Python/Connect loopback back end and React/Bun page, talking `tap.watcher.v1`
+(`clients/watcher/proto/watcher.proto`). The back end reads the daemon through
+`WatchService.Watch` (daemon-wide activity: connections, attachments, logged calls) and
+`WatchService.WatchVideo`, plus `Info` / `ListDevices`; it creates no connection or attachment.
+
+```
+tap_watcher/
+  daemon.py      read-only channel to the daemon (lazy, re-resolved after a restart)
+  activity.py    ActivityHub: one upstream Watch, renumbered seq, restart detection, page readers
+  video.py       VideoHub/Feed: one WatchVideo per serial, GOP History, readers and sinks
+  recorder.py    Recorder (a Sink) and Recorders: start/stop, limits, SaveClip
+  media.py       Mp4Writer (PyAV, no re-encode) and the steps.json document
+  recordings.py  Library: staging, commit, list, delete, ZIP on download
+  service.py     the Connect service; server.py the routes, login cookie and Guard
+web/src/
+  App.tsx        top bar, Live / Library views, polling
+  DeviceRail, Stage (+ Track), Timeline, Library   the views
+  activity.ts    ActivityStore (connections, actions per device)
+  describe.ts    readable action rows from tap.v1 messages
+  video.ts       FrameBuffer (absolute indices, binary search) and Player (WebCodecs)
+  hooks.ts, api.ts
+```
+
+`host/core` owns passive scrcpy 4.1 framing/capture and the shared process clock;
+`host/daemon/core/SharedVideo` owns per-serial bounded producers/readers and preroll;
+`host/daemon/core/ActivityLog` the daemon-wide activity log behind `Watch`.
+Public usage/limits: `docs/watcher/`; design/evidence: `.docs/shared-video.md`.
 
 ### Python binding (`clients/python/`)
 

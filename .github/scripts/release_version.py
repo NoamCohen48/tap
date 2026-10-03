@@ -2,7 +2,7 @@
 """Resolves a release tag to its artifact family and checks the version in the build files.
 
 Tags are `<family>/v<version>`: daemon, client-kotlin, client-python, client-agent,
-client-studio, sync-sdk. Prints `family=<family>` and `version=<version>` (GitHub Actions output
+client-studio, client-watcher, sync-sdk. Prints `family=<family>` and `version=<version>` (GitHub Actions output
 format) or fails when the tag's version does not match the one committed in gradle.properties /
 pyproject.toml, so a release always ships the version its artifacts claim.
 """
@@ -20,6 +20,7 @@ FAMILIES = {
     "client-python": ("clients/python/pyproject.toml", r'^version = "(.+)"$'),
     "client-agent": ("clients/agent/pyproject.toml", r'^version = "(.+)"$'),
     "client-studio": ("clients/studio/pyproject.toml", r'^version = "(.+)"$'),
+    "client-watcher": ("clients/watcher/pyproject.toml", r'^version = "(.+)"$'),
 }
 
 

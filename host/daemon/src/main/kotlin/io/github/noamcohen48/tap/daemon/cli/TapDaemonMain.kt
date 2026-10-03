@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
 import io.github.noamcohen48.tap.daemon.grpc.DeviceService
 import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
+import io.github.noamcohen48.tap.daemon.grpc.WatchService
 import io.github.noamcohen48.tap.host.Adb
 import io.grpc.ManagedChannelBuilder
 import io.grpc.Metadata
@@ -37,7 +38,7 @@ const val DAEMON_SHUTDOWN_HOOK_TIMEOUT_MS = DAEMON_SHUTDOWN_TOTAL_MS
 private const val STOP_SLACK_MS = 5_000L
 
 /**
- * `tap start  [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--driver-apk APK --driver-test-apk APK]` — background
+ * `tap start  [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK]` — background
  * `tap serve  (same options)` — run in the foreground
  * `tap status [--state-dir DIR]`
  * `tap stop   [--state-dir DIR]`
@@ -104,7 +105,7 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
 private fun usage(): Nothing {
     System.err.println(
         """
-        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--driver-apk APK --driver-test-apk APK]
+        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK]
                            (background; reuses a running daemon)
                tap serve   (same options as start; foreground)
                tap status  [--state-dir DIR]
@@ -115,7 +116,7 @@ private fun usage(): Nothing {
     exitProcess(2)
 }
 
-private val SERVE_OPTIONS = setOf("--port", "--state-dir", "--adb", "--scrcpy", "--driver-apk", "--driver-test-apk")
+private val SERVE_OPTIONS = setOf("--port", "--state-dir", "--adb", "--scrcpy", "--scrcpy-server", "--driver-apk", "--driver-test-apk")
 private val COMMAND_OPTIONS =
     mapOf(
         "start" to SERVE_OPTIONS,
@@ -173,13 +174,16 @@ private fun serve(
 
     val token = DaemonDescriptor.newToken()
     val scrcpy = options["--scrcpy"] ?: System.getenv("TAP_SCRCPY") ?: "scrcpy"
-    val daemon = TapDaemon(DaemonConfig(adb, stateDir, driver = driver, log = log, scrcpy = scrcpy))
+    // The scrcpy 4.1 server JAR WatchVideo pushes; without it the daemon serves no video.
+    val scrcpyServer = (options["--scrcpy-server"] ?: System.getenv("TAP_SCRCPY_SERVER"))?.let { Path.of(it).toAbsolutePath() }
+    val daemon = TapDaemon(DaemonConfig(adb, stateDir, driver = driver, log = log, scrcpy = scrcpy, scrcpyServer = scrcpyServer))
     val server: Server =
         NettyServerBuilder
             .forAddress(InetSocketAddress("127.0.0.1", port))
             .addService(ClientConnectionService(daemon))
             .addService(DeviceService(daemon))
             .addService(AppService(daemon))
+            .addService(WatchService(daemon))
             .intercept(TokenAuthInterceptor(token))
             .maxInboundMessageSize(8 * 1024 * 1024)
             .build()

@@ -59,7 +59,8 @@ You need an Android phone or emulator connected through `adb`.
 
 **Everything in one download:** the [Download page](https://noamcohen48.github.io/tap/download/)
 has one zip per platform (Linux x86-64, macOS Apple silicon, any OS with Java 17) holding the
-server, the Kotlin and Python clients, `tap-agent`, Tap Studio, the docs and an `install.sh`.
+server, the Kotlin and Python clients, `tap-agent`, Tap Studio, `tap-watcher`, the docs and an
+`install.sh`.
 With it, Gradle reads Tap from a local Maven repository and needs no GitHub token. To install
 the parts one by one instead:
 
@@ -148,6 +149,21 @@ pip install -e clients/python -e clients/studio
 tap-studio                                # opens the page; Ctrl-C frees the device
 ```
 
+### tap-watcher
+
+`tap-watcher` (experimental) shows, in your browser, every device the server sees while your
+tests run: which connection holds it, each action it runs, and the device's screen as video.
+Look back at the seconds before a failure, compare the screen before and after an action, and
+save clips and recordings. It only watches: it never attaches or sends a command. The video
+needs a scrcpy 4.1 server JAR (`tap start --scrcpy-server JAR`). Until its first release,
+install it from a checkout:
+
+```bash
+(cd clients/watcher/web && bun install && bun run build)
+pip install -e clients/python -e clients/watcher
+tap-watcher                               # prints the link to open
+```
+
 ## Documentation
 
 | | |
@@ -162,6 +178,7 @@ tap-studio                                # opens the page; Ctrl-C frees the dev
 | [Errors](https://noamcohen48.github.io/tap/guide/errors/), [Artifacts](https://noamcohen48.github.io/tap/guide/artifacts/) | what failures mean and what to look at |
 | [tap-agent](https://noamcohen48.github.io/tap/agent/) | using `tap-agent` |
 | [Tap Studio](https://noamcohen48.github.io/tap/studio/) | inspecting a screen and recording steps in the browser |
+| [tap-watcher](https://noamcohen48.github.io/tap/watcher/) | watching tests' actions and the device's screen in the browser |
 | [Coming from Maestro or Appium](https://noamcohen48.github.io/tap/guide/coming-from/) | how the concepts map |
 | [API reference](https://noamcohen48.github.io/tap/reference/) | every Kotlin, Python and server API |
 | [Development](https://noamcohen48.github.io/tap/development/) | how Tap is built, and how to work on it |

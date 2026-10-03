@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tap-watcher"
+version = "0.0.1"
+description = "Read-only browser viewer for Tap device activity"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["tap-e2e>=0.0.2", "protobuf>=7.35.1", "connect-python>=0.9,<0.10", "starlette>=0.40", "uvicorn>=0.30", "av>=16,<18"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "grpcio-tools==1.84.0", "protoc-gen-connect-python==0.9.0"]
+
+[project.scripts]
+tap-watcher = "tap_watcher.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tap_watcher", "tap_watcher.*"]
+
+[tool.setuptools.package-data]
+tap_watcher = ["py.typed", "static/*", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+extend-exclude = ["tap_watcher/_gen", "tap_watcher/static"]

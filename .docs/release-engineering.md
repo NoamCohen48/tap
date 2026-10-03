@@ -8,7 +8,7 @@ tagged yet. Stability promises and the experimental list are public in
 
 ## What is an artifact, and why
 
-The repository builds six artifact families, each on its own version line:
+The repository builds seven artifact families, each on its own version line:
 
 | Family | Tag | Artifacts | Version source |
 |---|---|---|---|
@@ -17,7 +17,12 @@ The repository builds six artifact families, each on its own version line:
 | **Python client** | `client-python/vX.Y.Z` | `tap-e2e` wheel + sdist on a GitHub Release (PyPI opt-in) | `clients/python/pyproject.toml` |
 | **Agent tools** | `client-agent/vX.Y.Z` | `tap-agent` wheel + sdist (CLI + MCP server, depends on `tap-e2e`) on a GitHub Release (PyPI opt-in, after `tap-e2e`) | `clients/agent/pyproject.toml` |
 | **Studio** (experimental) | `client-studio/vX.Y.Z` | `tap-studio` wheel + sdist (browser inspector + recorder with the built page inside, depends on `tap-e2e`) on a GitHub Release (PyPI opt-in, after `tap-e2e`) | `clients/studio/pyproject.toml` |
+| **Watcher** (experimental) | `client-watcher/vX.Y.Z` | `tap-watcher` wheel + sdist (read-only activity + video viewer with the built page inside, depends on `tap-e2e`) on a GitHub Release (PyPI opt-in, after `tap-e2e`) | `clients/watcher/pyproject.toml` |
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
+
+The watcher is not released yet (`client-watcher` has no tag): the first bundle after it
+landed needs a `client-watcher/v0.0.1` release first, since the bundle takes every family
+(below). Its user docs are `docs/watcher/`.
 
 ### The host daemon and the driver are one artifact (the engine)
 
@@ -101,6 +106,7 @@ the committed one. Pre-release suffixes (`1.2.0-rc.1`) are accepted.
 | `jvm` | Unit tests (`:contracts:protocol`, `:host:core`, `:host:daemon`, `:device:driver:command-engine`, both Kotlin client modules); assembles driver APKs, fixture, daemon dist/zip and validation executable; `publishToMavenLocal` for the five Maven artifacts (POMs resolve); `tap version` equals `tap.version.engine`. Uploads the JVM dist. |
 | `python` | On 3.10 and 3.13: installs `tap-e2e` and `tap-agent`, runs their unit tests over the in-process fake daemon (`clients/python/tests/unit`, `clients/agent/tests`), builds both wheels, `tap-agent --help`. Uploads the wheels (`python-dists`). |
 | `studio` | On 3.10 and 3.13: `tap-studio` (experimental, `.docs/recorder.md`; released as `client-studio/v*`). `gen_protos.py --check` (the committed Python and TypeScript code matches `clients/studio/proto/studio.proto`, with the pinned `grpcio-tools` and `protoc-gen-connect-python`); the page with Bun 1.3.11: `bun install --frozen-lockfile`, Vitest, `tsc --noEmit` (TypeScript 7) and the Vite build; the back end's unit tests; the wheel, checked to carry the built page, `tap-studio --version`. Uploads the wheel (`studio-dists`). |
+| `watcher` | On 3.10 and 3.13: `tap-watcher` (experimental, `.docs/test-watcher.md`; released as `client-watcher/v*`). The same checks as `studio`: `gen_protos.py --check` against `clients/watcher/proto/watcher.proto`, the page (Vitest, `tsc --noEmit`, Vite build), the back end's unit tests, the wheel checked to carry the built page, `tap-watcher --version`. Uploads the wheel (`watcher-dists`). No device smoke yet. |
 | `device-tests` | `reactivecircus/android-emulator-runner` API 34 x86_64 running `.github/scripts/device-tests.sh` (the action runs each `script` line as its own `sh -c`, so the lane is one script): `:samples:fixture-tests:test -Ptap.serials=emulator-5554` and the Python sample suite through a server each suite starts and stops (`tap.manageDaemon` / `TAP_MANAGE_DAEMON`), then `.github/scripts/agent-smoke.sh` — a `tap-agent` session (attach, install, cold launch, snapshot, tap by ref with `--settle`, wait, export) whose JSON export is checked (install and cold launch first, the ref logged as its `view_button` selector, every call ok), then `.github/scripts/studio_smoke.py` on the `studio` job's wheel: `tap-studio --serial --package` driven through its own Connect API with the launch-link cookie (the page needs it, frames carry a PNG and selector candidates; a cold launch, taps, set text, a tap picked with `.at(1)` recorded without an exactly-one wait, text assertions; export, New, Open, Replay all passed; SIGTERM releases the device; the exported file replays through `tap-e2e` in a fresh connection). One serial, so two-device tests are skipped. Failure artifacts (incl. `build/agent-smoke`, `build/studio-smoke`) are uploaded. Needs only `api-contract` and `studio` (both < 1 min); it builds what it runs, so it runs side by side with `jvm` rather than after it. |
 | `native-image` | (push to `main` only) GraalVM 21 `nativeCompile`, then `tap start` and `.github/scripts/daemon_smoke.py`: every RPC that needs no device (Info, ListDevices, held Connect, ListConnections, Events, Disconnect, an observed connection) on the native binary, which catches missing reflection metadata before a release. |
 
@@ -181,7 +187,7 @@ full flow, using the 0.0.2 set as the example:
    ```
 
    One tag per family (`daemon/v*`, `client-kotlin/v*`, `client-python/v*`,
-   `client-agent/v*`, `client-studio/v*`). Each tag push starts one Release
+   `client-agent/v*`, `client-studio/v*`, `client-watcher/v*`). Each tag push starts one Release
    run automatically. Tags cannot be deleted or moved (ruleset), so a typo
    means a new version, not a re-push — double-check the name.
 4. **Ship the set with one action** instead of watching runs one by one:
@@ -191,7 +197,8 @@ full flow, using the 0.0.2 set as the example:
    ```bash
    gh workflow run "Release set" --ref main -f daemon=daemon/v0.0.2 \
      -f client_kotlin=client-kotlin/v0.0.2 -f client_python=client-python/v0.0.2 \
-     -f client_agent=client-agent/v0.0.2 -f client_studio=client-studio/v0.0.1
+     -f client_agent=client-agent/v0.0.2 -f client_studio=client-studio/v0.0.1 \
+     -f client_watcher=client-watcher/v0.0.1
    ```
 
    It releases the daemon first (the Kotlin client refuses to publish until
@@ -240,8 +247,8 @@ latest, tagged on the daemon tag's commit) with one zip per platform plus `SHA25
 
 Each also holds `maven/` (`tap-schema`, `tap-api`, `tap-client`, `tap-junit5` with POM,
 Gradle module metadata and sources, downloaded from GitHub Packages and laid out as a Maven
-repository, so Gradle needs no token), `python/` (the `tap-e2e`, `tap-agent`, `tap-studio`
-wheels), `docs/` (the Markdown edition from `scripts/build-docs.sh`, built by the workflow's
+repository, so Gradle needs no token), `python/` (the `tap-e2e`, `tap-agent`, `tap-studio`,
+`tap-watcher` wheels), `docs/` (the Markdown edition from `scripts/build-docs.sh`, built by the workflow's
 `docs` job from the newest tagged commit in the set), `LICENSE`,
 `install.sh` and `INSTALL.md` (`packaging/bundle/`, versions filled in), `VERSIONS` and a
 per-file `SHA256SUMS`. Nothing else is rebuilt: every other file is a released one, the daemon's
@@ -249,7 +256,9 @@ per-file `SHA256SUMS`. Nothing else is rebuilt: every other file is a released o
 different `tap-api` than the server's version (an inconsistent set).
 
 The bundle version defaults to the daemon tag's version (`bundle` input of `Release set`;
-`none` skips it). A family not in the set contributes its newest release. To bundle releases
+`none` skips it). A family not in the set contributes its newest release; a family with no
+release at all fails the bundle (`no client-watcher release found`), so a new family ships its
+first release before, or in, the set it is bundled with. To bundle releases
 that already exist (e.g. the 0.0.2 set), run the workflow by hand:
 `gh workflow run Bundle --ref main -f version=0.0.2` (families empty = newest). A bundle
 version is never replaced; the workflow refuses an existing `bundle/v<version>`.
@@ -261,7 +270,7 @@ bundle version, so bump them with the other install links at release time.
 the wrong OS/arch, installs the server into `<prefix>/bin` (default `~/.local`; the jvm
 dist is unpacked under `<prefix>/share/tap/server` and linked), the wheels into a virtual
 environment `<prefix>/share/tap/venv` (`python -m venv`, `uv` as fallback; `--venv DIR` for
-the user's own) with `tap-agent`/`tap-studio` linked into `bin`, and merges `maven/` into
+the user's own) with `tap-agent`/`tap-studio`/`tap-watcher` linked into `bin`, and merges `maven/` into
 `<prefix>/share/tap/maven` (older versions stay resolvable). `--uninstall` removes it all.
 Python dependencies still come from PyPI; the bundle is not an offline installer.
 

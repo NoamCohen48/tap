@@ -10,12 +10,13 @@ push of the tag builds and publishes that family from the tagged commit.
 | **Python client** | `client-python/vX.Y.Z` | `tap_e2e-X.Y.Z-py3-none-any.whl`, sdist | GitHub Release (PyPI when enabled) |
 | **Agent tools** (experimental) | `client-agent/vX.Y.Z` | `tap_agent-X.Y.Z-py3-none-any.whl`, sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **Tap Studio** (experimental, not released yet) | `client-studio/vX.Y.Z` | `tap_studio-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
+| **tap-watcher** (experimental, not released yet) | `client-watcher/vX.Y.Z` | `tap_watcher-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **sync-sdk** (experimental, not released yet) | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | GitHub Packages |
 
 A release set also ships as **bundles**, one download per platform: the release
 `bundle/vX.Y.Z` carries `tap-X.Y.Z-linux-x86_64.zip`, `tap-X.Y.Z-macos-aarch64.zip` and
 `tap-X.Y.Z-jvm.zip`. Each holds the server for that platform, the Kotlin artifacts as a local
-Maven repository, the Python wheels (`tap-e2e`, `tap-agent`, `tap-studio`), the docs,
+Maven repository, the Python wheels (`tap-e2e`, `tap-agent`, `tap-studio`, `tap-watcher`), the docs,
 `install.sh`, `INSTALL.md`, a `VERSIONS` file naming each family's version, and `SHA256SUMS`.
 The files are the released ones, repackaged; the bundle version is the server's. The complete
 documentation as Markdown (this guide, the Kotlin, Python and gRPC references, tap-agent and the
@@ -57,7 +58,9 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
     - the agent surface: `tap-agent`, held connections (`connect(..., hold=...)`, `resume`),
       screen snapshots and refs (`screen_snapshot`, `resolve_ref`), the event log
       (`event_log`, the `Events` RPC) and the `tap-events/1` export format;
-    - Tap Studio: `tap-studio`, its page and the `tap-recording/1` format.
+    - Tap Studio: `tap-studio`, its page and the `tap-recording/1` format;
+    - the watcher: `tap-watcher`, its page, the `tap-watch-steps/2` file and the server's
+      `WatchService` (`Watch`, `WatchVideo`).
 - A published version is never replaced: a fix is a new patch release.
 
 ## Where things are published

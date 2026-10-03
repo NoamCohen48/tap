@@ -172,6 +172,10 @@ nav:
       - A first recording: studio/first-recording.md
       - The page: studio/page.md
       - Steps and export: studio/steps.md
+  - tap-watcher:
+      - watcher/index.md
+      - The Live view: watcher/live.md
+      - Clips, recordings and the Library: watcher/library.md
   - Reference:
       - reference/index.md
       - gRPC server API (tap.v1): reference/grpc.md

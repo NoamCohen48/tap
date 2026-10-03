@@ -21,6 +21,7 @@ local.properties
 .DS_Store
 
 # Python
+.venv/
 __pycache__/
 *.egg-info/
 .pytest_cache/
@@ -38,4 +39,6 @@ build/site/
 
 # tap-studio: the built page (npm run build in clients/studio/web) and Node modules
 clients/studio/tap_studio/static/
+# tap-watcher: built browser assets are included in wheels, not committed.
+clients/watcher/tap_watcher/static/
 node_modules/

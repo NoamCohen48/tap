@@ -5,9 +5,11 @@ import io.github.noamcohen48.tap.api.v1.LoggedEvent
 /**
  * A connection's event log (`event_log.proto`): the last [capacity] device calls it made, each
  * numbered by [LoggedEvent.getSeq] from 1. [dropped] counts the events evicted to stay within it.
+ * [onAppend] sees each event once, in order, under the log's lock (the daemon's [ActivityLog]).
  */
 class EventLog(
     private val capacity: Int = EVENT_LOG_CAPACITY,
+    private val onAppend: (LoggedEvent) -> Unit = {},
 ) {
     private val events = ArrayDeque<LoggedEvent>()
     private var lastSeq = 0L
@@ -20,7 +22,9 @@ class EventLog(
             events.removeFirst()
             dropped++
         }
-        events.addLast(event.setSeq(++lastSeq).build())
+        val recorded = event.setSeq(++lastSeq).build()
+        events.addLast(recorded)
+        onAppend(recorded)
     }
 
     /** The kept events with `seq > afterSeq`, oldest first, and the evicted count. */

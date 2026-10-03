@@ -1,14 +1,14 @@
 # The tap server
 
-Every client, whether a test in Kotlin or Python, `tap-agent` or Tap Studio, talks to one
+Every client, whether a test in Kotlin or Python, `tap-agent`, Tap Studio or `tap-watcher`, talks to one
 server per machine: `tap`. It owns ADB, installs Tap's driver on each device, and keeps a device
 held by one client at a time. You start it; clients never do.
 
 ## The `tap` command
 
 ```
-tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH]
-tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--driver-apk APK --driver-test-apk APK]
+tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR]
+tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK]
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
 tap version
@@ -22,6 +22,7 @@ tap version
 | `--state-dir` | where `daemon.json`, `sessions/` (leases and journals) and the extracted driver live; default `$TAP_STATE_DIR` or `~/.tap` |
 | `--adb` | the ADB executable; default `$TAP_ADB` or `adb` on `PATH` |
 | `--scrcpy` | the [scrcpy](https://github.com/Genymobile/scrcpy) executable, used only by [recordings](artifacts.md#recordings); default `$TAP_SCRCPY` or `scrcpy` on `PATH`. Tap runs it with its own ADB |
+| `--scrcpy-server` | a scrcpy **4.1** server JAR for the shared screen video that [`tap-watcher`](../watcher/index.md) shows; default `$TAP_SCRCPY_SERVER`, otherwise no shared video. Recordings do not need it |
 | `--driver-apk`, `--driver-test-apk` | a driver build of your own instead of the one bundled in the executable. Clients cannot pick a driver per attach |
 | `status` | prints `running 127.0.0.1:PORT pid=… version=… adb=…` (never the token); exit 1 when no server is running |
 | `stop` | terminates the server recorded in `daemon.json` after it answered an authenticated call; a stale file is removed and nothing is signalled |

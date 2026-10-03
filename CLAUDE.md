@@ -54,6 +54,11 @@ See `CONTRIBUTING.md` for build/run commands.
   client-side), and gestures refuse a covered touch point (`OBSCURED`).
 - `.docs/screen-streaming.md` — research + decision: how to show a device screen live (Maestro,
   Appium MJPEG, scrcpy, `screenrecord`); v1 = paired snapshot + screenshot frames, video later.
+- `.docs/test-watcher.md` — decision record: `tap-watcher` (`clients/watcher`), a standalone
+  read-only browser view of what every connection does on each device plus shared video
+  (`WatchService`); test markers deferred (`.docs/test-watcher-test-markers.md`).
+  `.docs/test-watcher-review.md` is the review of its first cut and each item's fix status;
+  `.docs/shared-video.md` the passive scrcpy capture and its evidence.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
   host-owned scrcpy child (`StartRecording`), its measured timing limits, the pre-merge review,
   and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).

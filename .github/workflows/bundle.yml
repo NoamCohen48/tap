@@ -34,6 +34,10 @@ on:
         description: "Studio tag (empty: newest)"
         required: false
         default: ""
+      client_watcher:
+        description: "Watcher tag (empty: newest)"
+        required: false
+        default: ""
   workflow_call:
     inputs:
       version:
@@ -54,6 +58,9 @@ on:
       client_studio:
         type: string
         default: ""
+      client_watcher:
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -71,6 +78,7 @@ jobs:
       client_python: ${{ steps.set.outputs.client_python }}
       client_agent: ${{ steps.set.outputs.client_agent }}
       client_studio: ${{ steps.set.outputs.client_studio }}
+      client_watcher: ${{ steps.set.outputs.client_watcher }}
       docs: ${{ steps.set.outputs.docs }}
       commit: ${{ steps.set.outputs.commit }}
     steps:
@@ -90,10 +98,11 @@ jobs:
           PYTHON: ${{ inputs.client_python }}
           AGENT: ${{ inputs.client_agent }}
           STUDIO: ${{ inputs.client_studio }}
+          WATCHER: ${{ inputs.client_watcher }}
         run: |
           scripts/build-bundle.sh --resolve-only --out build/bundle \
             --daemon "$DAEMON" --kotlin "$KOTLIN" --python "$PYTHON" \
-            --agent "$AGENT" --studio "$STUDIO"
+            --agent "$AGENT" --studio "$STUDIO" --watcher "$WATCHER"
           cat build/bundle/resolved.env >> "$GITHUB_OUTPUT"
 
   # The Markdown docs, built from the newest tagged commit in the set (the per-family
@@ -135,10 +144,12 @@ jobs:
           PYTHON: ${{ needs.resolve.outputs.client_python }}
           AGENT: ${{ needs.resolve.outputs.client_agent }}
           STUDIO: ${{ needs.resolve.outputs.client_studio }}
+          WATCHER: ${{ needs.resolve.outputs.client_watcher }}
         run: |
           scripts/build-bundle.sh --version "$VERSION" --docs build/docs-md \
             --out build/bundle --daemon "$DAEMON" --kotlin "$KOTLIN" \
-            --python "$PYTHON" --agent "$AGENT" --studio "$STUDIO"
+            --python "$PYTHON" --agent "$AGENT" --studio "$STUDIO" \
+            --watcher "$WATCHER"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: bundle/v${{ inputs.version }}
@@ -160,8 +171,8 @@ jobs:
 
             Each holds the `tap` server, the Kotlin client and JUnit 5
             extension as a local Maven repository (no GitHub token needed),
-            the `tap-e2e`, `tap-agent` and `tap-studio` wheels, and the
-            documentation. Built from these releases:
+            the `tap-e2e`, `tap-agent`, `tap-studio` and `tap-watcher`
+            wheels, and the documentation. Built from these releases:
 
             | Part | Release |
             |---|---|
@@ -170,3 +181,4 @@ jobs:
             | Python client | `${{ needs.resolve.outputs.client_python }}` |
             | tap-agent | `${{ needs.resolve.outputs.client_agent }}` |
             | tap-studio | `${{ needs.resolve.outputs.client_studio }}` |
+            | tap-watcher | `${{ needs.resolve.outputs.client_watcher }}` |
