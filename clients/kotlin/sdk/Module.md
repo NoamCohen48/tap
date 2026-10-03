@@ -10,7 +10,7 @@ selectors such as `res(...)` and `text(...)` (`app.element(...)`, `app.await(...
 the system UI. Act on them through [Element][io.github.noamcohen48.tap.sdk.Element].
 All device calls are `suspend`. In JUnit 5 tests, use `tap-junit5` instead of connecting by hand.
 
-Guide: <https://noamcohen48.github.io/tap/guide/getting-started/>
+Guide: <https://noamcohen48.github.io/tap/sdk/kotlin/>
 
 # Package io.github.noamcohen48.tap.sdk
 

@@ -154,13 +154,14 @@ tap-studio                                # opens the page; Ctrl-C frees the dev
 |---|---|
 | [Getting started](https://noamcohen48.github.io/tap/guide/getting-started/) | a first test, step by step |
 | [Selectors](https://noamcohen48.github.io/tap/guide/selectors/) | finding elements on the screen |
-| [Actions and waits](https://noamcohen48.github.io/tap/guide/actions-and-waits/) | tapping, typing, scrolling and waiting |
+| [Elements and text](https://noamcohen48.github.io/tap/guide/elements/), [Gestures](https://noamcohen48.github.io/tap/guide/gestures/), [Waits](https://noamcohen48.github.io/tap/guide/waits/) | tapping, typing, scrolling and waiting |
 | [App lifecycle](https://noamcohen48.github.io/tap/guide/app-lifecycle/) | installing, launching and resetting your app |
 | [Multi-device tests](https://noamcohen48.github.io/tap/guide/multi-device/) | tests that use several devices |
-| [Configuration](https://noamcohen48.github.io/tap/guide/configuration/) | settings and the `tap` command |
-| [Errors and artifacts](https://noamcohen48.github.io/tap/guide/errors/) | what failures mean and what to look at |
-| [Coding agents](https://noamcohen48.github.io/tap/guide/agents/) | using `tap-agent` |
-| [Tap Studio](https://noamcohen48.github.io/tap/guide/studio/) | inspecting a screen and recording steps in the browser |
+| [The tap server](https://noamcohen48.github.io/tap/guide/server/) | the `tap` command and how clients find it |
+| [SDKs](https://noamcohen48.github.io/tap/sdk/) | the Python + pytest and Kotlin + JUnit 5 clients and their settings |
+| [Errors](https://noamcohen48.github.io/tap/guide/errors/), [Artifacts](https://noamcohen48.github.io/tap/guide/artifacts/) | what failures mean and what to look at |
+| [tap-agent](https://noamcohen48.github.io/tap/agent/) | using `tap-agent` |
+| [Tap Studio](https://noamcohen48.github.io/tap/studio/) | inspecting a screen and recording steps in the browser |
 | [Coming from Maestro or Appium](https://noamcohen48.github.io/tap/guide/coming-from/) | how the concepts map |
 | [API reference](https://noamcohen48.github.io/tap/reference/) | every Kotlin, Python and server API |
 | [Development](https://noamcohen48.github.io/tap/development/) | how Tap is built, and how to work on it |

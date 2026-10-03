@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{#- Every page's Markdown is published next to its HTML (scripts/llms_txt.py); announce it so
+    agents that fetch the HTML find the cheaper copy. -#}
+{% block extrahead %}
+  {{ super() }}
+  {% if page and page.file and page.file.src_uri.endswith(".md") %}
+    <link rel="alternate" type="text/markdown" href="{{ base_url }}/{{ page.file.src_uri }}">
+  {% endif %}
+{% endblock %}

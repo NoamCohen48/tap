@@ -13,10 +13,17 @@ edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: build/site
 strict: false
+# Theme overrides (the Markdown button and link on every page) live beside the pages.
+exclude_docs: |
+  overrides/
 
 theme:
   name: material
-  logo: assets/logo.svg
+  custom_dir: docs/overrides
+  font:
+    text: IBM Plex Sans
+    code: JetBrains Mono
+  logo: assets/logo-header.svg
   favicon: assets/favicon.svg
   icon:
     repo: fontawesome/brands/github
@@ -54,6 +61,10 @@ extra:
 extra_css:
   - stylesheets/brand.css
 
+# Highlighting for ```console blocks: commands, refs, snapshot nodes, diffs and errors.
+hooks:
+  - scripts/mkdocs_hooks.py
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -63,11 +74,17 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.tabbed: {alternate_style: true}
-  - pymdownx.highlight: {anchor_linenums: false}
+  - pymdownx.highlight: {anchor_linenums: false, pygments_lang_class: true}
   - pymdownx.inlinehilite
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 plugins:
   - search
+  # Screenshots open full size on click.
+  - glightbox:
+      skip_classes: [no-lightbox]
   - mkdocstrings:
       default_handler: python
       handlers:
@@ -78,6 +95,11 @@ plugins:
             show_root_heading: true
             show_signature_annotations: true
             separate_signature: true
+            # Types in signatures link to their entries on the other reference pages.
+            signature_crossrefs: true
+            # Each class opens with a table of its methods, linked to their entries.
+            summary:
+              functions: true
             members_order: source
             docstring_style: google
             show_attribute_values: false
@@ -86,7 +108,7 @@ plugins:
             show_symbol_type_heading: true
             show_symbol_type_toc: true
             # Internal plumbing (gRPC stubs, deadlines, the owning connection) stays out of the
-            # reference; Device.client is filtered in docs/reference/python.md.
+            # reference; Device.client is filtered in docs/reference/python/device.md.
             filters:
               - "!^_"
               - "!^pb$"
@@ -97,31 +119,70 @@ plugins:
 
 nav:
   - Home: index.md
-  - Download: download.md
   - Guide:
       - Getting started: guide/getting-started.md
-      - Selectors: guide/selectors.md
-      - Actions and waits: guide/actions-and-waits.md
-      - App lifecycle and sync: guide/app-lifecycle.md
-      - Multi-device tests: guide/multi-device.md
-      - Configuration and the tap CLI: guide/configuration.md
-      - Errors and failure artifacts: guide/errors.md
-      - Coding agents (tap-agent): guide/agents.md
-      - Tap Studio (inspect and record): guide/studio.md
+      - Download: download.md
+      - The tap server: guide/server.md
+      - Finding elements:
+          - Selectors: guide/selectors.md
+          - App or screen: guide/app-or-screen.md
+      - Acting and waiting:
+          - Elements and text: guide/elements.md
+          - Gestures: guide/gestures.md
+          - Waits: guide/waits.md
+          - Keys, screen and rotation: guide/device-control.md
+      - Apps and the device:
+          - App lifecycle: guide/app-lifecycle.md
+          - Permissions: guide/permissions.md
+          - Device conditions: guide/device-conditions.md
+          - Notifications and toasts: guide/notifications.md
+          - Files and the gallery: guide/files.md
+      - Tests:
+          - Multi-device tests: guide/multi-device.md
+          - Errors: guide/errors.md
+          - Screenshots and artifacts: guide/artifacts.md
       - Coming from Maestro or Appium: guide/coming-from.md
+  - SDKs:
+      - sdk/index.md
+      - Python + pytest: sdk/python.md
+      - Kotlin + JUnit 5: sdk/kotlin.md
+      - API reference:
+          - Python:
+              - reference/python/index.md
+              - Device: reference/python/device.md
+              - Element: reference/python/element.md
+              - Selectors: reference/python/selectors.md
+              - App: reference/python/app.md
+              - Screen: reference/python/screen.md
+              - Client and connections: reference/python/client.md
+              - Artifacts: reference/python/artifacts.md
+              - Values: reference/python/values.md
+              - Enums: reference/python/enums.md
+              - Snapshots and the event log: reference/python/snapshots.md
+              - Errors: reference/python/errors.md
+              - pytest plugin: reference/python/pytest.md
+          - Kotlin: reference/kotlin.md
+  - tap-agent:
+      - agent/index.md
+      - A session, step by step: agent/session.md
+      - Sessions to tests: agent/export.md
+      - Commands: agent/commands.md
+  - Tap Studio:
+      - studio/index.md
+      - A first recording: studio/first-recording.md
+      - The page: studio/page.md
+      - Steps and export: studio/steps.md
   - Reference:
-      - Overview: reference/index.md
-      - Kotlin client: reference/kotlin.md
-      - Python client: reference/python.md
+      - reference/index.md
       - gRPC server API (tap.v1): reference/grpc.md
       - Releases and versions: reference/releases.md
   - Development:
       - development/index.md
       - Architecture: development/architecture.md
       - Building and testing: development/building-and-testing.md
-  - Project:
-      - Changelog: https://github.com/NoamCohen48/tap/blob/main/CHANGELOG.md
-      - Contributing: https://github.com/NoamCohen48/tap/blob/main/CONTRIBUTING.md
-      - Code of conduct: https://github.com/NoamCohen48/tap/blob/main/CODE_OF_CONDUCT.md
-      - Security: https://github.com/NoamCohen48/tap/blob/main/SECURITY.md
-      - Releases: https://github.com/NoamCohen48/tap/releases
+      - Project:
+          - Changelog: https://github.com/NoamCohen48/tap/blob/main/CHANGELOG.md
+          - Contributing: https://github.com/NoamCohen48/tap/blob/main/CONTRIBUTING.md
+          - Code of conduct: https://github.com/NoamCohen48/tap/blob/main/CODE_OF_CONDUCT.md
+          - Security: https://github.com/NoamCohen48/tap/blob/main/SECURITY.md
+          - Releases: https://github.com/NoamCohen48/tap/releases

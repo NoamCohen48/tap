@@ -23,7 +23,7 @@ runs:
           | tar -xz -C /usr/local/bin protoc-gen-doc
     - name: Python deps
       shell: bash
-      run: python -m pip install --quiet -r docs/requirements.txt -e "clients/python[dev]"
+      run: python -m pip install --quiet -r docs/requirements.txt -e "clients/python[dev]" -e clients/agent
     - name: Build
       shell: bash
       run: scripts/build-docs.sh

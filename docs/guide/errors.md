@@ -1,16 +1,20 @@
-# Errors and artifacts
+# Errors
+
+!!! info "Names are Python's"
+    Each Python `…Error` is a Kotlin `…Exception` (`CommandError` → `CommandException`,
+    `TapError` → `TapException`), with the same fields in camelCase.
 
 Tap distinguishes these kinds of failure, each its own exception type, and never converts one
 into another:
 
-| Kotlin | Python | Raised when |
-|---|---|---|
-| `CommandException` | `CommandError` | the driver executed (or refused) a UI command and answered with an error code |
-| `WaitTimeoutException` | `WaitTimeoutError` | an `await(...)` / `awaitUntil` condition did not hold in time (the device reported `WAIT_TIMEOUT`; any other failure during a wait — driver unhealthy, transport lost — is a `CommandException` / `CommandError`) |
-| `AppLifecycleException` | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
-| `DeviceBusyException` | `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
-| `DeviceQuarantinedException` | `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
-| `ServerException` | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FailureReason.DRIVER_START_FAILED`); branch on it, not on the message |
+| Exception | Raised when |
+|---|---|
+| `CommandError` | the driver executed (or refused) a UI command and answered with an error code |
+| `WaitTimeoutError` | a `wait(...)` / `await_until` condition did not hold in time (the device reported `WAIT_TIMEOUT`; any other failure during a wait, such as driver unhealthy or transport lost, is a `CommandError`) |
+| `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
+| `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
+| `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
+| `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FailureReason.DRIVER_START_FAILED`); branch on it, not on the message |
 
 Server `reason`s about the device itself: `UNSUPPORTED_API` (the device's Android version is
 too old for the call; the detail is `REQUIRES_API_<n>`), `DEVICE_SETTING` (a device condition
@@ -18,12 +22,11 @@ did not read back as written, for example a dark mode the device locks), and `DE
 file push, pull or gallery add was refused: the file exists and Tap did not create it, its
 directory is missing, it is not a regular file, or it did not read back).
 
-All inherit from `TapException` / `TapError`. Ordinary assertion failures in your test are, of
-course, yours.
+All inherit from `TapError`. Ordinary assertion failures in your test are, of course, yours.
 
 ## Command errors
 
-A `CommandException` carries the **code**, an optional stable **detail**, the operation, the
+A `CommandError` carries the **code**, an optional stable **detail**, the operation, the
 rendered selector, the device serial, the request id, the session generation and the duration,
 and formats all of it into one line:
 
@@ -36,25 +39,37 @@ WAIT_TIMEOUT/SCREEN_CHANGING during WAIT_SCREEN_STABLE on emulator-5554 (request
 Branch on `code` (`ErrorCode.AMBIGUOUS`) and `detail` (`"TARGET_GONE"`); the free-text message
 is for humans and may change.
 
+```python
+from tap_e2e import CommandError, ErrorCode
+
+try:
+    app.element(text("Add")).tap()
+except CommandError as error:
+    if error.code == ErrorCode.AMBIGUOUS:
+        app.element(text("Add").first()).tap()
+    else:
+        raise
+```
+
 The codes, grouped by what they tell you:
 
-**The selector, before anything happened** — device state unchanged:
+**The selector, before anything happened**: device state unchanged.
 
 | Code | Meaning / details |
 |---|---|
 | `NOT_FOUND` | zero matches |
-| `AMBIGUOUS` | more than one match; add a constraint or use `first()`/`at(n)` |
+| `AMBIGUOUS` | more than one match; add a constraint or use `first()` / `at(n)` |
 | `NOT_INTERACTABLE` | the one match cannot take the gesture: `OBSCURED` when another window (a keyboard, a popup, another app's overlay) covers the point the gesture would touch while part of the node still shows (a node covered completely is `NOT_FOUND`). Nothing was sent; close or move what covers it |
-| `INVALID_SELECTOR` | rejected before lookup: `QUALIFIED_RESOURCE_NAME` (a `res` name with `:id/` in it — use `resId(pkg, name)`), `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
-| `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `typeText` has no key mapping for a character |
+| `INVALID_SELECTOR` | rejected before lookup: `QUALIFIED_RESOURCE_NAME` (a `res` name with `:id/` in it; use `res_id(pkg, name)`), `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
+| `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `type_text` has no key mapping for a character |
 
-**The action, after input started** — device state may have changed:
+**The action, after input started**: device state may have changed.
 
 | Code | Meaning / details |
 |---|---|
 | `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS` |
-| `ACTION_REJECTED` | Android refused the input: the node refused set-text or an accessibility action, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing). Three details are refusals *before* any input, so nothing changed: `KEYGUARD_SECURE` (`dismissKeyguard` on a PIN, pattern or password), `ACTION_NOT_OFFERED` (`performAction`, `performCustomAction` or `setProgress` on a node that does not offer that action) and `OUT_OF_RANGE` (`setProgress` outside the node's range) |
-| `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance)) |
+| `ACTION_REJECTED` | Android refused the input: the node refused set-text or an accessibility action, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing). Three details are refusals *before* any input, so nothing changed: `KEYGUARD_SECURE` (`dismiss_keyguard` on a PIN, pattern or password), `ACTION_NOT_OFFERED` (`perform_action`, `perform_custom_action` or `set_progress` on a node that does not offer that action) and `OUT_OF_RANGE` (`set_progress` outside the node's range) |
+| `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance) |
 
 **Waits:**
 
@@ -69,7 +84,7 @@ The codes, grouped by what they tell you:
 | Code | Meaning / details |
 |---|---|
 | `AUT_MISMATCH` | the app's process identity changed between observations (`PROCESS_RESTARTED`, `PROCESS_MISMATCH`) |
-| `SYNC_PROVIDER_UNAVAILABLE` | `awaitIdle` cannot read the app's sync provider: `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `PROVIDER_TIMEOUT`, … |
+| `SYNC_PROVIDER_UNAVAILABLE` | `await_idle` cannot read the app's sync provider: `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `PROVIDER_TIMEOUT`, … |
 | `DRIVER_UNHEALTHY` | the driver's watchdog poisoned the session (`WATCHDOG`, `HEARTBEAT_EXPIRED`); the next open rebuilds it |
 | `TRANSPORT_LOST` | no response and *no* mutation risk (the request never got out) |
 | `OVERLOADED`, `SESSION_MISMATCH`, `DUPLICATE_OR_STALE`, `UNAUTHENTICATED`, `UNSUPPORTED` | protocol-level; you should not see them from the clients |
@@ -89,47 +104,10 @@ Timed out after 10008ms waiting for text("Buy") to match exactly one node on emu
 Timed out after 5003ms waiting for resId(com.shop:id/pay) to be enabled on emulator-5554 (48 polls); last observed: text=Pay enabled=false …
 ```
 
-`description`, `serial`, `elapsedMs`, `reason`, `matchCount`, `polls` and `lastObservation`
-are fields on the exception (Python: `elapsed_ms`, `match_count`, `last_observation`).
-`reason` is a `WaitReason` for the waits the device runs (`visible()`, `one()`, `gone()`,
-`app.awaitVisible`, `app.awaitScreenStable`) and null / None for the ones the client polls.
+`description`, `serial`, `elapsed_ms`, `reason`, `match_count`, `polls` and `last_observation`
+are fields on the exception. `reason` is a `WaitReason` for the waits the device runs
+(`visible()`, `one()`, `gone()`, `app.await_visible`, `app.await_screen_stable`) and `None` for
+the ones the client polls.
 
-## Failure artifacts
-
-When a test fails, the JUnit extension and the pytest plugin call `device.capture()` for each
-device of the test — *before* detaching it, while the screen still shows the failure — and save
-the result:
-
-```
-build/tap-artifacts/com.shop.CheckoutTest/buysAnItem/      (pytest: tap-artifacts/<nodeid>/)
-├── failure.txt                                 the exception and stack trace
-├── device-emulator-5554.screenshot.png         screenshot
-├── device-emulator-5554.hierarchy.xml          accessibility hierarchy
-├── device-emulator-5554.device-info.json       API, model, display, focused package
-└── device-emulator-5554.driver-log.txt         the driver's log for the session
-```
-
-The file prefix is `<role>-<serial>`, so a two-device test yields `sender-…` and `receiver-…`.
-Devices are captured in parallel, and so are the four parts of each device, each within 30 s, so
-one slow or hung device or part does not cost the others their artifacts. Capture never masks
-the original failure: a file that cannot be produced (the device went away, the time ran out) is
-simply missing, and the test still fails with its real error. `tap.capture=off` (pytest:
-`tap_capture = off` / `TAP_CAPTURE=off`) turns this off; see
-[Configuration](configuration.md).
-
-`device.capture()` is an ordinary call, so a test can take the same evidence whenever it wants
-(after a step, in a `catch`), and each part is also available on its own as a typed value; see
-[Screenshots and dumps](actions-and-waits.md#screenshots-and-dumps).
-
-## Reading the hierarchy dump
-
-The XML is UiAutomator's view of every window on screen (each window's root under one
-`<hierarchy>`), which is what selectors search. The attributes that selectors match are
-`resource-id`, `text`, `content-desc`, `hint`, `class`, `package` (what `device.app(pkg)`
-checks), plus the boolean state flags. A node another window (a dialog, the keyboard) covers
-completely is left out, as Android reports it not visible; one covered partly is in the dump,
-and a gesture on it fails with `NOT_INTERACTABLE` / `OBSCURED` when its touch point is under
-the other window. If the element you wanted is missing from the dump it is missing from the accessibility
-tree — a Compose node without `testTag` + `testTagsAsResourceId`, a `View` with
-`importantForAccessibility="no"`, or content not yet laid out. Fix the app's semantics rather
-than reaching for coordinates.
+What a failed test leaves behind to look at (a screenshot, the hierarchy, the driver log) is on
+[Screenshots and artifacts](artifacts.md#failure-artifacts).

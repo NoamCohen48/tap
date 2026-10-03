@@ -1,0 +1,15 @@
+{#- Material's page actions (edit on GitHub), plus a link to the page as Markdown, which
+    scripts/llms_txt.py publishes next to the HTML. -#}
+{% if page.file and page.file.src_uri.endswith(".md") %}
+  <a href="{{ base_url }}/{{ page.file.src_uri }}" title="View this page as Markdown" class="md-content__button md-icon" type="text/markdown">
+    {% include ".icons/material/language-markdown-outline.svg" %}
+  </a>
+{% endif %}
+{% if page.edit_url %}
+  {% if "content.action.edit" in features %}
+    <a href="{{ page.edit_url }}" title="{{ lang.t('action.edit') }}" class="md-content__button md-icon" rel="edit">
+      {% set icon = config.theme.icon.edit or "material/file-edit-outline" %}
+      {% include ".icons/" ~ icon ~ ".svg" %}
+    </a>
+  {% endif %}
+{% endif %}

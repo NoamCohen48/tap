@@ -42,12 +42,20 @@ Breaking, in every family (protocol 5.0; `.docs/app-and-screen.md`):
 
 Added:
 
+- **Docs site** (docs, `tap-agent`): every page is also published as Markdown next to its HTML
+  (`guide/selectors.md`), with `llms.txt` and `llms-full.txt` for agents; a `tap-agent` command
+  reference generated from the CLI and the MCP server; a Tap Studio walkthrough with
+  screenshots; a rewritten home page; highlighted `tap-agent` sessions. The site has a tab per
+  client (SDKs, `tap-agent`, Tap Studio) beside the Guide, whose pages are split by topic with
+  Python examples; the Kotlin SDK page shows each guide page's examples in Kotlin. The old
+  guide URLs redirect to their new pages. The Python API reference has a page per class (or
+  group of small types), and the types in its signatures link to their entries.
 - **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
   `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on
   the daemon host: video (MP4), audio (Opus) or both (Matroska), bounded to 30 s with video and
   60 s audio only, checksummed, and discarded on detach. Audio needs Android 11+. scrcpy is an
   external dependency: `tap start --scrcpy PATH` (or `TAP_SCRCPY`), default `scrcpy` on `PATH`;
-  it runs with Tap's own ADB. Guide: `docs/guide/actions-and-waits.md`.
+  it runs with Tap's own ADB. Guide: `docs/guide/artifacts.md`.
 
 Device actions (engine, Kotlin and Python clients, `tap-agent`), new in protocol 5.0; the engine
 and the clients must be updated together to use them:
@@ -193,7 +201,7 @@ first `client-studio/v0.0.1`. `tap-agent` and `tap-studio` need `tap-e2e` 0.0.2.
   Assert and Inspect modes record element steps (taps, text and secrets, scrolls, swipes, keys,
   app calls, checks), never coordinates. Steps can be edited (another selector candidate, or
   one typed in the Kotlin DSL with a live match count), reordered and replayed. Recordings are
-  exported and reopened as `tap-recording/1` JSON. Guide: `docs/guide/studio.md`.
+  exported and reopened as `tap-recording/1` JSON. Guide: `docs/studio/`.
 - **Notifications and quick settings** (engine, Kotlin and Python clients, Tap Studio): the
   `open_system_panel` command (`tap.v1.OpenSystemPanel`) opens the notification shade or quick
   settings with the system's accessibility action. The clients expose it as
