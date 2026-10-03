@@ -1,19 +1,21 @@
-# tap-explorer (experimental, offline only)
+# tap-explorer (experimental)
 
-The first App Explorer milestone stores an evidence-backed exploration graph. It does **not**
-connect to Android, run actions, call AI, recognize screens, verify routes, or generate robots.
-Its API and `tap-exploration/1` JSON format are experimental. No tagged release is configured.
+App Explorer stores an evidence-backed exploration graph. Offline graph commands make no
+remote calls. An optional `live` extra provides a **bounded, explicitly configured sample-device
+pilot** with native landmark checks and observed-route replay. It does not infer unknown screens,
+call AI, explore arbitrary downloaded apps, or generate robots. Its API and `tap-exploration/1`
+JSON format are experimental. No tagged release is configured.
 
 ## Install and check
 
 From the repository root:
 
 ```bash
-python -m venv clients/explorer/.venv
-clients/explorer/.venv/bin/python -m pip install -e 'clients/explorer[dev]'
-clients/explorer/.venv/bin/python -m pytest clients/explorer/tests
-clients/explorer/.venv/bin/python -m pyright --project clients/explorer/pyrightconfig.json \
-  --pythonpath clients/explorer/.venv/bin/python
+python -m venv .venv
+.venv/bin/python -m pip install -e clients/python -e 'clients/explorer[dev]'
+.venv/bin/python -m pytest clients/explorer/tests
+.venv/bin/python -m pyright --project clients/explorer/pyrightconfig.json \
+  --pythonpath .venv/bin/python
 ```
 
 Activate this environment, or use its `bin/tap-explorer` executable for the commands below.
@@ -67,7 +69,8 @@ Candidates start blocked. Explicit approval makes them pending. The scheduler or
 candidates by priority (lower first), source depth, source ID, then action ID. `begin_attempt`
 atomically enforces that choice and the finite action/depth budgets. Attempts, including rejected
 input and new trials, consume the action budget. Depth is caller-supplied state depth, not a
-computed reachability guarantee. Routes and device preconditions are not checked yet.
+computed reachability guarantee. `GraphStore` itself does not execute or check device routes;
+the optional `BoundedExplorer` layer checks native preconditions and already-observed routes.
 
 ## Uncertainty and new trials
 
@@ -100,8 +103,35 @@ versioned graph document in one row. This is deliberately an offline small-run f
 not a large-graph storage optimization. Connections serialize writes; use one connection per
 thread. Operator recovery requires exclusive control over the previous executor's lifecycle.
 
-No automatic redaction, screenshot capture, secret handling, remote submission, or artifact
-retention is implemented. Do not store credentials or sensitive observations; exports are not
+The bounded pilot captures screenshots and node snapshots. No automatic redaction, secret
+handling, remote AI submission, or artifact retention policy is implemented. Do not store credentials or sensitive observations; exports are not
 sanitized reports. Keep files local with appropriate filesystem permissions.
+
+## Bounded sample-device pilot
+
+Build the disposable, no-permission sample and install the live extra:
+
+```bash
+./gradlew :samples:explorer-app:assembleDebug :samples:explorer-app:lintDebug
+uv pip install --python .venv/bin/python -e clients/python -e 'clients/explorer[live,dev]'
+# Requires a running daemon, started explicitly by the operator with tap start.
+.venv/bin/tap-explorer sample --serial YOUR_SERIAL \
+  --apk samples/explorer-app/build/outputs/apk/debug/explorer-app-debug.apk \
+  --out .tap/explorer/sample-run-1
+```
+
+Only the named serial and `io.github.noamcohen48.tap.explorer.sample` are used. Output must be
+new; the pilot will not resume an old graph. It installs/cold-launches the sample, observes
+screenshots/nodes, discovers seventeen configured tap/fill candidates across eight known states,
+walks them using checked observed routes, checks the sample oracle, and releases the device.
+It force-stops the sample only after success. No daemon restart, clear-data, permissions,
+uninstall, reboot, coordinates, implicit Back, external package, or AI is involved.
+
+`graph.db`, `graph.json`, `events.json`, `report.json`, and PNG/snapshot pairs are retained.
+Route replay is a new approved invocation with a new persisted attempt, never a transport retry.
+Unknown screens, ambiguous sources, drift and route divergence stop before the next input;
+uncertain failures stop immediately. A known command success with failed post-observation has
+no destination edge and also stops. Bootstrap install/launch/clean stop are logged outside the
+graph's tap/fill budget. See [the sample guide](../../samples/explorer-app/README.md).
 
 Design and subsequent phases: [`.docs/app-explorer.md`](../../.docs/app-explorer.md).

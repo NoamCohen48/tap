@@ -21,8 +21,11 @@ The repository builds six artifact families, each on its own version line:
 
 `clients/explorer` (`tap-explorer`) is an **unreleased experimental development package**.
 Its initial version is in `clients/explorer/pyproject.toml`; the Python CI job builds/tests it,
-including a project-scoped Pyright check. It has no release tag family, release workflow,
-PyPI publication, or release-set entry yet. Do not tag it until those are deliberately added.
+including a project-scoped Pyright check. Its optional `live` extra depends on `tap-e2e`;
+CI also builds/lints `samples/explorer-app` and runs its bounded pilot in the device lane.
+The sample APK is a test fixture, not a separately published artifact. Explorer has no release
+tag family, release workflow, PyPI publication, or release-set entry yet. Do not tag it until
+those are deliberately added.
 
 ### The host daemon and the driver are one artifact (the engine)
 

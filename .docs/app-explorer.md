@@ -1,9 +1,10 @@
 # App Explorer — design handout and implementation roadmap
 
-Status: **offline foundation implemented; live exploration not implemented**. The owner
-approved starting with a Python core in `clients/explorer`, SQLite persistence, and versioned
-JSON export. Detailed mechanisms below remain recommendations unless recorded as implemented
-in the milestone section. Resolve the remaining decisions before the relevant live/AI phase.
+Status: **offline foundation and bounded sample-device pilot implemented and exercised**.
+The owner approved the Python/SQLite/JSON core, then requested a sample app and real-device
+validation. Two physical-device runs passed; see section 21. General app discovery, AI and robot
+generation remain unimplemented. Detailed mechanisms below are recommendations unless recorded
+as implemented in the milestone sections. Resolve remaining decisions before expanding scope.
 
 ## 1. Purpose
 
@@ -481,14 +482,102 @@ build successfully. The Python CI lane installs/builds the package, runs these t
 3.10/3.13 matrix, and runs its project-scoped type check (CI results must be checked separately).
 Device matrix: **not run**. No device input or AI call was made.
 
-Deliberately incomplete: no coordinator/device executor, state-signature algorithm, route
-planner, AI adapter, screen catalog, robot generation, artifact management/redaction, semantic
+At the offline milestone, deliberately incomplete: coordinator/device executor, state-signature
+algorithm, route planner, AI adapter, screen catalog, robot generation, artifact management/redaction, semantic
 scenario validation, elapsed/scroll/AI budgets, automatic reconciliation, or tagged release.
 Targets/scenarios are opaque offline metadata and must not be fed to an executor without a
 future typed validation/policy layer. An uncertain run remains blocked; opening a database does
 not assert ownership of an executor or automatically recover it. The whole-document store is
 for small offline runs and will need measured scaling work before large app crawls.
 
-Next milestone: define the fixture starting condition and explicit allowed navigation actions;
-add a public `tap-e2e` observation/execution adapter and fake-daemon tests before any separately
-requested device pilot. Preserve the stored-intent uncertainty boundary during that integration.
+That next milestone was subsequently implemented as the bounded pilot below. The generic
+state-signature, AI, robot, reconciliation and artifact-redaction work remains outstanding.
+
+## 21. Bounded sample-device pilot — implemented and physically verified
+
+Owner request: create a sample app and test on a real device. The owner also allowed a complex
+online APK; the controlled sample was chosen first because it supplies a known correctness
+oracle without media/account/permission risks. No third-party APK was downloaded or installed.
+
+### Implemented slice (partial phases 2/3, not general app exploration)
+
+- `samples/explorer-app`: separate native Android AUT, package
+  `io.github.noamcohen48.tap.explorer.sample`, no permissions/network/accounts/services or
+  persisted values. Eight observable states, seventeen explicitly approved tap/fill scenarios:
+  Home, About dialog, Profile empty/error/ready, Welcome, Preferences off/on.
+- `tap_explorer.live`: operator-defined screen/action rules; immutable policy names, package
+  ownership, unique resource IDs, enabled/capability/selector-quality checks. Password/index
+  targets and all unsupported verbs are refused. Unknown controls are never trusted by default.
+- Explicit TREE settle, snapshot→PNG→snapshot acquisition and app-node drift checks. Captures
+  are not atomic and a changing pair stops execution. All screenshots/nodes stay on disk.
+- Configured recognition through resource/text landmarks, then ordinary native selector checks
+  of source/state and approved business values (error message, Ada, greeting, toggle). No dump
+  on the assertion/action hot path and no persistent UI handles.
+- Candidate scheduling through `GraphStore`, graph discovery from actual destinations, BFS
+  routing over succeeded observed edges, fresh approved route trials and native checks at every
+  step. No inferred Back/reset edge. Divergence stops before the next input.
+- Persisted intent before each tap/fill. No mutation retransmission. Known success with failed
+  post-observation has no destination and stops; uncertain command failure stops and blocks.
+  The pilot refuses existing graphs and a second `run()` call: automatic resume is not implemented.
+- `tap-explorer sample`: explicit serial/APK/new output. Sample install/cold-launch/clean stop
+  are approved bootstrap calls outside the graph's tap/fill budget and recorded in the log.
+  The client never starts/stops the daemon; CI/operator orchestration does so explicitly.
+- Fixture oracle checks the full configured state/action/edge sets and invalid-submit self-loop.
+  A protobuf-aware command audit verifies every actual input against the ordered persisted
+  attempts, exact sample-package resource selectors, no picks, and no evictions/extra inputs.
+
+The configured state names/actions are seeded by a human. **This is not automatic discovery of
+unknown screens or intent**, a safe arbitrary-APK crawler, AI vision, or generated robots.
+The whole-device screenshot may include status/navigation bars; drift checks concern app nodes,
+not a claim that every pixel is static. Unredacted artifacts must remain non-sensitive/local.
+
+### Actual verification
+
+Physical device: **85e49002, Samsung SM-J810G, Android API 29, 720×1480**. JVM daemon 0.0.2,
+protocol 5.0, built from this worktree. Sample debug APK SHA-256:
+`2abfcadf42aec3b3c9f1f3dc11b2db374d32f60cca57cce6774ef38815082b52`.
+
+| Run | Outcome | States / candidates | Attempts | Actual input | Captures | Time |
+|---|---|---|---|---|---|---|
+| `device-sample-run-2` | passed | 8 / 17 | 29 | 26 taps + 3 fills | 59 PNG/JSON pairs | 106.186 s |
+| `device-sample-run-3` | passed | 8 / 17 | 29 | 26 taps + 3 fills | 59 PNG/JSON pairs | 104.924 s |
+
+Both runs: 17 discovery attempts + 12 route trials; 29 successful observed edges including
+repeats/self-loops; zero blocked candidates/uncertain outcomes/log evictions; three approved
+bootstrap calls. State/action sets and all 29 ordered action/status/destination outcomes match
+across fresh runs. Every PNG header/dimension and snapshot file was checked, all drift flags
+were false, and About/error/greeting/toggle images were visually inspected. Native checks
+passed independently of the hierarchy-derived classification. Device returned FREE, no explorer
+connections remained, and the sample was force-stopped after success.
+
+Evidence (local, ignored, not committed):
+`.tap/explorer/device-sample-run-{2,3}/{graph.db,graph.json,events.json,report.json,observations/}`.
+SQLite reopen/export equality and a fresh import round-trip were verified. Run 3's report embeds
+the command audit; run 2's retained log was audited retrospectively by the same protobuf-aware
+checker. No input was invented, retried, or omitted from persisted attempts.
+
+`device-sample-run-1` failed **before any device input**: the initially shared daemon had ended
+between inspection and invocation. Its empty graph/failure report is retained. The operator
+explicitly built/started this worktree's daemon and used new output directories; the client did
+not auto-start or retry a transmitted mutation. This is recorded as an environment failure,
+not hidden as a successful device run.
+
+Local checks: **64 explorer tests / 191 combined Python client-agent-explorer tests**, Pyright
+zero errors/warnings; sample `assembleDebug` + `lintDebug`; JVM daemon `installDist`; shell/YAML
+validation; package build. Fake-daemon coverage includes checked routes, divergence, action
+budget exhaustion during replay, ambiguous/rejected/indeterminate commands, frame drift,
+unknown post-state, duplicate/disabled/password/index targets, real SetText serialization,
+modal priority, resume refusal, protobuf audit spelling, extra inputs and log eviction.
+
+Device matrix: **run on the physical API 29 device only**. Emulator/other real apps/native-image
+smoke were not run locally. No reboot, permission grant, clear-data, uninstall or emulator input.
+CI now builds/lints the sample and runs a configured API 34 emulator smoke; its result must be
+checked separately, not assumed from this physical result.
+
+### Next decisions
+
+Choose a reputable target APK and controlled data/reset/safety policy before generalizing.
+Replace seeded recognition/action catalogs with conservative structured discovery and reviewed
+AI proposals. Select an AI provider/privacy/cost policy before transmitting any observations.
+Do not mistake this fixture result for validated generic app identity, backend restoration,
+state merging, multi-package dialogs, infinite-list exploration, or robot generation.

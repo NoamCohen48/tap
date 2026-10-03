@@ -1,4 +1,4 @@
-"""Local graph management only: this CLI does not connect to a daemon or an AI provider."""
+"""Graph management and an explicitly opted-in sample-device pilot. No AI provider."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ def _object_file(path: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Manage an offline graph. Return 0 on success; exit 1 on data/storage errors."""
+    """Manage graphs or run the bounded sample pilot. Return 0 on success; exit 1 on failure."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", required=True, help="SQLite file for one exploration run")
+    parser.add_argument("--db", help="SQLite file (required for offline graph commands)")
     sub = parser.add_subparsers(dest="verb", required=True)
     init = sub.add_parser("init", help="initialize an empty run")
     init.add_argument("--context", required=True, help="JSON context file; do not include secrets")
@@ -36,7 +36,27 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="report counts and the next scheduler decision")
     recover = sub.add_parser("recover", help="mark orphaned intents uncertain, without replay")
     recover.add_argument("--executor-stopped", action="store_true", help="confirm prior executor is stopped")
+    sample = sub.add_parser("sample", help="install/explore only Tap's disposable sample APK (requires live extra)")
+    sample.add_argument("--serial", required=True, help="explicit device serial; no implicit device selection")
+    sample.add_argument("--apk", required=True, type=Path, help="built samples/explorer-app debug APK")
+    sample.add_argument("--out", required=True, type=Path, help="new evidence directory (must not exist)")
+    sample.add_argument("--max-actions", type=int, default=100)
     args = parser.parse_args(argv)
+    if args.verb == "sample":
+        if args.db is not None:
+            parser.error("sample writes its own graph under --out; do not pass --db")
+        try:
+            from .sample import run_sample
+        except ImportError as error:
+            parser.exit(1, f"tap-explorer: install tap-explorer[live]: {error}\n")
+        try:
+            report = run_sample(args.serial, args.apk, args.out, max_actions=args.max_actions)
+            print(json.dumps(report, indent=2, sort_keys=True))
+            return 0
+        except Exception as error:
+            parser.exit(1, f"tap-explorer sample: {type(error).__name__}: {error}\n")
+    if args.db is None:
+        parser.error("offline graph commands require --db")
     try:
         if args.verb not in ("init", "import") and not Path(args.db).is_file():
             raise ValueError("database does not exist")
