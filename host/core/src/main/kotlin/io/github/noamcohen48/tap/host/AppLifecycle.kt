@@ -87,7 +87,7 @@ class AppLifecycle internal constructor(
         syncIdentity = null
     }
 
-    /** `am force-stop` plus proof that no process and no activity of the package remain. */
+    /** `am force-stop` plus proof that no process, task or activity of the package remains. */
     suspend fun forceStop(timeoutMs: Long) {
         session.guardAdb { adb.forceStop(serial, packageName) }
         awaitStopped(timeoutMs, "force-stop")
@@ -337,15 +337,15 @@ class AppLifecycle internal constructor(
         while (true) {
             polls++
             val pids = session.guardAdb { adb.processIds(serial, packageName) }
-            val activities = pids.isEmpty() && session.guardAdb { adb.hasActivities(serial, packageName) }
+            val activities = pids.isEmpty() && session.guardAdb { adb.hasTaskOrActivity(serial, packageName) }
             if (pids.isEmpty() && !activities) return
             if (System.nanoTime() >= deadline) {
                 throw HostWaitTimeoutException(
-                    "$packageName to have no process and no activity after $action",
+                    "$packageName to have no process, task or activity after $action",
                     serial,
                     (System.nanoTime() - started) / 1_000_000,
                     polls,
-                    if (activities) "an activity still exiting" else "pids=$pids",
+                    if (activities) "a task or activity still being removed" else "pids=$pids",
                 )
             }
             delay(pollIntervalMs)

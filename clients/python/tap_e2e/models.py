@@ -5,6 +5,7 @@ generated code."""
 from __future__ import annotations
 
 import builtins
+import datetime
 import enum
 import json
 import os
@@ -85,6 +86,64 @@ class PermissionChoice(enum.Enum):
     """"Keep only this time" when an upgrade is offered."""
 
 
+class LocationAccuracy(enum.Enum):
+    """The Precise / Approximate choice of the location permission dialog (API 31+)."""
+
+    PRECISE = "PRECISE"
+    APPROXIMATE = "APPROXIMATE"
+
+
+class StandardAction(enum.Enum):
+    """A standard accessibility action that takes no arguments, as a screen reader performs it
+    (``Element.perform_action``). Click and long click are not here: ``tap`` / ``long_tap``
+    touch the screen. ``PAGE_*`` need API 29+, ``PRESS_AND_HOLD`` API 30+."""
+
+    EXPAND = "EXPAND"
+    COLLAPSE = "COLLAPSE"
+    DISMISS = "DISMISS"
+    SCROLL_FORWARD = "SCROLL_FORWARD"
+    SCROLL_BACKWARD = "SCROLL_BACKWARD"
+    SCROLL_UP = "SCROLL_UP"
+    SCROLL_DOWN = "SCROLL_DOWN"
+    SCROLL_LEFT = "SCROLL_LEFT"
+    SCROLL_RIGHT = "SCROLL_RIGHT"
+    PAGE_UP = "PAGE_UP"
+    PAGE_DOWN = "PAGE_DOWN"
+    PAGE_LEFT = "PAGE_LEFT"
+    PAGE_RIGHT = "PAGE_RIGHT"
+    SHOW_ON_SCREEN = "SHOW_ON_SCREEN"
+    CONTEXT_CLICK = "CONTEXT_CLICK"
+    PRESS_AND_HOLD = "PRESS_AND_HOLD"
+    SELECT = "SELECT"
+    CLEAR_SELECTION = "CLEAR_SELECTION"
+    FOCUS = "FOCUS"
+    """Input focus."""
+    CLEAR_FOCUS = "CLEAR_FOCUS"
+    COPY = "COPY"
+    CUT = "CUT"
+    PASTE = "PASTE"
+
+
+class RangeType(enum.Enum):
+    """How a range node counts its value."""
+
+    INT = "INT"
+    FLOAT = "FLOAT"
+    PERCENT = "PERCENT"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class Range:
+    """A range node's (SeekBar, Slider, RatingBar, ProgressBar) value and bounds, in its own
+    units (``Element.set_progress``)."""
+
+    type: RangeType
+    min: float
+    max: float
+    current: float
+
+
 class StabilitySignal(enum.Enum):
     """What ``App.await_screen_stable`` watches: the accessibility tree, the window pixels
     (0.5 % tolerance) or both."""
@@ -158,6 +217,9 @@ class FailureReason(enum.Enum):
     """The device's API level is too low for the call (detail ``REQUIRES_API_<n>``)."""
     DEVICE_SETTING = "DEVICE_SETTING"
     """A device setting did not read back as written (or could not be restored)."""
+    DEVICE_FILE = "DEVICE_FILE"
+    """A device file was not written or read as asked: it exists and this device handle did not
+    create it, its directory is missing, it is not a regular file, or it did not read back."""
 
 
 class WaitReason(enum.Enum):
@@ -179,6 +241,8 @@ class WaitReason(enum.Enum):
 
     NO_TOAST = "NO_TOAST"
     """``await_toast``: no matching toast was shown."""
+    NO_NOTIFICATION = "NO_NOTIFICATION"
+    """``await_notification``: no matching notification was active."""
 
 
 class DeviceState(enum.Enum):
@@ -279,6 +343,12 @@ class ElementSnapshot:
     selected: bool
     child_count: int
     showing_hint: bool
+    actions: tuple[StandardAction, ...] = ()
+    """The standard actions the node offers (``Element.perform_action``)."""
+    custom_actions: tuple[str, ...] = ()
+    """The labels of the custom actions the node offers (``Element.perform_custom_action``)."""
+    range: Range | None = None
+    """The node's range, when it is a range node (``Element.set_progress``)."""
 
 
 @dataclass(frozen=True)
@@ -619,6 +689,22 @@ class DeviceInfo(Artifact):
     """The font scale apps see (1.0 = the default size)."""
     density_dpi: int
     """The display density apps see, in dpi."""
+    airplane_mode: bool
+    """Airplane mode is on."""
+    wifi_enabled: bool
+    """Wi-Fi is switched on (also while airplane mode is on); says nothing about a connection."""
+    mobile_data_enabled: bool
+    """Mobile data is switched on; ``False`` on a device without telephony."""
+    system_locales: tuple[str, ...] = ()
+    """The device's languages, BCP-47 tags in preference order (``Device.set_system_locales``)."""
+    stay_awake: bool = False
+    """The screen stays on while the device is plugged in (``Device.set_stay_awake``)."""
+    high_contrast_text: bool | None = None
+    """High-contrast text is on; ``None`` when the driver cannot read it."""
+    color_inversion: bool | None = None
+    """Colour inversion is on; ``None`` when the driver cannot read it."""
+    bold_text: bool = False
+    """The system font is bold (API 31+; always ``False`` below)."""
 
     media_type = "application/json"
     extension = "json"
@@ -638,11 +724,13 @@ class DeviceInfo(Artifact):
 @dataclass(frozen=True)
 class PermissionPrompt:
     """A runtime-permission dialog on screen (``Device.await_permission_prompt``): the package
-    of its window (what ``in_package`` scopes its other elements with) and the choices it
-    offers, in ``PermissionChoice`` order."""
+    of its window (what ``in_package`` scopes its other elements with), the choices it offers,
+    in ``PermissionChoice`` order, and the location accuracies it lets the user pick (empty
+    unless it asks for precise location)."""
 
     package_name: str
     choices: tuple[PermissionChoice, ...]
+    accuracies: tuple[LocationAccuracy, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -652,6 +740,31 @@ class Toast:
 
     text: str
     package_name: str
+
+
+@dataclass(frozen=True)
+class Notification:
+    """An active notification (``Device.notifications``, ``Device.await_notification``): the
+    package that posted it, its title and text (the ``android.title`` / ``android.text`` extras,
+    ``None`` when it has none), the titles of its action buttons (what
+    ``Device.open_notification``'s ``action`` names), whether a swipe dismisses it (``False`` for
+    an ongoing one, such as a foreground service's), and when it was posted (UTC)."""
+
+    package_name: str
+    title: str | None
+    text: str | None
+    actions: tuple[str, ...]
+    clearable: bool
+    posted_at: datetime.datetime
+
+
+@dataclass(frozen=True)
+class ForegroundActivity:
+    """The activity on top of the screen (``Device.foreground_activity``): its package and its
+    fully qualified class name."""
+
+    package_name: str
+    class_name: str
 
 
 @dataclass(frozen=True)

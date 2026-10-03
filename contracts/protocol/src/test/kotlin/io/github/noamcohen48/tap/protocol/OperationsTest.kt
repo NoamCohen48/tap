@@ -1,6 +1,12 @@
 package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.OpenNotification
+import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.ListNotifications
+import io.github.noamcohen48.tap.api.v1.DismissNotification
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
@@ -25,7 +31,11 @@ import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetLocation
+import io.github.noamcohen48.tap.api.v1.SetProgress
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
@@ -93,7 +103,8 @@ class OperationsTest {
             "press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll",
             "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
             "dismiss_keyguard", "choose_permission", "double_tap", "drag", "pinch", "fling",
-            "hide_keyboard", "perform_ime_action", "set_clipboard",
+            "hide_keyboard", "perform_ime_action", "set_clipboard", "perform_accessibility_action", "set_progress",
+            "set_location", "open_notification", "dismiss_notification",
         )
         sampleCommands.forEach { (name, command) ->
             assertEquals(name in mutations, command.isMutation, name)
@@ -119,7 +130,8 @@ class OperationsTest {
                 "device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable",
                 "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
                 "dismiss_keyguard", "wait_permission_prompt", "choose_permission",
-                "hide_keyboard", "set_clipboard", "get_clipboard", "await_toast",
+                "hide_keyboard", "set_clipboard", "get_clipboard", "await_toast", "set_location",
+                "await_notification", "list_notifications", "open_notification", "dismiss_notification",
             ),
             targeted,
         )
@@ -151,6 +163,8 @@ class OperationsTest {
                 "wait_permission_prompt" to OutcomeCase.PERMISSION_PROMPT,
                 "get_clipboard" to OutcomeCase.TEXT,
                 "await_toast" to OutcomeCase.TOAST,
+                "await_notification" to OutcomeCase.NOTIFICATION,
+                "list_notifications" to OutcomeCase.NOTIFICATIONS,
             )
         sampleCommands.forEach { (name, command) ->
             val handler = RecordingHandler()
@@ -170,6 +184,8 @@ class OperationsTest {
         )
         assertEquals("copied", Commands.getClipboard().toRequest().dispatch(handler).result.text)
         assertEquals("Saved", Commands.awaitToast().toRequest().dispatch(handler).result.toast.text)
+        assertEquals("New message", Commands.awaitNotification().toRequest().dispatch(handler).result.notification.title)
+        assertEquals(1, Commands.listNotifications().toRequest().dispatch(handler).result.notifications.notificationsCount)
     }
 
     @Test
@@ -348,11 +364,28 @@ class OperationsTest {
 
         override fun performImeAction(command: PerformImeAction) = record("perform_ime_action", Unit)
 
+        override fun performAccessibilityAction(command: PerformAccessibilityAction) = record("perform_accessibility_action", Unit)
+
+        override fun setProgress(command: SetProgress) = record("set_progress", Unit)
+
+        override fun setLocation(command: SetLocation) = record("set_location", Unit)
+
         override fun setClipboard(command: SetClipboard) = record("set_clipboard", Unit)
 
         override fun getClipboard(command: GetClipboard): String = record("get_clipboard", "copied")
 
         override fun awaitToast(command: AwaitToast): Toast = record("await_toast", Toast.newBuilder().setText("Saved").setPackageName(AUT).build())
+
+        override fun awaitNotification(command: AwaitNotification): DeviceNotification = record("await_notification", notification)
+
+        override fun listNotifications(command: ListNotifications): NotificationList =
+            record("list_notifications", NotificationList.newBuilder().addNotifications(notification).build())
+
+        override fun openNotification(command: OpenNotification) = record("open_notification", Unit)
+
+        override fun dismissNotification(command: DismissNotification) = record("dismiss_notification", Unit)
+
+        private val notification = DeviceNotification.newBuilder().setPackageName(AUT).setTitle("New message").build()
     }
 
     companion object {
@@ -395,6 +428,13 @@ class OperationsTest {
                 "set_clipboard" to Commands.setClipboard("copied"),
                 "get_clipboard" to Commands.getClipboard(),
                 "await_toast" to Commands.awaitToast("Saved", MatchMode.MATCH_CONTAINS),
+                "perform_accessibility_action" to Commands.performAccessibilityAction(button, StandardAction.A11Y_EXPAND),
+                "set_progress" to Commands.setProgress(Selectors.resource("volume"), 40f),
+                "set_location" to Commands.setLocation(48.8584, 2.2945),
+                "await_notification" to Commands.awaitNotification(Commands.notificationMatch(AUT, title = "New message")),
+                "list_notifications" to Commands.listNotifications(),
+                "open_notification" to Commands.openNotification(Commands.notificationMatch(AUT), action = "Reply"),
+                "dismiss_notification" to Commands.dismissNotification(Commands.notificationMatch(text = "Sync", mode = MatchMode.MATCH_CONTAINS)),
             )
 
         /** One valid request per host-internal operation. */

@@ -20,6 +20,22 @@ object Fixture {
         return app
     }
 
+    /** A valid 1x1 PNG: the media scanner skips files it cannot decode. */
+    val PNG: ByteArray by lazy {
+        fun chunk(
+            kind: String,
+            data: ByteArray,
+        ): ByteArray {
+            val crc = java.util.zip.CRC32().apply { update(kind.toByteArray() + data) }.value.toInt()
+            return int(data.size) + kind.toByteArray() + data + int(crc)
+        }
+        val header = int(1) + int(1) + byteArrayOf(8, 2, 0, 0, 0)
+        val pixels = java.io.ByteArrayOutputStream().also { out -> java.util.zip.DeflaterOutputStream(out).use { it.write(byteArrayOf(0, -1, 0, 0)) } }.toByteArray()
+        byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10) + chunk("IHDR", header) + chunk("IDAT", pixels) + chunk("IEND", ByteArray(0))
+    }
+
+    private fun int(value: Int) = java.nio.ByteBuffer.allocate(4).putInt(value).array()
+
     private val installed =
         java.util.concurrent.ConcurrentHashMap
             .newKeySet<String>()

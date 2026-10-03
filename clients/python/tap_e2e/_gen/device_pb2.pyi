@@ -344,3 +344,171 @@ class SetDensityRequest(_message.Message):
 class SetDensityResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class SetNetworkRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "airplane_mode", "wifi", "mobile_data")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    AIRPLANE_MODE_FIELD_NUMBER: _ClassVar[int]
+    WIFI_FIELD_NUMBER: _ClassVar[int]
+    MOBILE_DATA_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    airplane_mode: bool
+    wifi: bool
+    mobile_data: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., airplane_mode: _Optional[bool] = ..., wifi: _Optional[bool] = ..., mobile_data: _Optional[bool] = ...) -> None: ...
+
+class SetNetworkResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetSystemLocalesRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "locales")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    LOCALES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    locales: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., locales: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class SetSystemLocalesResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetLocationRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "latitude", "longitude", "accuracy_m", "altitude_m")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    LATITUDE_FIELD_NUMBER: _ClassVar[int]
+    LONGITUDE_FIELD_NUMBER: _ClassVar[int]
+    ACCURACY_M_FIELD_NUMBER: _ClassVar[int]
+    ALTITUDE_M_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    latitude: float
+    longitude: float
+    accuracy_m: float
+    altitude_m: float
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., latitude: _Optional[float] = ..., longitude: _Optional[float] = ..., accuracy_m: _Optional[float] = ..., altitude_m: _Optional[float] = ...) -> None: ...
+
+class SetLocationResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class PushFileHeader(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "device_path", "size_bytes")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    device_path: str
+    size_bytes: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., device_path: _Optional[str] = ..., size_bytes: _Optional[int] = ...) -> None: ...
+
+class PushFileRequest(_message.Message):
+    __slots__ = ("header", "chunk")
+    HEADER_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_FIELD_NUMBER: _ClassVar[int]
+    header: PushFileHeader
+    chunk: bytes
+    def __init__(self, header: _Optional[_Union[PushFileHeader, _Mapping]] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+
+class PushFileResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class PullFileRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "device_path")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    device_path: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., device_path: _Optional[str] = ...) -> None: ...
+
+class PullFileResponse(_message.Message):
+    __slots__ = ("size_bytes", "chunk")
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_FIELD_NUMBER: _ClassVar[int]
+    size_bytes: int
+    chunk: bytes
+    def __init__(self, size_bytes: _Optional[int] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+
+class AddMediaHeader(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "file_name", "size_bytes")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    file_name: str
+    size_bytes: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., file_name: _Optional[str] = ..., size_bytes: _Optional[int] = ...) -> None: ...
+
+class AddMediaRequest(_message.Message):
+    __slots__ = ("header", "chunk")
+    HEADER_FIELD_NUMBER: _ClassVar[int]
+    CHUNK_FIELD_NUMBER: _ClassVar[int]
+    header: AddMediaHeader
+    chunk: bytes
+    def __init__(self, header: _Optional[_Union[AddMediaHeader, _Mapping]] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+
+class AddMediaResponse(_message.Message):
+    __slots__ = ("device_path",)
+    DEVICE_PATH_FIELD_NUMBER: _ClassVar[int]
+    device_path: str
+    def __init__(self, device_path: _Optional[str] = ...) -> None: ...
+
+class SetStayAwakeRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "enabled")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    enabled: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., enabled: _Optional[bool] = ...) -> None: ...
+
+class SetStayAwakeResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class SetAccessibilityDisplayRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "high_contrast_text", "color_inversion", "bold_text")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    HIGH_CONTRAST_TEXT_FIELD_NUMBER: _ClassVar[int]
+    COLOR_INVERSION_FIELD_NUMBER: _ClassVar[int]
+    BOLD_TEXT_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    high_contrast_text: bool
+    color_inversion: bool
+    bold_text: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., high_contrast_text: _Optional[bool] = ..., color_inversion: _Optional[bool] = ..., bold_text: _Optional[bool] = ...) -> None: ...
+
+class SetAccessibilityDisplayResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetForegroundActivityRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ...) -> None: ...
+
+class GetForegroundActivityResponse(_message.Message):
+    __slots__ = ("package_name", "activity")
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    ACTIVITY_FIELD_NUMBER: _ClassVar[int]
+    package_name: str
+    activity: str
+    def __init__(self, package_name: _Optional[str] = ..., activity: _Optional[str] = ...) -> None: ...

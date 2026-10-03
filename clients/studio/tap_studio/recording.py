@@ -8,6 +8,7 @@ module reads and writes it and checks the rules proto cannot state (``validate``
 
 from __future__ import annotations
 
+import math
 import os
 import pathlib
 
@@ -18,16 +19,70 @@ from ._gen import studio_pb2 as studio
 
 FORMAT = "tap-recording/1"
 
-APP_OPERATIONS = ("cold_launch", "launch", "force_stop", "clear_data", "grant_permission")
+APP_OPERATIONS = (
+    "cold_launch",
+    "launch",
+    "foreground",
+    "force_stop",
+    "clear_data",
+    "grant_permission",
+    "revoke_permission",
+    "open_link",
+    "set_locales",
+)
 """The app calls a recording holds (``tap.v1.AppCall.operation``)."""
 
-ACTION_OPS = ("tap", "long_tap", "set_text", "clear_text", "scroll", "swipe", "press_key", "open_system_panel")
-"""The ``tap.v1.Command`` ops an action step holds; all but the ``UNTARGETED_OPS`` take a selector."""
-UNTARGETED_OPS = ("press_key", "open_system_panel")
-"""The action ops without a selector, so without a wait or a selector origin."""
+TARGETED_OPS = (
+    "tap",
+    "long_tap",
+    "double_tap",
+    "set_text",
+    "clear_text",
+    "scroll",
+    "swipe",
+    "fling",
+    "pinch",
+    "drag",
+    "perform_ime_action",
+    "perform_accessibility_action",
+    "set_progress",
+)
+"""The action ops on an element: each takes a selector and is recorded with its wait."""
+UNTARGETED_OPS = (
+    "press_key",
+    "open_system_panel",
+    "set_orientation",
+    "set_display_rotation",
+    "unfreeze_rotation",
+    "dismiss_keyguard",
+    "hide_keyboard",
+    "set_clipboard",
+    "choose_permission",
+    "open_notification",
+    "dismiss_notification",
+)
+"""The action ops on the device, without a selector, so without a wait or a selector origin."""
+ACTION_OPS = TARGETED_OPS + UNTARGETED_OPS
+"""The ``tap.v1.Command`` ops an action step holds."""
 
 APP_WAIT_OPS = ("wait_app_visible", "wait_screen_stable")
 """The ``tap.v1.Command`` ops an app wait step holds."""
+
+DEVICE_WAIT_OPS = ("await_toast", "await_notification", "wait_permission_prompt")
+"""The ``tap.v1.Command`` ops a device wait step holds."""
+
+DEVICE_OPERATIONS = (
+    "set_animations",
+    "set_dark_mode",
+    "set_font_scale",
+    "set_density",
+    "set_network",
+    "set_system_locales",
+    "set_location",
+    "set_stay_awake",
+    "set_accessibility_display",
+)
+"""The device conditions a recording holds (``tap.v1.DeviceCall.operation``)."""
 
 MAX_SCROLLS = 1000
 """The most scrolls a scroll_until step may take."""
@@ -131,7 +186,9 @@ def _step(step: studio.Step, used: set[str]) -> list[str]:
     problems = []
     kind = step.WhichOneof("kind")
     if kind is None:
-        problems.append("kind is required (app, action, type, wait, assertion, scroll_until or app_wait)")
+        problems.append(
+            "kind is required (app, action, type, wait, assertion, scroll_until, app_wait, device_wait, device or device_assertion)"
+        )
     else:
         check = {
             "app": _app,
@@ -141,6 +198,9 @@ def _step(step: studio.Step, used: set[str]) -> list[str]:
             "assertion": _assertion,
             "scroll_until": _scroll_until,
             "app_wait": _app_wait,
+            "device_wait": _device_wait,
+            "device": _device,
+            "device_assertion": _device_assertion,
         }[kind]
         problems += check(getattr(step, kind), used)
     results = [step.outcome.HasField("error"), step.outcome.HasField("failure"), bool(step.outcome.mismatch)]
@@ -155,10 +215,25 @@ def _app(call, used: set[str]) -> list[str]:
         problems.append(f"app.operation must be one of {', '.join(APP_OPERATIONS)}, not {call.operation!r}")
     if not call.package_name:
         problems.append("app.package_name is required")
-    if call.HasField("permission") != (call.operation == "grant_permission"):
-        problems.append("app.permission is required by grant_permission and only there")
-    if call.HasField("activity") and call.operation not in ("launch", "cold_launch"):
+    op = call.operation
+    if call.HasField("permission") != (op in ("grant_permission", "revoke_permission")):
+        problems.append("app.permission is required by grant_permission and revoke_permission and only there")
+    launches = ("launch", "cold_launch")
+    if call.HasField("activity") and op not in launches:
         problems.append("app.activity applies to launch and cold_launch only")
+    if call.extras and op not in launches:
+        problems.append("app.extras apply to launch and cold_launch only")
+    for extra in call.extras:
+        if not extra.key or extra.WhichOneof("value") is None:
+            problems.append("app.extras: every extra has a key and a value")
+        elif extra.WhichOneof("value") == "float_value" and not math.isfinite(extra.float_value):
+            problems.append(f"app.extras: {extra.key} must be finite")
+    if bool(call.uri) != (op == "open_link"):
+        problems.append("app.uri is required by open_link and only there")
+    if call.HasField("any_app") and op != "open_link":
+        problems.append("app.any_app applies to open_link only")
+    if call.locales and op != "set_locales":
+        problems.append("app.locales apply to set_locales only")
     return problems
 
 
@@ -177,9 +252,7 @@ def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
     if op in UNTARGETED_OPS:
         if action.HasField("wait") or action.selector_origin:
             problems.append(f"{op} has no selector, so no wait or selector_origin")
-        panel = action.command.open_system_panel.panel
-        if op == "open_system_panel" and panel not in (tap.SYSTEM_PANEL_NOTIFICATIONS, tap.SYSTEM_PANEL_QUICK_SETTINGS):
-            problems.append("open_system_panel.panel must be SYSTEM_PANEL_NOTIFICATIONS or SYSTEM_PANEL_QUICK_SETTINGS")
+        problems += _device_command(action.command)
     else:
         selector = getattr(action.command, op).selector
         if not selector.HasField("node"):
@@ -196,6 +269,7 @@ def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
             )
         elif action.wait.wait_visible.selector != selector:
             problems.append(f"action.wait's selector differs from command.{op}.selector")
+        problems += _element_command(action.command)
     if action.HasField("secret"):
         used.add(action.secret)
         if op != "set_text":
@@ -271,3 +345,125 @@ def _app_wait(step: studio.AppWaitStep, used: set[str]) -> list[str]:
     if op == "wait_screen_stable" and wait.HasField("stable_for_ms") and not 1 <= wait.stable_for_ms <= 30000:
         problems.append("wait_screen_stable.stable_for_ms must be 1..30000")
     return problems
+
+
+def _device_command(command: tap.Command) -> list[str]:
+    """The rules of an action op on the device that proto cannot state."""
+    op = command.WhichOneof("op")
+    message = getattr(command, op)
+    if op == "open_system_panel" and message.panel not in (tap.SYSTEM_PANEL_NOTIFICATIONS, tap.SYSTEM_PANEL_QUICK_SETTINGS):
+        return ["open_system_panel.panel must be SYSTEM_PANEL_NOTIFICATIONS or SYSTEM_PANEL_QUICK_SETTINGS"]
+    if op == "set_orientation" and message.orientation == tap.ORIENTATION_UNSPECIFIED:
+        return ["set_orientation.orientation is required"]
+    if op == "set_display_rotation" and message.rotation == tap.DISPLAY_ROTATION_UNSPECIFIED:
+        return ["set_display_rotation.rotation is required"]
+    if op == "choose_permission" and message.choice == tap.PERMISSION_CHOICE_UNSPECIFIED:
+        return ["choose_permission.choice is required"]
+    if op == "set_clipboard" and len(message.text) > 4096:
+        return ["set_clipboard.text is at most 4096 characters"]
+    if op in ("open_notification", "dismiss_notification"):
+        return _notification_match(message.match, op)
+    return []
+
+
+def _notification_match(match: tap.NotificationMatch, where: str, required: bool = True) -> list[str]:
+    worded = match.HasField("title") or match.HasField("text")
+    if required and not (worded or match.HasField("package_name")):
+        return [f"{where}.match needs a title, a text or a package_name"]
+    # The SDKs send a mode exactly when there is a title or a text to match.
+    if worded == (match.mode == tap.MATCH_UNSPECIFIED):
+        return [f"{where}.match.mode is set with a title or text, and only then"]
+    return []
+
+
+def _element_command(command: tap.Command) -> list[str]:
+    """The rules of an action op on an element that proto cannot state."""
+    op = command.WhichOneof("op")
+    message = getattr(command, op)
+    if op in ("scroll", "swipe", "fling") and message.direction not in _DIRECTIONS:
+        return [f"{op}.direction is required"]
+    if op == "pinch":
+        problems = [] if message.direction in (tap.PINCH_OPEN, tap.PINCH_CLOSE) else ["pinch.direction is required"]
+        if message.HasField("percent") and not 1 <= message.percent <= 100:
+            problems.append("pinch.percent must be 1..100")
+        return problems
+    if op == "drag" and not message.target.HasField("node"):
+        return ["drag.target has no node"]
+    if op == "perform_accessibility_action":
+        which = message.WhichOneof("action")
+        if which is None or (which == "standard" and message.standard == tap.STANDARD_ACTION_UNSPECIFIED) or (which == "custom" and not message.custom):
+            return ["perform_accessibility_action needs a standard action or a custom label"]
+    if op == "set_progress" and not math.isfinite(message.value):
+        return ["set_progress.value must be finite"]
+    return []
+
+
+def _device_wait(step: studio.DeviceWaitStep, used: set[str]) -> list[str]:
+    op = step.command.WhichOneof("op")
+    if op not in DEVICE_WAIT_OPS:
+        return [f"device_wait.command must be one of {', '.join(DEVICE_WAIT_OPS)}, not {op or 'empty'}"]
+    if op == "await_notification":
+        return _notification_match(step.command.await_notification.match, op, required=False)
+    toast = step.command.await_toast
+    if op == "await_toast" and toast.HasField("text") == (toast.mode == tap.MATCH_UNSPECIFIED):
+        # The SDKs send a mode exactly when there is a text, so a replay sends this one as recorded.
+        return ["await_toast.mode is set with a text, and only then"]
+    return []
+
+
+_DEVICE_FIELDS = {
+    "set_animations": {"enabled"},
+    "set_dark_mode": {"enabled"},
+    "set_font_scale": {"font_scale"},
+    "set_density": {"density_dpi"},
+    "set_network": {"airplane_mode", "wifi", "mobile_data"},
+    "set_system_locales": {"locales"},
+    "set_location": {"latitude", "longitude", "accuracy_m", "altitude_m"},
+    "set_stay_awake": {"enabled"},
+    "set_accessibility_display": {"high_contrast_text", "color_inversion", "bold_text"},
+}
+"""The ``DeviceCall`` fields each condition may set; the rest must be absent."""
+
+
+def _device(call: tap.DeviceCall, used: set[str]) -> list[str]:
+    op = call.operation
+    if op not in DEVICE_OPERATIONS:
+        return [f"device.operation must be one of {', '.join(DEVICE_OPERATIONS)}, not {op!r}"]
+    present = {field.name for field, _ in call.ListFields()} - {"operation"}
+    problems = [f"device.{name} does not apply to {op}" for name in sorted(present - _DEVICE_FIELDS[op])]
+    required = {
+        "set_animations": ("enabled",),
+        "set_dark_mode": ("enabled",),
+        "set_stay_awake": ("enabled",),
+        "set_font_scale": ("font_scale",),
+        "set_location": ("latitude", "longitude"),
+    }.get(op, ())
+    problems += [f"{op} needs device.{name}" for name in required if name not in present]
+    if op in ("set_network", "set_accessibility_display", "set_system_locales") and not present:
+        problems.append(f"{op} sets at least one of {', '.join(sorted(_DEVICE_FIELDS[op]))}")
+    if op == "set_font_scale" and "font_scale" in present and not 0.5 <= call.font_scale <= 2.0:
+        problems.append("set_font_scale.font_scale must be 0.5..2.0")
+    if op == "set_density" and "density_dpi" in present and not 100 <= call.density_dpi <= 1000:
+        problems.append("set_density.density_dpi must be 100..1000 (absent: the physical density)")
+    if op == "set_location":
+        if not -90 <= call.latitude <= 90 or not -180 <= call.longitude <= 180:
+            problems.append("set_location takes a latitude -90..90 and a longitude -180..180")
+        if call.HasField("accuracy_m") and not (math.isfinite(call.accuracy_m) and call.accuracy_m > 0):
+            problems.append("set_location.accuracy_m must be a positive number of meters")
+        if call.HasField("altitude_m") and not math.isfinite(call.altitude_m):
+            problems.append("set_location.altitude_m must be finite")
+    return problems
+
+
+def _device_assertion(step: studio.DeviceAssertionStep, used: set[str]) -> list[str]:
+    if step.check == studio.DEVICE_CHECK_UNSPECIFIED:
+        return ["device_assertion.check is required"]
+    takes = step.check in (studio.DEVICE_CHECK_FOREGROUND_ACTIVITY, studio.DEVICE_CHECK_CLIPBOARD_EQUALS)
+    name = studio.DeviceCheck.Name(step.check)
+    if takes and not step.HasField("text"):
+        return [f"{name} needs a text value"]
+    if not takes and step.HasField("text"):
+        return [f"{name} takes no value"]
+    if step.check == studio.DEVICE_CHECK_FOREGROUND_ACTIVITY and "/" not in step.text.strip("/"):
+        return [f"{name} takes package/class, not {step.text!r}"]
+    return []

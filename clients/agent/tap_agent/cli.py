@@ -9,11 +9,13 @@ from importlib import resources
 
 from . import render
 from .core import (
+    ACCURACIES,
     APP_ACTIONS,
     CONDITIONS,
     EXIT_OK,
     EXIT_USAGE,
     KEYBOARD_ACTIONS,
+    NOTIFICATION_ACTIONS,
     PANELS,
     PERMISSION_CHOICES,
     PINCHES,
@@ -30,6 +32,7 @@ Drive an Android device through a running Tap daemon (`tap start`), one step per
   tap-agent devices
   tap-agent attach emulator-5554
   tap-agent app cold-launch com.example.app
+  tap-agent app launch com.example.app .ui.ItemActivity --extra item:long=42
   tap-agent snapshot                 # one line per node: @e3  [Button] "Log in"  id=login
   tap-agent tap @e3 --settle         # act on a ref; --settle prints what changed
   tap-agent fill id=email me@example.com
@@ -99,8 +102,37 @@ def parser() -> argparse.ArgumentParser:
     p = verb("submit", "run a focused field's keyboard action (Search, Go, Send, Done, …); API 30+", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
 
+    p = verb("action", "list a node's accessibility actions, or perform one as a screen reader does (no touch)", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+    p.add_argument("name", nargs="?", help="a standard action (expand, collapse, dismiss, scroll-forward, ...) or, with --custom, a label")
+    p.add_argument("--custom", action="store_true", help="NAME is a custom action's label (e.g. 'Archive')")
+
+    p = verb("progress", "set a slider (SeekBar, Slider, RatingBar) to a value in its own units", on_device, settle)
+    p.add_argument("target", help=TARGET_HELP)
+    p.add_argument("value", type=float)
+
     p = verb("keyboard", "whether a soft keyboard shows, or hide it", on_device, settle)
     p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", default="state")
+
+    p = verb("location", "mock the device location until release", on_device)
+    p.add_argument("latitude", type=float, help="-90..90")
+    p.add_argument("longitude", type=float, help="-180..180")
+    p.add_argument("--accuracy", type=float, help="in meters (default 5)")
+    p.add_argument("--altitude", type=float, help="in meters")
+
+    verb("activity", "print the activity on top of the screen (package/class)", on_device)
+
+    p = verb("push", "copy a local file to the device until release", on_device)
+    p.add_argument("local", help="the file on this machine")
+    p.add_argument("device_path", help="absolute path on the device; its directory must exist (e.g. /sdcard/Download/a.pdf)")
+
+    p = verb("pull", "copy a device file here and print the local path", on_device)
+    p.add_argument("device_path", help="absolute path of a regular file on the device")
+    p.add_argument("-o", "--out", help="file (default .tap/agent/<serial>-<time>-<name>)")
+
+    p = verb("media", "add a photo or video to the device gallery until release", on_device)
+    p.add_argument("local", help="the image or video on this machine (jpg, png, gif, webp, heic, bmp, mp4, 3gp, webm, mkv, mov)")
+    p.add_argument("--name", help="file name on the device (default the local name)")
 
     p = verb("clipboard", "print the device clipboard, or set it", on_device)
     p.add_argument("text", nargs="?", help="put this on the clipboard (omit to print it)")
@@ -135,19 +167,29 @@ def parser() -> argparse.ArgumentParser:
     p = verb("screen", "screen state, or turn it on/off, or wake it and dismiss a keyguard without a PIN", on_device, settle)
     p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", default="state")
 
-    p = verb("condition", "device conditions (animations, dark mode, font scale, density): print or change until release", on_device)
+    p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches, languages, stay awake, accessibility display): print or change until release", on_device)
     p.add_argument("name", choices=CONDITIONS, nargs="?", help="omit to print all")
-    p.add_argument("value", nargs="?", help="animations/dark-mode: on|off; font-scale: 0.5..2.0; density: dpi or reset (omit to print)")
+    p.add_argument("value", nargs="?", help="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/high-contrast-text/color-inversion/bold-text: on|off; font-scale: 0.5..2.0; density: dpi or reset; locale: comma-separated BCP-47 tags, e.g. fr-FR,en (omit to print)")
 
     p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
     p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")
     p.add_argument("--timeout", type=_duration, default=10.0, help="how long to wait for the dialog (default 10s)")
+    p.add_argument("--accuracy", choices=ACCURACIES, help="pick Precise or Approximate first (location dialog, Android 12+)")
 
     p = verb("toast", "wait for a toast (shown in the last 3.5s or coming) and print it", on_device)
     p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
     p.add_argument("--contains", action="store_true", help="text is only part of the toast")
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
     p.add_argument("--timeout", type=_duration, default=10.0, help="default 10s")
+
+    p = verb("notification", "list the device's notifications, or wait for, open or dismiss one (read as data; the shade stays closed)", on_device, settle)
+    p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", default="list")
+    p.add_argument("--title", help="the notification's title")
+    p.add_argument("--text", help="the notification's text")
+    p.add_argument("--contains", action="store_true", help="title/text are only part of it")
+    p.add_argument("--package", help="only this package's notifications")
+    p.add_argument("--button", help="open: press the action button with this title instead")
+    p.add_argument("--timeout", type=_duration, default=10.0, help="await: default 10s")
 
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
@@ -171,6 +213,13 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("package")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
     p.add_argument("--any-app", action="store_true", help="open-link: let any app handle the link, not only this one")
+    p.add_argument(
+        "--extra",
+        action="append",
+        default=[],
+        metavar="KEY[:TYPE]=VALUE",
+        help="launch/cold-launch: an intent extra; TYPE is string (default), int, long, float or bool; repeat for more",
+    )
 
     p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
     p.add_argument("-o", "--out", help="write it to this file instead")
@@ -205,10 +254,29 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.clear(args.target, device, settle=settle)
     if v == "submit":
         return agent.submit(args.target, device, settle=settle)
+    if v == "action":
+        return agent.action(args.target, args.name, device, custom=args.custom, settle=settle)
+    if v == "progress":
+        return agent.progress(args.target, args.value, device, settle=settle)
     if v == "keyboard":
         return agent.keyboard(args.action, device, settle=settle)
+    if v == "location":
+        return agent.location(args.latitude, args.longitude, args.accuracy, device, altitude=args.altitude)
+    if v == "activity":
+        return agent.activity(device)
+    if v == "push":
+        return agent.push(args.local, args.device_path, device)
+    if v == "pull":
+        return agent.pull(args.device_path, args.out, device)
+    if v == "media":
+        return agent.media(args.local, args.name, device)
     if v == "clipboard":
         return agent.clipboard(args.text, device)
+    if v == "notification":
+        return agent.notification(
+            args.action, args.title, args.text, device, contains=args.contains, package=args.package,
+            button=args.button, timeout=args.timeout, settle=settle,
+        )
     if v == "toast":
         return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout)
     if v == "scroll":
@@ -232,7 +300,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "screen":
         return agent.screen(args.action, device, settle=settle)
     if v == "permission":
-        return agent.permission(args.choice, device, args.timeout, settle=settle)
+        return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout)
     if v == "settle":
@@ -244,7 +312,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "export":
         return agent.export(args.out)
     if v == "app":
-        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app)
+        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra)
     raise AssertionError(v)
 
 

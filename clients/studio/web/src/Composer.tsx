@@ -3,9 +3,10 @@ import { useId, useState } from "react";
 import type { StudioClient } from "./api";
 import { AppControls } from "./AppControls";
 import { DIRECTIONS, Directions, Group, Row, directionName } from "./controls";
-import { useCount } from "./count";
+import { useCount, useElementInfo, type ElementInfo } from "./count";
+import { DeviceControls } from "./DeviceControls";
 import { describeSelector } from "./describe";
-import type { Direction } from "./gen/command_pb";
+import { RangeType, StandardAction, type Direction } from "./gen/command_pb";
 import { SelectorCandidateSchema, type ScreenNode } from "./gen/device_pb";
 import { SelectorSchema } from "./gen/selector_pb";
 import { Check, Condition, SelectorOrigin, type PerformRequest } from "./gen/studio_pb";
@@ -17,15 +18,19 @@ import * as steps from "./steps";
 import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
 
-/** The composer's tabs: the three kinds of step on the selected element, then the app. */
-export type Tab = Intent | "app";
+/** The composer's tabs: the three kinds of step on the selected element, then the app and the device. */
+export type Tab = Intent | "app" | "device";
 
 export const TABS: { tab: Tab; label: string; key: string; title: string }[] = [
   { tab: "act", label: "Act", key: "1", title: "Perform an action on the element" },
   { tab: "assert", label: "Assert", key: "2", title: "Check the element as it is now" },
   { tab: "wait", label: "Wait", key: "3", title: "Wait until something happens to the element" },
   { tab: "app", label: "App", key: "4", title: "Launch, stop or wait for the app" },
+  { tab: "device", label: "Device", key: "5", title: "Rotate, set conditions, answer dialogs and notifications" },
 ];
+
+/** A drag being set up: the element it starts on; the next element picked on the screen is where it drops. */
+export type DragFrom = { source: Target; node: ScreenNode; note?: string };
 
 /**
  * A scroll until being set up: the container has been scrolled `scrolls` times towards
@@ -68,6 +73,13 @@ type Props = {
   onSeek: (direction: Direction) => void;
   onSeekAgain: () => void;
   onSeekCancel: () => void;
+  /** The drag being set up, if any. */
+  drag: DragFrom | null;
+  /** Starts a drag from the selected element: the next pick is its destination. */
+  onDrag: () => void;
+  onDragCancel: () => void;
+  /** Bumped after every step run: the Device tab reads the device again. */
+  revision: number;
   /** The app under test (the App tab). */
   appPackage: string;
   onAppPackage: (pkg: string) => void;
@@ -85,6 +97,8 @@ type Props = {
 export function Composer(props: Props) {
   const { tab, node, target } = props;
   const count = useCount(props.client, props.onScreen ? target?.selector : undefined);
+  const info = useElementInfo(props.client, props.onScreen && tab === "act" ? target?.selector : undefined);
+  const picking = !!props.seek || !!props.drag;
   const live = count.state === "done" ? count.count : null;
   const usable = !!target && props.onScreen && !props.busy;
   const panel = useId();
@@ -97,11 +111,11 @@ export function Composer(props: Props) {
             type="button"
             role="tab"
             id={`${panel}-${i.tab}`}
-            className={i.tab === "app" ? "apart" : undefined}
+            className={i.tab === "app" ? "apart" : i.tab === "device" ? "apart-next" : undefined}
             aria-selected={tab === i.tab}
             aria-controls={panel}
             aria-keyshortcuts={i.key}
-            disabled={!!props.seek && tab !== i.tab}
+            disabled={picking && tab !== i.tab}
             title={`${i.title} (key ${i.key})`}
             onClick={() => props.onTab(i.tab)}
           >
@@ -112,8 +126,12 @@ export function Composer(props: Props) {
       <div className="panel-b" role="tabpanel" id={panel} aria-labelledby={`${panel}-${tab}`}>
         {tab === "app" ? (
           <AppControls appPackage={props.appPackage} onAppPackage={props.onAppPackage} packages={props.packages} busy={props.busy} onPerform={props.onPerform} />
+        ) : tab === "device" ? (
+          <DeviceControls client={props.client} busy={props.busy} onPerform={props.onPerform} revision={props.revision} />
         ) : props.seek ? (
           <SeekCard seek={props.seek} busy={props.busy} onAgain={props.onSeekAgain} onCancel={props.onSeekCancel} />
+        ) : props.drag ? (
+          <DragCard drag={props.drag} onCancel={props.onDragCancel} />
         ) : (
           <>
             <Selected node={node} onScreen={props.onScreen} target={target} count={count} onChoose={props.onChoose} />
@@ -131,6 +149,8 @@ export function Composer(props: Props) {
                     onDistance={props.onDistance}
                     onPerform={props.onPerform}
                     onSeek={props.onSeek}
+                    onDrag={props.onDrag}
+                    info={info}
                   />
                 )}
                 {tab === "assert" && <AssertOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
@@ -245,6 +265,8 @@ function ActOnElement({
   onDistance,
   onPerform,
   onSeek,
+  onDrag,
+  info,
 }: {
   node: ScreenNode;
   target: Target;
@@ -258,6 +280,9 @@ function ActOnElement({
   onDistance: (percent: number) => void;
   onPerform: (r: PerformRequest) => void;
   onSeek: (direction: Direction) => void;
+  onDrag: () => void;
+  /** What the element offers: its accessibility actions and its range. */
+  info: ElementInfo;
 }) {
   const id = useId();
   const scrollable = isScrollable(node);
@@ -267,12 +292,26 @@ function ActOnElement({
         <button type="button" className="btn primary" disabled={!usable} onClick={() => onPerform(steps.gesture(pressTarget, "tap"))}>
           Tap
         </button>
+        <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(pressTarget, "doubleTap"))}>
+          Double tap
+        </button>
         <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(pressTarget, "longTap"))}>
           Long press
+        </button>
+        <button type="button" className="btn" disabled={!usable} title="Long-press it, then drop it on the element you click next" onClick={onDrag}>
+          Drag to…
         </button>
       </Row>
       <Row label="Swipe">
         <Directions verb="Swipe" disabled={!usable} onDirection={(d) => onPerform(steps.swipe(target, d, distance))} />
+      </Row>
+      <Row label="Pinch">
+        <button type="button" className="btn" disabled={!usable} title="Two fingers apart from its centre: zoom in" onClick={() => onPerform(steps.pinch(target, true, distance))}>
+          Open
+        </button>
+        <button type="button" className="btn" disabled={!usable} title="Two fingers together towards its centre: zoom out" onClick={() => onPerform(steps.pinch(target, false, distance))}>
+          Close
+        </button>
       </Row>
       <Row label="Scroll" why={scrollable || container ? undefined : "Not scrollable, and nothing around it scrolls."}>
         {scrollable ? (
@@ -315,8 +354,13 @@ function ActOnElement({
             Reset
           </button>
         </div>
-        <div className="why">How far the finger moves in a swipe or a scroll. Short is gentle; long flings further.</div>
+        <div className="why">How far the fingers move in a swipe, a scroll or a pinch. Short is gentle; long goes further.</div>
       </div>
+      {(scrollable || container) && (
+        <Row label="Fling" why={scrollable ? undefined : "Flings the element itself; select the container to fling the list."}>
+          <Directions verb="Fling" disabled={!usable} onDirection={(d) => onPerform(steps.fling(target, d))} />
+        </Row>
+      )}
       {scrollable && (
         <Row label="Scroll until" why="Scrolls once, then you click the element to bring into view, or scroll again.">
           <Directions verb="Find by scrolling" disabled={!usable} onDirection={onSeek} />
@@ -333,10 +377,124 @@ function ActOnElement({
             <button type="button" className="btn" disabled={!usable} onClick={() => onPerform(steps.gesture(target, "clearText"))}>
               Clear
             </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!usable}
+              title="imeAction(): the keyboard's action key (Search, Go, Done…) for this field"
+              onClick={() => onPerform(steps.gesture(target, "performImeAction"))}
+            >
+              Submit
+            </button>
           </TextEntry>
         </Row>
       )}
+      <Offered key={node.ref} info={info} target={target} usable={usable} onPerform={onPerform} />
     </Group>
+  );
+}
+
+/** The accessibility actions the element offers, by name, as a screen reader would. */
+const ACTIONS: Partial<Record<StandardAction, string>> = {
+  [StandardAction.A11Y_EXPAND]: "Expand",
+  [StandardAction.A11Y_COLLAPSE]: "Collapse",
+  [StandardAction.A11Y_DISMISS]: "Dismiss",
+  [StandardAction.A11Y_SCROLL_FORWARD]: "Scroll forward",
+  [StandardAction.A11Y_SCROLL_BACKWARD]: "Scroll backward",
+  [StandardAction.A11Y_SCROLL_UP]: "Scroll up",
+  [StandardAction.A11Y_SCROLL_DOWN]: "Scroll down",
+  [StandardAction.A11Y_SCROLL_LEFT]: "Scroll left",
+  [StandardAction.A11Y_SCROLL_RIGHT]: "Scroll right",
+  [StandardAction.A11Y_PAGE_UP]: "Page up",
+  [StandardAction.A11Y_PAGE_DOWN]: "Page down",
+  [StandardAction.A11Y_PAGE_LEFT]: "Page left",
+  [StandardAction.A11Y_PAGE_RIGHT]: "Page right",
+  [StandardAction.A11Y_SHOW_ON_SCREEN]: "Show on screen",
+  [StandardAction.A11Y_CONTEXT_CLICK]: "Context click",
+  [StandardAction.A11Y_PRESS_AND_HOLD]: "Press and hold",
+  [StandardAction.A11Y_SELECT]: "Select",
+  [StandardAction.A11Y_CLEAR_SELECTION]: "Clear selection",
+  [StandardAction.A11Y_FOCUS]: "Focus",
+  [StandardAction.A11Y_CLEAR_FOCUS]: "Clear focus",
+  [StandardAction.A11Y_COPY]: "Copy",
+  [StandardAction.A11Y_CUT]: "Cut",
+  [StandardAction.A11Y_PASTE]: "Paste",
+};
+
+/** What only accessibility reaches: the element's own actions (custom ones such as "Archive"
+ *  first: they stand in for a swipe), and its value when it is a range. */
+function Offered({ info, target, usable, onPerform }: { info: ElementInfo; target: Target; usable: boolean; onPerform: (r: PerformRequest) => void }) {
+  const id = useId();
+  const range = info.state === "done" ? info.range : undefined;
+  const [value, setValue] = useState<number | null>(null);
+  if (info.state !== "done") return null;
+  const standard = info.actions.filter((a) => ACTIONS[a]);
+  const shown = value ?? range?.current ?? 0;
+  const step = range?.type === RangeType.RANGE_INT ? 1 : range ? (range.max - range.min) / 100 : 1;
+  return (
+    <>
+      {(standard.length > 0 || info.customActions.length > 0) && (
+        <Row label="Actions">
+          {info.customActions.map((label) => (
+            <button key={`c-${label}`} type="button" className="btn" disabled={!usable} title={`performCustomAction("${label}")`} onClick={() => onPerform(steps.accessibilityAction(target, { custom: label }))}>
+              {label}
+            </button>
+          ))}
+          {standard.map((a) => (
+            <button key={a} type="button" className="btn ghost" disabled={!usable} title={`performAction(${StandardAction[a]!.replace("A11Y_", "")})`} onClick={() => onPerform(steps.accessibilityAction(target, { standard: a }))}>
+              {ACTIONS[a]}
+            </button>
+          ))}
+        </Row>
+      )}
+      {range && range.max > range.min && (
+        <div className="crow">
+          <label className="rl" htmlFor={`${id}-progress`}>
+            Value
+          </label>
+          <div className="actions distance">
+            <input
+              id={`${id}-progress`}
+              type="range"
+              min={range.min}
+              max={range.max}
+              step={step}
+              value={shown}
+              onChange={(e) => setValue(Number(e.target.value))}
+            />
+            <output htmlFor={`${id}-progress`} className="unit">
+              {Number(shown.toFixed(2))} of {range.min}–{range.max}
+            </output>
+            <button type="button" className="btn" disabled={!usable} title="setProgress(): exact, in its own units" onClick={() => onPerform(steps.setProgress(target, Number(shown.toFixed(4))))}>
+              Set
+            </button>
+          </div>
+          <div className="why">Now {Number(range.current.toFixed(2))}. Set through accessibility: exact, where a drag lands on a pixel.</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A drag being set up: where it starts, and what to do next. */
+function DragCard({ drag, onCancel }: { drag: DragFrom; onCancel: () => void }) {
+  return (
+    <section className="seek" aria-label="Drag" aria-live="polite">
+      <h3>Drag to…</h3>
+      <p>
+        From <code>{describeSelector(drag.source.selector)}</code>.
+      </p>
+      <p className="ask">
+        <b>Click the element to drop it on</b> on the screen. It is recorded as one <code>dragTo</code> step.
+      </p>
+      {drag.note && <p className="why bad">{drag.note}</p>}
+      <div className="actions">
+        <button type="button" className="btn" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      <p className="why">Esc cancels.</p>
+    </section>
   );
 }
 

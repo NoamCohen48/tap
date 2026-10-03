@@ -73,6 +73,18 @@
     "name": "com.sun.jndi.dns.DnsContextFactory"
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.AddMediaHeader",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.AddMediaRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.AddMediaResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.AllOf",
     "allDeclaredFields": true
   },
@@ -118,6 +130,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.AwaitIdleResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.AwaitNotification",
     "allDeclaredFields": true
   },
   {
@@ -209,6 +225,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.DeviceNotification",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.DisconnectRequest",
     "allDeclaredFields": true
   },
@@ -218,6 +238,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.DismissKeyguard",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.DismissNotification",
     "allDeclaredFields": true
   },
   {
@@ -310,6 +334,14 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.GetClipboard",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse",
     "allDeclaredFields": true
   },
   {
@@ -413,6 +445,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.ListNotifications",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.LoggedEvent",
     "allDeclaredFields": true
   },
@@ -426,6 +462,14 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.Node",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.NotificationList",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.NotificationMatch",
     "allDeclaredFields": true
   },
   {
@@ -449,7 +493,15 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.OpenNotification",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.OpenSystemPanel",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction",
     "allDeclaredFields": true
   },
   {
@@ -478,6 +530,30 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.ProcessResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PullFileRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PullFileResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PushFileHeader",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PushFileRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.PushFileResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.Range",
     "allDeclaredFields": true
   },
   {
@@ -537,6 +613,14 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.SetAnimationsRequest",
     "allDeclaredFields": true
   },
@@ -585,7 +669,47 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.SetLocation",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetLocationRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetLocationResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetNetworkRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetNetworkResponse",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.SetOrientation",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetProgress",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse",
     "allDeclaredFields": true
   },
   {

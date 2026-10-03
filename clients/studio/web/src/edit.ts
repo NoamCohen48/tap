@@ -10,16 +10,23 @@ import { Check, SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
 import { looksDynamic, type Chip } from "./nodes";
 import { DEFAULT_DISTANCE, DEFAULT_MAX_SCROLLS, type Target } from "./steps";
 
-/** The command message of an action on an element (every recorded op but press_key and open_system_panel). */
+/** The command message of an action on an element; `undefined` for the device's own (keys, panels, rotation…). */
 function elementOp(command: Command | undefined) {
   const op = command?.op;
   switch (op?.case) {
     case "tap":
     case "longTap":
+    case "doubleTap":
     case "setText":
     case "clearText":
     case "scroll":
     case "swipe":
+    case "fling":
+    case "pinch":
+    case "drag":
+    case "performImeAction":
+    case "performAccessibilityAction":
+    case "setProgress":
       return op.value;
     default:
       return undefined;

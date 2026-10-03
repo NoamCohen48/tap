@@ -2,10 +2,16 @@ package io.github.noamcohen48.tap.fixture
 
 import android.Manifest
 import android.animation.ValueAnimator
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -16,11 +22,12 @@ import androidx.activity.ComponentActivity
 
 /**
  * A search field whose keyboard action is Search, clipboard copy and paste buttons, a toast
- * button, and the launch intent's typed extras, the camera permission's state and the
+ * button, a notify button, and the launch intent's typed extras, the camera permission's state and the
  * configuration the activity runs in (night mode, first locale, font scale, density, animators),
  * each shown in a status line so a test can assert what the app saw.
  */
 class FormActivity : ComponentActivity() {
+
     private var toasts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,6 +53,7 @@ class FormActivity : ComponentActivity() {
             toasts += 1
             Toast.makeText(this, "Saved $toasts", Toast.LENGTH_SHORT).show()
         }
+        findViewById<Button>(R.id.notify_button).setOnClickListener { notifyBoth() }
         val extras = intent
         status(
             R.id.extras_status,
@@ -67,10 +75,59 @@ class FormActivity : ComponentActivity() {
         )
     }
 
+    /**
+     * Posts "New message" / "from Ada" (auto-cancel; opens `tapfixture://link/notification`, its
+     * "Mark as read" button `tapfixture://link/read`) and an ongoing "Syncing" one. Posting again
+     * replaces them. API 33+ needs POST_NOTIFICATIONS granted first.
+     */
+    private fun notifyBoth() {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Fixture", NotificationManager.IMPORTANCE_DEFAULT))
+        manager.notify(
+            MESSAGE_ID,
+            Notification
+                .Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setContentTitle("New message")
+                .setContentText("from Ada")
+                .setAutoCancel(true)
+                .setContentIntent(link("notification", 1))
+                .addAction(Notification.Action.Builder(null, "Mark as read", link("read", 2)).build())
+                .build(),
+        )
+        manager.notify(
+            SYNC_ID,
+            Notification
+                .Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setContentTitle("Syncing")
+                .setOngoing(true)
+                .build(),
+        )
+        status(R.id.clipboard_status, "Notified")
+    }
+
+    private fun link(
+        path: String,
+        request: Int,
+    ): PendingIntent =
+        PendingIntent.getActivity(
+            this,
+            request,
+            Intent(Intent.ACTION_VIEW, Uri.parse("tapfixture://link/$path")).setPackage(packageName),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
     private fun status(
         id: Int,
         text: String,
     ) {
         findViewById<TextView>(id).text = text
+    }
+
+    private companion object {
+        const val CHANNEL = "fixture"
+        const val MESSAGE_ID = 1
+        const val SYNC_ID = 2
     }
 }

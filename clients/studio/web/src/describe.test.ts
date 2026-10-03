@@ -1,7 +1,8 @@
 import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import { describeSelector, describeStep, describeWait, stepKind } from "./describe";
-import { Direction, SystemPanel } from "./gen/command_pb";
+import { IntentExtraSchema } from "./gen/app_pb";
+import { Direction, DisplayRotation, LocationAccuracy, Orientation, PermissionChoice, StandardAction, SystemPanel } from "./gen/command_pb";
 import { MatchMode, NodeFlag, Relation, SelectorSchema, TextProperty, type Node } from "./gen/selector_pb";
 import { Check, Condition, PerformRequestSchema, StepSchema, type PerformRequest } from "./gen/studio_pb";
 import * as steps from "./steps";
@@ -131,7 +132,87 @@ describe("describeStep", () => {
     );
   });
 
+  it("shows the element actions as the SDK's Element calls", () => {
+    const shown = (r: PerformRequest) => describeStep(recorded(r));
+    const list = selector(res("list"));
+    expect(shown(steps.gesture(search, "doubleTap"))).toBe('screen.element(res("search")).doubleTap()');
+    expect(shown(steps.gesture(search, "performImeAction"))).toBe('screen.element(res("search")).imeAction()');
+    expect(shown(steps.fling(search, Direction.DIR_DOWN))).toBe('screen.element(res("search")).fling(DOWN)');
+    expect(shown(steps.pinch(search, true))).toBe('screen.element(res("search")).pinchOpen()');
+    expect(shown(steps.pinch(search, false, 40))).toBe('screen.element(res("search")).pinchClose(40)');
+    expect(shown(steps.drag(search, list))).toBe('screen.element(res("search")).dragTo(res("list"))');
+    expect(shown(steps.accessibilityAction(search, { standard: StandardAction.A11Y_EXPAND }))).toBe(
+      'screen.element(res("search")).performAction(StandardAction.EXPAND)',
+    );
+    expect(shown(steps.accessibilityAction(search, { custom: "Archive" }))).toBe('screen.element(res("search")).performCustomAction("Archive")');
+    expect(shown(steps.setProgress(search, 3))).toBe('screen.element(res("search")).setProgress(3f)');
+  });
+
+  it("shows the device actions, waits, conditions and assertions as the SDK's Device calls", () => {
+    const shown = (r: PerformRequest) => describeStep(recorded(r));
+    expect(shown(steps.setOrientation(Orientation.LANDSCAPE))).toBe("setOrientation(Orientation.LANDSCAPE)");
+    expect(shown(steps.setDisplayRotation(DisplayRotation.UPSIDE_DOWN))).toBe("setDisplayRotation(DisplayRotation.UPSIDE_DOWN)");
+    expect(shown(steps.unfreezeRotation())).toBe("unfreezeRotation()");
+    expect(shown(steps.pressKey(224))).toBe("wake()");
+    expect(shown(steps.pressKey(223))).toBe("sleep()");
+    expect(shown(steps.dismissKeyguard())).toBe("dismissKeyguard()");
+    expect(shown(steps.hideKeyboard())).toBe("hideKeyboard()");
+    expect(shown(steps.setClipboard("hi"))).toBe('setClipboard("hi")');
+    expect(shown(steps.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY))).toBe("choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY)");
+    expect(shown(steps.choosePermission(PermissionChoice.PERMISSION_ALLOW_ONE_TIME, LocationAccuracy.LOCATION_APPROXIMATE))).toBe(
+      "choosePermission(PermissionChoice.ALLOW_ONE_TIME, LocationAccuracy.APPROXIMATE)",
+    );
+    expect(shown(steps.openNotification({ title: "New message", packageName: "com.example" }, "Mark as read"))).toBe(
+      'openNotification(title = "New message", packageName = "com.example", action = "Mark as read")',
+    );
+    expect(shown(steps.dismissNotification({ text: "Ada", contains: true }))).toBe('dismissNotification(text = "Ada", mode = MatchMode.CONTAINS)');
+    expect(shown(steps.awaitNotification({ packageName: "com.example" }))).toBe('awaitNotification(packageName = "com.example")');
+    expect(shown(steps.awaitToast({}))).toBe("awaitToast()");
+    expect(shown(steps.awaitToast({ text: "Saved", contains: true }))).toBe('awaitToast(text = "Saved", mode = MatchMode.CONTAINS)');
+    expect(shown(steps.awaitPermissionPrompt())).toBe("awaitPermissionPrompt()");
+    expect(shown(steps.deviceCondition({ operation: "set_animations", enabled: false }))).toBe("setAnimations(false)");
+    expect(shown(steps.deviceCondition({ operation: "set_font_scale", fontScale: 1.3 }))).toBe("setFontScale(1.3f)");
+    expect(shown(steps.deviceCondition({ operation: "set_density" }))).toBe("setDensity(null)");
+    expect(shown(steps.deviceCondition({ operation: "set_network", wifi: false }))).toBe("setNetwork(wifi = false)");
+    expect(shown(steps.deviceCondition({ operation: "set_system_locales", locales: ["fr-FR", "en-US"] }))).toBe('setSystemLocales(listOf("fr-FR", "en-US"))');
+    expect(shown(steps.deviceCondition({ operation: "set_location", latitude: 51.5, longitude: 0, altitudeM: 20 }))).toBe(
+      "setLocation(51.5, 0.0, altitudeM = 20.0)",
+    );
+    expect(shown(steps.deviceCondition({ operation: "set_accessibility_display", boldText: true }))).toBe("setAccessibilityDisplay(boldText = true)");
+    expect(shown(steps.deviceAssertion(steps.DeviceCheck.FOREGROUND_ACTIVITY, "com.example/com.example.MainActivity"))).toBe(
+      'assertEquals(ForegroundActivity("com.example", "com.example.MainActivity"), foregroundActivity())',
+    );
+    expect(shown(steps.deviceAssertion(steps.DeviceCheck.KEYBOARD_HIDDEN))).toBe("assertFalse(keyboardShown())");
+    expect(shown(steps.deviceAssertion(steps.DeviceCheck.CLIPBOARD_EQUALS, "hi"))).toBe('assertEquals("hi", clipboard())');
+  });
+
+  it("shows the other app calls with their arguments", () => {
+    const shown = (r: PerformRequest) => describeStep(recorded(r));
+    expect(shown(steps.app("foreground", "com.example"))).toBe('app("com.example").foreground()');
+    expect(shown(steps.app("revoke_permission", "com.example", { permission: "android.permission.CAMERA" }))).toBe(
+      'app("com.example").revokePermission("android.permission.CAMERA")',
+    );
+    expect(shown(steps.app("open_link", "com.example", { uri: "app://item/1", anyApp: true }))).toBe('app("com.example").openLink("app://item/1", anyApp = true)');
+    expect(shown(steps.app("open_link", "com.example", { uri: "app://item/1", anyApp: false }))).toBe('app("com.example").openLink("app://item/1")');
+    expect(shown(steps.app("set_locales", "com.example", { locales: ["fr-FR"] }))).toBe('app("com.example").setLocales(listOf("fr-FR"))');
+    expect(shown(steps.app("set_locales", "com.example"))).toBe('app("com.example").setLocales(listOf())');
+    const extras = [
+      create(IntentExtraSchema, { key: "user", value: { case: "stringValue", value: "ada" } }),
+      create(IntentExtraSchema, { key: "n", value: { case: "intValue", value: 3 } }),
+      create(IntentExtraSchema, { key: "id", value: { case: "longValue", value: 9n } }),
+      create(IntentExtraSchema, { key: "on", value: { case: "boolValue", value: true } }),
+    ];
+    expect(shown(steps.app("cold_launch", "com.example", { activity: ".Main", extras }))).toBe(
+      'app("com.example").coldLaunch(".Main", extras = mapOf("user" to "ada", "n" to 3, "id" to 9L, "on" to true))',
+    );
+  });
+
   it("names the step kinds", () => {
+    expect(stepKind(recorded(steps.setOrientation(Orientation.PORTRAIT)))).toBe("device");
+    expect(stepKind(recorded(steps.deviceCondition({ operation: "set_dark_mode", enabled: true })))).toBe("device");
+    expect(stepKind(recorded(steps.awaitToast({})))).toBe("wait");
+    expect(stepKind(recorded(steps.deviceAssertion(steps.DeviceCheck.KEYBOARD_SHOWN)))).toBe("assertion");
+    expect(stepKind(recorded(steps.gesture(search, "doubleTap")))).toBe("action");
     expect(stepKind(recorded(steps.pressKey(4)))).toBe("key");
     expect(stepKind(recorded(steps.openSystemPanel(SystemPanel.QUICK_SETTINGS)))).toBe("system");
     expect(stepKind(recorded(steps.gesture(search, "tap")))).toBe("action");

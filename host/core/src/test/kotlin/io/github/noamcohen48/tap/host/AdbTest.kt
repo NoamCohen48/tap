@@ -91,7 +91,7 @@ class AdbTest {
         }
 
     @Test
-    fun `an exiting activity still counts until its record is gone`() =
+    fun `an exiting activity or an emptied task still counts until it is gone`() =
         runBlocking {
             // API 34 after `pm clear`: the process is dead, the task and its record linger.
             val exiting =
@@ -103,7 +103,7 @@ class AdbTest {
                   * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
                     * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
                 """.trimIndent()
-            assertTrue(scriptedAdb(exiting).hasActivities(serial, "com.example"))
+            assertTrue(scriptedAdb(exiting).hasTaskOrActivity(serial, "com.example"))
             // Gone: only other packages' records and non-record mentions remain.
             val gone =
                 """
@@ -112,7 +112,28 @@ class AdbTest {
                   mLastFocusedRootTask=Task{ad960a2 #794 type=standard A=10198:com.example}
                     source=ActivityRecord{416ef61 u0 com.example/.MainActivity t793} SCREEN_ORIENTATION_UNSPECIFIED
                 """.trimIndent()
-            assertFalse(scriptedAdb(gone).hasActivities(serial, "com.example"))
+            assertFalse(scriptedAdb(gone).hasTaskOrActivity(serial, "com.example"))
+
+            // API 34 after `pm clear`: the records are force-removed, the emptied task waits for
+            // its destroy timeout (which kills a process a launch started meanwhile).
+            val emptiedTask =
+                """
+                  * Task{d77087b #11 type=standard A=10194:com.example U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=0}
+                  * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
+                    * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
+                """.trimIndent()
+            assertTrue(scriptedAdb(emptiedTask).hasTaskOrActivity(serial, "com.example"))
+            // API 29's TaskRecord with a bare affinity, and a task named by its intent instead.
+            assertTrue(scriptedAdb("  * TaskRecord{a1b2c3 #12 A=com.example U=0 StackId=3 sz=0}").hasTaskOrActivity(serial, "com.example"))
+            assertTrue(scriptedAdb("  * Task{3ec4d83 #7 type=standard I=com.example/.MainActivity U=0 sz=0}").hasTaskOrActivity(serial, "com.example"))
+            // Another package whose name starts with this one's is not this one's task.
+            val other =
+                """
+                  * Task{d77087b #11 type=standard A=10195:com.example.launcher U=0 visible=true sz=1}
+                  * TaskRecord{a1b2c3 #12 A=com.example.other U=0 StackId=3 sz=1}
+                  * Task{3ec4d83 #7 type=home I=com.example.launcher/.Home U=0 sz=1}
+                """.trimIndent()
+            assertFalse(scriptedAdb(other).hasTaskOrActivity(serial, "com.example"))
         }
 
     @Test
@@ -283,6 +304,8 @@ class AdbTest {
             val settings = mutableMapOf("accelerometer_rotation" to "0", "user_rotation" to "1", "font_scale" to "1.3")
             val writes = mutableListOf<String>()
             var stuck: String? = null
+            // What the device writes back right after a delete.
+            val reappear = mutableMapOf<String, String>()
             val adb =
                 testAdb(
                     ProcessStarter { command ->
@@ -297,6 +320,7 @@ class AdbTest {
                                 "delete" -> "Deleted 1 rows".also {
                                     writes += "${args[3]}=null"
                                     settings.remove(args[3])
+                                    reappear[args[3]]?.let { settings[args[3]] = it }
                                 }
                                 else -> ""
                             }
@@ -317,6 +341,18 @@ class AdbTest {
             stuck = "font_scale"
             val failure = assertFailsWith<DeviceSettingException> { adb.restoreState(serial, listOf(SavedState(StateKey.FONT_SCALE, "1.0"))) }
             assertTrue("system/font_scale=1.3 (expected 1.0)" in failure.message.orEmpty(), failure.message)
+
+            // Android writes an absent font_scale back at 1.0 after the delete: that is restored.
+            stuck = null
+            settings["font_scale"] = "1.3"
+            reappear["font_scale"] = "1.0"
+            adb.restoreState(serial, listOf(SavedState(StateKey.FONT_SCALE, null)))
+            assertEquals("1.0", settings["font_scale"])
+            // Any other value, or another setting written back, is not.
+            reappear["font_scale"] = "1.1"
+            assertFailsWith<DeviceSettingException> { adb.restoreState(serial, listOf(SavedState(StateKey.FONT_SCALE, null))) }
+            reappear["user_rotation"] = "1.0"
+            assertFailsWith<DeviceSettingException> { adb.restoreState(serial, listOf(SavedState(StateKey.USER_ROTATION, null))) }
         }
 
     @Test

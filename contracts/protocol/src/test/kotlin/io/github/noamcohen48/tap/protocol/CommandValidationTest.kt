@@ -28,6 +28,9 @@ import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -97,6 +100,40 @@ class CommandValidationTest {
                 "toast unknown mode" to
                     Command.newBuilder().setAwaitToast(AwaitToast.newBuilder().setText("x").setModeValue(99)).build(),
                 "toast blank package" to Commands.awaitToast(packageName = " "),
+                "notification mode without title or text" to
+                    Commands.awaitNotification(Commands.notificationMatch(AUT, mode = MatchMode.MATCH_CONTAINS)),
+                "notification title too long" to
+                    Commands.openNotification(Commands.notificationMatch(title = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1))),
+                "notification regex" to Commands.dismissNotification(Commands.notificationMatch(text = "(", mode = MatchMode.MATCH_REGEX)),
+                "notification blank package" to Commands.awaitNotification(Commands.notificationMatch(packageName = "")),
+                "notification empty action" to Commands.openNotification(Commands.notificationMatch(AUT), action = ""),
+                "notification action too long" to
+                    Commands.openNotification(Commands.notificationMatch(AUT), action = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "notification unknown mode" to
+                    Commands.awaitNotification(Commands.notificationMatch(title = "x").toBuilder().setModeValue(99).build()),
+                "unknown location accuracy" to
+                    Command
+                        .newBuilder()
+                        .setChoosePermission(ChoosePermission.newBuilder().setChoice(PermissionChoice.PERMISSION_DENY).setAccuracyValue(99))
+                        .build(),
+                "no accessibility action" to
+                    Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(button)).build(),
+                "standard action" to Commands.performAccessibilityAction(button, StandardAction.STANDARD_ACTION_UNSPECIFIED),
+                "unknown standard action" to
+                    Command
+                        .newBuilder()
+                        .setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(button).setStandardValue(99))
+                        .build(),
+                "empty custom action" to Commands.performCustomAction(button, ""),
+                "custom action too long" to Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "progress NaN" to Commands.setProgress(button, Float.NaN),
+                "progress infinite" to Commands.setProgress(button, Float.NEGATIVE_INFINITY),
+                "latitude above 90" to Commands.setLocation(90.01, 0.0),
+                "latitude NaN" to Commands.setLocation(Double.NaN, 0.0),
+                "longitude below -180" to Commands.setLocation(0.0, -180.01),
+                "zero accuracy" to Commands.setLocation(0.0, 0.0, accuracyM = 0f),
+                "infinite accuracy" to Commands.setLocation(0.0, 0.0, accuracyM = Float.POSITIVE_INFINITY),
+                "NaN altitude" to Commands.setLocation(0.0, 0.0, altitudeM = Double.NaN),
             )
         invalid.forEach { (name, command) ->
             assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
@@ -136,6 +173,12 @@ class CommandValidationTest {
             Commands.fling(list, Direction.DIR_LEFT),
             Commands.hideKeyboard(),
             Commands.performImeAction(button),
+            Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE),
+            Commands.performAccessibilityAction(button, StandardAction.A11Y_PASTE),
+            Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS)),
+            Commands.setProgress(button, -1.5f),
+            Commands.setLocation(-90.0, 180.0, accuracyM = 0.1f, altitudeM = -400.0),
+            Commands.setLocation(90.0, -180.0),
             Commands.setClipboard(""),
             Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS)),
             Commands.getClipboard(),
@@ -143,6 +186,11 @@ class CommandValidationTest {
             Commands.awaitToast("Saved"),
             Commands.awaitToast("Sav.*", MatchMode.MATCH_REGEX, packageName = "com.android.systemui"),
             Commands.awaitToast("x".repeat(MAX_SELECTOR_STRING_CHARS)),
+            Commands.awaitNotification(),
+            Commands.awaitNotification(Commands.notificationMatch(AUT, "Re.*", "x".repeat(MAX_SELECTOR_STRING_CHARS), MatchMode.MATCH_REGEX)),
+            Commands.listNotifications(),
+            Commands.openNotification(Commands.notificationMatch(title = "New message"), action = "Mark as read"),
+            Commands.dismissNotification(Commands.notificationMatch(AUT)),
         ).forEach { CommandValidation.validate(it) }
     }
 

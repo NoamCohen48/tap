@@ -108,10 +108,19 @@ ACTIONS = [
     {"clear_text": {"selector": SEARCH}},
     {"scroll": {"selector": SEARCH, "direction": "DIR_DOWN", "distance_percent": 50}},
     {"swipe": {"selector": SEARCH, "direction": "DIR_RIGHT", "distance_percent": 80}},
+    {"double_tap": {"selector": SEARCH}},
+    {"fling": {"selector": SEARCH, "direction": "DIR_UP"}},
+    {"pinch": {"selector": SEARCH, "direction": "PINCH_OPEN", "percent": 60}},
+    {"pinch": {"selector": SEARCH, "direction": "PINCH_CLOSE", "percent": 80}},
+    {"drag": {"selector": SEARCH, "target": {"node": {"resource": {"name": "bin"}}}}},
+    {"perform_ime_action": {"selector": SEARCH}},
+    {"perform_accessibility_action": {"selector": SEARCH, "standard": "A11Y_EXPAND"}},
+    {"perform_accessibility_action": {"selector": SEARCH, "custom": "Archive"}},
+    {"set_progress": {"selector": SEARCH, "value": 3.5}},
 ]
 
 
-@pytest.mark.parametrize("op", ACTIONS, ids=lambda op: next(iter(op)))
+@pytest.mark.parametrize("op", ACTIONS, ids=lambda op: next(iter(op)) + "-" + str(next(iter(op.values())).get("direction", next(iter(op.values())).get("custom", ""))))
 def test_an_action_sends_its_wait_then_its_command_unchanged(daemon, device, op):
     prepared = prepare(step(action={"command": op}), None)
     daemon.devices.commands.clear()
@@ -125,8 +134,36 @@ def test_an_action_sends_its_wait_then_its_command_unchanged(daemon, device, op)
         {"press_key": {"key_code": 4}},
         {"open_system_panel": {"panel": "SYSTEM_PANEL_NOTIFICATIONS"}},
         {"open_system_panel": {"panel": "SYSTEM_PANEL_QUICK_SETTINGS"}},
+        {"set_orientation": {"orientation": "ORIENTATION_LANDSCAPE"}},
+        {"set_display_rotation": {"rotation": "DISPLAY_ROTATION_UPSIDE_DOWN"}},
+        {"unfreeze_rotation": {}},
+        {"dismiss_keyguard": {}},
+        {"hide_keyboard": {}},
+        {"set_clipboard": {"text": "SAVE10"}},
+        {"choose_permission": {"choice": "PERMISSION_ALLOW_FOREGROUND_ONLY", "accuracy": "LOCATION_APPROXIMATE"}},
+        {"choose_permission": {"choice": "PERMISSION_DENY"}},
+        {"open_notification": {"match": {"package_name": "com.example", "title": "New message", "mode": "MATCH_EXACT"}, "action": "Reply"}},
+        {"open_notification": {"match": {"text": "Ada", "mode": "MATCH_CONTAINS"}}},
+        {"dismiss_notification": {"match": {"title": "New message"}}},
+        {"dismiss_notification": {"match": {"package_name": "com.example"}}},
     ],
-    ids=["press_key", "notifications", "quick_settings"],
+    ids=[
+        "press_key",
+        "notifications",
+        "quick_settings",
+        "orientation",
+        "rotation",
+        "unfreeze",
+        "keyguard",
+        "keyboard",
+        "clipboard",
+        "permission_accuracy",
+        "permission_deny",
+        "open_notification_button",
+        "open_notification",
+        "dismiss_notification",
+        "dismiss_by_package",
+    ],
 )
 def test_an_untargeted_action_is_one_command(daemon, device, op):
     prepared = prepare(step(action={"command": op}), None)
@@ -285,3 +322,181 @@ def test_failures_become_the_outcome(daemon, device):
     error = outcome(5, timed_out.value, "emulator-5554").error
     assert (error.code, error.detail, error.match_count) == (tap.ERR_WAIT_TIMEOUT, "AMBIGUOUS", 2)
     assert "match exactly one node" in error.message
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        {"await_toast": {"text": "Saved", "mode": "MATCH_EXACT", "package_name": "com.example"}},
+        {"await_toast": {"text": "Saved"}},
+        {"await_toast": {}},
+        {"await_notification": {"match": {"package_name": "com.example", "title": "New message", "mode": "MATCH_EXACT"}}},
+        {"await_notification": {"match": {}}},
+        {"wait_permission_prompt": {}},
+    ],
+    ids=["toast", "toast_default_mode", "any_toast", "notification", "any_notification", "permission_prompt"],
+)
+def test_a_device_wait_is_one_command(daemon, device, op):
+    daemon.devices.responder = lambda c: {
+        "await_toast": tap.CommandResult(toast=tap.Toast(text="Saved", package_name="com.example")),
+        "await_notification": tap.CommandResult(notification=tap.DeviceNotification(package_name="com.example", title="New message")),
+        "wait_permission_prompt": tap.CommandResult(permission_prompt=tap.PermissionPrompt(package_name="p", choices=[tap.PERMISSION_ALLOW])),
+    }.get(c.WhichOneof("op"))
+    prepared = prepare(step(device_wait={"command": op}), None)
+    daemon.devices.commands.clear()
+    run(device, prepared)
+    assert sent(daemon) == [prepared.device_wait.command]
+
+
+@pytest.mark.parametrize(
+    ("call", "rpc"),
+    [
+        ({"operation": "set_animations", "enabled": False}, tap.SetAnimationsRequest(enabled=False)),
+        ({"operation": "set_font_scale", "font_scale": 1.5}, tap.SetFontScaleRequest(scale=1.5)),
+        ({"operation": "set_density", "density_dpi": 320}, tap.SetDensityRequest(dpi=320)),
+        ({"operation": "set_density"}, tap.SetDensityRequest()),
+        ({"operation": "set_network", "wifi": False}, tap.SetNetworkRequest(wifi=False)),
+        ({"operation": "set_system_locales", "locales": ["fr-FR", "en"]}, tap.SetSystemLocalesRequest(locales=["fr-FR", "en"])),
+        (
+            {"operation": "set_location", "latitude": 48.85, "longitude": 2.35, "accuracy_m": 20},
+            tap.SetLocationRequest(latitude=48.85, longitude=2.35, accuracy_m=20),
+        ),
+        ({"operation": "set_stay_awake", "enabled": True}, tap.SetStayAwakeRequest(enabled=True)),
+        (
+            {"operation": "set_accessibility_display", "bold_text": True, "color_inversion": False},
+            tap.SetAccessibilityDisplayRequest(bold_text=True, color_inversion=False),
+        ),
+    ],
+    ids=lambda value: value["operation"] if isinstance(value, dict) else "",
+)
+def test_a_device_condition_is_the_device_call(daemon, device, call, rpc):
+    run(device, prepare(step(device=call), None))
+    sent_call = daemon.devices.conditions[-1]
+    sent_call.ClearField("client_connection_id")
+    sent_call.ClearField("attached_device_id")
+    assert sent_call == rpc
+
+
+@pytest.mark.parametrize(
+    ("call", "message"),
+    [
+        ({"operation": "push_file"}, "device.operation must be one of"),
+        ({"operation": "set_animations"}, "set_animations needs device.enabled"),
+        ({"operation": "set_animations", "enabled": True, "wifi": True}, "device.wifi does not apply"),
+        ({"operation": "set_network"}, "sets at least one of"),
+        ({"operation": "set_font_scale", "font_scale": 3}, "0.5..2.0"),
+        ({"operation": "set_location", "latitude": 95, "longitude": 0}, "latitude -90..90"),
+    ],
+)
+def test_device_conditions_that_break_a_rule_are_refused(call, message):
+    with pytest.raises(RecordingError) as caught:
+        prepare(step(device=call), None)
+    assert any(message in problem for problem in caught.value.problems), caught.value.problems
+
+
+@pytest.mark.parametrize(
+    ("app", "rpc"),
+    [
+        ({"operation": "foreground"}, "foreground"),
+        ({"operation": "open_link", "uri": "myapp://orders/42"}, "open_link"),
+        ({"operation": "revoke_permission", "permission": "android.permission.CAMERA"}, "revoke_permission"),
+        ({"operation": "set_locales", "locales": ["fr-FR"]}, "set_locales"),
+    ],
+)
+def test_the_other_app_calls(daemon, device, app, rpc):
+    run(device, prepare(step(app={"package_name": "com.example", **app}), None))
+    assert daemon.apps.owners[-1][0] == rpc
+
+
+def test_launch_extras_keep_their_types(daemon, device):
+    extras = [
+        {"key": "user", "string_value": "ada"},
+        {"key": "debug", "bool_value": True},
+        {"key": "count", "int_value": 3},
+        {"key": "id", "long_value": "9000000000"},
+        {"key": "ratio", "float_value": 0.5},
+    ]
+    run(device, prepare(step(app={"operation": "launch", "package_name": "com.example", "extras": extras}), None))
+    assert list(daemon.apps.launches[-1].extras) == [json_format.ParseDict(e, tap.IntentExtra()) for e in extras]
+
+
+@pytest.mark.parametrize(
+    ("app", "message"),
+    [
+        ({"operation": "open_link"}, "uri is required by open_link"),
+        ({"operation": "force_stop", "uri": "x://y"}, "uri is required by open_link and only there"),
+        ({"operation": "revoke_permission"}, "permission is required"),
+        ({"operation": "foreground", "extras": [{"key": "a", "int_value": 1}]}, "extras apply to launch"),
+        ({"operation": "launch", "extras": [{"key": "a"}]}, "every extra has a key and a value"),
+        ({"operation": "launch", "locales": ["fr"]}, "locales apply to set_locales only"),
+    ],
+)
+def test_app_calls_that_break_a_rule_are_refused(app, message):
+    with pytest.raises(RecordingError) as caught:
+        prepare(step(app={"package_name": "com.example", **app}), None)
+    assert any(message in problem for problem in caught.value.problems), caught.value.problems
+
+
+@pytest.mark.parametrize(
+    ("assertion", "holds"),
+    [
+        ({"check": "DEVICE_CHECK_FOREGROUND_ACTIVITY", "text": "com.example/com.example.Main"}, True),
+        ({"check": "DEVICE_CHECK_FOREGROUND_ACTIVITY", "text": "com.example/com.example.Other"}, False),
+        ({"check": "DEVICE_CHECK_KEYBOARD_SHOWN"}, False),
+        ({"check": "DEVICE_CHECK_KEYBOARD_HIDDEN"}, True),
+        ({"check": "DEVICE_CHECK_CLIPBOARD_EQUALS", "text": "SAVE10"}, True),
+        ({"check": "DEVICE_CHECK_CLIPBOARD_EQUALS", "text": "other"}, False),
+    ],
+)
+def test_a_device_assertion_is_one_query(daemon, device, assertion, holds):
+    daemon.devices.foreground = ("com.example", "com.example.Main")
+    daemon.devices.responder = lambda c: (
+        tap.CommandResult(text="SAVE10") if c.WhichOneof("op") == "get_clipboard" else device_answers(c)
+    )
+    prepared = prepare(step(device_assertion=assertion), None)
+    if holds:
+        run(device, prepared)
+    else:
+        with pytest.raises(CheckFailed, match="expected"):
+            run(device, prepared)
+
+
+@pytest.mark.parametrize(
+    ("assertion", "message"),
+    [
+        ({}, "check is required"),
+        ({"check": "DEVICE_CHECK_FOREGROUND_ACTIVITY"}, "needs a text value"),
+        ({"check": "DEVICE_CHECK_FOREGROUND_ACTIVITY", "text": "Main"}, "takes package/class"),
+        ({"check": "DEVICE_CHECK_KEYBOARD_SHOWN", "text": "x"}, "takes no value"),
+    ],
+)
+def test_device_assertions_that_break_a_rule_are_refused(assertion, message):
+    with pytest.raises(RecordingError) as caught:
+        prepare(step(device_assertion=assertion), None)
+    assert any(message in problem for problem in caught.value.problems), caught.value.problems
+
+
+@pytest.mark.parametrize(
+    ("op", "message"),
+    [
+        ({"pinch": {"selector": SEARCH}}, "pinch.direction is required"),
+        ({"pinch": {"selector": SEARCH, "direction": "PINCH_OPEN", "percent": 0}}, "pinch.percent must be 1..100"),
+        ({"fling": {"selector": SEARCH}}, "fling.direction is required"),
+        ({"drag": {"selector": SEARCH}}, "drag.target has no node"),
+        ({"perform_accessibility_action": {"selector": SEARCH}}, "a standard action or a custom label"),
+        ({"set_orientation": {}}, "orientation is required"),
+        ({"choose_permission": {}}, "choice is required"),
+        ({"dismiss_notification": {"match": {}}}, "needs a title, a text or a package_name"),
+        ({"dismiss_notification": {"match": {"package_name": "p", "mode": "MATCH_CONTAINS"}}}, "mode is set with a title or text"),
+    ],
+)
+def test_new_actions_that_break_a_rule_are_refused(op, message):
+    with pytest.raises(RecordingError) as caught:
+        prepare(step(action={"command": op}), None)
+    assert any(message in problem for problem in caught.value.problems), caught.value.problems
+
+
+def test_a_pinch_gets_the_default_percent():
+    prepared = prepare(step(action={"command": {"pinch": {"selector": SEARCH, "direction": "PINCH_CLOSE"}}}), None)
+    assert prepared.action.command.pinch.percent == 80
+    assert prepared.action.wait == command(ONE)

@@ -83,6 +83,15 @@ class UnsupportedApiException(
     what: String,
 ) : TapHostException("$what needs API $requiredApi; $serial runs API $apiLevel")
 
+/**
+ * A device file Tap cannot write, read or remove as asked: it exists and is not this session's,
+ * its directory is missing, it is not a regular file, or it did not read back as pushed.
+ */
+class DeviceFileException(
+    val serial: String,
+    message: String,
+) : TapHostException(message)
+
 /** A device or app setting did not read back as written: the device did not take it. */
 class DeviceSettingException(
     val serial: String,

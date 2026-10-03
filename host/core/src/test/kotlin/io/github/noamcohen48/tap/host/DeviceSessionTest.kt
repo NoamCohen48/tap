@@ -138,6 +138,8 @@ class DeviceSessionTest {
 
         override suspend fun wakeAndDismissKeyguard(serial: String) = Unit
 
+        override suspend fun releaseDriverNotificationListener(serial: String) = Unit
+
         override suspend fun forceStop(
             serial: String,
             packageName: String,
@@ -683,6 +685,12 @@ class DeviceSessionTest {
         name: String,
         state: FakeDeviceState,
         block: suspend (DeviceSession, FakeAdb) -> Unit,
+    ) = openWithDriver(name, state) { session, adb, _ -> block(session, adb) }
+
+    private suspend fun openWithDriver(
+        name: String,
+        state: FakeDeviceState,
+        block: suspend (DeviceSession, FakeAdb, FakeDriverServer) -> Unit,
     ) = coroutineScope {
         val secret = ByteArray(32).also(SecureRandom()::nextBytes)
         val fake = FakeDriverServer(name, 1, secret, acceptAnySession = true)
@@ -693,7 +701,7 @@ class DeviceSessionTest {
             val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
             val health = withTimeout(5_000) { fake.nextFrame() }
             fake.respond(health.requestId, Responses.done(1))
-            block(withTimeout(5_000) { opening.await() }, adb)
+            block(withTimeout(5_000) { opening.await() }, adb, fake)
         } finally {
             fake.close()
         }
@@ -752,6 +760,325 @@ class DeviceSessionTest {
                 assertFalse("savedState" in Files.readString(tempDir.resolve("sessions").resolve(file)))
             }
         }
+
+    @Test
+    fun `network switches capture all three, airplane mode goes first and comes back first`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "0", FakeDeviceState.WIFI to "1", FakeDeviceState.DATA to "1"))
+            openWithState("session-network", state) { session, adb ->
+                session.conditions.setNetwork(airplaneMode = true, wifi = true, mobileData = false)
+                assertEquals(listOf("1", "2", "0"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] })
+                val writes = adb.calls.filter { "airplane-mode" in it || "svc" in it }
+                assertTrue(writes.first().endsWith("airplane-mode enable"), "$writes")
+                assertEquals(
+                    listOf(
+                        SavedState(StateKey.Network.WIFI.id, "1"),
+                        SavedState(StateKey.Network.MOBILE_DATA.id, "1"),
+                        SavedState(StateKey.Network.AIRPLANE.id, "0"),
+                    ),
+                    journalStore().read()?.savedState,
+                )
+                session.conditions.setNetwork(wifi = false, airplaneMode = null, mobileData = null)
+                assertEquals("0", state.values[FakeDeviceState.WIFI])
+
+                val before = adb.calls.size
+                session.close(timeoutMs = 5_000)
+                val restores = adb.calls.drop(before).filter { "airplane-mode" in it || "svc" in it }
+                assertTrue(restores.first().endsWith("airplane-mode disable"), "$restores")
+                assertEquals(listOf("0", "1", "1"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] })
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `the device locale goes through the driver receiver, is read back and comes back on detach`() =
+        runBlocking {
+            val state = FakeDeviceState(productLocale = "en-GB")
+            openWithState("session-system-locale", state) { session, adb ->
+                session.conditions.setSystemLocales(listOf("fr-fr", "en-US"))
+                assertEquals("fr-FR,en-US", state.values[FakeDeviceState.SYSTEM_LOCALES])
+                assertTrue(adb.calls.any { "pm grant $DRIVER_PACKAGE android.permission.CHANGE_CONFIGURATION" in it }, "${adb.calls}")
+                assertTrue(adb.calls.any { "appops set $DRIVER_PACKAGE WRITE_SETTINGS allow" in it }, "${adb.calls}")
+                // Never set before: the build's locale is what was there.
+                assertEquals(listOf(SavedState(StateKey.SystemLocales.id, "en-GB")), journalStore().read()?.savedState)
+                session.conditions.setSystemLocales(listOf("de-DE"))
+
+                session.close(timeoutMs = 5_000)
+                assertEquals("en-GB", state.values[FakeDeviceState.SYSTEM_LOCALES])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `a locale the receiver refuses is a failure, and nothing changed stays captured`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(FakeDeviceState.SYSTEM_LOCALES to "en-US"), localeReceiverFails = true)
+            openWithState("session-system-locale-refused", state) { session, _ ->
+                val error = assertFailsWith<AdbCommandException> { session.conditions.setSystemLocales(listOf("fr-FR")) }
+                assertTrue("result=2" in error.message.orEmpty(), error.message)
+                assertFailsWith<IllegalArgumentException> { session.conditions.setSystemLocales(emptyList()) }
+                assertFailsWith<IllegalArgumentException> { session.conditions.setSystemLocales(listOf("not a tag")) }
+                assertEquals("en-US", state.values[FakeDeviceState.SYSTEM_LOCALES])
+            }
+        }
+
+    @Test
+    fun `a pushed file reads back, is pulled, never overwrites a device file and is removed on detach`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            state.files["/data/local/tmp/theirs.txt"] = "keep".toByteArray()
+            state.files["/system/build.prop"] = "ro.build".toByteArray()
+            state.unreadable += "/system/build.prop"
+            val local = Files.createTempFile("tap-push", ".txt").also { Files.writeString(it, "hello") }
+            val pulled = Files.createTempFile("tap-pull", ".txt")
+            try {
+                openWithState("session-files", state) { session, _ ->
+                    session.files.push(local, "/data/local/tmp/notes.txt")
+                    assertEquals("hello", state.files["/data/local/tmp/notes.txt"]?.decodeToString())
+                    assertEquals(
+                        listOf(SavedState(StateKey.DeviceFile("/data/local/tmp/notes.txt").id, null)),
+                        journalStore().read()?.savedState,
+                    )
+                    // Its own file it may replace; one it did not create it never touches.
+                    Files.writeString(local, "hello again")
+                    session.files.push(local, "/data/local/tmp/notes.txt")
+                    assertFailsWith<DeviceFileException> { session.files.push(local, "/data/local/tmp/theirs.txt") }
+                    assertFailsWith<DeviceFileException> { session.files.push(local, "/data/local/tmp/missing/notes.txt") }
+                    assertFailsWith<IllegalArgumentException> { session.files.push(local, "relative.txt") }
+                    assertFailsWith<IllegalArgumentException> { session.files.push(local, "/data/local/tmp/../notes.txt") }
+
+                    session.files.pull("/data/local/tmp/theirs.txt", pulled)
+                    assertEquals("keep", Files.readString(pulled))
+                    assertFailsWith<DeviceFileException> { session.files.pull("/data/local/tmp/absent.txt", pulled) }
+                    assertFailsWith<DeviceFileException> { session.files.pull("/data/local/tmp", pulled) }
+                    // Refused before adb pull, not reported as a failed adb command.
+                    assertFailsWith<DeviceFileException> { session.files.pull("/system/build.prop", pulled) }
+
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(setOf("/data/local/tmp/theirs.txt", "/system/build.prop"), state.files.keys)
+                    assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+                Files.deleteIfExists(pulled)
+            }
+        }
+
+    @Test
+    fun `media goes to the gallery folders, is indexed and leaves the device and the index on detach`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            val local = Files.createTempFile("tap-media", ".bin").also { Files.write(it, byteArrayOf(1, 2, 3)) }
+            try {
+                openWithState("session-media", state) { session, _ ->
+                    assertEquals("/sdcard/Pictures/Tap/cat.jpg", session.files.addMedia(local, "cat.jpg"))
+                    assertEquals("/sdcard/Movies/Tap/clip.mp4", session.files.addMedia(local, "clip.mp4"))
+                    assertEquals(setOf("/sdcard/Pictures/Tap/cat.jpg", "/sdcard/Movies/Tap/clip.mp4"), state.mediaIndex)
+                    assertFailsWith<IllegalArgumentException> { session.files.addMedia(local, "notes.txt") }
+                    assertFailsWith<IllegalArgumentException> { session.files.addMedia(local, "../cat.jpg") }
+
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(emptySet(), state.files.keys)
+                    assertEquals(emptySet(), state.mediaIndex)
+                    assertFalse("/sdcard/Pictures/Tap" in state.directories)
+                    assertTrue("/sdcard/Pictures" in state.directories)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+            }
+        }
+
+    @Test
+    fun `on API 29 media is indexed by the scan broadcast, which lands after it returns`() =
+        runBlocking {
+            val state = FakeDeviceState(apiLevel = 29).apply { broadcastScanQueries = 3 }
+            val local = Files.createTempFile("tap-media", ".bin").also { Files.write(it, byteArrayOf(1)) }
+            try {
+                openWithState("session-media-api29", state) { session, adb ->
+                    assertEquals("/sdcard/Pictures/Tap/cat.png", session.files.addMedia(local, "cat.png"))
+                    assertEquals(setOf("/sdcard/Pictures/Tap/cat.png"), state.mediaIndex)
+                    assertEquals(1, adb.calls.count { "MEDIA_SCANNER_SCAN_FILE" in it })
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(emptySet(), state.files.keys)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+            }
+        }
+
+    @Test
+    fun `media the scanner does not index is a failure, and the file still leaves on detach`() =
+        runBlocking {
+            val state = FakeDeviceState().apply { mediaScannerIgnores = true }
+            val local = Files.createTempFile("tap-media", ".bin").also { Files.write(it, byteArrayOf(1)) }
+            try {
+                openWithState("session-media-unindexed", state) { session, _ ->
+                    assertFailsWith<DeviceFileException> { session.files.addMedia(local, "cat.png") }
+                    session.close(timeoutMs = 5_000)
+                    assertEquals(emptySet(), state.files.keys)
+                }
+            } finally {
+                Files.deleteIfExists(local)
+            }
+        }
+
+    @Test
+    fun `mock providers read from both dumpsys layouts and keep the ones the device already had`() =
+        runBlocking {
+            for (legacy in listOf(false, true)) {
+                val state = FakeDeviceState(mapOf(StateKey.DRIVER_MOCK_LOCATION to "allow")).apply { legacyLocationDump = legacy }
+                val adb = FakeAdb().apply { responder = { _, command -> state.answer(command) } }
+                state.mockProviders += setOf("network")
+                assertEquals("network", adb.readState("serial", StateKey.MockLocationProviders.id))
+                state.mockProviders += setOf("gps", "fused")
+                assertEquals("fused,gps,network", adb.readState("serial", StateKey.MockLocationProviders.id))
+                // Another tool's test provider from before the session stays.
+                adb.restoreState("serial", listOf(SavedState(StateKey.MockLocationProviders.id, "network")))
+                assertEquals(setOf("network"), state.mockProviders)
+            }
+        }
+
+    @Test
+    fun `a mock location makes the driver the mock app, turns location on and both come back on detach`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.LOCATION_MODE to "0"))
+            openWithDriver("session-location", state) { session, _, fake ->
+                val setting = async(Dispatchers.IO) { session.conditions.setLocation(48.8584, 2.2945, 3.5f, null) }
+                val (frame, request) = withTimeout(5_000) { fake.nextRequest() }
+                assertEquals(48.8584, request.command.setLocation.latitude)
+                assertTrue(request.command.setLocation.hasAccuracyM() && !request.command.setLocation.hasAltitudeM())
+                // The app-op and location are on before the driver is asked.
+                assertEquals("allow", state.values[StateKey.DRIVER_MOCK_LOCATION])
+                assertEquals("3", state.values[StateKey.LOCATION_MODE])
+                // As the driver does: gps and network become test providers, which outlive it.
+                state.mockProviders += setOf("gps", "network")
+                fake.respond(frame.requestId, Responses.done())
+                setting.await()
+                assertEquals(
+                    listOf(
+                        SavedState(StateKey.LOCATION_MODE, "0"),
+                        SavedState(StateKey.DRIVER_MOCK_LOCATION, "default"),
+                        SavedState(StateKey.MockLocationProviders.id, ""),
+                    ),
+                    journalStore().read()?.savedState,
+                )
+
+                session.close(timeoutMs = 5_000)
+                assertEquals(emptySet(), state.mockProviders)
+                // Removed while the driver still had the app-op, which is restored after.
+                val removed = state.writes.indexOf("mock-providers-removed=gps,network")
+                assertTrue(removed >= 0 && removed < state.writes.lastIndexOf("${StateKey.DRIVER_MOCK_LOCATION}=default"), "${state.writes}")
+                assertEquals("0", state.values[StateKey.LOCATION_MODE])
+                assertEquals("default", state.values[StateKey.DRIVER_MOCK_LOCATION])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `stay awake and the accessibility display settings are read back and restored`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.STAY_AWAKE to "3"))
+            openWithState("session-a11y-display", state) { session, _ ->
+                session.conditions.setStayAwake(false)
+                session.conditions.setAccessibilityDisplay(highContrastText = true, colorInversion = null, boldText = true)
+                assertEquals("0", state.values[StateKey.STAY_AWAKE])
+                assertEquals("1", state.values[StateKey.HIGH_CONTRAST_TEXT])
+                assertEquals("300", state.values[StateKey.BOLD_TEXT])
+                assertFalse(StateKey.COLOR_INVERSION in state.values)
+                assertFailsWith<IllegalArgumentException> { session.conditions.setAccessibilityDisplay(null, null, null) }
+                state.stuck += StateKey.COLOR_INVERSION
+                // Never set on this device and the write ignored: absent is a mismatch, not a pass.
+                assertFailsWith<DeviceSettingException> { session.conditions.setAccessibilityDisplay(null, colorInversion = true, boldText = null) }
+                state.stuck.clear()
+
+                session.close(timeoutMs = 5_000)
+                // Never set before: removed again rather than written as off.
+                assertEquals("3", state.values[StateKey.STAY_AWAKE])
+                assertEquals(null, state.values[StateKey.HIGH_CONTRAST_TEXT])
+                assertEquals(null, state.values[StateKey.BOLD_TEXT])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `notification access is given once and taken back on detach`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            openWithState("session-notification-listener", state) { session, _ ->
+                session.conditions.allowNotificationListener()
+                session.conditions.allowNotificationListener()
+                assertEquals("allowed", state.values[StateKey.DriverNotificationListener.id])
+                assertEquals(1, state.writes.count { it.startsWith(StateKey.DriverNotificationListener.id) })
+                assertEquals(listOf(SavedState(StateKey.DriverNotificationListener.id, "disallowed")), journalStore().read()?.savedState)
+
+                session.close(timeoutMs = 5_000)
+                assertEquals("disallowed", state.values[StateKey.DriverNotificationListener.id])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `notification access a device does not take is refused, and asked for again`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            state.stuck += StateKey.DriverNotificationListener.id
+            openWithState("session-notification-listener-stuck", state) { session, _ ->
+                assertFailsWith<DeviceSettingException> { session.conditions.allowNotificationListener() }
+                state.stuck.clear()
+                session.conditions.allowNotificationListener()
+                assertEquals("allowed", state.values[StateKey.DriverNotificationListener.id])
+                session.close(timeoutMs = 5_000)
+                assertEquals("disallowed", state.values[StateKey.DriverNotificationListener.id])
+            }
+        }
+
+    @Test
+    fun `bold text below API 31 is refused before anything changes`() =
+        runBlocking {
+            val state = FakeDeviceState(apiLevel = 30)
+            openWithState("session-bold-api", state) { session, _ ->
+                val refused = assertFailsWith<UnsupportedApiException> { session.conditions.setAccessibilityDisplay(true, null, boldText = true) }
+                assertEquals(31, refused.requiredApi)
+                assertEquals(emptyList(), journalStore().read()?.savedState)
+                session.close(timeoutMs = 5_000)
+            }
+        }
+
+    @Test
+    fun `the foreground activity reads both dumpsys layouts and expands a short class name`() =
+        runBlocking {
+            val state = FakeDeviceState()
+            val adb = FakeAdb().apply { responder = { _, command -> state.answer(command) } }
+            assertEquals(null, adb.foregroundActivity("serial"))
+            for (legacy in listOf(false, true)) {
+                state.legacyActivityDump = legacy
+                state.resumedActivity = "io.example/.ui.MainActivity"
+                assertEquals("io.example" to "io.example.ui.MainActivity", adb.foregroundActivity("serial"))
+                state.resumedActivity = "com.android.settings/com.android.settings.SubSettings"
+                assertEquals("com.android.settings" to "com.android.settings.SubSettings", adb.foregroundActivity("serial"))
+            }
+        }
+
+    @Test
+    fun `wifi turned on under airplane mode is restored off under it`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "1", FakeDeviceState.WIFI to "0", FakeDeviceState.DATA to "0"))
+            openWithState("session-network-airplane", state) { session, _ ->
+                session.conditions.setNetwork(airplaneMode = null, wifi = true, mobileData = null)
+                assertEquals("2", state.values[FakeDeviceState.WIFI])
+                session.close(timeoutMs = 5_000)
+                assertEquals(listOf("1", "0"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI).map { state.values[it] })
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
+    fun `a device on adb over the network refuses to cut it`() {
+        assertTrue(overNetwork("192.168.1.20:5555"))
+        assertTrue(overNetwork("adb-R58M123-AbCdEf._adb-tls-connect._tcp"))
+        assertFalse(overNetwork("emulator-5554"))
+        assertFalse(overNetwork("85e49002"))
+    }
 
     @Test
     fun `a condition below its API level is refused before anything is captured`() =
@@ -1267,7 +1594,7 @@ class DeviceSessionTest {
                     }
                 }
                 val timeout = assertFailsWith<HostWaitTimeoutException> { session.app("com.example").forceStop(timeoutMs = 300) }
-                assertTrue("an activity still exiting" in timeout.message.orEmpty(), timeout.message)
+                assertTrue("a task or activity still being removed" in timeout.message.orEmpty(), timeout.message)
                 session.close(timeoutMs = 5_000)
             } finally {
                 fake.close()

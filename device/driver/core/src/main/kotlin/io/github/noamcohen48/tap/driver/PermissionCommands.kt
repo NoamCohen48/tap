@@ -5,6 +5,7 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.driver.engine.CommandContext
@@ -35,32 +36,56 @@ internal class PermissionCommands(
     }
 
     /**
-     * Clicks the one button offering [choice]. `NOT_FOUND` when the dialog (or this choice in it)
-     * is not showing, `AMBIGUOUS` when several windows offer it; both before any input.
+     * Clicks the one button offering [choice], after selecting the [accuracy] radio when one is
+     * named. `NOT_FOUND` when the dialog (or this choice or accuracy in it) is not showing,
+     * `AMBIGUOUS` when several windows offer it; both checked for button and radio before any input.
      */
     fun choose(
         context: CommandContext,
         choice: PermissionChoice,
+        accuracy: LocationAccuracy,
     ) {
         context.checkpoint()
         val name =
             BUTTONS[choice]
                 ?: throw CommandFailure(ErrorCode.ERR_INVALID_REQUEST, message = "A known permission choice is required")
-        val matches = device.findObjects(By.res(Pattern.compile("$CONTROLLERS:id/${Pattern.quote(name)}")))
+        val radio =
+            if (accuracy == LocationAccuracy.LOCATION_ACCURACY_UNSPECIFIED) {
+                null
+            } else {
+                val radioName = RADIOS[accuracy] ?: throw CommandFailure(ErrorCode.ERR_INVALID_REQUEST, message = "A known location accuracy is required")
+                single(radioName, "$accuracy")
+            }
         val button =
-            when (matches.size) {
-                1 -> matches.single()
-                0 -> throw CommandFailure(ErrorCode.ERR_NOT_FOUND, message = "No permission dialog offers $choice")
-                else -> {
-                    matches.forEach(::recycleQuietly)
-                    throw CommandFailure(ErrorCode.ERR_AMBIGUOUS, message = "${matches.size} permission dialog buttons offer $choice")
-                }
+            try {
+                single(name, "$choice")
+            } catch (error: CommandFailure) {
+                radio?.let(::recycleQuietly)
+                throw error
             }
         try {
             context.markMutationStarted()
+            radio?.click()
             button.click()
         } finally {
+            radio?.let(::recycleQuietly)
             button.recycle()
+        }
+    }
+
+    /** The one dialog control with resource entry [name]; `NOT_FOUND` / `AMBIGUOUS` otherwise. */
+    private fun single(
+        name: String,
+        what: String,
+    ): UiObject2 {
+        val matches = device.findObjects(By.res(Pattern.compile("$CONTROLLERS:id/${Pattern.quote(name)}")))
+        return when (matches.size) {
+            1 -> matches.single()
+            0 -> throw CommandFailure(ErrorCode.ERR_NOT_FOUND, message = "No permission dialog offers $what")
+            else -> {
+                matches.forEach(::recycleQuietly)
+                throw CommandFailure(ErrorCode.ERR_AMBIGUOUS, message = "${matches.size} permission dialog controls offer $what")
+            }
         }
     }
 
@@ -81,6 +106,7 @@ internal class PermissionCommands(
                 .newBuilder()
                 .setPackageName(found.first().first)
                 .addAllChoices(found.map { it.second }.distinct().sortedBy { it.number })
+                .addAllAccuracies(accuracies())
                 .build()
         } catch (_: StaleObjectException) {
             return null
@@ -89,8 +115,19 @@ internal class PermissionCommands(
         }
     }
 
+    /** The accuracy radios the dialog shows (API 31+ location dialog), in LocationAccuracy order. */
+    private fun accuracies(): List<LocationAccuracy> =
+        RADIOS.entries.filter { (_, name) -> device.hasObject(By.res(Pattern.compile("$CONTROLLERS:id/${Pattern.quote(name)}"))) }.map { it.key }
+
     private companion object {
         const val POLL_MS = 100L
+
+        /** `GrantPermissionsActivity`'s location accuracy radio buttons (API 31+). */
+        val RADIOS =
+            mapOf(
+                LocationAccuracy.LOCATION_PRECISE to "permission_location_accuracy_radio_fine",
+                LocationAccuracy.LOCATION_APPROXIMATE to "permission_location_accuracy_radio_coarse",
+            )
 
         /** API 29+ permission controller (AOSP and Google builds); API 26–28 package installer. */
         const val CONTROLLERS =
