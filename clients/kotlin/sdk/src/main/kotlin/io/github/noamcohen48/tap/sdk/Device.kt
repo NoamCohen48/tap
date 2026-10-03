@@ -1,22 +1,54 @@
 package io.github.noamcohen48.tap.sdk
 
+import com.google.protobuf.ByteString
+import io.github.noamcohen48.tap.api.v1.AddMediaHeader
+import io.github.noamcohen48.tap.api.v1.AddMediaRequest
 import io.github.noamcohen48.tap.api.v1.AttachRequest
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
+import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DismissNotification
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
+import io.github.noamcohen48.tap.api.v1.GetClipboard
+import io.github.noamcohen48.tap.api.v1.HideKeyboard
+import io.github.noamcohen48.tap.api.v1.ListNotifications
+import io.github.noamcohen48.tap.api.v1.NotificationMatch
+import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.PressKey
+import io.github.noamcohen48.tap.api.v1.PullFileRequest
+import io.github.noamcohen48.tap.api.v1.PushFileHeader
+import io.github.noamcohen48.tap.api.v1.PushFileRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
+import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
+import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
+import io.github.noamcohen48.tap.api.v1.SetDensityRequest
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
+import io.github.noamcohen48.tap.api.v1.SetLocationRequest
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TypeText
+import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
+import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -29,12 +61,21 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -44,8 +85,19 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+/** Largest file [Device.pushFile], [Device.pullFile] and [Device.addMedia] move (512 MiB). */
+const val MAX_FILE_BYTES = 512L shl 20
+
+/** Size of each chunk the file uploads stream. */
+private const val FILE_CHUNK_BYTES = 1 shl 20
+
+/** A file transfer's whole-call deadline: the server's 5-minute adb transfer plus the upload. */
+private const val FILE_DEADLINE_MS = 10 * 60_000L
+
 const val KEYCODE_HOME = 3
 const val KEYCODE_BACK = 4
+const val KEYCODE_SLEEP = 223
+const val KEYCODE_WAKEUP = 224
 const val DEFAULT_GESTURE_PERCENT = 80
 
 /**
@@ -223,6 +275,601 @@ class Device internal constructor(
     private suspend fun openSystemPanel(panel: SystemPanel) {
         executeOrThrow { openSystemPanel = OpenSystemPanel.newBuilder().setPanel(panel).build() }
     }
+
+    /**
+     * Rotates the display to [orientation] geometry, whatever the device's natural orientation,
+     * and freezes it there until [unfreezeRotation]. Fails only when Android refuses the request;
+     * the call then waits briefly for the display to turn. The foreground app may pin its own
+     * orientation and keep the display where it wants it: assert with [info] (`orientation`,
+     * `displayRotation`). The rotation settings the device had before the session's first
+     * rotation call are restored when the device is detached.
+     */
+    suspend fun setOrientation(orientation: Orientation) {
+        executeOrThrow { setOrientation = SetOrientation.newBuilder().setOrientation(orientation.toProto()).build() }
+    }
+
+    /** Rotates the display to the exact [rotation] and freezes it there; otherwise as [setOrientation]. */
+    suspend fun setDisplayRotation(rotation: DisplayRotation) {
+        executeOrThrow { setDisplayRotation = SetDisplayRotation.newBuilder().setRotation(rotation.toProto()).build() }
+    }
+
+    /** Hands rotation back to the device's sensor (auto-rotate), without choosing a rotation. */
+    suspend fun unfreezeRotation() {
+        executeOrThrow { unfreezeRotation = UnfreezeRotation.getDefaultInstance() }
+    }
+
+    /** Turns the screen on (`KEYCODE_WAKEUP`; nothing happens when it is on). The keyguard may still show: see [dismissKeyguard]. */
+    suspend fun wake() = pressKey(KEYCODE_WAKEUP)
+
+    /** Turns the screen off (`KEYCODE_SLEEP`; nothing happens when it is off). */
+    suspend fun sleep() = pressKey(KEYCODE_SLEEP)
+
+    /**
+     * Dismisses a keyguard that has no PIN, pattern or password (`wm dismiss-keyguard`); with no
+     * keyguard showing it sends nothing. A secure keyguard fails with `ACTION_REJECTED` /
+     * `KEYGUARD_SECURE` before any input: Tap never unlocks one. [info] reports the state.
+     */
+    suspend fun dismissKeyguard() {
+        executeOrThrow { dismissKeyguard = DismissKeyguard.getDefaultInstance() }
+    }
+
+    /**
+     * Waits until a runtime-permission dialog shows and returns the choices it offers. Buttons
+     * are recognised by the permission controller's resource ids, never by label or position.
+     * Throws [WaitTimeoutException] (`NO_PERMISSION_PROMPT`) when none appears within [timeout].
+     */
+    suspend fun awaitPermissionPrompt(timeout: Duration = timeouts.wait): PermissionPrompt {
+        ensureTapBound("Device.awaitPermissionPrompt")
+        return admitted("Device.awaitPermissionPrompt") {
+            val result = rpcExecute(timeout) { waitPermissionPrompt = WaitPermissionPrompt.getDefaultInstance() }
+            if (result.hasError()) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) {
+                    throw CommandException(result, "wait_permission_prompt", serial, null)
+                }
+                throw WaitTimeoutException.of(result, "a permission dialog", serial)
+            }
+            result.permissionPrompt.toModel()
+        }
+    }
+
+    /**
+     * Taps the permission dialog's button for [choice] (`NOT_FOUND` before any input when the
+     * dialog does not offer it). With [accuracy], the location dialog's Precise / Approximate
+     * radio is selected first; it must be offered too ([PermissionPrompt.accuracies], Android 12+
+     * when the app asks for fine location), or nothing is tapped. Only the taps are reported:
+     * assert the outcome, e.g. the dialog gone and the app's state.
+     */
+    suspend fun choosePermission(
+        choice: PermissionChoice,
+        accuracy: LocationAccuracy? = null,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) {
+            choosePermission =
+                ChoosePermission.newBuilder().setChoice(choice.toProto()).apply { accuracy?.let { setAccuracy(it.toProto()) } }.build()
+        }
+    }
+
+    /** Whether a soft keyboard (any input method's window) is on screen; [info] reports the same. */
+    suspend fun keyboardShown(): Boolean = info().keyboardShown
+
+    /**
+     * Hides the soft keyboard with one Back key, which the keyboard consumes; with no keyboard
+     * showing nothing is sent, so Back never reaches the app. Only the key is reported: assert
+     * [keyboardShown] when it matters.
+     */
+    suspend fun hideKeyboard(timeout: Duration? = null) {
+        executeOrThrow(timeout) { hideKeyboard = HideKeyboard.getDefaultInstance() }
+    }
+
+    /** Puts [text] on the device clipboard as plain text (at most 4096 characters). */
+    suspend fun setClipboard(
+        text: String,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) { setClipboard = SetClipboard.newBuilder().setText(text).build() }
+    }
+
+    /** The device clipboard as text; `""` when it is empty or holds nothing that reads as text. */
+    suspend fun clipboard(timeout: Duration? = null): String =
+        executeOrThrow(timeout) { getClipboard = GetClipboard.getDefaultInstance() }.text
+
+    /**
+     * Turns the window, transition and animator animations off (all three scales 0) or on (all
+     * 1) for this session. Like every device condition below, the value the device had before
+     * the session's first change is restored on [detach] (or by the next attach when the daemon
+     * died first), and the change is read back: a value the device did not take throws
+     * [ServerException] ([FailureReason.DEVICE_SETTING]). [info] reports
+     * [DeviceInfo.animationsEnabled].
+     */
+    suspend fun setAnimations(enabled: Boolean) {
+        condition("Device.setAnimations") {
+            setAnimations(
+                SetAnimationsRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled).build(),
+            )
+        }
+    }
+
+    /**
+     * Dark theme on or off (`cmd uimode night`) until [detach], see [setAnimations]. API 29+:
+     * below, [ServerException] ([FailureReason.UNSUPPORTED_API]). Read back with [DeviceInfo.darkMode].
+     */
+    suspend fun setDarkMode(enabled: Boolean) {
+        condition("Device.setDarkMode") {
+            setDarkMode(
+                SetDarkModeRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled).build(),
+            )
+        }
+    }
+
+    /**
+     * The system font scale, 0.5 to 2.0 (1.0 = default), until [detach], see [setAnimations].
+     * Read back with [DeviceInfo.fontScale].
+     */
+    suspend fun setFontScale(scale: Float) {
+        condition("Device.setFontScale") {
+            setFontScale(
+                SetFontScaleRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setScale(scale).build(),
+            )
+        }
+    }
+
+    /**
+     * Overrides the display density with [dpi] (100 to 1000), or with `null` goes back to the
+     * display's physical density, until [detach], see [setAnimations]. Read back with
+     * [DeviceInfo.densityDpi].
+     */
+    suspend fun setDensity(dpi: Int?) {
+        condition("Device.setDensity") {
+            setDensity(
+                SetDensityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .apply { if (dpi != null) setDpi(dpi) }.build(),
+            )
+        }
+    }
+
+    /**
+     * Switches airplane mode, Wi-Fi and mobile data on or off until [detach], see [setAnimations];
+     * a `null` switch is left as it is. These are the device's real switches (nothing is mocked):
+     * the app sees what it would see if a user flipped them, and turning Wi-Fi on says nothing about
+     * when it connects. Airplane mode is applied first, so `setNetwork(airplaneMode = true, wifi =
+     * true)` is airplane mode with Wi-Fi on. API 29+. A device reached over ADB on the network
+     * refuses Wi-Fi off or airplane mode on ([FailureReason.DEVICE_SETTING]): that would cut Tap off.
+     * Read back with [DeviceInfo.airplaneMode], [DeviceInfo.wifiEnabled] and
+     * [DeviceInfo.mobileDataEnabled].
+     */
+    suspend fun setNetwork(
+        airplaneMode: Boolean? = null,
+        wifi: Boolean? = null,
+        mobileData: Boolean? = null,
+    ) {
+        require(airplaneMode != null || wifi != null || mobileData != null) { "set at least one of airplaneMode, wifi or mobileData" }
+        condition("Device.setNetwork") {
+            setNetwork(
+                SetNetworkRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .apply {
+                        airplaneMode?.let(::setAirplaneMode)
+                        wifi?.let(::setWifi)
+                        mobileData?.let(::setMobileData)
+                    }.build(),
+            )
+        }
+    }
+
+    /**
+     * Sets the device's languages (Settings › Languages) until [detach], see [setAnimations]:
+     * BCP-47 tags in preference order, 1 to 16 of them (`"fr-FR"`, `"en"`). Every app that
+     * follows the system sees the change as a configuration change; an app with its own
+     * languages ([App.setLocales]) keeps them. Android has no shell command for this: the Tap
+     * driver app applies it as Settings' language picker does, and the result is read back
+     * ([FailureReason.DEVICE_SETTING] when the device reports another list). Read back with
+     * [DeviceInfo.systemLocales].
+     */
+    suspend fun setSystemLocales(locales: List<String>) {
+        require(locales.isNotEmpty()) { "set at least one locale" }
+        condition("Device.setSystemLocales") {
+            setSystemLocales(
+                SetSystemLocalesRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .addAllLocales(locales).build(),
+            )
+        }
+    }
+
+    /**
+     * Mocks the device location until [detach]: the gps and network providers (and fused, API
+     * 31+) report this fix, sent again every second so an app that starts listening later still
+     * gets one. [latitude] -90..90, [longitude] -180..180, [accuracyM] in meters (> 0; null = 5),
+     * [altitudeM] in meters (null = none). The Tap driver app becomes the device's mock-location
+     * app and, when location is off, location is turned on; both are restored on [detach], which
+     * ends the mock. Calling it again moves the fix. Apps that read location through Google Play
+     * services see it as Play services relays the platform providers.
+     */
+    suspend fun setLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyM: Float? = null,
+        altitudeM: Double? = null,
+    ) {
+        require(latitude in -90.0..90.0) { "latitude must be -90 to 90, not $latitude" }
+        require(longitude in -180.0..180.0) { "longitude must be -180 to 180, not $longitude" }
+        require(accuracyM == null || (accuracyM.isFinite() && accuracyM > 0f)) { "accuracyM must be a positive number of meters, not $accuracyM" }
+        require(altitudeM == null || altitudeM.isFinite()) { "altitudeM must be finite, not $altitudeM" }
+        condition("Device.setLocation") {
+            setLocation(
+                SetLocationRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .setLatitude(latitude).setLongitude(longitude)
+                    .apply {
+                        accuracyM?.let(::setAccuracyM)
+                        altitudeM?.let(::setAltitudeM)
+                    }.build(),
+            )
+        }
+    }
+
+    /**
+     * Keeps the screen on while the device is plugged in (USB, AC or wireless), or lets it time out
+     * again, until [detach], see [setAnimations]: what Developer options › Stay awake sets. A device
+     * on ADB over USB is plugged in, so a long test does not find the screen off. Read back with
+     * [DeviceInfo.stayAwake].
+     */
+    suspend fun setStayAwake(enabled: Boolean) {
+        condition("Device.setStayAwake") {
+            setStayAwake(SetStayAwakeRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).setEnabled(enabled).build())
+        }
+    }
+
+    /**
+     * Turns the accessibility display settings on or off until [detach], see [setAnimations]; a
+     * `null` setting is left as it is. [highContrastText] draws text with an outline in black or
+     * white, [colorInversion] inverts the display's colors (screenshots stay uninverted: the
+     * inversion happens in the display pipeline), and [boldText] makes the system font bold (API
+     * 31+, [FailureReason.UNSUPPORTED_API] below, before anything changes). The values are what
+     * Settings › Accessibility writes, read back ([FailureReason.DEVICE_SETTING] when the device
+     * did not take one). Read back with [DeviceInfo.highContrastText], [DeviceInfo.colorInversion]
+     * and [DeviceInfo.boldText].
+     */
+    suspend fun setAccessibilityDisplay(
+        highContrastText: Boolean? = null,
+        colorInversion: Boolean? = null,
+        boldText: Boolean? = null,
+    ) {
+        require(highContrastText != null || colorInversion != null || boldText != null) {
+            "set at least one of highContrastText, colorInversion or boldText"
+        }
+        condition("Device.setAccessibilityDisplay") {
+            setAccessibilityDisplay(
+                SetAccessibilityDisplayRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                    .apply {
+                        highContrastText?.let(::setHighContrastText)
+                        colorInversion?.let(::setColorInversion)
+                        boldText?.let(::setBoldText)
+                    }.build(),
+            )
+        }
+    }
+
+    /**
+     * The activity on top of the screen (the resumed one, the focused one in multi-window), or
+     * `null` when none is resumed: the keyguard is showing, or an activity is starting. Read on
+     * the host from `dumpsys activity`; changes nothing. Use it to check that a deep link or a
+     * notification opened the right screen.
+     */
+    suspend fun foregroundActivity(): ForegroundActivity? {
+        val operation = "Device.foregroundActivity"
+        ensureTapBound(operation)
+        val response =
+            admitted(operation) {
+                mapped(serial) {
+                    client.devices
+                        .withDeadlineAfter(timeouts.lifecycle.inWholeMilliseconds + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
+                        .getForegroundActivity(
+                            GetForegroundActivityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).build(),
+                        )
+                }
+            }
+        return if (response.hasPackageName()) ForegroundActivity(response.packageName, response.activity) else null
+    }
+
+    /** [setSystemLocales] with the tags as arguments. */
+    suspend fun setSystemLocales(
+        first: String,
+        vararg more: String,
+    ) = setSystemLocales(listOf(first, *more))
+
+    /**
+     * Copies [bytes] to [devicePath] on the device (absolute and normalised, at most 512 MiB):
+     * `/data/local/tmp/…`, or shared storage (`/sdcard/Download/…`) for an app with storage
+     * access to read. The directory must exist. A file already there is refused
+     * ([FailureReason.DEVICE_FILE]) unless this device handle pushed it, so a test never
+     * overwrites the device's own files; the size is read back. The file is deleted on [detach].
+     */
+    suspend fun pushFile(
+        devicePath: String,
+        bytes: ByteArray,
+    ) = pushFile(devicePath, bytes.size.toLong()) { bytes.inputStream() }
+
+    /** [pushFile] with the bytes of the local file [source], streamed. */
+    suspend fun pushFile(
+        devicePath: String,
+        source: Path,
+    ) {
+        require(Files.isRegularFile(source)) { "$source is not a readable file" }
+        pushFile(devicePath, Files.size(source)) { Files.newInputStream(source) }
+    }
+
+    private suspend fun pushFile(
+        devicePath: String,
+        size: Long,
+        open: () -> InputStream,
+    ) {
+        require(size <= MAX_FILE_BYTES) { "at most $MAX_FILE_BYTES bytes are pushed, not $size" }
+        val header =
+            PushFileHeader.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                .setDevicePath(devicePath).setSizeBytes(size).build()
+        fileCall("Device.pushFile") {
+            pushFile(
+                uploadParts(
+                    PushFileRequest.newBuilder().setHeader(header).build(),
+                    { PushFileRequest.newBuilder().setChunk(it).build() },
+                    open,
+                ),
+            )
+        }
+    }
+
+    /** The bytes of the regular file at [devicePath] on the device (at most 512 MiB). */
+    suspend fun pullFile(devicePath: String): ByteArray = ByteArrayOutputStream().also { pullFile(devicePath, it) }.toByteArray()
+
+    /** [pullFile] into the local file [target], replaced only once the whole file has arrived. */
+    suspend fun pullFile(
+        devicePath: String,
+        target: Path,
+    ) {
+        val absolute = target.toAbsolutePath()
+        val partial = withContext(Dispatchers.IO) { Files.createTempFile(absolute.parent, absolute.fileName.toString(), ".part") }
+        try {
+            withContext(Dispatchers.IO) { Files.newOutputStream(partial) }.use { pullFile(devicePath, it) }
+            withContext(Dispatchers.IO) { Files.move(partial, absolute, StandardCopyOption.REPLACE_EXISTING) }
+        } finally {
+            withContext(Dispatchers.IO) { Files.deleteIfExists(partial) }
+        }
+    }
+
+    private suspend fun pullFile(
+        devicePath: String,
+        out: OutputStream,
+    ) {
+        val request =
+            PullFileRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                .setDevicePath(devicePath).build()
+        fileCall("Device.pullFile") {
+            var expected = -1L
+            var received = 0L
+            pullFile(request).collect { part ->
+                if (expected < 0) expected = part.sizeBytes
+                received += part.chunk.size()
+                withContext(Dispatchers.IO) { part.chunk.writeTo(out) }
+            }
+            check(received == expected) { "pulled $received of $expected bytes of $devicePath" }
+        }
+    }
+
+    /**
+     * Adds a photo or video to the device's gallery and returns its device path: [bytes] are
+     * written as [fileName] (letters, digits, `.`, `_`, `-` or spaces, with a photo extension —
+     * jpg, jpeg, png, gif, webp, heic, heif, bmp — or a video one — mp4, 3gp, webm, mkv, mov)
+     * to `/sdcard/Pictures/Tap/` or `/sdcard/Movies/Tap/`, and indexed by the media scanner so
+     * gallery apps and photo pickers list it (read back). A name already there is refused
+     * ([FailureReason.DEVICE_FILE]) unless this device handle added it. Deleted, and dropped
+     * from the index, on [detach]; nothing else in the gallery is touched.
+     */
+    suspend fun addMedia(
+        fileName: String,
+        bytes: ByteArray,
+    ): String = addMedia(fileName, bytes.size.toLong()) { bytes.inputStream() }
+
+    /** [addMedia] with the bytes of the local file [source], named [fileName] (its own name by default). */
+    suspend fun addMedia(
+        source: Path,
+        fileName: String = source.fileName.toString(),
+    ): String {
+        require(Files.isRegularFile(source)) { "$source is not a readable file" }
+        return addMedia(fileName, Files.size(source)) { Files.newInputStream(source) }
+    }
+
+    private suspend fun addMedia(
+        fileName: String,
+        size: Long,
+        open: () -> InputStream,
+    ): String {
+        require(size <= MAX_FILE_BYTES) { "at most $MAX_FILE_BYTES bytes are added, not $size" }
+        val header =
+            AddMediaHeader.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                .setFileName(fileName).setSizeBytes(size).build()
+        var path = ""
+        fileCall("Device.addMedia") {
+            path =
+                addMedia(
+                    uploadParts(
+                        AddMediaRequest.newBuilder().setHeader(header).build(),
+                        { AddMediaRequest.newBuilder().setChunk(it).build() },
+                        open,
+                    ),
+                ).devicePath
+        }
+        return path
+    }
+
+    private fun <R> uploadParts(
+        header: R,
+        chunk: (ByteString) -> R,
+        open: () -> InputStream,
+    ): Flow<R> =
+        flow {
+            emit(header)
+            open().use { input ->
+                val buffer = ByteArray(FILE_CHUNK_BYTES)
+                while (true) {
+                    val read = input.readNBytes(buffer, 0, buffer.size)
+                    if (read <= 0) break
+                    emit(chunk(ByteString.copyFrom(buffer, 0, read)))
+                }
+            }
+        }.flowOn(Dispatchers.IO)
+
+    private suspend fun fileCall(
+        operation: String,
+        block: suspend DeviceServiceGrpcKt.DeviceServiceCoroutineStub.() -> Unit,
+    ) {
+        ensureTapBound(operation)
+        admitted(operation) {
+            mapped(serial) {
+                client.devices.withDeadlineAfter(FILE_DEADLINE_MS, TimeUnit.MILLISECONDS).block()
+            }
+        }
+    }
+
+    private suspend fun condition(
+        operation: String,
+        block: suspend DeviceServiceGrpcKt.DeviceServiceCoroutineStub.() -> Unit,
+    ) {
+        ensureTapBound(operation)
+        admitted(operation) {
+            mapped(serial) {
+                client.devices
+                    .withDeadlineAfter(timeouts.lifecycle.inWholeMilliseconds + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
+                    .block()
+            }
+        }
+    }
+
+    /**
+     * Waits for a toast and returns it: one shown in the last 3.5 s (the longest a toast stays up)
+     * or arriving within [timeout]. [text] matches with [mode] (any text when null); a toast from
+     * any package counts unless [packageName] names one ([App.awaitToast] passes its own). Not
+     * consuming: the same toast can satisfy two calls in a row. Throws [WaitTimeoutException]
+     * (`NO_TOAST`) when none matches.
+     */
+    suspend fun awaitToast(
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        timeout: Duration = timeouts.wait,
+    ): Toast {
+        ensureTapBound("Device.awaitToast")
+        return admitted("Device.awaitToast") {
+            val result =
+                rpcExecute(timeout) {
+                    awaitToast =
+                        AwaitToast
+                            .newBuilder()
+                            .apply {
+                                text?.let { setText(it).setMode(mode.toProto()) }
+                                packageName?.let(::setPackageName)
+                            }.build()
+                }
+            if (result.hasError()) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) throw CommandException(result, "await_toast", serial, null)
+                val what = text?.let { "a toast \"$it\"" } ?: "a toast"
+                val from = packageName?.let { " from $it" }.orEmpty()
+                throw WaitTimeoutException.of(result, what + from, serial)
+            }
+            result.toast.toModel()
+        }
+    }
+
+    /**
+     * Waits until a matching notification is active (one already posted counts) and returns the
+     * newest. [title] and [text] match with [mode] (any when null); [packageName] narrows it to
+     * one app's notifications ([App.awaitNotification] passes its own). Notifications are read as
+     * data from a notification listener in the Tap driver app, not from the shade, so nothing is
+     * opened on screen; the server gives the driver notification access for the session (taken
+     * back on [detach]). Group summaries are left out. Throws [WaitTimeoutException]
+     * (`NO_NOTIFICATION`) when none matches within [timeout].
+     */
+    suspend fun awaitNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        timeout: Duration = timeouts.wait,
+    ): Notification {
+        ensureTapBound("Device.awaitNotification")
+        return admitted("Device.awaitNotification") {
+            val result =
+                rpcExecute(timeout) {
+                    awaitNotification = AwaitNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).build()
+                }
+            if (result.hasError()) {
+                if (result.error.code != ErrorCodeProto.ERR_WAIT_TIMEOUT) throw CommandException(result, "await_notification", serial, null)
+                val what = listOfNotNull(title?.let { "title \"$it\"" }, text?.let { "text \"$it\"" }).joinToString(" and ")
+                val from = packageName?.let { " from $it" }.orEmpty()
+                throw WaitTimeoutException.of(result, "a notification" + (if (what.isEmpty()) "" else " with $what") + from, serial)
+            }
+            result.notification.toModel()
+        }
+    }
+
+    /** The active notifications, newest first (group summaries left out), as [awaitNotification] reads them. */
+    suspend fun notifications(timeout: Duration? = null): List<Notification> =
+        executeOrThrow(timeout) { listNotifications = ListNotifications.getDefaultInstance() }
+            .notifications.notificationsList.map { it.toModel() }
+
+    /**
+     * Opens the one active notification that matches (as for [awaitNotification]) as a tap on it
+     * in the shade does: sends its content intent and, when it auto-cancels, removes it. With
+     * [action], presses its action button with exactly that title instead, and the notification
+     * stays. No match or several matches throw [CommandException] (`NOT_FOUND` / `AMBIGUOUS`),
+     * and a notification that opens nothing or has no such action `ACTION_REJECTED`
+     * (`ACTION_NOT_OFFERED`), before anything is sent. What the app does then is for the test to
+     * assert (an activity, say: [foregroundActivity]).
+     */
+    suspend fun openNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        action: String? = null,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) {
+            openNotification =
+                OpenNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).apply { action?.let(::setAction) }.build()
+        }
+    }
+
+    /**
+     * Dismisses the one active notification that matches (as for [awaitNotification]) as a swipe
+     * does. No match or several matches throw [CommandException] (`NOT_FOUND` / `AMBIGUOUS`), and
+     * an ongoing notification `ACTION_REJECTED` (`NOT_CLEARABLE`), before anything changes.
+     */
+    suspend fun dismissNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        packageName: String? = null,
+        timeout: Duration? = null,
+    ) {
+        executeOrThrow(timeout) { dismissNotification = DismissNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).build() }
+    }
+
+    private fun notificationMatch(
+        title: String?,
+        text: String?,
+        mode: MatchMode,
+        packageName: String?,
+    ): NotificationMatch =
+        NotificationMatch
+            .newBuilder()
+            .apply {
+                title?.let(::setTitle)
+                text?.let(::setText)
+                if (title != null || text != null) setMode(mode.toProto())
+                packageName?.let(::setPackageName)
+            }.build()
 
     /**
      * Types [value] as real key events into whatever has input focus now: no target and no

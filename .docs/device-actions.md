@@ -1,0 +1,424 @@
+# Device actions: roadmap and decisions
+
+Status: phases A–D and groups 1–4 implemented (groups 1–2 on `feat/device-actions`, group 3 on
+`feat/device-actions-3`). Groups 1–2 proven on emulator-5554 (API 34) and the Samsung (API 29);
+group 3 proven on the Samsung (2026-10-02), its emulator run pending. Group 4 on
+`feat/device-actions-4`: proven on the Samsung (2026-10-02), its emulator run pending.
+Started from the pi session report (`.docs/pi-session-…html`, not committed) and continued on
+2026-09-30.
+
+## Rule for every action here: report, don't judge
+
+The driver fails only on what Android returns (a refused injection, a missing node, an action the
+node does not offer), never because the app did not react. A bounded settle wait is fine when
+Android itself needs a moment (rotation); the test asserts the effect. Mutations still resolve
+their target to exactly one match before any input (`AMBIGUOUS` / `NOT_FOUND` first).
+
+## Rule: every change has a read-back
+
+Because the driver reports only Android's acceptance, a test can assert an effect only if it can
+read the state back. Every action that changes device or app state ships with a way to read
+that state (decided 2026-10-01). Cheap, per-command state goes in `DeviceInfo` (`info()` is
+polled often, so nothing slow goes there); slower or rarer reads get their own call.
+
+| Changes | Read back |
+|---|---|
+| rotation | `DeviceInfo.displayRotation`, `orientation`, `autoRotate` |
+| wake / sleep / dismiss keyguard | `screenOn`, `keyguardLocked`, `keyguardSecure` |
+| hide keyboard | `keyboardShown` |
+| set clipboard | `clipboard()` |
+| grant / revoke / clear data / permission dialog | `App.isPermissionGranted(name)` |
+| app stop / launch / foreground | `App.isRunning()`, `process()`, `DeviceInfo.currentPackage` |
+| animations / dark mode / font scale / density | `DeviceInfo.animationsEnabled`, `darkMode`, `fontScale`, `densityDpi` |
+| app languages | `App.locales()` |
+| network switches | `DeviceInfo.airplaneMode`, `wifiEnabled`, `mobileDataEnabled` |
+| device languages | `DeviceInfo.systemLocales` |
+| mock location | the app's own location listener (the fix is what the app sees) |
+| accessibility action / slider progress | `ElementSnapshot.actions`, `customActions`, `range` |
+| push file / add media | `pullFile(path)`; media: the app's MediaStore query (the server reads the index back) |
+
+`autoRotate` came from the Samsung: with auto-rotate on, the restored display follows the
+sensor, so the rotation-restore tests could only be written once the setting was readable.
+
+## Done (phases A–D)
+
+| Phase | Actions | Proven by |
+|---|---|---|
+| A | `setOrientation`, `setDisplayRotation`, `unfreezeRotation`; detach restores the device's auto-rotate settings (quarantine if it cannot) | `RotationTest`, samples `DeviceActionsTest` hold/restore, Python `test_device_actions.py` |
+| B | `wake`/`sleep` (keys 224/223), `dismissKeyguard` (never a secure one: `KEYGUARD_SECURE`), `DeviceInfo.screenOn/keyguardLocked/keyguardSecure`; `App.foreground` (launcher intent: the task as it was left), `App.background` (Home), `App.openLink(uri, anyApp)` | `ScreenTest` (swipe keyguard dismissed on the Samsung), `DeviceActionsTest` |
+| C | `awaitPermissionPrompt` → `PermissionPrompt{packageName, choices}`, `choosePermission(choice)`, by controller resource id | `PermissionTest` (API 34 and API 29) |
+| D | `doubleTap`, `dragTo(destination)`, `pinchOpen/Close(percent)`, `fling(direction)` | `GestureTest`, `DeviceActionsTest` |
+
+Also: `device.app(pkg)` works on any package (stop, clear, launch, uninstall) except Tap's own
+driver packages, which the server refuses (`INVALID_ARGUMENT`) because stopping them ends the
+session.
+
+Decided and left alone: `App.launch()` keeps `am start -n` (starts that activity, on top of the
+task if one exists); `foreground()` is the "tap the icon" path.
+
+## Group 1 (implemented)
+
+Chosen 2026-10-01 as the actions real app tests hit most. Upstream references are the pinned
+checkouts in `upstream-reference-audit.md`.
+
+### Keyboard: `keyboardShown`, `hideKeyboard`
+
+- **State**: `DeviceInfo.keyboard_shown` = an `AccessibilityWindowInfo.TYPE_INPUT_METHOD` window
+  is on screen (`UiAutomation.getWindows()`; UiDevice already sets
+  `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`). Works for any IME. Maestro instead searches the hierarchy
+  for Gboard's `com.google.android.inputmethod.latin:id` (one keyboard only); Appium reads
+  `dumpsys input_method` (`mInputShown`), a host shell parse.
+- **Hide** (`hide_keyboard`, mutation): no IME window → `done`, nothing sent. Otherwise one Back
+  key, which the IME consumes to hide itself. Maestro presses Back unconditionally (navigates
+  back when no keyboard is up); checking first avoids that. Residual race: a keyboard closing on
+  its own between the check and the key lets Back reach the app. Only the key is reported: assert
+  `keyboardShown == false` if it matters.
+- SDK: `device.keyboardShown()` (from `info()`), `device.hideKeyboard()`.
+
+### Keyboard action key: `Element.imeAction()`
+
+- `perform_ime_action` (mutation, one match): `AccessibilityAction.ACTION_IME_ENTER` on the node,
+  which runs the field's `onEditorAction` with its configured action (Search, Go, Send, Done, …),
+  exactly as the keyboard's action key does. API 30+ only (the action does not exist before).
+- A node that does not offer it → `ACTION_REJECTED` before input. Found on device: `TextView`
+  answers `true` to `ACTION_IME_ENTER` on any view (a `Button` too) and does nothing, so the
+  driver checks the node's `actionList` first. The action is listed only for an editable field
+  with input focus: tap the field first. Below API 30: refused before input (decision 2).
+- Pressing Enter (`KEYCODE_ENTER`) is not the same thing: `TextView` passes `IME_NULL` as the
+  action id, so an app checking for `IME_ACTION_SEARCH` ignores it.
+
+### Launch with intent extras
+
+- `LaunchRequest` / `ColdLaunchRequest` gain `repeated IntentExtra extras`:
+  `IntentExtra{key, oneof value {string, bool, int32, int64, float}}` → `am start --es/--ez/--ei/--el/--ef`.
+  Those five exist on every supported API; `--ed` (double) is missing on API 29 (checked on
+  85e49002), arrays and URIs are left for later.
+- Keys: non-empty, no whitespace/control characters; values shell-quoted (like `openLink`).
+- Kotlin: `launch(activity, extras = mapOf("flag" to true, "id" to 42L))`; the map's value types
+  are `String`, `Boolean`, `Int`, `Long`, `Float` (anything else: `IllegalArgumentException`
+  before the call). Python: `str`, `bool`, `int` (→ int32), `float` (→ float); `tap_e2e.Long(n)`
+  for an int64 extra, so a mismatch is never silent (an app reading `getLongExtra` on an int
+  extra gets its default).
+
+### Revoke a permission
+
+- `AppService.RevokePermission` → `pm revoke`, verified like `grantPermission` (`dumpsys
+  package` no longer lists it as granted). Android kills the app's process when a runtime
+  permission is revoked; documented, not hidden.
+- SDK: `app.revokePermission(name)`.
+
+### Clipboard: `setClipboard(text)`, `clipboard()`
+
+- Write: `ClipboardManager.setPrimaryClip(ClipData.newPlainText(label, text))` from the driver on
+  the main thread (Appium's `SetClipboard`). Background writes are allowed on every API.
+- Read: API 29+ restricts reads to the focused app or the default IME. Appium reads through its
+  separate Settings app there; uiautomator2 (openatx) has it disabled. Tap: the driver adopts the
+  shell's `READ_CLIPBOARD_IN_BACKGROUND` (`UiAutomation.adoptShellPermissionIdentity`, API 29+);
+  the shell holds it on both local devices (checked with `dumpsys package com.android.shell`).
+  No focus change, no extra app. On API 34 Android shows "Tap Driver pasted from your clipboard"
+  for each read (the shell does not hold `SUPPRESS_CLIPBOARD_ACCESS_NOTIFICATION`);
+  `ClipboardTest` records it. Still to verify on device: that `ClipboardService` honours the
+  adopted permission on API 29.
+- Plain text only (`coerceToText`); an empty clipboard reads as `""`.
+- Maestro's `setClipboard`/`pasteText` never touch the device clipboard (host memory, typed as
+  text); not what an app's paste button needs.
+
+### Toasts: `awaitToast`
+
+- The driver installs an accessibility-event listener at session start and keeps a small ring
+  buffer of `TYPE_NOTIFICATION_STATE_CHANGED` events whose class is a `Toast` (notifications raise
+  the same event type with a `Notification` parcelable; they are skipped): text, package, time.
+  Appium does the same (`NotificationListener`) but keeps only the last toast for 3.5 s.
+- UiAutomation has one listener. androidx UiAutomator's `QueryController` installs one that only
+  feeds the legacy `UiObject`/`UiScrollable` API (last activity name, traversed text), which the
+  driver never uses; `executeAndWaitForEvent` (screen stability) uses UiAutomation's own queue
+  and still works with a listener set. The driver's listener replaces it without chaining:
+  chaining needs the hidden `getOnAccessibilityEventListener` (Appium reflects on it), and
+  nothing the driver calls reads what that listener records.
+- `await_toast{text?, mode, package_name?}` (query, no input): `done` with
+  `Toast{text, package_name}` once a matching toast is in the buffer within the lookback window
+  or arrives before the timeout; `WAIT_TIMEOUT` / `NO_TOAST` otherwise. Without `package_name`
+  a toast of any package matches; `app(pkg).awaitToast` passes the app's (protocol 5.0: an
+  attached device names no app, so the earlier "the AUT's toasts unless `any_package`" default
+  and the `any_package` flag were removed in the rebase onto it). Text uses the selector
+  `MatchMode`s (exact, contains, regex, …).
+- Android 11+ renders text toasts in SystemUI and still sends the event; custom-view toasts from
+  the background are blocked by Android itself and never appear.
+
+### Decided for group 1 (2026-10-01, with the user)
+
+1. Toast window: `awaitToast` matches a toast from the last 3.5 s (the longest a toast stays up,
+   `LENGTH_LONG`) or one arriving before the timeout. Not consuming: the same toast can satisfy
+   two calls in a row.
+2. Keyboard action below API 30: refused before input (`UNSUPPORTED`, the message names API 30),
+   no fallback to Enter.
+
+## Group 2: device conditions (implemented)
+
+Chosen 2026-10-01 (after group 1): animations off, per-app language, dark mode, font scale,
+display density. All are restored on detach, which needed one generic mechanism.
+
+### Saved device state (generic restore, rotation moved onto it)
+
+- Before the session's first change of a value, the server reads it over ADB and appends
+  `SavedState{key, value}` to the journal (`SessionJournal.savedState`, omitted when empty so
+  older engines read the file unchanged). Later changes of the same value capture nothing: detach
+  restores what the device had before the session, whatever happened in between.
+- Keys: `setting:<namespace>/<name>`, `uimode:night`, `wm:density`, `locale:<package>`
+  (`StateKey`). Rotation's two settings are now just two keys; the rotation hook calls the same
+  capture.
+- Detach writes back newest first (rotation: auto-rotate locked first, so the frozen rotation
+  is written while the sensor cannot move it), reads every value back, and quarantines on a
+  mismatch. This is the journal fix for rotation: before, a server that died mid-session left
+  the rotation changed with no record; now the next attach restores it from the journal
+  (`restorePriorState`, quarantine `DEVICE_STATE_RESTORE_FAILED` when it does not take).
+
+### The conditions
+
+| Call | Device | Read back (driver) | Notes |
+|---|---|---|---|
+| `setAnimations(enabled)` | the three `Settings.Global` scales, all `0` or all `1` | any scale ≠ 0 (unset = 1) | Restore writes the exact strings captured (`1.0` on the Samsung; an unset scale is deleted again) |
+| `setDarkMode(enabled)` | `cmd uimode night yes/no` | night bit of `Configuration.uiMode` | API 29+: `UNSUPPORTED_API` below, before anything is captured. The Samsung (One UI, API 29) locks the day/night mode (`dumpsys uimode`: `mNightModeLocked=true`): the shell command is accepted and ignored, so the read-back fails with `DEVICE_SETTING` and the message names the lock (found 2026-10-01) |
+| `setFontScale(scale)` | `settings put system font_scale` | `Configuration.fontScale` | 0.5..2.0 (the Settings app offers about 0.85..1.3; 2.0 is Android's own accessibility maximum) |
+| `setDensity(dpi?)` | `wm density N` / `wm density reset` | `Configuration.densityDpi` | 100..1000; `null` = the physical density |
+| `App.setLocales(tags)` | `cmd locale set-app-locales <pkg> --user current [--locales a,b]` | `get-app-locales` (host) | API 33+. Android accepts ill-formed tags, so the server validates and canonicalizes (`fr-fr` → `fr-FR`), max 16, no repeats |
+
+- The host reads every change back over ADB (the same parse the capture uses); a value the device
+  did not take is `FAILED_PRECONDITION` / `DEVICE_SETTING`. The driver's `DeviceInfo` fields are
+  what an app sees (its own resources' `Configuration`), which is the read-back a test asserts.
+- Configuration changes recreate a running app's activities (unless it handles them); the call
+  does not wait for the app — "report, don't judge".
+- Upstream (pinned commits): Appium's `disableWindowAnimation` starts its instrumentation with
+  `am instrument --no-window-animation` on API 26+ (Android puts the scales back when the
+  instrumentation ends); below 26 its settings app writes the scales, which "could remain if
+  the session ends unexpectedly". Tap restores the scales itself (on every API) and journals
+  them, so a dead server is covered too; animations stay switchable during the session. Maestro's `AndroidDriver` has no
+  animation control; it changes the device-wide locale (`setDeviceLocale`: a broadcast to its
+  on-device app, retried until `persist.sys.locale` reads back). Group 3 adds the device-wide
+  locale the same way (below).
+- Not done: a suite-wide "animations off" attach option in the clients (each test calls
+  `setAnimations(false)` for now).
+
+## Group 3: network, locale, location, element actions, files (implemented)
+
+Chosen 2026-10-01 with the user (the group-2 backlog minus fling `canScrollMore`, and screen
+recording dropped from the backlog: `audio-recording.md` covers recording). Device tests are
+written; see "Verification" below for what ran on devices.
+
+### Device conditions (saved device state, as group 2)
+
+| Call | Device | Read back | Notes |
+|---|---|---|---|
+| `setNetwork(airplaneMode?, wifi?, mobileData?)` | `cmd connectivity airplane-mode enable/disable`, `svc wifi`, `svc data` | `Settings.Global` `airplane_mode_on`, `wifi_on`, `mobile_data` (host); `DeviceInfo.airplane_mode`/`wifi_enabled`/`mobile_data_enabled` (driver) | API 29+ (`cmd connectivity`). Real switches, nothing mocked. Airplane mode is written first and restored first: Android turns Wi-Fi off with it (`wifi_on=3`) and back on after; `wifi_on=2` is on under airplane mode. A serial reached over the network (`host:port`, wireless debugging) refuses Wi-Fi off / airplane on (`DEVICE_SETTING`) before anything is captured: it would cut Tap off |
+| `setSystemLocales(tags)` | the driver app's `SystemLocaleReceiver` (below) | `settings get system system_locales`, else `persist.sys.locale`, else `ro.product.locale` (host); `DeviceInfo.system_locales` (driver) | Tags validated and canonicalised as `App.setLocales`, 1..16 |
+| `setLocation(lat, lon, accuracyM?, altitudeM?)` | the driver becomes the mock-location app (`appops set <driver> android:mock_location allow`); `location_mode` 3 when location was off; then driver command `set_location` | the app-op and `location_mode` (host); the fix itself is what the app's listener gets (tests) | Captures `setting:secure/location_mode`, `appop:<driver>/android:mock_location` and `mock-location-providers` (the test providers, from `dumpsys location`) |
+
+**Device locale.** Android has no shell command for the system locale (`cmd locale` is per-app
+only; the Samsung has no `locale` service at all). Maestro's approach, adapted: an exported
+receiver in the driver app, `SystemLocaleReceiver`, protected by
+`android:permission="android.permission.CHANGE_CONFIGURATION"` so only shell/system can send it.
+The host grants the driver `CHANGE_CONFIGURATION` (`pm grant`) and `WRITE_SETTINGS`
+(`appops set … WRITE_SETTINGS allow`; without it `updatePersistentConfiguration` throws), then
+`am broadcast -f 32 -n <driver>/.SystemLocaleReceiver --es locales <tags>` and requires
+`result=1`. The receiver does what Settings' language picker does:
+`ActivityManager.getService().getConfiguration()`, `setLocales`, `userSetLocale = true`,
+`updatePersistentConfiguration` — synchronous, so the read-back follows directly. The hidden
+methods are looked up on the `android.app.IActivityManager` interface (allowed); the same lookup
+on the binder proxy class is denied as max-target-r. Verified on both local devices
+(2026-10-02, restored afterwards).
+
+**Mock location.** As Maestro: the driver owns `LocationManager` test providers for gps and
+network (and fused, API 31+), added with the instrumentation's *target* context and re-sent every
+second on a daemon thread, so an app that starts listening later still gets a fix. Default
+accuracy 5 m. `SecurityException` / `IllegalArgumentException` from LocationManager are
+`ACTION_REJECTED`. The test providers outlive the driver instrumentation *and* the app-op: on the
+SM-J810G (API 29) gps and network stayed `[mock]` at the last fix after detach, and the next
+`set_location` failed with `Provider "gps" already exists`. So the host captures
+`mock-location-providers` (the `[mock]` providers in `dumpsys location`, or the API 26-28 "Mock
+Providers" section) and restores it first: providers not in the saved list are removed through
+the driver app's `MockLocationReceiver` (shell-only, like the locale receiver), with the app-op
+allowed for the call, since LocationManager ignores `removeTestProvider` without it; the op and
+location mode are restored after. The driver also replaces a provider that is already a test
+provider (a crashed run's, or one removed under a live driver) instead of failing.
+`MockLocationTest` asserts no `[mock]` provider is left. On the Samsung, turning location
+on shows Google Play services' "improve location accuracy" activity
+(`LocationOffWarningActivity`) — device behaviour, not dismissed by Tap. The Samsung has no
+`cmd location`.
+
+### Element actions (driver)
+
+- `Element.performAction(StandardAction)` / `performCustomAction(label)`
+  (`perform_accessibility_action`): `AccessibilityNodeInfo.performAction` as a screen reader
+  does; no touch, so no occlusion check. An action the node does not list is refused before
+  input (`ACTION_REJECTED` / `ACTION_NOT_OFFERED`), never tried anyway; page actions need API 29
+  and press-and-hold API 30 (`UNSUPPORTED` / `REQUIRES_API_*`). A custom action is matched by
+  its label among the non-standard ids (TalkBack-style relabelling of a standard action is not a
+  custom action); two with the same label is `ACTION_NOT_OFFERED` (ambiguous). Android's
+  `false` is `ACTION_REJECTED`. `ElementSnapshot.actions` / `custom_actions` list what a node
+  offers.
+- `Element.setProgress(value)` (`set_progress`): `ACTION_SET_PROGRESS` in the node's RangeInfo
+  units; a value outside min..max is refused before input (`OUT_OF_RANGE`) rather than clamped.
+  `ElementSnapshot.range` reports type, min, max, current.
+- `choosePermission(choice, accuracy)`: on the API 31+ location dialog the Precise /
+  Approximate radio is selected before the button; `PermissionPrompt.accuracies` lists the
+  radios shown.
+
+### Files and gallery media (host)
+
+- `pushFile(devicePath, bytes | local file)`, `pullFile(devicePath[, local file])`,
+  `addMedia(fileName, bytes | local file)`; at most 512 MiB. The bytes are streamed in the
+  RPC (client-streaming push / add, server-streaming pull); the server never gets a host path.
+  It spools to an owner-only file under the state dir and runs `adb push` / `adb pull`.
+- A device path is absolute and normalised (no `.`/`..`/empty segments, no control characters,
+  not a directory). Push requires an existing directory; a file already there is refused
+  (`DEVICE_FILE`) unless this session created it — Tap never overwrites a device's file, so
+  there is nothing to back up. The size is read back with `stat`.
+- Media goes to `/sdcard/Pictures/Tap/` (jpg, jpeg, png, gif, webp, heic, heif, bmp) or
+  `/sdcard/Movies/Tap/` (mp4, 3gp, webm, mkv, mov) and is indexed with MediaProvider's
+  MediaProvider's synchronous `content call --method scan_file` on API 30+, and the
+  asynchronous `MEDIA_SCANNER_SCAN_FILE` broadcast below that or when the call throws (API 29's
+  `scan_file` reads a Uri extra `content call` cannot pass and throws an NPE — seen on the
+  SM-J810G); the read-back polls a `content query` of `content://media/external/file` for up to
+  10 s. The scanner skips a file it cannot decode, so an invalid image is `DEVICE_FILE`.
+- Pull checks `test -r` first: a file the shell user may not read (`/system/build.prop` on
+  Samsung) is `DEVICE_FILE`, not a failed adb command.
+- Every created file is captured as absent (`file:<path>`, `media:<path>`) before it is
+  written, so detach — or the next attach after a dead server — deletes it; media is rescanned
+  (dropping the index entry) and the empty `Tap` folder removed. Only Tap-created entries are
+  ever deleted.
+- Not done: pulling a directory, pushing into an app's private data (`run-as`), video
+  thumbnails/metadata checks.
+
+### Verification
+
+Unit and fake-device tests cover every call (host core, daemon, protocol goldens, both
+clients, agent). Device tests: `clients/python/tests/test_device_actions.py`,
+`samples/fixture-tests` `DeviceActionsTest` (orders 12–15) and `:host:validation`
+`AccessibilityActionTest`, `SystemLocaleTest`, `MockLocationTest`, `DeviceFilesTest`. The locale
+receiver, media scan (API 34) and the location-mode switch were probed by hand on the local
+devices. On the Samsung (85e49002, API 29) all three device suites pass (2026-10-02), after two
+fixes the first run found: API 29's media scan (the broadcast, polled) and the leaked mock
+location test providers (now removed on detach), plus `DEVICE_FILE` for an unreadable pull. The
+run on emulator-5554 (API 34) is pending.
+
+## Group 4: notifications, stay awake, accessibility display, foreground activity (implemented)
+
+Chosen 2026-10-02 with the user, after group 3 (battery, doze, broadcasts and hardware keys were
+offered and not taken). The notification listener in the driver app was approved as a driver
+change.
+
+### Notifications as data (driver + host)
+
+| Call | Does | Refusals |
+|---|---|---|
+| `awaitNotification(title?, text?, mode, packageName?)` (`App.awaitNotification` fixes the package) | the newest matching active notification, one already posted included; polled every 100 ms | `WAIT_TIMEOUT` / `NO_NOTIFICATION` |
+| `notifications()` | every active notification, newest first | – |
+| `openNotification(…, action?)` | sends the content intent as a tap in the shade does, then cancels an auto-cancel notification as SystemUI does; with `action`, the PendingIntent of the button with exactly that title (the notification stays) | `NOT_FOUND` / `AMBIGUOUS` (`match_count`), `ACTION_REJECTED` / `ACTION_NOT_OFFERED` (no content intent, no such button), all before anything is sent |
+| `dismissNotification(…)` | `cancelNotification`, as a swipe | `NOT_FOUND` / `AMBIGUOUS`, `ACTION_REJECTED` / `NOT_CLEARABLE` (ongoing) |
+
+- A `Notification` is `{package, title?, text?, actions (button titles), clearable, postedAt}`
+  from `EXTRA_TITLE` / `EXTRA_TEXT`. Group summaries are left out: they head their group and are
+  not what a user reads. Open and dismiss are mutations and take exactly one match, like every
+  other mutation.
+- Source: `TapNotificationListener`, a `NotificationListenerService` in the driver app (the
+  instrumentation runs in that process, so driver core reads the bound instance through a static,
+  looked up by reflection since core does not compile against the app). Notification access is
+  per-component and user-granted; the host gives it with `cmd notification allow_listener
+  <driver>/.TapNotificationListener` before the session's first notification command, reads it
+  back from `dumpsys notification` ("Allowed notification listeners": one colon-separated line
+  with a `(user: …)` suffix on the Samsung; the parser also takes one per line), saves the previous value (`driver-notification-listener`)
+  and takes the access back on detach. When the listener is not bound yet the driver asks for a
+  rebind and waits up to 5 s; still unbound is `UNSUPPORTED` / `NO_NOTIFICATION_ACCESS`.
+- **A listener killed while bound comes back** (found on the SM-J810G, API 29, 2026-10-02): when
+  a bound listener's process dies, `NotificationListeners` logs "binding died" and binds it again
+  about 10 s later *without checking its access*, starting a bare driver process; every later
+  kill repeats it. The instrumentation's own finish force-stops the package ("finished inst"), so
+  a session that ended with access given left a driver process behind, and the next force-stop
+  "survived" (quarantine). Taking the access back while the listener is connected unbinds it
+  cleanly (`disallow_listener` unbinds on the change only; a listener bound while already
+  disallowed needs allow then disallow). So: detach unbinds the listener before it closes the
+  driver connection (`Adb.releaseDriverNotificationListener`, then the saved access is restored),
+  taking the access back waits for the unbind (`Live notification listeners` in `dumpsys
+  notification`), and every driver force-stop first unbinds a listener Android holds bound. Shell
+  cannot disable the component instead (`pm disable`: "Shell cannot change component state").
+  A rebind already scheduled by a kill less than 10 s before cannot be cancelled.
+- Opening on API 34+ passes `ActivityOptions` that allow a background activity start
+  (`MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, `ALLOW_ALWAYS` from API 36); the driver is not in
+  the foreground, and without it Android 14 drops an activity PendingIntent sent from the
+  background.
+- Why not the shade's UI: accessibility events for notifications are not sent for every channel,
+  and the shade's layout differs per OEM and per API. `openNotifications()` (group 0) still
+  opens the shade for a test that wants to look at it.
+- Upstream: Appium's settings app reads notifications through its own notification listener
+  (`mobile: getNotifications`, read only); openatx's `open_notification()` opens the shade. Not
+  re-checked against the pinned commits for this group. Tap adds open/dismiss as exact-one
+  mutations and takes the access back on detach.
+
+### Device conditions (saved device state, as group 2)
+
+| Call | Device | Read back | Notes |
+|---|---|---|---|
+| `setStayAwake(enabled)` | `Settings.Global` `stay_on_while_plugged_in` `7` (USB, AC, wireless) or `0` | the setting (host); `DeviceInfo.stay_awake` (driver) | What Developer options › Stay awake sets (`svc power stayon true` writes the same) |
+| `setAccessibilityDisplay(highContrastText?, colorInversion?, boldText?)` | `Settings.Secure` `high_text_contrast_enabled`, `accessibility_display_inversion_enabled` (`1`/`0`), `font_weight_adjustment` (`300`/`0`) | the settings (host); `DeviceInfo.high_contrast_text` / `color_inversion` (absent when unreadable) / `bold_text` (`Configuration.fontWeightAdjustment`) | Bold text is API 31+ (`UNSUPPORTED_API` below, before anything changes); `300` is what Settings writes (bold − normal weight). Colour inversion happens in the display pipeline: screenshots are not inverted |
+
+While adding these, the read-back in `DeviceSession.change` (group 2 code) turned out to accept a
+setting the device reported absent: `takeIf { it != value }` on a null read gave null, so the
+mismatch was dropped. It now compares the values, so an absent setting is a `DEVICE_SETTING`
+failure too; `Adb.restoreState` had the same pattern and the same fix.
+
+### Foreground activity (host)
+
+`foregroundActivity()` → `ForegroundActivity(packageName, className)` or null: the resumed
+activity on top from `dumpsys activity activities` (`topResumedActivity` on API 29+, the focused
+one in multi-window; `mResumedActivity` before), class fully qualified. Null under a keyguard or
+between activities. A read only; used to check where a deep link or a notification landed
+(Appium's `getCurrentActivity` answers the same question).
+
+### Verification
+
+Unit and fake-device tests cover every call (protocol goldens and validation, driver matcher,
+host core, daemon, both clients, agent). Device tests: `:host:validation`
+`NotificationListenerTest` (also checks no driver process is back 12 s after the session),
+`samples/fixture-tests` `DeviceActionsTest` (orders 16–17; the fixture's `FormActivity` has a
+Notify button posting a message with a "Mark as read" action and an ongoing "Syncing"
+notification), and Python `test_device_actions.py`. On the Samsung (85e49002, API 29) the full
+validation suite, `DeviceActionsTest` and the Python device-action tests pass (2026-10-02), after
+the listener fix above; opening a notification's activity intent from the driver works there
+without background-start options. The run on emulator-5554 (API 34, where the options apply) is
+pending.
+
+## Later (backlog, rough priority)
+
+**Open fixes (CI device lane, API 34 emulator, 2026-10-03)**: they fail `DeviceActionsTest`
+there; the run's `device-test-artifacts` hold the logcat and per-test evidence.
+- *Bold text reads on after it was restored to absent* (`displaySettingsAreRestoredAfterTheTest`:
+  `boldText` true). With `secure/font_weight_adjustment` deleted, Android puts
+  `Configuration.FONT_WEIGHT_ADJUSTMENT_UNDEFINED` (`Integer.MAX_VALUE`) in the configuration,
+  and the driver's `DeviceConditionsReader.boldText` reads `fontWeightAdjustment > 0`. Fix: treat
+  `UNDEFINED` as off. A driver change: ask the user first.
+- *Added media missing from the app's gallery query* (`localeLocationFilesAndMediaHoldForTheTest`:
+  "Gallery empty"). `addMedia` saw the file in `content://media/external/file`, but logcat shows
+  the scanner inserting `/storage/emulated/0/Pictures/Tap/tap-sample.png` into
+  `content://media/internal/file` and failing ("doesn't appear under [/system/media, …]"). Cause
+  not found; possibly a freshly booted emulator only.
+- *Launch right after `clearData` is still raced.* `pm clear` force-removes the app's activity
+  records at once; the emptied task is removed by a destroy timeout about a second later, which
+  kills the app's running process: the one a launch has just started. That launch then waits
+  ~40 s and `am start -W` times out (logcat: `Destroy timeout of remove-task … Killing <pid>:
+  remove task`, then `Displayed … +39s`). `forceStop`/`clearData` now also wait until
+  `dumpsys activity activities` lists no task of the package (`Adb.hasTaskOrActivity`), which
+  fixed it in `LifecycleTest` and `permissionPromptIsAnsweredByChoice`, but not always: in run
+  37102138550 `locationPromptTakesApproximate` lost its launch to task #37, which the dump no
+  longer listed while it waited for removal. Find a signal that shows the pending removal (try
+  `dumpsys activity recents`, `am stack list` / `cmd activity`, or the `wm_task_removed` event
+  log) on the emulator and the Samsung. Also check the API 29 `TaskRecord` header on a device;
+  a task under a custom `taskAffinity` is not recognised by its header.
+
+**Element extras**
+- Fling `canScrollMore` (whether the content can still move after a fling).
+
+**Out, or separate projects**
+- Taps at coordinates: element-only by design.
+- WebView content (`framework-gaps.md`, plan §17).
+- Crash/ANR as error codes (`framework-gaps.md`).
+- Fingerprint (emulator only), time/timezone.

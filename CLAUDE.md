@@ -57,6 +57,9 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
   host-owned scrcpy child (`StartRecording`), its measured timing limits, the pre-merge review,
   and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).
+- `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
+  foreground/background/deep links, permission dialogs, gestures), the group in progress with its
+  per-action design and upstream comparison, and the prioritised backlog.
 - `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
   kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /
@@ -124,6 +127,10 @@ never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
   regenerate proto stubs instead of hand-merging them), run the relevant local checks, then
   `git push -u origin HEAD --force-with-lease` and `gh pr create` (or push again to update an
   open PR). One task per PR; the PR title becomes the squash commit title.
+- Each PR is exactly one commit: squash the branch into one (`git reset --soft origin/main` and
+  commit again) before pushing, and amend that commit, then force-push with `--force-with-lease`,
+  for later changes. A task is never split across several PRs: no stacked PRs, no PR per phase or
+  group; a task that grows keeps growing its one PR.
 - PR body: what changed and why, the checks run, and a `Device matrix: run / not run` line
   (device tests only when the user asked). No co-author or "Generated with" lines.
 - When asked to update a PR because `main` moved: rebase onto `origin/main` again and

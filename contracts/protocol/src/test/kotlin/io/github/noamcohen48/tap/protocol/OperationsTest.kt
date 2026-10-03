@@ -1,5 +1,13 @@
 package io.github.noamcohen48.tap.protocol
 
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.OpenNotification
+import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.ListNotifications
+import io.github.noamcohen48.tap.api.v1.DismissNotification
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Command.OpCase
@@ -8,24 +16,47 @@ import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
 import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DisplayRotation
+import io.github.noamcohen48.tap.api.v1.DoubleTap
+import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
+import io.github.noamcohen48.tap.api.v1.Fling
+import io.github.noamcohen48.tap.api.v1.GetClipboard
+import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
+import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetLocation
+import io.github.noamcohen48.tap.api.v1.SetProgress
+import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.PermissionPrompt
+import io.github.noamcohen48.tap.api.v1.Pinch
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
+import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.Toast
 import io.github.noamcohen48.tap.api.v1.TypeText
+import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
+import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
@@ -68,7 +99,13 @@ class OperationsTest {
 
     @Test
     fun mutationsAreExactlyTheInputCommands() {
-        val mutations = setOf("press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel")
+        val mutations = setOf(
+            "press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll",
+            "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
+            "dismiss_keyguard", "choose_permission", "double_tap", "drag", "pinch", "fling",
+            "hide_keyboard", "perform_ime_action", "set_clipboard", "perform_accessibility_action", "set_progress",
+            "set_location", "open_notification", "dismiss_notification",
+        )
         sampleCommands.forEach { (name, command) ->
             assertEquals(name in mutations, command.isMutation, name)
             assertEquals(name in mutations, command.toRequest().isMutation, name)
@@ -88,7 +125,19 @@ class OperationsTest {
         assertNull(Requests.health().targetSelector)
         assertEquals(target, Requests.of(Commands.tap(target)).targetSelector)
         val targeted = sampleCommands.filterValues { it.targetSelector != null }.keys
-        assertEquals(sampleCommands.keys - setOf("device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable", "open_system_panel"), targeted)
+        assertEquals(
+            sampleCommands.keys - setOf(
+                "device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable",
+                "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
+                "dismiss_keyguard", "wait_permission_prompt", "choose_permission",
+                "hide_keyboard", "set_clipboard", "get_clipboard", "await_toast", "set_location",
+                "await_notification", "list_notifications", "open_notification", "dismiss_notification",
+            ),
+            targeted,
+        )
+        val drag = Commands.drag(target, list)
+        assertEquals(target, drag.targetSelector)
+        assertEquals(listOf(target, list), drag.selectors)
     }
 
     @Test
@@ -111,6 +160,11 @@ class OperationsTest {
                 "exists" to OutcomeCase.BOOL,
                 "count" to OutcomeCase.COUNT,
                 "snapshot" to OutcomeCase.SNAPSHOT,
+                "wait_permission_prompt" to OutcomeCase.PERMISSION_PROMPT,
+                "get_clipboard" to OutcomeCase.TEXT,
+                "await_toast" to OutcomeCase.TOAST,
+                "await_notification" to OutcomeCase.NOTIFICATION,
+                "list_notifications" to OutcomeCase.NOTIFICATIONS,
             )
         sampleCommands.forEach { (name, command) ->
             val handler = RecordingHandler()
@@ -124,6 +178,14 @@ class OperationsTest {
         assertEquals(7, Commands.count(Selectors.text("x")).toRequest().dispatch(handler).result.count)
         assertEquals("<hierarchy/>", Commands.dumpHierarchy().toRequest().dispatch(handler).result.text)
         assertEquals(34, Commands.deviceInfo().toRequest().dispatch(handler).result.deviceInfo.apiLevel)
+        assertEquals(
+            listOf(PermissionChoice.PERMISSION_DENY),
+            Commands.waitPermissionPrompt().toRequest().dispatch(handler).result.permissionPrompt.choicesList,
+        )
+        assertEquals("copied", Commands.getClipboard().toRequest().dispatch(handler).result.text)
+        assertEquals("Saved", Commands.awaitToast().toRequest().dispatch(handler).result.toast.text)
+        assertEquals("New message", Commands.awaitNotification().toRequest().dispatch(handler).result.notification.title)
+        assertEquals(1, Commands.listNotifications().toRequest().dispatch(handler).result.notifications.notificationsCount)
     }
 
     @Test
@@ -276,6 +338,54 @@ class OperationsTest {
         override fun scroll(command: Scroll) = record("scroll", Unit)
 
         override fun openSystemPanel(command: OpenSystemPanel) = record("open_system_panel", Unit)
+
+        override fun setOrientation(command: SetOrientation) = record("set_orientation", Unit)
+
+        override fun setDisplayRotation(command: SetDisplayRotation) = record("set_display_rotation", Unit)
+
+        override fun unfreezeRotation(command: UnfreezeRotation) = record("unfreeze_rotation", Unit)
+
+        override fun doubleTap(command: DoubleTap) = record("double_tap", Unit)
+
+        override fun drag(command: Drag) = record("drag", Unit)
+
+        override fun pinch(command: Pinch) = record("pinch", Unit)
+
+        override fun fling(command: Fling) = record("fling", Unit)
+
+        override fun dismissKeyguard(command: DismissKeyguard) = record("dismiss_keyguard", Unit)
+
+        override fun waitPermissionPrompt(command: WaitPermissionPrompt): PermissionPrompt =
+            record("wait_permission_prompt", PermissionPrompt.newBuilder().addChoices(PermissionChoice.PERMISSION_DENY).build())
+
+        override fun choosePermission(command: ChoosePermission) = record("choose_permission", Unit)
+
+        override fun hideKeyboard(command: HideKeyboard) = record("hide_keyboard", Unit)
+
+        override fun performImeAction(command: PerformImeAction) = record("perform_ime_action", Unit)
+
+        override fun performAccessibilityAction(command: PerformAccessibilityAction) = record("perform_accessibility_action", Unit)
+
+        override fun setProgress(command: SetProgress) = record("set_progress", Unit)
+
+        override fun setLocation(command: SetLocation) = record("set_location", Unit)
+
+        override fun setClipboard(command: SetClipboard) = record("set_clipboard", Unit)
+
+        override fun getClipboard(command: GetClipboard): String = record("get_clipboard", "copied")
+
+        override fun awaitToast(command: AwaitToast): Toast = record("await_toast", Toast.newBuilder().setText("Saved").setPackageName(AUT).build())
+
+        override fun awaitNotification(command: AwaitNotification): DeviceNotification = record("await_notification", notification)
+
+        override fun listNotifications(command: ListNotifications): NotificationList =
+            record("list_notifications", NotificationList.newBuilder().addNotifications(notification).build())
+
+        override fun openNotification(command: OpenNotification) = record("open_notification", Unit)
+
+        override fun dismissNotification(command: DismissNotification) = record("dismiss_notification", Unit)
+
+        private val notification = DeviceNotification.newBuilder().setPackageName(AUT).setTitle("New message").build()
     }
 
     companion object {
@@ -303,6 +413,28 @@ class OperationsTest {
                 "swipe" to Commands.swipe(list, Direction.DIR_LEFT, distancePercent = 60),
                 "scroll" to Commands.scroll(list, Direction.DIR_DOWN),
                 "open_system_panel" to Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS),
+                "set_orientation" to Commands.setOrientation(Orientation.ORIENTATION_LANDSCAPE),
+                "set_display_rotation" to Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_RIGHT),
+                "unfreeze_rotation" to Commands.unfreezeRotation(),
+                "dismiss_keyguard" to Commands.dismissKeyguard(),
+                "wait_permission_prompt" to Commands.waitPermissionPrompt(),
+                "choose_permission" to Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY),
+                "double_tap" to Commands.doubleTap(button),
+                "drag" to Commands.drag(Selectors.text("Card"), list),
+                "pinch" to Commands.pinch(Selectors.resource("map"), PinchDirection.PINCH_OPEN, percent = 50),
+                "fling" to Commands.fling(list, Direction.DIR_DOWN),
+                "hide_keyboard" to Commands.hideKeyboard(),
+                "perform_ime_action" to Commands.performImeAction(Selectors.androidResource(AUT, "search")),
+                "set_clipboard" to Commands.setClipboard("copied"),
+                "get_clipboard" to Commands.getClipboard(),
+                "await_toast" to Commands.awaitToast("Saved", MatchMode.MATCH_CONTAINS),
+                "perform_accessibility_action" to Commands.performAccessibilityAction(button, StandardAction.A11Y_EXPAND),
+                "set_progress" to Commands.setProgress(Selectors.resource("volume"), 40f),
+                "set_location" to Commands.setLocation(48.8584, 2.2945),
+                "await_notification" to Commands.awaitNotification(Commands.notificationMatch(AUT, title = "New message")),
+                "list_notifications" to Commands.listNotifications(),
+                "open_notification" to Commands.openNotification(Commands.notificationMatch(AUT), action = "Reply"),
+                "dismiss_notification" to Commands.dismissNotification(Commands.notificationMatch(text = "Sync", mode = MatchMode.MATCH_CONTAINS)),
             )
 
         /** One valid request per host-internal operation. */

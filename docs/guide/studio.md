@@ -70,7 +70,7 @@ runs anything on the device.
   any Android key code (`pressKey(66)`).
 - **Composer:** the selected element (its class, its selector candidates, the first of which is
   what gets recorded, and how many elements the chosen one matches now) and, below it, the steps
-  you can record on it, in three tabs, and a fourth tab for the app.
+  you can record on it, in three tabs, then a tab for the app and one for the device.
 - **Inspector:** the selected element's properties, and the **Screen tree** of every element.
 - **Steps:** the recording, each step with the wait it runs after and how it went the last time
   it ran.
@@ -83,15 +83,20 @@ Each button runs its step on the device and records it. The composer's tabs, wit
 | **Assert** | `2` | A check of the element as it is now. It fails at once if the check does not hold. |
 | **Wait** | `3` | A wait for something to happen to the element, up to the device's wait timeout. |
 | **App** | `4` | Something done to the app, or a wait on it, apart from any element. |
+| **Device** | `5` | Something done to the device itself: rotation, conditions, dialogs, notifications. |
 
 **Act** offers, for the selected element:
 
-- **Tap** and **Long press**.
+- **Tap**, **Double tap** and **Long press**.
+- **Drag to…**: the element is outlined; click the element to drop it on, and one
+  `dragTo(res("bin"))` step is recorded. Esc cancels.
 - **Swipe** up, down, left or right on the element.
+- **Pinch** open or closed (`pinchOpen()` / `pinchClose()`), across the **Distance**.
 - **Scroll** up, down, left or right, on a scrollable element (a list or a page that scrolls).
   On an element inside one, such as a row of a list, **Select the … around it** selects the list.
-- **Distance:** how far the finger moves in a swipe or a scroll, in percent of the element
-  (80 % unless you change it).
+- **Distance:** how far the fingers move in a swipe, a scroll or a pinch, in percent of the
+  element (80 % unless you change it).
+- **Fling** up, down, left or right, on a scrollable element or one inside a list.
 - **Scroll until**, on a scrollable element: pick a direction and the studio scrolls once, without
   recording it. The list is outlined: click the element you were looking for inside it, or
   **Scroll again**. The click records one step, `scrollUntil(text("Settings"))`, that scrolls
@@ -101,7 +106,13 @@ Each button runs its step on the device and records it. The composer's tabs, wit
   taps the field, waits for focus and types, for fields that react to key events, and **Clear**
   empties it. Turn off **Wait for focus** when the tap moves focus somewhere else, such as a
   child or a separate input view (`typeText(…, awaitFocus = false)`). **Secret** keeps the value out of the recording: the step names the secret, and a
-  replay asks for its value. Password fields default to secret.
+  replay asks for its value. Password fields default to secret. **Submit** presses the
+  keyboard's action key for the field (Search, Go, Done: `imeAction()`).
+- **Actions**: what the element offers through accessibility. Custom actions such as
+  **Archive** on a list row (`performCustomAction("Archive")`) stand in for a swipe; standard
+  ones such as **Expand** or **Copy** are `performAction(StandardAction.EXPAND)`.
+- **Value**, on a slider, a seek bar or a rating bar: set it exactly, in its own units
+  (`setProgress(7f)`), rather than dragging to a pixel.
 
 **Assert** offers the checks that hold for the element now: it exists, is enabled (or
 disabled), is checked (or unchecked), is focused; its text equals or contains a value; or the
@@ -113,10 +124,37 @@ checked, unchecked or focused, has a text, or the selector matches a number of e
 waits on the app as a whole are in the **App** tab.
 
 **App** offers the app's package, then **Cold launch** and **Launch** (of the launcher activity,
-or of the **Activity** you name, such as `.ui.SettingsActivity`), **Force stop** and
-**Clear data**, **Grant** a permission, and waits until the app is in the foreground
-(`awaitVisible()`), its screen is stable, settled (the elements stop changing) or its animation
-ended (the pixels stop changing). Selecting an element on the screen switches back to **Act**.
+or of the **Activity** you name, such as `.ui.SettingsActivity`, with any **Extras** you add:
+a key, a type (String, Int, Long, Float or Boolean) and a value), **Foreground** (back as it was
+left, as from Recents) and **Background** (`pressHome()`), **Open** a deep **Link** (in this app,
+or any app's), **Force stop** and **Clear data**, **Grant** or **Revoke** a permission (revoking
+stops the app, as Android does), the app's own **Languages** (Android 13+; **Follow system**
+undoes them), and waits until the app is in the foreground (`awaitVisible()`), its screen is
+stable, settled (the elements stop changing) or its animation ended (the pixels stop changing).
+Selecting an element on the screen switches back to **Act**.
+
+**Device** starts with what the device is now: the screen, its rotation, the keyboard and the
+activity in front, read again after every step. Each control below marks the value the device
+has now with a dot. Choosing a value records the step, even when it is the current one, because
+a test sets what it relies on.
+
+- **Screen:** **Portrait** or **Landscape** (`setOrientation`), a fixed **Rotation** or **Auto**
+  (`setDisplayRotation` / `unfreezeRotation()`), **Wake** and **Sleep** (`wake()` / `sleep()`),
+  and **Unlock** for a keyguard with no PIN (`dismissKeyguard()`).
+- **Keyboard and clipboard:** **Hide keyboard**, and set the **Clipboard**.
+- **Permission dialog:** wait until the system's dialog is shown (`awaitPermissionPrompt()`),
+  then **Choose** its answer (`choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY)`), with
+  precise or approximate first on a location request.
+- **Notifications and toasts:** the notifications shown now, each with **Wait for**, **Open**
+  (as a tap on it), its own action buttons (**Mark as read**) and **Dismiss**; they are matched by
+  title (or text) and package. **Toast** waits for one, any or by its text; record it right after
+  the step that shows it.
+- **Conditions:** animations, dark mode, stay awake, font size, display density, airplane mode,
+  Wi-Fi, mobile data, high contrast text, inverted colors, bold text, the system languages and a
+  mock **Location**. Each is held until the device is released, which puts the device's own
+  value back.
+- **Assert:** the activity in front (prefilled with the one there now), the keyboard shown or
+  hidden, or the clipboard's text.
 
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow.
@@ -205,6 +243,10 @@ or a coding agent ([tap-agent](agents.md)), write the test from it:
 | `assertion` `CHECK_TEXT_EQUALS` `"Wool"` | `assertEquals("Wool", ….text())` | `assert ….text() == "Wool"` |
 | `scroll_until` on `res("list")`, target `text("Row 40")` | `….element(res("list")).scrollUntil(text("Row 40"))` | `….element(res("list")).scroll_until(text("Row 40"))` |
 | `app_wait` `wait_app_visible` / `wait_screen_stable` | `app.awaitVisible()` / `app.awaitScreenStable()` | `app.await_visible()` / `app.await_screen_stable()` |
+| `action` `set_orientation` (no selector) | `device.setOrientation(Orientation.LANDSCAPE)` | `device.set_orientation(Orientation.LANDSCAPE)` |
+| `device_wait` `await_toast` | `device.awaitToast("Saved")` | `device.await_toast("Saved")` |
+| `device` `set_animations` | `device.setAnimations(false)` | `device.set_animations(False)` |
+| `device_assertion` `DEVICE_CHECK_KEYBOARD_SHOWN` | `assertTrue(device.keyboardShown())` | `assert device.keyboard_shown()` |
 
 A selector whose top-level conjunction has a `PROPERTY_PACKAGE_NAME` match is that app's:
 `app = device.app("com.example.basket")`, and the rest of the selector goes to

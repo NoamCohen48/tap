@@ -2,8 +2,11 @@ package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AllOf
 import io.github.noamcohen48.tap.api.v1.AnyOf
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Direction
+import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.First
 import io.github.noamcohen48.tap.api.v1.Flag
@@ -12,13 +15,22 @@ import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.Pinch
+import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,7 +53,7 @@ class CommandValidationTest {
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Command.getDefaultInstance()) }
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Request.getDefaultInstance()) }
         // A newer host's operation arrives as an unknown field: the op stays unset.
-        val unknownOp = Command.parseFrom(byteArrayOf(0xFA.toByte(), 0x01, 0x00)) // field 31, empty message
+        val unknownOp = Command.parseFrom(byteArrayOf(0x9A.toByte(), 0x06, 0x00)) // field 99, empty message
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(unknownOp) }
     }
 
@@ -66,6 +78,62 @@ class CommandValidationTest {
                 "system panel" to Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_UNSPECIFIED),
                 "unknown system panel" to
                     Command.newBuilder().setOpenSystemPanel(OpenSystemPanel.newBuilder().setPanelValue(99)).build(),
+                "orientation" to Commands.setOrientation(Orientation.ORIENTATION_UNSPECIFIED),
+                "unknown orientation" to
+                    Command.newBuilder().setSetOrientation(SetOrientation.newBuilder().setOrientationValue(99)).build(),
+                "display rotation" to Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_UNSPECIFIED),
+                "unknown display rotation" to
+                    Command.newBuilder().setSetDisplayRotation(SetDisplayRotation.newBuilder().setRotationValue(99)).build(),
+                "pinch direction" to Commands.pinch(button, PinchDirection.PINCH_UNSPECIFIED),
+                "unknown pinch direction" to
+                    Command.newBuilder().setPinch(Pinch.newBuilder().setSelector(button).setDirectionValue(99)).build(),
+                "pinch percent" to Commands.pinch(button, PinchDirection.PINCH_OPEN, percent = 0),
+                "pinch percent high" to Commands.pinch(button, PinchDirection.PINCH_CLOSE, percent = 101),
+                "fling direction" to Commands.fling(list, Direction.DIR_UNSPECIFIED),
+                "permission choice" to Commands.choosePermission(PermissionChoice.PERMISSION_CHOICE_UNSPECIFIED),
+                "unknown permission choice" to
+                    Command.newBuilder().setChoosePermission(ChoosePermission.newBuilder().setChoiceValue(99)).build(),
+                "clipboard too long" to Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS + 1)),
+                "toast mode without text" to Commands.awaitToast(mode = MatchMode.MATCH_CONTAINS),
+                "toast text too long" to Commands.awaitToast("x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "toast regex" to Commands.awaitToast("(", MatchMode.MATCH_REGEX),
+                "toast unknown mode" to
+                    Command.newBuilder().setAwaitToast(AwaitToast.newBuilder().setText("x").setModeValue(99)).build(),
+                "toast blank package" to Commands.awaitToast(packageName = " "),
+                "notification mode without title or text" to
+                    Commands.awaitNotification(Commands.notificationMatch(AUT, mode = MatchMode.MATCH_CONTAINS)),
+                "notification title too long" to
+                    Commands.openNotification(Commands.notificationMatch(title = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1))),
+                "notification regex" to Commands.dismissNotification(Commands.notificationMatch(text = "(", mode = MatchMode.MATCH_REGEX)),
+                "notification blank package" to Commands.awaitNotification(Commands.notificationMatch(packageName = "")),
+                "notification empty action" to Commands.openNotification(Commands.notificationMatch(AUT), action = ""),
+                "notification action too long" to
+                    Commands.openNotification(Commands.notificationMatch(AUT), action = "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "notification unknown mode" to
+                    Commands.awaitNotification(Commands.notificationMatch(title = "x").toBuilder().setModeValue(99).build()),
+                "unknown location accuracy" to
+                    Command
+                        .newBuilder()
+                        .setChoosePermission(ChoosePermission.newBuilder().setChoice(PermissionChoice.PERMISSION_DENY).setAccuracyValue(99))
+                        .build(),
+                "no accessibility action" to
+                    Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(button)).build(),
+                "standard action" to Commands.performAccessibilityAction(button, StandardAction.STANDARD_ACTION_UNSPECIFIED),
+                "unknown standard action" to
+                    Command
+                        .newBuilder()
+                        .setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(button).setStandardValue(99))
+                        .build(),
+                "empty custom action" to Commands.performCustomAction(button, ""),
+                "custom action too long" to Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS + 1)),
+                "progress NaN" to Commands.setProgress(button, Float.NaN),
+                "progress infinite" to Commands.setProgress(button, Float.NEGATIVE_INFINITY),
+                "latitude above 90" to Commands.setLocation(90.01, 0.0),
+                "latitude NaN" to Commands.setLocation(Double.NaN, 0.0),
+                "longitude below -180" to Commands.setLocation(0.0, -180.01),
+                "zero accuracy" to Commands.setLocation(0.0, 0.0, accuracyM = 0f),
+                "infinite accuracy" to Commands.setLocation(0.0, 0.0, accuracyM = Float.POSITIVE_INFINITY),
+                "NaN altitude" to Commands.setLocation(0.0, 0.0, altitudeM = Double.NaN),
             )
         invalid.forEach { (name, command) ->
             assertInvalid(ErrorCode.ERR_INVALID_REQUEST, message = name) { CommandValidation.validate(command) }
@@ -87,6 +155,42 @@ class CommandValidationTest {
             Commands.tap(button.pickAt(0)),
             Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS),
             Commands.openSystemPanel(SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS),
+            Commands.setOrientation(Orientation.ORIENTATION_PORTRAIT),
+            Commands.setOrientation(Orientation.ORIENTATION_LANDSCAPE),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_NATURAL),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_LEFT),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_UPSIDE_DOWN),
+            Commands.setDisplayRotation(DisplayRotation.DISPLAY_ROTATION_RIGHT),
+            Commands.unfreezeRotation(),
+            Commands.dismissKeyguard(),
+            Commands.waitPermissionPrompt(),
+            Commands.choosePermission(PermissionChoice.PERMISSION_KEEP_ONE_TIME),
+            Commands.doubleTap(button),
+            Commands.drag(button, list),
+            Commands.pinch(button, PinchDirection.PINCH_OPEN),
+            Commands.pinch(button, PinchDirection.PINCH_CLOSE, percent = 1),
+            Commands.pinch(button, PinchDirection.PINCH_OPEN, percent = 100),
+            Commands.fling(list, Direction.DIR_LEFT),
+            Commands.hideKeyboard(),
+            Commands.performImeAction(button),
+            Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE),
+            Commands.performAccessibilityAction(button, StandardAction.A11Y_PASTE),
+            Commands.performCustomAction(button, "x".repeat(MAX_SELECTOR_STRING_CHARS)),
+            Commands.setProgress(button, -1.5f),
+            Commands.setLocation(-90.0, 180.0, accuracyM = 0.1f, altitudeM = -400.0),
+            Commands.setLocation(90.0, -180.0),
+            Commands.setClipboard(""),
+            Commands.setClipboard("x".repeat(MAX_CLIPBOARD_CHARS)),
+            Commands.getClipboard(),
+            Commands.awaitToast(),
+            Commands.awaitToast("Saved"),
+            Commands.awaitToast("Sav.*", MatchMode.MATCH_REGEX, packageName = "com.android.systemui"),
+            Commands.awaitToast("x".repeat(MAX_SELECTOR_STRING_CHARS)),
+            Commands.awaitNotification(),
+            Commands.awaitNotification(Commands.notificationMatch(AUT, "Re.*", "x".repeat(MAX_SELECTOR_STRING_CHARS), MatchMode.MATCH_REGEX)),
+            Commands.listNotifications(),
+            Commands.openNotification(Commands.notificationMatch(title = "New message"), action = "Mark as read"),
+            Commands.dismissNotification(Commands.notificationMatch(AUT)),
         ).forEach { CommandValidation.validate(it) }
     }
 
@@ -126,6 +230,11 @@ class CommandValidationTest {
             Commands.clearText(missing),
             Commands.swipe(missing, Direction.DIR_UP),
             Commands.scroll(missing, Direction.DIR_UP),
+            Commands.doubleTap(missing),
+            Commands.drag(missing, list),
+            Commands.drag(button, missing),
+            Commands.pinch(missing, PinchDirection.PINCH_OPEN),
+            Commands.fling(missing, Direction.DIR_UP),
         ).forEach { command ->
             assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_NODE, command.op) { CommandValidation.validate(command) }
         }

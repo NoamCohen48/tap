@@ -40,12 +40,10 @@ describes.
 | Gap | Impact | Notes |
 |---|---|---|
 | `session.shutdown` | Sessions end by closing the socket and `am force-stop` of the instrumentation. Works, but the driver never gets a graceful close and the journal cannot distinguish "host asked" from "connection died". | Small; add an operation + a driver-side clean exit. |
-| `device.wake` / screen state | Tests assume the screen is on and unlocked. | `UiDevice.wakeUp()` + keyguard dismissal; validation on a device with a lock screen. |
 | `inspector.snapshot` | No JSON hierarchy with selector suggestions; `DUMP_HIERARCHY` returns raw UiAutomator XML only. | Phase 5 inspector UI depends on it; failure artifacts use the XML for now. |
 | `AUT_CRASHED` / `AUT_ANR` / `AUT_NOT_INSTALLED` emission | Crashes surface as `NOT_FOUND`/`WAIT_TIMEOUT` plus a process-identity change, not as a first-class code. | Requires driver-side process observation (`am`/`dumpsys activity` or `ActivityManager` crash/ANR detection) and a fixture that crashes/ANRs on demand. |
 | Occlusion check coverage | `OBSCURED` reads the window list only: a view covering the target inside the same window (a floating bar, an in-window bottom sheet) is not detected, only the default display is checked, and `set_text` / `clear_text` (accessibility actions, not touches) are not checked. | `.docs/app-and-screen.md` Limits. Same-window covering would need a hit test over the node tree. |
-| Multi-touch / pinch, drag, fling | Not exposed. | Plan lists them as demand-driven. |
-| Permission dialogs | `App.grantPermission` pre-grants via `pm`; there is no helper to accept/deny a runtime permission dialog that appears mid-test. Selectors reach the dialog: with no package predicate, or with the controller's (`device.screen` / `device.app(controller)`; `PermissionTest`). | Adopt the Appium UiAutomator2 approach (locate the controller's allow/deny buttons by resource id per API family) behind a fixture (`PermissionActivity` exists). |
+| Permission dialogs on API 26–28 and OEM builds | `wait_permission_prompt` / `choose_permission` match the permission controller's (and the older package installer's) button resource ids; proven on API 34 (emulator) and API 29 (Samsung SM-J810G), both showing the Google controller package. API 26–28 and other OEM controllers are not yet exercised on a device. | Add a device of that family to the matrix. |
 
 ## Sync SDK visibility (plan §16)
 
@@ -146,9 +144,37 @@ Implemented: install, uninstall, `isInstalled`, `forceStop` (verified), `clearDa
 client's explicit `awaitAppVisible` / `awaitScreenStable`), `coldLaunch` returning a new process identity, `process()`,
 `isRunning()`, `awaitIdle` with process-identity guards.
 
-Missing: crash/ANR detection as codes (above), backgrounding/foregrounding helpers
-(`pressHome` + relaunch works manually), deep-link launch, activity-result assertions,
-locale/orientation control, and the plan's "AUT restarted during a command" fault scenario.
+Implemented device rotation: portable portrait/landscape, exact natural-relative rotation,
+sensor unlock, a bounded settle wait (the driver reports Android's acceptance, not the app's
+reaction), and session teardown restoration (`RotationTest`, `DeviceActionsTest` rotation
+hold/restore, host cleanup tests). `foreground` / `background` and `openLink` (deep links),
+screen wake/sleep/keyguard, runtime-permission dialogs, and double tap / drag / pinch / fling
+(`GestureTest`, `ScreenTest`, `PermissionTest`, `DeviceActionsTest`, Python
+`test_device_actions.py`). Launch with typed intent extras, `revokePermission`, keyboard state /
+hide / IME action, clipboard set/get and `awaitToast` (`KeyboardTest`, `ClipboardTest`,
+`ToastTest`, `DeviceActionsTest` 7–9). Device conditions (animations, dark mode, font scale,
+density) and per-app languages (API 33+), each read back and restored on detach or by the next
+attach after a crash (`DeviceConditionsTest`, `DeviceActionsTest` 10–11,
+`test_conditions_hold_until_detach_then_are_restored`; crash restore in `RecoverJournalTest`).
+Group 3 (`device-actions.md`) is implemented with unit and fake-device tests — network
+switches, the device-wide locale, mock location, accessibility actions and slider progress,
+the location-accuracy choice, push/pull files and gallery media — and its device tests are
+written (`SystemLocaleTest`, `MockLocationTest`, `AccessibilityActionTest`, `DeviceFilesTest`,
+`DeviceActionsTest` 12–15, Python `test_device_actions.py`). They pass on the Samsung (API 29,
+2026-10-02); the emulator (API 34) run is pending, so the device-wide locale stays listed below
+until it passes there too.
+Group 4 is implemented with unit and fake-device tests — notifications as data (await, list,
+open, dismiss through the driver app's notification listener), stay awake, the accessibility
+display settings and the foreground activity — and its device tests are written
+(`NotificationListenerTest`, `DeviceActionsTest` 16–17, Python `test_device_actions.py`). They
+pass on the Samsung (API 29, 2026-10-02); the emulator (API 34) run is pending, so notifications
+stay listed below until they pass there too.
+
+Missing: crash/ANR detection as codes (above), activity-result assertions, the device-wide
+locale (implemented, passing on API 29, API 34 run pending; see above), and
+the plan's "AUT restarted during a command" fault scenario, and group 4 on API 34
+(opening a notification's intent with background-start options, the display settings'
+read-back; passing on API 29, emulator run pending).
 
 ## Compose and WebView (plan §15, §17)
 

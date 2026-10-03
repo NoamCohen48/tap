@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
 from . import _proto
 from .client import mapped_errors
-from .models import AppProcess, StabilitySignal
+from .models import AppProcess, Long, MatchMode, Notification, StabilitySignal, Toast
 from .element import Element, ElementWait
 from .selectors import Selector
 
@@ -133,12 +133,58 @@ class App:
         request = pb.GrantPermissionRequest(app=self._target(), permission=permission)
         self._call(self._apps.GrantPermission, request, None)
 
-    def launch(self, activity: str | None = None, timeout: float | None = None) -> None:
+    def is_permission_granted(self, permission: str) -> bool:
+        """Whether ``permission`` is granted to the package now, as ``dumpsys package`` lists it:
+        the read-back for ``grant_permission``, ``revoke_permission``, ``clear_data`` and the
+        permission dialog."""
+        request = pb.IsPermissionGrantedRequest(app=self._target(), permission=permission)
+        return self._call(self._apps.IsPermissionGranted, request, None).granted
+
+    def set_locales(self, locales: Sequence[str]) -> None:
+        """The app's own languages (Android's per-app language, API 33+), as BCP-47 tags in
+        preference order (``"fr-FR"``, ``"en"``); an empty list makes it follow the system again.
+
+        The server checks and canonicalizes the tags (``INVALID_ARGUMENT`` for a malformed one)
+        and reads the change back. Like the device conditions, the app's languages before the
+        session's first change come back on ``Device.detach()``. Below API 33: ``ServerError``
+        (reason ``UNSUPPORTED_API``). Android applies it as a configuration change: the app's
+        activities are recreated unless it handles the change itself.
+        """
+        if isinstance(locales, str):
+            raise TypeError("locales is a list of tags, not a string")
+        request = pb.SetLocalesRequest(app=self._target(), locales=list(locales))
+        self._call(self._apps.SetLocales, request, None)
+
+    def locales(self) -> list[str]:
+        """The app's own languages now (canonical BCP-47 tags); empty when it follows the
+        system. API 33+."""
+        request = pb.GetLocalesRequest(app=self._target())
+        return list(self._call(self._apps.GetLocales, request, None).locales)
+
+    def revoke_permission(self, permission: str) -> None:
+        """``pm revoke`` a runtime permission, proven by ``dumpsys package``. Android kills the
+        app's process when one of its runtime permissions is revoked."""
+        request = pb.RevokePermissionRequest(app=self._target(), permission=permission)
+        self._call(self._apps.RevokePermission, request, None)
+
+    def launch(
+        self,
+        activity: str | None = None,
+        timeout: float | None = None,
+        *,
+        extras: Mapping[str, str | bool | int | float | Long] | None = None,
+    ) -> None:
         """Starts the activity with ``am start -W`` and returns when Android reports the launch
         complete. Nothing about the UI is assumed: wait for what the test needs
-        (``await_visible``, ``await_screen_stable``, an element wait)."""
+        (``await_visible``, ``await_screen_stable``, an element wait).
+
+        ``extras`` are put on the intent (``am start --es/--ez/--ei/--el/--ef``): ``str``,
+        ``bool``, ``int`` (32-bit, ``getIntExtra``), ``float`` (32-bit, ``getFloatExtra``) or
+        ``tap_e2e.Long(n)`` for ``getLongExtra``. Anything else raises before the call."""
         timeout = self._or(timeout, self.device.timeouts.lifecycle)
-        request = pb.LaunchRequest(app=self._target(), timeout_ms=self._ms(timeout))
+        request = pb.LaunchRequest(
+            app=self._target(), timeout_ms=self._ms(timeout), extras=_proto.intent_extras(extras or {})
+        )
         if activity:
             request.activity = activity
         self._call(self._apps.Launch, request, timeout)
@@ -148,6 +194,24 @@ class App:
         ``WaitTimeoutError`` only when the device reports ``WAIT_TIMEOUT``; any other failure
         (driver unhealthy, transport lost, ...) is a ``CommandError``."""
         self.device._await_app_visible(self.package_name, timeout)
+
+    def await_toast(
+        self, text: str | None = None, mode: MatchMode = MatchMode.EXACT, *, timeout: float | None = None
+    ) -> Toast:
+        """``Device.await_toast`` for this package's toasts only: on Android 11+ a text toast is
+        drawn by SystemUI but still reported under the app that posted it."""
+        return self.device.await_toast(text, mode, package_name=self.package_name, timeout=timeout)
+
+    def await_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        timeout: float | None = None,
+    ) -> Notification:
+        """``Device.await_notification`` for this package's notifications only."""
+        return self.device.await_notification(title, text, mode, package_name=self.package_name, timeout=timeout)
 
     def await_screen_stable(
         self,
@@ -176,12 +240,45 @@ class App:
         have not changed (beyond 0.5 %) for ``stable_for`` seconds. One screenshot per 100 ms."""
         self.await_screen_stable(stable_for, timeout, StabilitySignal.PIXELS)
 
-    def cold_launch(
-        self, activity: str | None = None, timeout: float | None = None
-    ) -> AppProcess:
-        """Force-stops, launches and returns the verified new process identity."""
+    def foreground(self, timeout: float | None = None) -> None:
+        """Bring the app to the front the way the launcher does: its launcher intent with
+        ``NEW_TASK | RESET_TASK_IF_NEEDED``, so a running task resumes where it was instead of
+        gaining a second copy of the launcher activity, and a stopped app starts. Returns when
+        ``am start -W`` reports the launch complete; wait for the screen you need."""
         timeout = self._or(timeout, self.device.timeouts.lifecycle)
-        request = pb.ColdLaunchRequest(app=self._target(), timeout_ms=self._ms(timeout))
+        request = pb.ForegroundRequest(app=self._target(), timeout_ms=self._ms(timeout))
+        self._call(self._apps.Foreground, request, timeout)
+
+    def background(self) -> None:
+        """Send the app to the background with the Home key, as a user would; the process keeps
+        running. Bring it back with ``foreground``."""
+        self.device.press_home()
+
+    def open_link(self, uri: str, any_app: bool = False, timeout: float | None = None) -> str | None:
+        """Open ``uri`` (a deep link or app link, e.g. ``myapp://orders/42`` or
+        ``https://example.com/x``) with an ``ACTION_VIEW`` intent restricted to this package, so
+        no chooser or browser can take it; ``any_app=True`` lets Android resolve it like a tap on
+        a link elsewhere would. Returns the activity Android reported starting
+        (``package/.Activity``) when it reported one. Nothing about the screen is checked: wait
+        for what the link should show."""
+        timeout = self._or(timeout, self.device.timeouts.lifecycle)
+        request = pb.OpenLinkRequest(app=self._target(), uri=uri, any_app=any_app, timeout_ms=self._ms(timeout))
+        response = self._call(self._apps.OpenLink, request, timeout)
+        return response.activity if response.HasField("activity") else None
+
+    def cold_launch(
+        self,
+        activity: str | None = None,
+        timeout: float | None = None,
+        *,
+        extras: Mapping[str, str | bool | int | float | Long] | None = None,
+    ) -> AppProcess:
+        """Force-stops, launches (with ``extras``, as ``launch``) and returns the verified new
+        process identity."""
+        timeout = self._or(timeout, self.device.timeouts.lifecycle)
+        request = pb.ColdLaunchRequest(
+            app=self._target(), timeout_ms=self._ms(timeout), extras=_proto.intent_extras(extras or {})
+        )
         if activity:
             request.activity = activity
         return _proto.app_process(self._call(self._apps.ColdLaunch, request, timeout).process)

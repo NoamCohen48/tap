@@ -188,24 +188,42 @@ no wait that is not an assertion) and made a misclick a recorded step. Now:
   Space, Escape, Search, volume) or any key code, recorded as `press_key` and shown as
   `pressKey(66 /* Enter */)`.
 - **Composer** (middle column, top): the selected element (class, `@ref`, the ranked selector
-  candidates as a radio list with their chips, the live match count of the chosen one) and four
-  tabs, keys 1 / 2 / 3 / 4, each button of which runs its step and records it. The first three
-  act on the element; the fourth, set apart, on the app:
+  candidates as a radio list with their chips, the live match count of the chosen one) and five
+  tabs, keys 1–5, each button of which runs its step and records it. The first three act on the
+  element; the last two, set apart, on the app and on the device:
   - **Act** (coral): Tap, Long press; Swipe ↑ ↓ ← →; Scroll ↑ ↓ ← → on a scrollable node (on a
     node inside one, a button selects the smallest scrollable node around it, since its rows
     usually cover a list); a Distance slider (10–100 %, default 80, the SDKs' `distancePercent`;
     the SDKs have no speed) for swipes, scrolls and scroll until; Scroll until (below); on
     editable nodes the text line (value, Secret, name, Set text, Wait for focus + Type keys
-    (`skip_focus_wait` when off), Clear).
+    (`skip_focus_wait` when off), Clear, Submit = `perform_ime_action`). Also Double tap; Drag
+    to… (a pick mode like scroll until: the source is outlined, the next click is the drop
+    target, Esc cancels; one `drag` step); Pinch open / close across the Distance; Fling ↑ ↓ ← →
+    on a scrollable node or one inside a list; and, from `DescribeElement` (the one match's
+    snapshot), its accessibility actions (custom ones first: they stand in for a swipe) and, on a
+    range node, a Value slider in its own units (`set_progress`).
   - **Assert** (blue): the states the node is in now, text equals / contains (prefilled with its
     text), count (prefilled with the live count).
   - **Wait** (violet): the element waits that fit the node, text and count.
   - **App** (neutral; owner, 2026-10-02: the app's controls must not blend with the element's,
     and a panel of their own left the inspector no room): the package (suggesting the packages on
     screen, remembered per browser, not part of the attach), Cold launch / Launch (with an
-    optional activity, `AppCall.activity`), Force stop /
-    Clear data, Grant a permission, and the app waits (`awaitVisible`, `awaitScreenStable`,
-    `awaitSettled`, `awaitAnimationEnd`). Selecting an element on the screen leaves it for Act.
+    optional activity, `AppCall.activity`, and extras, key / type / value rows), Foreground /
+    Background (`press_key` HOME, the SDKs' `background()`), Open link (Any app), Force stop /
+    Clear data, Grant / Revoke a permission, the app's languages (`set_locales`, empty = follow
+    the system), and the app waits (`awaitVisible`, `awaitScreenStable`, `awaitSettled`,
+    `awaitAnimationEnd`). Selecting an element on the screen leaves it for Act.
+  - **Device** (neutral, as App; 2026-10-02): first a read-back of the device (`GetDeviceStatus`:
+    screen and keyguard, rotation, keyboard, the foreground activity), asked again after every
+    step. Every condition is a segmented choice whose current value carries the read-back's dot;
+    choosing a value records it even when the device already has it, because a test sets what
+    it relies on. Groups: Screen (orientation, rotation / Auto, Wake / Sleep keys, Unlock), Keyboard
+    and clipboard, Permission dialog (await, then choose with an optional accuracy), Notifications
+    and toasts (`ListNotifications`: each with Wait for, Open, its action buttons, Dismiss,
+    matched by title or text and package; a toast wait), Conditions (held until release:
+    animations, dark mode, stay awake, font scale, density, airplane / Wi-Fi / mobile data, the
+    accessibility display settings, system languages, mock location), and Assert (foreground
+    activity prefilled from the read-back, keyboard shown / hidden, clipboard equals).
   Only what the SDKs have is offered; new gestures arrive with the SDK.
 - **Inspector** (middle column, below): *Properties* and *Screen tree* (every node, filterable,
   click to select).
@@ -289,10 +307,16 @@ strings (proto3 JSON).
   `outcome` (`duration_ms`, and a `tap.v1` `Error` or `Failure`, or a `mismatch` message when
   an assertion did not hold; none of them = passed),
   and exactly one kind:
-  - `app`: a `tap.v1.AppCall` (the event log's message): cold_launch, launch, force_stop,
-    clear_data, grant_permission.
-  - `action`: one `tap.v1.Command` in `command` (tap, long_tap, set_text, clear_text, scroll,
-    swipe, press_key, open_system_panel) and, for every op but press_key and open_system_panel, the recorded precondition in `wait` (a
+  - `app`: a `tap.v1.AppCall` (the event log's message): cold_launch, launch (both with
+    `activity` and `extras`), foreground, force_stop, clear_data, grant_permission,
+    revoke_permission, open_link (`uri`, `any_app`), set_locales (`locales`, empty = follow the
+    system).
+  - `action`: one `tap.v1.Command` in `command`, either on an element (tap, long_tap,
+    double_tap, set_text, clear_text, scroll, swipe, fling, pinch, drag, perform_ime_action,
+    perform_accessibility_action, set_progress) or on the device (press_key, open_system_panel,
+    set_orientation, set_display_rotation, unfreeze_rotation, dismiss_keyguard, hide_keyboard,
+    set_clipboard, choose_permission, open_notification, dismiss_notification); an element op
+    has the recorded precondition in `wait` (a
     `Command` holding `wait_visible` of the same selector, with `exactly_one` unless the selector
     has a `first` / `at` pick, decision 6). A
     replayer sends `wait` then `command`, unchanged. With `secret` (set_text only),
@@ -317,6 +341,17 @@ strings (proto3 JSON).
     it until the target exists.
   - `app_wait`: one `tap.v1.Command`, `wait_app_visible` or `wait_screen_stable` (with its
     `stable_for_ms`, 1..30000, default 500, and its signal), with a package name.
+  - `device_wait`: one `tap.v1.Command`, `await_toast`, `await_notification` or
+    `wait_permission_prompt`, replayed with the device's wait timeout. A match's `mode` is set
+    exactly when it has a title or text (as the SDKs send it).
+  - `device`: a `tap.v1.DeviceCall` (the event log's message) for a condition held until
+    release: set_animations, set_dark_mode, set_stay_awake (`enabled`), set_font_scale,
+    set_density (no `density_dpi` = the display's own), set_network (at least one of the three),
+    set_system_locales, set_location (`accuracy_m` / `altitude_m` optional),
+    set_accessibility_display (at least one of the three).
+  - `device_assertion`: `check` (`DEVICE_CHECK_FOREGROUND_ACTIVITY` with `text` =
+    `package/class`, `KEYBOARD_SHOWN`, `KEYBOARD_HIDDEN`, `CLIPBOARD_EQUALS` with `text`), one
+    read, no wait; a mismatch is the outcome's `mismatch`.
   - `selector_origin` on steps with a selector: `SYNTHESIZED` (the daemon's first choice),
     `ALTERNATIVE` (another candidate the user picked) or `EDITED` (typed in). Warnings such as
     *by index* are derived from the selector itself and not stored.
@@ -343,7 +378,8 @@ back end (Python, Starlette + connect-python, on tap-e2e)
                                       ListDevices, Attach, Release, Frames (server stream),
                                       Count, Perform, SetRecording, NewRecording (phase 3);
                                       UpdateStep, DeleteStep, MoveStep, OpenRecording,
-                                      Replay (server stream) (phase 5)
+                                      Replay (server stream) (phase 5); DescribeElement,
+                                      GetDeviceStatus, ListNotifications (device actions)
   /                                   the built page
 
 daemon

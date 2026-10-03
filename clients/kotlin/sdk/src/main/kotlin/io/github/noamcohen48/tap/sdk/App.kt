@@ -6,13 +6,19 @@ import io.github.noamcohen48.tap.api.v1.AwaitIdleRequest
 import io.github.noamcohen48.tap.api.v1.ClearDataRequest
 import io.github.noamcohen48.tap.api.v1.ColdLaunchRequest
 import io.github.noamcohen48.tap.api.v1.ForceStopRequest
+import io.github.noamcohen48.tap.api.v1.ForegroundRequest
+import io.github.noamcohen48.tap.api.v1.GetLocalesRequest
 import io.github.noamcohen48.tap.api.v1.GrantPermissionRequest
 import io.github.noamcohen48.tap.api.v1.InstallHeader
 import io.github.noamcohen48.tap.api.v1.InstallRequest
 import io.github.noamcohen48.tap.api.v1.IsInstalledRequest
+import io.github.noamcohen48.tap.api.v1.IsPermissionGrantedRequest
 import io.github.noamcohen48.tap.api.v1.IsRunningRequest
 import io.github.noamcohen48.tap.api.v1.LaunchRequest
+import io.github.noamcohen48.tap.api.v1.OpenLinkRequest
 import io.github.noamcohen48.tap.api.v1.ProcessRequest
+import io.github.noamcohen48.tap.api.v1.RevokePermissionRequest
+import io.github.noamcohen48.tap.api.v1.SetLocalesRequest
 import io.github.noamcohen48.tap.api.v1.UninstallRequest
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.Dispatchers
@@ -162,14 +168,60 @@ class App internal constructor(
     }
 
     /**
+     * Whether [permission] is granted to the package now, as `dumpsys package` lists it: the
+     * read-back for [grantPermission], [revokePermission], [clearData] and the permission dialog.
+     */
+    suspend fun isPermissionGranted(permission: String): Boolean =
+        call(null) {
+            it.isPermissionGranted(IsPermissionGrantedRequest.newBuilder().setApp(target).setPermission(permission).build())
+        }.granted
+
+    /**
+     * The app's own languages (Android's per-app language, API 33+), as BCP-47 tags in
+     * preference order (`"fr-FR"`, `"en"`); an empty list makes it follow the system again. The
+     * tags are checked and canonicalized by the server (`INVALID_ARGUMENT` for a malformed one)
+     * and the change is read back. Like the [Device] conditions, the app's languages before the
+     * session's first change come back on [Device.detach]. Below API 33: [ServerException]
+     * ([FailureReason.UNSUPPORTED_API]). Android applies it as a configuration change: the app's
+     * activities are recreated unless it handles the change itself.
+     */
+    suspend fun setLocales(locales: List<String>) {
+        call(null) {
+            it.setLocales(SetLocalesRequest.newBuilder().setApp(target).addAllLocales(locales).build())
+        }
+    }
+
+    /** The app's own languages now (canonical BCP-47 tags); empty when it follows the system. API 33+. */
+    suspend fun locales(): List<String> =
+        call(null) {
+            it.getLocales(GetLocalesRequest.newBuilder().setApp(target).build())
+        }.localesList
+
+    /**
+     * `pm revoke` a runtime permission, proven by `dumpsys package`. Android kills the app's
+     * process when one of its runtime permissions is revoked.
+     */
+    suspend fun revokePermission(permission: String) {
+        call(null) {
+            it.revokePermission(RevokePermissionRequest.newBuilder().setApp(target).setPermission(permission).build())
+        }
+    }
+
+    /**
      * Starts [activity] (or the launcher activity) with `am start -W` and returns when Android
      * reports the launch complete. Nothing about the UI is assumed: wait for what the test needs
      * ([awaitVisible], [awaitScreenStable], an element wait).
+     *
+     * [extras] are put on the intent (`am start --es/--ez/--ei/--el/--ef`): values must be
+     * `String`, `Boolean`, `Int`, `Long` or `Float`, so `getLongExtra` needs a `Long` (`42L`).
+     * Anything else fails with [IllegalArgumentException] before the call.
      */
     suspend fun launch(
         activity: String? = null,
         timeout: Duration = device.timeouts.lifecycle,
+        extras: Map<String, Any> = emptyMap(),
     ) {
+        val intentExtras = intentExtras(extras)
         call(timeout) {
             it.launch(
                 LaunchRequest
@@ -177,6 +229,7 @@ class App internal constructor(
                     .setApp(target)
                     .setTimeoutMs(timeout.inWholeMilliseconds)
                     .apply { activity?.let { name -> setActivity(name) } }
+                    .addAllExtras(intentExtras)
                     .build(),
             )
         }
@@ -188,6 +241,24 @@ class App internal constructor(
      * (driver unhealthy, transport lost, ...) is a [CommandException].
      */
     suspend fun awaitVisible(timeout: Duration = device.timeouts.wait) = device.awaitAppVisible(packageName, timeout)
+
+    /**
+     * [Device.awaitToast] for this package's toasts only: on Android 11+ a text toast is drawn
+     * by SystemUI but still reported under the app that posted it.
+     */
+    suspend fun awaitToast(
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        timeout: Duration = device.timeouts.wait,
+    ): Toast = device.awaitToast(text, mode, packageName, timeout)
+
+    /** [Device.awaitNotification] for this package's notifications only. */
+    suspend fun awaitNotification(
+        title: String? = null,
+        text: String? = null,
+        mode: MatchMode = MatchMode.EXACT,
+        timeout: Duration = device.timeouts.wait,
+    ): Notification = device.awaitNotification(title, text, mode, packageName, timeout)
 
     /**
      * Waits on the device until this package's focused window has stopped changing for
@@ -224,21 +295,69 @@ class App internal constructor(
         timeout: Duration = device.timeouts.wait,
     ) = awaitScreenStable(stableFor, timeout, StabilitySignal.PIXELS)
 
-    /** Verified force-stop, [launch], then the *new* process identity. */
+    /**
+     * Brings the app to the front the way the launcher does: its launcher intent with
+     * `NEW_TASK | RESET_TASK_IF_NEEDED`, so a running task resumes where it was instead of
+     * gaining a second copy of the launcher activity, and a stopped app starts. Returns when
+     * `am start -W` reports the launch complete; wait for the screen you need.
+     */
+    suspend fun foreground(timeout: Duration = device.timeouts.lifecycle) {
+        call(timeout) {
+            it.foreground(ForegroundRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
+        }
+    }
+
+    /**
+     * Sends the app to the background with the Home key, as a user would; the process keeps
+     * running. Bring it back with [foreground].
+     */
+    suspend fun background() {
+        device.pressHome()
+    }
+
+    /**
+     * Opens [uri] (a deep link or app link, e.g. `myapp://orders/42` or `https://example.com/x`)
+     * with an `ACTION_VIEW` intent restricted to this package, so no chooser or browser can take
+     * it; pass `anyApp = true` to let Android resolve it like a tap on a link elsewhere would.
+     * Returns the activity Android reported starting (`package/.Activity`) when it reported one.
+     * Nothing about the screen is checked: wait for what the link should show.
+     */
+    suspend fun openLink(
+        uri: String,
+        anyApp: Boolean = false,
+        timeout: Duration = device.timeouts.lifecycle,
+    ): String? =
+        call(timeout) {
+            it.openLink(
+                OpenLinkRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setUri(uri)
+                    .setAnyApp(anyApp)
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .build(),
+            )
+        }.let { if (it.hasActivity()) it.activity else null }
+
+    /** Verified force-stop, [launch] (with its [extras]), then the *new* process identity. */
     suspend fun coldLaunch(
         activity: String? = null,
         timeout: Duration = device.timeouts.lifecycle,
-    ): AppProcess =
-        call(timeout) {
+        extras: Map<String, Any> = emptyMap(),
+    ): AppProcess {
+        val intentExtras = intentExtras(extras)
+        return call(timeout) {
             it.coldLaunch(
                 ColdLaunchRequest
                     .newBuilder()
                     .setApp(target)
                     .setTimeoutMs(timeout.inWholeMilliseconds)
                     .apply { activity?.let { name -> setActivity(name) } }
+                    .addAllExtras(intentExtras)
                     .build(),
             )
         }.process.toModel()
+    }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
     suspend fun process(timeout: Duration = device.timeouts.action): AppProcess =

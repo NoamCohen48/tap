@@ -66,10 +66,49 @@ tap-agent release                                   # frees the device
   completely is not found at all).
 - **Apps**: `app <action> <package> [argument]`: `launch`, `cold-launch`, `stop`, `clear`,
   `install` (argument: the APK), `uninstall`, `grant` (argument: the permission), `running`.
+  `--extra KEY[:TYPE]=VALUE` (repeatable; MCP `extras`) puts an intent extra on a launch or
+  cold-launch: `--extra user=ada --extra item:long=42` (TYPE string, int, long, float or bool).
 - **System panels**: `panel notifications` / `panel quick-settings` (MCP `open_panel`) open the
   notification shade or quick settings; target their nodes with `pkg=com.android.systemui`, and
   `key back` closes them (twice from quick settings on newer Android). `key recents` opens the
   recent apps.
+- **Gestures and device state**: `tap --double`, `fling`, `drag <target> <destination>`,
+  `pinch <target> open|close`; `rotate portrait|landscape|…|auto` (detach restores the device's
+  own setting); `screen [on|off|unlock]` (`unlock` never enters a PIN); `permission [choice]`
+  lists or presses the runtime-permission dialog's buttons; `app foreground|background|open-link|revoke|granted
+  <package> [URI|PERMISSION]`; `permission allow-foreground-only --accuracy approximate` picks
+  Precise or Approximate in the location dialog first (Android 12+). MCP has the same tools
+  (`fling`, `drag`, `pinch`, `rotate`, `screen`, `permission` with `accuracy`).
+- **Accessibility actions and sliders**: `action <target>` lists the node's standard and custom
+  accessibility actions, `action <target> expand` performs one and `action <target> Archive
+  --custom` a custom one, as a screen reader would (no touch); `progress <target> 40` sets a
+  slider in its own units (a value outside its range is refused). MCP `accessibility_action`,
+  `set_progress`.
+- **Device conditions and languages**: `condition` prints animations, dark mode, font scale and
+  density, the network switches and the device languages; `condition animations off`,
+  `condition dark-mode on` (Android 10+), `condition font-scale 1.3`, `condition density
+  320|reset`, `condition airplane-mode|wifi|mobile-data on|off` (real switches, read back) and
+  `condition locale fr-FR,en` change one until release, which restores the device's own values;
+  `location 48.85 2.35 [--accuracy 10] [--altitude 35]` mocks the device location until release; `app locale <package> [fr-FR,en|system]` reads or sets the app's own languages
+  (Android 13+). `condition stay-awake on` keeps the screen on while plugged in, and
+  `condition high-contrast-text|color-inversion|bold-text on|off` (bold text Android 12+) set
+  the accessibility display settings. MCP `condition`, `set_location` and `app` with `locale`.
+- **Notifications and the activity on top**: `notification` lists the device's notifications
+  (read as data; the shade stays closed), `notification await --title T [--text X] [--contains]
+  [--package PKG]` waits for one, `notification open …` opens it as a tap does (`--button
+  "Mark as read"` presses an action button) and `notification dismiss …` swipes it away (an
+  ongoing one is refused). `activity` prints the activity on top (`package/class`). MCP
+  `notification`, `foreground_activity`.
+- **Keyboard, clipboard, toasts**: `keyboard [hide]`, `submit <target>` (the focused field's
+  action key; tap the field first), `clipboard [text]`, `toast [text] [--contains] [--package PKG]`
+  (any app's toast unless `--package`);
+  MCP `keyboard`, `submit`, `clipboard`, `await_toast`.
+- **Files and the gallery**: `push <local> <device-path>` copies a file to the device (its
+  directory must exist; an existing file is never overwritten), `pull <device-path> [-o FILE]`
+  copies one back and prints the local path, `media <local> [--name NAME]` adds a photo or video
+  to the gallery (`Pictures/Tap`, `Movies/Tap`, indexed by the media scanner). The bytes stream
+  through the server; what Tap created is removed on release. MCP `push_file`, `pull_file`,
+  `add_media`.
 - **`--settle`** after an action waits for the screen to stop changing and prints the
   difference (`+` added, `-` removed nodes), which is usually enough to pick the next step.
 - **Evidence**: `screenshot` and `capture` (screenshot, hierarchy, device info, driver log)

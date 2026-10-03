@@ -2,25 +2,51 @@ package io.github.noamcohen48.tap.driver
 
 import android.app.Instrumentation
 import androidx.test.uiautomator.UiDevice
+import io.github.noamcohen48.tap.api.v1.AwaitNotification
+import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DeviceNotification
+import io.github.noamcohen48.tap.api.v1.DismissKeyguard
+import io.github.noamcohen48.tap.api.v1.DismissNotification
+import io.github.noamcohen48.tap.api.v1.DoubleTap
+import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.Exists
+import io.github.noamcohen48.tap.api.v1.Fling
+import io.github.noamcohen48.tap.api.v1.GetClipboard
+import io.github.noamcohen48.tap.api.v1.HideKeyboard
+import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
+import io.github.noamcohen48.tap.api.v1.PerformImeAction
+import io.github.noamcohen48.tap.api.v1.SetProgress
+import io.github.noamcohen48.tap.api.v1.PermissionPrompt
+import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.SetClipboard
+import io.github.noamcohen48.tap.api.v1.SetLocation
+import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.Toast
 import io.github.noamcohen48.tap.api.v1.TypeText
+import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
+import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import io.github.noamcohen48.tap.driver.engine.CommandContext
@@ -56,8 +82,17 @@ internal class DriverCommandEngine(
     private val objects = UiObjectAccess(device)
     private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, faults)
     private val textInput = TextInputCommands(instrumentation, objects)
+    private val rotation = RotationCommands(instrumentation, device)
+    private val screen = ScreenCommands(instrumentation)
+    private val permissions = PermissionCommands(device)
     private val waits = WaitCommands(device, objects)
-    private val queries = QueryCommands(device, objects)
+    private val keyboard = KeyboardCommands(instrumentation, device, objects)
+    private val accessibilityActions = AccessibilityActionCommands(objects)
+    private val clipboard = ClipboardCommands(instrumentation)
+    private val location = LocationCommands(instrumentation)
+    private val toasts = ToastWatcher(instrumentation)
+    private val notifications = NotificationCommands(instrumentation)
+    private val queries = QueryCommands(device, objects, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
     private val screenStability = ScreenStability(instrumentation)
     private val artifacts = ArtifactCommands(instrumentation, device)
 
@@ -137,6 +172,43 @@ internal class DriverCommandEngine(
 
         override fun openSystemPanel(command: OpenSystemPanel) = gestures.openSystemPanel(context, command)
 
+        override fun setOrientation(command: SetOrientation) = rotation.setOrientation(context, command)
+
+        override fun setDisplayRotation(command: SetDisplayRotation) = rotation.setDisplayRotation(context, command)
+
+        override fun unfreezeRotation(command: UnfreezeRotation) = rotation.unfreezeRotation(context)
+
+        override fun dismissKeyguard(command: DismissKeyguard) = screen.dismissKeyguard(context)
+
+        override fun waitPermissionPrompt(command: WaitPermissionPrompt): PermissionPrompt = permissions.waitPrompt(context)
+
+        override fun choosePermission(command: ChoosePermission) = permissions.choose(context, command.choice, command.accuracy)
+
+        override fun hideKeyboard(command: HideKeyboard) = keyboard.hide(context)
+
+        override fun performImeAction(command: PerformImeAction) = keyboard.performImeAction(context, selectors[command.selector])
+
+        override fun performAccessibilityAction(command: PerformAccessibilityAction) =
+            accessibilityActions.perform(context, selectors[command.selector], command)
+
+        override fun setProgress(command: SetProgress) = accessibilityActions.setProgress(context, selectors[command.selector], command.value)
+
+        override fun setLocation(command: SetLocation) = location.set(context, command)
+
+        override fun setClipboard(command: SetClipboard) = clipboard.set(context, command.text)
+
+        override fun getClipboard(command: GetClipboard): String = clipboard.get(context)
+
+        override fun awaitToast(command: AwaitToast): Toast = toasts.await(context, command)
+
+        override fun awaitNotification(command: AwaitNotification): DeviceNotification = notifications.await(context, command.match)
+
+        override fun listNotifications(command: ListNotifications): NotificationList = notifications.list(context)
+
+        override fun openNotification(command: OpenNotification) = notifications.open(context, command)
+
+        override fun dismissNotification(command: DismissNotification) = notifications.dismiss(context, command.match)
+
         override fun dumpHierarchy(command: DumpHierarchy): String = artifacts.dumpHierarchy()
 
         override fun exists(command: Exists): Boolean = queries.exists(context, selectors[command.selector])
@@ -166,5 +238,13 @@ internal class DriverCommandEngine(
         override fun swipe(command: Swipe) = gestures.swipe(context, command, selectors[command.selector])
 
         override fun scroll(command: Scroll) = gestures.scroll(context, command, selectors[command.selector])
+
+        override fun doubleTap(command: DoubleTap) = gestures.doubleTap(context, selectors[command.selector])
+
+        override fun drag(command: Drag) = gestures.drag(context, selectors[command.selector], selectors[command.target])
+
+        override fun pinch(command: Pinch) = gestures.pinch(context, command, selectors[command.selector])
+
+        override fun fling(command: Fling) = gestures.fling(context, command, selectors[command.selector])
     }
 }

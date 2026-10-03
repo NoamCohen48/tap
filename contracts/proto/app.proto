@@ -20,8 +20,23 @@ service AppService {
   rpc ForceStop(ForceStopRequest) returns (ForceStopResponse); // `am force-stop` plus proof that no process and no activity of the package remain.
   rpc ClearData(ClearDataRequest) returns (ClearDataResponse); // `pm clear`; data, cache and runtime permissions gone, app left stopped (no process, no activity).
   rpc GrantPermission(GrantPermissionRequest) returns (GrantPermissionResponse); // `pm grant` a runtime permission.
+  // `pm revoke` a runtime permission, verified like a grant. Android kills the app's process.
+  rpc RevokePermission(RevokePermissionRequest) returns (RevokePermissionResponse);
+  // Whether `dumpsys package` lists the permission as granted to the package (a read; not logged).
+  rpc IsPermissionGranted(IsPermissionGrantedRequest) returns (IsPermissionGrantedResponse);
+  // The app's own languages (`cmd locale set-app-locales`, API 33+; FAILED_PRECONDITION,
+  // UNSUPPORTED_API below), BCP-47 tags in preference order; empty = follow the system. Read
+  // back after the change; restored on detach like the device conditions.
+  rpc SetLocales(SetLocalesRequest) returns (SetLocalesResponse);
+  // The app's own languages now (`cmd locale get-app-locales`); empty = it follows the system.
+  rpc GetLocales(GetLocalesRequest) returns (GetLocalesResponse);
   rpc Launch(LaunchRequest) returns (LaunchResponse); // Start the activity (or the launcher) and wait for the package to own the focused window.
   rpc ColdLaunch(ColdLaunchRequest) returns (ColdLaunchResponse); // Verified force-stop, launch, then a new process identity in the foreground.
+  // `am start -W` of the launcher intent, as the home screen does: the app's existing task comes
+  // back as it was left; with no task, the launcher activity starts.
+  rpc Foreground(ForegroundRequest) returns (ForegroundResponse);
+  // `am start -W -a android.intent.action.VIEW -d <uri>`, limited to the package unless `any_app`.
+  rpc OpenLink(OpenLinkRequest) returns (OpenLinkResponse);
   rpc Process(ProcessRequest) returns (ProcessResponse); // The single current process identity.
   rpc IsRunning(IsRunningRequest) returns (IsRunningResponse); // Whether any process of the package is alive.
   rpc AwaitIdle(AwaitIdleRequest) returns (AwaitIdleResponse); // Wait until the app's sync-sdk busy count is zero and stable for `stable_for_ms`.
@@ -90,10 +105,55 @@ message GrantPermissionRequest {
 
 message GrantPermissionResponse {}
 
+message RevokePermissionRequest {
+  AppTarget app = 1;
+  string permission = 2;
+}
+
+message RevokePermissionResponse {}
+
+message IsPermissionGrantedRequest {
+  AppTarget app = 1;
+  string permission = 2;
+}
+
+message IsPermissionGrantedResponse {
+  bool granted = 1;
+}
+
+message SetLocalesRequest {
+  AppTarget app = 1;
+  // At most 16 well-formed, distinct BCP-47 tags (`fr-FR`, `pt-BR`, `zh-Hant-TW`).
+  repeated string locales = 2;
+}
+
+message SetLocalesResponse {}
+
+message GetLocalesRequest {
+  AppTarget app = 1;
+}
+
+message GetLocalesResponse {
+  repeated string locales = 1;
+}
+
+// One `am start` extra. `key`: 1..256 chars, no whitespace or control characters.
+message IntentExtra {
+  string key = 1;
+  oneof value {
+    string string_value = 2; // --es (≤ 4096 chars)
+    bool bool_value = 3; // --ez
+    int32 int_value = 4; // --ei
+    int64 long_value = 5; // --el
+    float float_value = 6; // --ef (finite)
+  }
+}
+
 message LaunchRequest {
   AppTarget app = 1;
   optional string activity = 2; // absent = launcher activity
   optional int64 timeout_ms = 3;
+  repeated IntentExtra extras = 4; // ≤ 64, distinct keys
 }
 
 message LaunchResponse {}
@@ -102,10 +162,33 @@ message ColdLaunchRequest {
   AppTarget app = 1;
   optional string activity = 2; // absent = launcher activity
   optional int64 timeout_ms = 3;
+  repeated IntentExtra extras = 4; // as LaunchRequest
 }
 
 message ColdLaunchResponse {
   ProcessIdentity process = 1;
+}
+
+message ForegroundRequest {
+  AppTarget app = 1;
+  optional int64 timeout_ms = 2;
+}
+
+message ForegroundResponse {}
+
+message OpenLinkRequest {
+  AppTarget app = 1;
+  string uri = 2; // an absolute URI (scheme required); ≤ 2048 chars, no whitespace or control characters
+  // false: only the package may handle it (`-p`), so no chooser can appear. true: Android
+  // resolves it as a tapped link would — another app, the browser, or a chooser.
+  bool any_app = 3;
+  optional int64 timeout_ms = 4;
+}
+
+message OpenLinkResponse {
+  // The activity Android reports it started or delivered the link to (`package/class`); absent
+  // when `am start` names none.
+  optional string activity = 1;
 }
 
 message ProcessRequest {

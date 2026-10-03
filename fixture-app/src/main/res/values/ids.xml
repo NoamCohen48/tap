@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ControlsActivity's custom accessibility actions. -->
+    <item name="action_archive" type="id" />
+    <item name="action_mark_unread" type="id" />
+</resources>

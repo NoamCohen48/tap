@@ -13,14 +13,21 @@ from collections.abc import Callable
 
 from tap_e2e import (
     AppLifecycleError,
-    StabilitySignal,
     CommandError,
     Device,
     DeviceBusyError,
     DeviceQuarantinedError,
     Direction,
+    DisplayRotation,
+    LocationAccuracy,
+    Long,
+    MatchMode,
+    Orientation,
+    PermissionChoice,
     Selector,
     ServerError,
+    StabilitySignal,
+    StandardAction,
     TapError,
     WaitTimeoutError,
 )
@@ -111,6 +118,8 @@ def _complete_action(action: studio.ActionStep) -> list[str]:
         gesture = getattr(command, op)
         if not gesture.HasField("distance_percent"):
             gesture.distance_percent = DEFAULT_GESTURE_PERCENT
+    if op == "pinch" and not command.pinch.HasField("percent"):
+        command.pinch.percent = DEFAULT_GESTURE_PERCENT
     if op is not None and not action.HasField("wait") and getattr(command, op).HasField("selector"):
         selector = getattr(command, op).selector
         action.wait.CopyFrom(tap.Command(wait_visible=tap.WaitVisible(selector=selector, exactly_one=not picks(selector))))
@@ -120,6 +129,10 @@ def _complete_action(action: studio.ActionStep) -> list[str]:
 def _complete_defaults(step: studio.Step) -> None:
     """The SDK defaults a run sends, made explicit so the recording holds what was sent."""
     kind = step.WhichOneof("kind")
+    for match in _text_matches(step):
+        worded = match.HasField("text") or ("title" in match.DESCRIPTOR.fields_by_name and match.HasField("title"))
+        if worded and match.mode == tap.MATCH_UNSPECIFIED:
+            match.mode = tap.MATCH_EXACT
     if kind == "scroll_until":
         if not step.scroll_until.HasField("max_scrolls"):
             step.scroll_until.max_scrolls = DEFAULT_MAX_SCROLLS
@@ -131,6 +144,18 @@ def _complete_defaults(step: studio.Step) -> None:
             wait.stable_for_ms = DEFAULT_STABLE_FOR_MS
         if wait.signal == tap.STABILITY_UNSPECIFIED:
             wait.signal = tap.STABILITY_ALL
+
+
+def _text_matches(step: studio.Step) -> list:
+    """The toast and notification matches in a step: messages with a text and a ``mode``."""
+    kind = step.WhichOneof("kind")
+    command = step.action.command if kind == "action" else step.device_wait.command if kind == "device_wait" else None
+    op = command.WhichOneof("op") if command is not None else None
+    if op in ("open_notification", "dismiss_notification", "await_notification"):
+        return [getattr(command, op).match]
+    if op == "await_toast":
+        return [command.await_toast]
+    return []
 
 
 def run(device: Device, step: studio.Step, secret_value: str | None = None) -> None:
@@ -152,6 +177,12 @@ def run(device: Device, step: studio.Step, secret_value: str | None = None) -> N
         _scroll_until(device, step.scroll_until)
     elif kind == "app_wait":
         _app_wait(device, step.app_wait)
+    elif kind == "device_wait":
+        _device_wait(device, step.device_wait)
+    elif kind == "device":
+        _device(device, step.device)
+    elif kind == "device_assertion":
+        _device_assertion(device, step.device_assertion)
     else:
         raise ValueError("a step without a kind")
 
@@ -164,10 +195,19 @@ def _app(device: Device, call: tap.AppCall) -> None:
     app = device.app(call.package_name)
     timeout = _seconds(call)
     activity = call.activity if call.HasField("activity") else None
+    extras = {extra.key: _extra(extra) for extra in call.extras}
     if call.operation == "cold_launch":
-        app.cold_launch(activity, timeout)
+        app.cold_launch(activity, timeout, extras=extras)
     elif call.operation == "launch":
-        app.launch(activity, timeout)
+        app.launch(activity, timeout, extras=extras)
+    elif call.operation == "foreground":
+        app.foreground(timeout)
+    elif call.operation == "open_link":
+        app.open_link(call.uri, call.any_app, timeout)
+    elif call.operation == "revoke_permission":
+        app.revoke_permission(call.permission)
+    elif call.operation == "set_locales":
+        app.set_locales(list(call.locales))
     elif call.operation == "force_stop":
         app.force_stop(timeout)
     elif call.operation == "clear_data":
@@ -178,8 +218,33 @@ def _app(device: Device, call: tap.AppCall) -> None:
         raise ValueError(f"unknown app operation {call.operation!r}")
 
 
+def _extra(extra: tap.IntentExtra) -> str | bool | int | float | Long:
+    which = extra.WhichOneof("value")
+    value = getattr(extra, which)
+    return Long(value) if which == "long_value" else value
+
+
 def _direction(number: int) -> Direction:
     return Direction[tap.Direction.Name(number).removeprefix("DIR_")]
+
+
+def _named(enum, proto_enum, number: int, prefix: str):
+    """The client enum member a proto enum value names (``PERMISSION_ALLOW`` → ``ALLOW``)."""
+    return enum[proto_enum.Name(number).removeprefix(prefix)]
+
+
+def _match(match: tap.NotificationMatch) -> dict:
+    """``NotificationMatch`` as the client's notification arguments."""
+    return {
+        "title": match.title if match.HasField("title") else None,
+        "text": match.text if match.HasField("text") else None,
+        "mode": _match_mode(match.mode),
+        "package_name": match.package_name if match.HasField("package_name") else None,
+    }
+
+
+def _match_mode(number: int) -> MatchMode:
+    return MatchMode.EXACT if number == tap.MATCH_UNSPECIFIED else _named(MatchMode, tap.MatchMode, number, "MATCH_")
 
 
 def _action(device: Device, action: studio.ActionStep, secret_value: str | None) -> None:
@@ -188,11 +253,8 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
     if op == "press_key":
         device.press_key(command.press_key.key_code)
         return
-    if op == "open_system_panel":
-        if command.open_system_panel.panel == tap.SYSTEM_PANEL_QUICK_SETTINGS:
-            device.open_quick_settings()
-        else:
-            device.open_notifications()
+    if op in UNTARGETED_OPS:
+        _device_action(device, command)
         return
     message = getattr(command, op)
     timeout = _seconds(command)
@@ -205,8 +267,55 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
         "clear_text": lambda: element.clear_text(timeout),
         "scroll": lambda: element.scroll(_direction(message.direction), message.distance_percent, timeout),
         "swipe": lambda: element.swipe(_direction(message.direction), message.distance_percent, timeout),
+        "double_tap": lambda: element.double_tap(timeout),
+        "fling": lambda: element.fling(_direction(message.direction), timeout),
+        "pinch": lambda: (element.pinch_open if message.direction == tap.PINCH_OPEN else element.pinch_close)(message.percent, timeout),
+        "drag": lambda: element.drag_to(Selector.from_proto(message.target), timeout),
+        "perform_ime_action": lambda: element.ime_action(timeout),
+        "perform_accessibility_action": lambda: (
+            element.perform_custom_action(message.custom, timeout)
+            if message.WhichOneof("action") == "custom"
+            else element.perform_action(_named(StandardAction, tap.StandardAction, message.standard, "A11Y_"), timeout)
+        ),
+        "set_progress": lambda: element.set_progress(message.value, timeout),
     }
     perform[op]()
+
+
+def _device_action(device: Device, command: tap.Command) -> None:
+    """An action op on the device, with no selector, through the ``Device`` call of that name."""
+    op = command.WhichOneof("op")
+    message = getattr(command, op)
+    if op == "press_key":
+        device.press_key(message.key_code)
+    elif op == "open_system_panel":
+        if message.panel == tap.SYSTEM_PANEL_QUICK_SETTINGS:
+            device.open_quick_settings()
+        else:
+            device.open_notifications()
+    elif op == "set_orientation":
+        device.set_orientation(_named(Orientation, tap.Orientation, message.orientation, "ORIENTATION_"))
+    elif op == "set_display_rotation":
+        device.set_display_rotation(_named(DisplayRotation, tap.DisplayRotation, message.rotation, "DISPLAY_ROTATION_"))
+    elif op == "unfreeze_rotation":
+        device.unfreeze_rotation()
+    elif op == "dismiss_keyguard":
+        device.dismiss_keyguard()
+    elif op == "hide_keyboard":
+        device.hide_keyboard()
+    elif op == "set_clipboard":
+        device.set_clipboard(message.text)
+    elif op == "choose_permission":
+        accuracy = None
+        if message.accuracy != tap.LOCATION_ACCURACY_UNSPECIFIED:
+            accuracy = _named(LocationAccuracy, tap.LocationAccuracy, message.accuracy, "LOCATION_")
+        device.choose_permission(_named(PermissionChoice, tap.PermissionChoice, message.choice, "PERMISSION_"), accuracy)
+    elif op == "open_notification":
+        device.open_notification(**_match(message.match), action=message.action if message.HasField("action") else None)
+    elif op == "dismiss_notification":
+        device.dismiss_notification(**_match(message.match))
+    else:
+        raise ValueError(f"unknown device action {op!r}")
 
 
 def _type(device: Device, step: studio.TypeStep, secret_value: str | None) -> None:
@@ -326,3 +435,72 @@ def _failure_reason(error: TapError) -> int:
         DeviceQuarantinedError: tap.FAILURE_REASON_DEVICE_QUARANTINED,
     }
     return next((reason for kind, reason in by_type.items() if isinstance(error, kind)), tap.FAILURE_REASON_UNSPECIFIED)
+
+
+def _device_wait(device: Device, step: studio.DeviceWaitStep) -> None:
+    command = step.command
+    timeout = _seconds(command)
+    op = command.WhichOneof("op")
+    if op == "await_toast":
+        toast = command.await_toast
+        device.await_toast(
+            toast.text if toast.HasField("text") else None,
+            _match_mode(toast.mode),
+            package_name=toast.package_name if toast.HasField("package_name") else None,
+            timeout=timeout,
+        )
+    elif op == "await_notification":
+        device.await_notification(**_match(command.await_notification.match), timeout=timeout)
+    else:
+        device.await_permission_prompt(timeout)
+
+
+def _device(device: Device, call: tap.DeviceCall) -> None:
+    """A device condition through the ``Device`` call of that name; the daemon restores it on
+    release."""
+    op = call.operation
+
+    def has(name: str):
+        return getattr(call, name) if call.HasField(name) else None
+
+    if op == "set_animations":
+        device.set_animations(call.enabled)
+    elif op == "set_dark_mode":
+        device.set_dark_mode(call.enabled)
+    elif op == "set_font_scale":
+        device.set_font_scale(call.font_scale)
+    elif op == "set_density":
+        device.set_density(has("density_dpi"))
+    elif op == "set_network":
+        device.set_network(airplane_mode=has("airplane_mode"), wifi=has("wifi"), mobile_data=has("mobile_data"))
+    elif op == "set_system_locales":
+        device.set_system_locales(list(call.locales))
+    elif op == "set_location":
+        device.set_location(call.latitude, call.longitude, accuracy_m=has("accuracy_m"), altitude_m=has("altitude_m"))
+    elif op == "set_stay_awake":
+        device.set_stay_awake(call.enabled)
+    elif op == "set_accessibility_display":
+        device.set_accessibility_display(
+            high_contrast_text=has("high_contrast_text"), color_inversion=has("color_inversion"), bold_text=has("bold_text")
+        )
+    else:
+        raise ValueError(f"unknown device condition {op!r}")
+
+
+def _device_assertion(device: Device, step: studio.DeviceAssertionStep) -> None:
+    check = step.check
+    if check == studio.DEVICE_CHECK_FOREGROUND_ACTIVITY:
+        top = device.foreground_activity()
+        found = f"{top.package_name}/{top.class_name}" if top is not None else None
+        if found != step.text:
+            raise CheckFailed(f"expected the activity {step.text!r} in the foreground, found {found or 'none resumed'}")
+    elif check in (studio.DEVICE_CHECK_KEYBOARD_SHOWN, studio.DEVICE_CHECK_KEYBOARD_HIDDEN):
+        expected = check == studio.DEVICE_CHECK_KEYBOARD_SHOWN
+        if device.keyboard_shown() != expected:
+            raise CheckFailed(f"expected the keyboard {'shown' if expected else 'hidden'}, it is not")
+    elif check == studio.DEVICE_CHECK_CLIPBOARD_EQUALS:
+        text = device.clipboard()
+        if text != step.text:
+            raise CheckFailed(f"expected the clipboard to hold {step.text!r}, found {text!r}")
+    else:
+        raise ValueError(f"unknown device check {check}")

@@ -12,11 +12,11 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Command, Direction, Error } from "./command_pb";
+import type { Command, DeviceInfo, DeviceNotification, Direction, Error, Range, StandardAction } from "./command_pb";
 import { file_command } from "./command_pb";
 import type { DeviceState, ScreenNode } from "./device_pb";
 import { file_device } from "./device_pb";
-import type { AppCall } from "./event_log_pb";
+import type { AppCall, DeviceCall } from "./event_log_pb";
 import { file_event_log } from "./event_log_pb";
 import type { Failure } from "./failure_pb";
 import { file_failure } from "./failure_pb";
@@ -30,7 +30,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file studio.proto.
  */
 export const file_studio: GenFile = /*@__PURE__*/
-  fileDesc("CgxzdHVkaW8ucHJvdG8SDXRhcC5zdHVkaW8udjEiDQoLSW5mb1JlcXVlc3QiMAoMSW5mb1Jlc3BvbnNlEhAKCHJlY29yZGVyGAEgASgJEg4KBmZvcm1hdBgCIAEoCSKHAQoOQXR0YWNoZWREZXZpY2USDgoGc2VyaWFsGAEgASgJEhEKCWFwaV9sZXZlbBgCIAEoBRIUCgxtYW51ZmFjdHVyZXIYAyABKAkSDQoFbW9kZWwYBCABKAkSFQoNZGlzcGxheV93aWR0aBgFIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgGIAEoBSJaCgdTZXNzaW9uEi0KBmRldmljZRgBIAEoCzIdLnRhcC5zdHVkaW8udjEuQXR0YWNoZWREZXZpY2USEQoJcmVjb3JkaW5nGAIgASgIEg0KBXN0ZXBzGAMgASgFIhMKEUdldFNlc3Npb25SZXF1ZXN0Ij0KEkdldFNlc3Npb25SZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCJvCgxEZXZpY2VDaG9pY2USDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEhAKCGF0dGFjaGVkGAMgASgIEhkKEXF1YXJhbnRpbmVfcmVhc29uGAQgASgJIkMKE0xpc3REZXZpY2VzUmVzcG9uc2USLAoHZGV2aWNlcxgBIAMoCzIbLnRhcC5zdHVkaW8udjEuRGV2aWNlQ2hvaWNlIh8KDUF0dGFjaFJlcXVlc3QSDgoGc2VyaWFsGAEgASgJIjkKDkF0dGFjaFJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iEAoOUmVsZWFzZVJlcXVlc3QiOgoPUmVsZWFzZVJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iDwoNRnJhbWVzUmVxdWVzdCLWAQoORnJhbWVzUmVzcG9uc2USEAoIc2VxdWVuY2UYASABKAMSLAoIdGFrZW5fYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3BuZxgDIAEoDBINCgV3aWR0aBgEIAEoBRIOCgZoZWlnaHQYBSABKAUSEAoIcm90YXRpb24YBiABKAUSEwoLc25hcHNob3RfaWQYByABKAMSIQoFbm9kZXMYCCADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIOCgZtb3ZpbmcYCSABKAgiMgoMQ291bnRSZXF1ZXN0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIh4KDUNvdW50UmVzcG9uc2USDQoFY291bnQYASABKAUijwEKDlBlcmZvcm1SZXF1ZXN0EiEKBHN0ZXAYASABKAsyEy50YXAuc3R1ZGlvLnYxLlN0ZXASGQoMc2VjcmV0X3ZhbHVlGAIgASgJSACIAQESFgoOYmVmb3JlX3N0ZXBfaWQYAyABKAkSFgoOc2tpcF9yZWNvcmRpbmcYBCABKAhCDwoNX3NlY3JldF92YWx1ZSJXCg9QZXJmb3JtUmVzcG9uc2USIQoEc3RlcBgBIAEoCzITLnRhcC5zdHVkaW8udjEuU3RlcBIQCghyZWNvcmRlZBgCIAEoCBIPCgdtZXNzYWdlGAMgASgJImIKEVVwZGF0ZVN0ZXBSZXF1ZXN0EiEKBHN0ZXAYASABKAsyEy50YXAuc3R1ZGlvLnYxLlN0ZXASGQoMc2VjcmV0X3ZhbHVlGAIgASgJSACIAQFCDwoNX3NlY3JldF92YWx1ZSJaChJVcGRhdGVTdGVwUmVzcG9uc2USKwoJcmVjb3JkaW5nGAEgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSFwoPbWlzc2luZ19zZWNyZXRzGAIgAygJIiQKEURlbGV0ZVN0ZXBSZXF1ZXN0Eg8KB3N0ZXBfaWQYASABKAkiWgoSRGVsZXRlU3RlcFJlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nEhcKD21pc3Npbmdfc2VjcmV0cxgCIAMoCSI6Cg9Nb3ZlU3RlcFJlcXVlc3QSDwoHc3RlcF9pZBgBIAEoCRIWCg5iZWZvcmVfc3RlcF9pZBgCIAEoCSJYChBNb3ZlU3RlcFJlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nEhcKD21pc3Npbmdfc2VjcmV0cxgCIAMoCSIoChRPcGVuUmVjb3JkaW5nUmVxdWVzdBIQCghkb2N1bWVudBgBIAEoCSKGAQoVT3BlblJlY29yZGluZ1Jlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24SKwoJcmVjb3JkaW5nGAIgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSFwoPbWlzc2luZ19zZWNyZXRzGAMgAygJIq8BCg1SZXBsYXlSZXF1ZXN0EhQKDGZyb21fc3RlcF9pZBgBIAEoCRIMCgRvbmx5GAIgASgIEkUKDXNlY3JldF92YWx1ZXMYAyADKAsyLi50YXAuc3R1ZGlvLnYxLlJlcGxheVJlcXVlc3QuU2VjcmV0VmFsdWVzRW50cnkaMwoRU2VjcmV0VmFsdWVzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJbCg5SZXBsYXlSZXNwb25zZRIPCgdzdGVwX2lkGAEgASgJEicKB291dGNvbWUYAiABKAsyFi50YXAuc3R1ZGlvLnYxLk91dGNvbWUSDwoHbWVzc2FnZRgDIAEoCSIoChNTZXRSZWNvcmRpbmdSZXF1ZXN0EhEKCXJlY29yZGluZxgBIAEoCCI/ChRTZXRSZWNvcmRpbmdSZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhUKE05ld1JlY29yZGluZ1JlcXVlc3QiPwoUTmV3UmVjb3JkaW5nUmVzcG9uc2USJwoHc2Vzc2lvbhgBIAEoCzIWLnRhcC5zdHVkaW8udjEuU2Vzc2lvbiIVChNHZXRSZWNvcmRpbmdSZXF1ZXN0Im4KFEdldFJlY29yZGluZ1Jlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nEhAKCGRvY3VtZW50GAIgASgJEhcKD21pc3Npbmdfc2VjcmV0cxgDIAMoCSLCAQoJUmVjb3JkaW5nEg4KBmZvcm1hdBgBIAEoCRIvCgtyZWNvcmRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEAoIcmVjb3JkZXIYAyABKAkSLQoGZGV2aWNlGAQgASgLMh0udGFwLnN0dWRpby52MS5SZWNvcmRlZERldmljZRIPCgdzZWNyZXRzGAYgAygJEiIKBXN0ZXBzGAcgAygLMhMudGFwLnN0dWRpby52MS5TdGVwIpABCg5SZWNvcmRlZERldmljZRIOCgZzZXJpYWwYASABKAkSFgoJYXBpX2xldmVsGAIgASgFSACIAQESGQoMbWFudWZhY3R1cmVyGAMgASgJSAGIAQESEgoFbW9kZWwYBCABKAlIAogBAUIMCgpfYXBpX2xldmVsQg8KDV9tYW51ZmFjdHVyZXJCCAoGX21vZGVsIpkDCgRTdGVwEgoKAmlkGAEgASgJEhEKBG5vdGUYAiABKAlIAYgBARInCgdvdXRjb21lGAMgASgLMhYudGFwLnN0dWRpby52MS5PdXRjb21lEh4KA2FwcBgKIAEoCzIPLnRhcC52MS5BcHBDYWxsSAASKwoGYWN0aW9uGAsgASgLMhkudGFwLnN0dWRpby52MS5BY3Rpb25TdGVwSAASJwoEdHlwZRgMIAEoCzIXLnRhcC5zdHVkaW8udjEuVHlwZVN0ZXBIABInCgR3YWl0GA0gASgLMhcudGFwLnN0dWRpby52MS5XYWl0U3RlcEgAEjEKCWFzc2VydGlvbhgOIAEoCzIcLnRhcC5zdHVkaW8udjEuQXNzZXJ0aW9uU3RlcEgAEjYKDHNjcm9sbF91bnRpbBgPIAEoCzIeLnRhcC5zdHVkaW8udjEuU2Nyb2xsVW50aWxTdGVwSAASLgoIYXBwX3dhaXQYECABKAsyGi50YXAuc3R1ZGlvLnYxLkFwcFdhaXRTdGVwSABCBgoEa2luZEIHCgVfbm90ZSKlAQoKQWN0aW9uU3RlcBIgCgdjb21tYW5kGAEgASgLMg8udGFwLnYxLkNvbW1hbmQSHQoEd2FpdBgCIAEoCzIPLnRhcC52MS5Db21tYW5kEhMKBnNlY3JldBgDIAEoCUgAiAEBEjYKD3NlbGVjdG9yX29yaWdpbhgEIAEoDjIdLnRhcC5zdHVkaW8udjEuU2VsZWN0b3JPcmlnaW5CCQoHX3NlY3JldCKqAQoIVHlwZVN0ZXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISDgoEdGV4dBgCIAEoCUgAEhAKBnNlY3JldBgDIAEoCUgAEhcKD3NraXBfZm9jdXNfd2FpdBgEIAEoCBI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBWlucHV0Ir0BCghXYWl0U3RlcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIrCgljb25kaXRpb24YAiABKA4yGC50YXAuc3R1ZGlvLnYxLkNvbmRpdGlvbhIOCgR0ZXh0GAMgASgJSAASDwoFY291bnQYBCABKAVIABI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBXZhbHVlIroBCg1Bc3NlcnRpb25TdGVwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiMKBWNoZWNrGAIgASgOMhQudGFwLnN0dWRpby52MS5DaGVjaxIOCgR0ZXh0GAMgASgJSAASDwoFY291bnQYBCABKAVIABI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBXZhbHVlIpQCCg9TY3JvbGxVbnRpbFN0ZXASIwoJY29udGFpbmVyGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiAKBnRhcmdldBgCIAEoCzIQLnRhcC52MS5TZWxlY3RvchIkCglkaXJlY3Rpb24YAyABKA4yES50YXAudjEuRGlyZWN0aW9uEhgKC21heF9zY3JvbGxzGAQgASgFSACIAQESHQoQZGlzdGFuY2VfcGVyY2VudBgFIAEoBUgBiAEBEjYKD3NlbGVjdG9yX29yaWdpbhgGIAEoDjIdLnRhcC5zdHVkaW8udjEuU2VsZWN0b3JPcmlnaW5CDgoMX21heF9zY3JvbGxzQhMKEV9kaXN0YW5jZV9wZXJjZW50Ii8KC0FwcFdhaXRTdGVwEiAKB2NvbW1hbmQYASABKAsyDy50YXAudjEuQ29tbWFuZCJwCgdPdXRjb21lEhMKC2R1cmF0aW9uX21zGAEgASgFEhwKBWVycm9yGAIgASgLMg0udGFwLnYxLkVycm9yEiAKB2ZhaWx1cmUYAyABKAsyDy50YXAudjEuRmFpbHVyZRIQCghtaXNtYXRjaBgEIAEoCSqPAQoOU2VsZWN0b3JPcmlnaW4SHwobU0VMRUNUT1JfT1JJR0lOX1VOU1BFQ0lGSUVEEAASHwobU0VMRUNUT1JfT1JJR0lOX1NZTlRIRVNJWkVEEAESHwobU0VMRUNUT1JfT1JJR0lOX0FMVEVSTkFUSVZFEAISGgoWU0VMRUNUT1JfT1JJR0lOX0VESVRFRBADKqcCCglDb25kaXRpb24SGQoVQ09ORElUSU9OX1VOU1BFQ0lGSUVEEAASFQoRQ09ORElUSU9OX1ZJU0lCTEUQARIRCg1DT05ESVRJT05fT05FEAISEgoOQ09ORElUSU9OX0dPTkUQAxIVChFDT05ESVRJT05fRU5BQkxFRBAEEhYKEkNPTkRJVElPTl9ESVNBQkxFRBAFEhUKEUNPTkRJVElPTl9DSEVDS0VEEAYSFwoTQ09ORElUSU9OX1VOQ0hFQ0tFRBAHEhUKEUNPTkRJVElPTl9GT0NVU0VEEAgSGQoVQ09ORElUSU9OX1RFWFRfRVFVQUxTEAkSGwoXQ09ORElUSU9OX1RFWFRfQ09OVEFJTlMQChITCg9DT05ESVRJT05fQ09VTlQQCyrTAQoFQ2hlY2sSFQoRQ0hFQ0tfVU5TUEVDSUZJRUQQABIQCgxDSEVDS19FWElTVFMQARIPCgtDSEVDS19DT1VOVBACEhUKEUNIRUNLX1RFWFRfRVFVQUxTEAMSFwoTQ0hFQ0tfVEVYVF9DT05UQUlOUxAEEhEKDUNIRUNLX0VOQUJMRUQQBRISCg5DSEVDS19ESVNBQkxFRBAGEhEKDUNIRUNLX0NIRUNLRUQQBxITCg9DSEVDS19VTkNIRUNLRUQQCBIRCg1DSEVDS19GT0NVU0VEEAkyogoKDVN0dWRpb1NlcnZpY2USRAoESW5mbxIaLnRhcC5zdHVkaW8udjEuSW5mb1JlcXVlc3QaGy50YXAuc3R1ZGlvLnYxLkluZm9SZXNwb25zZSIDkAIBElYKCkdldFNlc3Npb24SIC50YXAuc3R1ZGlvLnYxLkdldFNlc3Npb25SZXF1ZXN0GiEudGFwLnN0dWRpby52MS5HZXRTZXNzaW9uUmVzcG9uc2UiA5ACARJZCgtMaXN0RGV2aWNlcxIhLnRhcC5zdHVkaW8udjEuTGlzdERldmljZXNSZXF1ZXN0GiIudGFwLnN0dWRpby52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlIgOQAgESRQoGQXR0YWNoEhwudGFwLnN0dWRpby52MS5BdHRhY2hSZXF1ZXN0Gh0udGFwLnN0dWRpby52MS5BdHRhY2hSZXNwb25zZRJICgdSZWxlYXNlEh0udGFwLnN0dWRpby52MS5SZWxlYXNlUmVxdWVzdBoeLnRhcC5zdHVkaW8udjEuUmVsZWFzZVJlc3BvbnNlEkwKBkZyYW1lcxIcLnRhcC5zdHVkaW8udjEuRnJhbWVzUmVxdWVzdBodLnRhcC5zdHVkaW8udjEuRnJhbWVzUmVzcG9uc2UiA5ACATABEkcKBUNvdW50EhsudGFwLnN0dWRpby52MS5Db3VudFJlcXVlc3QaHC50YXAuc3R1ZGlvLnYxLkNvdW50UmVzcG9uc2UiA5ACARJICgdQZXJmb3JtEh0udGFwLnN0dWRpby52MS5QZXJmb3JtUmVxdWVzdBoeLnRhcC5zdHVkaW8udjEuUGVyZm9ybVJlc3BvbnNlElEKClVwZGF0ZVN0ZXASIC50YXAuc3R1ZGlvLnYxLlVwZGF0ZVN0ZXBSZXF1ZXN0GiEudGFwLnN0dWRpby52MS5VcGRhdGVTdGVwUmVzcG9uc2USUQoKRGVsZXRlU3RlcBIgLnRhcC5zdHVkaW8udjEuRGVsZXRlU3RlcFJlcXVlc3QaIS50YXAuc3R1ZGlvLnYxLkRlbGV0ZVN0ZXBSZXNwb25zZRJLCghNb3ZlU3RlcBIeLnRhcC5zdHVkaW8udjEuTW92ZVN0ZXBSZXF1ZXN0Gh8udGFwLnN0dWRpby52MS5Nb3ZlU3RlcFJlc3BvbnNlEloKDU9wZW5SZWNvcmRpbmcSIy50YXAuc3R1ZGlvLnYxLk9wZW5SZWNvcmRpbmdSZXF1ZXN0GiQudGFwLnN0dWRpby52MS5PcGVuUmVjb3JkaW5nUmVzcG9uc2USRwoGUmVwbGF5EhwudGFwLnN0dWRpby52MS5SZXBsYXlSZXF1ZXN0Gh0udGFwLnN0dWRpby52MS5SZXBsYXlSZXNwb25zZTABElcKDFNldFJlY29yZGluZxIiLnRhcC5zdHVkaW8udjEuU2V0UmVjb3JkaW5nUmVxdWVzdBojLnRhcC5zdHVkaW8udjEuU2V0UmVjb3JkaW5nUmVzcG9uc2USVwoMTmV3UmVjb3JkaW5nEiIudGFwLnN0dWRpby52MS5OZXdSZWNvcmRpbmdSZXF1ZXN0GiMudGFwLnN0dWRpby52MS5OZXdSZWNvcmRpbmdSZXNwb25zZRJcCgxHZXRSZWNvcmRpbmcSIi50YXAuc3R1ZGlvLnYxLkdldFJlY29yZGluZ1JlcXVlc3QaIy50YXAuc3R1ZGlvLnYxLkdldFJlY29yZGluZ1Jlc3BvbnNlIgOQAgFiBnByb3RvMw", [file_command, file_device, file_event_log, file_failure, file_google_protobuf_timestamp, file_selector]);
+  fileDesc("CgxzdHVkaW8ucHJvdG8SDXRhcC5zdHVkaW8udjEiDQoLSW5mb1JlcXVlc3QiMAoMSW5mb1Jlc3BvbnNlEhAKCHJlY29yZGVyGAEgASgJEg4KBmZvcm1hdBgCIAEoCSKHAQoOQXR0YWNoZWREZXZpY2USDgoGc2VyaWFsGAEgASgJEhEKCWFwaV9sZXZlbBgCIAEoBRIUCgxtYW51ZmFjdHVyZXIYAyABKAkSDQoFbW9kZWwYBCABKAkSFQoNZGlzcGxheV93aWR0aBgFIAEoBRIWCg5kaXNwbGF5X2hlaWdodBgGIAEoBSJaCgdTZXNzaW9uEi0KBmRldmljZRgBIAEoCzIdLnRhcC5zdHVkaW8udjEuQXR0YWNoZWREZXZpY2USEQoJcmVjb3JkaW5nGAIgASgIEg0KBXN0ZXBzGAMgASgFIhMKEUdldFNlc3Npb25SZXF1ZXN0Ij0KEkdldFNlc3Npb25SZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhQKEkxpc3REZXZpY2VzUmVxdWVzdCJvCgxEZXZpY2VDaG9pY2USDgoGc2VyaWFsGAEgASgJEiIKBXN0YXRlGAIgASgOMhMudGFwLnYxLkRldmljZVN0YXRlEhAKCGF0dGFjaGVkGAMgASgIEhkKEXF1YXJhbnRpbmVfcmVhc29uGAQgASgJIkMKE0xpc3REZXZpY2VzUmVzcG9uc2USLAoHZGV2aWNlcxgBIAMoCzIbLnRhcC5zdHVkaW8udjEuRGV2aWNlQ2hvaWNlIh8KDUF0dGFjaFJlcXVlc3QSDgoGc2VyaWFsGAEgASgJIjkKDkF0dGFjaFJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iEAoOUmVsZWFzZVJlcXVlc3QiOgoPUmVsZWFzZVJlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24iDwoNRnJhbWVzUmVxdWVzdCLWAQoORnJhbWVzUmVzcG9uc2USEAoIc2VxdWVuY2UYASABKAMSLAoIdGFrZW5fYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3BuZxgDIAEoDBINCgV3aWR0aBgEIAEoBRIOCgZoZWlnaHQYBSABKAUSEAoIcm90YXRpb24YBiABKAUSEwoLc25hcHNob3RfaWQYByABKAMSIQoFbm9kZXMYCCADKAsyEi50YXAudjEuU2NyZWVuTm9kZRIOCgZtb3ZpbmcYCSABKAgiMgoMQ291bnRSZXF1ZXN0EiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yIh4KDUNvdW50UmVzcG9uc2USDQoFY291bnQYASABKAUiPAoWRGVzY3JpYmVFbGVtZW50UmVxdWVzdBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvciKHAQoXRGVzY3JpYmVFbGVtZW50UmVzcG9uc2USJwoHYWN0aW9ucxgBIAMoDjIWLnRhcC52MS5TdGFuZGFyZEFjdGlvbhIWCg5jdXN0b21fYWN0aW9ucxgCIAMoCRIhCgVyYW5nZRgDIAEoCzINLnRhcC52MS5SYW5nZUgAiAEBQggKBl9yYW5nZSIYChZHZXREZXZpY2VTdGF0dXNSZXF1ZXN0Iq0BChdHZXREZXZpY2VTdGF0dXNSZXNwb25zZRIgCgRpbmZvGAEgASgLMhIudGFwLnYxLkRldmljZUluZm8SHwoSZm9yZWdyb3VuZF9wYWNrYWdlGAIgASgJSACIAQESIAoTZm9yZWdyb3VuZF9hY3Rpdml0eRgDIAEoCUgBiAEBQhUKE19mb3JlZ3JvdW5kX3BhY2thZ2VCFgoUX2ZvcmVncm91bmRfYWN0aXZpdHkiGgoYTGlzdE5vdGlmaWNhdGlvbnNSZXF1ZXN0Ik4KGUxpc3ROb3RpZmljYXRpb25zUmVzcG9uc2USMQoNbm90aWZpY2F0aW9ucxgBIAMoCzIaLnRhcC52MS5EZXZpY2VOb3RpZmljYXRpb24ijwEKDlBlcmZvcm1SZXF1ZXN0EiEKBHN0ZXAYASABKAsyEy50YXAuc3R1ZGlvLnYxLlN0ZXASGQoMc2VjcmV0X3ZhbHVlGAIgASgJSACIAQESFgoOYmVmb3JlX3N0ZXBfaWQYAyABKAkSFgoOc2tpcF9yZWNvcmRpbmcYBCABKAhCDwoNX3NlY3JldF92YWx1ZSJXCg9QZXJmb3JtUmVzcG9uc2USIQoEc3RlcBgBIAEoCzITLnRhcC5zdHVkaW8udjEuU3RlcBIQCghyZWNvcmRlZBgCIAEoCBIPCgdtZXNzYWdlGAMgASgJImIKEVVwZGF0ZVN0ZXBSZXF1ZXN0EiEKBHN0ZXAYASABKAsyEy50YXAuc3R1ZGlvLnYxLlN0ZXASGQoMc2VjcmV0X3ZhbHVlGAIgASgJSACIAQFCDwoNX3NlY3JldF92YWx1ZSJaChJVcGRhdGVTdGVwUmVzcG9uc2USKwoJcmVjb3JkaW5nGAEgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSFwoPbWlzc2luZ19zZWNyZXRzGAIgAygJIiQKEURlbGV0ZVN0ZXBSZXF1ZXN0Eg8KB3N0ZXBfaWQYASABKAkiWgoSRGVsZXRlU3RlcFJlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nEhcKD21pc3Npbmdfc2VjcmV0cxgCIAMoCSI6Cg9Nb3ZlU3RlcFJlcXVlc3QSDwoHc3RlcF9pZBgBIAEoCRIWCg5iZWZvcmVfc3RlcF9pZBgCIAEoCSJYChBNb3ZlU3RlcFJlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nEhcKD21pc3Npbmdfc2VjcmV0cxgCIAMoCSIoChRPcGVuUmVjb3JkaW5nUmVxdWVzdBIQCghkb2N1bWVudBgBIAEoCSKGAQoVT3BlblJlY29yZGluZ1Jlc3BvbnNlEicKB3Nlc3Npb24YASABKAsyFi50YXAuc3R1ZGlvLnYxLlNlc3Npb24SKwoJcmVjb3JkaW5nGAIgASgLMhgudGFwLnN0dWRpby52MS5SZWNvcmRpbmcSFwoPbWlzc2luZ19zZWNyZXRzGAMgAygJIq8BCg1SZXBsYXlSZXF1ZXN0EhQKDGZyb21fc3RlcF9pZBgBIAEoCRIMCgRvbmx5GAIgASgIEkUKDXNlY3JldF92YWx1ZXMYAyADKAsyLi50YXAuc3R1ZGlvLnYxLlJlcGxheVJlcXVlc3QuU2VjcmV0VmFsdWVzRW50cnkaMwoRU2VjcmV0VmFsdWVzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJbCg5SZXBsYXlSZXNwb25zZRIPCgdzdGVwX2lkGAEgASgJEicKB291dGNvbWUYAiABKAsyFi50YXAuc3R1ZGlvLnYxLk91dGNvbWUSDwoHbWVzc2FnZRgDIAEoCSIoChNTZXRSZWNvcmRpbmdSZXF1ZXN0EhEKCXJlY29yZGluZxgBIAEoCCI/ChRTZXRSZWNvcmRpbmdSZXNwb25zZRInCgdzZXNzaW9uGAEgASgLMhYudGFwLnN0dWRpby52MS5TZXNzaW9uIhUKE05ld1JlY29yZGluZ1JlcXVlc3QiPwoUTmV3UmVjb3JkaW5nUmVzcG9uc2USJwoHc2Vzc2lvbhgBIAEoCzIWLnRhcC5zdHVkaW8udjEuU2Vzc2lvbiIVChNHZXRSZWNvcmRpbmdSZXF1ZXN0Im4KFEdldFJlY29yZGluZ1Jlc3BvbnNlEisKCXJlY29yZGluZxgBIAEoCzIYLnRhcC5zdHVkaW8udjEuUmVjb3JkaW5nEhAKCGRvY3VtZW50GAIgASgJEhcKD21pc3Npbmdfc2VjcmV0cxgDIAMoCSLCAQoJUmVjb3JkaW5nEg4KBmZvcm1hdBgBIAEoCRIvCgtyZWNvcmRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEAoIcmVjb3JkZXIYAyABKAkSLQoGZGV2aWNlGAQgASgLMh0udGFwLnN0dWRpby52MS5SZWNvcmRlZERldmljZRIPCgdzZWNyZXRzGAYgAygJEiIKBXN0ZXBzGAcgAygLMhMudGFwLnN0dWRpby52MS5TdGVwIpABCg5SZWNvcmRlZERldmljZRIOCgZzZXJpYWwYASABKAkSFgoJYXBpX2xldmVsGAIgASgFSACIAQESGQoMbWFudWZhY3R1cmVyGAMgASgJSAGIAQESEgoFbW9kZWwYBCABKAlIAogBAUIMCgpfYXBpX2xldmVsQg8KDV9tYW51ZmFjdHVyZXJCCAoGX21vZGVsIrUECgRTdGVwEgoKAmlkGAEgASgJEhEKBG5vdGUYAiABKAlIAYgBARInCgdvdXRjb21lGAMgASgLMhYudGFwLnN0dWRpby52MS5PdXRjb21lEh4KA2FwcBgKIAEoCzIPLnRhcC52MS5BcHBDYWxsSAASKwoGYWN0aW9uGAsgASgLMhkudGFwLnN0dWRpby52MS5BY3Rpb25TdGVwSAASJwoEdHlwZRgMIAEoCzIXLnRhcC5zdHVkaW8udjEuVHlwZVN0ZXBIABInCgR3YWl0GA0gASgLMhcudGFwLnN0dWRpby52MS5XYWl0U3RlcEgAEjEKCWFzc2VydGlvbhgOIAEoCzIcLnRhcC5zdHVkaW8udjEuQXNzZXJ0aW9uU3RlcEgAEjYKDHNjcm9sbF91bnRpbBgPIAEoCzIeLnRhcC5zdHVkaW8udjEuU2Nyb2xsVW50aWxTdGVwSAASLgoIYXBwX3dhaXQYECABKAsyGi50YXAuc3R1ZGlvLnYxLkFwcFdhaXRTdGVwSAASNAoLZGV2aWNlX3dhaXQYESABKAsyHS50YXAuc3R1ZGlvLnYxLkRldmljZVdhaXRTdGVwSAASJAoGZGV2aWNlGBIgASgLMhIudGFwLnYxLkRldmljZUNhbGxIABI+ChBkZXZpY2VfYXNzZXJ0aW9uGBMgASgLMiIudGFwLnN0dWRpby52MS5EZXZpY2VBc3NlcnRpb25TdGVwSABCBgoEa2luZEIHCgVfbm90ZSKlAQoKQWN0aW9uU3RlcBIgCgdjb21tYW5kGAEgASgLMg8udGFwLnYxLkNvbW1hbmQSHQoEd2FpdBgCIAEoCzIPLnRhcC52MS5Db21tYW5kEhMKBnNlY3JldBgDIAEoCUgAiAEBEjYKD3NlbGVjdG9yX29yaWdpbhgEIAEoDjIdLnRhcC5zdHVkaW8udjEuU2VsZWN0b3JPcmlnaW5CCQoHX3NlY3JldCKqAQoIVHlwZVN0ZXASIgoIc2VsZWN0b3IYASABKAsyEC50YXAudjEuU2VsZWN0b3ISDgoEdGV4dBgCIAEoCUgAEhAKBnNlY3JldBgDIAEoCUgAEhcKD3NraXBfZm9jdXNfd2FpdBgEIAEoCBI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBWlucHV0Ir0BCghXYWl0U3RlcBIiCghzZWxlY3RvchgBIAEoCzIQLnRhcC52MS5TZWxlY3RvchIrCgljb25kaXRpb24YAiABKA4yGC50YXAuc3R1ZGlvLnYxLkNvbmRpdGlvbhIOCgR0ZXh0GAMgASgJSAASDwoFY291bnQYBCABKAVIABI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBXZhbHVlIroBCg1Bc3NlcnRpb25TdGVwEiIKCHNlbGVjdG9yGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiMKBWNoZWNrGAIgASgOMhQudGFwLnN0dWRpby52MS5DaGVjaxIOCgR0ZXh0GAMgASgJSAASDwoFY291bnQYBCABKAVIABI2Cg9zZWxlY3Rvcl9vcmlnaW4YBSABKA4yHS50YXAuc3R1ZGlvLnYxLlNlbGVjdG9yT3JpZ2luQgcKBXZhbHVlIpQCCg9TY3JvbGxVbnRpbFN0ZXASIwoJY29udGFpbmVyGAEgASgLMhAudGFwLnYxLlNlbGVjdG9yEiAKBnRhcmdldBgCIAEoCzIQLnRhcC52MS5TZWxlY3RvchIkCglkaXJlY3Rpb24YAyABKA4yES50YXAudjEuRGlyZWN0aW9uEhgKC21heF9zY3JvbGxzGAQgASgFSACIAQESHQoQZGlzdGFuY2VfcGVyY2VudBgFIAEoBUgBiAEBEjYKD3NlbGVjdG9yX29yaWdpbhgGIAEoDjIdLnRhcC5zdHVkaW8udjEuU2VsZWN0b3JPcmlnaW5CDgoMX21heF9zY3JvbGxzQhMKEV9kaXN0YW5jZV9wZXJjZW50Ii8KC0FwcFdhaXRTdGVwEiAKB2NvbW1hbmQYASABKAsyDy50YXAudjEuQ29tbWFuZCIyCg5EZXZpY2VXYWl0U3RlcBIgCgdjb21tYW5kGAEgASgLMg8udGFwLnYxLkNvbW1hbmQiXAoTRGV2aWNlQXNzZXJ0aW9uU3RlcBIpCgVjaGVjaxgBIAEoDjIaLnRhcC5zdHVkaW8udjEuRGV2aWNlQ2hlY2sSEQoEdGV4dBgCIAEoCUgAiAEBQgcKBV90ZXh0InAKB091dGNvbWUSEwoLZHVyYXRpb25fbXMYASABKAUSHAoFZXJyb3IYAiABKAsyDS50YXAudjEuRXJyb3ISIAoHZmFpbHVyZRgDIAEoCzIPLnRhcC52MS5GYWlsdXJlEhAKCG1pc21hdGNoGAQgASgJKo8BCg5TZWxlY3Rvck9yaWdpbhIfChtTRUxFQ1RPUl9PUklHSU5fVU5TUEVDSUZJRUQQABIfChtTRUxFQ1RPUl9PUklHSU5fU1lOVEhFU0laRUQQARIfChtTRUxFQ1RPUl9PUklHSU5fQUxURVJOQVRJVkUQAhIaChZTRUxFQ1RPUl9PUklHSU5fRURJVEVEEAMqpwIKCUNvbmRpdGlvbhIZChVDT05ESVRJT05fVU5TUEVDSUZJRUQQABIVChFDT05ESVRJT05fVklTSUJMRRABEhEKDUNPTkRJVElPTl9PTkUQAhISCg5DT05ESVRJT05fR09ORRADEhUKEUNPTkRJVElPTl9FTkFCTEVEEAQSFgoSQ09ORElUSU9OX0RJU0FCTEVEEAUSFQoRQ09ORElUSU9OX0NIRUNLRUQQBhIXChNDT05ESVRJT05fVU5DSEVDS0VEEAcSFQoRQ09ORElUSU9OX0ZPQ1VTRUQQCBIZChVDT05ESVRJT05fVEVYVF9FUVVBTFMQCRIbChdDT05ESVRJT05fVEVYVF9DT05UQUlOUxAKEhMKD0NPTkRJVElPTl9DT1VOVBALKtMBCgVDaGVjaxIVChFDSEVDS19VTlNQRUNJRklFRBAAEhAKDENIRUNLX0VYSVNUUxABEg8KC0NIRUNLX0NPVU5UEAISFQoRQ0hFQ0tfVEVYVF9FUVVBTFMQAxIXChNDSEVDS19URVhUX0NPTlRBSU5TEAQSEQoNQ0hFQ0tfRU5BQkxFRBAFEhIKDkNIRUNLX0RJU0FCTEVEEAYSEQoNQ0hFQ0tfQ0hFQ0tFRBAHEhMKD0NIRUNLX1VOQ0hFQ0tFRBAIEhEKDUNIRUNLX0ZPQ1VTRUQQCSq3AQoLRGV2aWNlQ2hlY2sSHAoYREVWSUNFX0NIRUNLX1VOU1BFQ0lGSUVEEAASJAogREVWSUNFX0NIRUNLX0ZPUkVHUk9VTkRfQUNUSVZJVFkQARIfChtERVZJQ0VfQ0hFQ0tfS0VZQk9BUkRfU0hPV04QAhIgChxERVZJQ0VfQ0hFQ0tfS0VZQk9BUkRfSElEREVOEAMSIQodREVWSUNFX0NIRUNLX0NMSVBCT0FSRF9FUVVBTFMQBDLYDAoNU3R1ZGlvU2VydmljZRJECgRJbmZvEhoudGFwLnN0dWRpby52MS5JbmZvUmVxdWVzdBobLnRhcC5zdHVkaW8udjEuSW5mb1Jlc3BvbnNlIgOQAgESVgoKR2V0U2Vzc2lvbhIgLnRhcC5zdHVkaW8udjEuR2V0U2Vzc2lvblJlcXVlc3QaIS50YXAuc3R1ZGlvLnYxLkdldFNlc3Npb25SZXNwb25zZSIDkAIBElkKC0xpc3REZXZpY2VzEiEudGFwLnN0dWRpby52MS5MaXN0RGV2aWNlc1JlcXVlc3QaIi50YXAuc3R1ZGlvLnYxLkxpc3REZXZpY2VzUmVzcG9uc2UiA5ACARJFCgZBdHRhY2gSHC50YXAuc3R1ZGlvLnYxLkF0dGFjaFJlcXVlc3QaHS50YXAuc3R1ZGlvLnYxLkF0dGFjaFJlc3BvbnNlEkgKB1JlbGVhc2USHS50YXAuc3R1ZGlvLnYxLlJlbGVhc2VSZXF1ZXN0Gh4udGFwLnN0dWRpby52MS5SZWxlYXNlUmVzcG9uc2USTAoGRnJhbWVzEhwudGFwLnN0dWRpby52MS5GcmFtZXNSZXF1ZXN0Gh0udGFwLnN0dWRpby52MS5GcmFtZXNSZXNwb25zZSIDkAIBMAESRwoFQ291bnQSGy50YXAuc3R1ZGlvLnYxLkNvdW50UmVxdWVzdBocLnRhcC5zdHVkaW8udjEuQ291bnRSZXNwb25zZSIDkAIBEmUKD0Rlc2NyaWJlRWxlbWVudBIlLnRhcC5zdHVkaW8udjEuRGVzY3JpYmVFbGVtZW50UmVxdWVzdBomLnRhcC5zdHVkaW8udjEuRGVzY3JpYmVFbGVtZW50UmVzcG9uc2UiA5ACARJlCg9HZXREZXZpY2VTdGF0dXMSJS50YXAuc3R1ZGlvLnYxLkdldERldmljZVN0YXR1c1JlcXVlc3QaJi50YXAuc3R1ZGlvLnYxLkdldERldmljZVN0YXR1c1Jlc3BvbnNlIgOQAgESZgoRTGlzdE5vdGlmaWNhdGlvbnMSJy50YXAuc3R1ZGlvLnYxLkxpc3ROb3RpZmljYXRpb25zUmVxdWVzdBooLnRhcC5zdHVkaW8udjEuTGlzdE5vdGlmaWNhdGlvbnNSZXNwb25zZRJICgdQZXJmb3JtEh0udGFwLnN0dWRpby52MS5QZXJmb3JtUmVxdWVzdBoeLnRhcC5zdHVkaW8udjEuUGVyZm9ybVJlc3BvbnNlElEKClVwZGF0ZVN0ZXASIC50YXAuc3R1ZGlvLnYxLlVwZGF0ZVN0ZXBSZXF1ZXN0GiEudGFwLnN0dWRpby52MS5VcGRhdGVTdGVwUmVzcG9uc2USUQoKRGVsZXRlU3RlcBIgLnRhcC5zdHVkaW8udjEuRGVsZXRlU3RlcFJlcXVlc3QaIS50YXAuc3R1ZGlvLnYxLkRlbGV0ZVN0ZXBSZXNwb25zZRJLCghNb3ZlU3RlcBIeLnRhcC5zdHVkaW8udjEuTW92ZVN0ZXBSZXF1ZXN0Gh8udGFwLnN0dWRpby52MS5Nb3ZlU3RlcFJlc3BvbnNlEloKDU9wZW5SZWNvcmRpbmcSIy50YXAuc3R1ZGlvLnYxLk9wZW5SZWNvcmRpbmdSZXF1ZXN0GiQudGFwLnN0dWRpby52MS5PcGVuUmVjb3JkaW5nUmVzcG9uc2USRwoGUmVwbGF5EhwudGFwLnN0dWRpby52MS5SZXBsYXlSZXF1ZXN0Gh0udGFwLnN0dWRpby52MS5SZXBsYXlSZXNwb25zZTABElcKDFNldFJlY29yZGluZxIiLnRhcC5zdHVkaW8udjEuU2V0UmVjb3JkaW5nUmVxdWVzdBojLnRhcC5zdHVkaW8udjEuU2V0UmVjb3JkaW5nUmVzcG9uc2USVwoMTmV3UmVjb3JkaW5nEiIudGFwLnN0dWRpby52MS5OZXdSZWNvcmRpbmdSZXF1ZXN0GiMudGFwLnN0dWRpby52MS5OZXdSZWNvcmRpbmdSZXNwb25zZRJcCgxHZXRSZWNvcmRpbmcSIi50YXAuc3R1ZGlvLnYxLkdldFJlY29yZGluZ1JlcXVlc3QaIy50YXAuc3R1ZGlvLnYxLkdldFJlY29yZGluZ1Jlc3BvbnNlIgOQAgFiBnByb3RvMw", [file_command, file_device, file_event_log, file_failure, file_google_protobuf_timestamp, file_selector]);
 
 /**
  * @generated from message tap.studio.v1.InfoRequest
@@ -431,6 +431,128 @@ export const CountResponseSchema: GenMessage<CountResponse> = /*@__PURE__*/
   messageDesc(file_studio, 16);
 
 /**
+ * @generated from message tap.studio.v1.DescribeElementRequest
+ */
+export type DescribeElementRequest = Message<"tap.studio.v1.DescribeElementRequest"> & {
+  /**
+   * @generated from field: tap.v1.Selector selector = 1;
+   */
+  selector?: Selector | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.DescribeElementRequest.
+ * Use `create(DescribeElementRequestSchema)` to create a new message.
+ */
+export const DescribeElementRequestSchema: GenMessage<DescribeElementRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 17);
+
+/**
+ * @generated from message tap.studio.v1.DescribeElementResponse
+ */
+export type DescribeElementResponse = Message<"tap.studio.v1.DescribeElementResponse"> & {
+  /**
+   * The standard accessibility actions the node offers (`Element.performAction`).
+   *
+   * @generated from field: repeated tap.v1.StandardAction actions = 1;
+   */
+  actions: StandardAction[];
+
+  /**
+   * The custom actions it offers, by label (`Element.performCustomAction`).
+   *
+   * @generated from field: repeated string custom_actions = 2;
+   */
+  customActions: string[];
+
+  /**
+   * A range node's (SeekBar, Slider, RatingBar) range: `Element.setProgress` takes min..max.
+   *
+   * @generated from field: optional tap.v1.Range range = 3;
+   */
+  range?: Range | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.DescribeElementResponse.
+ * Use `create(DescribeElementResponseSchema)` to create a new message.
+ */
+export const DescribeElementResponseSchema: GenMessage<DescribeElementResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 18);
+
+/**
+ * @generated from message tap.studio.v1.GetDeviceStatusRequest
+ */
+export type GetDeviceStatusRequest = Message<"tap.studio.v1.GetDeviceStatusRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.GetDeviceStatusRequest.
+ * Use `create(GetDeviceStatusRequestSchema)` to create a new message.
+ */
+export const GetDeviceStatusRequestSchema: GenMessage<GetDeviceStatusRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 19);
+
+/**
+ * @generated from message tap.studio.v1.GetDeviceStatusResponse
+ */
+export type GetDeviceStatusResponse = Message<"tap.studio.v1.GetDeviceStatusResponse"> & {
+  /**
+   * @generated from field: tap.v1.DeviceInfo info = 1;
+   */
+  info?: DeviceInfo | undefined;
+
+  /**
+   * The resumed activity (`Device.foregroundActivity`); both absent when none is resumed.
+   *
+   * @generated from field: optional string foreground_package = 2;
+   */
+  foregroundPackage?: string | undefined;
+
+  /**
+   * @generated from field: optional string foreground_activity = 3;
+   */
+  foregroundActivity?: string | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.GetDeviceStatusResponse.
+ * Use `create(GetDeviceStatusResponseSchema)` to create a new message.
+ */
+export const GetDeviceStatusResponseSchema: GenMessage<GetDeviceStatusResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 20);
+
+/**
+ * @generated from message tap.studio.v1.ListNotificationsRequest
+ */
+export type ListNotificationsRequest = Message<"tap.studio.v1.ListNotificationsRequest"> & {
+};
+
+/**
+ * Describes the message tap.studio.v1.ListNotificationsRequest.
+ * Use `create(ListNotificationsRequestSchema)` to create a new message.
+ */
+export const ListNotificationsRequestSchema: GenMessage<ListNotificationsRequest> = /*@__PURE__*/
+  messageDesc(file_studio, 21);
+
+/**
+ * @generated from message tap.studio.v1.ListNotificationsResponse
+ */
+export type ListNotificationsResponse = Message<"tap.studio.v1.ListNotificationsResponse"> & {
+  /**
+   * @generated from field: repeated tap.v1.DeviceNotification notifications = 1;
+   */
+  notifications: DeviceNotification[];
+};
+
+/**
+ * Describes the message tap.studio.v1.ListNotificationsResponse.
+ * Use `create(ListNotificationsResponseSchema)` to create a new message.
+ */
+export const ListNotificationsResponseSchema: GenMessage<ListNotificationsResponse> = /*@__PURE__*/
+  messageDesc(file_studio, 22);
+
+/**
  * @generated from message tap.studio.v1.PerformRequest
  */
 export type PerformRequest = Message<"tap.studio.v1.PerformRequest"> & {
@@ -473,7 +595,7 @@ export type PerformRequest = Message<"tap.studio.v1.PerformRequest"> & {
  * Use `create(PerformRequestSchema)` to create a new message.
  */
 export const PerformRequestSchema: GenMessage<PerformRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 17);
+  messageDesc(file_studio, 23);
 
 /**
  * @generated from message tap.studio.v1.PerformResponse
@@ -506,7 +628,7 @@ export type PerformResponse = Message<"tap.studio.v1.PerformResponse"> & {
  * Use `create(PerformResponseSchema)` to create a new message.
  */
 export const PerformResponseSchema: GenMessage<PerformResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 18);
+  messageDesc(file_studio, 24);
 
 /**
  * @generated from message tap.studio.v1.UpdateStepRequest
@@ -535,7 +657,7 @@ export type UpdateStepRequest = Message<"tap.studio.v1.UpdateStepRequest"> & {
  * Use `create(UpdateStepRequestSchema)` to create a new message.
  */
 export const UpdateStepRequestSchema: GenMessage<UpdateStepRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 19);
+  messageDesc(file_studio, 25);
 
 /**
  * @generated from message tap.studio.v1.UpdateStepResponse
@@ -557,7 +679,7 @@ export type UpdateStepResponse = Message<"tap.studio.v1.UpdateStepResponse"> & {
  * Use `create(UpdateStepResponseSchema)` to create a new message.
  */
 export const UpdateStepResponseSchema: GenMessage<UpdateStepResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 20);
+  messageDesc(file_studio, 26);
 
 /**
  * @generated from message tap.studio.v1.DeleteStepRequest
@@ -574,7 +696,7 @@ export type DeleteStepRequest = Message<"tap.studio.v1.DeleteStepRequest"> & {
  * Use `create(DeleteStepRequestSchema)` to create a new message.
  */
 export const DeleteStepRequestSchema: GenMessage<DeleteStepRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 21);
+  messageDesc(file_studio, 27);
 
 /**
  * @generated from message tap.studio.v1.DeleteStepResponse
@@ -596,7 +718,7 @@ export type DeleteStepResponse = Message<"tap.studio.v1.DeleteStepResponse"> & {
  * Use `create(DeleteStepResponseSchema)` to create a new message.
  */
 export const DeleteStepResponseSchema: GenMessage<DeleteStepResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 22);
+  messageDesc(file_studio, 28);
 
 /**
  * @generated from message tap.studio.v1.MoveStepRequest
@@ -620,7 +742,7 @@ export type MoveStepRequest = Message<"tap.studio.v1.MoveStepRequest"> & {
  * Use `create(MoveStepRequestSchema)` to create a new message.
  */
 export const MoveStepRequestSchema: GenMessage<MoveStepRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 23);
+  messageDesc(file_studio, 29);
 
 /**
  * @generated from message tap.studio.v1.MoveStepResponse
@@ -642,7 +764,7 @@ export type MoveStepResponse = Message<"tap.studio.v1.MoveStepResponse"> & {
  * Use `create(MoveStepResponseSchema)` to create a new message.
  */
 export const MoveStepResponseSchema: GenMessage<MoveStepResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 24);
+  messageDesc(file_studio, 30);
 
 /**
  * @generated from message tap.studio.v1.OpenRecordingRequest
@@ -661,7 +783,7 @@ export type OpenRecordingRequest = Message<"tap.studio.v1.OpenRecordingRequest">
  * Use `create(OpenRecordingRequestSchema)` to create a new message.
  */
 export const OpenRecordingRequestSchema: GenMessage<OpenRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 25);
+  messageDesc(file_studio, 31);
 
 /**
  * @generated from message tap.studio.v1.OpenRecordingResponse
@@ -688,7 +810,7 @@ export type OpenRecordingResponse = Message<"tap.studio.v1.OpenRecordingResponse
  * Use `create(OpenRecordingResponseSchema)` to create a new message.
  */
 export const OpenRecordingResponseSchema: GenMessage<OpenRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 26);
+  messageDesc(file_studio, 32);
 
 /**
  * @generated from message tap.studio.v1.ReplayRequest
@@ -721,7 +843,7 @@ export type ReplayRequest = Message<"tap.studio.v1.ReplayRequest"> & {
  * Use `create(ReplayRequestSchema)` to create a new message.
  */
 export const ReplayRequestSchema: GenMessage<ReplayRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 27);
+  messageDesc(file_studio, 33);
 
 /**
  * Two per step: when it starts (no outcome), and when it ends (its outcome). The stream ends after
@@ -755,7 +877,7 @@ export type ReplayResponse = Message<"tap.studio.v1.ReplayResponse"> & {
  * Use `create(ReplayResponseSchema)` to create a new message.
  */
 export const ReplayResponseSchema: GenMessage<ReplayResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 28);
+  messageDesc(file_studio, 34);
 
 /**
  * @generated from message tap.studio.v1.SetRecordingRequest
@@ -772,7 +894,7 @@ export type SetRecordingRequest = Message<"tap.studio.v1.SetRecordingRequest"> &
  * Use `create(SetRecordingRequestSchema)` to create a new message.
  */
 export const SetRecordingRequestSchema: GenMessage<SetRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 29);
+  messageDesc(file_studio, 35);
 
 /**
  * @generated from message tap.studio.v1.SetRecordingResponse
@@ -789,7 +911,7 @@ export type SetRecordingResponse = Message<"tap.studio.v1.SetRecordingResponse">
  * Use `create(SetRecordingResponseSchema)` to create a new message.
  */
 export const SetRecordingResponseSchema: GenMessage<SetRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 30);
+  messageDesc(file_studio, 36);
 
 /**
  * @generated from message tap.studio.v1.NewRecordingRequest
@@ -802,7 +924,7 @@ export type NewRecordingRequest = Message<"tap.studio.v1.NewRecordingRequest"> &
  * Use `create(NewRecordingRequestSchema)` to create a new message.
  */
 export const NewRecordingRequestSchema: GenMessage<NewRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 31);
+  messageDesc(file_studio, 37);
 
 /**
  * @generated from message tap.studio.v1.NewRecordingResponse
@@ -819,7 +941,7 @@ export type NewRecordingResponse = Message<"tap.studio.v1.NewRecordingResponse">
  * Use `create(NewRecordingResponseSchema)` to create a new message.
  */
 export const NewRecordingResponseSchema: GenMessage<NewRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 32);
+  messageDesc(file_studio, 38);
 
 /**
  * @generated from message tap.studio.v1.GetRecordingRequest
@@ -832,7 +954,7 @@ export type GetRecordingRequest = Message<"tap.studio.v1.GetRecordingRequest"> &
  * Use `create(GetRecordingRequestSchema)` to create a new message.
  */
 export const GetRecordingRequestSchema: GenMessage<GetRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_studio, 33);
+  messageDesc(file_studio, 39);
 
 /**
  * @generated from message tap.studio.v1.GetRecordingResponse
@@ -865,7 +987,7 @@ export type GetRecordingResponse = Message<"tap.studio.v1.GetRecordingResponse">
  * Use `create(GetRecordingResponseSchema)` to create a new message.
  */
 export const GetRecordingResponseSchema: GenMessage<GetRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_studio, 34);
+  messageDesc(file_studio, 40);
 
 /**
  * @generated from message tap.studio.v1.Recording
@@ -917,7 +1039,7 @@ export type Recording = Message<"tap.studio.v1.Recording"> & {
  * Use `create(RecordingSchema)` to create a new message.
  */
 export const RecordingSchema: GenMessage<Recording> = /*@__PURE__*/
-  messageDesc(file_studio, 35);
+  messageDesc(file_studio, 41);
 
 /**
  * @generated from message tap.studio.v1.RecordedDevice
@@ -949,7 +1071,7 @@ export type RecordedDevice = Message<"tap.studio.v1.RecordedDevice"> & {
  * Use `create(RecordedDeviceSchema)` to create a new message.
  */
 export const RecordedDeviceSchema: GenMessage<RecordedDevice> = /*@__PURE__*/
-  messageDesc(file_studio, 36);
+  messageDesc(file_studio, 42);
 
 /**
  * @generated from message tap.studio.v1.Step
@@ -981,8 +1103,10 @@ export type Step = Message<"tap.studio.v1.Step"> & {
    */
   kind: {
     /**
-     * An app lifecycle call: cold_launch, launch, force_stop, clear_data or grant_permission
-     * (`permission` with grant_permission only; `activity` with the launches only).
+     * An app call: cold_launch, launch, foreground, force_stop, clear_data, grant_permission,
+     * revoke_permission, open_link or set_locales (`permission` with the two permission calls
+     * only; `activity` and `extras` with the launches only; `uri`, required, and `any_app` with
+     * open_link only; `locales` with set_locales only, none = follow the system again).
      *
      * @generated from field: tap.v1.AppCall app = 10;
      */
@@ -1024,6 +1148,30 @@ export type Step = Message<"tap.studio.v1.Step"> & {
      */
     value: AppWaitStep;
     case: "appWait";
+  } | {
+    /**
+     * @generated from field: tap.studio.v1.DeviceWaitStep device_wait = 17;
+     */
+    value: DeviceWaitStep;
+    case: "deviceWait";
+  } | {
+    /**
+     * A device condition held until the device is released (or the replay's session ends), which
+     * restores what the device had: set_animations, set_dark_mode, set_font_scale, set_density,
+     * set_network, set_system_locales, set_location, set_stay_awake or set_accessibility_display,
+     * with the fields `tap.v1.DeviceCall` lists for each. The file calls (push_file, pull_file,
+     * add_media) need a host file and are not steps.
+     *
+     * @generated from field: tap.v1.DeviceCall device = 18;
+     */
+    value: DeviceCall;
+    case: "device";
+  } | {
+    /**
+     * @generated from field: tap.studio.v1.DeviceAssertionStep device_assertion = 19;
+     */
+    value: DeviceAssertionStep;
+    case: "deviceAssertion";
   } | { case: undefined; value?: undefined };
 };
 
@@ -1032,7 +1180,7 @@ export type Step = Message<"tap.studio.v1.Step"> & {
  * Use `create(StepSchema)` to create a new message.
  */
 export const StepSchema: GenMessage<Step> = /*@__PURE__*/
-  messageDesc(file_studio, 37);
+  messageDesc(file_studio, 43);
 
 /**
  * One command; a command with a selector is preceded by the wait that proved it could run.
@@ -1041,14 +1189,18 @@ export const StepSchema: GenMessage<Step> = /*@__PURE__*/
  */
 export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
   /**
-   * tap, long_tap, set_text, clear_text, scroll, swipe, press_key or open_system_panel.
+   * On an element: tap, long_tap, double_tap, set_text, clear_text, scroll, swipe, fling, pinch,
+   * drag, perform_ime_action, perform_accessibility_action or set_progress. On the device, with no
+   * selector: press_key, open_system_panel, set_orientation, set_display_rotation,
+   * unfreeze_rotation, dismiss_keyguard, hide_keyboard, set_clipboard, choose_permission,
+   * open_notification or dismiss_notification.
    *
    * @generated from field: tap.v1.Command command = 1;
    */
   command?: Command | undefined;
 
   /**
-   * For every op but press_key and open_system_panel (and only then): `wait_visible` of the command's selector, with
+   * For every op on an element (and only then): `wait_visible` of the command's selector, with
    * `exactly_one` unless the selector has a `first` or `at` pick (waits count every match, so a
    * picked selector waits for at least one and the command picks). A replayer sends `wait` then
    * `command`, unchanged.
@@ -1065,7 +1217,8 @@ export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
   secret?: string | undefined;
 
   /**
-   * Unspecified for press_key and open_system_panel.
+   * Unspecified for the ops on the device. A drag's destination is its own: resolved by the driver
+   * on the same screen, it needs no wait.
    *
    * @generated from field: tap.studio.v1.SelectorOrigin selector_origin = 4;
    */
@@ -1077,7 +1230,7 @@ export type ActionStep = Message<"tap.studio.v1.ActionStep"> & {
  * Use `create(ActionStepSchema)` to create a new message.
  */
 export const ActionStepSchema: GenMessage<ActionStep> = /*@__PURE__*/
-  messageDesc(file_studio, 38);
+  messageDesc(file_studio, 44);
 
 /**
  * The element typeText flow, three commands: tap `selector`, await it focused (unless
@@ -1133,7 +1286,7 @@ export type TypeStep = Message<"tap.studio.v1.TypeStep"> & {
  * Use `create(TypeStepSchema)` to create a new message.
  */
 export const TypeStepSchema: GenMessage<TypeStep> = /*@__PURE__*/
-  messageDesc(file_studio, 39);
+  messageDesc(file_studio, 45);
 
 /**
  * A wait: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
@@ -1188,7 +1341,7 @@ export type WaitStep = Message<"tap.studio.v1.WaitStep"> & {
  * Use `create(WaitStepSchema)` to create a new message.
  */
 export const WaitStepSchema: GenMessage<WaitStep> = /*@__PURE__*/
-  messageDesc(file_studio, 40);
+  messageDesc(file_studio, 46);
 
 /**
  * An assertion: the screen as it is now, with no waiting. One query command (`exists`, `count`, or
@@ -1245,7 +1398,7 @@ export type AssertionStep = Message<"tap.studio.v1.AssertionStep"> & {
  * Use `create(AssertionStepSchema)` to create a new message.
  */
 export const AssertionStepSchema: GenMessage<AssertionStep> = /*@__PURE__*/
-  messageDesc(file_studio, 41);
+  messageDesc(file_studio, 47);
 
 /**
  * The SDKs' `Element.scrollUntil`: scrolls `container` towards `direction` until `target` exists
@@ -1304,7 +1457,7 @@ export type ScrollUntilStep = Message<"tap.studio.v1.ScrollUntilStep"> & {
  * Use `create(ScrollUntilStepSchema)` to create a new message.
  */
 export const ScrollUntilStepSchema: GenMessage<ScrollUntilStep> = /*@__PURE__*/
-  messageDesc(file_studio, 42);
+  messageDesc(file_studio, 48);
 
 /**
  * An app wait, one command on the app's package: `wait_app_visible` (`App.awaitVisible`: the app
@@ -1325,7 +1478,56 @@ export type AppWaitStep = Message<"tap.studio.v1.AppWaitStep"> & {
  * Use `create(AppWaitStepSchema)` to create a new message.
  */
 export const AppWaitStepSchema: GenMessage<AppWaitStep> = /*@__PURE__*/
-  messageDesc(file_studio, 43);
+  messageDesc(file_studio, 49);
+
+/**
+ * A device wait, one command with no selector: `await_toast` (`Device.awaitToast`),
+ * `await_notification` (`Device.awaitNotification`) or `wait_permission_prompt`
+ * (`Device.awaitPermissionPrompt`), within its `timeout_ms` or the device's wait timeout.
+ *
+ * @generated from message tap.studio.v1.DeviceWaitStep
+ */
+export type DeviceWaitStep = Message<"tap.studio.v1.DeviceWaitStep"> & {
+  /**
+   * @generated from field: tap.v1.Command command = 1;
+   */
+  command?: Command | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.DeviceWaitStep.
+ * Use `create(DeviceWaitStepSchema)` to create a new message.
+ */
+export const DeviceWaitStepSchema: GenMessage<DeviceWaitStep> = /*@__PURE__*/
+  messageDesc(file_studio, 50);
+
+/**
+ * An assertion on the device rather than an element: one query, no waiting.
+ *
+ * @generated from message tap.studio.v1.DeviceAssertionStep
+ */
+export type DeviceAssertionStep = Message<"tap.studio.v1.DeviceAssertionStep"> & {
+  /**
+   * Required.
+   *
+   * @generated from field: tap.studio.v1.DeviceCheck check = 1;
+   */
+  check: DeviceCheck;
+
+  /**
+   * Set exactly for FOREGROUND_ACTIVITY (non-empty, with a "/") and CLIPBOARD_EQUALS.
+   *
+   * @generated from field: optional string text = 2;
+   */
+  text?: string | undefined;
+};
+
+/**
+ * Describes the message tap.studio.v1.DeviceAssertionStep.
+ * Use `create(DeviceAssertionStepSchema)` to create a new message.
+ */
+export const DeviceAssertionStepSchema: GenMessage<DeviceAssertionStep> = /*@__PURE__*/
+  messageDesc(file_studio, 51);
 
 /**
  * At most one of `error`, `failure` and `mismatch`; none means the step passed.
@@ -1365,7 +1567,7 @@ export type Outcome = Message<"tap.studio.v1.Outcome"> & {
  * Use `create(OutcomeSchema)` to create a new message.
  */
 export const OutcomeSchema: GenMessage<Outcome> = /*@__PURE__*/
-  messageDesc(file_studio, 44);
+  messageDesc(file_studio, 52);
 
 /**
  * Where a step's selector came from.
@@ -1567,6 +1769,52 @@ export const CheckSchema: GenEnum<Check> = /*@__PURE__*/
   enumDesc(file_studio, 2);
 
 /**
+ * What a device assertion checks, once and at once.
+ *
+ * @generated from enum tap.studio.v1.DeviceCheck
+ */
+export enum DeviceCheck {
+  /**
+   * @generated from enum value: DEVICE_CHECK_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * foregroundActivity() is `text`, as "package/class" (the class as Android names it).
+   *
+   * @generated from enum value: DEVICE_CHECK_FOREGROUND_ACTIVITY = 1;
+   */
+  FOREGROUND_ACTIVITY = 1,
+
+  /**
+   * keyboardShown()
+   *
+   * @generated from enum value: DEVICE_CHECK_KEYBOARD_SHOWN = 2;
+   */
+  KEYBOARD_SHOWN = 2,
+
+  /**
+   * !keyboardShown()
+   *
+   * @generated from enum value: DEVICE_CHECK_KEYBOARD_HIDDEN = 3;
+   */
+  KEYBOARD_HIDDEN = 3,
+
+  /**
+   * clipboard() == text
+   *
+   * @generated from enum value: DEVICE_CHECK_CLIPBOARD_EQUALS = 4;
+   */
+  CLIPBOARD_EQUALS = 4,
+}
+
+/**
+ * Describes the enum tap.studio.v1.DeviceCheck.
+ */
+export const DeviceCheckSchema: GenEnum<DeviceCheck> = /*@__PURE__*/
+  enumDesc(file_studio, 3);
+
+/**
  * @generated from service tap.studio.v1.StudioService
  */
 export const StudioService: GenService<{
@@ -1643,6 +1891,39 @@ export const StudioService: GenService<{
     methodKind: "unary";
     input: typeof CountRequestSchema;
     output: typeof CountResponseSchema;
+  },
+  /**
+   * What the one node a selector matches offers: its accessibility actions and its range, so the
+   * page offers only the actions and progress values it can take. NOT_FOUND / FAILED_PRECONDITION
+   * when the selector does not match exactly one node.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.DescribeElement
+   */
+  describeElement: {
+    methodKind: "unary";
+    input: typeof DescribeElementRequestSchema;
+    output: typeof DescribeElementResponseSchema;
+  },
+  /**
+   * The device as it is now (the Device tab's read-back): its settings and the resumed activity.
+   *
+   * @generated from rpc tap.studio.v1.StudioService.GetDeviceStatus
+   */
+  getDeviceStatus: {
+    methodKind: "unary";
+    input: typeof GetDeviceStatusRequestSchema;
+    output: typeof GetDeviceStatusResponseSchema;
+  },
+  /**
+   * The active notifications, newest first, to pick one to wait for, open or dismiss. The daemon
+   * gives the driver notification access for the attachment (taken back on release).
+   *
+   * @generated from rpc tap.studio.v1.StudioService.ListNotifications
+   */
+  listNotifications: {
+    methodKind: "unary";
+    input: typeof ListNotificationsRequestSchema;
+    output: typeof ListNotificationsResponseSchema;
   },
   /**
    * Runs one step on the attached device and, while recording, adds it when it passed.

@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import math
+import os
+import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from . import _gen as pb
 from . import _proto
@@ -18,12 +21,21 @@ from .models import (
     AttachedDeviceEntry,
     Capture,
     DeviceInfo,
+    DisplayRotation,
     DriverLog,
+    ForegroundActivity,
     Hierarchy,
+    Orientation,
+    MatchMode,
+    LocationAccuracy,
+    Notification,
+    PermissionChoice,
+    PermissionPrompt,
     Recording,
     ScreenSnapshot,
     Screenshot,
     StabilitySignal,
+    Toast,
 )
 from .selectors import Selector
 from .screen import Screen
@@ -35,6 +47,8 @@ if TYPE_CHECKING:
 
 KEYCODE_HOME = 3
 KEYCODE_BACK = 4
+KEYCODE_SLEEP = 223
+KEYCODE_WAKEUP = 224
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,18 @@ class Timeouts:
 # Extra seconds a device RPC's gRPC deadline allows past the command's own timeout, so that a
 # command timeout arrives as a device result rather than a client-side DEADLINE_EXCEEDED.
 RPC_DEADLINE_SLACK = 60.0
+
+MAX_FILE_BYTES = 512 << 20
+"""Largest file ``push_file``, ``pull_file`` and ``add_media`` move (512 MiB)."""
+
+FILE_CHUNK_BYTES = 1 << 20
+"""Size of each chunk the file uploads stream."""
+
+_T = TypeVar("_T")
+
+FILE_DEADLINE = 600.0
+"""A file transfer's whole-call deadline: the server's 5-minute adb transfer plus the upload."""
+
 
 
 def _or(value: float | None, default: float) -> float:
@@ -195,6 +221,473 @@ class Device:
     def open_quick_settings(self) -> None:
         """Open the quick settings panel; otherwise as ``open_notifications``."""
         self._execute_or_raise(open_system_panel=pb.OpenSystemPanel(panel=pb.SYSTEM_PANEL_QUICK_SETTINGS))
+
+    def set_orientation(self, orientation: Orientation) -> None:
+        """Rotate the display to ``orientation`` geometry, whatever the device's natural
+        orientation, and freeze it there until ``unfreeze_rotation``.
+
+        Fails only when Android refuses the request; the call then waits briefly for the display
+        to turn. The foreground app may pin its own orientation and keep the display where it
+        wants it: assert with ``info()`` (``orientation``, ``display_rotation``). The rotation
+        settings the device had before the session's first rotation call are restored when the
+        device is detached.
+        """
+        self._execute_or_raise(set_orientation=pb.SetOrientation(orientation=_proto.orientation(orientation)))
+
+    def set_display_rotation(self, rotation: DisplayRotation) -> None:
+        """Rotate the display to the exact ``rotation`` and freeze it there; otherwise as
+        ``set_orientation``."""
+        self._execute_or_raise(
+            set_display_rotation=pb.SetDisplayRotation(rotation=_proto.display_rotation(rotation))
+        )
+
+    def unfreeze_rotation(self) -> None:
+        """Hand rotation back to the device's sensor (auto-rotate), without choosing a rotation."""
+        self._execute_or_raise(unfreeze_rotation=pb.UnfreezeRotation())
+
+    def wake(self) -> None:
+        """Turn the screen on (``KEYCODE_WAKEUP``; nothing happens when it is on). The keyguard
+        may still show: see ``dismiss_keyguard``."""
+        self.press_key(KEYCODE_WAKEUP)
+
+    def sleep(self) -> None:
+        """Turn the screen off (``KEYCODE_SLEEP``; nothing happens when it is off)."""
+        self.press_key(KEYCODE_SLEEP)
+
+    def dismiss_keyguard(self) -> None:
+        """Dismiss a keyguard that has no PIN, pattern or password (``wm dismiss-keyguard``); with
+        no keyguard showing nothing is sent. A secure keyguard raises ``CommandError``
+        (``ACTION_REJECTED`` / ``KEYGUARD_SECURE``) before any input: Tap never unlocks one.
+        ``info()`` reports the state."""
+        self._execute_or_raise(dismiss_keyguard=pb.DismissKeyguard())
+
+    def await_permission_prompt(self, timeout: float | None = None) -> PermissionPrompt:
+        """Wait until a runtime-permission dialog shows and return the choices it offers.
+
+        Buttons are recognised by the permission controller's resource ids, never by label or
+        position. Raises ``WaitTimeoutError`` (reason ``NO_PERMISSION_PROMPT``) when none appears
+        within ``timeout`` (default ``timeouts.wait``).
+        """
+        timeout = self.timeouts.wait if timeout is None else timeout
+        result = self._execute(timeout, wait_permission_prompt=pb.WaitPermissionPrompt())
+        if result.HasField("error"):
+            if result.error.code != pb.ERR_WAIT_TIMEOUT:
+                raise CommandError._from_result(result, "wait_permission_prompt", self.serial, None)
+            raise WaitTimeoutError._from_result(result, "a permission dialog", self.serial)
+        return _proto.permission_prompt(result.permission_prompt)
+
+    def choose_permission(
+        self,
+        choice: PermissionChoice,
+        accuracy: LocationAccuracy | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        """Tap the permission dialog's button for ``choice`` (``NOT_FOUND`` before any input when
+        the dialog does not offer it). With ``accuracy``, the location dialog's Precise /
+        Approximate radio is selected first; it must be offered too (``PermissionPrompt.accuracies``,
+        API 31+ when the app asks for fine location), or nothing is tapped. Only the taps are
+        reported: assert the outcome, e.g. the dialog gone and the app's state."""
+        request = pb.ChoosePermission(choice=_proto.permission_choice(choice))
+        if accuracy is not None:
+            request.accuracy = _proto.location_accuracy(accuracy)
+        self._execute_or_raise(timeout, choose_permission=request)
+
+    def keyboard_shown(self) -> bool:
+        """Whether a soft keyboard (any input method's window) is on screen; ``info()`` reports
+        the same."""
+        return self.info().keyboard_shown
+
+    def hide_keyboard(self, timeout: float | None = None) -> None:
+        """Hide the soft keyboard with one Back key, which the keyboard consumes; with no keyboard
+        showing nothing is sent, so Back never reaches the app. Only the key is reported: assert
+        ``keyboard_shown()`` when it matters."""
+        self._execute_or_raise(timeout, hide_keyboard=pb.HideKeyboard())
+
+    def set_clipboard(self, text: str, timeout: float | None = None) -> None:
+        """Put ``text`` on the device clipboard as plain text (at most 4096 characters)."""
+        self._execute_or_raise(timeout, set_clipboard=pb.SetClipboard(text=text))
+
+    def clipboard(self, timeout: float | None = None) -> str:
+        """The device clipboard as text; ``""`` when it is empty or holds nothing that reads as
+        text."""
+        return self._execute_or_raise(timeout, get_clipboard=pb.GetClipboard()).text
+
+    def set_animations(self, enabled: bool) -> None:
+        """Turn the window, transition and animator animations off (all three scales 0) or on
+        (all 1) for this session.
+
+        Like every device condition below, the value the device had before the session's first
+        change is restored on ``detach()`` (or by the next attach when the server died first),
+        and the change is read back: a value the device did not take raises ``ServerError``
+        (reason ``DEVICE_SETTING``). ``info().animations_enabled`` reports it.
+        """
+        self._condition("set_animations", "SetAnimations", pb.SetAnimationsRequest, enabled=enabled)
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Dark theme on or off (``cmd uimode night``) until ``detach()``, see
+        ``set_animations``. API 29+: below, ``ServerError`` (reason ``UNSUPPORTED_API``). Read
+        back with ``info().dark_mode``."""
+        self._condition("set_dark_mode", "SetDarkMode", pb.SetDarkModeRequest, enabled=enabled)
+
+    def set_font_scale(self, scale: float) -> None:
+        """The system font scale, 0.5 to 2.0 (1.0 = default), until ``detach()``, see
+        ``set_animations``. Read back with ``info().font_scale``."""
+        self._condition("set_font_scale", "SetFontScale", pb.SetFontScaleRequest, scale=scale)
+
+    def set_density(self, dpi: int | None) -> None:
+        """Override the display density with ``dpi`` (100 to 1000), or with ``None`` go back to
+        the display's physical density, until ``detach()``, see ``set_animations``. Read back
+        with ``info().density_dpi``."""
+        if dpi is None:
+            self._condition("set_density", "SetDensity", pb.SetDensityRequest)
+        else:
+            self._condition("set_density", "SetDensity", pb.SetDensityRequest, dpi=dpi)
+
+    def set_network(
+        self,
+        *,
+        airplane_mode: bool | None = None,
+        wifi: bool | None = None,
+        mobile_data: bool | None = None,
+    ) -> None:
+        """Switch airplane mode, Wi-Fi and mobile data on or off until ``detach()``, see
+        ``set_animations``; a switch left ``None`` stays as it is.
+
+        These are the device's real switches (nothing is mocked): the app sees what it would see
+        if a user flipped them, and turning Wi-Fi on says nothing about when it connects. Airplane
+        mode is applied first, so ``set_network(airplane_mode=True, wifi=True)`` is airplane mode
+        with Wi-Fi on. API 29+. A device reached over ADB on the network refuses Wi-Fi off or
+        airplane mode on (``ServerError``, reason ``DEVICE_SETTING``): that would cut Tap off. Read
+        back with ``info().airplane_mode``, ``wifi_enabled`` and ``mobile_data_enabled``.
+        """
+        switches = {"airplane_mode": airplane_mode, "wifi": wifi, "mobile_data": mobile_data}
+        fields = {name: value for name, value in switches.items() if value is not None}
+        if not fields:
+            raise ValueError("set at least one of airplane_mode, wifi or mobile_data")
+        self._condition("set_network", "SetNetwork", pb.SetNetworkRequest, **fields)
+
+    def set_system_locales(self, locales: Sequence[str]) -> None:
+        """Set the device's languages (Settings › Languages) until ``detach()``, see
+        ``set_animations``: BCP-47 tags in preference order, 1 to 16 of them (``"fr-FR"``,
+        ``"en"``).
+
+        Every app that follows the system sees the change as a configuration change; an app with
+        its own languages (``App.set_locales``) keeps them. Android has no shell command for
+        this: the Tap driver app applies it as Settings' language picker does, and the result is
+        read back (``ServerError``, reason ``DEVICE_SETTING``, when the device reports another
+        list). Read back with ``info().system_locales``.
+        """
+        if isinstance(locales, str):
+            raise TypeError("locales is a sequence of tags, e.g. ['fr-FR', 'en']")
+        if not locales:
+            raise ValueError("set at least one locale")
+        self._condition("set_system_locales", "SetSystemLocales", pb.SetSystemLocalesRequest, locales=list(locales))
+
+    def set_location(
+        self,
+        latitude: float,
+        longitude: float,
+        *,
+        accuracy_m: float | None = None,
+        altitude_m: float | None = None,
+    ) -> None:
+        """Mock the device location until ``detach()``.
+
+        The gps and network providers (and fused, API 31+) report this fix, sent again every
+        second so an app that starts listening later still gets one. ``latitude`` -90..90,
+        ``longitude`` -180..180, ``accuracy_m`` in meters (> 0; ``None`` = 5), ``altitude_m`` in
+        meters (``None`` = none). The Tap driver app becomes the device's mock-location app and,
+        when location is off, location is turned on; both are restored on ``detach()``, which
+        ends the mock. Calling it again moves the fix. Apps that read location through Google
+        Play services see it as Play services relays the platform providers.
+        """
+        if not -90 <= latitude <= 90:
+            raise ValueError(f"latitude must be -90 to 90, not {latitude}")
+        if not -180 <= longitude <= 180:
+            raise ValueError(f"longitude must be -180 to 180, not {longitude}")
+        if accuracy_m is not None and not (math.isfinite(accuracy_m) and accuracy_m > 0):
+            raise ValueError(f"accuracy_m must be a positive number of meters, not {accuracy_m}")
+        if altitude_m is not None and not math.isfinite(altitude_m):
+            raise ValueError(f"altitude_m must be finite, not {altitude_m}")
+        fields = {"latitude": latitude, "longitude": longitude}
+        if accuracy_m is not None:
+            fields["accuracy_m"] = accuracy_m
+        if altitude_m is not None:
+            fields["altitude_m"] = altitude_m
+        self._condition("set_location", "SetLocation", pb.SetLocationRequest, **fields)
+
+    def set_stay_awake(self, enabled: bool) -> None:
+        """Keep the screen on while the device is plugged in (USB, AC or wireless), or let it time
+        out again, until ``detach()``: what Developer options › Stay awake sets. A device on ADB
+        over USB is plugged in, so a long test does not find the screen off. Read back with
+        ``DeviceInfo.stay_awake``."""
+        self._condition("set_stay_awake", "SetStayAwake", pb.SetStayAwakeRequest, enabled=bool(enabled))
+
+    def set_accessibility_display(
+        self,
+        *,
+        high_contrast_text: bool | None = None,
+        color_inversion: bool | None = None,
+        bold_text: bool | None = None,
+    ) -> None:
+        """Turn the accessibility display settings on or off until ``detach()``; a ``None``
+        setting is left as it is (``ValueError`` when all are ``None``). ``high_contrast_text``
+        draws text with a black or white outline, ``color_inversion`` inverts the display's
+        colors (screenshots stay uninverted: the inversion happens in the display pipeline), and
+        ``bold_text`` makes the system font bold (API 31+, ``FailureReason.UNSUPPORTED_API`` below,
+        before anything changes). The values are what Settings › Accessibility writes, read back
+        (``FailureReason.DEVICE_SETTING`` when the device did not take one). Read back with
+        ``DeviceInfo.high_contrast_text``, ``color_inversion`` and ``bold_text``."""
+        fields = {
+            name: bool(value)
+            for name, value in (
+                ("high_contrast_text", high_contrast_text),
+                ("color_inversion", color_inversion),
+                ("bold_text", bold_text),
+            )
+            if value is not None
+        }
+        if not fields:
+            raise ValueError("set at least one of high_contrast_text, color_inversion, bold_text")
+        self._condition(
+            "set_accessibility_display", "SetAccessibilityDisplay", pb.SetAccessibilityDisplayRequest, **fields
+        )
+
+    def foreground_activity(self) -> ForegroundActivity | None:
+        """The activity on top of the screen (the resumed one, the focused one in multi-window),
+        or ``None`` when none is resumed: the keyguard is showing, or an activity is starting.
+        Read on the host from ``dumpsys activity``; changes nothing. Use it to check that a deep
+        link or a notification opened the right screen."""
+        self._ensure_usable("foreground_activity")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.GetForegroundActivity(
+                pb.GetForegroundActivityRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                ),
+                timeout=self.timeouts.lifecycle + RPC_DEADLINE_SLACK,
+            )
+        return _proto.foreground_activity(response)
+
+    def push_file(
+        self, device_path: str, source: bytes | bytearray | memoryview | str | os.PathLike[str]
+    ) -> None:
+        """Copy a file to ``device_path`` on the device until ``detach()``.
+
+        ``source`` is the content (``bytes``) or a file on *this* machine (``str`` /
+        ``PathLike``), streamed in 1 MiB chunks; at most 512 MiB. ``device_path`` is absolute and
+        normalised: ``/data/local/tmp/…``, or shared storage (``/sdcard/Download/…``) for an app
+        with storage access to read. Its directory must exist. A file already there is refused
+        (``ServerError``, reason ``DEVICE_FILE``) unless this device handle pushed it, so a test
+        never overwrites the device's own files; the size is read back. The file is deleted on
+        ``detach()``.
+        """
+        size, chunks = _file_source(source)
+        header = pb.PushFileHeader(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            device_path=device_path,
+            size_bytes=size,
+        )
+        parts = _upload(pb.PushFileRequest(header=header), chunks, lambda c: pb.PushFileRequest(chunk=c))
+        self._file_call("push_file", lambda: self.client.device_stub.PushFile(parts, timeout=FILE_DEADLINE))
+
+    @overload
+    def pull_file(self, device_path: str) -> bytes: ...
+
+    @overload
+    def pull_file(self, device_path: str, to: str | os.PathLike[str]) -> None: ...
+
+    def pull_file(self, device_path: str, to: str | os.PathLike[str] | None = None) -> bytes | None:
+        """The regular file at ``device_path`` on the device (at most 512 MiB): its bytes, or,
+        with ``to``, written to that local file (replaced only once the whole file arrived)."""
+        request = pb.PullFileRequest(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            device_path=device_path,
+        )
+
+        def pull(write: Callable[[bytes], object]) -> None:
+            expected, received = -1, 0
+            for part in self.client.device_stub.PullFile(request, timeout=FILE_DEADLINE):
+                if expected < 0:
+                    expected = part.size_bytes
+                received += len(part.chunk)
+                write(part.chunk)
+            if received != expected:
+                raise TapError(f"pulled {received} of {expected} bytes of {device_path} from {self.serial}")
+
+        if to is None:
+            chunks: list[bytes] = []
+            self._file_call("pull_file", lambda: pull(chunks.append))
+            return b"".join(chunks)
+        target = os.path.abspath(os.fspath(to))
+        handle, partial = tempfile.mkstemp(prefix=os.path.basename(target), suffix=".part", dir=os.path.dirname(target))
+        try:
+            with os.fdopen(handle, "wb") as out:
+                self._file_call("pull_file", lambda: pull(out.write))
+            os.replace(partial, target)
+        finally:
+            if os.path.exists(partial):
+                os.remove(partial)
+        return None
+
+    def add_media(
+        self,
+        source: bytes | bytearray | memoryview | str | os.PathLike[str],
+        file_name: str | None = None,
+    ) -> str:
+        """Add a photo or video to the device's gallery until ``detach()``; return its device path.
+
+        ``source`` is the content (``bytes``, which needs ``file_name``) or a local file
+        (``file_name`` defaults to its name). ``file_name`` is letters, digits, ``.``, ``_``,
+        ``-`` or spaces with a photo extension (jpg, jpeg, png, gif, webp, heic, heif, bmp) or a
+        video one (mp4, 3gp, webm, mkv, mov): the file goes to ``/sdcard/Pictures/Tap/`` or
+        ``/sdcard/Movies/Tap/`` and the media scanner indexes it, so gallery apps and photo
+        pickers list it (read back). A name already there is refused (``ServerError``, reason
+        ``DEVICE_FILE``) unless this device handle added it. Deleted, and dropped from the
+        index, on ``detach()``; nothing else in the gallery is touched.
+        """
+        if file_name is None:
+            if isinstance(source, (bytes, bytearray, memoryview)):
+                raise TypeError("add_media of bytes needs a file_name")
+            file_name = os.path.basename(os.fspath(source))
+        size, chunks = _file_source(source)
+        header = pb.AddMediaHeader(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            file_name=file_name,
+            size_bytes=size,
+        )
+        parts = _upload(pb.AddMediaRequest(header=header), chunks, lambda c: pb.AddMediaRequest(chunk=c))
+        response = self._file_call("add_media", lambda: self.client.device_stub.AddMedia(parts, timeout=FILE_DEADLINE))
+        return response.device_path
+
+    def _file_call(self, operation: str, call: Callable[[], _T]) -> _T:
+        self._ensure_usable(operation)
+        with mapped_errors(self.serial):
+            return call()
+
+    def _condition(self, operation: str, rpc: str, request_type, **fields) -> None:
+        self._ensure_usable(operation)
+        request = request_type(
+            client_connection_id=self.owner_connection.id,
+            attached_device_id=self.attached_device_id,
+            **fields,
+        )
+        with mapped_errors(self.serial):
+            getattr(self.client.device_stub, rpc)(
+                request, timeout=self.timeouts.lifecycle + RPC_DEADLINE_SLACK
+            )
+
+    def await_toast(
+        self,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        timeout: float | None = None,
+    ) -> Toast:
+        """Wait for a toast and return it: one shown in the last 3.5 s (the longest a toast stays
+        up) or arriving within ``timeout`` (default ``timeouts.wait``).
+
+        ``text`` matches with ``mode`` (any text when ``None``); a toast from any package counts
+        unless ``package_name`` names one (``App.await_toast`` passes its own). Not consuming: the
+        same toast can satisfy two calls in a row. Raises ``WaitTimeoutError`` (reason ``NO_TOAST``)
+        when none matches.
+        """
+        timeout = self.timeouts.wait if timeout is None else timeout
+        request = pb.AwaitToast()
+        if text is not None:
+            request.text = text
+            request.mode = _proto.match_mode(mode)
+        if package_name is not None:
+            request.package_name = package_name
+        result = self._execute(timeout, await_toast=request)
+        if result.HasField("error"):
+            if result.error.code != pb.ERR_WAIT_TIMEOUT:
+                raise CommandError._from_result(result, "await_toast", self.serial, None)
+            what = "a toast" if text is None else f"a toast {text!r}"
+            origin = "" if package_name is None else f" from {package_name}"
+            raise WaitTimeoutError._from_result(result, what + origin, self.serial)
+        return _proto.toast(result.toast)
+
+    def await_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        timeout: float | None = None,
+    ) -> Notification:
+        """Wait until a matching notification is active (one already posted counts) and return
+        the newest, within ``timeout`` (default ``timeouts.wait``).
+
+        ``title`` and ``text`` match with ``mode`` (any when ``None``); ``package_name`` narrows it
+        to one app's notifications (``App.await_notification`` passes its own). Notifications are
+        read as data from a notification listener in the Tap driver app, not from the shade, so
+        nothing opens on screen; the server gives the driver notification access for the session
+        (taken back on ``detach()``). Group summaries are left out. Raises ``WaitTimeoutError``
+        (reason ``NO_NOTIFICATION``) when none matches.
+        """
+        timeout = self.timeouts.wait if timeout is None else timeout
+        match = _notification_match(title, text, mode, package_name)
+        result = self._execute(timeout, await_notification=pb.AwaitNotification(match=match))
+        if result.HasField("error"):
+            if result.error.code != pb.ERR_WAIT_TIMEOUT:
+                raise CommandError._from_result(result, "await_notification", self.serial, None)
+            fields = [f"{name} {value!r}" for name, value in (("title", title), ("text", text)) if value is not None]
+            what = "a notification" + (f" with {' and '.join(fields)}" if fields else "")
+            origin = "" if package_name is None else f" from {package_name}"
+            raise WaitTimeoutError._from_result(result, what + origin, self.serial)
+        return _proto.notification(result.notification)
+
+    def notifications(self, timeout: float | None = None) -> list[Notification]:
+        """The active notifications, newest first (group summaries left out), as
+        ``await_notification`` reads them."""
+        result = self._execute_or_raise(timeout, list_notifications=pb.ListNotifications())
+        return [_proto.notification(n) for n in result.notifications.notifications]
+
+    def open_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        action: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        """Open the one active notification that matches (as for ``await_notification``) as a tap
+        on it in the shade does: send its content intent and, when it auto-cancels, remove it.
+
+        With ``action``, press its action button with exactly that title instead; the notification
+        stays. No match or several matches raise ``CommandError`` (``NOT_FOUND`` / ``AMBIGUOUS``),
+        and a notification that opens nothing or has no such action ``ACTION_REJECTED``
+        (``ACTION_NOT_OFFERED``), before anything is sent. What the app does then is for the test
+        to assert (an activity, say: ``foreground_activity()``).
+        """
+        request = pb.OpenNotification(match=_notification_match(title, text, mode, package_name))
+        if action is not None:
+            request.action = action
+        self._execute_or_raise(timeout, open_notification=request)
+
+    def dismiss_notification(
+        self,
+        title: str | None = None,
+        text: str | None = None,
+        mode: MatchMode = MatchMode.EXACT,
+        *,
+        package_name: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        """Dismiss the one active notification that matches (as for ``await_notification``) as a
+        swipe does. No match or several matches raise ``CommandError`` (``NOT_FOUND`` /
+        ``AMBIGUOUS``), and an ongoing notification ``ACTION_REJECTED`` (``NOT_CLEARABLE``),
+        before anything changes."""
+        match = _notification_match(title, text, mode, package_name)
+        self._execute_or_raise(timeout, dismiss_notification=pb.DismissNotification(match=match))
 
     def type_text(self, value: str, timeout: float | None = None) -> None:
         """Type ``value`` as real key events into whatever has input focus now.
@@ -494,3 +987,54 @@ class Device:
 
     def __repr__(self) -> str:
         return f"Device({self.serial}, generation={self.generation})"
+
+
+def _file_source(
+    source: bytes | bytearray | memoryview | str | os.PathLike[str],
+) -> tuple[int, Callable[[], Iterator[bytes]]]:
+    """The size and a chunk reader of file content (bytes) or a local file (a path)."""
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        data = bytes(source)
+        size = len(data)
+
+        def from_bytes() -> Iterator[bytes]:
+            for start in range(0, size, FILE_CHUNK_BYTES):
+                yield data[start : start + FILE_CHUNK_BYTES]
+
+        reader = from_bytes
+    elif isinstance(source, (str, os.PathLike)):
+        path = os.fspath(source)
+        size = os.path.getsize(path)  # raises for a missing file before any RPC
+
+        def from_file() -> Iterator[bytes]:
+            with open(path, "rb") as file:
+                while chunk := file.read(FILE_CHUNK_BYTES):
+                    yield chunk
+
+        reader = from_file
+    else:
+        raise TypeError(f"file content is bytes or a local path, not {type(source).__name__}")
+    if size > MAX_FILE_BYTES:
+        raise ValueError(f"at most {MAX_FILE_BYTES} bytes are sent, not {size}")
+    return size, reader
+
+
+def _notification_match(
+    title: str | None, text: str | None, mode: MatchMode, package_name: str | None
+) -> pb.NotificationMatch:
+    match = pb.NotificationMatch()
+    if title is not None:
+        match.title = title
+    if text is not None:
+        match.text = text
+    if title is not None or text is not None:
+        match.mode = _proto.match_mode(mode)
+    if package_name is not None:
+        match.package_name = package_name
+    return match
+
+
+def _upload(header, chunks: Callable[[], Iterator[bytes]], part: Callable[[bytes], object]) -> Iterator:
+    yield header
+    for chunk in chunks():
+        yield part(chunk)

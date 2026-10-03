@@ -1,7 +1,9 @@
 package io.github.noamcohen48.tap.sdk
 
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -100,8 +102,9 @@ class Hierarchy(
 }
 
 /**
- * Static facts about the device plus the package owning the focused window ([Device.info]).
- * Serialized as JSON.
+ * Facts about the device at the moment of [Device.info]: identity, display geometry and
+ * rotation, screen, keyguard and keyboard state, the package owning the focused window and the
+ * device conditions ([Device.setAnimations] and the rest). Serialized as JSON.
  */
 data class DeviceInfo(
     val apiLevel: Int,
@@ -110,11 +113,47 @@ data class DeviceInfo(
     val product: String,
     val displayWidth: Int,
     val displayHeight: Int,
-    /** `Surface.ROTATION_*`: 0, 1, 2 or 3 quarter turns. */
-    val displayRotation: Int,
+    val displayRotation: DisplayRotation,
     /** The package owning the focused window, when there is one. */
     val currentPackage: String?,
+    /** The screen is on (interactive). */
+    val screenOn: Boolean,
+    /** The keyguard (lock screen) is showing. */
+    val keyguardLocked: Boolean,
+    /** A PIN, pattern or password is set: Tap cannot dismiss this keyguard. */
+    val keyguardSecure: Boolean,
+    /** A soft keyboard (any input method's window) is on screen. */
+    val keyboardShown: Boolean,
+    /** Auto-rotate is on: the sensor turns the display (off while a rotation is frozen). */
+    val autoRotate: Boolean,
+    /** Window, transition or animator animations run (any of the three scales is not 0). */
+    val animationsEnabled: Boolean,
+    /** The UI is in night mode (dark theme). */
+    val darkMode: Boolean,
+    /** The font scale apps see (1.0 = the default size). */
+    val fontScale: Float,
+    /** The display density apps see, in dpi. */
+    val densityDpi: Int,
+    /** Airplane mode is on. */
+    val airplaneMode: Boolean,
+    /** Wi-Fi is switched on (also while airplane mode is on); says nothing about a connection. */
+    val wifiEnabled: Boolean,
+    /** Mobile data is switched on; false on a device without telephony. */
+    val mobileDataEnabled: Boolean,
+    /** The device's languages, BCP-47 tags in preference order ([Device.setSystemLocales]). */
+    val systemLocales: List<String> = emptyList(),
+    /** The screen stays on while plugged in ([Device.setStayAwake]). */
+    val stayAwake: Boolean = false,
+    /** High-contrast text is on; null when Android does not let Tap read it. */
+    val highContrastText: Boolean? = null,
+    /** Color inversion is on; null when Android does not let Tap read it. */
+    val colorInversion: Boolean? = null,
+    /** The system font is bold (API 31+; always false below). */
+    val boldText: Boolean = false,
 ) : Artifact {
+    /** [PORTRAIT][Orientation.PORTRAIT] when the display is at least as tall as it is wide. */
+    val orientation: Orientation get() = if (displayHeight >= displayWidth) Orientation.PORTRAIT else Orientation.LANDSCAPE
+
     override val bytes: ByteArray
         get() =
             buildJsonObject {
@@ -124,8 +163,25 @@ data class DeviceInfo(
                 put("product", product)
                 put("displayWidth", displayWidth)
                 put("displayHeight", displayHeight)
-                put("displayRotation", displayRotation)
+                put("displayRotation", displayRotation.name)
                 put("currentPackage", currentPackage)
+                put("screenOn", screenOn)
+                put("keyguardLocked", keyguardLocked)
+                put("keyguardSecure", keyguardSecure)
+                put("keyboardShown", keyboardShown)
+                put("autoRotate", autoRotate)
+                put("animationsEnabled", animationsEnabled)
+                put("darkMode", darkMode)
+                put("fontScale", fontScale)
+                put("densityDpi", densityDpi)
+                put("airplaneMode", airplaneMode)
+                put("wifiEnabled", wifiEnabled)
+                put("mobileDataEnabled", mobileDataEnabled)
+                putJsonArray("systemLocales") { systemLocales.forEach(::add) }
+                put("stayAwake", stayAwake)
+                put("highContrastText", highContrastText)
+                put("colorInversion", colorInversion)
+                put("boldText", boldText)
             }.toString().encodeToByteArray()
     override val mediaType: String get() = "application/json"
     override val extension: String get() = "json"

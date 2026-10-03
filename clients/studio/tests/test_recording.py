@@ -129,7 +129,7 @@ def test_every_problem_is_reported_with_its_step():
     with pytest.raises(RecordingError) as caught:
         loads(text(document))
     assert caught.value.problems == [
-        "steps[0] (a): kind is required (app, action, type, wait, assertion, scroll_until or app_wait)",
+        "steps[0] (a): kind is required (app, action, type, wait, assertion, scroll_until, app_wait, device_wait, device or device_assertion)",
         "steps[1] (a): id is used twice",
         "steps[1] (a): action tap is recorded with its wait (wait_visible)",
     ]

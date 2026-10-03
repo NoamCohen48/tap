@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/double_tap_target"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="#FFE0E0E0"
+        android:gravity="center"
+        android:text="Double tap here" />
+
+    <TextView
+        android:id="@+id/double_tap_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:text="No taps" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="96dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/drag_source"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#FFBBDEFB"
+            android:gravity="center"
+            android:text="Card" />
+
+        <View
+            android:layout_width="48dp"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/drop_target"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#FFC8E6C9"
+            android:gravity="center"
+            android:text="Drop here" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/drag_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:text="Not dragged" />
+
+    <TextView
+        android:id="@+id/pinch_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:text="Not pinched" />
+
+    <View
+        android:id="@+id/pinch_target"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#FFFFE0B2"
+        android:contentDescription="Pinch area" />
+</LinearLayout>

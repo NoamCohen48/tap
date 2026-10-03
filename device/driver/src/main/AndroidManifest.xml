@@ -1,12 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="io.github.noamcohen48.tap.permission.SYNCHRONIZATION" />
+    <!-- Device locale (SystemLocaleReceiver): the host grants both (pm grant, appops set). -->
+    <uses-permission android:name="android.permission.CHANGE_CONFIGURATION" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- Mock location (LocationCommands): the host sets the driver's mock_location app-op. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_MOCK_LOCATION"
+        tools:ignore="MockLocation,ProtectedPermissions" />
     <queries>
         <provider android:authorities="io.github.noamcohen48.tap.fixture.tap-sync" />
     </queries>
     <application
         android:allowBackup="false"
         android:label="Tap Driver"
-        android:supportsRtl="true" />
+        android:supportsRtl="true">
+        <!-- Only the shell (or the system) holds CHANGE_CONFIGURATION, so only they can send it. -->
+        <receiver
+            android:name=".SystemLocaleReceiver"
+            android:exported="true"
+            android:permission="android.permission.CHANGE_CONFIGURATION" />
+        <!-- Removes the mock-location test providers on detach; shell-only, as above. -->
+        <receiver
+            android:name=".MockLocationReceiver"
+            android:exported="true"
+            android:permission="android.permission.CHANGE_CONFIGURATION" />
+        <!-- Notification access (NotificationCommands): only the system binds it, and only once
+             the host allows it with `cmd notification allow_listener`. -->
+        <service
+            android:name=".TapNotificationListener"
+            android:exported="true"
+            android:label="Tap Driver"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
 </manifest>

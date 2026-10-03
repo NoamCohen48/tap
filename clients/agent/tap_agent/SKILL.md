@@ -54,16 +54,70 @@ the device, and says so.
 
 ## Acting
 
-`tap`, `tap --long`, `fill <target> <text>` (replaces the text), `type <text>` (key events into
-the focused field), `clear`, `scroll <target> up|down|left|right` (`down` reveals content
-below), `swipe <target> <direction>`, `key back|home|recents|enter|tab|delete|…`,
+`tap`, `tap --long`, `tap --double`, `fill <target> <text>` (replaces the text), `type <text>`
+(key events into the focused field), `clear`, `scroll <target> up|down|left|right` (`down`
+reveals content below), `swipe <target> <direction>`, `fling <target> <direction>` (as
+`scroll`, fast; the content may keep moving), `drag <target> <destination>` (long-press, move
+onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
+`key back|home|recents|enter|tab|delete|…`,
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in
 `pkg=com.android.systemui`; `key back` closes them, twice from quick settings on newer
 Android; use `--settle` before opening another), and
-`app launch|cold-launch|stop|clear|install|uninstall|grant|running <package> [activity|APK|PERMISSION]`.
+`app launch|cold-launch|foreground|background|open-link|stop|clear|install|uninstall|grant|revoke|granted|running|locale <package> [activity|URI|APK|PERMISSION|TAGS]`
+(`foreground` returns to the app as it was left; `app open-link <package> myapp://x` opens a
+deep link in the app, `--any-app` lets Android pick the handler; `--extra KEY[:TYPE]=VALUE`,
+repeatable, puts an extra on a launch or cold-launch intent, TYPE string (default), int, long,
+float or bool).
 A node that another window covers completely is not found; an action on a node it covers
 partly fails as not interactable (OBSCURED) instead of tapping whatever is on top. Either way,
 close the covering window (often `key back`) first.
+
+Device state: `rotate portrait|landscape|natural|left|upside-down|right|auto` (prints the
+resulting orientation; `auto` hands rotation back to the sensor; `release` restores the
+device's own setting), `screen` (on/off and lock state), `screen on|off|unlock` (`unlock`
+wakes and dismisses a lock screen without a PIN; a PIN is never entered).
+`condition` prints animations, dark mode, font scale, density, the network switches and the
+device languages; `condition animations
+on|off`, `condition dark-mode on|off` (Android 10+), `condition font-scale 0.5..2.0` and
+`condition density <dpi>|reset` change one and print the value read back;
+`condition airplane-mode|wifi|mobile-data on|off` flip the real switches and `condition locale
+fr-FR,en` sets the device languages. `location <lat> <lon> [--accuracy M] [--altitude M]` mocks the device
+location (call again to move it). `app locale <package>`
+prints the app's own languages, `app locale <package> fr-FR,en` sets them and `app locale
+<package> system` makes the app follow the system again (Android 13+). `condition stay-awake
+on` keeps the screen on while plugged in; `condition high-contrast-text|color-inversion|bold-text
+on|off` set the accessibility display settings (bold text Android 12+). All of these, like
+rotation, are put back on `release`.
+
+Notifications: `notification` lists them as data (the shade stays closed; Tap's driver gets
+notification access until `release`), `notification await --title T [--text X] [--contains]
+[--package PKG]` waits for one, `notification open --title T` opens it as a tap does
+(`--button "Mark as read"` presses an action button instead), `notification dismiss --title T`
+swipes it away (an ongoing one is refused). Open and dismiss need exactly one match: add
+`--package` or `--text` when several match. `activity` prints the activity on top
+(`package/class`), e.g. to see where a notification or link landed.
+
+Keyboard and clipboard: `keyboard` prints whether a soft keyboard shows, `keyboard hide`
+hides it (nothing is pressed when none shows); `submit <target>` runs the field's keyboard
+action key (Search, Go, Send, Done; Android 11+), and the field must have input focus, so tap
+it first. `clipboard` prints the device clipboard, `clipboard <text>` sets it.
+`toast [text] [--contains] [--package PKG]` waits for a toast (one shown in the last 3.5 s
+counts; any app's unless `--package`) and prints its text and app.
+
+Permission dialogs: `permission` waits for one and lists its buttons
+(`allow`, `allow-foreground-only`, `deny`, …); `permission <choice>` presses one. Buttons are
+found by id, so this works in any language. `--accuracy precise|approximate` picks the location
+dialog's accuracy first (Android 12+).
+
+Accessibility actions: `action <target>` lists what the node offers (standard actions such as
+`expand`, `dismiss`, `scroll-forward`, and custom labels); `action <target> <name>` performs a
+standard one, `action <target> <label> --custom` a custom one, without touching the screen.
+`progress <target> <value>` sets a slider (SeekBar, Slider, RatingBar) in its own units.
+
+Files: `push <local> <device-path>` (absolute; the directory must exist; never overwrites a file
+Tap did not create), `pull <device-path> [-o FILE]` (prints the local path), `media <local>
+[--name NAME]` adds a photo or video to the gallery so pickers list it. Release removes what
+Tap pushed or added.
 
 Add `--settle` to an action to wait until the screen stops changing and print the difference:
 `+` added nodes, `-` removed ones. That is usually enough to decide the next step without a

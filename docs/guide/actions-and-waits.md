@@ -42,8 +42,22 @@ exactly one.
 | `swipe(direction, distancePercent = 80)` | one swipe gesture across the node, in the direction the finger moves. Returns nothing: whether the screen moved is for the test to assert |
 | `scroll(direction, distancePercent = 80)` | one scroll gesture on the node towards `direction`'s content edge (`DOWN` reveals content below). The node need not report itself scrollable, and nothing says whether content moved |
 | `scrollUntil(target, direction = DOWN, maxScrolls = 20, distancePercent = 80, timeout)` | a client-side loop: while `target` does not exist inside the container, `scroll` once more; returns `target` as an `Element`. Gives up with `WaitTimeoutException` / `WaitTimeoutError` after `maxScrolls` scrolls or the timeout (default: the wait timeout). A failing scroll step propagates unchanged |
+| `doubleTap()` | two taps at the centre of the node's visible bounds, inside Android's double-tap window, as one gesture. Like a tap, this and the gestures below fail with `OBSCURED` when another window covers the touch point (the centre; a fling's start) |
+| `dragTo(destination)` | press on the node until it is a long press, move to the centre of `destination` (a selector, exactly one match), hold briefly so drop targets see the finger arrive, release. Both nodes are found before the finger goes down: a missing or ambiguous destination fails with no input |
+| `pinchOpen(percent = 80)`, `pinchClose(percent = 80)` | two fingers moving apart (zoom in) or together (zoom out) across `percent` of the node's size |
+| `fling(direction)` | one fast swipe across the whole node towards `direction`'s content edge, as `scroll`. It does not wait for the content to stop moving |
 | `device.pressBack()`, `device.pressHome()`, `device.pressKey(code)` | key events |
+| `device.wake()`, `device.sleep()` | turn the screen on or off (the `WAKEUP` / `SLEEP` keys; nothing happens when it already is). Waking does not dismiss the keyguard |
+| `device.dismissKeyguard()` | dismiss a lock screen that has no PIN, pattern or password (none showing: nothing is sent). A secure one fails with `ACTION_REJECTED` / `KEYGUARD_SECURE` before any input: Tap never unlocks it. `device.info()` reports `screenOn`, `keyguardLocked` and `keyguardSecure` |
 | `device.openNotifications()`, `device.openQuickSettings()` (Python: `open_notifications()`, `open_quick_settings()`) | open the notification shade or quick settings through the system's accessibility action, as a swipe down from the status bar would. Only whether the system accepted it is reported: wait for what you need in the panel; `pressBack()` closes it (from quick settings, Android 14 first goes back to the notification shade, so press it twice). Elements in the panel belong to `com.android.systemui`: reach them with `device.app("com.android.systemui").element(...)` or `device.screen.element(...)`. While a panel is still sliding open or closed, the system can accept the action and ignore it: `app.awaitAnimationEnd()` before opening another one |
+| `element.imeAction()` (Python: `ime_action()`) | run the field's keyboard action key (Search, Go, Send, Done, …: whatever the app configured), as the keyboard's own key does. The field must have input focus, so `tap()` it first; a node that does not offer the action fails with `ACTION_REJECTED` before input. Android 11 (API 30)+; older devices fail with `UNSUPPORTED` before input. Pressing Enter is not the same: apps waiting for "Search" ignore it |
+| `performAction(action)`, `performCustomAction(label)` (Python: `perform_action`, `perform_custom_action`) | run one of the node's accessibility actions as a screen reader does, with no touch: a `StandardAction` (`EXPAND`, `COLLAPSE`, `DISMISS`, `SCROLL_FORWARD`, `PAGE_DOWN`, `SELECT`, `COPY`, …) or an app-defined custom action by its label ("Archive", "Mark unread"). An action the node does not offer fails with `ACTION_REJECTED` / `ACTION_NOT_OFFERED` before input; `snapshot().actions` and `customActions` list what it offers. Page actions need Android 10, press-and-hold Android 11 (`UNSUPPORTED` below) |
+| `setProgress(value)` (Python: `set_progress`) | set a slider, seek bar or rating bar to `value` in its own units (`snapshot().range` gives the type, min, max and current value). A value outside the range fails with `ACTION_REJECTED` / `OUT_OF_RANGE` before input instead of being clamped |
+| `device.keyboardShown()`, `device.hideKeyboard()` (Python: `keyboard_shown()`, `hide_keyboard()`) | whether any soft keyboard is on screen (also `device.info().keyboardShown`); hide it with one Back key. No keyboard: nothing is sent, so Back never reaches the app |
+| `device.setClipboard(text)`, `device.clipboard()` | write or read the device clipboard as plain text (empty reads as `""`), without moving focus away from the app. On Android 12+ a read shows the system's "Tap Driver pasted from your clipboard" notice |
+| `device.setOrientation(orientation)` | `PORTRAIT` or `LANDSCAPE`: choose the screen geometry and freeze sensor rotation, on portrait-natural phones and landscape-natural tablets alike |
+| `device.setDisplayRotation(rotation)` | `NATURAL`, `LEFT`, `UPSIDE_DOWN` or `RIGHT`: an exact clockwise rotation relative to the device's natural orientation, frozen |
+| `device.unfreezeRotation()` | release the sensor lock without selecting a new rotation |
 
 Text actions report only what Android said about the input, never what the app did with it:
 apps reformat, truncate, reject or copy text elsewhere, and the framework assumes none of
@@ -54,6 +68,92 @@ resource id, not its old text):
 val email = app.element(res("email"))
 email.setText("user@example.com")
 email.await().textEquals("user@example.com")
+```
+
+Rotation calls fail only when Android refuses the rotation (`ACTION_REJECTED`). They wait up
+to two seconds for the display to turn, but an app that locks its own orientation can keep it
+where it was without that being an error: assert what you need, for example
+`device.info().orientation`; `device.info().autoRotate` says whether the sensor turns the
+display (false while a rotation is frozen). Before the session's first rotation call, the host captures the
+device's auto-rotate settings; detach restores them. A restoration failure is a visible detach
+failure and quarantines the device rather than leaving changed state silently.
+
+```kotlin
+try {
+    device.setOrientation(Orientation.LANDSCAPE)
+    // assertions in landscape
+    device.setDisplayRotation(DisplayRotation.RIGHT)
+} finally {
+    device.unfreezeRotation() // optional during the session; detach still restores initial state
+}
+```
+
+```python
+device.set_orientation(Orientation.LANDSCAPE)
+device.set_display_rotation(DisplayRotation.RIGHT)
+device.unfreeze_rotation()
+```
+
+### Device conditions
+
+Device-wide settings can be changed for the session. Each change is read back (a value the
+device did not take fails with `ServerException` / `ServerError`, reason `DEVICE_SETTING`), and
+what the device had before the session's first change comes back on detach, as for rotation.
+`info()` reports the current values.
+
+| Call (Kotlin / Python) | Changes | Read back |
+|---|---|---|
+| `setAnimations(enabled)` / `set_animations` | window, transition and animator scales, all 0 or all 1 | `animationsEnabled` |
+| `setDarkMode(enabled)` / `set_dark_mode` | `cmd uimode night`; API 29+ (below: reason `UNSUPPORTED_API`). Some devices (Samsung's One UI) lock the day/night mode: there it fails with `DEVICE_SETTING` | `darkMode` |
+| `setFontScale(scale)` / `set_font_scale` | system font scale, 0.5 to 2.0 | `fontScale` |
+| `setDensity(dpi)` / `set_density` | display density override, 100 to 1000 dpi; `null` / `None` for the physical density | `densityDpi` |
+| `setNetwork(airplaneMode, wifi, mobileData)` / `set_network` | the real switches (pass only the ones to change); API 29+. Airplane mode turns Wi-Fi off, as on a phone, unless the call also turns Wi-Fi on. A device reached over ADB on Wi-Fi refuses Wi-Fi off and airplane mode on: Tap would lose it | `airplaneMode`, `wifiEnabled`, `mobileDataEnabled` |
+| `setSystemLocales(tags)` / `set_system_locales` | the device's languages (Settings › Languages), BCP-47 tags in preference order; every app that follows the system language sees it. Apps with their own language (`App.setLocales`) keep it | `systemLocales` |
+| `setStayAwake(enabled)` / `set_stay_awake` | Developer options › Stay awake: the screen stays on while the device is plugged in (a device on ADB over USB is), so a long test does not find it off | `stayAwake` |
+| `setAccessibilityDisplay(highContrastText, colorInversion, boldText)` / `set_accessibility_display` | Settings › Accessibility: high-contrast text, colour inversion and bold text (Android 12+; below: reason `UNSUPPORTED_API`); pass only the ones to change. Screenshots are not inverted: the inversion happens on the way to the display | `highContrastText`, `colorInversion`, `boldText` |
+| `setLocation(latitude, longitude, accuracyM, altitudeM)` / `set_location` | a mock location: the GPS and network providers report this fix (re-sent every second, so an app that starts listening later gets it); call again to move it. The Tap driver app becomes the device's mock-location app and location is turned on if it was off; both come back on detach, which also removes the mock providers | the app's own location |
+
+```kotlin
+device.setAnimations(false)
+device.setDarkMode(true)
+device.setFontScale(1.3f)
+val app = device.app("com.example.shop")
+app.launch()
+app.await(text("Large text")).visible()
+```
+
+```python
+device.set_animations(False)
+device.set_density(None)  # back to the display's own density
+assert device.info().animations_enabled is False
+```
+
+```kotlin
+device.setSystemLocales("de-DE", "en-US")
+device.setNetwork(wifi = false, mobileData = false) // offline, without airplane mode
+device.setLocation(48.8584, 2.2945, accuracyM = 5f)
+app.grantPermission("android.permission.ACCESS_FINE_LOCATION")
+```
+
+```python
+device.set_system_locales(["de-DE", "en-US"])
+device.set_network(airplane_mode=True)
+device.set_location(48.8584, 2.2945, accuracy_m=5)
+```
+
+Android applies dark mode, font scale, density and the languages as configuration changes: a
+running app's activities are recreated unless it handles the change itself, so wait for what
+the test needs after changing one. Network switches take time to reach the app's connectivity
+callbacks; wait for the app's own offline or online state. On some devices turning location on
+also shows Google Play services' "improve location accuracy" prompt. The app's own language is on `App`: see
+[App lifecycle](app-lifecycle.md).
+
+Gestures are reported the same way: `done` means Android accepted the injected input, not that
+the app zoomed, dropped or scrolled. Wait for the effect:
+
+```kotlin
+app.element(res("card")).dragTo(res("done_column"))
+app.await(text("Moved to Done")).visible()
 ```
 
 Directions are the `Direction` enum, `UP`/`DOWN`/`LEFT`/`RIGHT`, in both SDKs (Python also
@@ -70,6 +170,40 @@ has changed nothing. An action that fails **after** input says so:
 `STALE_DURING_COMMAND` (the target changed mid-action), `ACTION_REJECTED` (input was issued but
 did not take effect), `INDETERMINATE` (the transport dropped after the driver accepted the
 mutation). Tap never re-sends any of them for you.
+
+### Files and the gallery
+
+`device.pushFile(devicePath, content)` copies bytes, or a file on the test machine, to the
+device; `device.pullFile(devicePath)` returns a device file's bytes (or writes it to a local
+path). `device.addMedia(fileName, content)` puts a photo or video in the gallery, where gallery
+apps and photo pickers list it, and returns where it landed. The bytes are streamed through the
+server (at most 512 MiB), so the test machine and the server need not share a disk.
+
+- Paths are absolute: `/data/local/tmp/…`, or shared storage such as `/sdcard/Download/…` for
+  an app with storage access to read. The directory must exist.
+- Tap never overwrites a file it did not create: pushing over a device file fails with
+  `ServerException` / `ServerError`, reason `DEVICE_FILE` (as do a missing directory and a
+  pull of something that is not a file). Pushing again to a path this device handle pushed
+  replaces it.
+- Media names end in a photo (`jpg`, `jpeg`, `png`, `gif`, `webp`, `heic`, `heif`, `bmp`) or
+  video (`mp4`, `3gp`, `webm`, `mkv`, `mov`) extension and go to `Pictures/Tap` or
+  `Movies/Tap`. The media scanner must index the file, so it has to be a real image or video.
+- Every pushed file and added media item is deleted on detach (and the gallery entry with it);
+  nothing else on the device is touched.
+
+```kotlin
+device.pushFile("/sdcard/Download/invoice.pdf", Path.of("fixtures/invoice.pdf"))
+val photo = device.addMedia(Path.of("fixtures/cat.jpg"))  // "/sdcard/Pictures/Tap/cat.jpg"
+app.grantPermission("android.permission.READ_MEDIA_IMAGES")
+val log = device.pullFile("/sdcard/Android/data/com.example.shop/files/log.txt").decodeToString()
+```
+
+```python
+device.push_file("/sdcard/Download/invoice.pdf", "fixtures/invoice.pdf")
+device.add_media(png_bytes, "cat.png")
+log = device.pull_file("/sdcard/Android/data/com.example.shop/files/log.txt")
+device.pull_file("/data/local/tmp/trace.txt", "out/trace.txt")
+```
 
 ## Waiting for elements
 
@@ -108,6 +242,69 @@ another window covers only partly is present, and a gesture whose touch point is
 other window fails with `OBSCURED`.
 
 `Element.await()` is the same thing starting from an element you already hold.
+
+## Waiting for a toast
+
+`device.awaitToast(text = null, mode = EXACT, packageName = null, timeout)`
+(Python: `await_toast(text=None, mode=..., *, package_name=None, timeout=None)`)
+returns a `Toast(text, packageName)`. A toast shown in the last 3.5 s counts (the longest one
+stays up), so calling it right after the action that raises the toast cannot miss it. It does
+not consume the toast: two calls in a row can both match it. Without `packageName` a toast
+from any package matches; `app.awaitToast(text, mode)` (Python `app.await_toast`) matches only
+that app's (on Android 11+ a text toast is drawn by SystemUI but still reported under the app
+that posted it). `mode` is a
+selector `MatchMode` (`CONTAINS`, `REGEX`, …). Nothing within the timeout is a
+`WaitTimeoutException` / `WaitTimeoutError` with reason `NO_TOAST`.
+
+```kotlin
+app.element(res("save")).tap()
+assertEquals("Saved", app.awaitToast().text)
+```
+
+```python
+app.element(res("save")).tap()
+app.await_toast("Saved")
+```
+
+Custom-view toasts posted from the background are blocked by Android itself (11+) and never
+appear.
+
+## Notifications
+
+Tap reads notifications as data, from a notification listener in its driver app (it gets
+notification access for the session and gives it back on detach); the shade stays closed.
+A `Notification` has `packageName`, `title`, `text`, `actions` (its button titles),
+`clearable` and `postedAt`.
+
+| Call (Kotlin / Python) | Does |
+|---|---|
+| `awaitNotification(title, text, mode, packageName, timeout)` / `await_notification` | waits until a matching notification is showing (one already posted counts) and returns the newest; nothing within the timeout is a wait timeout with reason `NO_NOTIFICATION`. `app.awaitNotification(...)` matches only that app's |
+| `notifications()` | every notification showing, newest first |
+| `openNotification(title, text, mode, packageName, action)` / `open_notification` | opens it as a tap in the shade does (its content intent; an auto-cancel notification then goes away), or with `action` presses the button with that title |
+| `dismissNotification(title, text, mode, packageName)` / `dismiss_notification` | swipes it away; an ongoing one is refused (`ACTION_REJECTED` / `NOT_CLEARABLE`) |
+
+`title` and `text` match under `mode` (`EXACT`, `CONTAINS`, `REGEX`, …); every argument given
+must match. Open and dismiss act on exactly one notification: none or several fail with
+`NOT_FOUND` / `AMBIGUOUS` before anything happens. Group summaries are not listed. On Android
+13+ an app needs the `POST_NOTIFICATIONS` permission to post at all.
+
+`device.foregroundActivity()` (Python `foreground_activity()`) returns the activity on top as
+`ForegroundActivity(packageName, className)`, or null when none is showing (a lock screen):
+use it to check where a notification or a deep link landed.
+
+```kotlin
+app.element(res("send")).tap()
+val message = app.awaitNotification(title = "New message")
+assertEquals(listOf("Mark as read"), message.actions)
+device.openNotification(title = "New message", packageName = app.packageName)
+assertEquals("com.example.chat.ConversationActivity", device.foregroundActivity()?.className)
+```
+
+```python
+app.await_notification("New message")
+device.open_notification("New message", package_name=app.package_name, action="Mark as read")
+device.dismiss_notification("Syncing", package_name=app.package_name)  # ongoing: NOT_CLEARABLE
+```
 
 ## Waiting for the app or the screen
 

@@ -4,6 +4,17 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The notification tests (FormActivity's Notify button); granted by the test on API 33+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Location feeds the precise/approximate dialog and the mock location tests. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Gallery reads feed the add-media tests. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:name=".FixtureApplication"
@@ -37,6 +48,29 @@
             android:name=".OcclusionActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustNothing|stateHidden" />
+        <activity
+            android:name=".GestureActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ControlsActivity"
+            android:exported="true" />
+        <activity
+            android:name=".FormActivity"
+            android:exported="true"
+            android:windowSoftInputMode="stateHidden" />
+        <!-- Deep links: tapfixture://link/anything. -->
+        <activity
+            android:name=".LinkActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="link"
+                    android:scheme="tapfixture" />
+            </intent-filter>
+        </activity>
         <!-- Synchronization state comes from the :sync-sdk manifest (authority <applicationId>.tap-sync). -->
         <provider
             android:name=".FixtureFaultProvider"

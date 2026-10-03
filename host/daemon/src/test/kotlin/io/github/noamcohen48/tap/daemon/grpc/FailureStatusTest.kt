@@ -13,10 +13,13 @@ import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AppLifecycleException
 import io.github.noamcohen48.tap.host.DeviceBusyException
 import io.github.noamcohen48.tap.host.DeviceQuarantinedException
+import io.github.noamcohen48.tap.host.DeviceFileException
+import io.github.noamcohen48.tap.host.DeviceSettingException
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverStartException
 import io.github.noamcohen48.tap.host.HostWaitTimeoutException
 import io.github.noamcohen48.tap.host.SessionClosingException
+import io.github.noamcohen48.tap.host.UnsupportedApiException
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.grpc.Status
 import kotlinx.serialization.json.Json
@@ -57,6 +60,9 @@ class FailureStatusTest {
                 DaemonClosingException() to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION),
                 UnknownRefException("e7", 3) to (Status.Code.NOT_FOUND to FailureReason.FAILURE_REASON_UNKNOWN_REF),
                 RefNotAddressableException("e9") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE),
+                UnsupportedApiException("s", 33, 29, "x") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_UNSUPPORTED_API),
+                DeviceSettingException("s", "x") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DEVICE_SETTING),
+                DeviceFileException("s", "x") to (Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DEVICE_FILE),
             )
         for ((error, expected) in cases) {
             val (code, failure) = failureOf(error)
@@ -72,6 +78,8 @@ class FailureStatusTest {
         val (_, timeout) = failureOf(HostWaitTimeoutException("window", "85e49002", 3_000, 4, "none"))
         assertEquals("85e49002", timeout.serial)
         assertEquals(3_000, timeout.waitedMs)
+        val (_, old) = failureOf(UnsupportedApiException("85e49002", 33, 29, "Per-app languages"))
+        assertEquals("85e49002" to "REQUIRES_API_33", old.serial to old.detail)
     }
 
     @Test

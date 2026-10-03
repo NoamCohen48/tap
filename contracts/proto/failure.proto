@@ -60,6 +60,13 @@ enum FailureReason {
   FAILURE_REASON_UNKNOWN_REF = 20;
   // The ref's node had no selector that matched it alone (FAILED_PRECONDITION).
   FAILURE_REASON_REF_NOT_ADDRESSABLE = 21;
+  // The device's API level is below what the call needs; `detail` names it (FAILED_PRECONDITION).
+  FAILURE_REASON_UNSUPPORTED_API = 22;
+  // The device did not take a setting: it read back another value (FAILED_PRECONDITION).
+  FAILURE_REASON_DEVICE_SETTING = 23;
+  // A device file Tap cannot write or read as asked: it exists and is not this session's, its
+  // directory is missing, it is not a regular file, or it did not read back (FAILED_PRECONDITION).
+  FAILURE_REASON_DEVICE_FILE = 24;
 }
 
 message Failure {

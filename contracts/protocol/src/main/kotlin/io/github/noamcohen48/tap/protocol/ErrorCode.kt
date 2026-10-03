@@ -112,12 +112,38 @@ object ErrorDetail {
 
     // NOT_INTERACTABLE: the gesture's touch point is inside a window above the target's.
     const val OBSCURED = "OBSCURED"
+    // WAIT_TIMEOUT (wait_permission_prompt)
+    const val NO_PERMISSION_PROMPT = "NO_PERMISSION_PROMPT"
+
+    // WAIT_TIMEOUT (await_toast)
+    const val NO_TOAST = "NO_TOAST"
+
+    // WAIT_TIMEOUT (await_notification)
+    const val NO_NOTIFICATION = "NO_NOTIFICATION"
+
+    // ACTION_REJECTED (dismiss_notification): an ongoing notification a swipe does not dismiss
+    const val NOT_CLEARABLE = "NOT_CLEARABLE"
+
+    // UNSUPPORTED (notification ops): the driver's notification listener is not connected
+    const val NO_NOTIFICATION_ACCESS = "NO_NOTIFICATION_ACCESS"
+
+    // ACTION_REJECTED before input: the node does not offer the accessibility action
+    // (perform_accessibility_action, set_progress) or the value is outside its range (set_progress).
+    const val ACTION_NOT_OFFERED = "ACTION_NOT_OFFERED"
+    const val OUT_OF_RANGE = "OUT_OF_RANGE"
+
+    // UNSUPPORTED: the operation (perform_ime_action, an accessibility action) needs a newer API.
+    const val REQUIRES_API_29 = "REQUIRES_API_29"
+    const val REQUIRES_API_30 = "REQUIRES_API_30"
 
     // ACTION_REJECTED / STALE_DURING_COMMAND / INDETERMINATE (key input)
     const val KEY_RELEASE_FAILED = "KEY_RELEASE_FAILED"
     const val PARTIAL_INPUT = "PARTIAL_INPUT"
     const val TARGET_GONE = "TARGET_GONE"
     const val TARGET_AMBIGUOUS = "TARGET_AMBIGUOUS"
+
+    // ACTION_REJECTED (dismiss_keyguard): a PIN, pattern or password is set
+    const val KEYGUARD_SECURE = "KEYGUARD_SECURE"
 
     // AUT_MISMATCH (synchronization identity)
     const val PROCESS_RESTARTED = "PROCESS_RESTARTED"

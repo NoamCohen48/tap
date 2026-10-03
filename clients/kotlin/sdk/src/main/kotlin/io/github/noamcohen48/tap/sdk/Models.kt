@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.sdk
 
+import java.time.Instant
 import kotlin.time.Duration
 
 /*
@@ -27,10 +28,158 @@ enum class MatchMode {
 }
 
 /**
- * Gesture direction: where the finger moves for [Element.swipe], the content edge scrolled
- * towards for [Element.scroll] (`DOWN` reveals content below).
+ * Gesture direction: where the finger moves for [Element.swipe], the content edge moved
+ * towards for [Element.scroll] and [Element.fling] (`DOWN` reveals content below).
  */
 enum class Direction { UP, DOWN, LEFT, RIGHT }
+
+/** Display geometry: taller than wide, or wider than tall ([Device.setOrientation], [DeviceInfo.orientation]). */
+enum class Orientation { PORTRAIT, LANDSCAPE }
+
+/**
+ * Clockwise display rotation relative to the device's natural orientation (portrait on phones,
+ * often landscape on tablets): `Surface.ROTATION_0` / `_90` / `_180` / `_270`.
+ */
+enum class DisplayRotation { NATURAL, LEFT, UPSIDE_DOWN, RIGHT }
+
+/**
+ * A button of the runtime-permission dialog, by what it grants ([Device.awaitPermissionPrompt],
+ * [Device.choosePermission]). Which ones a dialog offers depends on the permission, the Android
+ * version and the device's permission controller.
+ */
+enum class PermissionChoice {
+    /** "Allow". */
+    ALLOW,
+
+    /** "While using the app". */
+    ALLOW_FOREGROUND_ONLY,
+
+    /** "Only this time". */
+    ALLOW_ONE_TIME,
+
+    /** "Allow all the time" (background location on Android 10). */
+    ALLOW_ALWAYS,
+
+    /** "Select photos and videos" (partial media access, Android 14). */
+    ALLOW_SELECTED,
+
+    /** "Allow all" (media, Android 14). */
+    ALLOW_ALL,
+
+    /** "Don't allow" / "Deny". */
+    DENY,
+
+    /** "Deny & don't ask again" / "Don't allow" on a repeated request. */
+    DENY_AND_DONT_ASK_AGAIN,
+
+    /** "Keep while app is in use": refuses an upgrade to background access. */
+    KEEP_FOREGROUND_ONLY,
+
+    /** "Keep only this time": refuses an upgrade of a one-time grant. */
+    KEEP_ONE_TIME,
+}
+
+/** The Precise / Approximate choice of the location permission dialog (Android 12+). */
+enum class LocationAccuracy { PRECISE, APPROXIMATE }
+
+/**
+ * The runtime-permission dialog on screen: the [packageName] of its window (`device.app(packageName)`
+ * reaches its other elements), the [choices] it offers, in [PermissionChoice] order, and the
+ * location [accuracies] it lets the user pick (empty unless it asks for precise location).
+ */
+data class PermissionPrompt(
+    val packageName: String,
+    val choices: List<PermissionChoice>,
+    val accuracies: List<LocationAccuracy> = emptyList(),
+)
+
+/**
+ * A standard accessibility action that takes no arguments, as a screen reader performs it
+ * ([Element.performAction]). Click and long click are not here: [Element.tap] and
+ * [Element.longTap] touch the screen.
+ */
+enum class StandardAction {
+    EXPAND,
+    COLLAPSE,
+    DISMISS,
+    SCROLL_FORWARD,
+    SCROLL_BACKWARD,
+    SCROLL_UP,
+    SCROLL_DOWN,
+    SCROLL_LEFT,
+    SCROLL_RIGHT,
+
+    /** API 29+. */
+    PAGE_UP,
+
+    /** API 29+. */
+    PAGE_DOWN,
+
+    /** API 29+. */
+    PAGE_LEFT,
+
+    /** API 29+. */
+    PAGE_RIGHT,
+    SHOW_ON_SCREEN,
+    CONTEXT_CLICK,
+
+    /** API 30+. */
+    PRESS_AND_HOLD,
+    SELECT,
+    CLEAR_SELECTION,
+
+    /** Input focus. */
+    FOCUS,
+    CLEAR_FOCUS,
+    COPY,
+    CUT,
+    PASTE,
+}
+
+/** How a range node counts its value. */
+enum class RangeType { INT, FLOAT, PERCENT, UNKNOWN }
+
+/** A range node's (SeekBar, Slider, RatingBar, ProgressBar) value and bounds, in its own units. */
+data class Range(
+    val type: RangeType,
+    val min: Float,
+    val max: Float,
+    val current: Float,
+)
+
+/**
+ * A toast [Device.awaitToast] saw: its [text] and the [packageName] that showed it (on Android 11+
+ * a text toast is drawn by SystemUI but still reported under the app that posted it).
+ */
+data class Toast(
+    val text: String,
+    val packageName: String,
+)
+
+/**
+ * An active notification ([Device.notifications], [Device.awaitNotification]): the [packageName]
+ * that posted it, its [title] and [text] (the `android.title` / `android.text` extras, null when
+ * it has none), the titles of its action buttons ([actions], what [Device.openNotification]'s
+ * `action` names), whether a swipe dismisses it ([clearable]: false for an ongoing one, such as a
+ * foreground service's), and when it was posted.
+ */
+data class Notification(
+    val packageName: String,
+    val title: String?,
+    val text: String?,
+    val actions: List<String>,
+    val clearable: Boolean,
+    val postedAt: Instant,
+)
+
+/**
+ * The activity on top of the screen ([Device.foregroundActivity]): its app's [packageName] and
+ * its fully qualified [className].
+ */
+data class ForegroundActivity(
+    val packageName: String,
+    val className: String,
+)
 
 /** What [App.awaitScreenStable] watches for changes. */
 enum class StabilitySignal {
@@ -160,9 +309,20 @@ enum class FailureReason {
 
     /** The ref's node had no selector that matched it alone. */
     REF_NOT_ADDRESSABLE,
+
+    /** The device's API level is too low for the call (detail `REQUIRES_API_<n>`). */
+    UNSUPPORTED_API,
+
+    /** A device setting did not read back as written (or could not be restored). */
+    DEVICE_SETTING,
+
+    /**
+     * A device file was not written or read as asked: it exists and this device handle did not
+     * create it, its directory is missing, it is not a regular file, or it did not read back.
+     */
+    DEVICE_FILE,
 }
 
-/** A device's state in [TapClient.devices]. Only [FREE] and [LEASED] devices can be attached. */
 /** Why a device-side wait timed out ([WaitTimeoutException.reason]). */
 enum class WaitReason {
     /** `visible` / `one`: nothing matched. */
@@ -179,6 +339,15 @@ enum class WaitReason {
 
     /** `App.awaitVisible` / `App.awaitScreenStable`: the package never owned the focused window. */
     APP_NOT_VISIBLE,
+
+    /** `awaitPermissionPrompt`: no runtime-permission dialog showed a known choice. */
+    NO_PERMISSION_PROMPT,
+
+    /** `awaitToast`: no matching toast was shown. */
+    NO_TOAST,
+
+    /** `awaitNotification`: no matching notification was active. */
+    NO_NOTIFICATION,
     ;
 
     internal companion object {
@@ -186,6 +355,7 @@ enum class WaitReason {
     }
 }
 
+/** A device's state in [TapClient.devices]. Only [FREE] and [LEASED] devices can be attached. */
 enum class DeviceState {
     /** Online and not held by any session. */
     FREE,
@@ -239,6 +409,12 @@ data class ElementSnapshot(
     val selected: Boolean,
     val childCount: Int,
     val showingHint: Boolean,
+    /** The standard actions the node offers ([Element.performAction]). */
+    val actions: List<StandardAction> = emptyList(),
+    /** The labels of the custom actions the node offers ([Element.performCustomAction]). */
+    val customActions: List<String> = emptyList(),
+    /** The node's range, when it is a range node ([Element.setProgress]). */
+    val range: Range? = null,
 )
 
 /** A process of an app as the host sees it: PID plus the `/proc` start token that tells reused PIDs apart. */

@@ -1,7 +1,8 @@
 # ruff: noqa
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Mapping as _Mapping
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
 from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
@@ -104,35 +105,135 @@ class GrantPermissionResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
+class RevokePermissionRequest(_message.Message):
+    __slots__ = ("app", "permission")
+    APP_FIELD_NUMBER: _ClassVar[int]
+    PERMISSION_FIELD_NUMBER: _ClassVar[int]
+    app: AppTarget
+    permission: str
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., permission: _Optional[str] = ...) -> None: ...
+
+class RevokePermissionResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class IsPermissionGrantedRequest(_message.Message):
+    __slots__ = ("app", "permission")
+    APP_FIELD_NUMBER: _ClassVar[int]
+    PERMISSION_FIELD_NUMBER: _ClassVar[int]
+    app: AppTarget
+    permission: str
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., permission: _Optional[str] = ...) -> None: ...
+
+class IsPermissionGrantedResponse(_message.Message):
+    __slots__ = ("granted",)
+    GRANTED_FIELD_NUMBER: _ClassVar[int]
+    granted: bool
+    def __init__(self, granted: _Optional[bool] = ...) -> None: ...
+
+class SetLocalesRequest(_message.Message):
+    __slots__ = ("app", "locales")
+    APP_FIELD_NUMBER: _ClassVar[int]
+    LOCALES_FIELD_NUMBER: _ClassVar[int]
+    app: AppTarget
+    locales: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., locales: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class SetLocalesResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetLocalesRequest(_message.Message):
+    __slots__ = ("app",)
+    APP_FIELD_NUMBER: _ClassVar[int]
+    app: AppTarget
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ...) -> None: ...
+
+class GetLocalesResponse(_message.Message):
+    __slots__ = ("locales",)
+    LOCALES_FIELD_NUMBER: _ClassVar[int]
+    locales: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, locales: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class IntentExtra(_message.Message):
+    __slots__ = ("key", "string_value", "bool_value", "int_value", "long_value", "float_value")
+    KEY_FIELD_NUMBER: _ClassVar[int]
+    STRING_VALUE_FIELD_NUMBER: _ClassVar[int]
+    BOOL_VALUE_FIELD_NUMBER: _ClassVar[int]
+    INT_VALUE_FIELD_NUMBER: _ClassVar[int]
+    LONG_VALUE_FIELD_NUMBER: _ClassVar[int]
+    FLOAT_VALUE_FIELD_NUMBER: _ClassVar[int]
+    key: str
+    string_value: str
+    bool_value: bool
+    int_value: int
+    long_value: int
+    float_value: float
+    def __init__(self, key: _Optional[str] = ..., string_value: _Optional[str] = ..., bool_value: _Optional[bool] = ..., int_value: _Optional[int] = ..., long_value: _Optional[int] = ..., float_value: _Optional[float] = ...) -> None: ...
+
 class LaunchRequest(_message.Message):
-    __slots__ = ("app", "activity", "timeout_ms")
+    __slots__ = ("app", "activity", "timeout_ms", "extras")
     APP_FIELD_NUMBER: _ClassVar[int]
     ACTIVITY_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    EXTRAS_FIELD_NUMBER: _ClassVar[int]
     app: AppTarget
     activity: str
     timeout_ms: int
-    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., activity: _Optional[str] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+    extras: _containers.RepeatedCompositeFieldContainer[IntentExtra]
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., activity: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., extras: _Optional[_Iterable[_Union[IntentExtra, _Mapping]]] = ...) -> None: ...
 
 class LaunchResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
 class ColdLaunchRequest(_message.Message):
-    __slots__ = ("app", "activity", "timeout_ms")
+    __slots__ = ("app", "activity", "timeout_ms", "extras")
     APP_FIELD_NUMBER: _ClassVar[int]
     ACTIVITY_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    EXTRAS_FIELD_NUMBER: _ClassVar[int]
     app: AppTarget
     activity: str
     timeout_ms: int
-    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., activity: _Optional[str] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+    extras: _containers.RepeatedCompositeFieldContainer[IntentExtra]
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., activity: _Optional[str] = ..., timeout_ms: _Optional[int] = ..., extras: _Optional[_Iterable[_Union[IntentExtra, _Mapping]]] = ...) -> None: ...
 
 class ColdLaunchResponse(_message.Message):
     __slots__ = ("process",)
     PROCESS_FIELD_NUMBER: _ClassVar[int]
     process: ProcessIdentity
     def __init__(self, process: _Optional[_Union[ProcessIdentity, _Mapping]] = ...) -> None: ...
+
+class ForegroundRequest(_message.Message):
+    __slots__ = ("app", "timeout_ms")
+    APP_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    app: AppTarget
+    timeout_ms: int
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+
+class ForegroundResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class OpenLinkRequest(_message.Message):
+    __slots__ = ("app", "uri", "any_app", "timeout_ms")
+    APP_FIELD_NUMBER: _ClassVar[int]
+    URI_FIELD_NUMBER: _ClassVar[int]
+    ANY_APP_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    app: AppTarget
+    uri: str
+    any_app: bool
+    timeout_ms: int
+    def __init__(self, app: _Optional[_Union[AppTarget, _Mapping]] = ..., uri: _Optional[str] = ..., any_app: _Optional[bool] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+
+class OpenLinkResponse(_message.Message):
+    __slots__ = ("activity",)
+    ACTIVITY_FIELD_NUMBER: _ClassVar[int]
+    activity: str
+    def __init__(self, activity: _Optional[str] = ...) -> None: ...
 
 class ProcessRequest(_message.Message):
     __slots__ = ("app", "timeout_ms")

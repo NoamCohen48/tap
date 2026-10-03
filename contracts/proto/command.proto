@@ -75,12 +75,104 @@ enum SystemPanel {
   SYSTEM_PANEL_QUICK_SETTINGS = 2; // the quick settings panel
 }
 
+// Portable geometry, independent of the device's natural orientation.
+enum Orientation {
+  ORIENTATION_UNSPECIFIED = 0;
+  ORIENTATION_PORTRAIT = 1;
+  ORIENTATION_LANDSCAPE = 2;
+}
+
+// Exact clockwise display rotation relative to the device's natural orientation.
+enum DisplayRotation {
+  DISPLAY_ROTATION_UNSPECIFIED = 0;
+  DISPLAY_ROTATION_NATURAL = 1;
+  DISPLAY_ROTATION_LEFT = 2;
+  DISPLAY_ROTATION_UPSIDE_DOWN = 3;
+  DISPLAY_ROTATION_RIGHT = 4;
+}
+
+// Opposite finger movements for `pinch`: OPEN spreads two fingers apart (zoom in), CLOSE brings
+// them together (zoom out).
+enum PinchDirection {
+  PINCH_UNSPECIFIED = 0;
+  PINCH_OPEN = 1;
+  PINCH_CLOSE = 2;
+}
+
+// A button of the runtime-permission dialog, by what it grants. Which ones a dialog offers depends
+// on the permission, the Android version and the controller build (`wait_permission_prompt`).
+enum PermissionChoice {
+  PERMISSION_CHOICE_UNSPECIFIED = 0;
+  PERMISSION_ALLOW = 1; // "Allow"
+  PERMISSION_ALLOW_FOREGROUND_ONLY = 2; // "While using the app"
+  PERMISSION_ALLOW_ONE_TIME = 3; // "Only this time"
+  PERMISSION_ALLOW_ALWAYS = 4; // "Allow all the time" (API 29 background location)
+  PERMISSION_ALLOW_SELECTED = 5; // "Select photos and videos" (API 34 partial media access)
+  PERMISSION_ALLOW_ALL = 6; // "Allow all" (API 34 media)
+  PERMISSION_DENY = 7; // "Don't allow" / "Deny"
+  PERMISSION_DENY_AND_DONT_ASK_AGAIN = 8; // "Deny & don't ask again"
+  PERMISSION_KEEP_FOREGROUND_ONLY = 9; // "Keep while app is in use" (an upgrade request refused)
+  PERMISSION_KEEP_ONE_TIME = 10; // "Keep only this time" (an upgrade request refused)
+}
+
+// The Precise / Approximate radio buttons of the location dialog (API 31+, when the app asks for
+// fine location).
+enum LocationAccuracy {
+  LOCATION_ACCURACY_UNSPECIFIED = 0;
+  LOCATION_PRECISE = 1;
+  LOCATION_APPROXIMATE = 2;
+}
+
 // ---- commands: one message per operation, each carrying only its own arguments -----------------
+
+// A standard accessibility action that takes no arguments (`AccessibilityNodeInfo.AccessibilityAction`),
+// as a screen reader performs it. Click and long click are not here: `tap` / `long_tap` touch.
+enum StandardAction {
+  STANDARD_ACTION_UNSPECIFIED = 0;
+  A11Y_EXPAND = 1;
+  A11Y_COLLAPSE = 2;
+  A11Y_DISMISS = 3;
+  A11Y_SCROLL_FORWARD = 4;
+  A11Y_SCROLL_BACKWARD = 5;
+  A11Y_SCROLL_UP = 6;
+  A11Y_SCROLL_DOWN = 7;
+  A11Y_SCROLL_LEFT = 8;
+  A11Y_SCROLL_RIGHT = 9;
+  A11Y_PAGE_UP = 10; // API 29+
+  A11Y_PAGE_DOWN = 11; // API 29+
+  A11Y_PAGE_LEFT = 12; // API 29+
+  A11Y_PAGE_RIGHT = 13; // API 29+
+  A11Y_SHOW_ON_SCREEN = 14;
+  A11Y_CONTEXT_CLICK = 15;
+  A11Y_PRESS_AND_HOLD = 16; // API 30+
+  A11Y_SELECT = 17;
+  A11Y_CLEAR_SELECTION = 18;
+  A11Y_FOCUS = 19; // input focus
+  A11Y_CLEAR_FOCUS = 20;
+  A11Y_COPY = 21;
+  A11Y_CUT = 22;
+  A11Y_PASTE = 23;
+}
+
+// How a range node counts (`AccessibilityNodeInfo.RangeInfo`).
+enum RangeType {
+  RANGE_TYPE_UNSPECIFIED = 0;
+  RANGE_INT = 1;
+  RANGE_FLOAT = 2;
+  RANGE_PERCENT = 3;
+}
 
 message DeviceInfoQuery {}
 message PressKey { int32 key_code = 1; } // an Android KeyEvent key code, ≥ 0
 // Opens `panel` (the accessibility global action); no target. Back or Home close it.
 message OpenSystemPanel { SystemPanel panel = 1; } // not UNSPECIFIED
+// Sets portable geometry or an exact natural-relative rotation and freezes sensor rotation.
+message SetOrientation { Orientation orientation = 1; } // not UNSPECIFIED
+message SetDisplayRotation { DisplayRotation rotation = 1; } // not UNSPECIFIED
+// Releases the sensor lock without selecting a new rotation.
+message UnfreezeRotation {}
+// Dismisses a keyguard that has no PIN, pattern or password; a secure one is refused, never unlocked.
+message DismissKeyguard {}
 message DumpHierarchy {}
 
 message Exists { Selector selector = 1; }
@@ -120,6 +212,110 @@ message Scroll {
   Direction direction = 2;
   optional int32 distance_percent = 3; // 1..100; default 80
 }
+// Two taps on the element's visible centre within Android's double-tap window, as one gesture.
+message DoubleTap { Selector selector = 1; }
+// Press and hold on `selector`'s centre until it becomes a long press, move to `target`'s centre,
+// hold there, release: one gesture. Both resolve to exactly one element before input starts.
+message Drag {
+  Selector selector = 1;
+  Selector target = 2;
+}
+// Two fingers across the element's bounds, moving `percent` of its size (1..100; default 80).
+message Pinch {
+  Selector selector = 1;
+  PinchDirection direction = 2;
+  optional int32 percent = 3;
+}
+// A fast swipe across the element. `direction` is the content edge moved towards, as for `scroll`.
+message Fling {
+  Selector selector = 1;
+  Direction direction = 2;
+}
+// Waits for a runtime-permission dialog and reports the choices it offers. No input.
+message WaitPermissionPrompt {}
+// Taps the dialog's button for `choice`; it must be offered, exactly once.
+// With `accuracy`, the dialog's radio for it is selected first; it must be offered too (both are
+// found before any input). UNSPECIFIED leaves the accuracy as the dialog shows it.
+message ChoosePermission {
+  PermissionChoice choice = 1; // not UNSPECIFIED
+  LocationAccuracy accuracy = 2;
+}
+// Hides the on-screen keyboard: one Back key when an input-method window is showing, nothing
+// otherwise.
+message HideKeyboard {}
+// The keyboard's action key (Search, Go, Done, …) on the field: `ACTION_IME_ENTER`, API 30+.
+message PerformImeAction { Selector selector = 1; }
+// Replaces the primary clip with plain `text` (≤ 4096 chars).
+message SetClipboard { string text = 1; }
+// Reads the primary clip as plain text (`text` result; "" when the clipboard is empty).
+message GetClipboard {}
+// Waits for a toast. `text` (≤ 1024 chars) is compared under `mode` (default exact); absent =
+// any text. `package_name` absent = a toast from any package. A toast posted up to 3.5 s before
+// the command (the longest one stays up) counts.
+message AwaitToast {
+  optional string text = 1;
+  MatchMode mode = 2;
+  optional string package_name = 3;
+}
+
+// An accessibility action on the one matching node, as a screen reader performs it (no touch,
+// so no occlusion check): a standard action, or a custom one by its exact label (≤ 1024 chars).
+// The node must offer it: ACTION_REJECTED (ACTION_NOT_OFFERED) before input otherwise.
+message PerformAccessibilityAction {
+  Selector selector = 1;
+  oneof action {
+    StandardAction standard = 2; // not UNSPECIFIED
+    string custom = 3;
+  }
+}
+// `ACTION_SET_PROGRESS` on the one matching range node (SeekBar, Slider, RatingBar): `value` in
+// the node's own RangeInfo units, finite and within its min..max. A node without the action or
+// a value outside the range is ACTION_REJECTED (ACTION_NOT_OFFERED / OUT_OF_RANGE) before input.
+message SetProgress {
+  Selector selector = 1;
+  float value = 2;
+}
+// Mock location: the gps and network providers (and fused, API 31+) report this fix, as
+// LocationManager test providers the driver owns, sent again every second until the driver
+// stops or the next set_location. `latitude` -90..90, `longitude` -180..180, `accuracy_m` > 0
+// (default 5 m), `altitude_m` absent = no altitude. The driver app needs the mock-location app-op
+// (the host's DeviceService.SetLocation grants it first); without it Android refuses
+// (ERR_ACTION_REJECTED).
+message SetLocation {
+  double latitude = 1;
+  double longitude = 2;
+  optional float accuracy_m = 3;
+  optional double altitude_m = 4;
+}
+
+// Which notifications a notification op means; every field given must match (none: any).
+// `package_name` exactly; `title` and `text` (≤ 1024 chars each) under `mode` (default exact).
+// The notifications are what a NotificationListenerService in the driver app sees: the server
+// gives the driver notification access (`cmd notification allow_listener`) before the first
+// notification op and takes it back on detach. Group summaries are left out.
+message NotificationMatch {
+  optional string package_name = 1;
+  optional string title = 2;
+  optional string text = 3;
+  MatchMode mode = 4;
+}
+// Waits until a matching notification is active (one already posted counts) and returns the
+// newest; WAIT_TIMEOUT (NO_NOTIFICATION) otherwise. No input.
+message AwaitNotification { NotificationMatch match = 1; }
+// The active notifications, newest first. No input.
+message ListNotifications {}
+// Opens the one matching notification as a tap on it in the shade does: sends its content
+// intent and, when it auto-cancels, removes it. With `action` (≤ 1024 chars), sends the intent
+// of its action button with exactly that title instead, and the notification stays. NOT_FOUND /
+// AMBIGUOUS, or ACTION_REJECTED (ACTION_NOT_OFFERED) when it has no content intent or no such
+// action, before anything is sent.
+message OpenNotification {
+  NotificationMatch match = 1;
+  optional string action = 2;
+}
+// Dismisses the one matching notification as a swipe does. NOT_FOUND / AMBIGUOUS, or
+// ACTION_REJECTED (NOT_CLEARABLE) for an ongoing one, before anything changes.
+message DismissNotification { NotificationMatch match = 1; }
 
 // One protocol request minus session identity (the server owns session id, generation and
 // request ids). Exactly one `op` must be set; its case name is the protocol `op`.
@@ -144,6 +340,28 @@ message Command {
     Swipe swipe = 19;
     Scroll scroll = 20;
     OpenSystemPanel open_system_panel = 24;
+    SetOrientation set_orientation = 25;
+    SetDisplayRotation set_display_rotation = 26;
+    UnfreezeRotation unfreeze_rotation = 27;
+    DismissKeyguard dismiss_keyguard = 28;
+    DoubleTap double_tap = 29;
+    Drag drag = 30;
+    Pinch pinch = 31;
+    Fling fling = 32;
+    WaitPermissionPrompt wait_permission_prompt = 33;
+    ChoosePermission choose_permission = 34;
+    HideKeyboard hide_keyboard = 35;
+    PerformImeAction perform_ime_action = 36;
+    SetClipboard set_clipboard = 37;
+    GetClipboard get_clipboard = 38;
+    AwaitToast await_toast = 39;
+    PerformAccessibilityAction perform_accessibility_action = 40;
+    SetProgress set_progress = 41;
+    SetLocation set_location = 42;
+    AwaitNotification await_notification = 43;
+    ListNotifications list_notifications = 44;
+    OpenNotification open_notification = 45;
+    DismissNotification dismiss_notification = 46;
   }
 }
 
@@ -179,6 +397,18 @@ message ElementSnapshot {
   // The node is showing its hint: on API 26+ an empty field then reports the hint as `text`.
   // `text` is always the raw accessibility text; selectors match that same raw text.
   bool showing_hint = 18;
+  // The standard actions (of StandardAction) and the custom actions (by label) the node offers.
+  repeated StandardAction actions = 19;
+  repeated string custom_actions = 20;
+  // A range node's (SeekBar, Slider, RatingBar, ProgressBar) RangeInfo.
+  optional Range range = 21;
+}
+
+message Range {
+  RangeType type = 1;
+  float min = 2;
+  float max = 3;
+  float current = 4;
 }
 
 // Static facts about the device plus the package currently owning the focused window.
@@ -191,6 +421,57 @@ message DeviceInfo {
   int32 display_height = 6;
   int32 display_rotation = 7;
   optional string current_package = 8;
+  bool screen_on = 9; // PowerManager.isInteractive
+  bool keyguard_locked = 10; // KeyguardManager.isKeyguardLocked
+  bool keyguard_secure = 11; // a PIN, pattern or password is set
+  bool keyboard_shown = 12; // an input-method window is on screen
+  bool auto_rotate = 13; // Settings.System.ACCELEROMETER_ROTATION: the sensor picks the rotation
+  bool animations_enabled = 14; // any of the three animation scales is not 0
+  bool dark_mode = 15; // the current configuration is night (UI_MODE_NIGHT_YES)
+  float font_scale = 16; // Configuration.fontScale
+  int32 density_dpi = 17; // Configuration.densityDpi
+  bool airplane_mode = 18; // Settings.Global.AIRPLANE_MODE_ON
+  bool wifi_enabled = 19; // Settings.Global.WIFI_ON is 1, or 2 (on under airplane mode)
+  bool mobile_data_enabled = 20; // Settings.Global `mobile_data`; false without telephony
+  repeated string system_locales = 21; // the system configuration's LocaleList, as BCP-47 tags
+  bool stay_awake = 22; // Settings.Global.STAY_ON_WHILE_PLUGGED_IN is not 0
+  // Settings.Secure `high_text_contrast_enabled` / `accessibility_display_inversion_enabled`;
+  // absent when Android does not let the driver read them.
+  optional bool high_contrast_text = 23;
+  optional bool color_inversion = 24;
+  bool bold_text = 25; // Configuration.fontWeightAdjustment > 0 (API 31+; false below)
+}
+
+// An active notification: the package that posted it, its title and text (Notification extras
+// `android.title` / `android.text`, absent when it has none), the titles of its action buttons,
+// whether a swipe can dismiss it, and when it was posted (wall clock, epoch milliseconds).
+message DeviceNotification {
+  string package_name = 1;
+  optional string title = 2;
+  optional string text = 3;
+  repeated string actions = 4;
+  bool clearable = 5;
+  int64 posted_at_ms = 6;
+}
+
+message NotificationList {
+  repeated DeviceNotification notifications = 1;
+}
+
+// A toast `await_toast` matched: its text and the package that posted it.
+message Toast {
+  string text = 1;
+  string package_name = 2;
+}
+
+// The runtime-permission dialog on screen: the package of its window (what a selector's package
+// scope names; Google builds rename the controller, so it differs from the resource ids' package)
+// and the choices it offers, in PermissionChoice order.
+message PermissionPrompt {
+  string package_name = 1;
+  repeated PermissionChoice choices = 2;
+  // The location accuracies the dialog offers to pick (empty when it asks for none).
+  repeated LocationAccuracy accuracies = 3;
 }
 
 // The command ran to completion and has nothing else to report.
@@ -218,9 +499,13 @@ message CommandResult {
     Done done = 4;
     bool bool = 5; // exists
     int32 count = 7; // count, capped at 1000
-    string text = 8; // dump_hierarchy
+    string text = 8; // dump_hierarchy, get_clipboard
     ElementSnapshot snapshot = 9;
     DeviceInfo device_info = 10;
     Error error = 13;
+    PermissionPrompt permission_prompt = 14;
+    Toast toast = 15;
+    DeviceNotification notification = 16; // await_notification
+    NotificationList notifications = 17; // list_notifications
   }
 }

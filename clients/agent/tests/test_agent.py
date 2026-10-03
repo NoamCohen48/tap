@@ -152,6 +152,210 @@ def test_panels_open_the_shade_and_quick_settings(fake, agent):
     assert info.value.exit_code == EXIT_USAGE
 
 
+def test_gestures_double_tap_fling_drag_and_pinch(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.refs["e3"] = res("card")._proto
+    fake.devices.refs["e7"] = res("bin")._proto
+    assert agent.tap("@e3", double=True) == "double-tapped @e3"
+    assert fake.devices.commands[-1].double_tap.selector == res("card")._proto
+    assert agent.fling("id=list", "down") == "flung down id=list"
+    assert fake.devices.commands[-1].fling.direction == pb.DIR_DOWN
+    assert agent.drag("@e3", "@e7") == "dragged @e3 onto @e7"
+    drag = fake.devices.commands[-1].drag
+    assert (drag.selector, drag.target) == (res("card")._proto, res("bin")._proto)
+    assert agent.pinch("id=map", "close", 40) == "pinched closed 40% id=map"
+    assert (fake.devices.commands[-1].pinch.direction, fake.devices.commands[-1].pinch.percent) == (pb.PINCH_CLOSE, 40)
+    for bad in (lambda: agent.tap("@e3", long=True, double=True), lambda: agent.pinch("id=map", "twist"), lambda: agent.pinch("id=map", "open", 0)):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+
+
+def test_rotate_screen_and_permission_report_what_the_device_says(fake, agent):
+    agent.attach("emulator-5554")
+    state = {"rotation": 0, "locked": True}
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        if op == "set_orientation":
+            state["rotation"] = 1
+        if op == "dismiss_keyguard":
+            state["locked"] = False
+        if op == "device_info":
+            wide = state["rotation"] % 2 == 1
+            return pb.CommandResult(
+                device_info=pb.DeviceInfo(
+                    display_width=2400 if wide else 1080,
+                    display_height=1080 if wide else 2400,
+                    display_rotation=state["rotation"],
+                    screen_on=True,
+                    keyguard_locked=state["locked"],
+                )
+            )
+        if op == "wait_permission_prompt":
+            return pb.CommandResult(
+                permission_prompt=pb.PermissionPrompt(
+                    package_name="com.android.permissioncontroller",
+                    choices=[pb.PERMISSION_ALLOW_FOREGROUND_ONLY, pb.PERMISSION_DENY],
+                    accuracies=[pb.LOCATION_PRECISE, pb.LOCATION_APPROXIMATE],
+                )
+            )
+        return None
+
+    fake.devices.responder = respond
+    assert agent.rotate("landscape") == "rotated landscape: display landscape, left (2400x1080)"
+    assert fake.devices.commands[-2].set_orientation.orientation == pb.ORIENTATION_LANDSCAPE
+    agent.rotate("upside-down")
+    assert fake.devices.commands[-2].set_display_rotation.rotation == pb.DISPLAY_ROTATION_UPSIDE_DOWN
+    agent.rotate("auto")
+    assert fake.devices.commands[-2].HasField("unfreeze_rotation")
+    assert agent.screen() == "screen on, keyguard showing"
+    assert agent.screen("unlock") == "screen on, keyguard not showing"
+    assert [c.WhichOneof("op") for c in fake.devices.commands[-3:]] == ["press_key", "dismiss_keyguard", "device_info"]
+    assert fake.devices.commands[-3].press_key.key_code == 224
+    agent.screen("off")
+    assert fake.devices.commands[-2].press_key.key_code == 223
+    assert agent.permission() == (
+        "permission dialog (com.android.permissioncontroller) offers: allow-foreground-only, deny; accuracy: precise, approximate"
+    )
+    assert agent.permission("allow-one-time") == "pressed allow-one-time"
+    assert fake.devices.commands[-1].choose_permission.choice == pb.PERMISSION_ALLOW_ONE_TIME
+    assert fake.devices.commands[-1].choose_permission.accuracy == pb.LOCATION_ACCURACY_UNSPECIFIED
+    assert agent.permission("allow-foreground-only", accuracy="approximate") == "pressed allow-foreground-only (approximate)"
+    assert fake.devices.commands[-1].choose_permission.accuracy == pb.LOCATION_APPROXIMATE
+    for bad in (
+        lambda: agent.rotate("sideways"),
+        lambda: agent.screen("dim"),
+        lambda: agent.permission("maybe"),
+        lambda: agent.permission(accuracy="precise"),
+        lambda: agent.permission("allow", accuracy="exact"),
+    ):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+
+
+def test_accessibility_actions_and_progress(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(
+            snapshot=pb.ElementSnapshot(
+                actions=[pb.A11Y_EXPAND, pb.A11Y_SCROLL_FORWARD],
+                custom_actions=["Archive"],
+                range=pb.Range(type=pb.RANGE_INT, min=0, max=100, current=20),
+            )
+        )
+        if command.HasField("snapshot")
+        else None
+    )
+    assert agent.action("id=card") == "id=card offers: expand, scroll-forward, 'Archive'\nrange 0..100, now 20 (int)"
+    assert agent.action("id=card", "expand") == "performed expand on id=card"
+    assert fake.devices.commands[-1].perform_accessibility_action.standard == pb.A11Y_EXPAND
+    assert agent.action("id=card", "Archive", custom=True) == "performed 'Archive' on id=card"
+    assert fake.devices.commands[-1].perform_accessibility_action.custom == "Archive"
+    assert agent.progress("id=volume", 55) == "set progress 55 on id=volume"
+    assert fake.devices.commands[-1].set_progress.value == 55
+    for bad in (lambda: agent.action("id=card", "explode"), lambda: agent.action("id=card", custom=True)):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+
+
+def test_notifications_are_listed_awaited_opened_and_dismissed(fake, agent):
+    agent.attach("emulator-5554")
+    sent = []
+    message = pb.DeviceNotification(package_name="com.example", title="New message", text="from Ada", actions=["Reply"], clearable=True)
+    service = pb.DeviceNotification(package_name="android", title="USB debugging connected")
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        sent.append(command)
+        if op == "list_notifications":
+            return pb.CommandResult(notifications=pb.NotificationList(notifications=[message, service]))
+        if op == "await_notification":
+            return pb.CommandResult(notification=message)
+        if op in ("open_notification", "dismiss_notification"):
+            return pb.CommandResult(done=pb.Done())
+        return None
+
+    fake.devices.responder = respond
+    assert agent.notification() == (
+        "com.example: 'New message' - 'from Ada' [Reply]\nandroid: 'USB debugging connected' (ongoing)"
+    )
+    assert agent.notification(package="android") == "android: 'USB debugging connected' (ongoing)"
+    assert agent.notification("await", "New", contains=True) == "com.example: 'New message' - 'from Ada' [Reply]"
+    assert agent.notification("open", "New message", button="Reply") == "pressed 'Reply' on the notification"
+    assert agent.notification("dismiss", text="from Ada") == "dismissed the notification"
+    assert sent[2].await_notification.match.mode == pb.MATCH_CONTAINS
+    assert sent[3].open_notification.action == "Reply"
+    assert sent[4].dismiss_notification.match.text == "from Ada"
+    for bad in (
+        lambda: agent.notification("peek"),
+        lambda: agent.notification("await", contains=True),
+        lambda: agent.notification("dismiss", "x", button="Reply"),
+    ):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+    assert len(sent) == 5
+
+
+def test_keyboard_submit_clipboard_and_toast(fake, agent):
+    agent.attach("emulator-5554")
+    state = {"keyboard": True, "clip": ""}
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        if op == "hide_keyboard":
+            state["keyboard"] = False
+        if op == "device_info":
+            return pb.CommandResult(device_info=pb.DeviceInfo(keyboard_shown=state["keyboard"]))
+        if op == "set_clipboard":
+            state["clip"] = command.set_clipboard.text
+        if op == "get_clipboard":
+            return pb.CommandResult(text=state["clip"])
+        if op == "await_toast":
+            return pb.CommandResult(toast=pb.Toast(text="Saved order", package_name="com.example"))
+        return None
+
+    fake.devices.responder = respond
+    assert agent.keyboard() == "keyboard shown"
+    assert agent.keyboard("hide") == "keyboard hidden"
+    assert agent.submit("id=search") == "submitted id=search"
+    assert fake.devices.commands[-1].perform_ime_action.selector == res("search")._proto
+    assert agent.clipboard("copied") == "clipboard set (6 characters)"
+    assert agent.clipboard() == "copied"
+    assert agent.toast("Saved", contains=True, timeout=2) == "toast 'Saved order' from com.example"
+    toast = fake.devices.commands[-1].await_toast
+    assert (toast.text, toast.mode, toast.HasField("package_name")) == ("Saved", pb.MATCH_CONTAINS, False)
+    assert fake.devices.commands[-1].timeout_ms == 2000
+    agent.toast(package="com.example")
+    toast = fake.devices.commands[-1].await_toast
+    assert not toast.HasField("text") and toast.package_name == "com.example"
+    assert agent.app("revoke", "com.example", "android.permission.CAMERA") == (
+        "revoked android.permission.CAMERA from com.example (Android stops its process)"
+    )
+    assert fake.apps.revokes[-1].permission == "android.permission.CAMERA"
+    assert agent.app("granted", "com.example", "android.permission.CAMERA") == "android.permission.CAMERA is granted to com.example"
+    for bad in (lambda: agent.keyboard("show"), lambda: agent.toast(contains=True), lambda: agent.app("revoke", "com.example")):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+
+
+def test_app_foreground_background_and_open_link(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.app("foreground", "com.example") == "brought com.example to the foreground"
+    assert agent.app("background", "com.example") == "sent com.example to the background (pressed home)"
+    assert fake.devices.commands[-1].press_key.key_code == 3
+    assert agent.app("open-link", "com.example", "example://orders/42") == "opened example://orders/42 in com.example/.Link"
+    assert agent.app("open-link", "com.example", "https://example.com", any_app=True) == "opened https://example.com"
+    assert [(r.uri, r.any_app) for r in fake.apps.links] == [("example://orders/42", False), ("https://example.com", True)]
+    with pytest.raises(AgentError) as info:
+        agent.app("open-link", "com.example")
+    assert info.value.exit_code == EXIT_USAGE
+
+
 def test_screenshot_is_saved_under_the_out_dir(fake, agent, tmp_path):
     agent.attach("emulator-5554")
     path = agent.screenshot()
@@ -191,6 +395,15 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     capsys.readouterr()
     assert cli.main(["panel", "quick-settings", "-s", "cli"]) == 0
     assert capsys.readouterr().out == "opened quick-settings\n"
+    assert cli.main(["tap", "text=OK", "--double", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "double-tapped text=OK\n"
+    assert cli.main(["pinch", "text=Map", "open", "--percent", "50", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "pinched open 50% text=Map\n"
+    assert cli.main(["app", "open-link", "com.example", "example://x", "--any-app", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "opened example://x\n"
+    with pytest.raises(SystemExit) as info:
+        cli.main(["rotate", "sideways"])
+    assert info.value.code == EXIT_USAGE
     with pytest.raises(SystemExit) as info:
         cli.main(["panel", "settings"])
     assert info.value.code == EXIT_USAGE
@@ -219,12 +432,90 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
     assert agent.export(out) == f"wrote 3 events (1 failed) to {out}"
     assert json.loads(out.read_text())["events"] == document["events"]
 
+def test_condition_reads_back_and_app_locale(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(device_info=pb.DeviceInfo(animations_enabled=False, dark_mode=False, font_scale=1.25, density_dpi=320, wifi_enabled=True, system_locales=["fr-FR", "en"], color_inversion=True))
+        if command.HasField("device_info")
+        else None
+    )
+    assert agent.condition() == (
+        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en, "
+        "stay-awake off, high-contrast-text unknown, color-inversion on, bold-text off"
+    )
+    assert agent.condition("animations", "off") == "animations off (restored on release)"
+    assert agent.condition("font_scale", "1.25") == "font-scale 1.25 (restored on release)"
+    assert agent.condition("density", "reset") == "density 320 dpi (restored on release)"
+    assert agent.condition("density") == "density 320 dpi"
+    animations, font, density = fake.devices.conditions
+    assert animations.enabled is False and font.scale == 1.25 and not density.HasField("dpi")
+    with pytest.raises(AgentError) as refused:
+        agent.condition("dark-mode", "on")
+    assert refused.value.exit_code == EXIT_FAILED and "API 29" in str(refused.value)
+    for bad in (
+        lambda: agent.condition("contrast", "on"),
+        lambda: agent.condition("animations", "maybe"),
+        lambda: agent.condition("font-scale", "big"),
+        lambda: agent.condition("density", "high"),
+    ):
+        with pytest.raises(AgentError) as info:
+            bad()
+        assert info.value.exit_code == EXIT_USAGE
+    assert len(fake.devices.conditions) == 4
+    assert agent.condition("mobile-data", "off") == "mobile-data off (restored on release)"
+    assert fake.devices.conditions[-1].mobile_data is False and not fake.devices.conditions[-1].HasField("wifi")
+    assert agent.condition("locale", "fr-FR, en") == "locale fr-FR,en (restored on release)"
+    assert list(fake.devices.conditions[-1].locales) == ["fr-FR", "en"]
+    with pytest.raises(AgentError) as empty:
+        agent.condition("locale", " , ")
+    assert empty.value.exit_code == EXIT_USAGE
+    assert agent.condition("color-inversion", "on") == "color-inversion on (restored on release)"
+    assert fake.devices.conditions[-1].color_inversion is True and not fake.devices.conditions[-1].HasField("bold_text")
+    assert agent.condition("stay_awake", "on") == "stay-awake off (restored on release)"
+    assert fake.devices.conditions[-1].enabled is True
+    assert agent.activity() == "no activity is resumed"
+    fake.devices.foreground = ("com.example", "com.example.MainActivity")
+    assert agent.activity() == "com.example/com.example.MainActivity"
+    assert agent.location(48.8584, 2.2945, 3.5) == "location mocked at 48.8584, 2.2945 ±3.5 m (ends on release)"
+    assert fake.devices.conditions[-1].latitude == 48.8584 and fake.devices.conditions[-1].accuracy_m == 3.5
+    assert agent.location(48.8584, 2.2945, device=None, altitude=35) == "location mocked at 48.8584, 2.2945, 35 m up (ends on release)"
+    assert fake.devices.conditions[-1].altitude_m == 35 and not fake.devices.conditions[-1].HasField("accuracy_m")
+    with pytest.raises(AgentError) as far:
+        agent.location(95, 0)
+    assert far.value.exit_code == EXIT_USAGE
+    assert agent.app("locale", "com.example") == "com.example follows the system language"
+    assert agent.app("locale", "com.example", "fr-FR, en") == "com.example languages: fr-FR, en"
+    assert agent.app("locale", "com.example", "system") == "com.example follows the system language"
+
+
+def test_files_push_pull_and_media(fake, agent, tmp_path):
+    agent.attach("emulator-5554")
+    local = tmp_path / "cat.png"
+    local.write_bytes(b"\x89PNG")
+    assert agent.push(local, "/sdcard/Download/cat.png") == "pushed 4 bytes to /sdcard/Download/cat.png (removed on release)"
+    out = tmp_path / "back.png"
+    assert agent.pull("/sdcard/Download/cat.png", out) == str(out)
+    assert out.read_bytes() == b"\x89PNG"
+    pulled = agent.pull("/sdcard/Download/cat.png")
+    assert pulled.endswith("-cat.png") and open(pulled, "rb").read() == b"\x89PNG"
+    assert agent.media(local) == "added /sdcard/Pictures/Tap/cat.png to the gallery (removed on release)"
+    assert agent.media(local, "dog.png") == "added /sdcard/Pictures/Tap/dog.png to the gallery (removed on release)"
+    with pytest.raises(AgentError) as missing:
+        agent.push(tmp_path / "nope", "/sdcard/Download/x")
+    assert missing.value.exit_code == EXIT_USAGE
+    with pytest.raises(AgentError) as taken:
+        agent.push(local, "/sdcard/Download/cat.png")
+    assert taken.value.exit_code == EXIT_FAILED
+
 
 # --- MCP ---------------------------------------------------------------------------------------
 
 EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
-    "scroll", "swipe", "press_key", "open_panel", "wait_for", "settle", "screenshot", "capture", "app", "export",
+    "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
+    "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
+    "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
+    "foreground_activity", "notification",
 }
 
 
@@ -271,5 +562,39 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
         result = await client.call_tool("open_panel", {"panel": "quick_settings"})
         assert not result.is_error and result.content[0].text == "opened quick-settings"
+        result = await client.call_tool("screen", {"action": "state"})
+        assert not result.is_error and result.content[0].text.startswith("screen off")
+        result = await client.call_tool("permission", {"choice": "deny"})
+        assert not result.is_error and result.content[0].text == "pressed deny"
+        result = await client.call_tool("keyboard", {})
+        assert not result.is_error and result.content[0].text == "keyboard hidden"
+        result = await client.call_tool("clipboard", {"text": "hi"})
+        assert not result.is_error and result.content[0].text == "clipboard set (2 characters)"
+        result = await client.call_tool("app", {"action": "open-link", "package": "com.example", "argument": "example://x"})
+        assert not result.is_error and result.content[0].text.startswith("opened example://x")
         result = await client.call_tool("export", {})
         assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text
+
+
+def test_launch_extras_are_typed_and_checked(fake, agent, capsys):
+    agent.attach("emulator-5554")
+    assert agent.app("launch", "com.example", ".Item", extras=["user=ada", "n:int=3", "id:long=42", "ratio:float=0.5", "on:bool=true"]) == "launched com.example"
+    request = fake.apps.launches[-1]
+    shown = {e.key: (e.WhichOneof("value"), getattr(e, e.WhichOneof("value"))) for e in request.extras}
+    assert shown == {
+        "user": ("string_value", "ada"),
+        "n": ("int_value", 3),
+        "id": ("long_value", 42),
+        "ratio": ("float_value", 0.5),
+        "on": ("bool_value", True),
+    }
+    agent.app("cold-launch", "com.example", extras=["url=a=b"])
+    assert [(e.key, e.string_value) for e in fake.apps.cold_launches[-1].extras] == [("url", "a=b")]
+    for bad in (["novalue"], ["n:int=x"], ["n:int=3000000000"], ["x:short=1"], ["b:bool=yes"], ["f:float=nan"], ["k=1", "k=2"], ["=v"]):
+        with pytest.raises(AgentError) as info:
+            agent.app("launch", "com.example", extras=bad)
+        assert info.value.exit_code == EXIT_USAGE, bad
+    with pytest.raises(AgentError) as info:
+        agent.app("stop", "com.example", extras=["a=b"])
+    assert info.value.exit_code == EXIT_USAGE
+    assert len(fake.apps.launches) == 1

@@ -31,6 +31,9 @@ class FailureReason(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FAILURE_REASON_DAEMON_PRECONDITION: _ClassVar[FailureReason]
     FAILURE_REASON_UNKNOWN_REF: _ClassVar[FailureReason]
     FAILURE_REASON_REF_NOT_ADDRESSABLE: _ClassVar[FailureReason]
+    FAILURE_REASON_UNSUPPORTED_API: _ClassVar[FailureReason]
+    FAILURE_REASON_DEVICE_SETTING: _ClassVar[FailureReason]
+    FAILURE_REASON_DEVICE_FILE: _ClassVar[FailureReason]
 FAILURE_REASON_UNSPECIFIED: FailureReason
 FAILURE_REASON_INTERNAL: FailureReason
 FAILURE_REASON_INVALID_ARGUMENT: FailureReason
@@ -53,6 +56,9 @@ FAILURE_REASON_SESSION_UNUSABLE: FailureReason
 FAILURE_REASON_DAEMON_PRECONDITION: FailureReason
 FAILURE_REASON_UNKNOWN_REF: FailureReason
 FAILURE_REASON_REF_NOT_ADDRESSABLE: FailureReason
+FAILURE_REASON_UNSUPPORTED_API: FailureReason
+FAILURE_REASON_DEVICE_SETTING: FailureReason
+FAILURE_REASON_DEVICE_FILE: FailureReason
 
 class Failure(_message.Message):
     __slots__ = ("reason", "serial", "waited_ms", "error_code", "detail")

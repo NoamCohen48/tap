@@ -5,6 +5,7 @@ generated code."""
 from __future__ import annotations
 
 import builtins
+import datetime
 import enum
 import json
 import os
@@ -38,6 +39,109 @@ class Direction(enum.Enum):
     DOWN = "DOWN"
     LEFT = "LEFT"
     RIGHT = "RIGHT"
+
+
+class Orientation(enum.Enum):
+    """Display geometry: portrait is at least as tall as it is wide, whatever the device's natural
+    orientation (``Device.set_orientation``, ``DeviceInfo.orientation``)."""
+
+    PORTRAIT = "PORTRAIT"
+    LANDSCAPE = "LANDSCAPE"
+
+
+class DisplayRotation(enum.Enum):
+    """Display rotation relative to the device's natural orientation, named like AndroidX
+    ``UiDevice``: ``LEFT`` is ``Surface.ROTATION_90``, ``UPSIDE_DOWN`` 180, ``RIGHT`` 270."""
+
+    NATURAL = "NATURAL"
+    LEFT = "LEFT"
+    UPSIDE_DOWN = "UPSIDE_DOWN"
+    RIGHT = "RIGHT"
+
+
+class PermissionChoice(enum.Enum):
+    """A button of Android's runtime-permission dialog. Which ones a dialog offers depends on the
+    permission, the Android version and whether it was asked before
+    (``Device.await_permission_prompt``)."""
+
+    ALLOW = "ALLOW"
+    """"Allow" (API 29 and older, and permissions without a foreground/one-time split)."""
+    ALLOW_FOREGROUND_ONLY = "ALLOW_FOREGROUND_ONLY"
+    """"While using the app"."""
+    ALLOW_ONE_TIME = "ALLOW_ONE_TIME"
+    """"Only this time" (API 30+)."""
+    ALLOW_ALWAYS = "ALLOW_ALWAYS"
+    """"Allow all the time" (background location on API 29)."""
+    ALLOW_SELECTED = "ALLOW_SELECTED"
+    """"Select photos and videos" (API 34+ partial media access)."""
+    ALLOW_ALL = "ALLOW_ALL"
+    """"Allow all" (API 34+ media access)."""
+    DENY = "DENY"
+    """"Deny" / "Don't allow"."""
+    DENY_AND_DONT_ASK_AGAIN = "DENY_AND_DONT_ASK_AGAIN"
+    """"Deny & don't ask again" (API 29/30 on a repeated request)."""
+    KEEP_FOREGROUND_ONLY = "KEEP_FOREGROUND_ONLY"
+    """"Keep while using the app" when an upgrade to background access is offered."""
+    KEEP_ONE_TIME = "KEEP_ONE_TIME"
+    """"Keep only this time" when an upgrade is offered."""
+
+
+class LocationAccuracy(enum.Enum):
+    """The Precise / Approximate choice of the location permission dialog (API 31+)."""
+
+    PRECISE = "PRECISE"
+    APPROXIMATE = "APPROXIMATE"
+
+
+class StandardAction(enum.Enum):
+    """A standard accessibility action that takes no arguments, as a screen reader performs it
+    (``Element.perform_action``). Click and long click are not here: ``tap`` / ``long_tap``
+    touch the screen. ``PAGE_*`` need API 29+, ``PRESS_AND_HOLD`` API 30+."""
+
+    EXPAND = "EXPAND"
+    COLLAPSE = "COLLAPSE"
+    DISMISS = "DISMISS"
+    SCROLL_FORWARD = "SCROLL_FORWARD"
+    SCROLL_BACKWARD = "SCROLL_BACKWARD"
+    SCROLL_UP = "SCROLL_UP"
+    SCROLL_DOWN = "SCROLL_DOWN"
+    SCROLL_LEFT = "SCROLL_LEFT"
+    SCROLL_RIGHT = "SCROLL_RIGHT"
+    PAGE_UP = "PAGE_UP"
+    PAGE_DOWN = "PAGE_DOWN"
+    PAGE_LEFT = "PAGE_LEFT"
+    PAGE_RIGHT = "PAGE_RIGHT"
+    SHOW_ON_SCREEN = "SHOW_ON_SCREEN"
+    CONTEXT_CLICK = "CONTEXT_CLICK"
+    PRESS_AND_HOLD = "PRESS_AND_HOLD"
+    SELECT = "SELECT"
+    CLEAR_SELECTION = "CLEAR_SELECTION"
+    FOCUS = "FOCUS"
+    """Input focus."""
+    CLEAR_FOCUS = "CLEAR_FOCUS"
+    COPY = "COPY"
+    CUT = "CUT"
+    PASTE = "PASTE"
+
+
+class RangeType(enum.Enum):
+    """How a range node counts its value."""
+
+    INT = "INT"
+    FLOAT = "FLOAT"
+    PERCENT = "PERCENT"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class Range:
+    """A range node's (SeekBar, Slider, RatingBar, ProgressBar) value and bounds, in its own
+    units (``Element.set_progress``)."""
+
+    type: RangeType
+    min: float
+    max: float
+    current: float
 
 
 class StabilitySignal(enum.Enum):
@@ -109,6 +213,13 @@ class FailureReason(enum.Enum):
     DAEMON_PRECONDITION = "DAEMON_PRECONDITION"
     UNKNOWN_REF = "UNKNOWN_REF"
     REF_NOT_ADDRESSABLE = "REF_NOT_ADDRESSABLE"
+    UNSUPPORTED_API = "UNSUPPORTED_API"
+    """The device's API level is too low for the call (detail ``REQUIRES_API_<n>``)."""
+    DEVICE_SETTING = "DEVICE_SETTING"
+    """A device setting did not read back as written (or could not be restored)."""
+    DEVICE_FILE = "DEVICE_FILE"
+    """A device file was not written or read as asked: it exists and this device handle did not
+    create it, its directory is missing, it is not a regular file, or it did not read back."""
 
 
 class WaitReason(enum.Enum):
@@ -125,6 +236,13 @@ class WaitReason(enum.Enum):
     APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
     """``App.await_visible`` / ``App.await_screen_stable``: the package never owned the focused
     window."""
+    NO_PERMISSION_PROMPT = "NO_PERMISSION_PROMPT"
+    """``await_permission_prompt``: no runtime-permission dialog showed a known choice."""
+
+    NO_TOAST = "NO_TOAST"
+    """``await_toast``: no matching toast was shown."""
+    NO_NOTIFICATION = "NO_NOTIFICATION"
+    """``await_notification``: no matching notification was active."""
 
 
 class DeviceState(enum.Enum):
@@ -225,6 +343,12 @@ class ElementSnapshot:
     selected: bool
     child_count: int
     showing_hint: bool
+    actions: tuple[StandardAction, ...] = ()
+    """The standard actions the node offers (``Element.perform_action``)."""
+    custom_actions: tuple[str, ...] = ()
+    """The labels of the custom actions the node offers (``Element.perform_custom_action``)."""
+    range: Range | None = None
+    """The node's range, when it is a range node (``Element.set_progress``)."""
 
 
 @dataclass(frozen=True)
@@ -535,8 +659,8 @@ class Hierarchy(Artifact):
 
 @dataclass(frozen=True)
 class DeviceInfo(Artifact):
-    """Static facts about the device plus the package owning the focused window
-    (``Device.info()``). ``display_rotation`` is 0-3 quarter turns. Serialized as JSON."""
+    """Static facts about the device plus its current display, screen and focus state
+    (``Device.info()``). Serialized as JSON."""
 
     api_level: int
     manufacturer: str
@@ -544,15 +668,118 @@ class DeviceInfo(Artifact):
     product: str
     display_width: int
     display_height: int
-    display_rotation: int
+    display_rotation: DisplayRotation
     current_package: str | None
+    """The package owning the focused window, when there is one."""
+    screen_on: bool
+    """The screen is on (interactive)."""
+    keyguard_locked: bool
+    """The keyguard (lock screen) is showing."""
+    keyguard_secure: bool
+    """A PIN, pattern or password is set: Tap cannot dismiss this keyguard."""
+    keyboard_shown: bool
+    """A soft keyboard (any input method's window) is on screen."""
+    auto_rotate: bool
+    """Auto-rotate is on: the sensor turns the display (off while a rotation is frozen)."""
+    animations_enabled: bool
+    """Window, transition or animator animations run (any of the three scales is not 0)."""
+    dark_mode: bool
+    """The UI is in night mode (dark theme)."""
+    font_scale: float
+    """The font scale apps see (1.0 = the default size)."""
+    density_dpi: int
+    """The display density apps see, in dpi."""
+    airplane_mode: bool
+    """Airplane mode is on."""
+    wifi_enabled: bool
+    """Wi-Fi is switched on (also while airplane mode is on); says nothing about a connection."""
+    mobile_data_enabled: bool
+    """Mobile data is switched on; ``False`` on a device without telephony."""
+    system_locales: tuple[str, ...] = ()
+    """The device's languages, BCP-47 tags in preference order (``Device.set_system_locales``)."""
+    stay_awake: bool = False
+    """The screen stays on while the device is plugged in (``Device.set_stay_awake``)."""
+    high_contrast_text: bool | None = None
+    """High-contrast text is on; ``None`` when the driver cannot read it."""
+    color_inversion: bool | None = None
+    """Colour inversion is on; ``None`` when the driver cannot read it."""
+    bold_text: bool = False
+    """The system font is bold (API 31+; always ``False`` below)."""
 
     media_type = "application/json"
     extension = "json"
 
     @property
+    def orientation(self) -> Orientation:
+        """``PORTRAIT`` when the display is at least as tall as it is wide."""
+        return Orientation.PORTRAIT if self.display_height >= self.display_width else Orientation.LANDSCAPE
+
+    @property
     def bytes(self) -> builtins.bytes:
-        return json.dumps(asdict(self)).encode()
+        fields = asdict(self)
+        fields["display_rotation"] = self.display_rotation.value
+        return json.dumps(fields).encode()
+
+
+@dataclass(frozen=True)
+class PermissionPrompt:
+    """A runtime-permission dialog on screen (``Device.await_permission_prompt``): the package
+    of its window (what ``in_package`` scopes its other elements with), the choices it offers,
+    in ``PermissionChoice`` order, and the location accuracies it lets the user pick (empty
+    unless it asks for precise location)."""
+
+    package_name: str
+    choices: tuple[PermissionChoice, ...]
+    accuracies: tuple[LocationAccuracy, ...] = ()
+
+
+@dataclass(frozen=True)
+class Toast:
+    """A toast ``Device.await_toast`` saw: its text and the package that showed it (on Android
+    11+ a text toast is drawn by SystemUI but still reported under the app that posted it)."""
+
+    text: str
+    package_name: str
+
+
+@dataclass(frozen=True)
+class Notification:
+    """An active notification (``Device.notifications``, ``Device.await_notification``): the
+    package that posted it, its title and text (the ``android.title`` / ``android.text`` extras,
+    ``None`` when it has none), the titles of its action buttons (what
+    ``Device.open_notification``'s ``action`` names), whether a swipe dismisses it (``False`` for
+    an ongoing one, such as a foreground service's), and when it was posted (UTC)."""
+
+    package_name: str
+    title: str | None
+    text: str | None
+    actions: tuple[str, ...]
+    clearable: bool
+    posted_at: datetime.datetime
+
+
+@dataclass(frozen=True)
+class ForegroundActivity:
+    """The activity on top of the screen (``Device.foreground_activity``): its package and its
+    fully qualified class name."""
+
+    package_name: str
+    class_name: str
+
+
+@dataclass(frozen=True)
+class Long:
+    """An ``int`` sent as a 64-bit intent extra (``am start --el``), for an app that reads it with
+    ``getLongExtra``: a plain ``int`` extra is 32-bit, and ``getLongExtra`` on it returns the
+    default. ``App.launch(extras={"id": Long(42)})``."""
+
+    value: int
+
+    def __post_init__(self) -> None:
+        if isinstance(self.value, bool) or not isinstance(self.value, int):
+            raise TypeError(f"Long needs an int, not {type(self.value).__name__}")
+        if not -(2**63) <= self.value < 2**63:
+            raise ValueError(f"{self.value} does not fit in 64 bits")
 
 
 class DriverLog(Artifact):

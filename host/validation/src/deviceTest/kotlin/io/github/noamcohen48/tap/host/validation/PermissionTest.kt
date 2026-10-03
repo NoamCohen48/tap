@@ -1,16 +1,23 @@
 package io.github.noamcohen48.tap.host.validation
 
+import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.Nodes
 import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.and
+import io.github.noamcohen48.tap.protocol.detail
+import io.github.noamcohen48.tap.protocol.errorCode
 import io.github.noamcohen48.tap.protocol.ok
 import io.github.noamcohen48.tap.protocol.toSelector
 
 /**
  * A runtime permission dialog: a selector bound to the AUT's package (or another package) does
  * not see it, the permission controller's package does, and a selector with no package
- * predicate finds its allow button (per API level) and grants it.
+ * predicate finds its allow button (per API level) and grants it. The dialog commands report the
+ * offered choices by resource id, refuse a choice the dialog does not offer before any input,
+ * and press the one that is.
  */
 @DeviceTest
 class PermissionTest {
@@ -45,6 +52,41 @@ class PermissionTest {
                 check(inController.ok && inController.result.bool) { "The controller's package should see the dialog: $inController" }
                 check(client.send(Commands.tap(allowPermission.toSelector())).ok)
                 check(client.send(Commands.waitVisible(Selectors.text("Camera granted")), timeoutMs = 10_000).ok)
+            }
+        }
+
+    @OnEachDevice
+    fun `permission prompt reports its choices and presses one`(serial: String) =
+        deviceTest(serial) { device ->
+            // pm clear resets the permission and its "don't ask again" state, so every run sees the dialog.
+            device.shell("pm", "clear", FIXTURE_PACKAGE)
+            device.withSession { session ->
+                val client = session.client
+                device.wakeAndDismissKeyguard()
+                val none = client.send(Commands.waitPermissionPrompt(), timeoutMs = 500)
+                check(!none.ok && none.errorCode == ErrorCode.ERR_WAIT_TIMEOUT && none.detail == ErrorDetail.NO_PERMISSION_PROMPT) {
+                    "No dialog should be a NO_PERMISSION_PROMPT timeout: $none"
+                }
+                device.launchFixture("PermissionActivity")
+                val requestPermission = Selectors.androidResource(FIXTURE_PACKAGE, "request_camera_permission")
+                check(client.send(Commands.waitVisible(requestPermission), timeoutMs = 10_000).ok) { "Permission activity did not appear" }
+                check(client.send(Commands.tap(requestPermission)).ok)
+
+                val prompt = client.execute(Commands.waitPermissionPrompt(), timeoutMs = 10_000).permissionPrompt
+                val allow =
+                    if (device.apiLevel >= 30) PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY else PermissionChoice.PERMISSION_ALLOW
+                check(allow in prompt.choicesList && PermissionChoice.PERMISSION_DENY in prompt.choicesList) {
+                    "Camera dialog should offer $allow and DENY: $prompt"
+                }
+                check(prompt.packageName == PERMISSION_CONTROLLER_PACKAGE) { "Dialog package: $prompt" }
+
+                val notOffered = client.send(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_ALL))
+                check(!notOffered.ok && notOffered.errorCode == ErrorCode.ERR_NOT_FOUND) { "A choice not offered must be NOT_FOUND: $notOffered" }
+                check(client.send(Commands.choosePermission(allow)).ok)
+                check(client.send(Commands.waitVisible(Selectors.text("Camera granted")), timeoutMs = 10_000).ok) {
+                    "Choosing $allow did not grant the permission"
+                }
+                report("permission_prompt", serial, "choices" to prompt.choicesList.joinToString(",") { it.name }, "package" to prompt.packageName)
             }
         }
 }

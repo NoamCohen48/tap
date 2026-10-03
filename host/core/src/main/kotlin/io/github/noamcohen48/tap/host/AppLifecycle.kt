@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.host
 
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.IntentExtra
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
 import io.github.noamcohen48.tap.wire.v1.Request
@@ -53,6 +54,24 @@ class AppLifecycle internal constructor(
 
     suspend fun isInstalled(): Boolean = session.guardAdb { adb.isInstalled(serial, packageName) }
 
+    /**
+     * The app's own languages (`cmd locale`, API 33+), BCP-47 tags in preference order; empty =
+     * it follows the system. Read back afterwards and restored on detach, like the device
+     * conditions. Tags must be well-formed ([canonicalLocales]).
+     */
+    suspend fun setLocales(locales: List<String>) {
+        val canonical = canonicalLocales(locales)
+        session.requireApi(APP_LOCALES_API, "Per-app languages")
+        session.change(mapOf(StateKey.AppLocales(packageName).id to canonical.joinToString(",")))
+    }
+
+    /** The app's own languages now; empty = it follows the system. API 33+. */
+    suspend fun locales(): List<String> {
+        session.requireApi(APP_LOCALES_API, "Per-app languages")
+        val value = session.guardAdb { adb.readState(serial, StateKey.AppLocales(packageName).id) }
+        return value.orEmpty().split(',').filter { it.isNotEmpty() }
+    }
+
     suspend fun install(
         apk: Path,
         timeoutMs: Long,
@@ -68,7 +87,7 @@ class AppLifecycle internal constructor(
         syncIdentity = null
     }
 
-    /** `am force-stop` plus proof that no process and no activity of the package remain. */
+    /** `am force-stop` plus proof that no process, task or activity of the package remains. */
     suspend fun forceStop(timeoutMs: Long) {
         session.guardAdb { adb.forceStop(serial, packageName) }
         awaitStopped(timeoutMs, "force-stop")
@@ -91,9 +110,24 @@ class AppLifecycle internal constructor(
         }
     }
 
+    /** Whether `dumpsys package` lists [permission] as granted to the package. */
+    suspend fun isPermissionGranted(permission: String): Boolean =
+        session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }
+
     /**
-     * Starts [activity] (or the launcher activity) with `am start -W` and returns once Android
-     * reports the launch complete, bounded by [timeoutMs]. Nothing about the app's UI is
+     * `pm revoke`, then proof from `dumpsys package` that the permission no longer reads as
+     * granted. Android kills the app's process when one of its runtime permissions is revoked.
+     */
+    suspend fun revokePermission(permission: String) {
+        session.guardAdb { adb.revokePermission(serial, packageName, permission) }
+        if (session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }) {
+            throw AppLifecycleException("$permission is still granted to $packageName on $serial after pm revoke")
+        }
+    }
+
+    /**
+     * Starts [activity] (or the launcher activity) with `am start -W`, carrying [extras], and
+     * returns once Android reports the launch complete, bounded by [timeoutMs]. Nothing about the app's UI is
      * assumed: a test that needs the app in front or settled waits for that itself
      * ([awaitAppVisible], `wait_screen_stable`). Does not assert anything about prior process
      * state; see [coldLaunch].
@@ -101,8 +135,9 @@ class AppLifecycle internal constructor(
     suspend fun launch(
         activity: String?,
         timeoutMs: Long,
+        extras: List<IntentExtra> = emptyList(),
     ) {
-        launchUntil(activity, deadlineAfter(timeoutMs), timeoutMs)
+        launchUntil(activity, extras, deadlineAfter(timeoutMs), timeoutMs)
     }
 
     /**
@@ -113,27 +148,64 @@ class AppLifecycle internal constructor(
         activity: String?,
         timeoutMs: Long,
         stopTimeoutMs: Long = 10_000,
+        extras: List<IntentExtra> = emptyList(),
     ): ProcessObservation {
         session.checkUsable()
         forceStop(stopTimeoutMs)
         val deadline = deadlineAfter(timeoutMs)
-        launchUntil(activity, deadline, timeoutMs)
+        launchUntil(activity, extras, deadline, timeoutMs)
         val remaining = remainingOrTimeout(deadline, timeoutMs, "a $packageName process after launch")
         return session.guardAdb { observeProcess(adb, serial, packageName, remaining) }
     }
 
     private suspend fun launchUntil(
         activity: String?,
+        extras: List<IntentExtra>,
         deadline: Long,
         timeoutMs: Long,
     ) {
         session.checkUsable()
         val component = "$packageName/${activity ?: launcherActivity()}"
         val startBudget = remainingOrTimeout(deadline, timeoutMs, "am start $component")
-        val output = session.guardAdb { adb.startActivity(serial, component, startBudget) }
+        val output = session.guardAdb { adb.startActivity(serial, component, startBudget, extras) }
         AmStartOutput.failure(output)?.let { failure ->
             throw AppLifecycleException("am start $component failed on $serial: $failure\n$output")
         }
+    }
+
+    /**
+     * Brings the app back as the home screen would: `am start -W` of its launcher intent. An
+     * existing task returns as it was left (its back stack untouched); without one the launcher
+     * activity starts. Like [launch], nothing about the app's UI is assumed.
+     */
+    suspend fun foreground(timeoutMs: Long) {
+        session.checkUsable()
+        val deadline = deadlineAfter(timeoutMs)
+        val component = "$packageName/${launcherActivity()}"
+        val budget = remainingOrTimeout(deadline, timeoutMs, "am start $component")
+        val output = session.guardAdb { adb.startLauncherIntent(serial, component, budget) }
+        AmStartOutput.failure(output)?.let { failure ->
+            throw AppLifecycleException("am start $component failed on $serial: $failure\n$output")
+        }
+    }
+
+    /**
+     * Opens [uri] with a VIEW intent: only this package may handle it unless [anyApp], which
+     * resolves it as a tapped link would (another app, the browser, or a chooser — never tapped
+     * here). Returns the activity `am start` reports it started or delivered the intent to; what
+     * the app shows is for the test to wait for.
+     */
+    suspend fun openLink(
+        uri: String,
+        anyApp: Boolean,
+        timeoutMs: Long,
+    ): String? {
+        session.checkUsable()
+        val output = session.guardAdb { adb.startView(serial, uri, packageName.takeUnless { anyApp }, timeoutMs) }
+        AmStartOutput.failure(output)?.let { failure ->
+            throw AppLifecycleException("Opening $uri failed on $serial: $failure\n$output")
+        }
+        return AmStartOutput.activity(output)
     }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
@@ -265,15 +337,15 @@ class AppLifecycle internal constructor(
         while (true) {
             polls++
             val pids = session.guardAdb { adb.processIds(serial, packageName) }
-            val activities = pids.isEmpty() && session.guardAdb { adb.hasActivities(serial, packageName) }
+            val activities = pids.isEmpty() && session.guardAdb { adb.hasTaskOrActivity(serial, packageName) }
             if (pids.isEmpty() && !activities) return
             if (System.nanoTime() >= deadline) {
                 throw HostWaitTimeoutException(
-                    "$packageName to have no process and no activity after $action",
+                    "$packageName to have no process, task or activity after $action",
                     serial,
                     (System.nanoTime() - started) / 1_000_000,
                     polls,
-                    if (activities) "an activity still exiting" else "pids=$pids",
+                    if (activities) "a task or activity still being removed" else "pids=$pids",
                 )
             }
             delay(pollIntervalMs)
@@ -309,6 +381,16 @@ class AppLifecycle internal constructor(
 internal object AmStartOutput {
     private val exceptionLine = Regex("""^(?:[a-z_][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error)(?::.*)?$""")
 
+    /** The `Activity: package/class` component `am start -W` reports, or null when it names none. */
+    fun activity(output: String): String? =
+        output
+            .lineSequence()
+            .map(String::trim)
+            .firstOrNull { it.startsWith("Activity:") }
+            ?.removePrefix("Activity:")
+            ?.trim()
+            ?.takeIf { '/' in it }
+
     /** The line that says the start failed, or null when the output reports none. */
     fun failure(output: String): String? {
         for (raw in output.lineSequence()) {
@@ -327,4 +409,29 @@ internal object AmStartOutput {
         }
         return null
     }
+}
+
+/** Android 13 added per-app languages (`LocaleManager`, `cmd locale`). */
+const val APP_LOCALES_API = 33
+
+/** At most this many languages per app. */
+const val MAX_APP_LOCALES = 16
+
+/**
+ * [locales] as canonical BCP-47 tags (`fr-fr` → `fr-FR`), as Android reports them back. Throws
+ * [IllegalArgumentException] for an ill-formed or repeated tag, or more than [MAX_APP_LOCALES].
+ */
+fun canonicalLocales(locales: List<String>): List<String> {
+    require(locales.size <= MAX_APP_LOCALES) { "at most $MAX_APP_LOCALES locales, not ${locales.size}" }
+    val canonical =
+        locales.map { tag ->
+            require(tag.isNotBlank()) { "a locale tag is blank" }
+            try {
+                java.util.Locale.Builder().setLanguageTag(tag).build().toLanguageTag()
+            } catch (ill: java.util.IllformedLocaleException) {
+                throw IllegalArgumentException("$tag is not a well-formed BCP-47 language tag", ill)
+            }
+        }
+    require(canonical.toSet().size == canonical.size) { "locales repeat a tag: ${locales.joinToString()}" }
+    return canonical
 }
