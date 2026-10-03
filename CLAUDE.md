@@ -133,6 +133,21 @@ never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
   group; a task that grows keeps growing its one PR.
 - PR body: what changed and why, the checks run, and a `Device matrix: run / not run` line
   (device tests only when the user asked). No co-author or "Generated with" lines.
+- The PR title and body become the commit on `main` (squash = PR title + PR body), so write
+  them for a reader of `git log` who has never seen the PR, the branch or the `.docs/` plans:
+  - Title: `<Area>: <what changed>`, in plain words, capitalised, no trailing period, at most
+    80 characters. Area is the part a reader looks for (`Driver`, `Host core`, `Daemon`,
+    `Protocol`, `Kotlin SDK`, `JUnit`, `Python client`, `tap-agent`, `Tap Studio`, `Docs`,
+    `CI`, `Release`, `Build`) or the feature's user-facing name (`Device actions`,
+    `Recordings`). A fix names the bug it fixes, not "fixes" or "review fixes".
+  - Never a planning label or internal ID in the title: no "phase N", "group N", "step N",
+    "part N", "WIP", review item IDs (`K-4`, `DR-15`) or plan section numbers. IDs may appear
+    in the body, next to words that say what they are.
+  - Body: what changed, why, and how it was verified. Not the PR's history: no "replaces #8",
+    "stacked on", "was #10", "after rebasing", "this PR", and no hashes of commits that are
+    not on `main`.
+  - Docs, tests and generated files land in the same commit as the change they belong to,
+    never as a separate "docs:" or "regenerate" commit for unmerged work.
 - When asked to update a PR because `main` moved: rebase onto `origin/main` again and
   force-push with `--force-with-lease`.
 
