@@ -8,7 +8,8 @@ site_author: Noam Cohen
 site_url: https://noamcohen48.github.io/tap/
 repo_url: https://github.com/NoamCohen48/tap
 repo_name: NoamCohen48/tap
-copyright: Copyright &copy; 2026 Noam Cohen. Licensed under the Apache License 2.0.
+copyright: >-
+  Copyright &copy; 2026 Noam Cohen. Licensed under the Apache License 2.0.
 edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: build/site
@@ -85,8 +86,9 @@ plugins:
             show_labels: false
             show_symbol_type_heading: true
             show_symbol_type_toc: true
-            # Internal plumbing (gRPC stubs, deadlines, the owning connection) stays out of the
-            # reference; Device.client is filtered in docs/reference/python.md.
+            # Internal plumbing stays out of the reference (gRPC stubs,
+            # deadlines, and connection). Device.client is filtered in
+            # docs/reference/python.md.
             filters:
               - "!^_"
               - "!^pb$"
@@ -108,6 +110,7 @@ nav:
       - Errors and failure artifacts: guide/errors.md
       - Coding agents (tap-agent): guide/agents.md
       - Tap Studio (inspect and record): guide/studio.md
+      - App Explorer (offline foundation): guide/explorer.md
       - Coming from Maestro or Appium: guide/coming-from.md
   - Reference:
       - Overview: reference/index.md
@@ -121,7 +124,9 @@ nav:
       - Building and testing: development/building-and-testing.md
   - Project:
       - Changelog: https://github.com/NoamCohen48/tap/blob/main/CHANGELOG.md
-      - Contributing: https://github.com/NoamCohen48/tap/blob/main/CONTRIBUTING.md
-      - Code of conduct: https://github.com/NoamCohen48/tap/blob/main/CODE_OF_CONDUCT.md
+      - Contributing: >-
+          https://github.com/NoamCohen48/tap/blob/main/CONTRIBUTING.md
+      - Code of conduct: >-
+          https://github.com/NoamCohen48/tap/blob/main/CODE_OF_CONDUCT.md
       - Security: https://github.com/NoamCohen48/tap/blob/main/SECURITY.md
       - Releases: https://github.com/NoamCohen48/tap/releases

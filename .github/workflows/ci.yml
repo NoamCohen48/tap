@@ -121,8 +121,8 @@ jobs:
           path: "**/build/reports/tests"
           if-no-files-found: ignore
 
-  # tap-e2e (the Python client) and tap-agent (the agent CLI + MCP server on
-  # it): unit tests over the in-process fake daemon, wheels for both.
+  # tap-e2e and tap-agent: tests over the fake daemon. tap-explorer: offline
+  # graph tests and type checking. Build wheels for all three.
   python:
     name: Python client and tap-agent (${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -136,15 +136,27 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install and build
         run: |
+          python -m venv .venv
+          export PATH="$PWD/.venv/bin:$PATH"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           python -m pip install --quiet build "clients/python[dev]" \
-            "clients/agent[dev]"
+            "clients/agent[dev]" "clients/explorer[dev]"
           python -c "import tap_e2e; print('tap-e2e', tap_e2e.__version__)"
-          python -c "import tap_agent; print('tap-agent', tap_agent.__version__)"
+          python -c \
+            "import tap_agent; print('tap-agent', tap_agent.__version__)"
           tap-agent --help > /dev/null
           python -m build --outdir dist clients/python
           python -m build --outdir dist clients/agent
-      - name: Unit tests (fake daemon, no device)
-        run: python -m pytest -q clients/python/tests/unit clients/agent/tests
+          python -m build --outdir dist clients/explorer
+          tap-explorer --help > /dev/null
+      - name: Unit tests (fake daemon and offline graph, no device)
+        run: >-
+          python -m pytest -q clients/python/tests/unit clients/agent/tests
+          clients/explorer/tests
+      - name: Explorer type check
+        run: >-
+          python -m pyright --project clients/explorer/pyrightconfig.json
+          --pythonpath "$(command -v python)"
       - name: >-
           Plugin loads (the sample suite itself needs a device and the fixture
           APK)
@@ -157,8 +169,8 @@ jobs:
           name: python-dists
           path: dist/*
 
-  # tap-studio: its generated code matches proto/studio.proto, the page (Bun, TypeScript 7)
-  # type-checks, passes its tests and builds, the back end passes its tests, and the wheel
+  # tap-studio: generated code matches proto/studio.proto. The Bun/TypeScript
+  # page type-checks, tests and builds; the back end passes tests, and the wheel
   # carries the built page.
   studio:
     name: tap-studio (${{ matrix.python }})
