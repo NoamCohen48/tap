@@ -1,13 +1,14 @@
 # Getting started
 
-This page takes you from nothing to a passing test in Kotlin or Python.
+This page takes you from nothing to a passing test. The guide's examples are in Python; for
+Kotlin, follow [Kotlin + JUnit 5](../sdk/kotlin.md) after step 1.
 
 !!! info "Before you start"
 
     - An Android device or emulator with **API 26 or newer**, visible to `adb devices`.
     - **Linux x86-64 or macOS on Apple silicon** for the native `tap` binary, or any OS with
       **JDK 17+** for the JVM build.
-    - For Kotlin: a Gradle project with JUnit 5. For Python: **Python 3.10+** and pytest.
+    - **Python 3.10+** and pytest, or a Gradle project with JUnit 5 for Kotlin.
 
 !!! tip "Everything in one download"
 
@@ -60,91 +61,27 @@ tap status
 ```
 
 Clients never start the server themselves; if none is running they fail with *run `tap start`*.
-Test runners can do the starting and stopping for you — `tap.manageDaemon=true` (JUnit) or
-`tap_manage_daemon = true` (pytest) — see [Configuration](configuration.md#how-clients-find-the-server).
+Test runners can start and stop it for you: see [The tap server](server.md#who-starts-it).
 
-## 2. Kotlin + JUnit 5
-
-Add the repository and the JUnit 5 extension (the Maven artifacts live in this repository's
-GitHub Packages registry; reads need a token with `read:packages`):
-
-```kotlin
-repositories {
-    maven("https://maven.pkg.github.com/NoamCohen48/tap") {
-        credentials {
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-
-dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.2")   // brings tap-client
-    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
-}
-
-tasks.test {
-    useJUnitPlatform()
-    providers.gradleProperty("tap.serials").orNull?.let { systemProperty("tap.serials", it) }
-}
-```
-
-Write a test:
-
-```kotlin
-import io.github.noamcohen48.tap.junit5.TapTest
-import io.github.noamcohen48.tap.junit5.tapTest
-import io.github.noamcohen48.tap.sdk.*
-import org.junit.jupiter.api.Test
-import java.nio.file.Path
-
-@TapTest
-class SmokeTest {
-    @Test
-    fun opensTheHomeScreen(device: Device) {
-        tapTest {
-            val app = device.app("com.shop")
-            app.install(Path.of("build/outputs/apk/debug/shop-debug.apk"))
-            app.coldLaunch()                             // resolves the launcher activity, waits for its window
-            app.await(text("Welcome")).visible()         // only com.shop's nodes count
-            app.element(res("search")).setText("socks")
-        }
-    }
-}
-```
-
-!!! note "Why `tapTest { ... }`"
-
-    Every test body runs inside `tapTest { ... }`, the bridge onto the per-test coroutine
-    scope the extension owns. `Device`, `App` and `Element` calls are `suspend`; building
-    selectors (`text(...)`, `res(...)`) is not. Calls outside `tapTest`, or from `GlobalScope`,
-    fail with `TapUsageException`, so a JUnit timeout or a failing sibling cancels in-flight
-    calls. `fun x(device: Device) = tapTest { ... }` works too, since `tapTest` returns `Unit`.
-
-```bash
-./gradlew test -Ptap.serials=emulator-5554
-```
-
-`@TapTest` attaches a device before each test, injects it as the `Device`
-parameter, detaches it afterwards, and on failure writes a screenshot, hierarchy dump,
-device info and driver log under `build/tap-artifacts/<class>/<method>/`.
-
-## 3. Python + pytest
+## 2. Install the Python client
 
 ```bash
 pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
 ```
 
-The package registers a pytest plugin that provides attached devices as fixtures:
+The package `tap-e2e` (imported as `tap_e2e`) registers a pytest plugin that provides attached
+devices as fixtures.
+
+## 3. Write a test
 
 ```python
-from tap_e2e import text, res
+from tap_e2e import res, text
 
 def test_opens_the_home_screen(tap_device):
     app = tap_device.app("com.shop")
     app.install("build/outputs/apk/debug/shop-debug.apk")
-    app.cold_launch()
-    app.wait(text("Welcome")).visible()
+    app.cold_launch()                         # resolves the launcher activity, waits for its window
+    app.wait(text("Welcome")).visible()       # only com.shop's nodes count
     app.element(res("search")).set_text("socks")
 ```
 
@@ -152,57 +89,15 @@ def test_opens_the_home_screen(tap_device):
 TAP_SERIALS=emulator-5554 pytest
 ```
 
-`tap_device` is a per-test attached device; `tap_devices` with `@pytest.mark.tap_devices("a", "b")`
-gives several. Failure artifacts land in `tap-artifacts/<nodeid>/`.
-
-## 4. Without a test framework
-
-Both clients can be used from a script. The shape is the same: a client connects to the
-server, then attaches each device it needs.
-
-=== "Kotlin"
-
-    ```kotlin
-    runBlocking {
-        TapClient.create().use { client ->           // resolves tap.server / daemon.json
-            client.connect("smoke").use { connection ->
-                connection.attach("emulator-5554") { device ->
-                    val app = device.app("com.shop")
-                    app.coldLaunch()
-                    println(app.element(text("Welcome")).exists())
-                }
-            }
-        }
-    }
-    ```
-
-    `use { }` closes the client and the connection after the block; `attach(serial) { }`
-    attaches, runs the block and always detaches. A failure in the block wins, and a close or
-    detach failure after it is added as suppressed. `attach` provides the `tapScope` device
-    calls need. For handles that outlive one block, `connection.attachDevice(...)` inside
-    `tapScope { ... }` with `device.detach()` in a `finally` does the same by hand.
-
-=== "Python"
-
-    ```python
-    from tap_e2e import TapClient, text
-
-    with TapClient.create().connect("smoke") as connection:
-        with connection.attach_device("emulator-5554") as device:
-            app = device.app("com.shop")
-            app.cold_launch()
-            print(app.element(text("Welcome")).exists())
-    ```
-
-`connect` opens the connection's liveness stream before it returns (in both clients), so if the
-process dies the server notices the stream closing and frees its devices. If the stream ends
-while the process lives (the daemon restarted), the connection becomes unusable: further
-attaches and device calls fail at once, and a new `connect` is needed. The JUnit extension does
-that for you on the next test.
+`tap_device` is a device attached for this test and detached after it. When the test fails, the
+plugin saves a screenshot, the hierarchy dump, the device info and the driver log under
+`tap-artifacts/<nodeid>/`.
 
 ## Next
 
-- [Selectors](selectors.md) and [Actions and waits](actions-and-waits.md) cover the API you
-  will use in every test.
-- [Coding agents](agents.md) sets up `tap-agent`, which lets Claude Code or another agent drive
-  a device through the same server.
+- [Selectors](selectors.md), [Elements and text](elements.md) and [Waits](waits.md) cover what
+  you will use in every test.
+- [Python + pytest](../sdk/python.md) has the plugin's options and using the client from a
+  script; [Kotlin + JUnit 5](../sdk/kotlin.md) is the same for Kotlin.
+- [tap-agent](../agent/index.md) lets Claude Code or another coding agent drive a device through
+  the same server, and [Tap Studio](../studio/index.md) records steps from your browser.

@@ -5,9 +5,146 @@
   --md-primary-fg-color--dark: #0F151B;
   --md-accent-fg-color: #FF6A3D;
   --md-accent-fg-color--transparent: rgba(255, 106, 61, 0.1);
+  /* The coral as text and button fill: #FF6A3D is 2.9:1 on white, #C2410C passes 4.5:1. */
+  --tap-coral-strong: #C2410C;
+  --tap-surface: #F6F7F9;
+  --tap-border: rgba(23, 32, 42, 0.12);
+  --tap-shadow: 0 1px 2px rgba(15, 21, 27, 0.06), 0 8px 24px rgba(15, 21, 27, 0.08);
+  --tap-error: #B42318;
+  --tap-inserted: #067647;
+}
+/* Links in text: Material's default is the primary colour, which here is the body ink. Set on
+   the scheme, where Material sets it, not on :root. */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--tap-coral-strong);
 }
 [data-md-color-scheme="slate"] {
   --md-primary-fg-color: #0F151B;
   --md-typeset-a-color: #FF8A66;
+  --tap-coral-strong: #FF8A66;
+  --tap-surface: rgba(255, 255, 255, 0.04);
+  --tap-border: rgba(255, 255, 255, 0.12);
+  --tap-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --tap-error: #FF7B72;
+  --tap-inserted: #56D364;
 }
 .md-header__button.md-logo img, .md-header__button.md-logo svg { height: 1.6rem; width: auto; }
+
+/* Keyboard focus stays visible on everything clickable. */
+.md-typeset a:focus-visible, .md-typeset .md-button:focus-visible, .md-content__button:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Screenshots: a quiet frame so a light UI does not dissolve into a light page. */
+.md-typeset img[src*="assets/screenshots/"] {
+  border: 1px solid var(--tap-border);
+  border-radius: 8px;
+  box-shadow: var(--tap-shadow);
+  height: auto;
+}
+.md-typeset figure { margin: 1.5em auto; }
+.md-typeset figcaption { max-width: none; font-size: 0.7rem; color: var(--md-default-fg-color--light); }
+
+/* Home: hero. Text and the Studio screenshot side by side, stacked on narrow screens. */
+.tap-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 2.5rem;
+  align-items: center;
+  margin: 0.5rem 0 2.5rem;
+}
+.tap-hero__logo { display: block; margin-bottom: 1rem; }
+.md-typeset .tap-hero h1 {
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--md-default-fg-color);
+  margin: 0 0 0.8rem;
+}
+.md-typeset .tap-hero__text > p:first-of-type { font-size: 0.95rem; }
+.md-typeset .tap-hero .md-button { margin: 0.4rem 0.4rem 0 0; }
+.md-typeset .tap-hero__meta { font-size: 0.7rem; color: var(--md-default-fg-color--light); margin-top: 1.2rem; }
+.md-typeset .tap-hero__shot { margin: 0; }
+.md-typeset .tap-hero__shot figcaption { margin-top: 0.6rem; }
+@media screen and (max-width: 59.9375em) {
+  .tap-hero { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  .md-typeset .tap-hero h1 { font-size: 1.6rem; }
+}
+
+/* Primary buttons: white on the darker coral passes contrast; hover deepens it. */
+.md-typeset .md-button--primary {
+  background-color: var(--tap-coral-strong);
+  border-color: var(--tap-coral-strong);
+  color: #fff;
+}
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary { color: #0F151B; }
+/* Outline buttons take the primary (header ink) colour, which is near-black in dark mode. */
+[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary) {
+  color: var(--md-default-fg-color);
+  border-color: var(--md-default-fg-color--light);
+}
+[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary):is(:hover, :focus) {
+  color: #0F151B;
+  border-color: var(--md-accent-fg-color);
+}
+.md-typeset .md-button { transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
+
+/* Home: "How it works", four boxes in a row joined by labelled arrows; a column on phones. */
+.tap-flow {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  margin: 1rem 0 1.2rem;
+}
+.tap-flow__box {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--tap-border);
+  border-radius: 8px;
+  background: var(--tap-surface);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.tap-flow__box strong { font-size: 0.75rem; }
+.tap-flow__box span { color: var(--md-default-fg-color--light); }
+.tap-flow__box--accent { border-color: var(--md-accent-fg-color); box-shadow: inset 3px 0 0 var(--md-accent-fg-color); }
+.tap-flow__arrow {
+  flex: 0 0 auto;
+  align-self: center;
+  font-family: var(--md-code-font-family);
+  font-size: 0.6rem;
+  color: var(--md-default-fg-color--light);
+  text-align: center;
+}
+.tap-flow__arrow::after { content: "→"; display: block; font-size: 0.9rem; color: var(--md-accent-fg-color); }
+@media screen and (max-width: 44.9375em) {
+  .tap-flow { flex-direction: column; }
+  .tap-flow__arrow::after { content: "↓"; }
+}
+
+/* Cards: a hover lift and the icon in the accent colour. */
+.md-typeset .grid.cards > ul > li {
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.md-typeset .grid.cards > ul > li:hover { border-color: var(--md-accent-fg-color); }
+.md-typeset .grid.cards .lg { color: var(--md-accent-fg-color); }
+
+/* Console sessions (scripts/mkdocs_hooks.py): the prompt in the accent, commands at full
+   strength, output a step quieter, window headers bold and error codes red. */
+.md-typeset .language-console .gp { color: var(--md-accent-fg-color); user-select: none; }
+.md-typeset .language-console .nb { color: var(--md-code-fg-color); font-weight: 600; }
+.md-typeset .language-console .go { color: var(--md-default-fg-color--light); }
+.md-typeset .language-console .gh { color: var(--md-code-fg-color); font-weight: 600; }
+.md-typeset .language-console .gr { color: var(--tap-error); font-weight: 600; }
+.md-typeset .language-console .gi { color: var(--tap-inserted); background: none; font-weight: 700; }
+.md-typeset .language-console .gd { color: var(--tap-error); background: none; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset .md-button, .md-typeset .grid.cards > ul > li { transition: none; }
+}

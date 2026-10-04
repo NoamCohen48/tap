@@ -6,7 +6,7 @@ The JUnit 5 extension for Tap. Annotate a test class with
 body inside [tapTest][io.github.noamcohen48.tap.junit5.tapTest]. The extension attaches the devices
 before each test, detaches them afterwards and saves failure artifacts.
 
-Configuration: <https://noamcohen48.github.io/tap/guide/configuration/>
+Configuration: <https://noamcohen48.github.io/tap/sdk/kotlin/#configuration>
 
 # Package io.github.noamcohen48.tap.junit5
 

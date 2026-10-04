@@ -66,7 +66,7 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
 - Bundles (everything for one platform in one zip): the [Download](../download.md) page, files
   on the `bundle/v*` releases there
 - Maven: `https://maven.pkg.github.com/NoamCohen48/tap` (GitHub Packages; reading needs a
-  token with `read:packages`, see [Getting started](../guide/getting-started.md#2-kotlin-junit-5)).
+  token with `read:packages`, see [Kotlin + JUnit 5](../sdk/kotlin.md#install)).
 
 ## Checking what you have
 

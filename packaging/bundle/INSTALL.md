@@ -80,9 +80,10 @@ tap status
 ```
 
 Then follow `docs/guide/getting-started.md` (also at
-<https://noamcohen48.github.io/tap/guide/getting-started/>) from step 2 for your language: the
-Gradle repository there is the GitHub one; with this bundle use the local one above, which
-needs no token.
+<https://noamcohen48.github.io/tap/guide/getting-started/>) from step 2 for Python, or
+`docs/sdk/kotlin.md` (<https://noamcohen48.github.io/tap/sdk/kotlin/>) for Kotlin: the Gradle
+repository there is the GitHub one; with this bundle use the local one above, which needs no
+token.
 
 Tap is alpha software: any release may change its APIs. Release notes:
 <https://github.com/NoamCohen48/tap/releases>.

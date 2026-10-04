@@ -24,8 +24,8 @@ tap-studio --serial emulator-5554   # also attaches the device at start
 The link carries a one-time launch token; the page signs in with it and the server refuses
 anything else (loopback hosts only, same-origin only).
 
-User guide: `docs/guide/studio.md` (published at
-<https://noamcohen48.github.io/tap/guide/studio/>).
+User guide: `docs/studio/` (published at
+<https://noamcohen48.github.io/tap/studio/>).
 
 ## CI and releases
 

@@ -96,7 +96,7 @@ cooperative cancellation. The important rules:
 | Rule | Why |
 |---|---|
 | Mutations (`tap`, `setText`, `swipe`, …) need **exactly one** match; `AMBIGUOUS`/`NOT_FOUND` are returned before any input. | A test that "happens to hit the first button" is not a test. |
-| **No implicit waits.** Actions do not wait for animations, idleness or "the screen to settle". | Those waits cost time on every step and never converge on live screens (tickers, spinners). Ask for the wait you mean: [Actions and waits](../guide/actions-and-waits.md). |
+| **No implicit waits.** Actions do not wait for animations, idleness or "the screen to settle". | Those waits cost time on every step and never converge on live screens (tickers, spinners). Ask for the wait you mean: [Waits](../guide/waits.md). |
 | **No retries, ever.** | A retried tap is a double tap. If the transport drops after a mutation was accepted, you get `INDETERMINATE`, not a guess. |
 | Every lookup searches **all visible windows**; `app("pkg").element(…)` adds a package predicate, `screen.element(…)` adds none. A touch point another window covers fails as `NOT_INTERACTABLE` / `OBSCURED` before any input. | A test says which app's node it means; a dialog, keyboard or shade over the node is reported instead of receiving the tap. |
 | No hierarchy dump on the hot path. | Dumps are diagnostic (`dumpHierarchy()`, failure artifacts); matching runs on the device with window-scoped UiAutomator lookups. |
@@ -106,7 +106,7 @@ cooperative cancellation. The important rules:
 UiAutomator normally waits up to 10 s for the UI to go idle before *every* interaction; on a
 screen that never idles (a progress spinner) that stalls every command. The Tap driver caps
 that to 1 s, so a busy screen slows a command by at most one second, and gives you the
-explicit [`app.awaitSettled()` / `app.awaitAnimationEnd()`](../guide/actions-and-waits.md#waiting-for-the-app-or-the-screen)
+explicit [`app.awaitSettled()` / `app.awaitAnimationEnd()`](../guide/waits.md#the-app-or-the-screen)
 when you actually want to wait for quiet.
 
 ## Failure handling

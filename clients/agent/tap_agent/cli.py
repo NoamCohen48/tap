@@ -210,7 +210,7 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device)
     p.add_argument("action", choices=APP_ACTIONS)
-    p.add_argument("package")
+    p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
     p.add_argument("--any-app", action="store_true", help="open-link: let any app handle the link, not only this one")
     p.add_argument(
