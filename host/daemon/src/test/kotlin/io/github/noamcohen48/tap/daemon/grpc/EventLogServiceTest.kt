@@ -21,6 +21,7 @@ import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.FakeDriverServer
+import io.github.noamcohen48.tap.host.MediaClock
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.Selectors
@@ -130,6 +131,12 @@ class EventLogServiceTest {
                     assertEquals(tap, first.command)
                     assertEquals("log-serial", first.serial)
                     assertTrue(first.atEpochMs > 0)
+                    for (event in all.eventsList) {
+                        assertEquals(MediaClock.id, event.clockId)
+                        assertTrue(event.hasStartedMonotonicNs() && event.hasFinishedMonotonicNs())
+                        assertTrue(event.finishedMonotonicNs >= event.startedMonotonicNs)
+                        assertEquals((event.finishedMonotonicNs - event.startedMonotonicNs) / 1_000_000L, event.durationMs)
+                    }
                     assertFalse(first.hasError() || first.hasFailure())
                     assertEquals(missing, second.command)
                     assertEquals(ErrorCode.ERR_NOT_FOUND, second.error.code)

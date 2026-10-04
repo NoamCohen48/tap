@@ -8,16 +8,22 @@ generate ``tap.v1`` again), or the messages by name (``tap_e2e.proto.Command``).
 
 ``tap_e2e.proto.Selector`` is the message; ``tap_e2e.Selector`` is the builder that wraps one
 (``Selector.from_proto`` / ``to_proto``). Experimental: it follows the server API's ``tap.v1``
-schema and may change in any release.
+schema and may change in any release. Generated ``*_pb2_grpc`` modules are also exposed for
+clients that need shared RPC capabilities without creating a ``TapConnection``.
 """
 
 from ._gen import *  # noqa: F401,F403
 from ._gen import (  # noqa: F401
     app_pb2,
+    app_pb2_grpc,
     client_connection_pb2,
+    client_connection_pb2_grpc,
     command_pb2,
     device_pb2,
+    device_pb2_grpc,
     event_log_pb2,
     failure_pb2,
     selector_pb2,
+    watch_pb2,
+    watch_pb2_grpc,
 )

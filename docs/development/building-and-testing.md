@@ -7,8 +7,8 @@ You need:
 - the Android SDK with API 36 and build tools 36.0.0;
 - a JDK 17. Gradle finds one in `~/.gradle/jdks`, an OS install or setup-java in CI, whatever
   `JAVA_HOME` points at;
-- Python 3.10+ for the Python client, `tap-agent` and `tap-studio`;
-- [Bun](https://bun.sh) 1.3 for the `tap-studio` page;
+- Python 3.10+ for the Python client, `tap-agent`, `tap-studio` and `tap-watcher`;
+- [Bun](https://bun.sh) 1.3 for the `tap-studio` and `tap-watcher` pages;
 - optionally, GraalVM 21 (`GRAALVM_HOME`) for the native `tap` binary;
 - for device tests, one or more devices or emulators with API 26+ visible to `adb`.
 
@@ -18,8 +18,10 @@ setup in the `build-logic/` convention plugins.
 ```bash
 git clone https://github.com/NoamCohen48/tap.git && cd tap
 python -m venv .venv
-.venv/bin/pip install -e "clients/python[dev]" -e clients/agent -e "clients/studio[dev]"
-(cd clients/studio/web && bun install && bun run build)   # the tap-studio page
+.venv/bin/pip install -e "clients/python[dev]" -e clients/agent -e "clients/studio[dev]" \
+  -e "clients/watcher[dev]"
+(cd clients/studio/web && bun install && bun run build)    # the tap-studio page
+(cd clients/watcher/web && bun install && bun run build)   # the tap-watcher page
 ```
 
 ## Building
@@ -40,8 +42,9 @@ No device needed. Run them before every pull request:
 ```bash
 ./gradlew :contracts:protocol:test :host:core:test :host:daemon:test \
   :device:driver:command-engine:test :device:driver:core:test
-.venv/bin/pytest clients/agent/tests clients/studio/tests
+.venv/bin/pytest clients/agent/tests clients/studio/tests clients/watcher/tests
 (cd clients/studio/web && bun run test)
+(cd clients/watcher/web && bun run test)
 ```
 
 ## Client suites
@@ -120,9 +123,10 @@ guide alone.
 ## Continuous integration and releases
 
 CI (`.github/workflows/ci.yml`) runs the proto checks, the JVM and Python unit tests, the
-native image, and both client suites plus the `tap-agent` and `tap-studio` smokes on an API 34 emulator. Tap has six independently
+native image, the `tap-studio` and `tap-watcher` pages and back ends, and both client suites
+plus the `tap-agent` and `tap-studio` smokes on an API 34 emulator. Tap has seven independently
 versioned artifact families: the engine (the `tap` server with the bundled driver, plus
-`tap-schema`/`tap-api`), the Kotlin client, the Python client, `tap-agent`, `tap-studio` and
-`sync-sdk`. Versions are set in `gradle.properties` and the clients' `pyproject.toml` files; pushing a tag such
+`tap-schema`/`tap-api`), the Kotlin client, the Python client, `tap-agent`, `tap-studio`,
+`tap-watcher` and `sync-sdk`. Versions are set in `gradle.properties` and the clients' `pyproject.toml` files; pushing a tag such
 as `daemon/v0.0.2` on a commit with the matching version publishes that family. See
 [Releases and versions](../reference/releases.md).

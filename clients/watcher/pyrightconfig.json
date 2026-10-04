@@ -1,0 +1,1 @@
+{"venvPath":"../..","venv":".venv","extraPaths":[".","../python"],"include":["tap_watcher","tests"],"exclude":["tap_watcher/_gen","tap_watcher/static"]}

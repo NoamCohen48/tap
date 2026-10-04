@@ -40,14 +40,14 @@ jobs:
           "0000000000000000000000000000000000000000" ]; then
             echo "no base commit; skipping"; exit 0
           fi
-          if ! git cat-file -e "$BASE:contracts/proto/buf.yaml" 2>/dev/null; then
+          if ! git cat-file -e "$BASE:contracts/proto/buf.yaml" \
+          2>/dev/null; then
             echo "base $BASE has no tap.v1 API; skipping"; exit 0
           fi
-          # contracts/proto/BREAKING_BASELINE names the last commit of a previous,
-          # deliberately incompatible API line (0.x only). A base on or before it
-          # is not comparable.
-          BASELINE=$(grep -v '^#' contracts/proto/BREAKING_BASELINE 2>/dev/null \
-          | head -1 || true)
+          # BREAKING_BASELINE names the last commit of a previous incompatible
+          # API line (0.x only). A base on or before it is not comparable.
+          BASELINE=$(grep -v '^#' contracts/proto/BREAKING_BASELINE \
+          2>/dev/null | head -1 || true)
           if [ -n "$BASELINE" ] && git merge-base --is-ancestor "$BASE" \
           "$BASELINE"; then
             echo "base $BASE predates the API baseline $BASELINE; skipping"; \
@@ -139,7 +139,8 @@ jobs:
           python -m pip install --quiet build "clients/python[dev]" \
             "clients/agent[dev]"
           python -c "import tap_e2e; print('tap-e2e', tap_e2e.__version__)"
-          python -c "import tap_agent; print('tap-agent', tap_agent.__version__)"
+          python -c \
+            "import tap_agent; print('tap-agent', tap_agent.__version__)"
           tap-agent --help > /dev/null
           python -m build --outdir dist clients/python
           python -m build --outdir dist clients/agent
@@ -157,9 +158,8 @@ jobs:
           name: python-dists
           path: dist/*
 
-  # tap-studio: its generated code matches proto/studio.proto, the page (Bun, TypeScript 7)
-  # type-checks, passes its tests and builds, the back end passes its tests, and the wheel
-  # carries the built page.
+  # Studio: generated bindings match; the page type-checks, tests and builds;
+  # the back end passes tests and the wheel carries the built page.
   studio:
     name: tap-studio (${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -200,6 +200,49 @@ jobs:
         if: matrix.python == '3.13'
         with:
           name: studio-dists
+          path: dist/*
+
+  # Watcher: the same checks as Studio (bindings, page, back end, wheel).
+  watcher:
+    name: tap-watcher (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          (cd clients/watcher/web && bun install --frozen-lockfile)
+          python -m pip install --quiet build clients/python \
+            "clients/watcher[dev]"
+      - name: Generated code is current
+        run: python clients/watcher/scripts/gen_protos.py --check
+      - name: Page (type check, tests, build)
+        working-directory: clients/watcher/web
+        run: |
+          bun run test
+          bun run build
+      - name: Back-end and timestamped mux tests
+        run: python -m pytest -q clients/watcher/tests
+      - name: Wheel carries the page
+        run: |
+          python -m build --outdir dist clients/watcher
+          python -m zipfile -l dist/tap_watcher-*.whl | \
+            grep -q "tap_watcher/static/index.html"
+          python -m pip install --quiet --force-reinstall --no-deps \
+            dist/tap_watcher-*.whl
+          tap-watcher --version
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.13'
+        with:
+          name: watcher-dists
           path: dist/*
 
   # Real-device proof on an API 34 emulator: the fixture-test sample suites

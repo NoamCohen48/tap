@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Builds the one-download bundles from already published releases: one zip per platform
 # (linux-x86_64, macos-aarch64, jvm) holding the server, the Python wheels (tap-e2e, tap-agent,
-# tap-studio), the Kotlin artifacts as a local Maven repository, the Markdown docs, install.sh
-# and INSTALL.md (packaging/bundle/). Nothing but the docs is built: every other file is the
-# released one.
+# tap-studio, tap-watcher), the Kotlin artifacts as a local Maven repository, the Markdown docs,
+# install.sh and INSTALL.md (packaging/bundle/). Nothing but the docs is built: every other file
+# is the released one.
 #
 #   scripts/build-bundle.sh --version 0.0.2 --docs build/docs-md
 #       [--daemon daemon/v0.0.2] [--kotlin client-kotlin/v0.0.2] [--python client-python/v0.0.2]
-#       [--agent client-agent/v0.0.2] [--studio client-studio/v0.0.1] [--out build/bundle]
+#       [--agent client-agent/v0.0.2] [--studio client-studio/v0.0.1]
+#       [--watcher client-watcher/v0.0.1] [--out build/bundle]
 #   scripts/build-bundle.sh --resolve-only [--daemon ...] ...
 #
 # A family left out uses its newest release. --docs is the Markdown edition scripts/build-docs.sh
@@ -21,7 +22,7 @@ set -euo pipefail
 repo="${GITHUB_REPOSITORY:-NoamCohen48/tap}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/build/bundle"
-version="" docs="" resolve_only=0 daemon="" kotlin="" python="" agent="" studio=""
+version="" docs="" resolve_only=0 daemon="" kotlin="" python="" agent="" studio="" watcher=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -33,6 +34,7 @@ while [ $# -gt 0 ]; do
     --python) python="$2"; shift 2 ;;
     --agent) agent="$2"; shift 2 ;;
     --studio) studio="$2"; shift 2 ;;
+    --watcher) watcher="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -61,13 +63,14 @@ kotlin="$(resolve "$kotlin" client-kotlin)"
 python="$(resolve "$python" client-python)"
 agent="$(resolve "$agent" client-agent)"
 studio="$(resolve "$studio" client-studio)"
+watcher="$(resolve "$watcher" client-watcher)"
 v() { echo "${1#*/v}"; }
 engine="$(v "$daemon")"
 # The docs come from the newest release in the set: the most recent commit's guide and references.
 docs_tag="$(gh release list --repo "$repo" --limit 100 --json tagName,createdAt --jq \
   "[.[] | select(.tagName == \"$daemon\" or .tagName == \"$kotlin\" or .tagName == \"$python\"
-   or .tagName == \"$agent\" or .tagName == \"$studio\")] | sort_by(.createdAt) | last | .tagName")"
-echo "bundle ${version:-?}: $daemon $kotlin $python $agent $studio (docs from $docs_tag)"
+   or .tagName == \"$agent\" or .tagName == \"$studio\" or .tagName == \"$watcher\")] | sort_by(.createdAt) | last | .tagName")"
+echo "bundle ${version:-?}: $daemon $kotlin $python $agent $studio $watcher (docs from $docs_tag)"
 
 rm -rf "$out"
 mkdir -p "$out"
@@ -77,6 +80,7 @@ client_kotlin=$kotlin
 client_python=$python
 client_agent=$agent
 client_studio=$studio
+client_watcher=$watcher
 docs=$docs_tag
 commit=$(gh api "repos/$repo/commits/$daemon" --jq .sha)
 EOF
@@ -92,6 +96,7 @@ gh release download "$daemon" --repo "$repo" -D "$work/assets" \
 gh release download "$python" --repo "$repo" -D "$work/assets" -p "tap_e2e-$(v "$python")-py3-none-any.whl"
 gh release download "$agent" --repo "$repo" -D "$work/assets" -p "tap_agent-$(v "$agent")-py3-none-any.whl"
 gh release download "$studio" --repo "$repo" -D "$work/assets" -p "tap_studio-$(v "$studio")-py3-none-any.whl"
+gh release download "$watcher" --repo "$repo" -D "$work/assets" -p "tap_watcher-$(v "$watcher")-py3-none-any.whl"
 
 # ---- Kotlin artifacts from GitHub Packages, laid out as a Maven repository ------------------
 token="${GH_TOKEN:-${GITHUB_TOKEN:-$(gh auth token)}}"
@@ -167,10 +172,11 @@ client-kotlin=$kv
 client-python=$(v "$python")
 client-agent=$(v "$agent")
 client-studio=$(v "$studio")
+client-watcher=$(v "$watcher")
 EOF
   sed -e "s/@BUNDLE@/$version/g" -e "s/@PLATFORM@/$platform/g" -e "s/@ENGINE@/$engine/g" \
     -e "s/@KOTLIN@/$kv/g" -e "s/@PYTHON@/$(v "$python")/g" -e "s/@AGENT@/$(v "$agent")/g" \
-    -e "s/@STUDIO@/$(v "$studio")/g" "$root/packaging/bundle/INSTALL.md" > "$dir/INSTALL.md"
+    -e "s/@STUDIO@/$(v "$studio")/g" -e "s/@WATCHER@/$(v "$watcher")/g" "$root/packaging/bundle/INSTALL.md" > "$dir/INSTALL.md"
   (cd "$dir" && find . -type f | sed 's:^\./::' | LC_ALL=C sort | xargs sha256sum > "$work/sums")
   mv "$work/sums" "$dir/SHA256SUMS"
   zip_dir "$work" "$name" "$out/$name.zip"

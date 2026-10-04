@@ -9,6 +9,7 @@ This bundle holds everything Tap ships, so you can install it from one download:
 | Python client + pytest plugin (`tap-e2e`) | @PYTHON@ | `python/tap_e2e-@PYTHON@-py3-none-any.whl` |
 | Agent CLI + MCP server (`tap-agent`, experimental) | @AGENT@ | `python/tap_agent-@AGENT@-py3-none-any.whl` |
 | Tap Studio, inspector + recorder (`tap-studio`, experimental) | @STUDIO@ | `python/tap_studio-@STUDIO@-py3-none-any.whl` |
+| Watcher, read-only view of device actions and video (`tap-watcher`, experimental) | @WATCHER@ | `python/tap_watcher-@WATCHER@-py3-none-any.whl` |
 | Documentation (guide and Kotlin, Python, gRPC references) | | `docs/` |
 
 `VERSIONS` lists the same versions; `SHA256SUMS` has a checksum for every file.
@@ -21,6 +22,9 @@ This bundle holds everything Tap ships, so you can install it from one download:
   silicon. The `jvm` bundle: any system with Java 17 or newer (Windows included).
 - Python 3.10 or newer for the Python packages. Their dependencies (grpcio, protobuf, ...)
   are downloaded from PyPI.
+- For the screen video in `tap-watcher`: a scrcpy 4.1 server JAR, given to the server with
+  `tap start --scrcpy-server JAR` (scrcpy itself is not bundled). Without it the watcher shows
+  the actions only.
 
 ## Install with the script (Linux, macOS)
 
@@ -33,7 +37,7 @@ cd tap-@BUNDLE@-@PLATFORM@
 It checks the checksums, then installs under `~/.local`:
 
 - `~/.local/bin/tap`: the server;
-- `~/.local/bin/tap-agent`, `~/.local/bin/tap-studio`: the Python tools, in their own virtual
+- `~/.local/bin/tap-agent`, `~/.local/bin/tap-studio`, `~/.local/bin/tap-watcher`: the Python tools, in their own virtual
   environment at `~/.local/share/tap/venv`;
 - `~/.local/share/tap/maven`: the Kotlin artifacts as a local Maven repository;
 - `~/.local/share/tap/python`: the wheels, to install `tap-e2e` into your test project;
@@ -70,6 +74,7 @@ dependencies {
 pip install python/tap_e2e-@PYTHON@-py3-none-any.whl
 pip install python/tap_agent-@AGENT@-py3-none-any.whl     # optional: agents
 pip install python/tap_studio-@STUDIO@-py3-none-any.whl   # optional: Studio
+pip install python/tap_watcher-@WATCHER@-py3-none-any.whl # optional: the watcher
 ```
 
 ## First run

@@ -1,5 +1,10 @@
 package io.github.noamcohen48.tap.daemon.core
 
+import io.github.noamcohen48.tap.api.v1.Activity
+import io.github.noamcohen48.tap.api.v1.ConnectionClosed
+import io.github.noamcohen48.tap.api.v1.ConnectionOpened
+import io.github.noamcohen48.tap.api.v1.DeviceAttached
+import io.github.noamcohen48.tap.api.v1.DeviceDetached
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.AppLifecycle
@@ -14,6 +19,7 @@ import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
 import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.host.ScrcpyRecorder
+import io.github.noamcohen48.tap.host.ScrcpyVideoSource
 import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +46,8 @@ class DaemonConfig(
     val log: (String) -> Unit = ::println,
     /** The scrcpy executable recordings launch (`tap serve --scrcpy`); only run on request. */
     val scrcpy: String = "scrcpy",
+    /** The scrcpy 4.1 server `WatchVideo` pushes (`tap serve --scrcpy-server`); null = no video. */
+    val scrcpyServer: Path? = null,
 )
 
 class UnknownClientConnectionException(
@@ -126,6 +134,8 @@ class ConnectedClient internal constructor(
     val name: String,
     /** Set for a held connection: how long it may go without a call before it is ended. */
     val holdIdleMs: Long? = null,
+    /** Where this connection's logged calls are also published for watchers. */
+    activity: ActivityLog? = null,
 ) {
     internal var closed = false
 
@@ -142,7 +152,10 @@ class ConnectedClient internal constructor(
     internal var observeOwner: Any? = null
 
     /** The device calls this connection made (`Events`). */
-    val events = EventLog()
+    val events =
+        EventLog(onAppend = { event ->
+            activity?.append(Activity.newBuilder().setClientConnectionId(id).setEvent(event))
+        })
 }
 
 /**
@@ -291,6 +304,18 @@ class TapDaemon internal constructor(
     private val clientConnectionsById = HashMap<String, ConnectedClient>()
     private val attachedDevicesById = HashMap<String, AttachedDevice>()
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** What every connection does, for watchers (`WatchService.Watch`). */
+    val activity = ActivityLog()
+
+    /** Shared screen video (`WatchService.WatchVideo`); one producer per watched serial. */
+    internal val video =
+        SharedVideo { serial ->
+            val server =
+                config.scrcpyServer
+                    ?: throw DaemonPreconditionException("No scrcpy server configured: start the daemon with --scrcpy-server")
+            ScrcpyVideoSource(config.adb, serial, server)
+        }
     private var closing = false
 
     /** Serials whose bundled driver this daemon process already installed. */
@@ -307,13 +332,19 @@ class TapDaemon internal constructor(
         name: String,
         holdIdleMs: Long? = null,
     ): ConnectedClient {
-        val connection = ConnectedClient(UUID.randomUUID().toString(), name, holdIdleMs)
+        val connection = ConnectedClient(UUID.randomUUID().toString(), name, holdIdleMs, activity)
         synchronized(lifecycleLock) {
             if (closing) throw DaemonClosingException()
             if (holdIdleMs != null && clientConnectionsById.values.any { it.holdIdleMs != null && it.name == name }) {
                 throw HeldNameTakenException(name)
             }
             clientConnectionsById[connection.id] = connection
+            activity.append(
+                Activity
+                    .newBuilder()
+                    .setClientConnectionId(connection.id)
+                    .setConnectionOpened(ConnectionOpened.newBuilder().setName(name).setHeld(holdIdleMs != null)),
+            )
         }
         if (holdIdleMs != null) {
             config.log("client connection ${connection.id} connected ($name, held, idle ${holdIdleMs}ms)")
@@ -346,20 +377,28 @@ class TapDaemon internal constructor(
     }
 
     /** Every live connection with its attached devices, in no particular order. */
-    fun connections(): List<ConnectionInfo> {
+    fun connections(): List<ConnectionInfo> = synchronized(lifecycleLock) { connectionsLocked() }
+
+    private fun connectionsLocked(): List<ConnectionInfo> {
         val now = System.nanoTime()
-        return synchronized(lifecycleLock) {
-            clientConnectionsById.values.filterNot { it.closed }.map { connection ->
-                ConnectionInfo(
-                    id = connection.id,
-                    name = connection.name,
-                    holdIdleMs = connection.holdIdleMs,
-                    idleMs = if (connection.inFlight > 0) 0L else (now - connection.lastUsedNanos) / 1_000_000L,
-                    attachedDevices = attachedDevicesById.values.filter { it.ownerConnectionId == connection.id },
-                )
-            }
+        return clientConnectionsById.values.filterNot { it.closed }.map { connection ->
+            ConnectionInfo(
+                id = connection.id,
+                name = connection.name,
+                holdIdleMs = connection.holdIdleMs,
+                idleMs = if (connection.inFlight > 0) 0L else (now - connection.lastUsedNanos) / 1_000_000L,
+                attachedDevices = attachedDevicesById.values.filter { it.ownerConnectionId == connection.id },
+            )
         }
     }
+
+    /**
+     * A watcher's start: the live connections and an [ActivityLog] subscription taken together.
+     * Lifecycle activity is appended under the lifecycle lock, so the two agree: every connection
+     * and attachment in the snapshot is either in the backlog or happened before it.
+     */
+    fun watch(afterSeq: Long): Pair<List<ConnectionInfo>, ActivityLog.Subscription> =
+        synchronized(lifecycleLock) { connectionsLocked() to activity.subscribe(afterSeq) }
 
     /**
      * Marks a call naming held connection [id] as running until the calling coroutine's job
@@ -478,7 +517,7 @@ class TapDaemon internal constructor(
     ): Int =
         withContext(NonCancellable) {
             val snapshot =
-                synchronized(lifecycleLock) { removeConnectionLocked(id, expectedObserveOwner, completedObserveCloser) }
+                synchronized(lifecycleLock) { removeConnectionLocked(id, reason, expectedObserveOwner, completedObserveCloser) }
                     ?: return@withContext 0
             // End Observe promptly once disconnect owns the state transition. Device cleanup may take
             // its full bound and must not keep a dead liveness stream heartbeating meanwhile.
@@ -523,6 +562,7 @@ class TapDaemon internal constructor(
      */
     private fun removeConnectionLocked(
         id: String,
+        reason: String,
         expectedObserveOwner: Any? = null,
         completedObserveCloser: ((String) -> Unit)? = null,
     ): Snapshot? {
@@ -533,11 +573,32 @@ class TapDaemon internal constructor(
         connection.closed = true
         // AttachedDevice.ownerConnectionId is the sole ownership index.
         val owned = detachOwnedAttachedDevices(connection.id)
+        owned.forEach { appendDetached(it, reason) }
+        activity.append(Activity.newBuilder().setClientConnectionId(id).setConnectionClosed(ConnectionClosed.newBuilder().setReason(reason)))
         completedObserveCloser?.let { connection.onDisconnect.remove(it) }
         val hooks = connection.onDisconnect.toList()
         connection.onDisconnect.clear()
         connection.observeOwner = null
         return Snapshot(owned, hooks)
+    }
+
+    /** Called with [lifecycleLock] held, like every lifecycle append, so watchers see them in order. */
+    private fun appendDetached(
+        device: AttachedDevice,
+        reason: String,
+    ) {
+        activity.append(
+            Activity
+                .newBuilder()
+                .setClientConnectionId(device.ownerConnectionId)
+                .setDeviceDetached(
+                    DeviceDetached
+                        .newBuilder()
+                        .setAttachedDeviceId(device.id)
+                        .setSerial(device.deviceSession.serial)
+                        .setReason(reason),
+                ),
+        )
     }
 
     /** Called with [lifecycleLock] held; scans and removes every device owned by [connectionId]. */
@@ -728,6 +789,18 @@ class TapDaemon internal constructor(
                                 ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
                         )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
+                    activity.append(
+                        Activity
+                            .newBuilder()
+                            .setClientConnectionId(ownerConnectionId)
+                            .setDeviceAttached(
+                                DeviceAttached
+                                    .newBuilder()
+                                    .setAttachedDeviceId(attachedDevice.id)
+                                    .setSerial(serial)
+                                    .setGeneration(device.generation),
+                            ),
+                    )
                     attachedDevice
                 }
             }
@@ -778,7 +851,7 @@ class TapDaemon internal constructor(
                 synchronized(lifecycleLock) {
                     val found = attachedDevicesById[id] ?: throw UnknownAttachedDeviceException(id)
                     if (found.ownerConnectionId != clientConnectionId) throw NotOwnerException(id, clientConnectionId)
-                    attachedDevicesById.remove(id)
+                    attachedDevicesById.remove(id)?.also { appendDetached(it, "detached") }
                 } ?: throw UnknownAttachedDeviceException(id)
             markInUse(clientConnectionId)
             val detail = closeAttachedDevice(attachedDevice, timeoutMs, shutdown = false)
@@ -804,6 +877,7 @@ class TapDaemon internal constructor(
     suspend fun close(timeoutMs: Long = shutdownTotalMs) {
         withContext(NonCancellable) {
             val deadlineNanos = deadlineAfterMs(timeoutMs)
+            video.stop()
             val ids =
                 synchronized(lifecycleLock) {
                     closing = true
@@ -817,7 +891,7 @@ class TapDaemon internal constructor(
                     // every remaining cleanup without awaiting, and return immediately. The old code
                     // logged "may remain" here and left later connections registered.
                     val detached =
-                        synchronized(lifecycleLock) { ids.subList(index, ids.size).mapNotNull { removeConnectionLocked(it) } }
+                        synchronized(lifecycleLock) { ids.subList(index, ids.size).mapNotNull { removeConnectionLocked(it, "daemon shutdown") } }
                     detached.forEach { it.endObserve("daemon shutdown") }
                     val detachedDevices = detached.flatMap { it.attachedDevices }
                     detachedDevices.forEach { attachedDevice ->
@@ -832,6 +906,8 @@ class TapDaemon internal constructor(
                             "${detached.size} connection(s), ${detachedDevices.size} attached device(s) " +
                             "detached with cleanup launched",
                     )
+                    activity.close()
+                    video.awaitStop(0)
                     return@withContext
                 }
                 // Reserve a share for every later connection. disconnectClient applies the same
@@ -846,6 +922,8 @@ class TapDaemon internal constructor(
                     )
                 }.onFailure { config.log("connection $id shutdown failed: ${it.message}") }
             }
+            activity.close()
+            video.awaitStop(remainingMs(deadlineNanos))
         }
     }
 

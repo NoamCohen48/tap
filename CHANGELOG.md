@@ -56,6 +56,13 @@ Added:
   60 s audio only, checksummed, and discarded on detach. Audio needs Android 11+. scrcpy is an
   external dependency: `tap start --scrcpy PATH` (or `TAP_SCRCPY`), default `scrcpy` on `PATH`;
   it runs with Tap's own ADB. Guide: `docs/guide/artifacts.md`.
+- **tap-watcher** (new family `client-watcher`, experimental; daemon): a read-only browser view
+  of every device the server sees: the connection using it, each action it runs, and the
+  screen as video, with look-back, a scrubber with action markers and zoom, Before / After
+  frames of an action, clips, recordings and a Library. It never attaches or sends commands.
+  The daemon's new `WatchService` (`Watch`, `WatchVideo`) serves it; the video needs a scrcpy
+  4.1 server JAR (`tap start --scrcpy-server JAR` or `TAP_SCRCPY_SERVER`). In the bundles.
+  Docs: `docs/watcher/`.
 
 Device actions (engine, Kotlin and Python clients, `tap-agent`), new in protocol 5.0; the engine
 and the clients must be updated together to use them:

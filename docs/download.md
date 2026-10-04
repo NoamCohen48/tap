@@ -1,8 +1,8 @@
 # Download
 
 Everything Tap ships, in one zip for your system: the `tap` server, the Kotlin client and JUnit
-5 extension, the Python client and pytest plugin, `tap-agent`, Tap Studio, this documentation
-and an install script.
+5 extension, the Python client and pytest plugin, `tap-agent`, Tap Studio, `tap-watcher`, this
+documentation and an install script.
 
 **Tap 0.0.2** (alpha):
 
@@ -34,8 +34,9 @@ The script:
 1. checks every file in the bundle against its `SHA256SUMS`;
 2. puts `tap` in `~/.local/bin` (with the jvm bundle, it unpacks the server to
    `~/.local/share/tap/server` and links it there; it needs Java 17+);
-3. installs `tap-e2e`, `tap-agent` and `tap-studio` into their own virtual environment
-   (`~/.local/share/tap/venv`) and links `tap-agent` and `tap-studio` into `~/.local/bin`
+3. installs `tap-e2e`, `tap-agent`, `tap-studio` and `tap-watcher` into their own virtual
+   environment (`~/.local/share/tap/venv`) and links `tap-agent`, `tap-studio` and
+   `tap-watcher` into `~/.local/bin`
    (it needs Python 3.10+; the packages' dependencies come from PyPI);
 4. copies the Kotlin artifacts (a local Maven repository), the wheels and the docs to
    `~/.local/share/tap`;
@@ -93,7 +94,7 @@ tap-0.0.2-<platform>/
 ├── SHA256SUMS        a checksum for every file
 ├── server/           tap (native) or tap-0.0.2-jvm.zip
 ├── maven/            tap-junit5, tap-client, tap-api, tap-schema as a Maven repository
-├── python/           tap_e2e, tap_agent, tap_studio wheels
+├── python/           tap_e2e, tap_agent, tap_studio, tap_watcher wheels
 ├── docs/             this documentation as Markdown, with the API references
 └── LICENSE
 ```

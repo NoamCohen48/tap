@@ -71,6 +71,7 @@ testing {
                         systemProperty(name, resolved)
                     }
                     systemProperty("tap.allowReboot", allowReboot.toString())
+                    systemProperty("tap.passiveVideo", providers.gradleProperty("tap.passiveVideo").getOrElse("false"))
                     useJUnitPlatform {
                         if (!allowReboot) excludeTags("reboot")
                     }

@@ -1,0 +1,114 @@
+// tap.v1 — read-only watching: what every connection does on its devices, and a device's
+// screen as video. A watcher owns nothing: it names no client connection, never renews a held
+// connection's idle timeout, and its streams ending changes nothing for the connections it
+// watches. Anyone with the daemon token can watch (screens and typed text included).
+
+syntax = "proto3";
+
+package tap.v1;
+
+import "client_connection.proto";
+import "event_log.proto";
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "WatchProto";
+
+service WatchService {
+  // The daemon-wide activity log after `after_seq`: the retained backlog, then live activity
+  // as it happens, until the client cancels or the daemon stops. The first response also
+  // carries the live connections, so names survive eviction of their `connection_opened`.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+  // One device's screen as H.264, from a scrcpy server the daemon runs while anyone watches
+  // that serial; readers of one serial share it. Needs `tap start --scrcpy-server`. No input,
+  // no screen wake, no attachment.
+  rpc WatchVideo(WatchVideoRequest) returns (stream WatchVideoResponse);
+}
+
+message WatchRequest {
+  // Only activity with a larger seq; 0 for the whole retained backlog. Must be >= 0.
+  int64 after_seq = 1;
+}
+
+message WatchResponse {
+  // First response only: every live connection with its attached devices when the stream began.
+  repeated ConnectionEntry connections = 1;
+  // In seq order. The first response holds the backlog (possibly empty); later ones are live.
+  repeated Activity activities = 2;
+  // Activities evicted from the daemon's log since it started (it keeps the last 10000).
+  int64 dropped = 3;
+}
+
+// One thing that happened, numbered 1, 2, 3, … for the daemon's lifetime.
+message Activity {
+  int64 seq = 1;
+  int64 at_epoch_ms = 2;
+  string client_connection_id = 3;
+  oneof kind {
+    ConnectionOpened connection_opened = 4;
+    ConnectionClosed connection_closed = 5;
+    DeviceAttached device_attached = 6;
+    DeviceDetached device_detached = 7;
+    // A call the connection made, exactly as its own event log (`Events`) records it.
+    LoggedEvent event = 8;
+  }
+}
+
+message ConnectionOpened {
+  string name = 1;
+  // Set for a held connection.
+  bool held = 2;
+}
+
+message ConnectionClosed {
+  string reason = 1;
+}
+
+message DeviceAttached {
+  string attached_device_id = 1;
+  string serial = 2;
+  int64 generation = 3;
+}
+
+message DeviceDetached {
+  string attached_device_id = 1;
+  string serial = 2;
+  // "detached", or why its connection ended.
+  string reason = 3;
+}
+
+message WatchVideoRequest {
+  string serial = 1;
+}
+
+message VideoHeader {
+  string stream_id = 1;
+  string clock_id = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  // H.264 Annex B SPS/PPS. A new header resets the decoder.
+  bytes configuration = 5;
+}
+
+message VideoFrame {
+  // 1, 2, 3, … per stream_id.
+  uint64 seq = 1;
+  int64 pts_us = 2;
+  bool key_frame = 3;
+  bytes data = 4;
+  // Host receipt of the full packet on the clock `clock_id` names — the clock of
+  // `LoggedEvent.started_monotonic_ns`. Not device capture or input execution time.
+  int64 received_monotonic_ns = 5;
+  int64 received_epoch_ms = 6;
+}
+
+message WatchVideoResponse {
+  // First the header and the current GOP (the latest key frame and the frames since, so a new
+  // reader can decode at once), then live frames. The daemon keeps no other history. When the
+  // current GOP is too large to keep, a new reader gets the header and then live frames from
+  // the next key frame.
+  oneof update {
+    VideoHeader header = 1;
+    VideoFrame frame = 2;
+  }
+}

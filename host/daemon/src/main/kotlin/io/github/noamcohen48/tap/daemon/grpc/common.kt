@@ -2,10 +2,12 @@ package io.github.noamcohen48.tap.daemon.grpc
 
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.daemon.core.ActivityReaderOverflowException
 import io.github.noamcohen48.tap.daemon.core.DaemonPreconditionException
 import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
 import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
+import io.github.noamcohen48.tap.daemon.core.VideoReaderOverflowException
 import io.github.noamcohen48.tap.daemon.snapshot.RefNotAddressableException
 import io.github.noamcohen48.tap.daemon.snapshot.UnknownRefException
 import io.github.noamcohen48.tap.host.AdbCommandException
@@ -25,6 +27,7 @@ import io.github.noamcohen48.tap.host.HostWaitTimeoutException
 import io.github.noamcohen48.tap.host.RemoteCommandException
 import io.github.noamcohen48.tap.host.SessionUnusableException
 import io.github.noamcohen48.tap.host.UnsupportedApiException
+import io.github.noamcohen48.tap.host.VideoException
 import io.github.noamcohen48.tap.protocol.ENGINE_VERSION
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.grpc.Metadata
@@ -173,6 +176,11 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
             }
             is DaemonPreconditionException ->
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            // A watcher fell behind: it reconnects from its last seq (activity) or key frame (video).
+            is ActivityReaderOverflowException, is VideoReaderOverflowException ->
+                Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            // Video capture could not start or stopped; the device and its connections are untouched.
+            is VideoException -> Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             is UnknownRefException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_REF }
             is RefNotAddressableException ->
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE }

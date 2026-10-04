@@ -1,0 +1,134 @@
+// tap.watcher.v1 — the watcher page ↔ its loopback back end. Read-only towards the daemon:
+// nothing here attaches, executes, observes or renews a connection. Activity and video are the
+// daemon's `tap.v1` messages, relayed by the back end (which keeps the daemon token); recordings
+// and clips are written by the back end, so they do not depend on a browser tab staying open.
+syntax = "proto3";
+
+package tap.watcher.v1;
+
+import "device.proto";
+import "watch.proto";
+
+service WatcherService {
+  // Whether the daemon is reachable, the active recordings and the video history limits.
+  rpc Status(StatusRequest) returns (StatusResponse);
+  // The daemon's ADB inventory (`tap.v1.DeviceService.ListDevices`).
+  rpc ListDevices(tap.v1.ListDevicesRequest) returns (tap.v1.ListDevicesResponse);
+  // The back end's activity history after `after_seq`, then live activity. Sequence numbers
+  // are the back end's own, so they stay valid across daemon restarts; a restart closes the
+  // old daemon's connections with reason "daemon restarted".
+  rpc Watch(tap.v1.WatchRequest) returns (stream tap.v1.WatchResponse);
+  // One device's video: the header and the back end's retained history (whole GOPs, within
+  // `StatusResponse.history`), then live frames. Readers of a serial share one daemon stream.
+  rpc WatchVideo(tap.v1.WatchVideoRequest) returns (stream tap.v1.WatchVideoResponse);
+  // Records `serial` from its latest key frame until StopRecording or a limit. One per serial.
+  // A new stream (rotation, encoder or daemon restart) continues it as the next part.
+  rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
+  rpc StopRecording(StopRecordingRequest) returns (StopRecordingResponse);
+  // Saves retained frames from (from_stream_id, from_seq) to (to_stream_id, to_seq) to the
+  // library, one part per stream. The clip starts at the key frame at or before the first.
+  rpc SaveClip(SaveClipRequest) returns (SaveClipResponse);
+  rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
+  // Deletes library entries; unknown ids are ignored.
+  rpc DeleteRecordings(DeleteRecordingsRequest) returns (DeleteRecordingsResponse);
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  bool daemon_connected = 1;
+  // Why the daemon is not reachable; empty when it is.
+  string daemon_error = 2;
+  repeated ActiveRecording recordings = 3;
+  VideoHistory history = 4;
+}
+
+// How much video the back end retains per serial; the page keeps the same.
+message VideoHistory {
+  uint32 max_seconds = 1;
+  uint64 max_bytes = 2;
+}
+
+message ActiveRecording {
+  string serial = 1;
+  int64 started_epoch_ms = 2;
+  uint64 bytes = 3;
+  // Media time recorded so far (a static screen emits no frames, so it can trail wall time).
+  double seconds = 4;
+}
+
+enum RecordingKind {
+  RECORDING_KIND_UNSPECIFIED = 0;
+  // Started and stopped by a user.
+  RECORDING_KIND_RECORDING = 1;
+  // Cut from retained history.
+  RECORDING_KIND_CLIP = 2;
+}
+
+// A saved library entry: `video-1.mp4` … `video-<parts>.mp4` and `steps.json` under
+// `/recordings/<id>/`, and `/recordings/<id>.zip` with all of them.
+message Recording {
+  string id = 1;
+  RecordingKind kind = 2;
+  string serial = 3;
+  int64 created_epoch_ms = 4;
+  double duration_seconds = 5;
+  uint64 bytes = 6;
+  // The connections whose actions fall inside it.
+  repeated string connection_names = 7;
+  uint32 actions = 8;
+  uint32 failures = 9;
+  // Why a recording ended: "stopped", "watcher stopped", or the limit or failure that ended it.
+  string ended = 10;
+  // One MP4 per video stream: more than one when the device rotated or its capture restarted.
+  uint32 parts = 11;
+}
+
+message StartRecordingRequest {
+  string serial = 1;
+}
+
+message StartRecordingResponse {
+  ActiveRecording recording = 1;
+}
+
+message StopRecordingRequest {
+  string serial = 1;
+}
+
+message StopRecordingResponse {
+  Recording recording = 1;
+}
+
+message SaveClipRequest {
+  string serial = 1;
+  string from_stream_id = 2;
+  uint64 from_seq = 3;
+  string to_stream_id = 4;
+  uint64 to_seq = 5;
+}
+
+message SaveClipResponse {
+  Recording recording = 1;
+}
+
+message ListRecordingsRequest {}
+
+message ListRecordingsResponse {
+  // Newest first.
+  repeated Recording recordings = 1;
+  // Where the library lives on the back end's machine.
+  string directory = 2;
+  // What the library holds, and its cap: a full library refuses new saves.
+  uint64 used_bytes = 3;
+  uint64 max_bytes = 4;
+  // Entries older than this many days are deleted automatically (`--keep-days`); 0 keeps
+  // them until deleted.
+  uint32 keep_days = 5;
+}
+
+message DeleteRecordingsRequest {
+  repeated string ids = 1;
+}
+
+message DeleteRecordingsResponse {}

@@ -19,6 +19,7 @@ import io.github.noamcohen48.tap.api.v1.ListConnectionsResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.daemon.core.ConnectionInfo
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.protocol.HOST_BUILD_ID
 import io.github.noamcohen48.tap.protocol.PROTOCOL_VERSION_ORDER
@@ -57,26 +58,8 @@ class ClientConnectionService(
         reply {
             ListConnectionsResponse
                 .newBuilder()
-                .addAllConnections(
-                    daemon.connections().sortedBy { it.name }.map { connection ->
-                        ConnectionEntry
-                            .newBuilder()
-                            .setClientConnectionId(connection.id)
-                            .setName(connection.name)
-                            .setIdleMs(connection.idleMs)
-                            .apply { connection.holdIdleMs?.let { hold = Hold.newBuilder().setIdleTimeoutMs(it).build() } }
-                            .addAllAttachedDevices(
-                                connection.attachedDevices.map { device ->
-                                    AttachedDeviceEntry
-                                        .newBuilder()
-                                        .setAttachedDeviceId(device.id)
-                                        .setSerial(device.deviceSession.serial)
-                                        .setGeneration(device.deviceSession.generation)
-                                        .build()
-                                },
-                            ).build()
-                    },
-                ).build()
+                .addAllConnections(daemon.connections().sortedBy { it.name }.map(ConnectionInfo::toEntry))
+                .build()
         }
 
     override suspend fun events(request: EventsRequest): EventsResponse =
@@ -155,3 +138,22 @@ class ClientConnectionService(
             .apply(fill)
             .build()
 }
+
+/** A live connection as `ListConnections` and `Watch` report it. */
+internal fun ConnectionInfo.toEntry(): ConnectionEntry =
+    ConnectionEntry
+        .newBuilder()
+        .setClientConnectionId(id)
+        .setName(name)
+        .setIdleMs(idleMs)
+        .apply { holdIdleMs?.let { hold = Hold.newBuilder().setIdleTimeoutMs(it).build() } }
+        .addAllAttachedDevices(
+            attachedDevices.map { device ->
+                AttachedDeviceEntry
+                    .newBuilder()
+                    .setAttachedDeviceId(device.id)
+                    .setSerial(device.deviceSession.serial)
+                    .setGeneration(device.deviceSession.generation)
+                    .build()
+            },
+        ).build()

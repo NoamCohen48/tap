@@ -37,6 +37,12 @@ message LoggedEvent {
   optional Error error = 8;
   // The call failed as an RPC (the `tap-failure-bin` trailer), e.g. an app lifecycle failure.
   optional Failure failure = 9;
+  // Host boundaries around the validated RPC block, including queued/transport work.
+  // Not device input/capture times. Compare with video receipt only when clock_id matches.
+  // Missing on events from older daemons; never derive these from epoch timestamps.
+  optional int64 started_monotonic_ns = 11;
+  optional int64 finished_monotonic_ns = 12;
+  string clock_id = 13;
 }
 
 // An AppService call. `operation` is the RPC in snake_case: install, uninstall, force_stop,

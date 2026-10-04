@@ -1093,6 +1093,66 @@ open class Adb internal constructor(
             shellQuote(packageName),
         ).lineSequence().map(String::trim).lastOrNull { it.startsWith("$packageName/") }
 
+    // ---- passive video capture ---------------------------------------------------------------
+
+    /** Stage only this producer's server artifact; never the shared scrcpy-server.jar pathname. */
+    open suspend fun pushVideoServer(
+        serial: String,
+        server: Path,
+        scid: String,
+    ) {
+        exec(serial, "push", server.toAbsolutePath().toString(), videoServerPath(scid))
+    }
+
+    open suspend fun deleteVideoServer(
+        serial: String,
+        scid: String,
+    ) {
+        exec(serial, "shell", "rm", "-f", videoServerPath(scid))
+    }
+
+    /** Allocate a private serial-specific forward without ever replacing an existing one. */
+    open suspend fun forwardVideoSocket(
+        serial: String,
+        scid: String,
+    ): Int {
+        videoServerArguments(scid)
+        val output = exec(serial, "forward", "--no-rebind", "tcp:0", "localabstract:scrcpy_$scid")
+        return output.toIntOrNull()?.takeIf { it in 1..65535 }
+            ?: throw VideoException("ADB did not allocate a video port on $serial: $output")
+    }
+
+    /** Long-lived, video-only shell child; its caller must drain and reap it before removing its forward. */
+    open suspend fun startVideoServer(
+        serial: String,
+        scid: String,
+    ): Process =
+        withContext(NonCancellable + Dispatchers.IO) {
+            val arguments = videoServerArguments(scid)
+            val command =
+                "printf 'TAP_VIDEO_PID=%s\\n' \$\$; exec env CLASSPATH=${videoServerPath(scid)} " +
+                    arguments.joinToString(" ") { shellQuote(it) }
+            processStarter.start(listOf(executable, "-s", serial, "shell", command))
+        }
+
+    /** Kill only the PID reported by this child, after validating its producer-specific process name. */
+    open suspend fun stopVideoServer(
+        serial: String,
+        scid: String,
+        pid: Int,
+    ) {
+        videoServerArguments(scid)
+        require(pid > 0)
+        val command =
+            "case \"\$(cat /proc/$pid/cmdline 2>/dev/null)\" in " +
+                "tapv-$scid*) kill -TERM $pid;; '') exit 0;; *) exit 42;; esac; " +
+                "for i in 1 2 3 4 5 6 7 8 9 10; do " +
+                "case \"\$(cat /proc/$pid/cmdline 2>/dev/null)\" in tapv-$scid*) sleep 0.1;; *) exit 0;; esac; " +
+                "done; exit 42"
+        val result = execResult(serial, "shell", command)
+        if (result.exitCode != 0) throw VideoException("Video child $pid could not be stopped safely on $serial")
+    }
+
     // ---- forwards ----------------------------------------------------------------------------
 
     open suspend fun forward(

@@ -44,6 +44,10 @@ on:
         description: "Studio tag, e.g. client-studio/v0.0.1"
         required: false
         default: ""
+      client_watcher:
+        description: "Watcher tag, e.g. client-watcher/v0.0.1"
+        required: false
+        default: ""
       bundle:
         description: "Bundle version (empty: the daemon's; 'none' skips)"
         required: false
@@ -72,7 +76,7 @@ jobs:
         run: |
           tags=""
           inputs="daemon client_kotlin client_python"
-          inputs="$inputs client_agent client_studio"
+          inputs="$inputs client_agent client_studio client_watcher"
           for input in $inputs; do
             case "$input" in
               daemon) tag="${{ inputs.daemon }}" ;;
@@ -80,6 +84,7 @@ jobs:
               client_python) tag="${{ inputs.client_python }}" ;;
               client_agent) tag="${{ inputs.client_agent }}" ;;
               client_studio) tag="${{ inputs.client_studio }}" ;;
+              client_watcher) tag="${{ inputs.client_watcher }}" ;;
             esac
             [ -n "$tag" ] || continue
             url="https://github.com/${{ github.repository }}.git"
@@ -172,6 +177,7 @@ jobs:
               client-python/*) need="tap_e2e-" ;;
               client-agent/*) need="tap_agent-" ;;
               client-studio/*) need="tap_studio-" ;;
+              client-watcher/*) need="tap_watcher-" ;;
             esac
             if ! assets=$(gh release view "$tag" \
               --json assets --jq '.assets[].name'); then
@@ -203,3 +209,4 @@ jobs:
       client_python: ${{ inputs.client_python }}
       client_agent: ${{ inputs.client_agent }}
       client_studio: ${{ inputs.client_studio }}
+      client_watcher: ${{ inputs.client_watcher }}

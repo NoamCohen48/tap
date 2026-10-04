@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs a Tap bundle (see INSTALL.md next to this script): the `tap` server, the Python tools
-# (tap-agent, tap-studio, with tap-e2e) in their own virtual environment, and the Kotlin
+# (tap-agent, tap-studio, tap-watcher, with tap-e2e) in their own virtual environment, and the Kotlin
 # artifacts as a local Maven repository plus the docs under <prefix>/share/tap.
 #
 #   ./install.sh [--prefix DIR] [--venv DIR] [--no-server] [--no-python] [--uninstall]
@@ -48,7 +48,7 @@ bin="$prefix/bin"
 share="$prefix/share/tap"
 
 if [ "$uninstall" = 1 ]; then
-  for cmd in tap tap-agent tap-studio; do
+  for cmd in tap tap-agent tap-studio tap-watcher; do
     # Only what this script put there: a link into share/tap, or the native server it copied.
     if [ -L "$bin/$cmd" ]; then
       case "$(readlink "$bin/$cmd")" in "$share"/*) rm -f "$bin/$cmd" ;; esac
@@ -143,7 +143,7 @@ pick_python() {
 if [ "$python_tools" = 1 ]; then
   py="$(pick_python)"
   if [ -z "$py" ]; then
-    warn "no Python 3.10+ found: skipped tap-e2e, tap-agent and tap-studio (rerun with Python on PATH)"
+    warn "no Python 3.10+ found: skipped tap-e2e, tap-agent, tap-studio and tap-watcher (rerun with Python on PATH)"
   else
     target="${venv:-$share/venv}"
     if [ ! -x "$target/bin/python" ]; then
@@ -163,13 +163,13 @@ if [ "$python_tools" = 1 ]; then
     fi
     if [ -z "$venv" ]; then
       mkdir -p "$bin"
-      for cmd in tap-agent tap-studio; do
+      for cmd in tap-agent tap-studio tap-watcher; do
         if [ -x "$target/bin/$cmd" ]; then
           rm -f "$bin/$cmd"
           ln -s "$target/bin/$cmd" "$bin/$cmd"
         fi
       done
-      say "tap-agent, tap-studio: $bin (virtual environment $target)"
+      say "tap-agent, tap-studio, tap-watcher: $bin (virtual environment $target)"
     else
       say "Python packages installed into $target"
     fi
