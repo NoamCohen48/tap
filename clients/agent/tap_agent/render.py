@@ -37,7 +37,7 @@ def shown(node: ScreenNode, level: str) -> bool:
         return True
     if node.interactive:
         return True
-    return level == DEFAULT and bool(node.text or node.content_description)
+    return level == DEFAULT and bool(node.text or node.content_description or node.content_invalid or node.error)
 
 
 def node_line(node: ScreenNode) -> str:
@@ -45,12 +45,19 @@ def node_line(node: ScreenNode) -> str:
     parts = [f"@{node.ref}"]
     if node.class_name:
         parts.append(f"[{node.class_name.rsplit('.', 1)[-1]}]")
-    if node.text:
+    if node.showing_hint:
+        parts.append("empty")
+    elif node.text:
         parts.append("password" if node.password else _quote(node.text))
     if node.content_description and node.content_description != node.text:
         parts.append(f"desc={_quote(node.content_description)}")
-    if node.hint and node.hint != node.text:
-        parts.append(f"hint={_quote(node.hint)}")
+    hint = node.hint or (node.text if node.showing_hint else None)
+    if hint and (node.showing_hint or hint != node.text):
+        parts.append(f"hint={_quote(hint)}")
+    if node.content_invalid:
+        parts.append("invalid")
+    if node.error:
+        parts.append(f"error={_quote(node.error)}")
     short_id = _short_id(node)
     if short_id:
         parts.append(f"id={short_id}")
@@ -93,13 +100,16 @@ def snapshot_text(snapshot: ScreenSnapshot, level: str = DEFAULT) -> str:
 
 def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False) -> str:
     """What changed since the device's previous snapshot: ``+`` added, ``-`` removed (``=``
-    unchanged, with ``full``). The whole snapshot when there was no previous one."""
+    unchanged, with ``full`` or current validation errors). The whole snapshot when there was
+    no previous one. Validation state is not ref identity, so invalid nodes are always shown."""
     if all(n.change is NodeChange.NONE for n in snapshot.nodes) and not snapshot.removed:
         return snapshot_text(snapshot, level)
     lines: list[str] = []
     window = None
     for node in snapshot.nodes:
-        if not shown(node, level) or (node.change is NodeChange.UNCHANGED and not full):
+        if not shown(node, level) or (
+            node.change is NodeChange.UNCHANGED and not full and not (node.content_invalid or node.error)
+        ):
             continue
         if node.window_package != window:
             window = node.window_package

@@ -193,11 +193,13 @@ def screen_node(node: ScreenNode) -> tap.ScreenNode:
         bounds=tap.Bounds(left=node.bounds.left, top=node.bounds.top, right=node.bounds.right, bottom=node.bounds.bottom),
         flags=sorted(tap.NodeFlag.Value(f"FLAG_{flag.name}") for flag in node.flags),
         password=node.password,
+        showing_hint=node.showing_hint,
+        content_invalid=node.content_invalid,
         interactive=node.interactive,
         by_index=node.by_index,
         change=_CHANGES[node.change],
     )
-    for field in ("class_name", "resource_name", "text", "content_description", "hint"):
+    for field in ("class_name", "resource_name", "text", "content_description", "hint", "error"):
         value = getattr(node, field)
         if value is not None:
             setattr(message, field, value)

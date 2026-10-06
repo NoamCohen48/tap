@@ -108,6 +108,22 @@ def test_node_line():
     assert render.node_line(secret) == "@e6  password  disabled  (by index)"
 
 
+def test_field_state_distinguishes_hint_from_value_and_keeps_errors_in_diff():
+    field = _node(
+        "e3", NodeChange.UNCHANGED, text="Name", hint="Name", showing_hint=True,
+        content_invalid=True, error='Cannot be "blank"', interactive=True,
+    )
+    assert render.node_line(field) == '@e3  empty  hint="Name"  invalid  error="Cannot be \\"blank\\""'
+    snapshot = ScreenSnapshot(2, (field,), (), 0)
+    assert render.diff_text(snapshot).splitlines() == ["# com.example", "= " + render.node_line(field)]
+    assert render.node_line(_node("e4", text="Name", hint="Name")) == '@e4  "Name"'
+    # Some nodes report showing-hint without a separate hint attribute.
+    assert render.node_line(_node("e5", text="Name", showing_hint=True, password=True)) == '@e5  empty  hint="Name"'
+    error_only = _node("e6", NodeChange.UNCHANGED, error="Required")
+    assert render.shown(error_only, render.DEFAULT)
+    assert 'error="Required"' in render.diff_text(ScreenSnapshot(3, (error_only,), (), 0))
+
+
 def test_levels_and_windows():
     snapshot = ScreenSnapshot(
         1,

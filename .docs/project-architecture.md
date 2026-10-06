@@ -126,6 +126,7 @@ tap/
 |   |   |   +-- TouchReachability.kt     OBSCURED check (touch point in the target's window) + TouchPoints
 |   |   |   +-- GestureCommands.kt, TextInputCommands.kt, KeyInput.kt, QueryCommands.kt, WaitCommands.kt, ScreenStability.kt, ArtifactCommands.kt
 |   |   |   |                        tap, longTap, swipe, scroll, doubleTap, drag, pinch, fling / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
+|   |   |   +-- HierarchyDump.kt         diagnostic UiAutomator-format XML plus showing-hint, content-invalid and error
 |   |   |   +-- PointerGestures.kt       injected touchscreen strokes (double tap, drag); always lifts or cancels the pointer
 |   |   |   +-- RotationCommands.kt, ScreenCommands.kt, PermissionCommands.kt
 |   |   |   |                        set_orientation/set_display_rotation/unfreeze_rotation / screen + keyguard state, dismiss_keyguard / permission dialog by controller resource id
@@ -265,6 +266,7 @@ tap/
     |   +-- GestureActivity.kt       double-tap counter, drag-and-drop card, pinch-zoom target
     |   +-- LinkActivity.kt          deep-link target (tapfixture://link/...) showing the URI
     |   +-- FormActivity.kt          search field (IME action), copy/paste, toast button, typed launch extras, camera permission state
+    |   +-- FieldStateActivity.kt    hinted input and setError validation for screen-snapshot regression tests
     |   +-- MotionActivity.kt        2 s handler-driven animation and an endless 100 ms ticker (screen-stability waits)
     |   +-- OcclusionActivity.kt     a popup over half a button and a button under the keyboard (adjustNothing) for OBSCURED
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults

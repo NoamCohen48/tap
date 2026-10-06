@@ -58,6 +58,10 @@
             android:name=".FormActivity"
             android:exported="true"
             android:windowSoftInputMode="stateHidden" />
+        <activity
+            android:name=".FieldStateActivity"
+            android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden" />
         <!-- Deep links: tapfixture://link/anything. -->
         <activity
             android:name=".LinkActivity"

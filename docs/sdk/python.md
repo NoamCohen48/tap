@@ -173,6 +173,11 @@ node's `candidates`: every selector that matched only that node, best first (the
 `selector`), each with its `SelectorKind` (`PLAIN`, `COMBINED`, `ANCESTOR` or `BY_INDEX`), for
 tools that let a person choose between them.
 
+Field state is available as `showing_hint`, `content_invalid` and `error`. When `showing_hint`
+is true, `text` is the displayed hint, not a typed value. `content_invalid` and `error` report
+the validation state the app exposed to accessibility (for example, `TextView.setError`).
+These fields do not change a node's ref or its `change` value.
+
 ## The event log
 
 `connection.event_log()` returns what the connection did on its devices, in order: every

@@ -45,6 +45,9 @@ internal object ScreenSnapshots {
                 node.bounds?.let { (l, t, r, b) -> bounds = Bounds.newBuilder().setLeft(l).setTop(t).setRight(r).setBottom(b).build() }
                 addAllFlags(flags(node))
                 password = node.password
+                showingHint = node.showingHint
+                contentInvalid = node.contentInvalid
+                node.error?.let { error = it }
                 interactive = node.clickable || node.longClickable || node.checkable || node.scrollable || node.editable
                 synthesised.firstOrNull()?.let {
                     selector = it.selector
