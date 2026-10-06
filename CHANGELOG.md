@@ -75,6 +75,87 @@ Added:
   Python examples; the Kotlin SDK page shows each guide page's examples in Kotlin. The old
   guide URLs redirect to their new pages. The Python API reference has a page per class (or
   group of small types), and the types in its signatures link to their entries.
+- **App Explorer** (experimental development package, not released): `clients/explorer`
+  (`tap-explorer`) explores an app and drafts page-object robots for review.
+  - An SQLite exploration graph (`tap-exploration/2`; `/1` graphs still load) with finite
+    budgets, explicit approvals, crash-safe attempt tracking and episodes (resets within one
+    graph). Each observation's retained features are a file beside its snapshot rather than
+    inline, so a long run does not rewrite them on every change.
+  - `tap-explorer auto` explores unattended on a disposable emulator under a policy approved
+    once (`tap-explorer-policy/1`: hold, allow, deny, fill values, budgets). It tries untried
+    controls first, then known controls in new contexts (deciding experiments first: when
+    several filled fields could each explain why Save succeeded, each is emptied in turn), then
+    outcome-dependent experiments; resets (clear data or an emulator snapshot) start new
+    episodes in the same graph, a route that lands somewhere unexpected carries on from there,
+    a frontier no route reaches is reached by replaying a recorded history, a dead end is left
+    by its untried Back before a reset, and `--resume` continues a stopped run. It then drafts
+    robots, replays them and writes `REPORT.md` / `report.json`
+    (`tap-explorer-report/1`) with what was held back and parked, and, when three resets in a
+    row fail, the last reset error and the window that covered the app. `--physical` allows a
+    phone: clear-data resets only, for a package the run installed itself.
+  - A runtime-permission dialog that an input opens is answered with the policy's
+    `permissions` choice (`deny` by default, `allow`, or `park` to stop there) and the run
+    carries on from the screen behind it; the attempt records the answer, and the drafted
+    robot method answers the dialog the same way when it shows.
+  - Robot drafts take a field another tab of the same form showed into a control's
+    precondition (Save on one tab rejected for a field on another), and leave out observations
+    that never showed a deciding field when the controlled facts cannot otherwise explain the
+    outcome. `robots-score` judges every robot's copy of a keyed method.
+  - Precondition questions also offer the rule that holds if one attempt had another cause
+    and name that attempt, and `tap-explorer auto` retries such a lone exception with other
+    typed values. `tap-explorer robots --rules-out` writes the evidence behind each
+    outcome-dependent control (`tap-rule-questions/1`); `--rules` reads rules proposed by a
+    person, an agent or a model (`tap-rule-candidates/1`), checks each against every recorded
+    attempt and offers the ones nothing contradicts. The explorer calls no model for this.
+  - Inputs beyond tap and fill: long press, forward scroll (down, or right for pagers), the
+    focused field's keyboard action (`ime_action()`, API 30+) and the Back key. Fill values
+    include a malformed one for fields with a format (email, phone, link, number), and a text
+    field is tapped once per screen to see what it opens.
+  - `tap-explorer sample` and `tap-explorer explore` drive the app. `explore` is a
+    human-reviewed discovery workbench in the browser: it proposes snapshot-derived selectors,
+    including list rows, and re-derives each one from a fresh snapshot before input.
+  - `tap-explorer benchmark` scores screen and variant grouping offline against a 114-observation
+    labeled corpus.
+  - `tap-explorer robots` writes unverified robot drafts (`tap-robots/1`, Python on `tap-e2e`)
+    with a review checklist and a `review.json` that is re-applied on every regeneration.
+    `--ask` asks the review questions on the terminal: preconditions (including either/or
+    readings), names for title-less dialogs, proposed workflow methods and list checks.
+  - State signatures are `tap-state-signature/3`: other apps' windows count by their root and
+    its direct children only, so a status-bar notification icon no longer splits a state (a
+    held-out run stopped on that "divergence"), and window decor in the app's own windows (the
+    text cursor's handles, the system bar backgrounds) is left out. Robot drafts group screens
+    without that decor too, and treat the pages a recorded scroll moved between as one screen,
+    as well as a screen before and after a fill or a checkbox/radio tap that left its control on
+    screen, and a screen showing an optional section (a tab strip, an empty list's placeholder)
+    unless a tap or long press opened that section (a search bar, a selection mode). A text that
+    shows a typed value ("• Grace") is data. A precondition is not drafted as a literal typed
+    value when the outcome also flipped with the same controlled facts; instead each attempt
+    knows whether a typed value repeats one the same control submitted earlier in the episode,
+    so a hidden rule such as a title already taken is drafted as "title is a new value".
+  - `tap-explorer robots-verify` replays each draft method on an emulator restored from a
+    snapshot before every method (`tap-robots-verification/1`); `robots --verification` marks
+    the replayed methods verified and asks about the failures.
+  - Field errors that appeared only sometimes become named `expect_<id>_error` checks, with a
+    `NotImplementedError` body until an element API can read them.
+  - When a fact the test controls was only ever wrong together with the observed precondition,
+    the draft names the combination that was never tried and `--ask` offers the combined
+    condition and its complement. A field error is never a precondition.
+  - `tap-explorer robots-score` scores a draft against a hand-written answer key
+    (`tap-robots-key/1`): screens, landmarks, methods, preconditions and checks, with no human
+    input and after the `--ask` questions, plus the review effort. Keys for the wizard fixture
+    and Loop Habit Tracker are in `benchmarks/keys/`; a key's `verbs` say which inputs it
+    scores, methods on screens a key does not describe are reported, not scored, and history
+    facts are scored only by a key that names one. `--baseline` turns the score into a regression gate (exit 1 on any worse number).
+  - The workbench can withdraw an approval before it runs.
+  - `tap-explorer label-review` shows the corpus's provisional labels beside their pinned
+    screenshots for the operator to accept or correct; `--apply` writes a new corpus with
+    those cases `human-reviewed`.
+  - A held-out wizard corpus (`corpus-held-out-wizard.json`, four fresh runs on another device,
+    oracle-labeled before scoring): `similarity-roles` has no screen or variant error on it.
+
+  One held-out app run (Fossify Notes, key frozen before scoring) is in the benchmark README;
+  no release tag or PyPI package yet. Guide:
+  `docs/guide/explorer.md`.
 - **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
   `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on
   the daemon host: video (MP4), audio (Opus) or both (Matroska), bounded to 30 s with video and
