@@ -254,6 +254,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 |---|---|---|---|---|
 | PY-9 | L | Fixed | Failure artifacts are captured per device on their own thread within a 60 s per-device budget; a straggler is abandoned, not joined | S |
 | PY-12 | N | Fixed | `TapClient(endpoint)` does no I/O; `TapClient.create()` discovers and probes (`11a1115`) | S |
+| EX-PY-1 | M | Fixed | Found by the app explorer, not the original review: `App.element` added a second package predicate to a snapshot selector that already pinned the same package, which moved a native resource query onto the driver's traversal path. Rebinding the same exact top-level package is now a no-op; another owner, an OR branch or a relation still gets the predicate (`test_selectors.py`) | S |
 
 ### Build
 
