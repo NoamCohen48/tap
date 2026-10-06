@@ -184,6 +184,11 @@ and the clients must be updated together to use them:
   mock location, and device assertions (foreground activity, keyboard, clipboard).
   `tap-recording/1` gains the `device_wait`, `device` and `device_assertion` steps; the studio
   API gains `DescribeElement`, `GetDeviceStatus` and `ListNotifications`.
+- **Field state in screen snapshots** (driver, server, Python client, protocol additive):
+  `ScreenNode` gains `showing_hint`, `content_invalid` and `error` (the text a
+  `TextView.setError` put on the node), so a snapshot tells an empty field from one holding its
+  hint's text and shows validation errors. The driver writes the hierarchy dump itself (the same
+  XML as UiAutomator's, plus these attributes); it stays diagnostic only.
 - The event log's `set_location` call records the `accuracy_m` and `altitude_m` it gave.
 - `tap-agent`: `app launch|cold-launch --extra KEY[:TYPE]=VALUE` (MCP `extras`) and
   `location --altitude` (MCP `altitude_m`).

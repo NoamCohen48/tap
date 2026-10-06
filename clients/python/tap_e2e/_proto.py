@@ -339,6 +339,9 @@ def screen_node(node: pb.ScreenNode) -> ScreenNode:
         by_index=node.by_index,
         change=node_change(node.change),
         candidates=tuple(SelectorCandidate(Selector(c.selector), selector_kind(c.kind)) for c in node.candidates),
+        showing_hint=node.showing_hint,
+        content_invalid=node.content_invalid,
+        error=_optional(node, "error"),
     )
 
 

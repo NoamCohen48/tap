@@ -31,6 +31,10 @@ internal class DumpNode(
     val longClickable: Boolean,
     val password: Boolean,
     val selected: Boolean,
+    /** `showing-hint`: false when the dump does not report it (UiAutomator's own dumper). */
+    val showingHint: Boolean = false,
+    val contentInvalid: Boolean = false,
+    val error: String? = null,
 ) {
     var subtreeEnd: Int = index + 1
         internal set
@@ -182,6 +186,9 @@ internal object HierarchyParser {
                     longClickable = attributes.flag("long-clickable"),
                     password = attributes.flag("password"),
                     selected = attributes.flag("selected"),
+                    showingHint = attributes.flag("showing-hint"),
+                    contentInvalid = attributes.flag("content-invalid"),
+                    error = attributes.present("error"),
                 )
             nodes += node
             open += OpenElement(name, node)
