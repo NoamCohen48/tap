@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest  # type: ignore[import-not-found]
 
-from tap_e2e import _gen as pb
 from tap_e2e import Selector, all_of, any_of, clickable, desc, proto, res, res_id, text
+from tap_e2e import _gen as pb
 
 SYSTEM = "com.google.android.permissioncontroller"
 
@@ -72,6 +72,42 @@ def test_res_names_an_id_in_any_package_and_res_id_pins_the_package():
     qualified = text("a").and_res("com.pkg", "login")
     node = qualified._proto.node.all_of.nodes[1].resource
     assert (node.package_name, node.name) == ("com.pkg", "login")
+
+
+@pytest.mark.parametrize("mode", [pb.MATCH_EXACT, pb.MATCH_UNSPECIFIED])
+def test_reapplying_an_exact_snapshot_package_is_idempotent(mode):
+    owner = pb.Node(match=pb.Match(property=pb.PROPERTY_PACKAGE_NAME, value=SYSTEM, mode=mode))
+    message = pb.Selector(node=pb.Node(all_of=pb.AllOf(nodes=[res("name").to_proto().node, owner])))
+    message.at.index = 1
+    bound = Selector.from_proto(message)._in_package(SYSTEM)._in_package(SYSTEM)
+    assert bound.to_proto() == message
+    package_only = pb.Selector(node=owner, first=pb.First())
+    assert Selector.from_proto(package_only)._in_package(SYSTEM).to_proto() == package_only
+
+
+def test_package_scope_is_still_added_for_another_owner_or_an_or_branch():
+    bound = res("name")._in_package("other.app")._in_package(SYSTEM)
+    assert [n.match.value for n in bound.to_proto().node.all_of.nodes if n.HasField("match")] == ["other.app", SYSTEM]
+    either = any_of(res("name")._in_package(SYSTEM), text("elsewhere"))
+    nodes = either._in_package(SYSTEM).to_proto().node.all_of.nodes
+    assert nodes[0].HasField("any_of")
+    assert nodes[1].match.value == SYSTEM
+
+
+@pytest.mark.parametrize("mode", [pb.MATCH_CONTAINS, pb.MATCH_STARTS_WITH, pb.MATCH_ENDS_WITH, pb.MATCH_REGEX])
+def test_nonexact_package_matches_do_not_replace_app_scoping(mode):
+    owner = Selector.from_proto(pb.Selector(node=pb.Node(
+        match=pb.Match(property=pb.PROPERTY_PACKAGE_NAME, value=SYSTEM, mode=mode))))
+    nodes = owner._in_package(SYSTEM).to_proto().node.all_of.nodes
+    assert len(nodes) == 2
+    assert nodes[1].match.mode == pb.MATCH_EXACT
+
+
+def test_package_ownership_through_a_relation_still_needs_app_scoping():
+    related = res("name").has_parent(text("parent")._in_package(SYSTEM))
+    nodes = related._in_package(SYSTEM).to_proto().node.all_of.nodes
+    assert nodes[1].HasField("related")
+    assert nodes[2].match.value == SYSTEM
 
 
 def test_selectors_convert_to_and_from_their_proto_as_copies():

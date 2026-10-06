@@ -22,6 +22,11 @@ shop.element(res("search")).set_text("socks")      # com.shop's search field onl
 device.screen.wait(text("Allow")).visible()        # whoever owns it
 ```
 
+In Python and Kotlin, binding a selector that already has an exact top-level package
+predicate for the same app (such as a snapshot selector) keeps it unchanged, including its
+`first()` or `at()` choice. A package predicate for another app, a nonexact match, or ownership
+only inside an OR branch or a relation does not replace the app's package restriction.
+
 A permission dialog belongs to the permission controller, for instance:
 
 ```python

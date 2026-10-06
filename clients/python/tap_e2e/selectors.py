@@ -233,10 +233,19 @@ class Selector:
 
     def _in_package(self, package_name: str) -> Selector:
         """This selector restricted to nodes of ``package_name``: one more predicate on the node,
-        so package ownership travels in the selector itself (``App.element``)."""
-        return self._with_node(
-            _all_of(self._proto.node, _match(pb.PROPERTY_PACKAGE_NAME, package_name, EXACT))
-        )
+        so package ownership travels in the selector itself (``App.element``).
+
+        A selector whose top-level conjuncts already pin exactly ``package_name`` (one taken from
+        a snapshot) is returned unchanged: a second identical predicate would move a native
+        resource query onto the driver's traversal path for no semantic gain. Ownership through
+        an OR branch, a relation or a different package still gets the predicate."""
+        node = self._proto.node
+        conjuncts = node.all_of.nodes if node.HasField("all_of") else [node]
+        if any(item.HasField("match") and item.match.property == pb.PROPERTY_PACKAGE_NAME
+               and item.match.value == package_name and item.match.mode in (pb.MATCH_EXACT, pb.MATCH_UNSPECIFIED)
+               for item in conjuncts):
+            return self
+        return self._with_node(_all_of(node, _match(pb.PROPERTY_PACKAGE_NAME, package_name, EXACT)))
 
     # --- match choice ---------------------------------------------------------------------
 
