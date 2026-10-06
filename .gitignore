@@ -41,4 +41,7 @@ build/site/
 clients/studio/tap_studio/static/
 # tap-watcher: built browser assets are included in wheels, not committed.
 clients/watcher/tap_watcher/static/
+# tap-explorer: built page is packaged, not committed
+clients/explorer/tap_explorer/static/
 node_modules/
+.vitest/

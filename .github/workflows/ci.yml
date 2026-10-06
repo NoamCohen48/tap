@@ -94,6 +94,7 @@ jobs:
           ./gradlew
           :device:driver:assembleDebug :device:driver:assembleAndroidTest
           :fixture-app:assembleDebug :host:daemon:installDist
+          :samples:explorer-app:assembleDebug :samples:explorer-app:lintDebug
           :host:daemon:distZip
           :host:validation:installDist
       - name: Publish Maven artifacts to the local repository (POM sanity)
@@ -121,8 +122,8 @@ jobs:
           path: "**/build/reports/tests"
           if-no-files-found: ignore
 
-  # tap-e2e (the Python client) and tap-agent (the agent CLI + MCP server on
-  # it): unit tests over the in-process fake daemon, wheels for both.
+  # tap-e2e and tap-agent: tests over the fake daemon. tap-explorer: offline
+  # graph tests and type checking. Build wheels for all three.
   python:
     name: Python client and tap-agent (${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -136,16 +137,27 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install and build
         run: |
+          python -m venv .venv
+          export PATH="$PWD/.venv/bin:$PATH"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           python -m pip install --quiet build "clients/python[dev]" \
-            "clients/agent[dev]"
+            "clients/agent[dev]" "clients/explorer[dev]"
           python -c "import tap_e2e; print('tap-e2e', tap_e2e.__version__)"
           python -c \
             "import tap_agent; print('tap-agent', tap_agent.__version__)"
           tap-agent --help > /dev/null
           python -m build --outdir dist clients/python
           python -m build --outdir dist clients/agent
-      - name: Unit tests (fake daemon, no device)
-        run: python -m pytest -q clients/python/tests/unit clients/agent/tests
+          python -m build --outdir dist clients/explorer
+          tap-explorer --help > /dev/null
+      - name: Unit tests (fake daemon and offline graph, no device)
+        run: >-
+          python -m pytest -q clients/python/tests/unit clients/agent/tests
+          clients/explorer/tests
+      - name: Explorer type check
+        run: >-
+          python -m pyright --project clients/explorer/pyrightconfig.json
+          --pythonpath "$(command -v python)"
       - name: >-
           Plugin loads (the sample suite itself needs a device and the fixture
           APK)
@@ -296,14 +308,17 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build what the device run needs
-        run: ./gradlew :fixture-app:assembleDebug :host:daemon:installDist
+        run: >-
+          ./gradlew :fixture-app:assembleDebug :host:daemon:installDist
+          :samples:explorer-app:assembleDebug
       - uses: actions/download-artifact@v4
         with:
           name: studio-dists
           path: studio-dists
-      - name: Install the Python client, tap-agent and tap-studio
+      - name: Install the Python client, tap-agent, tap-studio and explorer
         run: |
-          python -m pip install --quiet "clients/python[dev]" "clients/agent"
+          python -m pip install --quiet "clients/python[dev]" "clients/agent" \
+            "clients/explorer[live]"
           python -m pip install --quiet studio-dists/tap_studio-*.whl
       - name: Run the device lane on the emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -329,6 +344,7 @@ jobs:
             tap-artifacts
             build/agent-smoke
             build/studio-smoke
+            build/explorer-smoke
             build/device-logs
             samples/fixture-tests/build/reports/tests
           if-no-files-found: ignore

@@ -5,7 +5,7 @@
 #
 # One serial (emulator-5554), so the two-device tests are skipped. Each suite starts the daemon
 # (tap.manageDaemon / TAP_MANAGE_DAEMON) and stops it after its last test; the agent and
-# studio smokes start and stop their own.
+# studio/explorer smokes start and stop their own.
 set -euo pipefail
 
 SERIAL=emulator-5554
@@ -45,4 +45,8 @@ echo "::endgroup::"
 
 echo "::group::tap-studio smoke"
 SERIAL="$SERIAL" python .github/scripts/studio_smoke.py
+echo "::endgroup::"
+
+echo "::group::tap-explorer sample smoke"
+SERIAL="$SERIAL" .github/scripts/explorer-smoke.sh
 echo "::endgroup::"

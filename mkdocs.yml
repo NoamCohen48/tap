@@ -142,6 +142,7 @@ nav:
           - Errors: guide/errors.md
           - Screenshots and artifacts: guide/artifacts.md
       - Coming from Maestro or Appium: guide/coming-from.md
+      - App Explorer (experimental): guide/explorer.md
   - SDKs:
       - sdk/index.md
       - Python + pytest: sdk/python.md
