@@ -356,6 +356,24 @@ class AdbTest {
         }
 
     @Test
+    fun `package presence accepts only successful paths or the known empty absence`() =
+        runBlocking {
+            val commands = mutableListOf<List<String>>()
+            assertFalse(scriptedAdb("", exitCode = 1, commands = commands).isInstalled(serial, "com.example"))
+            assertEquals(listOf("fake-adb", "-s", serial, "shell", "pm", "path", "com.example"), commands.single())
+            assertFalse(scriptedAdb("", exitCode = 0).isInstalled(serial, "com.example"))
+            assertTrue(scriptedAdb("package:/data/app/base.apk\npackage:/data/app/split.apk").isInstalled(serial, "com.example"))
+            for ((output, code) in listOf(
+                "error: device offline" to 1,
+                "Permission denied" to 1,
+                "" to 2,
+                "package:/data/app/base.apk" to 1,
+            )) {
+                assertFailsWith<AdbCommandException> { scriptedAdb(output, exitCode = code).isInstalled(serial, "com.example") }
+            }
+        }
+
+    @Test
     fun `a permission reads as granted only from its own granted line`() =
         runBlocking {
             val dumpsys =
