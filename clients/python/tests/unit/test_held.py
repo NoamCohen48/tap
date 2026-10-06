@@ -115,6 +115,7 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
                     change=pb.NODE_ADDED,
                 ),
                 _node("e4", text="Hello", change=pb.NODE_UNCHANGED, by_index=True),
+                _node("e5", text="Name", hint="Name", showing_hint=True, content_invalid=True, error="Required"),
             ],
             removed=[_node("e1", text="Gone", change=pb.NODE_REMOVED)],
         )
@@ -131,6 +132,9 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
         hello = snapshot.node("e4")
         assert hello is not None and hello.selector is None and hello.by_index
         assert hello.content_description is None and hello.change is NodeChange.UNCHANGED
+        assert not (hello.showing_hint or hello.content_invalid) and hello.error is None
+        field = snapshot.node("e5")
+        assert field is not None and (field.showing_hint, field.content_invalid, field.error) == (True, True, "Required")
         assert [n.ref for n in snapshot.removed] == ["e1"]
         assert snapshot.node("e1") is None
         assert not fake.devices.snapshot_requests[-1].selector_candidates and login.candidates == ()

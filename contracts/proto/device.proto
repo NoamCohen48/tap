@@ -262,6 +262,13 @@ message ScreenNode {
   // node, best first (the first is `selector`). A candidate that merely adds predicates to an
   // earlier one is left out, and a BY_INDEX pick is offered only when nothing else is unique.
   repeated SelectorCandidate candidates = 16;
+  // The field shows its hint, not a value (`AccessibilityNodeInfo.isShowingHintText`): `text`
+  // then holds the hint. False on a dump that does not report it.
+  bool showing_hint = 17;
+  // The app marked the content invalid (`isContentInvalid`), e.g. a field that failed validation.
+  bool content_invalid = 18;
+  // The error the app set on the node (`getError`, e.g. `TextView.setError`).
+  optional string error = 19;
 }
 
 message ScreenSnapshotResponse {
