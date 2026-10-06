@@ -939,7 +939,15 @@ open class Adb internal constructor(
     open suspend fun isInstalled(
         serial: String,
         packageName: String,
-    ): Boolean = exec(serial, "shell", "pm", "path", shellQuote(packageName)).lineSequence().any { it.startsWith("package:") }
+    ): Boolean {
+        val arguments = listOf("shell", "pm", "path", shellQuote(packageName))
+        val result = execResult(serial, *arguments.toTypedArray())
+        // PackageManager's `path` command exits 1 without output for an absent package
+        // (observed on API 29). That is a negative answer, not an ADB transport failure.
+        if (result.exitCode == 1 && result.output.isBlank()) return false
+        if (result.exitCode != 0) throw AdbCommandException(serial, arguments, result.exitCode, result.output)
+        return result.output.lineSequence().any { it.startsWith("package:") }
+    }
 
     /**
      * The installed version of [packageName] from `dumpsys package`, or null when the package
