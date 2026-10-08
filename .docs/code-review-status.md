@@ -260,3 +260,14 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
 | B-3 | M | Backlog | bundleDriver, fixture-tests and validation deviceTest wire APKs by `dependsOn` + hardcoded path; no consumable configuration | M |
+
+### App explorer (clients/explorer)
+
+Found while validating the explorer on the state-machine fixture and Loop, not by the original
+review.
+
+| ID | Sev | Status | What remains | Size |
+|---|---|---|---|---|
+| EX-E-1 | M | Partial | Visible UI equality does not prove Markov state. Known multi-outcome action edges are excluded from routes; unseen divergence stops a fresh trial. Hidden context reasoning and transient-focus exploration remain unresolved | M |
+| EX-E-2 | M | Fixed | Real Loop onboarding exposed `unsupported` candidates rejected by graph validation. The additive diagnostic verb stays blocked; persistence/refusal/supported-navigation regression passes. No protocol change or executable unsupported command | S |
+| EX-E-3 | H | Partial | Loop: list rows without a clickable labelled node now get `list-row-text/1` / `ancestor-text/1` proposals (`test_discovery.py` replays a saved Loop snapshot), and the Snackbar is dropped from variant identity (`similarity-roles`: 0 Loop variant splits). Open: the visual-only error icon (UiAutomator's dump has no `error`/`content_invalid`), 4 variant merge pairs on corpus v2 | M |

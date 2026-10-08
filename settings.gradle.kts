@@ -40,3 +40,5 @@ include(":clients:kotlin:junit5")
 // Test AUT and samples.
 include(":fixture-app")
 include(":samples:fixture-tests")
+include(":samples:explorer-app") // Disposable AUT for the bounded explorer device pilot.
+include(":samples:explorer-machine") // No-permission branching state-machine discovery benchmark.

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tap-explorer"
+version = "0.0.1"
+description = "Experimental app exploration graph and bounded device pilot for Tap"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = []
+
+[project.optional-dependencies]
+live = ["tap-e2e>=0.0.2"]
+dev = ["pytest>=8", "pyright>=1.1,<2", "tap-e2e>=0.0.2"]
+
+[project.scripts]
+tap-explorer = "tap_explorer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tap_explorer", "tap_explorer.*"]
+
+[tool.setuptools.package-data]
+tap_explorer = ["py.typed", "static/*", "static/assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

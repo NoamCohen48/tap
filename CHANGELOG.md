@@ -50,6 +50,43 @@ Added:
   Python examples; the Kotlin SDK page shows each guide page's examples in Kotlin. The old
   guide URLs redirect to their new pages. The Python API reference has a page per class (or
   group of small types), and the types in its signatures link to their entries.
+- **App Explorer** (experimental development package, not released): `clients/explorer`
+  (`tap-explorer`) explores an app and drafts page-object robots for review.
+  - An SQLite exploration graph (`tap-exploration/1`) with finite budgets, explicit approvals and
+    crash-safe attempt tracking.
+  - `tap-explorer sample` and `tap-explorer explore` drive the app. `explore` is a
+    human-reviewed discovery workbench in the browser: it proposes snapshot-derived selectors,
+    including list rows, and re-derives each one from a fresh snapshot before input.
+  - `tap-explorer benchmark` scores screen and variant grouping offline against a 114-observation
+    labeled corpus.
+  - `tap-explorer robots` writes unverified robot drafts (`tap-robots/1`, Python on `tap-e2e`)
+    with a review checklist and a `review.json` that is re-applied on every regeneration.
+    `--ask` asks the review questions on the terminal: preconditions (including either/or
+    readings), names for title-less dialogs, proposed workflow methods and list checks.
+  - State signatures are `tap-state-signature/2`: other apps' windows count by their root and
+    its direct children only, so a status-bar notification icon no longer splits a state (a
+    held-out run stopped on that "divergence").
+  - `tap-explorer robots-verify` replays each draft method on an emulator restored from a
+    snapshot before every method (`tap-robots-verification/1`); `robots --verification` marks
+    the replayed methods verified and asks about the failures.
+  - Field errors that appeared only sometimes become named `expect_<id>_error` checks, with a
+    `NotImplementedError` body until an element API can read them.
+  - When a fact the test controls was only ever wrong together with the observed precondition,
+    the draft names the combination that was never tried and `--ask` offers the combined
+    condition and its complement. A field error is never a precondition.
+  - `tap-explorer robots-score` scores a draft against a hand-written answer key
+    (`tap-robots-key/1`): screens, landmarks, methods, preconditions and checks, with no human
+    input and after the `--ask` questions, plus the review effort. Keys for the wizard fixture
+    and Loop Habit Tracker are in `benchmarks/keys/`.
+  - The workbench can withdraw an approval before it runs.
+  - `tap-explorer label-review` shows the corpus's provisional labels beside their pinned
+    screenshots for the operator to accept or correct; `--apply` writes a new corpus with
+    those cases `human-reviewed`.
+  - A held-out wizard corpus (`corpus-held-out-wizard.json`, four fresh runs on another device,
+    oracle-labeled before scoring): `similarity-roles` has no screen or variant error on it.
+
+  No release tag, PyPI package or held-out *app* validation yet. Guide:
+  `docs/guide/explorer.md`.
 - **Recordings** (daemon, Kotlin and Python clients): `device.startRecording()` /
   `stopRecording()` (`start_recording()` / `stop_recording()`) record the device with scrcpy on
   the daemon host: video (MP4), audio (Opus) or both (Matroska), bounded to 30 s with video and
