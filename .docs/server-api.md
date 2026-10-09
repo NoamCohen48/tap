@@ -60,13 +60,24 @@ JUnit (Kotlin)   --gRPC (loopback, bearer token)-->  (same server, same devices)
   - The descriptor is owner-only, so another local user cannot drive the devices. The
     per-session driver secret never leaves the server.
 - **Driver APKs:**
-  - The driver APKs are embedded as resources and extracted once per build id to
-    `<state-dir>/driver/<DRIVER_APK_BUILD_ID>/` (`DriverApks.extractBundled`).
-  - On the first attachment per serial per process, the daemon installs them unless the client
-    passes `skip_driver_install`. If the installed driver's `versionName` is a different build
-    id, it installs again.
-  - When the driver handshake reports a build mismatch, the serial is re-installed on the next
-    attach.
+  - The driver APKs are embedded as resources and extracted at start to
+    `<state-dir>/driver/<DRIVER_APK_BUILD_ID>-<first 12 hex of the SHA-256 of both APKs' digests>/`
+    (`DriverApks.extractBundled`), so daemons of different builds sharing a state directory
+    never write to each other's files. A file already there with the right digest is kept; any
+    other is replaced by an atomic move.
+  - Every attachment, unless the client passes `skip_driver_install`, compares the SHA-256 of
+    the APKs installed on the device with the daemon's (bundled, or `--driver-apk` /
+    `--driver-test-apk` hashed from disk at each attach) and installs them within that
+    attachment when either differs, is missing, is split, or cannot be read. There is no
+    per-daemon "already installed" cache. The check runs under the per-serial lock
+    (`DeviceSessionConfig.installDriver`), so it sees the device the session then uses.
+  - The device digests come from `pm path` + `sha256sum` (`Adb.installedApkSha256`); where
+    `sha256sum` is missing or fails (older Android), each APK is pulled and hashed on the
+    host. A failing `pm path` is an error that triggers the install, never "not installed" read
+    from empty output. The reason is logged (`installing the driver on <serial>: …`).
+  - A version string cannot do this: a different build of the same version (an emulator
+    snapshot restored with an older driver, another daemon's build) reports the same
+    `versionName` and handshake build id.
   - Clients never send host paths: there is no per-attach APK override.
 - `adb` is resolved from `--adb`, `TAP_ADB`, or `PATH`. Every ADB call is serial-specific.
 - **Builds:**
