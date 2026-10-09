@@ -31,6 +31,15 @@ One server per machine is the intended setup; every test process on that machine
 it. Two servers with different `--state-dir`s are isolated from each other (separate journals
 and device locks), which is how Tap's own CI keeps a scratch server apart from `~/.tap`.
 
+## Extracted driver cache
+
+The bundled driver APKs live in `<state-dir>/driver/<version>-<digest>/`. Different builds keep
+separate directories; old builds are not deleted automatically because another server may still
+be using them. To reclaim space, stop every Tap server using that state directory, then delete
+its `driver/` directory (including any older version-only subdirectories). The next start
+extracts its bundled APKs again. Leave `sessions/` intact: it holds device locks and recovery
+journals, not cached files.
+
 ## Who starts it
 
 Starting is explicit, and there are three ways to do it:
@@ -63,7 +72,9 @@ anywhere but `~/.tap`.
 ## The devices
 
 - API 26 and up, emulator or physical, visible to `adb devices` as `device`.
-- The driver is installed on each device the first time a session opens there.
+- Each attachment checks both installed driver APKs against the server's files and reinstalls
+  them if they differ or cannot be verified, including an older build restored from an emulator
+  snapshot. An unchanged build is not reinstalled.
 - On emulators used in CI, `adb shell settings put secure hide_error_dialogs 1` keeps an
   unrelated system ANR from stealing the focused window from your app.
 

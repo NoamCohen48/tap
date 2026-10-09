@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.host
 
 import io.github.noamcohen48.tap.api.v1.IntentExtra
+import io.github.noamcohen48.tap.protocol.BlobFrames
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -17,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -953,30 +955,71 @@ open class Adb internal constructor(
     ): Boolean {
         val arguments = listOf("shell", "pm", "path", shellQuote(packageName))
         val result = execResult(serial, *arguments.toTypedArray())
-        // PackageManager's `path` command exits 1 without output for an absent package.
-        // That is a negative answer, not an ADB transport failure.
-        if (result.exitCode == 1 && result.output.isBlank()) return false
+        return packagePaths(serial, arguments, result).isNotEmpty()
+    }
+
+    /** Shared `pm path` rule: only exit 1 with blank output is a non-successful absence. */
+    private fun packagePaths(
+        serial: String,
+        arguments: List<String>,
+        result: Result,
+    ): List<String> {
+        if (result.exitCode == 1 && result.output.isBlank()) return emptyList()
         if (result.exitCode != 0) throw AdbCommandException(serial, arguments, result.exitCode, result.output)
-        return result.output.lineSequence().any { it.startsWith("package:") }
+        return result.output.lineSequence().map(String::trim).filter { it.startsWith("package:") }.map { it.removePrefix("package:") }.toList()
     }
 
     /**
-     * The installed version of [packageName] from `dumpsys package`, or null when the package
-     * is not installed. Bounded by [timeoutMs]. A package that is listed but whose section carries
-     * no `versionCode` is an [AdbCommandException]: its build cannot be told, which must never
-     * read as "not installed".
+     * The SHA-256 of each APK `pm path` lists for [packageName] (one for a plain install, one per
+     * split otherwise); empty when the package is not installed. `adb install` keeps the APK byte
+     * for byte as `base.apk`, so a digest equal to a host file's means that file is what is
+     * installed, whatever its version says. The device hashes with `sha256sum`; where that is
+     * missing or fails (an older toybox), the APKs are pulled and hashed here. A failing `pm path`
+     * (device offline, package service not up) is an [AdbCommandException], never "not installed".
+     * Listing and hashing share one shell round trip per package; the listing's status is framed
+     * separately so a failed hash can fall back to a pull without hiding a failed listing.
      */
-    open suspend fun installedPackage(
+    open suspend fun installedApkSha256(
         serial: String,
         packageName: String,
         timeoutMs: Long = 15_000,
-    ): InstalledPackage? {
-        val command = listOf("shell", "dumpsys", "package", shellQuote(packageName))
-        val output = exec(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
-        return try {
-            parseDumpsysPackage(output, packageName)
-        } catch (malformed: IllegalArgumentException) {
-            throw AdbCommandException(serial, command, null, output, "${malformed.message} on $serial")
+    ): List<String> {
+        val script =
+            """
+            paths=${'$'}(pm path ${shellQuote(packageName)} 2>&1); status=${'$'}?
+            printf '%s\n' "${'$'}paths"
+            printf 'tap-pm-status:%s\n' "${'$'}status"
+            if [ "${'$'}status" -eq 0 ]; then
+                printf '%s\n' "${'$'}paths" | while IFS= read -r line; do
+                    case "${'$'}line" in
+                        package:*) sha256sum "${'$'}{line#package:}" || exit ${'$'}? ;;
+                    esac
+                done
+            fi
+            """.trimIndent()
+        val command = listOf("shell", script)
+        val result = execResult(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
+        val lines = result.output.lines()
+        val marker = lines.indexOfFirst { it.startsWith("tap-pm-status:") }
+        val status = lines.getOrNull(marker)?.removePrefix("tap-pm-status:")?.trim()?.toIntOrNull()
+            ?: throw AdbCommandException(serial, command, result.exitCode, result.output, "APK listing status missing on $serial")
+        val paths = packagePaths(serial, command, Result(status, lines.take(marker).joinToString("\n")))
+        if (paths.isEmpty()) return emptyList()
+        val digests = lines.drop(marker + 1).mapNotNull { SHA256SUM_LINE.matchEntire(it.trim())?.groupValues?.get(1) }
+        if (result.exitCode == 0 && digests.size == paths.size) return digests
+        return paths.map { path -> pulledSha256(serial, path) }
+    }
+
+    private suspend fun pulledSha256(
+        serial: String,
+        devicePath: String,
+    ): String {
+        val local = withContext(Dispatchers.IO) { Files.createTempFile("tap-apk", ".apk") }
+        try {
+            pull(serial, devicePath, local)
+            return withContext(Dispatchers.IO) { BlobFrames.sha256Hex(Files.readAllBytes(local)) }
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { Files.deleteIfExists(local) }
         }
     }
 
@@ -1335,48 +1378,6 @@ internal fun parseAdbDevices(text: String): List<AdbDevice> =
             AdbDevice(fields[0], state, raw)
         }.toList()
 
-/** An installed package's build: `versionName` (null when the APK declares none, like an
- * instrumentation APK AGP builds) and `versionCode` (the long version code). */
-data class InstalledPackage(
-    val packageName: String,
-    val versionName: String?,
-    val versionCode: Long,
-)
-
-/**
- * Reads the `Package [name] (hash):` section of `dumpsys package name` (layout shared by API 26
- * through 34+; later sections such as `Hidden system packages:` repeat the header for an updated
- * system app, and the first — the live package — wins). Null when no section names the package
- * (not installed; newer builds may also say `Unable to find package`). A section without a
- * `versionCode=` line is an [IllegalArgumentException].
- */
-internal fun parseDumpsysPackage(
-    output: String,
-    packageName: String,
-): InstalledPackage? {
-    val lines = output.lines()
-    val header = "Package [$packageName] ("
-    val start = lines.indexOfFirst { it.trimStart().startsWith(header) }
-    if (start < 0) return null
-    val indent = lines[start].indexOfFirst { !it.isWhitespace() }
-    var versionCode: Long? = null
-    var versionName: String? = null
-    for (line in lines.drop(start + 1)) {
-        if (line.isBlank()) continue
-        // The section ends at the next line indented no deeper than its own header.
-        if (line.indexOfFirst { !it.isWhitespace() } <= indent) break
-        val trimmed = line.trim()
-        if (versionCode == null) {
-            DUMPSYS_VERSION_CODE.find(trimmed)?.let { versionCode = it.groupValues[1].toLong() }
-        }
-        if (versionName == null && trimmed.startsWith("versionName=")) {
-            versionName = trimmed.removePrefix("versionName=").takeUnless { it.isEmpty() || it == "null" }
-        }
-    }
-    val code = requireNotNull(versionCode) { "dumpsys package $packageName listed the package without a versionCode" }
-    return InstalledPackage(packageName, versionName, code)
-}
-
 private val WHITESPACE = Regex("\\s+")
 private const val LISTENER_UNBIND_TIMEOUT_MS = 5_000L
 private const val LISTENER_UNBIND_POLL_MS = 100L
@@ -1385,7 +1386,8 @@ private val RESUMED = Regex("mResumedActivity: ActivityRecord\\{\\S+ u\\d+ ([^/\
 private val MOCK_PROVIDER = Regex("([A-Za-z0-9_]+) provider \\[mock\\]:")
 private val PROVIDER_NAME = Regex("[A-Za-z0-9_]+")
 
-private val DUMPSYS_VERSION_CODE = Regex("""^versionCode=(\d+)""")
+/** `sha256sum` output: the lowercase hex digest, two spaces, the path. */
+private val SHA256SUM_LINE = Regex("""^([0-9a-f]{64})\s+\S.*$""")
 
 /** One `am start` extra: the flag of its type, its key and its value, each a shell argument. */
 private fun extraArguments(extra: IntentExtra): List<String> {

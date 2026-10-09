@@ -200,9 +200,6 @@ read-back; passing on API 29, emulator run pending).
   command for orphaned forwards, instrumentation, or leases outside a test run.
 - ADB server supervision (restart on `adb` daemon death, `ADB_SERVER_SOCKET` pinning per CI
   worker) is not implemented; every call assumes a healthy default server.
-- Driver APK install is once-per-JVM per serial; there is no version check against an
-  already installed driver, so a stale driver on a device is only detected by the handshake
-  failing.
 
 ## Observability and security (plan §20–21)
 
