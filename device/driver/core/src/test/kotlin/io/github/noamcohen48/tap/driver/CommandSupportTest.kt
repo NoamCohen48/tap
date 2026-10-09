@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.driver
 
+import androidx.test.uiautomator.StaleObjectException
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.CommandFailure
@@ -37,6 +38,39 @@ class CommandSupportTest {
         assertEquals(ErrorCode.ERR_STALE_DURING_COMMAND, ambiguous.code)
         assertEquals(ErrorDetail.TARGET_AMBIGUOUS, ambiguous.detail)
         assertEquals("moved", ambiguous.remoteMessage)
+    }
+
+    @Test
+    fun aStaleNodeIsRetryableOnlyBeforeTheMutationGate() {
+        val before = staleElement(mutationStarted = false)
+        val after = staleElement(mutationStarted = true)
+
+        assertEquals(ErrorCode.ERR_STALE_BEFORE_INPUT, before.code)
+        assertEquals(null, before.detail)
+        assertEquals(ErrorCode.ERR_STALE_DURING_COMMAND, after.code)
+        assertEquals(ErrorDetail.TARGET_GONE, after.detail)
+    }
+
+    @Test
+    fun aStaleExceptionIsMappedByTheGateStateWhenItIsThrown() {
+        var gateOpen = false
+        fun staleCode(openGateFirst: Boolean): CommandFailure =
+            try {
+                mappingStaleElements({ gateOpen }) {
+                    if (openGateFirst) gateOpen = true
+                    throw StaleObjectException()
+                }
+                fail("expected a failure")
+                error("unreachable")
+            } catch (failure: CommandFailure) {
+                failure
+            }
+
+        assertEquals(ErrorCode.ERR_STALE_BEFORE_INPUT, staleCode(openGateFirst = false).code)
+        val after = staleCode(openGateFirst = true)
+        assertEquals(ErrorCode.ERR_STALE_DURING_COMMAND, after.code)
+        assertEquals(ErrorDetail.TARGET_GONE, after.detail)
+        assertEquals("done", mappingStaleElements({ gateOpen }) { "done" })
     }
 
     @Test

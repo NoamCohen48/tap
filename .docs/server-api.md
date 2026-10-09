@@ -170,6 +170,9 @@ wire types:
 - A gesture (`Tap`, `LongTap`, `Swipe`, `Scroll`) whose touch point lies in a window above the
   target's fails `ERR_NOT_INTERACTABLE` / `OBSCURED` before any input. That needs a partly
   covered target: one covered completely is reported not visible, hence `ERR_NOT_FOUND`.
+- Protocol 5.1 (2026-10-09, additive): `ERR_STALE_BEFORE_INPUT` (28): a command's resolved node went stale before
+  any input. It promises no mutation and is retryable; the same staleness after input started is
+  `ERR_STALE_DURING_COMMAND` / `TARGET_GONE`. Before it, both were `ERR_INTERNAL`.
 - Protocol 5.0 (2026-10-01, deliberately incompatible, no `reserved` placeholders) removed the
   selector scopes (`AutScope`/`SystemScope`/`AnyWindowScope`), `ResourceId.aut_package`,
   `AttachRequest.aut_package`/`sync_authority`, `AttachedDeviceEntry.aut_package` and

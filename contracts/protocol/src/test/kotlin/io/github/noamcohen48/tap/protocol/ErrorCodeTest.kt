@@ -18,7 +18,7 @@ class ErrorCodeTest {
                 ErrorCode.ERR_OVERLOADED, ErrorCode.ERR_AUT_MISMATCH, ErrorCode.ERR_NOT_FOUND, ErrorCode.ERR_AMBIGUOUS,
                 ErrorCode.ERR_NOT_INTERACTABLE, ErrorCode.ERR_WAIT_TIMEOUT, ErrorCode.ERR_CANCELLED,
                 ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorCode.ERR_AUT_NOT_INSTALLED, ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE,
-                ErrorCode.ERR_DRIVER_UNHEALTHY, ErrorCode.ERR_TRANSPORT_LOST,
+                ErrorCode.ERR_DRIVER_UNHEALTHY, ErrorCode.ERR_TRANSPORT_LOST, ErrorCode.ERR_STALE_BEFORE_INPUT,
             )
         ErrorCode.entries.forEach { code ->
             assertEquals(code !in safe, code.mayHaveMutated, "$code mutation risk")
@@ -39,6 +39,7 @@ class ErrorCodeTest {
             setOf(
                 ErrorCode.ERR_OVERLOADED, ErrorCode.ERR_NOT_FOUND, ErrorCode.ERR_NOT_INTERACTABLE, ErrorCode.ERR_WAIT_TIMEOUT,
                 ErrorCode.ERR_CANCELLED, ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE,
+                ErrorCode.ERR_STALE_BEFORE_INPUT,
             )
         ErrorCode.entries.forEach { code ->
             assertEquals(code in retryable, code.retryable, "$code retryable")

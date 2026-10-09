@@ -6,6 +6,21 @@ experimental may change in any release.
 
 ## Unreleased
 
+Driver, server, clients (additive, protocol 5.1):
+
+- **A node re-rendered before input is `STALE_BEFORE_INPUT`.** When the matched node goes stale
+  between the lookup and the input (a list re-binding, a re-laid-out form), the command fails
+  with the new `STALE_BEFORE_INPUT` code: nothing was sent and it is retryable. It used to be
+  `INTERNAL`. Staleness after input started is `STALE_DURING_COMMAND` / `TARGET_GONE`. Kotlin
+  and Python property waits (`enabled()`, `checked()`, …) keep polling through it; `tap-agent`
+  says to run the command again.
+- **Taps touch the point that was checked.** `tap` and `long_tap` inject the touch at the
+  visible centre the occlusion check used instead of letting `UiObject2` read the node again
+  after the mutation gate (a node on a secondary display still uses `UiObject2`). Tap, long
+  tap, double tap and drag inject finger events without waiting for the app to handle each one,
+  as UiAutomator does, so a busy main thread no longer holds a double tap or drag past its
+  deadline.
+
 Packaging:
 
 - **One-download bundles.** Each release set is also published as `bundle/vX.Y.Z` with one zip
