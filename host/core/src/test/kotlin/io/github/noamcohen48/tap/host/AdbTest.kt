@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.host
 
 import io.github.noamcohen48.tap.api.v1.IntentExtra
+import io.github.noamcohen48.tap.protocol.BlobFrames
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -374,45 +376,58 @@ class AdbTest {
         }
 
     @Test
-    fun `installed package reads versionName and versionCode on API 29 and 34`() =
+    fun `installed APK digests hash every path pm lists and are empty when not installed`() =
         runBlocking {
-            for (output in listOf(DUMPSYS_API_29, DUMPSYS_API_34)) {
+            val digest = "a".repeat(64)
+            val split = "b".repeat(64)
+            val commands = mutableListOf<List<String>>()
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        commands += command
+                        when (command[4]) {
+                            "pm" -> FakeProcess(stdout = "package:/data/app/~~x/$DRIVER_PACKAGE-y/base.apk\npackage:/data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk\n")
+                            else -> FakeProcess(stdout = "$digest  /data/app/~~x/$DRIVER_PACKAGE-y/base.apk\n$split  /data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk\n")
+                        }
+                    },
+                )
+            assertEquals(listOf(digest, split), adb.installedApkSha256(serial, DRIVER_PACKAGE))
+            assertEquals(listOf("shell", "pm", "path", DRIVER_PACKAGE), commands[0].drop(3))
+            assertEquals(listOf("shell", "sha256sum", "'/data/app/~~x/$DRIVER_PACKAGE-y/base.apk'", "'/data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk'"), commands[1].drop(3))
+
+            // `pm path` of a missing package prints nothing (and exits 1 on newer builds).
+            val missing = mutableListOf<List<String>>()
+            assertEquals(emptyList(), scriptedAdb("", exitCode = 1, commands = missing).installedApkSha256(serial, DRIVER_PACKAGE))
+            assertEquals(1, missing.size)
+        }
+
+    @Test
+    fun `without a working sha256sum the APKs are pulled and hashed on the host`() =
+        runBlocking {
+            val apk = byteArrayOf(1, 2, 3)
+            for (sha256sum in listOf(FakeProcess(stdout = "/system/bin/sh: sha256sum: not found", exitCode = 127), FakeProcess(stdout = "sha256sum: base.apk: Permission denied"))) {
                 val commands = mutableListOf<List<String>>()
-                val adb = scriptedAdb(output, commands = commands)
-                assertEquals(InstalledPackage(DRIVER_PACKAGE, "0.1.0", 100), adb.installedPackage(serial, DRIVER_PACKAGE))
-                assertEquals(listOf("shell", "dumpsys", "package", DRIVER_PACKAGE), commands.single().drop(3))
+                val adb =
+                    testAdb(
+                        ProcessStarter { command ->
+                            commands += command
+                            when (command[3]) {
+                                "pull" -> FakeProcess().also { Files.write(Path.of(command.last()), apk) }
+                                else -> if (command[4] == "pm") FakeProcess(stdout = "package:/data/app/base.apk") else sha256sum
+                            }
+                        },
+                    )
+                assertEquals(listOf(BlobFrames.sha256Hex(apk)), adb.installedApkSha256(serial, DRIVER_PACKAGE))
+                assertEquals(listOf("pull", "/data/app/base.apk"), commands.last().drop(3).take(2))
+                assertFalse(Files.exists(Path.of(commands.last().last())), "the pulled copy is deleted")
             }
         }
 
     @Test
-    fun `installed package tolerates a missing versionName and ignores other sections`() {
-        assertEquals(
-            InstalledPackage(DRIVER_TEST_PACKAGE, null, 0),
-            parseDumpsysPackage(DUMPSYS_TEST_APK, DRIVER_TEST_PACKAGE),
-        )
-        // The Key Set Manager / Dexopt sections name the package in brackets too; only a
-        // `Package [name] (...)` header counts, and a longer package with the same prefix never matches.
-        assertNull(parseDumpsysPackage(DUMPSYS_TEST_APK, DRIVER_PACKAGE))
-        // An updated system app lists the live package first and the hidden system one later.
-        assertEquals(
-            InstalledPackage("com.android.chrome", "120.0.6099.230", 609923033),
-            parseDumpsysPackage(DUMPSYS_UPDATED_SYSTEM_APP, "com.android.chrome"),
-        )
-    }
-
-    @Test
-    fun `installed package is null when absent and typed when unreadable`() =
-        runBlocking {
-            assertNull(scriptedAdb(DUMPSYS_NOT_INSTALLED).installedPackage(serial, DRIVER_PACKAGE))
-            assertNull(scriptedAdb("Unable to find package: $DRIVER_PACKAGE").installedPackage(serial, DRIVER_PACKAGE))
-            val malformed =
-                assertFailsWith<AdbCommandException> {
-                    scriptedAdb("Packages:\n  Package [$DRIVER_PACKAGE] (1a2b3c):\n    userId=10187\n")
-                        .installedPackage(serial, DRIVER_PACKAGE)
-                }
-            assertTrue("without a versionCode" in malformed.message.orEmpty(), malformed.message)
+    fun `a failing pm path is an error, never not installed`() =
+        runBlocking<Unit> {
             assertFailsWith<AdbCommandException> {
-                scriptedAdb("error: device offline", exitCode = 1).installedPackage(serial, DRIVER_PACKAGE)
+                scriptedAdb("error: device offline", exitCode = 1).installedApkSha256(serial, DRIVER_PACKAGE)
             }
         }
 
@@ -1101,153 +1116,3 @@ class AdbTest {
             assertFalse(adb.isReapGated())
         }
 }
-
-// `dumpsys package` layouts (trimmed to the sections the parser must survive), following the
-// shape API 29 (SM-J810G) and API 34 (emulator) print for the driver packages.
-private val DUMPSYS_API_29 =
-    """
-    Activity Resolver Table:
-      Non-Data Actions:
-          android.intent.action.MAIN:
-            4f1c2d7 io.github.noamcohen48.tap.driver/.MainActivity filter 9e3a0b1
-              Action: "android.intent.action.MAIN"
-              Category: "android.intent.category.LAUNCHER"
-
-    Key Set Manager:
-      [io.github.noamcohen48.tap.driver]
-          Signing KeySets: 61
-
-    Packages:
-      Package [io.github.noamcohen48.tap.driver] (3e5b1c2):
-        userId=10245
-        pkg=Package{9a8b7c6 io.github.noamcohen48.tap.driver}
-        codePath=/data/app/io.github.noamcohen48.tap.driver-AbCdEf==
-        resourcePath=/data/app/io.github.noamcohen48.tap.driver-AbCdEf==
-        legacyNativeLibraryDir=/data/app/io.github.noamcohen48.tap.driver-AbCdEf==/lib
-        primaryCpuAbi=null
-        secondaryCpuAbi=null
-        versionCode=100 minSdk=26 targetSdk=36
-        versionName=0.1.0
-        splits=[base]
-        apkSigningVersion=2
-        applicationInfo=ApplicationInfo{1d2e3f4 io.github.noamcohen48.tap.driver}
-        flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
-        timeStamp=2026-09-20 10:11:12
-        firstInstallTime=2026-09-01 09:00:00
-        lastUpdateTime=2026-09-20 10:11:13
-        signatures=PackageSignatures{5a6b7c8 version:2, signatures:[1f2e3d4c], past signatures:[]}
-        installPermissionsFixed=true
-        pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
-        User 0: ceDataInode=409731 installed=true hidden=false suspended=false stopped=false notLaunched=false enabled=0 instant=false virtual=false
-          gids=[3003]
-          runtime permissions:
-
-    Dexopt state:
-      [io.github.noamcohen48.tap.driver]
-        path: /data/app/io.github.noamcohen48.tap.driver-AbCdEf==/base.apk
-          arm64: [status=quicken] [reason=install]
-    """.trimIndent()
-
-private val DUMPSYS_API_34 =
-    """
-    Activity Resolver Table:
-      Non-Data Actions:
-          android.intent.action.MAIN:
-            b41e9d2 io.github.noamcohen48.tap.driver/.MainActivity filter 07a3c55
-              Action: "android.intent.action.MAIN"
-              Category: "android.intent.category.LAUNCHER"
-
-    Key Set Manager:
-      [io.github.noamcohen48.tap.driver]
-          Signing KeySets: 57
-
-    Packages:
-      Package [io.github.noamcohen48.tap.driver] (8f3c2a1):
-        appId=10187
-        pkg=Package{5d1e0b7 io.github.noamcohen48.tap.driver}
-        codePath=/data/app/~~Xy12Ab==/io.github.noamcohen48.tap.driver-Cd34Ef==
-        resourcePath=/data/app/~~Xy12Ab==/io.github.noamcohen48.tap.driver-Cd34Ef==
-        legacyNativeLibraryDir=/data/app/~~Xy12Ab==/io.github.noamcohen48.tap.driver-Cd34Ef==/lib
-        extractNativeLibs=false
-        primaryCpuAbi=null
-        secondaryCpuAbi=null
-        cpuAbiOverride=null
-        versionCode=100 minSdk=26 targetSdk=36
-        minExtensionVersions=[]
-        versionName=0.1.0
-        usesNonSdkApi=false
-        splits=[base]
-        apkSigningVersion=2
-        flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
-        privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
-        forceQueryable=false
-        dataDir=/data/user/0/io.github.noamcohen48.tap.driver
-        timeStamp=2026-09-20 10:11:12.345
-        lastUpdateTime=2026-09-20 10:11:13.012
-        installerPackageName=null
-        installerPackageUid=-1
-        User 0: ceDataInode=16302 deDataInode=0 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
-          installReason=0
-          dataDir=/data/user/0/io.github.noamcohen48.tap.driver
-          gids=[3003]
-          runtime permissions:
-
-    Queries:
-      system apps queryable: false
-
-    Dexopt state:
-      [io.github.noamcohen48.tap.driver]
-        path: /data/app/~~Xy12Ab==/io.github.noamcohen48.tap.driver-Cd34Ef==/base.apk
-          arm64: [status=verify] [reason=install] [primary-abi]
-    """.trimIndent()
-
-/** The instrumentation APK: AGP stamps no version on it. */
-private val DUMPSYS_TEST_APK =
-    """
-    Key Set Manager:
-      [io.github.noamcohen48.tap.driver.test]
-          Signing KeySets: 58
-
-    Packages:
-      Package [io.github.noamcohen48.tap.driver.test] (2c7d9e0):
-        appId=10188
-        pkg=Package{6e2f1a8 io.github.noamcohen48.tap.driver.test}
-        codePath=/data/app/~~Gh56Ij==/io.github.noamcohen48.tap.driver.test-Kl78Mn==
-        versionCode=0 minSdk=26 targetSdk=36
-        minExtensionVersions=[]
-        versionName=null
-        flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA TEST_ONLY ALLOW_BACKUP ]
-        User 0: ceDataInode=16310 installed=true hidden=false suspended=false stopped=true notLaunched=true enabled=0 instant=false virtual=false
-
-    Dexopt state:
-      [io.github.noamcohen48.tap.driver.test]
-        path: /data/app/~~Gh56Ij==/io.github.noamcohen48.tap.driver.test-Kl78Mn==/base.apk
-    """.trimIndent()
-
-private val DUMPSYS_UPDATED_SYSTEM_APP =
-    """
-    Packages:
-      Package [com.android.chrome] (a1b2c3d):
-        appId=10123
-        versionCode=609923033 minSdk=29 targetSdk=34
-        versionName=120.0.6099.230
-        User 0: installed=true hidden=false
-
-    Hidden system packages:
-      Package [com.android.chrome] (e4f5a6b):
-        appId=10123
-        versionCode=559807533 minSdk=29 targetSdk=33
-        versionName=110.0.5481.153
-    """.trimIndent()
-
-/** A package that is not installed: the resolver tables print, no `Packages:` section. */
-private val DUMPSYS_NOT_INSTALLED =
-    """
-    Activity Resolver Table:
-
-    Permissions:
-
-    Key Set Manager:
-
-    Dexopt state:
-    """.trimIndent()

@@ -10,17 +10,17 @@ import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_SESSION_CLOSE_TIMEOUT_MS
 import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
+import io.github.noamcohen48.tap.host.DRIVER_TEST_PACKAGE
 import io.github.noamcohen48.tap.host.DeviceConditions
 import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
-import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
 import io.github.noamcohen48.tap.host.SessionJournalStore
 import io.github.noamcohen48.tap.host.ScrcpyRecorder
 import io.github.noamcohen48.tap.host.ScrcpyVideoSource
-import io.github.noamcohen48.tap.protocol.DRIVER_APK_BUILD_ID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -317,9 +317,6 @@ class TapDaemon internal constructor(
             ScrcpyVideoSource(config.adb, serial, server)
         }
     private var closing = false
-
-    /** Serials whose bundled driver this daemon process already installed. */
-    private val driverInstalled = HashSet<String>()
 
     // ---- connections -------------------------------------------------------------------------
 
@@ -726,6 +723,30 @@ class TapDaemon internal constructor(
         val leaseTimeoutMs: Long,
     )
 
+    /**
+     * Why [serial]'s installed driver is not byte for byte [driver] (missing, another build, a
+     * split install, a digest that cannot be read), or null when it is.
+     */
+    private suspend fun driverMismatch(
+        serial: String,
+        driver: DriverApks,
+    ): String? =
+        try {
+            val (driverSha256, testSha256) = withContext(Dispatchers.IO) { driver.sha256() }
+            listOf(DRIVER_PACKAGE to driverSha256, DRIVER_TEST_PACKAGE to testSha256).firstNotNullOfOrNull { (packageName, expected) ->
+                val installed = config.adb.installedApkSha256(serial, packageName)
+                when {
+                    installed.isEmpty() -> "$packageName is not installed"
+                    installed != listOf(expected) -> "$packageName is another build (${installed.joinToString { it.take(12) }}, expected ${expected.take(12)})"
+                    else -> null
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            "its digest could not be read: ${error.message ?: error}"
+        }
+
     suspend fun attachDevice(
         ownerConnectionId: String,
         serial: String,
@@ -736,44 +757,27 @@ class TapDaemon internal constructor(
                 ?: throw UnknownClientConnectionException(ownerConnectionId)
         }
         markInUse(ownerConnectionId)
-        val useBundled = !options.skipDriverInstall && config.driver != null
-        // The install cache is only a shortcut: a device whose driver is missing or of another
-        // build (another daemon, a reused emulator, a manual uninstall) is reinstalled. The test
-        // package carries no version, so a stale one is caught by the handshake's build-id check.
-        if (useBundled && config.driver?.bundled == true) {
-            val installed = runCatching { config.adb.installedPackage(serial, DRIVER_PACKAGE) }.getOrNull()
-            if (installed?.versionName != DRIVER_APK_BUILD_ID) synchronized(lifecycleLock) { driverInstalled.remove(serial) }
-        }
-        // The bundled driver goes on each device once per daemon lifetime. Installation is
-        // decided under the serial lock, so racing attachments cannot split installation from
-        // the first driver start.
-        var installedBundled = false
+        val driver = config.driver?.takeUnless { options.skipDriverInstall }
         val log = DriverLogBuffer()
         val deviceConfig =
             DeviceSessionConfig(
                 serial = serial,
-                driverApk = config.driver?.driverApk?.takeIf { useBundled },
-                driverTestApk = config.driver?.driverTestApk?.takeIf { useBundled },
+                driverApk = driver?.driverApk,
+                driverTestApk = driver?.driverTestApk,
+                // Decided under the serial lock, so no other open can install between the check
+                // and this session's driver start. A device whose driver APKs are not byte for
+                // byte this daemon's (another daemon's build, an emulator snapshot restored with
+                // an older driver of the same version, a manual reinstall) is reinstalled now.
                 installDriver = {
-                    if (!useBundled) {
-                        true
-                    } else {
-                        synchronized(lifecycleLock) { driverInstalled.add(serial) }.also { installedBundled = it }
-                    }
+                    driver != null &&
+                        driverMismatch(serial, driver)?.also { config.log("installing the driver on $serial: $it") } != null
                 },
                 journalRoot = config.journalRoot,
                 adb = config.adb,
                 driverLog = log::append,
                 leaseTimeoutMs = options.leaseTimeoutMs,
             )
-        val device: DaemonDeviceSession =
-            try {
-                opener.open(deviceConfig)
-            } catch (error: Throwable) {
-                // A build mismatch means the cached install is wrong: the next attach reinstalls.
-                if (installedBundled || error is DriverBuildMismatchException) synchronized(lifecycleLock) { driverInstalled.remove(serial) }
-                throw error
-            }
+        val device: DaemonDeviceSession = opener.open(deviceConfig)
         // Registration is one lifecycle transaction. If disconnect wins while attachment is
         // suspended, the DeviceSession is closed before exposure: no orphan lease.
         val registered: AttachedDevice? =
@@ -807,7 +811,6 @@ class TapDaemon internal constructor(
         if (registered == null) {
             withContext(NonCancellable) {
                 val detail = closeDeviceBounded(device, DEVICE_SESSION_CLOSE_TIMEOUT_MS, "orphaned attachment on $serial")
-                if (installedBundled) synchronized(lifecycleLock) { driverInstalled.remove(serial) }
                 config.log("orphaned attachment on $serial cleaned before exposure" + (detail?.let { " (quarantined: $it)" } ?: ""))
             }
             throw UnknownClientConnectionException(ownerConnectionId)
