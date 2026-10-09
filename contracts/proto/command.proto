@@ -48,6 +48,8 @@ enum ErrorCode {
   ERR_PAYLOAD_TOO_LARGE = 25;
   ERR_INTERNAL = 26;
   ERR_UNKNOWN = 27;
+  // The resolved node went stale (its view was detached or replaced) before any input was sent.
+  ERR_STALE_BEFORE_INPUT = 28;
 }
 
 // Gesture direction: where the finger moves for `swipe`, the content edge scrolled towards for

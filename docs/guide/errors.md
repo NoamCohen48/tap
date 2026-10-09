@@ -59,6 +59,7 @@ The codes, grouped by what they tell you:
 |---|---|
 | `NOT_FOUND` | zero matches |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()` / `at(n)` |
+| `STALE_BEFORE_INPUT` | the one match was re-rendered (its view detached or replaced) between the lookup and the input, or while a query such as `snapshot()` read it, so nothing was sent. Running the action again looks the node up afresh; property waits (`enabled()`, `checked()`, …) keep polling through it |
 | `NOT_INTERACTABLE` | the one match cannot take the gesture: `OBSCURED` when another window (a keyboard, a popup, another app's overlay) covers the point the gesture would touch while part of the node still shows (a node covered completely is `NOT_FOUND`). Nothing was sent; close or move what covers it |
 | `INVALID_SELECTOR` | rejected before lookup: `QUALIFIED_RESOURCE_NAME` (a `res` name with `:id/` in it; use `res_id(pkg, name)`), `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
 | `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `type_text` has no key mapping for a character |
@@ -67,7 +68,7 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE`, `TARGET_AMBIGUOUS` |
+| `STALE_DURING_COMMAND` | the target changed under the action: `TARGET_GONE` (also a node re-rendered after a swipe, scroll, fling, pinch or permission choice started), `TARGET_AMBIGUOUS` |
 | `ACTION_REJECTED` | Android refused the input: the node refused set-text or an accessibility action, a key event was not injected, `PARTIAL_INPUT` (deadline mid-typing). Three details are refusals *before* any input, so nothing changed: `KEYGUARD_SECURE` (`dismiss_keyguard` on a PIN, pattern or password), `ACTION_NOT_OFFERED` (`perform_action`, `perform_custom_action` or `set_progress` on a node that does not offer that action) and `OUT_OF_RANGE` (`set_progress` outside the node's range) |
 | `INDETERMINATE` | the driver accepted a mutation and no definitive result came back (`WATCHDOG`, `KEY_RELEASE_FAILED`, or the transport dropped after acceptance) |
 

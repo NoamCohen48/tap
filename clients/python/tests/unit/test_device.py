@@ -272,6 +272,21 @@ def test_type_text_taps_waits_for_focus_then_types_into_the_focus(fake, device):
     assert [c.WhichOneof("op") for c in ops] == ["tap", "type_text"]
 
 
+def test_a_property_wait_polls_through_a_node_that_went_stale(fake, device):
+    replies = iter([
+        pb.CommandResult(error=pb.Error(code=pb.ERR_STALE_BEFORE_INPUT)),
+        pb.CommandResult(snapshot=pb.ElementSnapshot(enabled=True)),
+    ])
+    fake.devices.responder = lambda command: next(replies) if command.HasField("snapshot") else None
+    device.screen.element(res("save")).wait(timeout=5).enabled()
+    assert next(replies, None) is None
+
+    fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_STALE_BEFORE_INPUT))
+    with pytest.raises(CommandError) as info:
+        device.screen.element(res("save")).tap()
+    assert info.value.code is ErrorCode.STALE_BEFORE_INPUT
+
+
 def test_open_notifications_and_quick_settings_send_the_system_panel_command(fake, device):
     panels: list[int] = []
 

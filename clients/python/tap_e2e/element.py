@@ -392,6 +392,9 @@ class ElementWait:
                 if error.code is ErrorCode.NOT_FOUND:
                     last["seen"] = "not found"
                     return False
+                if error.code is ErrorCode.STALE_BEFORE_INPUT:
+                    last["seen"] = "re-rendering"
+                    return False
                 raise
             last["seen"] = (
                 f"text={snapshot.text!r} enabled={snapshot.enabled} checked={snapshot.checked} focused={snapshot.focused}"

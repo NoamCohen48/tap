@@ -213,6 +213,14 @@ enum class ErrorCode {
     /** More than one node matched a selector that needs exactly one. */
     AMBIGUOUS,
     NOT_INTERACTABLE,
+
+    /**
+     * The matched node went stale (its view was detached or replaced, often by a re-render)
+     * before any input was sent. Nothing changed; looking the node up again may succeed.
+     */
+    STALE_BEFORE_INPUT,
+
+    /** The target changed after the input started; the device state may have changed. */
     STALE_DURING_COMMAND,
 
     /** The node refused the action (for example `ACTION_SET_TEXT`). */

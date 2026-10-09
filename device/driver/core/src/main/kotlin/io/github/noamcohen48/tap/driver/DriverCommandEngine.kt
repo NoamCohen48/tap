@@ -69,7 +69,8 @@ import java.util.IdentityHashMap
 /**
  * Turns an accepted, screened [Request] into its terminal [Response]: selector compilation,
  * then the typed [CommandHandler] dispatch to the command groups.
- * Handlers return their result or throw [CommandFailure]; this is the only place responses are
+ * Handlers return their result or throw [CommandFailure]; a `StaleObjectException` is
+ * [staleElement], by whether the mutation gate had opened ([mappingStaleElements]). This is the only place responses are
  * built. Every response is stamped with its duration and the request identity it answers.
  */
 internal class DriverCommandEngine(
@@ -106,7 +107,7 @@ internal class DriverCommandEngine(
             try {
                 val selectors = compileSelectors(request)
                 context.checkpoint()
-                request.dispatch(Handlers(context, selectors))
+                mappingStaleElements({ context.mutationStarted }) { request.dispatch(Handlers(context, selectors)) }
             } catch (failure: CommandFailure) {
                 Responses.failure(failure.code, detail = failure.detail, message = failure.remoteMessage, matchCount = failure.matchCount)
             }

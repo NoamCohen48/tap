@@ -82,8 +82,8 @@ app.element(res("volume")).set_progress(7)
 
 ## Before or after input
 
-An action that fails **before** input (`NOT_FOUND`, `AMBIGUOUS`, `INVALID_*`, and
-`NOT_INTERACTABLE`, including `OBSCURED`) has changed nothing. An action that fails **after**
+An action that fails **before** input (`NOT_FOUND`, `AMBIGUOUS`, `INVALID_*`,
+`STALE_BEFORE_INPUT`, and `NOT_INTERACTABLE`, including `OBSCURED`) has changed nothing. An action that fails **after**
 input says so: `STALE_DURING_COMMAND` (the target changed mid-action), `ACTION_REJECTED` (input
 was issued but did not take effect), `INDETERMINATE` (the transport dropped after the driver
 accepted the mutation). Tap never re-sends any of them for you. [Errors](errors.md) lists every

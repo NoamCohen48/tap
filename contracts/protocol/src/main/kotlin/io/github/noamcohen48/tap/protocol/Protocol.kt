@@ -29,13 +29,14 @@ const val DRIVER_TEST_APK_BUILD_ID = ENGINE_VERSION
 const val UIAUTOMATOR_BUILD_ID = UIAUTOMATOR_VERSION
 
 /**
+ * 5.1: adds the `STALE_BEFORE_INPUT` error code.
  * 5.0: no selector scopes (package ownership is a `PROPERTY_PACKAGE_NAME` predicate, every lookup
  * searches all windows), `ResourceId` has no `aut_package`, gestures fail `NOT_INTERACTABLE`/`OBSCURED`
  * on a covered touch point, and sync requests name their package and authority.
  * 4.0: no `scroll_until`, `swipe`/`scroll` report `done`, any-package and any-window selector
  * scopes. 3.0: payloads are protobuf (`tap.wire.v1`); 2.0 was canonical JSON.
  */
-val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(5, 0)
+val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(5, 1)
 val SUPPORTED_PROTOCOL_VERSIONS: List<ProtocolVersion> = listOf(PROTOCOL_VERSION)
 val SUPPORTED_CAPABILITIES = listOf(
     "artifact.screenshot.v1",
