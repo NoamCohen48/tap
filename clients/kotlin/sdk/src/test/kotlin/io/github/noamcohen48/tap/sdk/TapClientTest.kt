@@ -789,6 +789,37 @@ class TapClientTest {
     }
 
     @Test
+    fun `a property wait polls through a node that went stale`() {
+        runBlocking {
+            var snapshots = 0
+            fakeDevices.executeResponder = { request ->
+                if (!request.command.hasSnapshot()) {
+                    null
+                } else if (snapshots++ == 0) {
+                    CommandResult.newBuilder().setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(ErrorCode.ERR_STALE_BEFORE_INPUT)).build()
+                } else {
+                    CommandResult.newBuilder().setSnapshot(ElementSnapshot.newBuilder().setEnabled(true)).build()
+                }
+            }
+            val connection = client().connect("test")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        device.screen.element(text("Save")).await().enabled()
+                        assertEquals(2, snapshots)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                fakeDevices.executeResponder = null
+                connection.close()
+            }
+        }
+    }
+
+    @Test
     fun `openNotifications and openQuickSettings send the system panel command`() {
         runBlocking {
             fakeDevices.executeResponder = { request ->

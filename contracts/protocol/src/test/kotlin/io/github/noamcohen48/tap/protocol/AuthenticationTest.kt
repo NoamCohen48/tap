@@ -112,7 +112,7 @@ class AuthenticationTest {
 
     @Test
     fun protocolVersionsOrderByMajorThenMinor() {
-        assertEquals("5.0", PROTOCOL_VERSION.render())
+        assertEquals("5.1", PROTOCOL_VERSION.render())
         assertTrue(protocolVersion(2, 9) < protocolVersion(3, 0))
         assertTrue(protocolVersion(3, 1) > protocolVersion(3, 0))
         assertEquals(listOf(PROTOCOL_VERSION), SUPPORTED_PROTOCOL_VERSIONS)

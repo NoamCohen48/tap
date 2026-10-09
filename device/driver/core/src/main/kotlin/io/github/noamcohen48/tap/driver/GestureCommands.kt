@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.driver
 import android.accessibilityservice.AccessibilityService
 import android.app.Instrumentation
 import android.graphics.Point
+import android.view.Display
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
@@ -33,31 +34,36 @@ internal class GestureCommands(
     private val faults: FaultHooks,
 ) {
     private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
-    /** Clicks the one matching node, whatever its state: what the app does with it is for the test. */
+    /**
+     * Taps the one matching node's visible centre, whatever its state: what the app does with it
+     * is for the test. On the default display the touch goes to the point the occlusion check
+     * passed, not through `UiObject2.click`, which would refresh the node again after the
+     * mutation gate; [PointerGestures] cannot target another display, so a node there keeps it.
+     */
     fun tap(
         context: CommandContext,
         command: Tap,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { element ->
+    ) = gesture(context, target, TouchPoints::center) { element, point ->
         faults.beforeTapClick(command, context.requestId)
-        element.click()
+        if (element.displayId == Display.DEFAULT_DISPLAY) pointer.tap(point) else element.click()
         faults.afterTapClick(command, context.requestId)
     }
 
-    /** Long-clicks the one matching node, as for [tap]. */
+    /** Long-presses the one matching node's visible centre, as for [tap]. */
     fun longTap(
         context: CommandContext,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { element ->
-        element.longClick()
+    ) = gesture(context, target, TouchPoints::center) { element, point ->
+        if (element.displayId == Display.DEFAULT_DISPLAY) pointer.longTap(point) else element.longClick()
     }
 
     /** Two taps on the element's visible centre as one gesture (Android's double-tap timing). */
     fun doubleTap(
         context: CommandContext,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { element ->
-        pointer.doubleTap(element.visibleCenter)
+    ) = gesture(context, target, TouchPoints::center) { _, point ->
+        pointer.doubleTap(point)
     }
 
     /**
@@ -79,7 +85,7 @@ internal class GestureCommands(
                     element.recycle()
                 }
             }
-        gesture(context, source, TouchPoints::center) { element -> pointer.drag(element.visibleCenter, to) }
+        gesture(context, source, TouchPoints::center) { _, from -> pointer.drag(from, to) }
     }
 
     /**
@@ -90,7 +96,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Pinch,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { element ->
+    ) = gesture(context, target, TouchPoints::center) { element, _ ->
         val percent = fraction(if (command.hasPercent()) command.percent else DEFAULT_GESTURE_PERCENT)
         when (command.direction) {
             PinchDirection.PINCH_OPEN -> element.pinchOpen(percent)
@@ -109,7 +115,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Fling,
         target: CompiledSelector,
-    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element ->
+    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element, _ ->
         val finger =
             when (uiDirection(command.direction)) {
                 androidx.test.uiautomator.Direction.UP -> androidx.test.uiautomator.Direction.DOWN
@@ -126,7 +132,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Swipe,
         target: CompiledSelector,
-    ) = gesture(context, target, { TouchPoints.swipeStart(it, uiDirection(command.direction)) }) { element ->
+    ) = gesture(context, target, { TouchPoints.swipeStart(it, uiDirection(command.direction)) }) { element, _ ->
         val distance = if (command.hasDistancePercent()) command.distancePercent else DEFAULT_GESTURE_PERCENT
         element.swipe(uiDirection(command.direction), fraction(distance))
     }
@@ -139,7 +145,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Scroll,
         target: CompiledSelector,
-    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element ->
+    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element, _ ->
         val distance = if (command.hasDistancePercent()) command.distancePercent else DEFAULT_GESTURE_PERCENT
         element.scroll(uiDirection(command.direction), fraction(distance))
         Unit
@@ -188,22 +194,27 @@ internal class GestureCommands(
      * Shared shape of every single-target gesture: checkpoint, resolve exactly one target, check
      * the finger would land in its window ([touchDown], [TouchReachability]), pass the mutation
      * gate, act, recycle. Everything before the gate promises no input; everything after it is
-     * definitive.
+     * definitive. [action] gets the checked touch point. [PointerGestures] injects there without
+     * reading the node again; it targets the default display only, so tap and long tap on another
+     * display use `UiObject2` (double tap and drag do not check). The `UiObject2` gestures (swipe,
+     * scroll, fling, pinch) refresh the node once more, so a node that goes stale in between is
+     * `STALE_DURING_COMMAND`.
      */
     private inline fun gesture(
         context: CommandContext,
         target: CompiledSelector,
         touchDown: (UiObject2) -> Point,
-        action: (UiObject2) -> Unit,
+        action: (UiObject2, Point) -> Unit,
     ) {
         context.checkpoint()
         val element = objects.resolveTarget(target)
         try {
-            reachability.requireReachable(element, touchDown(element))
+            val point = touchDown(element)
+            reachability.requireReachable(element, point)
             // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
             // cancellation is ignored from here on and the gesture result is definitive.
             context.markMutationStarted()
-            action(element)
+            action(element, point)
         } finally {
             element.recycle()
         }

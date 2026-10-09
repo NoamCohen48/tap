@@ -2,19 +2,20 @@
 
 Date: 2026-10-01
 
-Status: application protocol `5.0`; Phase 1 contract is additive and not yet complete.
+Status: application protocol `5.1`; Phase 1 contract is additive and not yet complete.
 
 This document describes the implemented wire contract. Planned but unimplemented features
 (events, typed element handles, multi-gesture input) remain design work in
-`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.0 yet.
+`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.1 yet.
 
-Protocol 5.0 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
+Protocol 5.1 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
 `scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added
 `ElementSnapshot.showing_hint`, `WaitVisible.exactly_one`, `Error.match_count` and the
 wait-timeout details; 5.0 removed selector scopes and `ResourceId.aut_package` — package
 ownership is a `PROPERTY_PACKAGE_NAME` predicate and every lookup searches all windows — made
 gestures refuse a covered touch point (`NOT_INTERACTABLE` / `OBSCURED`), and moved the sync
-package and authority from the session into `SyncBootstrap` / `SyncPoll`). The schema is the project's one schema,
+package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added the
+`STALE_BEFORE_INPUT` error code). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
 same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
@@ -104,7 +105,7 @@ below. With no common application version it instead answers
 - sorted supported application-protocol versions.
 
 The host selects the highest exact common `major.minor` version and a sorted subset of offered
-capabilities. Protocol 5.0 currently enables:
+capabilities. Protocol 5.1 currently enables:
 
 ```text
 artifact.screenshot.v1
@@ -195,7 +196,7 @@ result type.
 | `wait_gone` | `WaitGone` | `selector` | `done` once no match exists; `WAIT_TIMEOUT` with detail `STILL_PRESENT` and `match_count` counted once after the deadline (absent if that count was stale or zero) |
 | `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window; `WAIT_TIMEOUT` with detail `APP_NOT_VISIBLE` |
 | `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
-| `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the click; no enabled pre-check |
+| `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the touch (long tap: held 1.5 × the long-press timeout), at the visible centre the occlusion check used; the node is not read again after the gate (a node on another display keeps `UiObject2.click`/`longClick`). `ACTION_REJECTED` if the touch was not injected. No enabled pre-check |
 | `set_text` | `SetText` (mutation) | `selector`, `text` (≤ 256 chars) | `done`: `ACTION_SET_TEXT` accepted by the node (not read back) |
 | `type_text` | `TypeText` (mutation) | `text` (≤ 256 chars); no selector (field 1 reserved) | `done`: every key event injected into whatever has input focus; no click, no settling, not read back. `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS` before input for a character the virtual key map cannot type |
 | `clear_text` | `ClearText` (mutation) | `selector` | `done`: `ACTION_SET_TEXT` with "" accepted (not read back) |
@@ -463,7 +464,8 @@ policy; Tap itself never retries.
 | `NOT_FOUND` | no | yes | Zero matches. |
 | `AMBIGUOUS` | no | no | More than one match; returned before any input. |
 | `NOT_INTERACTABLE` | no | yes | `OBSCURED`: the gesture's touch point (a tap's, double tap's, drag's or pinch's visible centre, a swipe's, scroll's or fling's start) is in a window above the target's — the keyboard, a dialog, the shade, another app's overlay — so the input would reach that window. Only a partly covered node gets here: Android marks a node that windows above cover completely as not visible, and it is not found. Checked after resolving the target and before the mutation gate; nothing was sent. The driver still does not pre-check enabled/scrollable. |
-| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`. |
+| `STALE_BEFORE_INPUT` | no | yes | The resolved node went stale (UiAutomator could not refresh it: its view was detached or replaced) before the mutation gate, or while a query (`snapshot`, `get_text`, …) read it; nothing was sent. A fresh lookup may succeed. |
+| `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`; also `TARGET_GONE` when a node went stale after the gate: `swipe`, `scroll`, `fling` and `pinch`, a `tap`/`long_tap` on another display, and `choose_permission`'s clicks all let `UiObject2` refresh it once more (for `choose_permission` the accuracy radio may already have been clicked). |
 | `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected) or refused a rotation. `PARTIAL_INPUT` (deadline mid-typing; the second tap of a double tap or a drag stroke not injected), `KEYGUARD_SECURE` (`dismiss_keyguard` on a PIN/pattern/password keyguard, before input), `ACTION_NOT_OFFERED` (`perform_accessibility_action` / `set_progress` on a node that does not list the action, before input), `OUT_OF_RANGE` (`set_progress` outside the node's range, before input), `ACTION_NOT_OFFERED` also for `open_notification` (no content intent, or no button with that title) and `NOT_CLEARABLE` (`dismiss_notification` of an ongoing notification), both before anything is sent. `perform_ime_action` on a node that does not offer the action is refused before input, without a detail. Effects are never read back: text, rotation and gestures are for the test to observe. |
 | `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `APP_NOT_VISIBLE` (`wait_app_visible`); `NO_PERMISSION_PROMPT` (`wait_permission_prompt`); `NO_TOAST` (`await_toast`); `NO_NOTIFICATION` (`await_notification`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
@@ -587,6 +589,6 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 5.0 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
+Protocol 5.1 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
 `AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.driver
 
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ErrorCode
@@ -42,6 +43,33 @@ internal fun staleTarget(
     resolution: UiObjectAccess.Resolution,
     message: String? = null,
 ): CommandFailure = staleTarget(requireNotNull(resolution.errorCode), message)
+
+/**
+ * A `StaleObjectException`: UiAutomator could not refresh a node the command resolved (its view
+ * was detached or replaced). Before the mutation gate nothing was sent, so it is
+ * `STALE_BEFORE_INPUT`, which a caller may retry with a fresh lookup; after it the input may
+ * have started, so it is `STALE_DURING_COMMAND` / `TARGET_GONE`.
+ */
+internal fun staleElement(mutationStarted: Boolean): CommandFailure =
+    if (mutationStarted) {
+        staleTarget(ErrorCode.ERR_NOT_FOUND, "The target went stale after the input started")
+    } else {
+        CommandFailure(ErrorCode.ERR_STALE_BEFORE_INPUT, message = "The target went stale before any input")
+    }
+
+/**
+ * Runs [block], turning a `StaleObjectException` into [staleElement] by whether the mutation gate
+ * had opened when it was thrown ([mutationStarted] is read then, not before).
+ */
+internal inline fun <T> mappingStaleElements(
+    mutationStarted: () -> Boolean,
+    block: () -> T,
+): T =
+    try {
+        block()
+    } catch (_: StaleObjectException) {
+        throw staleElement(mutationStarted())
+    }
 
 /** Validation already rejected an unspecified or unknown direction where one is required. */
 internal fun uiDirection(direction: Direction): androidx.test.uiautomator.Direction =

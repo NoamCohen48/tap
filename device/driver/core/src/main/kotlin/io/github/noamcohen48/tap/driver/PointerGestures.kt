@@ -13,15 +13,23 @@ import kotlin.math.hypot
 import kotlin.math.roundToLong
 
 /**
- * Single-finger gestures UiAutomator has no primitive for, injected as touchscreen motion events
- * on the default display. Each is one timed sequence: it starts after the caller passed the
- * mutation gate and always ends with the finger lifted (or the stream cancelled) before
- * returning, so a failed injection never leaves a pointer down.
+ * Single-finger gestures at points the caller already checked (tap, long tap, double tap, drag),
+ * injected as touchscreen finger events on the default display the way AndroidX
+ * `GestureController` injects them: without waiting for the app to handle each event, so a
+ * stalled main thread cannot hold the command past its deadline. Each is one timed sequence: it
+ * starts after the caller passed the mutation gate and always ends with the finger lifted (or
+ * the stream cancelled) before returning, so a failed injection never leaves a pointer down.
  */
 internal class PointerGestures(
     private val uiAutomation: () -> UiAutomation,
     private val density: Float,
 ) {
+    /** One tap at [point]. */
+    fun tap(point: Point) = stroke(listOf(point), holdMs = TAP_MS)
+
+    /** A press at [point] held 1.5 × the system long-press timeout, as AndroidX `longClick`. */
+    fun longTap(point: Point) = stroke(listOf(point), holdMs = LONG_PRESS_MS)
+
     /** Two taps at [point], the second inside Android's double-tap window. */
     fun doubleTap(point: Point) {
         stroke(listOf(point), holdMs = TAP_MS)
@@ -44,7 +52,7 @@ internal class PointerGestures(
         val path = (0..steps).map { i -> interpolate(from, to, i.toFloat() / steps) }
         stroke(
             path,
-            holdMs = (ViewConfiguration.getLongPressTimeout() * 1.5f).toLong(),
+            holdMs = LONG_PRESS_MS,
             stepMs = moveMs / steps,
             endHoldMs = DROP_HOLD_MS,
         )
@@ -63,6 +71,8 @@ internal class PointerGestures(
     ) {
         val downTime = SystemClock.uptimeMillis()
         if (!inject(downTime, MotionEvent.ACTION_DOWN, path.first())) {
+            // Refused by the input system, so nothing is down; the cancel is only a safeguard.
+            inject(downTime, MotionEvent.ACTION_CANCEL, path.first())
             throw CommandFailure(
                 ErrorCode.ERR_ACTION_REJECTED,
                 if (partial) ErrorDetail.PARTIAL_INPUT else null,
@@ -93,12 +103,27 @@ internal class PointerGestures(
         action: Int,
         point: Point,
     ): Boolean {
-        val event =
-            MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, point.x.toFloat(), point.y.toFloat(), 0).apply {
-                source = InputDevice.SOURCE_TOUCHSCREEN
+        // A new PointerProperties has id INVALID_POINTER_ID (-1), which the input system refuses.
+        val properties =
+            MotionEvent.PointerProperties().apply {
+                id = 0
+                toolType = MotionEvent.TOOL_TYPE_FINGER
             }
+        val coordinates =
+            MotionEvent.PointerCoords().apply {
+                x = point.x.toFloat()
+                y = point.y.toFloat()
+                pressure = 1f
+                size = 1f
+            }
+        // As AndroidX GestureController: a finger, 1 × 1 precision, touchscreen source.
+        val event =
+            MotionEvent.obtain(
+                downTime, SystemClock.uptimeMillis(), action, 1, arrayOf(properties), arrayOf(coordinates),
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
+            )
         return try {
-            uiAutomation().injectInputEvent(event, true)
+            uiAutomation().injectInputEvent(event, false)
         } finally {
             event.recycle()
         }
@@ -111,6 +136,9 @@ internal class PointerGestures(
     ): Point = Point(from.x + ((to.x - from.x) * t).toInt(), from.y + ((to.y - from.y) * t).toInt())
 
     private companion object {
+        /** AndroidX `Gestures.LONG_PRESS_DURATION_MS`: well past the long-press timeout. */
+        val LONG_PRESS_MS: Long get() = (ViewConfiguration.getLongPressTimeout() * 1.5f).toLong()
+
         /** Short of `ViewConfiguration.getTapTimeout()` (100 ms), so each touch is a tap. */
         const val TAP_MS = 50L
 

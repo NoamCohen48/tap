@@ -21,6 +21,7 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_NOT_INTERACTABLE
 import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_OVERLOADED
 import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_PAYLOAD_TOO_LARGE
 import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_SESSION_MISMATCH
+import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_STALE_BEFORE_INPUT
 import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_STALE_DURING_COMMAND
 import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_SYNC_PROVIDER_UNAVAILABLE
 import io.github.noamcohen48.tap.api.v1.ErrorCode.ERR_TRANSPORT_LOST
@@ -50,7 +51,7 @@ val ErrorCode.mayHaveMutated: Boolean
             ERR_SESSION_MISMATCH, ERR_DUPLICATE_OR_STALE, ERR_OVERLOADED, ERR_AUT_MISMATCH,
             ERR_NOT_FOUND, ERR_AMBIGUOUS, ERR_NOT_INTERACTABLE, ERR_WAIT_TIMEOUT, ERR_CANCELLED,
             ERR_DEADLINE_EXCEEDED, ERR_AUT_NOT_INSTALLED, ERR_SYNC_PROVIDER_UNAVAILABLE,
-            ERR_DRIVER_UNHEALTHY, ERR_TRANSPORT_LOST,
+            ERR_DRIVER_UNHEALTHY, ERR_TRANSPORT_LOST, ERR_STALE_BEFORE_INPUT,
             -> false
 
             ERR_STALE_DURING_COMMAND, ERR_ACTION_REJECTED, ERR_AUT_CRASHED, ERR_AUT_ANR,
@@ -64,7 +65,7 @@ val ErrorCode.retryable: Boolean
     get() =
         when (this) {
             ERR_OVERLOADED, ERR_NOT_FOUND, ERR_NOT_INTERACTABLE, ERR_WAIT_TIMEOUT, ERR_CANCELLED,
-            ERR_DEADLINE_EXCEEDED, ERR_SYNC_PROVIDER_UNAVAILABLE,
+            ERR_DEADLINE_EXCEEDED, ERR_SYNC_PROVIDER_UNAVAILABLE, ERR_STALE_BEFORE_INPUT,
             -> true
 
             ERR_INVALID_REQUEST, ERR_INVALID_SELECTOR, ERR_UNSUPPORTED, ERR_UNAUTHENTICATED,
