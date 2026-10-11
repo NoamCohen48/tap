@@ -588,6 +588,7 @@ open class Adb internal constructor(
         when (val parsed = StateKey.parse(key)) {
             is StateKey.Setting ->
                 if (value == null) {
+                    StateKey.NEUTRAL_BEFORE_DELETE[key]?.let { exec(serial, "shell", "settings", "put", parsed.namespace, parsed.name, shellQuote(it)) }
                     exec(serial, "shell", "settings", "delete", parsed.namespace, parsed.name)
                 } else {
                     exec(serial, "shell", "settings", "put", parsed.namespace, parsed.name, shellQuote(value))
@@ -695,26 +696,36 @@ open class Adb internal constructor(
      * API 30+, the asynchronous `MEDIA_SCANNER_SCAN_FILE` broadcast otherwise, and when the call
      * fails (API 29's MediaProvider wants a Uri extra `content call` cannot send, and throws). A
      * path that is gone leaves the index. The broadcast returns before the scan: poll [mediaIndexed].
+     * `scan_file` gets the canonical path: MediaProvider picks the volume by it, and one outside
+     * `/storage` (such as `/sdcard/…`) is scanned as the internal volume, which fails in the
+     * provider's log only.
      */
     open suspend fun scanMedia(
         serial: String,
         path: String,
     ) {
         if (apiLevel(serial) >= 30) {
-            val output = exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(path))
+            val canonical = exec(serial, "shell", "readlink", "-f", shellQuote(path)).trim().ifEmpty { path }
+            val output = exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(canonical))
             if ("Exception" !in output) return
         }
         exec(serial, "shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", shellQuote("file://$path"))
     }
 
-    /** Whether the media index has an entry for the file [name] in the folder [folder] (e.g. `Pictures/Tap`). */
+    /**
+     * Whether the media index lists the file [name] in the folder [folder] (e.g. `Pictures/Tap`)
+     * where a gallery app looks: the images collection, or the video one under `Movies/`. Writing
+     * the file through shared storage already adds a bare row to the files table, which is
+     * no proof that the media scanner indexed it as a photo or a video.
+     */
     open suspend fun mediaIndexed(
         serial: String,
         folder: String,
         name: String,
     ): Boolean {
+        val collection = if (folder.startsWith("Movies/")) "video" else "images"
         val where = "_display_name='$name' AND _data LIKE '%/$folder/$name'"
-        val command = listOf("shell", "content", "query", "--uri", "content://media/external/file", "--projection", "_id", "--where", shellQuote(where))
+        val command = listOf("shell", "content", "query", "--uri", "content://media/external/$collection/media", "--projection", "_id", "--where", shellQuote(where))
         val output = exec(serial, *command.toTypedArray())
         return output.lineSequence().any { it.trim().startsWith("Row:") }
     }
@@ -1006,11 +1017,10 @@ open class Adb internal constructor(
      * (`dumpsys activity activities`): a `* Hist #n: ActivityRecord{… u0 <package>/…}` line,
      * including one that is only exiting, or a `* Task{… A=<uid>:<package> …}` header (`TaskRecord`,
      * `A=<package>` before API 29; `I=<package>/…` without an affinity). The process can be gone
-     * while either still is. After `pm clear` or a force-stop the records go at once but the
-     * emptied task lingers until its destroy timeout, which then kills whatever process of the
-     * app is running: one a launch started in that window, which leaves that launch waiting
-     * ~40 s for Android to start the app again (`Destroy timeout of remove-task … Killing …:
-     * remove task`). A task under a custom `taskAffinity` is not recognised by its header.
+     * while either still is. A task under a custom `taskAffinity` is not recognised by its header.
+     * An empty answer does not mean Android is done with the app: `pm clear` on a running app
+     * leaves a deferred kill of its processes that outlives the task's entry here, which is why
+     * [AppLifecycle.clearData] force-stops first.
      */
     open suspend fun hasTaskOrActivity(
         serial: String,

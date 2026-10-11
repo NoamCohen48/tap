@@ -94,11 +94,21 @@ class AppLifecycle internal constructor(
         syncIdentity = null
     }
 
-    /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped, as after [forceStop]. */
+    /**
+     * `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped, as after
+     * [forceStop]. The app is force-stopped first: `pm clear` on a running app removes its task
+     * while the top activity is still finishing, and API 34 then defers killing the package's
+     * processes by up to a second (`Destroy timeout of remove-task`), long after the task left
+     * `dumpsys`, so the kill takes the process a following launch has just started and that
+     * launch waits ~40 s. Stopped first, the task has no activity left and nothing is deferred.
+     */
     suspend fun clearData(timeoutMs: Long) {
+        val deadline = deadlineAfter(timeoutMs)
+        session.guardAdb { adb.forceStop(serial, packageName) }
+        awaitStopped(remainingMs(deadline), "force-stop")
         val output = session.guardAdb { adb.clearData(serial, packageName) }
         if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
-        awaitStopped(timeoutMs, "pm clear")
+        awaitStopped(remainingMs(deadline), "pm clear")
         syncIdentity = null
     }
 

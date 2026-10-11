@@ -996,6 +996,8 @@ class DeviceSessionTest {
                 assertEquals("3", state.values[StateKey.STAY_AWAKE])
                 assertEquals(null, state.values[StateKey.HIGH_CONTRAST_TEXT])
                 assertEquals(null, state.values[StateKey.BOLD_TEXT])
+                // Off before it is removed: a deleted weight alone leaves the configuration bold.
+                assertEquals(listOf("300", "0", "null"), state.writes.filter { it.startsWith("${StateKey.BOLD_TEXT}=") }.map { it.substringAfter('=') })
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
             }
         }
@@ -1562,7 +1564,7 @@ class DeviceSessionTest {
     }
 
     @Test
-    fun `clearData returns only once the app's activity is destroyed too`() =
+    fun `clearData stops the app first and returns only once its activity is destroyed too`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
             val fake = FakeDriverServer("session-clear-data", 1, secret, acceptAnySession = true)
@@ -1573,6 +1575,7 @@ class DeviceSessionTest {
                 val priorResponder = adb.responder
                 adb.responder = { serial, command ->
                     when (command) {
+                        "shell am force-stop com.example" -> ok("")
                         "shell pm clear com.example" -> ok("Success")
                         "shell pidof com.example" -> Adb.Result(1, "")
                         // The process is gone at once; the record outlives it for two polls.
@@ -1582,7 +1585,12 @@ class DeviceSessionTest {
                     }
                 }
                 withTimeout(5_000) { session.app("com.example").clearData(timeoutMs = 2_000) }
-                assertEquals(3, adb.calls.count { "dumpsys activity activities" in it })
+                // Force-stopped and gone before `pm clear`, so it removes no finishing activity.
+                val lifecycle = adb.calls.filter { "force-stop com.example" in it || "pm clear" in it || "dumpsys activity activities" in it }
+                assertEquals(
+                    listOf("force-stop", "dumpsys", "dumpsys", "dumpsys", "pm clear", "dumpsys"),
+                    lifecycle.map { call -> listOf("force-stop", "pm clear", "dumpsys").first { it in call } },
+                )
 
                 // A record that never goes is a timeout naming it, not a silent return.
                 adb.responder = { serial, command ->

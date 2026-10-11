@@ -389,30 +389,29 @@ pending.
 
 ## Later (backlog, rough priority)
 
-**Open fixes (CI device lane, API 34 emulator, 2026-10-03)**: they fail `DeviceActionsTest`
-there; the run's `device-test-artifacts` hold the logcat and per-test evidence.
-- *Bold text reads on after it was restored to absent* (`displaySettingsAreRestoredAfterTheTest`:
-  `boldText` true). With `secure/font_weight_adjustment` deleted, Android puts
-  `Configuration.FONT_WEIGHT_ADJUSTMENT_UNDEFINED` (`Integer.MAX_VALUE`) in the configuration,
-  and the driver's `DeviceConditionsReader.boldText` reads `fontWeightAdjustment > 0`. Fix: treat
-  `UNDEFINED` as off. A driver change: ask the user first.
-- *Added media missing from the app's gallery query* (`localeLocationFilesAndMediaHoldForTheTest`:
-  "Gallery empty"). `addMedia` saw the file in `content://media/external/file`, but logcat shows
-  the scanner inserting `/storage/emulated/0/Pictures/Tap/tap-sample.png` into
-  `content://media/internal/file` and failing ("doesn't appear under [/system/media, …]"). Cause
-  not found; possibly a freshly booted emulator only.
-- *Launch right after `clearData` is still raced.* `pm clear` force-removes the app's activity
-  records at once; the emptied task is removed by a destroy timeout about a second later, which
-  kills the app's running process: the one a launch has just started. That launch then waits
-  ~40 s and `am start -W` times out (logcat: `Destroy timeout of remove-task … Killing <pid>:
-  remove task`, then `Displayed … +39s`). `forceStop`/`clearData` now also wait until
-  `dumpsys activity activities` lists no task of the package (`Adb.hasTaskOrActivity`), which
-  fixed it in `LifecycleTest` and `permissionPromptIsAnsweredByChoice`, but not always: in run
-  37102138550 `locationPromptTakesApproximate` lost its launch to task #37, which the dump no
-  longer listed while it waited for removal. Find a signal that shows the pending removal (try
-  `dumpsys activity recents`, `am stack list` / `cmd activity`, or the `wm_task_removed` event
-  log) on the emulator and the Samsung. Also check the API 29 `TaskRecord` header on a device;
-  a task under a custom `taskAffinity` is not recognised by its header.
+**Fixed on the CI device lane (API 34 emulator)**: three `DeviceActionsTest` failures that only a
+freshly created AVD showed, found from the lane's `device-test-artifacts` (logcat and per-test
+evidence) and the Android 14 sources.
+- *Launch right after `clearData` raced.* `pm clear` on a running app removes its task while
+  the top activity is still finishing; `ActivityTaskSupervisor.cleanUpRemovedTask` then defers
+  killing the package's processes until that activity is destroyed or
+  `KILL_TASK_PROCESSES_TIMEOUT_MS` (1 s) passes (`Destroy timeout of remove-task … Killing <pid>:
+  remove task`). The task leaves `dumpsys activity activities` before that, so waiting for it
+  to go (`Adb.hasTaskOrActivity`) was not enough: the kill took the process a following launch
+  had just started, which then waited ~40 s (`Displayed … +39s`) and `am start -W` timed out.
+  `clearData` now force-stops the app and waits for no process, task or activity first; `pm
+  clear` then finds no top activity and nothing is deferred.
+- *Bold text read on after it was restored to absent.* `ActivityTaskManagerService` hands a
+  deleted `secure/font_weight_adjustment` to the configuration as
+  `FONT_WEIGHT_ADJUSTMENT_UNDEFINED`, which `Configuration.updateFrom` skips, so the weight the
+  test set stayed in effect. Restoring it as absent now writes `0` first, then deletes it
+  (`StateKey.NEUTRAL_BEFORE_DELETE`). Local devices had the setting already, at `0`.
+- *Added media missing from the app's gallery query.* MediaProvider's `scan_file` picks the
+  volume from the path, and `/sdcard/…` is not under `/storage`, so every scan went to the
+  internal volume and failed in the provider's log only; `addMedia` passed on the bare row that
+  writing the file adds to `content://media/external/file`. `scanMedia` now passes the
+  canonical path (`readlink -f`), and `mediaIndexed` looks in the images or video collection,
+  where gallery apps look.
 
 **Element extras**
 - Fling `canScrollMore` (whether the content can still move after a fling).

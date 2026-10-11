@@ -197,11 +197,13 @@ class FakeDeviceState(
                 directories -= directory
                 ok("")
             }
+            command.startsWith("shell readlink -f ") -> ok(path(args[3]).replace(Regex("^/sdcard(?=/|$)"), PRIMARY_STORAGE) + "\n")
             command.startsWith("shell content call --uri content://media/ --method scan_file ") -> {
                 val target = path(args.last())
                 // As API 29's MediaProvider: it reads a Uri extra `content call` cannot send.
                 if (apiLevel < 30) return ok("Error while accessing provider:media\njava.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.String android.net.Uri.getPath()' on a null object reference\n")
-                if (!mediaScannerIgnores) scanned(target)
+                // A path outside /storage is scanned as the internal volume: it fails in the log only.
+                if (!mediaScannerIgnores && target.startsWith("$PRIMARY_STORAGE/")) scanned(target.replace(PRIMARY_STORAGE, "/sdcard"))
                 ok("Result: Bundle[{}]\n")
             }
             command.startsWith("shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE ") -> {
@@ -209,7 +211,8 @@ class FakeDeviceState(
                 if (!mediaScannerIgnores) if (broadcastScanQueries > 0) pendingScans[target] = broadcastScanQueries else scanned(target)
                 ok("Broadcast completed: result=0\n")
             }
-            command.startsWith("shell content query --uri content://media/external/file ") -> {
+            command.startsWith("shell content query --uri content://media/external/images/media ") ||
+                command.startsWith("shell content query --uri content://media/external/video/media ") -> {
                 pendingScans.keys.toList().forEach { target ->
                     val left = pendingScans.getValue(target) - 1
                     if (left > 0) pendingScans[target] = left else scanned(target).also { pendingScans -= target }
@@ -272,6 +275,9 @@ class FakeDeviceState(
     }
 
     companion object {
+        /** What `/sdcard` resolves to. */
+        private const val PRIMARY_STORAGE = "/storage/emulated/0"
+
         /** The raw global settings behind [StateKey.Network], as the device stores them. */
         val AIRPLANE = StateKey.Setting("global", "airplane_mode_on").id
         val WIFI = StateKey.Setting("global", "wifi_on").id

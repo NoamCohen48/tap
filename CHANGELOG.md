@@ -194,6 +194,14 @@ Fixed:
   process and activities. Android removes the emptied task about a second later and kills the
   app's running process with it: a launch right after `clearData` lost its new process and
   waited ~40 s for Android to start the app again (the launch timed out).
+- Server: `clearData` force-stops the app before `pm clear`. On API 34, clearing a running app
+  left a kill of its processes pending for up to a second after its task was gone, which still
+  took the process of a launch right after `clearData`.
+- Server: detach turns bold text off when the session set it on a device that had no
+  `font_weight_adjustment` setting; deleting the setting alone left text bold until a reboot.
+- Server: `addMedia` indexes the file on API 30+ (the scan went to the internal volume and
+  failed, so apps' gallery queries could miss it) and checks it is in the images or video
+  collection.
 
 ## 0.0.2 — 2026-09-30 (alpha)
 
