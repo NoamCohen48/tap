@@ -218,6 +218,7 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 | H-12 | L | Fixed | The real device port is journaled via `onStarting` (`DEVICE_PORT` is only the placeholder where none is known); the output drain spots the readiness marker line by line instead of rescans. The instrumentation child stays outside `Adb`: its serial lane admits one command at a time, and the attempt reaps its own child (`cleanupAttempt`) | S |
 | H-16 | L | Fixed | `grantPermission` verifies the grant through `dumpsys package`; the constructor is internal (only `DeviceSession.app` creates one). The `syncIdentity` part is Deferred with synchronization | S |
 | H-24 | L | Fixed | Selector values are JSON-escaped when rendered; an undecodable chunk is `BLOB_MALFORMED` | S |
+| EX-H-1 | M | Fixed | Found by the app explorer, not the original review: `isInstalled` threw on API 29, where `pm path` exits 1 with no output for an absent package. That exit is now `false`; any other non-zero exit or output still throws `AdbCommandException` (`AdbTest`) | S |
 
 ### Daemon and CLI (host/daemon)
 
