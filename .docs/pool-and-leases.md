@@ -110,8 +110,9 @@ model, it is the minimum.
 driver instrumentation, remove our forward, reinstall the driver APK only when its
 version/checksum differs, start fresh, remember nothing — is exactly what Appium and Maestro
 do, and it works. Tap already does most of that (`recoverJournal` → `forceStopDriverAndVerify`,
-forward cleanup; the driver is installed once per serial per process, not per session —
-reinstalling every session would cost ~3–5 s each, prohibitive with per-test sessions). What
+forward cleanup; each attach checks both installed APK digests under the serial lock and
+reinstalls only on a mismatch, missing package, split install or unreadable digest — reinstalling
+every session would cost ~3–5 s each, prohibitive with per-test sessions). What
 the journal adds beyond reconcile-on-open, ranked by how much it earns its keep:
 
 1. **The generation counter.** The invariant "request IDs strictly increasing per generation;

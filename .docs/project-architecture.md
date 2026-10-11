@@ -179,7 +179,7 @@ tap/
 |   |   |   |   +-- DaemonDescriptor.kt  0600 daemon.json (port, pid, token), owner-checked removal, daemon.lock
 |   |   |   +-- daemon/core/
 |   |   |   |   +-- TapDaemon.kt       ConnectedClient/attached-device registries, device list, bounded teardown
-|   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted per build id, or a `--driver-apk` override
+|   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted to driver/<version>-<digest>/, or a `--driver-apk` override
 |   |   |   |   +-- EventLog.kt        per-connection bounded event log (`Events`, `.docs/agent-surface.md` decision 3)
 |   |   |   |   +-- ActivityLog.kt     daemon-wide activity log (connections, attachments, logged calls) behind `Watch`
 |   |   |   |   +-- SharedVideo.kt     one scrcpy video producer per serial, preroll snapshot, bounded readers (`WatchVideo`)

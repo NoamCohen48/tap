@@ -21,6 +21,16 @@ Driver, server, clients (additive, protocol 5.1):
   as UiAutomator does, so a busy main thread no longer holds a double tap or drag past its
   deadline.
 
+Server:
+
+- **The driver on a device is checked byte for byte.** Each attachment compares the SHA-256 of
+  the driver APKs installed on the device with the server's own and reinstalls them within the
+  same attachment when they differ. A different build of the same version (for example an
+  emulator snapshot restored with an older driver) used to pass the `versionName` check and run
+  silently. The check runs on every attachment under the device lock (falling back to pulling
+  the APKs where the device has no `sha256sum`). Bundled APKs are extracted to
+  `driver/<version>-<digest of both APKs>/` in the state directory.
+
 Packaging:
 
 - **One-download bundles.** Each release set is also published as `bundle/vX.Y.Z` with one zip

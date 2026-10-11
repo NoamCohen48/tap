@@ -44,11 +44,11 @@ data class DeviceSessionConfig(
     val leaseTimeoutMs: Long = 0,
     /**
      * Decides, once the per-serial lock is held, whether [driverApk]/[driverTestApk] are installed
-     * for this open. Callers that install "once per device" must decide here, not before the lock:
-     * two opens racing for the same serial could otherwise leave the lock winner instrumenting a
-     * driver the loser was still going to install.
+     * for this open. Callers that skip an install they consider current (the daemon compares the
+     * installed APKs' digests) must decide here, not before the lock: another open of the serial
+     * could otherwise install a different build between the check and this session's driver start.
      */
-    val installDriver: () -> Boolean = { true },
+    val installDriver: suspend () -> Boolean = { true },
 )
 
 /**

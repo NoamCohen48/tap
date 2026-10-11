@@ -11,12 +11,14 @@ import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DeviceService
 import io.github.noamcohen48.tap.host.Adb
+import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AdbDevice
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_PORT
 import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
+import io.github.noamcohen48.tap.host.DRIVER_TEST_PACKAGE
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
 import io.github.noamcohen48.tap.host.DriverClient
@@ -195,6 +197,88 @@ class TapDaemonLifecycleTest {
             assertEquals(attached, daemon.attachedDevice(attached.id, owner.id))
             daemon.detachDevice(attached.id, owner.id)
             assertTrue(daemon.attachedDeviceIds().isEmpty())
+        }
+
+    @Test
+    fun `a driver whose installed APKs differ from the daemon's is reinstalled within the attach`() =
+        runBlocking {
+            val dir = Files.createTempDirectory("tap-daemon-driver")
+            val apk = Files.write(dir.resolve("driver.apk"), byteArrayOf(1, 2, 3))
+            val testApk = Files.write(dir.resolve("driver-test.apk"), byteArrayOf(4, 5))
+            val driver = DriverApks.override(apk, testApk)
+            val (driverSha256, testSha256) = driver.sha256()
+            var installed: Map<String, List<String>> = emptyMap()
+            var unreadable = false
+            val adb =
+                object : Adb("fake-adb") {
+                    override suspend fun installedApkSha256(
+                        serial: String,
+                        packageName: String,
+                        timeoutMs: Long,
+                    ): List<String> {
+                        if (unreadable) throw AdbCommandException(serial, listOf("shell", "sha256sum"), 127, "sha256sum: not found")
+                        return installed[packageName].orEmpty()
+                    }
+                }
+            val installs = mutableListOf<Boolean>()
+            val opener =
+                object : DeviceSessionOpener {
+                    override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession {
+                        installs += config.installDriver()
+                        if (installs.last()) installed = mapOf(DRIVER_PACKAGE to listOf(driverSha256), DRIVER_TEST_PACKAGE to listOf(testSha256))
+                        return FakeDevice(config.serial)
+                    }
+                }
+            val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = driver, log = {}), opener)
+            val owner = daemon.connectClient("owner")
+            val options = testOptions().copy(skipDriverInstall = false)
+            suspend fun attachAndDetach() = daemon.detachDevice(daemon.attachDevice(owner.id, "serial-1", options).id, owner.id)
+
+            attachAndDetach() // nothing installed
+            attachAndDetach() // unchanged digests: no install
+            installed = installed + (DRIVER_PACKAGE to listOf("0".repeat(64))) // a snapshot restored an older build
+            attachAndDetach()
+            installed = installed + (DRIVER_TEST_PACKAGE to listOf(testSha256, "1".repeat(64))) // a split install
+            attachAndDetach()
+            unreadable = true
+            attachAndDetach()
+            assertEquals(listOf(true, false, true, true, true), installs)
+        }
+
+    @Test
+    fun `digest cancellation and runner safety failures abort attach without reinstalling`() =
+        runBlocking {
+            val dir = Files.createTempDirectory("tap-daemon-driver-failure")
+            val driver = DriverApks.override(
+                Files.write(dir.resolve("driver.apk"), byteArrayOf(1)),
+                Files.write(dir.resolve("driver-test.apk"), byteArrayOf(2)),
+            )
+            val failures = listOf(
+                kotlinx.coroutines.CancellationException("cancelled"),
+                AdbReapUncertainException("unreaped digest command", listOf("shell", "sha256sum"), "serial-1"),
+                io.github.noamcohen48.tap.host.AdbRunnerGatedException("blocked", "serial-1", "serial-1", listOf("shell", "sha256sum")),
+            )
+            for (failure in failures) {
+                val adb = object : Adb("fake-adb") {
+                    override suspend fun installedApkSha256(serial: String, packageName: String, timeoutMs: Long): List<String> = throw failure
+                }
+                var installed = false
+                val opener = object : DeviceSessionOpener {
+                    override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession {
+                        installed = config.installDriver()
+                        return FakeDevice(config.serial)
+                    }
+                }
+                val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = driver, log = {}), opener)
+                val owner = daemon.connectClient("owner")
+                val caught = assertFailsWith<Exception> {
+                    daemon.attachDevice(owner.id, "serial-1", testOptions().copy(skipDriverInstall = false))
+                }
+                assertTrue(caught === failure, "the original safety failure must reach DeviceSession.open")
+                assertFalse(installed)
+                assertTrue(daemon.attachedDeviceIds().isEmpty())
+                daemon.close()
+            }
         }
 
     @Test
