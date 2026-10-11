@@ -284,6 +284,8 @@ class AdbTest {
             adb.writeState(serial, StateKey.Density.id, null)
             adb.writeState(serial, StateKey.AppLocales("com.example").id, "fr-FR,en")
             adb.writeState(serial, StateKey.AppLocales("com.example").id, "")
+            // Deleting it alone would leave the configuration bold: neutral first, then absent.
+            adb.writeState(serial, StateKey.BOLD_TEXT, null)
             assertEquals(
                 listOf(
                     listOf("shell", "settings", "put", "system", "font_scale", "1.3"),
@@ -293,8 +295,45 @@ class AdbTest {
                     listOf("shell", "wm", "density", "reset"),
                     listOf("shell", "cmd", "locale", "set-app-locales", "com.example", "--user", "current", "--locales", "fr-FR,en"),
                     listOf("shell", "cmd", "locale", "set-app-locales", "com.example", "--user", "current"),
+                    listOf("shell", "settings", "put", "secure", "font_weight_adjustment", "0"),
+                    listOf("shell", "settings", "delete", "secure", "font_weight_adjustment"),
                 ),
                 commands.map { it.drop(3) },
+            )
+        }
+
+    @Test
+    fun `media is scanned by its canonical path and found where a gallery looks`() =
+        runBlocking {
+            val commands = mutableListOf<List<String>>()
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        commands += command
+                        val out =
+                            when {
+                                "getprop" in command -> "34"
+                                "readlink" in command -> "/storage/emulated/0/Pictures/Tap/a b.png\n"
+                                "query" in command -> "Row: 0 _id=12\n"
+                                else -> "Result: Bundle[{}]"
+                            }
+                        FakeProcess(stdout = out)
+                    },
+                )
+            adb.scanMedia(serial, "/sdcard/Pictures/Tap/a b.png")
+            assertTrue(adb.mediaIndexed(serial, "Pictures/Tap", "a b.png"))
+            assertTrue(adb.mediaIndexed(serial, "Movies/Tap", "a b.mp4"))
+            assertEquals(
+                listOf(
+                    listOf("shell", "getprop", "ro.build.version.sdk"),
+                    listOf("shell", "readlink", "-f", "'/sdcard/Pictures/Tap/a b.png'"),
+                    listOf("shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", "'/storage/emulated/0/Pictures/Tap/a b.png'"),
+                ),
+                commands.take(3).map { it.drop(3) },
+            )
+            assertEquals(
+                listOf("content://media/external/images/media", "content://media/external/video/media"),
+                commands.drop(3).map { it[it.indexOf("--uri") + 1] },
             )
         }
 

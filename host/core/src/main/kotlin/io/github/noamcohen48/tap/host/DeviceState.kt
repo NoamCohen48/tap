@@ -145,6 +145,14 @@ sealed interface StateKey {
         private val ABSENT_DEFAULTS = mapOf(FONT_SCALE to "1.0")
 
         /**
+         * Settings the system applies to the configuration but not when deleted: an absent
+         * `font_weight_adjustment` reaches the configuration as `FONT_WEIGHT_ADJUSTMENT_UNDEFINED`,
+         * which `Configuration.updateFrom` skips, so text stays bold until a reboot. Restoring one
+         * as absent writes this neutral value first, then deletes it.
+         */
+        val NEUTRAL_BEFORE_DELETE = mapOf(BOLD_TEXT to "0")
+
+        /**
          * Whether [actual], as [Adb.readState] returned it for [id], is [expected]: an absent
          * (null) [expected] also holds when the system wrote the setting back at its default.
          */

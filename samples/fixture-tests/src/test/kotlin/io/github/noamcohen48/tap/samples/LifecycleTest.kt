@@ -28,8 +28,9 @@ class LifecycleTest {
             assertFalse(app.isRunning())
             val second = app.coldLaunch(".MainActivity")
             assertNotEquals(first, second)
-            // The in-process counter is gone with the old process.
-            assertEquals("Fault taps: 0", app.element(res("fault_status")).text())
+            // The in-process counter is gone with the old process. A cold launch returns on the
+            // new process too, before the window is laid out: wait for the node.
+            assertEquals("Fault taps: 0", app.await(res("fault_status")).visible().text())
 
             app.clearData()
             assertFalse(app.isRunning())
