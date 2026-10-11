@@ -107,11 +107,12 @@ class ElementWait internal constructor(
                 try {
                     element.snapshot()
                 } catch (e: CommandException) {
-                    if (e.code == ErrorCode.NOT_FOUND) {
-                        last = "not found"
-                        return@awaitUntil false
+                    when (e.code) {
+                        ErrorCode.NOT_FOUND -> last = "not found"
+                        ErrorCode.STALE_BEFORE_INPUT -> last = "re-rendering"
+                        else -> throw e
                     }
-                    throw e
+                    return@awaitUntil false
                 }
             last = "text=${snapshot.text} enabled=${snapshot.enabled} checked=${snapshot.checked} focused=${snapshot.focused}"
             predicate(snapshot)

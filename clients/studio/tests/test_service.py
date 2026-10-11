@@ -200,6 +200,26 @@ async def test_describe_element_reports_its_actions_and_range(attached, daemon):
     await refused(attached.describe_element(pb.DescribeElementRequest(selector=selector), None), Code.FAILED_PRECONDITION)
 
 
+async def test_describe_element_reports_staleness_without_implicit_retry(attached, daemon):
+    snapshots = 0
+
+    def answer(command):
+        nonlocal snapshots
+        if command.WhichOneof("op") == "snapshot":
+            snapshots += 1
+            return tap.CommandResult(error=tap.Error(code=tap.ERR_STALE_BEFORE_INPUT))
+        return device_answers(command)
+
+    daemon.devices.responder = answer
+    selector = json_format.ParseDict(SEARCH, tap.Selector())
+    await refused(
+        attached.describe_element(pb.DescribeElementRequest(selector=selector), None),
+        Code.FAILED_PRECONDITION,
+        "STALE_BEFORE_INPUT",
+    )
+    assert snapshots == 1
+
+
 async def test_device_status_is_the_device_info_and_the_resumed_activity(attached, daemon):
     daemon.devices.foreground = ("com.example", "com.example.Main")
     status = await attached.get_device_status(pb.GetDeviceStatusRequest(), None)

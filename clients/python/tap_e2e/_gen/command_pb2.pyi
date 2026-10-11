@@ -39,6 +39,7 @@ class ErrorCode(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ERR_PAYLOAD_TOO_LARGE: _ClassVar[ErrorCode]
     ERR_INTERNAL: _ClassVar[ErrorCode]
     ERR_UNKNOWN: _ClassVar[ErrorCode]
+    ERR_STALE_BEFORE_INPUT: _ClassVar[ErrorCode]
 
 class Direction(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -162,6 +163,7 @@ ERR_ARTIFACT_TRANSFER_FAILED: ErrorCode
 ERR_PAYLOAD_TOO_LARGE: ErrorCode
 ERR_INTERNAL: ErrorCode
 ERR_UNKNOWN: ErrorCode
+ERR_STALE_BEFORE_INPUT: ErrorCode
 DIR_UNSPECIFIED: Direction
 DIR_UP: Direction
 DIR_DOWN: Direction

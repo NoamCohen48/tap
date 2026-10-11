@@ -81,6 +81,13 @@ def test_an_obscured_node_says_to_close_the_covering_window(fake, agent):
         agent.tap("text=Item 9")
 
 
+def test_a_stale_node_says_nothing_changed_and_to_run_it_again(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_STALE_BEFORE_INPUT))
+    with pytest.raises(AgentError, match="STALE_BEFORE_INPUT.*\nthe node was re-rendered before any input"):
+        agent.tap("text=Item 9")
+
+
 def test_an_unknown_ref_says_to_snapshot_again(fake, agent):
     agent.attach("emulator-5554")
     with pytest.raises(AgentError, match="run `snapshot` for current refs") as info:

@@ -135,6 +135,8 @@ def _hint(error: TapError) -> str:
     if isinstance(error, CommandError):
         if error.code is ErrorCode.NOT_FOUND:
             return f"{message}\nnothing matches now; run `snapshot` to see the screen"
+        if error.code is ErrorCode.STALE_BEFORE_INPUT:
+            return f"{message}\nthe node was re-rendered before any input; nothing changed, so run the same command again"
         if error.code is ErrorCode.AMBIGUOUS:
             return f"{message}\nseveral nodes match; use a ref from `snapshot` or a narrower selector"
         if error.code is ErrorCode.NOT_INTERACTABLE and error.detail == "OBSCURED":

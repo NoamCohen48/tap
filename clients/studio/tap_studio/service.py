@@ -199,7 +199,8 @@ class Studio:
         try:
             snapshot = await worker.call(lambda: device.screen.element(selector).snapshot(), changes_screen=False)
         except CommandError as error:
-            # NOT_FOUND / AMBIGUOUS: the selector does not name one node now.
+            # The query failed (e.g. NOT_FOUND, AMBIGUOUS or STALE_BEFORE_INPUT).
+            # Do not retry implicitly; the next selection reads the node afresh.
             raise ConnectError(Code.FAILED_PRECONDITION, str(error)) from None
         except TapError as error:
             raise _connect_error(error) from None
