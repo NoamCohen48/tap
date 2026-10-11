@@ -14,6 +14,7 @@ import io.github.noamcohen48.tap.api.v1.Related
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.api.v1.MatchMode as ProtoMatchMode
 import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
 
 /**
@@ -206,10 +207,20 @@ class Selector internal constructor(
 
     /**
      * This selector restricted to nodes of [packageName]: one more predicate on the node, so
-     * package ownership travels in the selector itself ([App.element]).
+     * package ownership travels in the selector itself ([App.element]). An exact top-level
+     * package predicate already naming this package is kept unchanged, including the pick.
+     * Ownership only inside an OR branch or a relation still needs the predicate.
      */
-    internal fun inPackage(packageName: String): Selector =
-        withNode(conjunction(node, match(TextProperty.PROPERTY_PACKAGE_NAME, packageName, MatchMode.EXACT)))
+    internal fun inPackage(packageName: String): Selector {
+        val conjuncts = if (node.hasAllOf()) node.allOf.nodesList else listOf(node)
+        val alreadyOwned = conjuncts.any {
+            it.hasMatch() && it.match.property == TextProperty.PROPERTY_PACKAGE_NAME &&
+                it.match.value == packageName &&
+                (it.match.mode == ProtoMatchMode.MATCH_EXACT || it.match.mode == ProtoMatchMode.MATCH_UNSPECIFIED)
+        }
+        if (alreadyOwned) return this
+        return withNode(conjunction(node, match(TextProperty.PROPERTY_PACKAGE_NAME, packageName, MatchMode.EXACT)))
+    }
 
     /** Accept the first match in accessibility order instead of requiring exactly one. */
     fun first(): Selector = Selector(proto.toBuilder().setFirst(First.getDefaultInstance()).build())

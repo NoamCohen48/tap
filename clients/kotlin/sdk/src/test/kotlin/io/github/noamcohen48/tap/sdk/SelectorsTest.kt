@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.Match
+import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector.PickCase
 import io.github.noamcohen48.tap.api.v1.TextProperty
@@ -7,6 +9,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import io.github.noamcohen48.tap.api.v1.MatchMode as ProtoMatchMode
 
 /** Pure selector-building rules: composition never silently drops a match choice. */
 class SelectorsTest {
@@ -28,6 +31,62 @@ class SelectorsTest {
         assertEquals(TextProperty.PROPERTY_PACKAGE_NAME, owner.match.property)
         assertEquals(system, owner.match.value)
         assertEquals(1, bound.proto.at.index)
+    }
+
+    private fun owner(mode: ProtoMatchMode): Selector =
+        Selector(
+            io.github.noamcohen48.tap.api.v1.Selector.newBuilder().setNode(
+                Node.newBuilder().setMatch(
+                    Match.newBuilder().setProperty(TextProperty.PROPERTY_PACKAGE_NAME).setValue(system).setMode(mode),
+                ),
+            ).build(),
+        )
+
+    @Test
+    fun `reapplying an exact snapshot package is idempotent and keeps the pick`() {
+        for (mode in listOf(ProtoMatchMode.MATCH_EXACT, ProtoMatchMode.MATCH_UNSPECIFIED)) {
+            val packageOnly = owner(mode).first()
+            assertEquals(packageOnly.proto, packageOnly.inPackage(system).inPackage(system).proto)
+            val snapshot = (res("name") and owner(mode)).at(1)
+            assertEquals(snapshot.proto, snapshot.inPackage(system).inPackage(system).proto)
+        }
+    }
+
+    @Test
+    fun `package scope is still added for another owner an OR branch or a relation`() {
+        val different = res("name").inPackage("other.app").inPackage(system)
+        assertEquals(
+            listOf("other.app", system),
+            different.proto.node.allOf.nodesList.filter { it.hasMatch() }.map { it.match.value },
+        )
+        val predicates =
+            listOf(
+                res("name").inPackage(system) or text("elsewhere"),
+                res("name").hasParent(owner(ProtoMatchMode.MATCH_EXACT)),
+            )
+        for (predicate in predicates) {
+            val bound = predicate.inPackage(system)
+            assertEquals(system, bound.proto.node.allOf.nodesList.last().match.value)
+            val original = predicate.proto.node
+            val conjuncts = if (original.hasAllOf()) original.allOf.nodesList else listOf(original)
+            assertEquals(conjuncts, bound.proto.node.allOf.nodesList.dropLast(1))
+        }
+    }
+
+    @Test
+    fun `nonexact package matches do not replace app scoping`() {
+        val modes =
+            listOf(
+                ProtoMatchMode.MATCH_CONTAINS,
+                ProtoMatchMode.MATCH_STARTS_WITH,
+                ProtoMatchMode.MATCH_ENDS_WITH,
+                ProtoMatchMode.MATCH_REGEX,
+            )
+        for (mode in modes) {
+            val bound = owner(mode).inPackage(system)
+            assertEquals(2, bound.proto.node.allOf.nodesCount)
+            assertEquals(ProtoMatchMode.MATCH_EXACT, bound.proto.node.allOf.nodesList.last().match.mode)
+        }
     }
 
     @Test
