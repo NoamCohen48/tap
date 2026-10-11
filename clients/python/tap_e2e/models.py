@@ -501,6 +501,12 @@ class ScreenNode:
     candidates: tuple[SelectorCandidate, ...] = ()
     """Only from ``screen_snapshot(selector_candidates=True)``: every selector that matched only
     this node, best first (the first is ``selector``)."""
+    showing_hint: bool = False
+    """The field shows its hint rather than a value (``text`` then holds the hint)."""
+    content_invalid: bool = False
+    """The app marked the node's content invalid, e.g. a field that failed validation."""
+    error: str | None = None
+    """The error the app set on the node (``TextView.setError``), if any."""
 
 
 @dataclass(frozen=True)

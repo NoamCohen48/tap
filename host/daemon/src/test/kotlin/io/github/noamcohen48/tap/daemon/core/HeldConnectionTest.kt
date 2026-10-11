@@ -150,7 +150,9 @@ class HeldConnectionTest {
     fun `a gRPC call on a held connection ends with the call, so the connection still expires`() =
         runBlocking {
             val daemon = daemon()
-            val held = daemon.connectClient("agent", holdIdleMs = 300)
+            // Allow cold gRPC class loading and CI scheduling inside the idle budget. The
+            // repeated calls still span more than that budget, then awaitGone proves expiry.
+            val held = daemon.connectClient("agent", holdIdleMs = 2_000)
             val device = call { daemon.attachDevice(held.id, "serial-a", options) }
             val name = InProcessServerBuilder.generateName()
             val server = InProcessServerBuilder.forName(name).addService(DeviceService(daemon)).build().start()
@@ -159,7 +161,7 @@ class HeldConnectionTest {
                 val stub = DeviceServiceGrpc.newBlockingStub(channel)
                 val request = DriverLogRequest.newBuilder().setClientConnectionId(held.id).setAttachedDeviceId(device.id).build()
                 repeat(4) {
-                    delay(150)
+                    delay(750)
                     stub.driverLog(request)
                 }
                 assertTrue(daemon.clientConnectionExists(held.id))

@@ -77,6 +77,27 @@ class HierarchyParserTest {
     }
 
     @Test
+    fun `field state is read from the driver's dump and defaults off without it`() {
+        val xml =
+            wrap(
+                "<node class=\"android.widget.EditText\" package=\"p\" text=\"Name\" hint=\"Name\" showing-hint=\"true\" " +
+                    "content-invalid=\"true\" error=\"A name is required.\" bounds=\"[0,0][1,1]\"/>" +
+                    "<node class=\"android.widget.EditText\" package=\"p\" text=\"Ada\" error=\"\" bounds=\"[0,0][1,1]\"/>",
+            )
+        val (invalid, plain) = HierarchyParser.parse(xml).nodes
+        assertTrue(invalid.showingHint)
+        assertTrue(invalid.contentInvalid)
+        assertEquals("A name is required.", invalid.error)
+        assertEquals(false, plain.showingHint || plain.contentInvalid)
+        assertNull(plain.error)
+
+        val screen = ScreenSnapshots.screen(xml).nodes
+        assertTrue(screen[0].showingHint && screen[0].contentInvalid)
+        assertEquals("A name is required.", screen[0].error)
+        assertEquals(false, screen[1].hasError())
+    }
+
+    @Test
     fun `invisible nodes are dropped with their subtree`() {
         val xml =
             wrap(

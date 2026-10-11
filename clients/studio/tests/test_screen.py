@@ -195,6 +195,9 @@ def test_nodes_go_back_to_the_message_unchanged():
         interactive=True,
         selector=res("login").to_proto(),
         change=tap.NODE_ADDED,
+        showing_hint=True,
+        content_invalid=True,
+        error="Required",
         candidates=[
             tap.SelectorCandidate(selector=res("login").to_proto(), kind=tap.SELECTOR_KIND_PLAIN),
             tap.SelectorCandidate(selector=res("login").at(0).to_proto(), kind=tap.SELECTOR_KIND_BY_INDEX),

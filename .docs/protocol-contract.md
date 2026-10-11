@@ -205,7 +205,7 @@ result type.
 | `pinch` | `Pinch` (mutation) | `selector`, `direction` = `PINCH_OPEN`/`PINCH_CLOSE` (required), `percent` 1..100 (default 80) | `done` after `UiObject2.pinchOpen`/`pinchClose` across the element |
 | `fling` | `Fling` (mutation) | `selector`, `direction` (required) | `done` after one fast swipe (7 500 dp/s) across the whole element; no wait for scrolling to end and no "more content" guess |
 | `scroll` | `Scroll` (mutation) | `selector`, `direction` (required), `distance_percent` | `done` after one scroll segment; no scrollable pre-check and no report of whether content moved (the clients' `scrollUntil` loops `exists` + `scroll`) |
-| `dump_hierarchy` | `DumpHierarchy` | – | `text` = accessibility XML (diagnostic only) |
+| `dump_hierarchy` | `DumpHierarchy` | – | `text` = accessibility XML (diagnostic only): UiAutomator's dump format plus `showing-hint`, `content-invalid` and `error` per node |
 | `screenshot` | `CaptureScreenshot` (host-internal) | – | `done`; PNG blob + `Response.artifact` metadata (capability `artifact.screenshot.v1`) |
 | `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token`, `package_name`, `authority` | `done` + `Response.sync` |
 | `sync_poll` | `SyncPoll` (host-internal) | `observed_pid`, `observed_start_token`, `expected_process_start_uuid`, `expected_session_identity`, `package_name`, `authority` | `done` + `Response.sync` |

@@ -29,6 +29,11 @@ adb -s "$SERIAL" shell input keyevent KEYCODE_WAKEUP
 adb -s "$SERIAL" shell wm dismiss-keyguard
 adb -s "$SERIAL" shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
 
+echo "::group::Diagnostic hierarchy parity"
+adb -s "$SERIAL" install -r fixture-app/build/outputs/apk/debug/fixture-app-debug.apk
+ANDROID_SERIAL="$SERIAL" ./gradlew :device:driver:core:connectedDebugAndroidTest
+echo "::endgroup::"
+
 echo "::group::Kotlin sample suite"
 ./gradlew :samples:fixture-tests:test -Ptap.serials="$SERIAL"
 echo "::endgroup::"

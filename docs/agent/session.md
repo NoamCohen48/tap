@@ -38,6 +38,9 @@ a selector the server found to match exactly that node, and keeps naming it whil
 on screen. `(by index)` marks a node that only its position among similar nodes singles out:
 it has no id, text or description of its own, an accessibility gap in the app.
 
+An empty field showing its hint prints `empty  hint="Name"`, rather than presenting the hint
+as a typed value. App validation state prints `invalid` and `error="Cannot be blank"`.
+
 ## Act, and see what changed
 
 ```console
@@ -62,7 +65,9 @@ A **target** is a ref or `key=value` terms joined by commas: `id=`, `text=`, `te
 on the screen; `pkg=` keeps it to one app's nodes.
 
 `--settle` waits for the screen to stop changing after the action and prints the difference:
-`+` added and `-` removed nodes. That is usually enough to pick the next step without another
+`+` added and `-` removed nodes. Nodes with validation errors are also shown, marked `=` if
+their ref is unchanged; validation state does not change a node's identity. That is usually
+enough to pick the next step without another
 snapshot. A screen that never goes quiet (a blinking cursor, a spinner) prints
 `(screen still changing after 10s)` with the difference so far.
 
