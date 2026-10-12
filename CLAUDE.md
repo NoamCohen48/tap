@@ -138,6 +138,10 @@ never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
   group; a task that grows keeps growing its one PR.
 - PR body: what changed and why, the checks run, and a `Device matrix: run / not run` line
   (device tests only when the user asked). No co-author or "Generated with" lines.
+- Every open PR carries exactly one status label: `wip` until the user says it is finished, then
+  `ready` (`gh pr edit N --add-label ready --remove-label wip`). A PR is opened with `wip`;
+  passing CI or finishing the work is not the user's approval. Any later change to a `ready`
+  PR (other than a rebase onto `main`) moves it back to `wip`.
 - The PR title and body become the commit on `main` (squash = PR title + PR body), so write
   them for a reader of `git log` who has never seen the PR, the branch or the `.docs/` plans:
   - Title: `<Area>: <what changed>`, in plain words, capitalised, no trailing period, at most
