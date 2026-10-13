@@ -31,6 +31,10 @@ returns when the device is provably in the requested state, or fails with
 | `process()` | | the single current `AppProcess` |
 | `is_running()` | | any process of the package |
 
+`force_stop()` and `clear_data()` stop the app's own activities only. A screen of another app
+that the app opened in its own task, such as an unanswered permission dialog, is not part of the
+app: Android leaves it in that task, and it can still be on screen afterwards.
+
 Granting, revoking and the permission dialog are on [Permissions](permissions.md).
 
 ```python

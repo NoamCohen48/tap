@@ -136,6 +136,55 @@ class AdbTest {
                   * Task{3ec4d83 #7 type=home I=com.example.launcher/.Home U=0 sz=1}
                 """.trimIndent()
             assertFalse(scriptedAdb(other).hasTaskOrActivity(serial, "com.example"))
+
+            // API 34 after force-stop with a runtime permission dialog open: the dialog stays in
+            // the app's task for good, and nothing of the package is left.
+            val dialog =
+                """
+                  * Task{214f226 #192 type=standard A=10191:com.example U=0 visible=true sz=1}
+                    * Hist  #0: ActivityRecord{edeb33 u0 com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.GrantPermissionsActivity t192}
+                  * Task{1e0bb8 #1 type=home ?? U=0 visible=false sz=1}
+                    * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
+                ActivityTaskSupervisor state:
+                    * Task{214f226 #192 type=standard A=10191:com.example U=0 visible=true sz=1}
+                    * Task{1e0bb8 #1 type=home ?? U=0 visible=false sz=1}
+                """.trimIndent()
+            // The hierarchy lists the task a second time without its records: still the dialog's.
+            assertFalse(scriptedAdb(dialog).hasTaskOrActivity(serial, "com.example"))
+            // While the app's own activity is still under the dialog, it counts.
+            val under =
+                dialog
+                    .replace("Hist  #0: ActivityRecord{edeb33", "Hist  #1: ActivityRecord{edeb33")
+                    .replace("t192}\n", "t192}\n    * Hist  #0: ActivityRecord{9c748a9 u0 com.example/.MainActivity t192}\n")
+            assertTrue(scriptedAdb(under).hasTaskOrActivity(serial, "com.example"))
+            // Another task of the package still counts while the dialog's does not.
+            assertTrue(scriptedAdb(emptiedTask.lines().first() + "\n" + dialog).hasTaskOrActivity(serial, "com.example"))
+
+            // The same on API 29: a `TaskRecord`, its record list and intent, and a second,
+            // record-less listing under "Running activities" (no `* `, so not a task header).
+            val dialog29 =
+                """
+                    Task id #812
+                    mBounds=Rect(0, 0 - 0, 0)
+                    * TaskRecord{8e5a3d1 #812 A=com.example U=0 StackId=45 sz=1}
+                      affinity=com.example
+                      intent={act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.example/.MainActivity}
+                      realActivity=com.example/.MainActivity
+                      Activities=[ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}]
+                      * Hist #0: ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}
+                          packageName=com.google.android.permissioncontroller processName=com.google.android.permissioncontroller
+
+                    Running activities (most recent first):
+                      TaskRecord{8e5a3d1 #812 A=com.example U=0 StackId=45 sz=1}
+                        Run #0: ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}
+                """.trimIndent()
+            assertFalse(scriptedAdb(dialog29).hasTaskOrActivity(serial, "com.example"))
+            val under29 =
+                dialog29.replace("Hist #0: ActivityRecord{c41f0e2", "Hist #1: ActivityRecord{c41f0e2").replace(
+                    "processName=com.google.android.permissioncontroller\n",
+                    "processName=com.google.android.permissioncontroller\n      * Hist #0: ActivityRecord{5d6e7f u0 com.example/.MainActivity t812}\n",
+                )
+            assertTrue(scriptedAdb(under29).hasTaskOrActivity(serial, "com.example"))
         }
 
     @Test
