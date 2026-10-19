@@ -1,0 +1,7 @@
+<resources>
+    <item type="id" name="title"/><item type="id" name="summary"/><item type="id" name="validation"/>
+    <item type="id" name="wizard"/><item type="id" name="about"/><item type="id" name="close"/>
+    <item type="id" name="name"/><item type="id" name="next"/><item type="id" name="home"/>
+    <item type="id" name="tier"/><item type="id" name="terms"/><item type="id" name="edit"/>
+    <item type="id" name="explain"/><item type="id" name="confirm"/>
+</resources>

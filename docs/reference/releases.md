@@ -61,6 +61,10 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
     - Tap Studio: `tap-studio`, its page and the `tap-recording/1` format;
     - the watcher: `tap-watcher`, its page, the `tap-watch-steps/2` file and the server's
       `WatchService` (`Watch`, `WatchVideo`).
+    - App Explorer (development only, no release tag): `tap-explorer`, its Python graph API,
+      the discovery workbench, the offline benchmark, robot drafts (`tap-robots/1`) and the
+      `tap-exploration/1` metadata format. See the
+      [explorer guide](../guide/explorer.md).
 - A published version is never replaced: a fix is a new patch release.
 
 ## Where things are published

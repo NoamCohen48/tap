@@ -334,7 +334,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
 
 
 class FakeApps(app_pb2_grpc.AppServiceServicer):
-    """IsInstalled/ForceStop/Launch/ColdLaunch/RevokePermission/Foreground/OpenLink/Install; ``owners`` logs (rpc,
+    """IsInstalled/ForceStop/Launch/ColdLaunch/ClearData/RevokePermission/Foreground/OpenLink/Install; ``owners`` logs (rpc,
     client_connection_id). OpenLink reports ``<package>/.Link`` unless ``any_app``."""
 
     def __init__(self) -> None:
@@ -345,6 +345,9 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
         self.links: list[pb.OpenLinkRequest] = []
         self.launches: list[pb.LaunchRequest] = []
         self.cold_launches: list[pb.ColdLaunchRequest] = []
+        self.clears: list[pb.ClearDataRequest] = []
+        self.on_clear: Callable[[], None] | None = None
+        self.installed = True  # What IsInstalled answers; an Install sets it.
         self.revokes: list[pb.RevokePermissionRequest] = []
         self.locales: list[str] = []
         self.log: FakeConnections | None = None
@@ -356,7 +359,7 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
 
     def IsInstalled(self, request, context):
         self.owners.append(("is_installed", request.app.client_connection_id))
-        return pb.IsInstalledResponse(installed=True)
+        return pb.IsInstalledResponse(installed=self.installed)
 
     def ForceStop(self, request, context):
         self.owners.append(("force_stop", request.app.client_connection_id))
@@ -375,6 +378,14 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
         self.cold_launches.append(request)
         self._record("cold_launch", request.app)
         return pb.ColdLaunchResponse(process=pb.ProcessIdentity(pid=4242, start_token="t"))
+
+    def ClearData(self, request, context):
+        self.owners.append(("clear_data", request.app.client_connection_id))
+        self.clears.append(request)
+        self._record("clear_data", request.app)
+        if self.on_clear is not None:
+            self.on_clear()
+        return pb.ClearDataResponse()
 
     def RevokePermission(self, request, context):
         self.owners.append(("revoke_permission", request.app.client_connection_id))
@@ -411,6 +422,7 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
 
     def Install(self, request_iterator, context):
         self.install_parts.extend(request_iterator)
+        self.installed = True
         return pb.InstallResponse()
 
 

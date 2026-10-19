@@ -1,0 +1,155 @@
+{
+  "format": "tap-robots-key/1",
+  "package": "org.fossify.notes",
+  "provenance": "analyst-provisional",
+  "note": "Held-out app. Fossify Notes 1.7.0 (versionCode 13, the upstream release APK notes-13-foss-release.apk, sha256 5a56e0e3...bfd), written from its source at tag 1.7.0 (MainActivity menu handling and refreshMenuItems, NewNoteDialog, RenameNoteDialog, NewChecklistItemDialog, SortChecklistDialog, OpenNoteDialog, TasksFragment, the layouts and menu.xml) before any explorer run on the app, and frozen before scoring: methods, preconditions and checks are not changed after a run; recognize rules may be corrected only where the snapshots expose different resource IDs than the layouts, and each such correction is listed here. Toolbar: on a 411dp-wide phone only the 'always' items get icons (search, new note, open note once there are two notes, undo after typing); rename, sort and the rest are in the overflow menu, reached by 'More options'. NewNoteDialog: OK creates the note and returns to the main screen when the title is not empty and no note has that title (the type follows the checked radio button, and the dialog checks the type created last); an empty title only shows a toast. Not keyed as facts: a title already taken only shows a toast, so OK stays on the dialog with a non-empty title; RenameNoteDialog rejects the note's own current title the same way (case-sensitive), so OK without an edit stays. NewChecklistItemDialog: OK adds the items when any title field is not empty, else a toast. Cancel returns to whatever opened a dialog (the main screen, or the open-note dialog for a new note started there), so those methods are optional. Out of scope: settings, about, share, print, open file, export, import, create shortcut, lock and unlock (they leave the app or open the commons security dialog), delete note and delete checked items (held by the default policy), checklist selection mode (long press), the checked-items expander, text editing actions in the note.",
+  "verbs": ["tap", "fill"],
+  "screens": [
+    {
+      "id": "new-note",
+      "name": "NewNote",
+      "recognize": [{"resource": "new_note_type"}],
+      "workflow": true,
+      "methods": [
+        {"verb": "fill", "control": "locked_note_title", "to": "new-note"},
+        {"verb": "tap", "control": "type_text_note", "to": "new-note"},
+        {"verb": "tap", "control": "type_checklist", "to": "new-note"},
+        {"verb": "tap", "control": "button1", "to": "text-note",
+         "when": {"mode": "all", "facts": ["locked_note_title is not empty", "type_text_note checked"]}},
+        {"verb": "tap", "control": "button1", "to": "checklist",
+         "when": {"mode": "all", "facts": ["locked_note_title is not empty", "type_checklist checked"]}},
+        {"verb": "tap", "control": "button1", "to": "new-note",
+         "when": {"mode": "all", "facts": ["locked_note_title is empty"]}},
+        {"verb": "tap", "control": "button2", "to": "text-note", "optional": true},
+        {"verb": "tap", "control": "button2", "to": "checklist", "optional": true},
+        {"verb": "tap", "control": "button2", "to": "open-note", "optional": true}
+      ],
+      "checks": [
+        {"resource": "type_checklist", "kind": "checked"},
+        {"resource": "type_text_note", "kind": "checked", "optional": true}
+      ]
+    },
+    {
+      "id": "rename",
+      "name": "RenameNote",
+      "recognize": [{"resource": "locked_note_title"}, {"absent": "new_note_type"}],
+      "methods": [
+        {"verb": "fill", "control": "locked_note_title", "to": "rename"},
+        {"verb": "tap", "control": "button1", "to": "text-note"},
+        {"verb": "tap", "control": "button1", "to": "checklist", "optional": true},
+        {"verb": "tap", "control": "button1", "to": "rename"},
+        {"verb": "tap", "control": "button2", "to": "text-note", "optional": true},
+        {"verb": "tap", "control": "button2", "to": "checklist", "optional": true}
+      ],
+      "checks": []
+    },
+    {
+      "id": "add-items",
+      "name": "AddChecklistItems",
+      "recognize": [{"resource": "add_item"}],
+      "workflow": true,
+      "methods": [
+        {"verb": "fill", "control": "title_edit_text", "to": "add-items"},
+        {"verb": "tap", "control": "add_item", "to": "add-items"},
+        {"verb": "tap", "control": "settings_add_checklist_top", "to": "add-items", "optional": true},
+        {"verb": "tap", "control": "button1", "to": "checklist",
+         "when": {"mode": "all", "facts": ["title_edit_text is not empty"]}},
+        {"verb": "tap", "control": "button1", "to": "add-items",
+         "when": {"mode": "all", "facts": ["title_edit_text is empty"]}},
+        {"verb": "tap", "control": "button2", "to": "checklist"}
+      ],
+      "checks": []
+    },
+    {
+      "id": "sort",
+      "name": "SortChecklist",
+      "recognize": [{"resource": "sorting_dialog_radio_sorting"}],
+      "methods": [
+        {"verb": "tap", "control": "sorting_dialog_radio_title", "to": "sort"},
+        {"verb": "tap", "control": "sorting_dialog_radio_date_created", "to": "sort"},
+        {"verb": "tap", "control": "sorting_dialog_radio_custom", "to": "sort"},
+        {"verb": "tap", "control": "sorting_dialog_radio_ascending", "to": "sort"},
+        {"verb": "tap", "control": "sorting_dialog_radio_descending", "to": "sort"},
+        {"verb": "tap", "control": "sorting_dialog_use_for_this_checklist", "to": "sort"},
+        {"verb": "tap", "control": "button1", "to": "checklist"},
+        {"verb": "tap", "control": "button2", "to": "checklist"}
+      ],
+      "checks": [
+        {"resource": "sorting_dialog_radio_custom", "kind": "checked"},
+        {"resource": "sorting_dialog_use_for_this_checklist", "kind": "checked"},
+        {"resource": "sorting_dialog_radio_title", "kind": "checked", "optional": true},
+        {"resource": "sorting_dialog_radio_date_created", "kind": "checked", "optional": true},
+        {"resource": "sorting_dialog_radio_ascending", "kind": "checked", "optional": true},
+        {"resource": "sorting_dialog_radio_descending", "kind": "checked", "optional": true}
+      ]
+    },
+    {
+      "id": "open-note",
+      "name": "OpenNote",
+      "recognize": [{"resource": "dialog_open_note_list"}],
+      "methods": [
+        {"verb": "tap", "control": "new_note_fab", "to": "new-note"},
+        {"verb": "tap", "control": "open_note_item_holder", "to": "text-note"},
+        {"verb": "tap", "control": "open_note_item_holder", "to": "checklist", "optional": true},
+        {"verb": "tap", "control": "button2", "to": "text-note", "optional": true},
+        {"verb": "tap", "control": "button2", "to": "checklist", "optional": true}
+      ],
+      "checks": []
+    },
+    {
+      "id": "overflow",
+      "name": "MoreOptions",
+      "recognize": [{"text": "Export as file"}],
+      "methods": [
+        {"verb": "tap", "control": "Rename note", "to": "rename"},
+        {"verb": "tap", "control": "Sort by", "to": "sort"},
+        {"verb": "tap", "control": "Uncheck all items", "to": "checklist", "optional": true}
+      ],
+      "checks": []
+    },
+    {
+      "id": "search",
+      "name": "Search",
+      "recognize": [{"resource": "search_query"}],
+      "methods": [
+        {"verb": "fill", "control": "search_query", "to": "search"},
+        {"verb": "tap", "control": "search_next", "to": "search", "optional": true},
+        {"verb": "tap", "control": "search_previous", "to": "search", "optional": true},
+        {"verb": "tap", "control": "search_clear", "to": "text-note"}
+      ],
+      "checks": []
+    },
+    {
+      "id": "checklist",
+      "name": "Checklist",
+      "recognize": [{"resource": "checklist_fab"}],
+      "methods": [
+        {"verb": "tap", "control": "checklist_fab", "to": "add-items"},
+        {"verb": "tap", "control": "fragment_placeholder_2", "to": "add-items"},
+        {"verb": "tap", "control": "checklist_holder", "to": "checklist"},
+        {"verb": "tap", "control": "new_note", "to": "new-note"},
+        {"verb": "tap", "control": "open_note", "to": "open-note"},
+        {"verb": "tap", "control": "More options", "to": "overflow"}
+      ],
+      "checks": [
+        {"resource": "checklist_list", "kind": "list"},
+        {"resource": "fragment_placeholder", "kind": "shown", "optional": true}
+      ]
+    },
+    {
+      "id": "text-note",
+      "name": "TextNote",
+      "recognize": [{"resource": "text_note_view"}],
+      "methods": [
+        {"verb": "fill", "control": "text_note_view", "to": "text-note"},
+        {"verb": "tap", "control": "new_note", "to": "new-note"},
+        {"verb": "tap", "control": "open_search", "to": "search"},
+        {"verb": "tap", "control": "open_note", "to": "open-note"},
+        {"verb": "tap", "control": "More options", "to": "overflow"},
+        {"verb": "tap", "control": "undo", "to": "text-note", "optional": true},
+        {"verb": "tap", "control": "redo", "to": "text-note", "optional": true}
+      ],
+      "checks": []
+    }
+  ]
+}
