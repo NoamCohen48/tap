@@ -1,0 +1,617 @@
+{
+ "format": "tap-robots-key/1",
+ "package": "me.hackerchick.catima",
+ "provenance": "analyst-provisional",
+ "note": "Held-out app. Catima 2.45.2 (versionCode 1006, the upstream release APK app-foss-release.apk, sha256 46b034d3...219c), written from its source at tag v2.45.2 (504801c) before any explorer run on the app, and frozen before scoring: methods, preconditions and checks are not changed after a run; recognize rules may be corrected only where the snapshots expose different resource IDs or texts than the source, and each such correction is listed here. Controls without a resource ID are keyed by their label (dialog rows, sort and display options, tabs, Navigate up, More options), so they may not match how the explorer names them; most are optional. LoyaltyCardEditActivity.doSave: Save stays on the form with 'Field must not be empty' when the store name (trimmed) or the card ID is empty, else saves and finishes (back to the list for a new card, to the card view for an edited one). Not keyed: a whitespace-only store name also fails, and an invalid balance blocks Save on the Options tab. ScanActivity: 'More options' opens 'Add a card in a different way'; 'Add a card with no barcode' opens a dialog whose OK is disabled until the ID-less field is not empty (so OK is keyed without a precondition), OK opens the form with that card ID; 'Enter the barcode manually' warns first ('Scanning is recommended'), Continue opens the barcode selector, whose row returns to the form when the value is valid for that barcode type and else stays with a toast (not keyed as a fact). ManageGroupsActivity: + opens 'Enter group name', whose OK is disabled for an empty or already used name (error text on the ID-less field). Navigate up from the form asks 'Leave without saving?' only after a change. Out of scope: the camera and its permission, import from image/PDF/pkpass, import/export, settings, about, card sharing and the card view's bottom bar, the list's selection mode (long press), editing a group (ManageGroupActivity), group delete (held by the default policy), photos, date pickers, the barcode value dialog and the barcode-update question.",
+ "screens": [
+  {
+   "id": "exit-confirm",
+   "name": "LeaveWithoutSaving",
+   "recognize": [
+    {
+     "text": "Leave without saving?"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "card-list",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "card-view",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "button2",
+     "to": "card-form"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "no-barcode",
+   "name": "AddWithoutBarcode",
+   "recognize": [
+    {
+     "text": "Enter the ID number or text on your card"
+    }
+   ],
+   "workflow": true,
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "card-form"
+    },
+    {
+     "verb": "tap",
+     "control": "button2",
+     "to": "scan"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "manual-warning",
+   "name": "ScanningRecommended",
+   "recognize": [
+    {
+     "text": "Scanning is recommended"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "barcode-selector"
+    },
+    {
+     "verb": "tap",
+     "control": "button2",
+     "to": "scan"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "other-ways",
+   "name": "AddInADifferentWay",
+   "recognize": [
+    {
+     "text": "Add a card in a different way"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "Add a card with no barcode",
+     "to": "no-barcode"
+    },
+    {
+     "verb": "tap",
+     "control": "Enter the barcode manually",
+     "to": "manual-warning"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "group-name",
+   "name": "EnterGroupName",
+   "recognize": [
+    {
+     "text": "Enter group name"
+    }
+   ],
+   "workflow": true,
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "groups"
+    },
+    {
+     "verb": "tap",
+     "control": "button2",
+     "to": "groups"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "sort",
+   "name": "SortBy",
+   "recognize": [
+    {
+     "resource": "checkBox_reverse"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "Name",
+     "to": "sort"
+    },
+    {
+     "verb": "tap",
+     "control": "Most recently added",
+     "to": "sort",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Most recently used",
+     "to": "sort",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Valid from",
+     "to": "sort",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Expiry",
+     "to": "sort",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "checkBox_reverse",
+     "to": "sort"
+    },
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "card-list"
+    },
+    {
+     "verb": "tap",
+     "control": "button2",
+     "to": "card-list"
+    }
+   ],
+   "checks": [
+    {
+     "resource": "checkBox_reverse",
+     "kind": "checked"
+    }
+   ]
+  },
+  {
+   "id": "display-options",
+   "name": "DisplayOptions",
+   "recognize": [
+    {
+     "text": "Display options"
+    },
+    {
+     "resource": "select_dialog_listview"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "Show card ID",
+     "to": "display-options",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Show balance",
+     "to": "display-options",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Show validity",
+     "to": "display-options",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Show archived cards",
+     "to": "display-options",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "button1",
+     "to": "card-list"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "overflow",
+   "name": "MainOverflow",
+   "recognize": [
+    {
+     "text": "Import/export"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "Groups",
+     "to": "groups"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "barcode-selector",
+   "name": "SelectBarcode",
+   "recognize": [
+    {
+     "resource": "barcodes"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "fill",
+     "control": "cardId",
+     "to": "barcode-selector"
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeName",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeName",
+     "to": "barcode-selector",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeImage",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeImage",
+     "to": "barcode-selector",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "scan",
+     "optional": true
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "card-form",
+   "name": "AddCard",
+   "recognize": [
+    {
+     "resource": "fabSave"
+    },
+    {
+     "resource": "tabs"
+    }
+   ],
+   "workflow": true,
+   "methods": [
+    {
+     "verb": "fill",
+     "control": "storeNameEdit",
+     "to": "card-form"
+    },
+    {
+     "verb": "fill",
+     "control": "cardIdView",
+     "to": "card-form"
+    },
+    {
+     "verb": "fill",
+     "control": "noteEdit",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "fill",
+     "control": "balanceField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Card",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Options",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Photos",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeIdField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeTypeField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcodeEncodingField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "balanceCurrencyField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "validFromField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "expiryField",
+     "to": "card-form",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "enterButton",
+     "to": "scan",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "barcode",
+     "to": "scan",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "fabSave",
+     "to": "card-list",
+     "when": {
+      "mode": "all",
+      "facts": [
+       "storeNameEdit is not empty",
+       "cardIdView is not empty"
+      ]
+     }
+    },
+    {
+     "verb": "tap",
+     "control": "fabSave",
+     "to": "card-view",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "fabSave",
+     "to": "card-form",
+     "when": {
+      "mode": "any",
+      "facts": [
+       "storeNameEdit is empty",
+       "cardIdView is empty"
+      ]
+     }
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "exit-confirm",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "card-list",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "card-view",
+     "optional": true
+    }
+   ],
+   "checks": [
+    {
+     "resource": "storeNameEdit",
+     "kind": "error"
+    },
+    {
+     "resource": "cardIdView",
+     "kind": "error",
+     "optional": true
+    }
+   ]
+  },
+  {
+   "id": "card-view",
+   "name": "CardView",
+   "recognize": [
+    {
+     "resource": "fabEdit"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "fabEdit",
+     "to": "card-form"
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "card-list",
+     "optional": true
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "scan",
+   "name": "ScanCardBarcode",
+   "recognize": [
+    {
+     "resource": "fabOtherOptions"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "fabOtherOptions",
+     "to": "other-ways"
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "card-list",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "card-form",
+     "optional": true
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "groups",
+   "name": "Groups",
+   "recognize": [
+    {
+     "resource": "fabAdd"
+    },
+    {
+     "text": "Groups"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "fabAdd",
+     "to": "group-name"
+    },
+    {
+     "verb": "tap",
+     "control": "moveUp",
+     "to": "groups",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "moveDown",
+     "to": "groups",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "Navigate up",
+     "to": "card-list",
+     "optional": true
+    }
+   ],
+   "checks": [
+    {
+     "resource": "list",
+     "kind": "list"
+    }
+   ]
+  },
+  {
+   "id": "card-list",
+   "name": "CardList",
+   "recognize": [
+    {
+     "resource": "fabAdd"
+    }
+   ],
+   "methods": [
+    {
+     "verb": "tap",
+     "control": "fabAdd",
+     "to": "scan"
+    },
+    {
+     "verb": "tap",
+     "control": "row",
+     "to": "card-view"
+    },
+    {
+     "verb": "tap",
+     "control": "action_sort",
+     "to": "sort"
+    },
+    {
+     "verb": "tap",
+     "control": "action_display_options",
+     "to": "display-options"
+    },
+    {
+     "verb": "tap",
+     "control": "action_search",
+     "to": "card-list",
+     "optional": true
+    },
+    {
+     "verb": "fill",
+     "control": "search_src_text",
+     "to": "card-list",
+     "optional": true
+    },
+    {
+     "verb": "tap",
+     "control": "More options",
+     "to": "overflow"
+    }
+   ],
+   "checks": [
+    {
+     "resource": "list",
+     "kind": "list"
+    },
+    {
+     "resource": "helpSection",
+     "kind": "shown",
+     "optional": true
+    },
+    {
+     "resource": "noMatchingCardsText",
+     "kind": "shown",
+     "optional": true
+    }
+   ]
+  }
+ ]
+}

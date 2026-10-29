@@ -24,6 +24,14 @@ The watcher is not released yet (`client-watcher` has no tag): the first bundle 
 landed needs a `client-watcher/v0.0.1` release first, since the bundle takes every family
 (below). Its user docs are `docs/watcher/`.
 
+`clients/explorer` (`tap-explorer`) is an **unreleased experimental development package**.
+Its initial version is in `clients/explorer/pyproject.toml`; the Python CI job builds/tests it,
+including a project-scoped Pyright check. Its optional `live` extra depends on `tap-e2e`;
+CI also builds/lints `samples/explorer-app` and runs its bounded pilot in the device lane.
+The sample APK is a test fixture, not a separately published artifact. Explorer has no release
+tag family, release workflow, PyPI publication, or release-set entry yet. Do not tag it until
+those are deliberately added.
+
 ### The host daemon and the driver are one artifact (the engine)
 
 The driver APKs (`device/driver`) are not published on their own. They ride inside the
