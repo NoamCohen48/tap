@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
@@ -265,6 +267,8 @@ class WireContractTest {
     // --- Fakes ----------------------------------------------------------------------------------
 
     private class Connections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
+        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.getDefaultInstance()
+
         val closeWith = CompletableDeferred<String>()
 
         @Volatile var closeFirst: String? = null

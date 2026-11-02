@@ -226,7 +226,9 @@ GitHub with the 0.0.1 release (2026-09-28).
 Not started: sharding across devices at the JUnit platform level (device locks handle
 concurrency; nothing distributes classes across devices), a physical-device / API 29 CI lane, soak lane, benchmark
 gates (per-command latency, session start time), the confidence-based reliability gate,
-upgrade/rollback procedure, run-time client↔daemon version skew check.
+upgrade/rollback procedure. The run-time client↔daemon check covers an older server only
+(`ServerVersionTest`, `test_connect_refuses_a_server_older_than_the_client`): a newer server
+that dropped a field in a breaking 0.x change is not detected.
 
 ## Second-language binding (design doc §8)
 

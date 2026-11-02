@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.junit5
 
+import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
@@ -166,6 +168,8 @@ class ConnectionMemoTest {
         }
 
     private class FakeConnections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
+        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.getDefaultInstance()
+
         val connects = AtomicInteger(0)
         val disconnects = CopyOnWriteArrayList<String>()
         private val drops = ConcurrentHashMap<String, CompletableDeferred<Unit>>()

@@ -21,6 +21,15 @@ Driver, server, clients (additive, protocol 5.1):
   as UiAutomator does, so a busy main thread no longer holds a double tap or drag past its
   deadline.
 
+Clients (Kotlin, Python):
+
+- **An older server is refused at connect.** The first `connect` of a client (and Python
+  `resume`) compares the server's `Info().daemon_version` with the engine the client's stubs
+  come from (Kotlin `TAP_API_VERSION` in `tap-api`, Python `tap_e2e._gen.engine_version`) and
+  fails with both versions named when the server is older. Such a server used to ignore fields
+  it did not know, or fail one call deep in a test with `UNIMPLEMENTED`. A newer server is
+  accepted; a version that is not `major.minor.patch` is not checked.
+
 Server:
 
 - **Force-stop and clear data finish while a permission dialog is open.** A runtime permission

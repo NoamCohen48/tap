@@ -94,6 +94,8 @@ class TapClient public constructor(
     internal val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(callChannel)
     internal val apps = AppServiceGrpcKt.AppServiceCoroutineStub(callChannel)
 
+    private val versionChecked = AtomicBoolean(false)
+
     /** Daemon version and pid, protocol version, ADB executable, state dir, whether a driver is available. */
     suspend fun info(): ServerInfo =
         mapped {
@@ -121,8 +123,12 @@ class TapClient public constructor(
      * before the first event fails the connect and closes the newly opened id under a bounded
      * non-cancellable context. A later `closing` event (the daemon reaped this connection or is
      * shutting down) makes the connection unusable with the daemon's reason.
+     *
+     * The first connect of a client also checks the server's version: a server older than the
+     * engine this client was built against fails it with [TapException] naming both versions.
      */
     suspend fun connect(name: String): TapConnection {
+        checkServerVersion()
         val id =
             mapped {
                 clientConnections
@@ -132,6 +138,13 @@ class TapClient public constructor(
             }
         // observe() closes the new id itself when it fails before the first event.
         return TapConnection(this, id).also { it.observe() }
+    }
+
+    /** Fails when the server is older than this client's stubs ([ServerVersion]); once per client. */
+    private suspend fun checkServerVersion() {
+        if (versionChecked.get()) return
+        ServerVersion.incompatibility(info().daemonVersion)?.let { throw TapException(it) }
+        versionChecked.set(true)
     }
 
     /**

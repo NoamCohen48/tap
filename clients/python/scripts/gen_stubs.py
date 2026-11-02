@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Regenerates tap_e2e/_gen from contracts/proto/*.proto, or verifies it is current (--check).
 
+`_gen/engine_version.py` records the engine version (gradle.properties `tap.version.engine`) the
+stubs belong to: the client refuses a server older than it. An engine version bump therefore
+needs a regeneration too, which --check enforces.
+
 The generated modules are committed so `pip install tap-e2e` needs no protoc; CI runs
 `gen_stubs.py --check` to fail when the proto and the stubs drift apart.
 """
@@ -17,6 +21,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 API = ROOT / "contracts" / "proto"
+GRADLE_PROPERTIES = ROOT / "gradle.properties"
 OUT = ROOT / "clients" / "python" / "tap_e2e" / "_gen"
 PROTOS = sorted(API.glob("*.proto"))
 # Every proto yields <name>_pb2.py/.pyi and <name>_pb2_grpc.py (empty of stubs when it has no server).
@@ -24,7 +29,7 @@ FILES = tuple(
     f"{proto.stem}_pb2{suffix}"
     for proto in PROTOS
     for suffix in (".py", ".pyi", "_grpc.py")
-) + ("__init__.py",)
+) + ("__init__.py", "engine_version.py")
 # protoc emits absolute imports between generated modules; the stubs live inside one package.
 SIBLING_IMPORT = re.compile(
     r"^(?:import (\w+_pb2) as (\w+)|from (\w+_pb2) import)", re.MULTILINE
@@ -64,6 +69,19 @@ def generate(into: pathlib.Path) -> None:
         f"# The package namespace is the union of {modules}: `from tap_e2e._gen import Selector`.\n"
         + exports
     )
+    (into / "engine_version.py").write_text(
+        "# Generated from gradle.properties by scripts/gen_stubs.py; do not edit.\n"
+        "# The engine whose tap.v1 server API these stubs were generated from.\n"
+        f'ENGINE_VERSION = "{engine_version()}"\n'
+    )
+
+
+def engine_version() -> str:
+    for line in GRADLE_PROPERTIES.read_text().splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() == "tap.version.engine":
+            return value.strip()
+    raise SystemExit(f"no tap.version.engine in {GRADLE_PROPERTIES}")
 
 
 def _relative_import(match: re.Match[str]) -> str:
