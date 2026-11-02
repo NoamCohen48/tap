@@ -64,6 +64,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.DriverLogRequest.SerializeToString,
                 response_deserializer=device__pb2.DriverLogResponse.FromString,
                 _registered_method=True)
+        self.DeviceLogs = channel.unary_unary(
+                '/tap.v1.DeviceService/DeviceLogs',
+                request_serializer=device__pb2.DeviceLogsRequest.SerializeToString,
+                response_deserializer=device__pb2.DeviceLogsResponse.FromString,
+                _registered_method=True)
         self.StartRecording = channel.unary_unary(
                 '/tap.v1.DeviceService/StartRecording',
                 request_serializer=device__pb2.StartRecordingRequest.SerializeToString,
@@ -186,6 +191,14 @@ class DeviceServiceServicer:
 
     def DriverLog(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeviceLogs(self, request, context):
+        """The device's own record since the attachment opened, for failure evidence: logcat, the
+        crashes and ANRs, and the activity and window state now. Diagnostic only, not logged.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -368,6 +381,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.DriverLog,
                     request_deserializer=device__pb2.DriverLogRequest.FromString,
                     response_serializer=device__pb2.DriverLogResponse.SerializeToString,
+            ),
+            'DeviceLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeviceLogs,
+                    request_deserializer=device__pb2.DeviceLogsRequest.FromString,
+                    response_serializer=device__pb2.DeviceLogsResponse.SerializeToString,
             ),
             'StartRecording': grpc.unary_unary_rpc_method_handler(
                     servicer.StartRecording,
@@ -617,6 +635,33 @@ class DeviceService:
             '/tap.v1.DeviceService/DriverLog',
             device__pb2.DriverLogRequest.SerializeToString,
             device__pb2.DriverLogResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeviceLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/DeviceLogs',
+            device__pb2.DeviceLogsRequest.SerializeToString,
+            device__pb2.DeviceLogsResponse.FromString,
             options,
             channel_credentials,
             insecure,

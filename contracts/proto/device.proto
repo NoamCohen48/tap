@@ -22,6 +22,9 @@ service DeviceService {
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
   rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
+  // The device's own record since the attachment opened, for failure evidence: logcat, the
+  // crashes and ANRs, and the activity and window state now. Diagnostic only, not logged.
+  rpc DeviceLogs(DeviceLogsRequest) returns (DeviceLogsResponse);
   // One optional host-managed scrcpy capture per attachment (video, audio or both); the driver
   // never encodes media. Requires scrcpy on the daemon host.
   rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
@@ -196,6 +199,25 @@ message DriverLogRequest {
 
 message DriverLogResponse {
   repeated string lines = 1;
+}
+
+message DeviceLogsRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+}
+
+message DeviceLogsResponse {
+  // `logcat -v threadtime` of the main, system and crash buffers since the attachment opened
+  // (device clock, one second early; the whole buffers when the clock was unreadable). The
+  // buffers are rings, so what scrolled out is gone; longer than 4 MiB keeps the newest lines.
+  string logcat = 1;
+  bool logcat_truncated = 2;
+  // Since the attachment: the crash buffer (Java `FATAL EXCEPTION`, native crashes) and the
+  // `am_crash` / `am_anr` events. Empty when nothing crashed or stopped responding.
+  string crashes = 3;
+  // `dumpsys activity activities` and `dumpsys window windows` at the time of the call.
+  string activities = 4;
+  string windows = 5;
 }
 
 message ScreenSnapshotRequest {

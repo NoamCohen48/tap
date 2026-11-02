@@ -14,8 +14,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * The diagnostics of one device at one moment ([Device.capture]): a [Screenshot], the
- * [Hierarchy], the [DeviceInfo] and the [DriverLog]. A part is null when it could not be
- * produced; [failures] says why, by part name.
+ * [Hierarchy], the [DeviceInfo], the [DriverLog] and the [DeviceLogs]. A part is null when it
+ * could not be produced; [failures] says why, by part name (`logs` for the [DeviceLogs]).
  */
 class Capture internal constructor(
     val serial: String,
@@ -23,12 +23,14 @@ class Capture internal constructor(
     val hierarchy: Hierarchy?,
     val info: DeviceInfo?,
     val driverLog: DriverLog?,
-    /** Why each missing part is missing, keyed like [artifacts]. */
+    /** Why each missing part is missing: `screenshot`, `hierarchy`, `device-info`, `driver-log` or `logs`. */
     val failures: Map<String, Throwable>,
+    val logs: DeviceLogs? = null,
 ) {
     /**
      * The parts that were produced, by name: `screenshot`, `hierarchy`, `device-info`,
-     * `driver-log`, in that order.
+     * `driver-log`, then the [DeviceLogs] parts (`logcat`, `crashes` when something crashed,
+     * `activities`, `windows`), in that order.
      */
     val artifacts: Map<String, Artifact>
         get() =
@@ -37,6 +39,7 @@ class Capture internal constructor(
                 hierarchy?.let { put(HIERARCHY, it) }
                 info?.let { put(DEVICE_INFO, it) }
                 driverLog?.let { put(DRIVER_LOG, it) }
+                logs?.let { putAll(it.artifacts) }
             }
 
     /**
@@ -58,11 +61,17 @@ class Capture internal constructor(
         const val HIERARCHY = "hierarchy"
         const val DEVICE_INFO = "device-info"
         const val DRIVER_LOG = "driver-log"
+        const val LOGS = "logs"
+        const val LOGCAT = "logcat"
+        const val CRASHES = "crashes"
+        const val ACTIVITIES = "activities"
+        const val WINDOWS = "windows"
     }
 }
 
 /**
- * Takes a screenshot, the hierarchy, the device info and the driver log at once, each within
+ * Takes a screenshot, the hierarchy, the device info, the driver log and the device logs
+ * ([Device.deviceLogs]) at once, each within
  * [timeout], and returns them as one [Capture]. Device failures never escape: a part that fails
  * or runs out of time is null in the result, with its cause in [Capture.failures]. Only the
  * caller's own cancellation propagates. Use it wherever a test wants evidence (after a step, in
@@ -95,6 +104,17 @@ suspend fun Device.capture(timeout: Duration = 30.seconds): Capture {
         val hierarchy = async { part(Capture.HIERARCHY) { dumpHierarchy(timeout) } }
         val info = async { part(Capture.DEVICE_INFO) { info() } }
         val driverLog = async { part(Capture.DRIVER_LOG) { driverLog() } }
-        Capture(serial, screenshot.await(), hierarchy.await(), info.await(), driverLog.await(), failures.toMap())
+        val logs = async { part(Capture.LOGS) { deviceLogs(timeout) } }
+        // Every part is awaited before failures is read.
+        val parts = listOf(screenshot, hierarchy, info, driverLog, logs).map { it.await() }
+        Capture(
+            serial,
+            parts[0] as Screenshot?,
+            parts[1] as Hierarchy?,
+            parts[2] as DeviceInfo?,
+            parts[3] as DriverLog?,
+            failures.toMap(),
+            parts[4] as DeviceLogs?,
+        )
     }
 }

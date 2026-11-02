@@ -14,6 +14,7 @@ import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
 import io.github.noamcohen48.tap.api.v1.DismissKeyguard
 import io.github.noamcohen48.tap.api.v1.DismissNotification
+import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
@@ -989,6 +990,27 @@ class Device internal constructor(
                     )
                     .linesList
                     .let(::DriverLog)
+            }
+        }
+    }
+
+    /**
+     * What the device recorded since this attachment opened: logcat, crashes and ANRs, and the
+     * activity and window state now ([DeviceLogs]). Diagnostic; not in the event log.
+     */
+    suspend fun deviceLogs(timeout: Duration = 30.seconds): DeviceLogs {
+        ensureTapBound("Device.deviceLogs")
+        return admitted("Device.deviceLogs") {
+            mapped(serial) {
+                client.devices
+                    .withDeadlineAfter(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+                    .deviceLogs(
+                        DeviceLogsRequest
+                            .newBuilder()
+                            .setClientConnectionId(ownerConnection.id)
+                            .setAttachedDeviceId(attachedDeviceId)
+                            .build(),
+                    ).let { DeviceLogs(it.logcat, it.logcatTruncated, it.crashes, it.activities, it.windows) }
             }
         }
     }

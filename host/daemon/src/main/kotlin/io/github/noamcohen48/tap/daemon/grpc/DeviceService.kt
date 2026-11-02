@@ -16,6 +16,8 @@ import io.github.noamcohen48.tap.api.v1.DetachResponse
 import io.github.noamcohen48.tap.api.v1.DeviceCall
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceState
+import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
+import io.github.noamcohen48.tap.api.v1.DeviceLogsResponse
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogResponse
 import io.github.noamcohen48.tap.api.v1.Error as CommandError
@@ -55,6 +57,7 @@ import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
 import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
+import io.github.noamcohen48.tap.daemon.core.DeviceEvidence
 import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceConditions
 import io.github.noamcohen48.tap.host.canonicalLocales
@@ -258,6 +261,20 @@ class DeviceService(
             DriverLogResponse
                 .newBuilder()
                 .addAllLines(daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId).driverLog.snapshot())
+                .build()
+        }
+
+    override suspend fun deviceLogs(request: DeviceLogsRequest): DeviceLogsResponse =
+        reply {
+            val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val evidence = DeviceEvidence.collect(daemon.config.adb, attachedDevice.deviceSession.serial, attachedDevice.attachedAtEpochSeconds)
+            DeviceLogsResponse
+                .newBuilder()
+                .setLogcat(evidence.logcat)
+                .setLogcatTruncated(evidence.logcatTruncated)
+                .setCrashes(evidence.crashes)
+                .setActivities(evidence.activities)
+                .setWindows(evidence.windows)
                 .build()
         }
 

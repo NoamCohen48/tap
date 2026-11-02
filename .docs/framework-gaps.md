@@ -128,8 +128,12 @@ Missing:
 
 - Collision-proof run layout (`RUN_ID/tests/TEST_ID/ATTEMPT/ROLE-SERIAL/GENERATION`),
   `run.json`, artifact manifest with checksums and collection errors.
-- Logcat capture started before the first AUT command and retained across AUT restarts.
-- `dumpsys window/activity`, crash/ANR evidence, redacted protocol event log.
+- Logcat is read at failure time from the device's ring buffers since the attachment
+  (`DeviceLogs`, part of every failure capture; `DeviceEvidenceTest`, Python and Kotlin capture
+  tests, checked on emulator-5554 with `am crash`), not streamed: on a busy device the oldest
+  lines of a long test can be gone. `dumpsys window/activity` and crash/ANR *evidence* are in
+  the same capture; crash/ANR as command *codes* are not (below), nor is a redacted protocol
+  event log.
 - Incremental JSONL event stream; JUnit XML is whatever the build tool writes; no HTML report;
   no Flowdeck adapter.
 - Optional rotating **automatic failure-capture** video. Opt-in `Device.startRecording` /

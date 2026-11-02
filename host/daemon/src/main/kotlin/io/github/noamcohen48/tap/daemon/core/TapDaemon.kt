@@ -229,6 +229,8 @@ class AttachedDevice internal constructor(
     /** The owning connection's log; calls on this device are recorded into it. */
     val events: EventLog,
     val recording: ScrcpyRecorder,
+    /** The device clock when the attachment opened: logs for evidence start here (null: unknown). */
+    val attachedAtEpochSeconds: Long? = null,
 ) {
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
     internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
@@ -707,6 +709,17 @@ class TapDaemon internal constructor(
         }
     }
 
+    /** [Adb.deviceEpochSeconds], or null when unreadable: evidence then falls back to whole buffers. */
+    private suspend fun deviceClock(serial: String): Long? =
+        try {
+            config.adb.deviceEpochSeconds(serial)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            config.log("device clock of $serial unreadable: ${error.message}")
+            null
+        }
+
     /** The quarantine reason, or null when usable. An unreadable journal is not "free": attach would fail on it. */
     private fun quarantine(store: SessionJournalStore): String? =
         runCatching {
@@ -786,6 +799,8 @@ class TapDaemon internal constructor(
                 leaseTimeoutMs = options.leaseTimeoutMs,
             )
         val device: DaemonDeviceSession = opener.open(deviceConfig)
+        // One second earlier: `date +%s` truncates, and the logs of the open itself belong in.
+        val attachedAt = deviceClock(serial)?.minus(1)
         // Registration is one lifecycle transaction. If disconnect wins while attachment is
         // suspended, the DeviceSession is closed before exposure: no orphan lease.
         val registered: AttachedDevice? =
@@ -799,6 +814,7 @@ class TapDaemon internal constructor(
                             UUID.randomUUID().toString(), ownerConnectionId, device, options.defaultTimeoutMs, log, owner.events,
                             deps.scrcpyLaunch?.let { ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable, it) }
                                 ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
+                            attachedAt,
                         )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     activity.append(

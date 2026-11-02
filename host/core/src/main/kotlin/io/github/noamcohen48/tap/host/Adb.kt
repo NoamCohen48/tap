@@ -495,6 +495,45 @@ open class Adb internal constructor(
         }
     }
 
+    /** The device clock in whole seconds since the epoch (`date +%s`), for [logcat]'s `since`. */
+    open suspend fun deviceEpochSeconds(serial: String): Long {
+        val output = exec(serial, "shell", "date", "+%s", timeoutMs = 10_000).trim()
+        return output.toLongOrNull()
+            ?: throw AdbCommandException(serial, listOf("shell", "date", "+%s"), null, output, "Unreadable device clock on $serial: $output")
+    }
+
+    /**
+     * `logcat -d -v threadtime` of [buffers] (`main`, `system`, `crash`, `events`, …), from
+     * [sinceEpochSeconds] on the device clock (the whole buffers when null), limited to [tags]
+     * when given. The buffers are ring buffers: what scrolled out before the call is gone.
+     */
+    open suspend fun logcat(
+        serial: String,
+        buffers: List<String>,
+        sinceEpochSeconds: Long?,
+        tags: List<String> = emptyList(),
+    ): String {
+        val arguments =
+            buildList {
+                add("logcat")
+                add("-d")
+                addAll(listOf("-v", "threadtime"))
+                buffers.forEach { addAll(listOf("-b", it)) }
+                sinceEpochSeconds?.let { addAll(listOf("-T", "$it.000")) }
+                if (tags.isNotEmpty()) {
+                    add("-s")
+                    addAll(tags)
+                }
+            }
+        return exec(serial, *arguments.toTypedArray(), timeoutMs = 30_000)
+    }
+
+    /** `dumpsys` [arguments] (e.g. `activity activities`, `window windows`). */
+    open suspend fun dumpsys(
+        serial: String,
+        vararg arguments: String,
+    ): String = exec(serial, "shell", "dumpsys", *arguments, timeoutMs = 30_000)
+
     /** The device's API level (`ro.build.version.sdk`). */
     open suspend fun apiLevel(serial: String): Int {
         val output = exec(serial, "shell", "getprop", "ro.build.version.sdk").trim()

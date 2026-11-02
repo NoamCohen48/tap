@@ -817,15 +817,74 @@ class DriverLog(Artifact):
         return f"DriverLog({len(self.lines)} lines)"
 
 
+class TextLog(Artifact):
+    """A plain-text record from the device (a ``DeviceLogs`` part)."""
+
+    media_type = "text/plain"
+    extension = "txt"
+
+    def __init__(self, text: str):
+        self.text = text
+
+    @property
+    def bytes(self) -> builtins.bytes:
+        return self.text.encode()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, TextLog) and other.text == self.text
+
+    def __hash__(self) -> int:
+        return hash(self.text)
+
+    def __repr__(self) -> str:
+        return f"TextLog({len(self.text)} chars)"
+
+
+@dataclass(frozen=True)
+class DeviceLogs:
+    """What the device itself recorded since the attachment opened (``Device.device_logs()``):
+    the evidence the driver cannot see. A part the server could not read holds one
+    ``<unavailable: …>`` line."""
+
+    logcat: str
+    """``logcat -v threadtime`` of the main, system and crash buffers since the attachment
+    (ring buffers: what scrolled out is gone)."""
+    logcat_truncated: bool
+    """The logcat was longer than 4 MiB and keeps its newest lines."""
+    crashes: str
+    """Crashes (``FATAL EXCEPTION``, native) and ANRs since the attachment; empty when none."""
+    activities: str
+    """``dumpsys activity activities`` at the time of the call."""
+    windows: str
+    """``dumpsys window windows`` at the time of the call."""
+
+    @property
+    def artifacts(self) -> dict[str, TextLog]:
+        """``logcat``, ``crashes`` (only when something crashed), ``activities``, ``windows``."""
+        parts = {
+            Capture.LOGCAT: self.logcat,
+            Capture.CRASHES: self.crashes,
+            Capture.ACTIVITIES: self.activities,
+            Capture.WINDOWS: self.windows,
+        }
+        return {name: TextLog(text) for name, text in parts.items() if name != Capture.CRASHES or text}
+
+
 class Capture:
     """The diagnostics of one device at one moment (``Device.capture()``): a ``Screenshot``, the
-    ``Hierarchy``, the ``DeviceInfo`` and the ``DriverLog``. A part is None when it could not be
-    produced; ``failures`` says why, by part name."""
+    ``Hierarchy``, the ``DeviceInfo``, the ``DriverLog`` and the ``DeviceLogs``. A part is None
+    when it could not be produced; ``failures`` says why, by part name (``logs`` for the
+    ``DeviceLogs``)."""
 
     SCREENSHOT = "screenshot"
     HIERARCHY = "hierarchy"
     DEVICE_INFO = "device-info"
     DRIVER_LOG = "driver-log"
+    LOGS = "logs"
+    LOGCAT = "logcat"
+    CRASHES = "crashes"
+    ACTIVITIES = "activities"
+    WINDOWS = "windows"
 
     def __init__(
         self,
@@ -835,26 +894,33 @@ class Capture:
         info: DeviceInfo | None,
         driver_log: DriverLog | None,
         failures: dict[str, BaseException],
+        logs: DeviceLogs | None = None,
     ):
         self.serial = serial
         self.screenshot = screenshot
         self.hierarchy = hierarchy
         self.info = info
         self.driver_log = driver_log
+        self.logs = logs
         self.failures = dict(failures)
-        """Why each missing part is missing, keyed like ``artifacts``."""
+        """Why each missing part is missing: ``screenshot``, ``hierarchy``, ``device-info``,
+        ``driver-log`` or ``logs``."""
 
     @property
     def artifacts(self) -> dict[str, Artifact]:
         """The parts that were produced, by name: ``screenshot``, ``hierarchy``,
-        ``device-info``, ``driver-log``, in that order."""
+        ``device-info``, ``driver-log``, then the ``DeviceLogs`` parts (``logcat``, ``crashes``
+        when something crashed, ``activities``, ``windows``), in that order."""
         parts: list[tuple[str, Artifact | None]] = [
             (self.SCREENSHOT, self.screenshot),
             (self.HIERARCHY, self.hierarchy),
             (self.DEVICE_INFO, self.info),
             (self.DRIVER_LOG, self.driver_log),
         ]
-        return {name: part for name, part in parts if part is not None}
+        produced: dict[str, Artifact] = {name: part for name, part in parts if part is not None}
+        if self.logs is not None:
+            produced.update(self.logs.artifacts)
+        return produced
 
     def save_to(self, directory: str | os.PathLike[str], prefix: str | None = None) -> list[pathlib.Path]:
         """Writes every produced part to ``directory`` as ``<prefix>.<name>.<extension>`` (for

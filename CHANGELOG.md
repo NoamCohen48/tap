@@ -45,6 +45,16 @@ Driver:
   order). On a screen with nested matches the same `at(n)` picked a different node depending on
   how it was written. Both now use UiAutomator's order.
 
+Server, clients (additive):
+
+- **Failure artifacts include the device's own logs.** A new `DeviceLogs` call returns logcat
+  (main, system, crash) since the device was attached, the crashes and ANRs since then, and
+  `dumpsys activity activities` / `dumpsys window windows` at the time of the call. Kotlin
+  `device.deviceLogs()`, Python `device.device_logs()`; `capture()` includes them, so the JUnit
+  extension and the pytest plugin save `logcat.txt`, `crashes.txt` (when something crashed),
+  `activities.txt` and `windows.txt` next to the screenshot of a failed test. An app crash used
+  to leave no trace in the artifacts.
+
 Server:
 
 - **`tap doctor`.** Reports, per device, what a session that is no longer running left behind
