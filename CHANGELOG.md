@@ -23,6 +23,12 @@ Driver, server, clients (additive, protocol 5.1):
 
 Server:
 
+- **Force-stop and clear data finish while a permission dialog is open.** A runtime permission
+  dialog the app opened lives in the app's task but belongs to the permission controller, so
+  `am force-stop` never removes it. `forceStop`, `clearData` and the stop before a cold launch
+  waited for that task to disappear and timed out after ten seconds, every time, until someone
+  dismissed the dialog. A task of the app that holds only other packages' activities no longer
+  counts as the app running.
 - **The driver on a device is checked byte for byte.** Each attachment compares the SHA-256 of
   the driver APKs installed on the device with the server's own and reinstalls them within the
   same attachment when they differ. A different build of the same version (for example an

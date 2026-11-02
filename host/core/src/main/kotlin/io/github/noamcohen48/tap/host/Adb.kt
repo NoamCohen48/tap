@@ -1069,9 +1069,12 @@ open class Adb internal constructor(
      * including one that is only exiting, or a `* Task{… A=<uid>:<package> …}` header (`TaskRecord`,
      * `A=<package>` before API 29; `I=<package>/…` without an affinity). The process can be gone
      * while either still is. A task under a custom `taskAffinity` is not recognised by its header.
-     * An empty answer does not mean Android is done with the app: `pm clear` on a running app
-     * leaves a deferred kill of its processes that outlives the task's entry here, which is why
-     * [AppLifecycle.clearData] force-stops first.
+     * A task of the package that holds only other packages' records is not counted: force-stop
+     * never finishes those (a runtime permission dialog the app opened stays in the app's task
+     * after the app is gone), so waiting on it would never end. An empty answer does not mean
+     * Android is done with the app: `pm clear` on a running app leaves a deferred kill of its
+     * processes that outlives the task's entry here, which is why [AppLifecycle.clearData]
+     * force-stops first.
      */
     open suspend fun hasTaskOrActivity(
         serial: String,
@@ -1080,7 +1083,22 @@ open class Adb internal constructor(
         val name = Regex.escape(packageName)
         val record = Regex("""^\s*\* Hist\s+#\d+: ActivityRecord\{\S+ u\d+ $name/""")
         val task = Regex("""^\s*\* (?:Task|TaskRecord)\{\S+ #\d+ .*?\b(?:A=(?:\d+:)?$name(?=[\s}])|I=$name/)""")
-        return exec(serial, "shell", "dumpsys", "activity", "activities").lineSequence().any { record.containsMatchIn(it) || task.containsMatchIn(it) }
+        val taskId = Regex("""#(\d+)""")
+        // Other packages' records (this one's returned above) name their task (`t192`). A task
+        // is listed more than once (with its records, then in the hierarchy without them), so
+        // tasks are told apart by id.
+        val foreignRecord = Regex("""^\s*\* Hist\s+#\d+: ActivityRecord\{\S+ u\d+ \S+/\S+ t(\d+)\b""")
+        val ownTasks = mutableSetOf<String>()
+        val foreignTasks = mutableSetOf<String>()
+        for (line in exec(serial, "shell", "dumpsys", "activity", "activities").lineSequence()) {
+            if (record.containsMatchIn(line)) return true
+            if (task.containsMatchIn(line)) {
+                taskId.find(line)?.let { ownTasks += it.groupValues[1] }
+            } else {
+                foreignRecord.find(line)?.let { foreignTasks += it.groupValues[1] }
+            }
+        }
+        return (ownTasks - foreignTasks).isNotEmpty()
     }
 
     /**
