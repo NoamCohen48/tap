@@ -120,6 +120,15 @@ def test_settle_waits_for_the_focused_window_then_prints_the_diff(fake, agent):
     assert wait.package_name == "com.android.permissioncontroller" and wait.signal == pb.STABILITY_TREE
 
 
+def test_fill_and_type_pass_sensitive_through(fake, agent):
+    agent.attach("emulator-5554")
+    agent.fill("text=Password", "hunter2", sensitive=True)
+    agent.type("s3cret", sensitive=True)
+    filled, typed = fake.devices.commands[-2:]
+    assert filled.set_text.sensitive and filled.set_text.text == "hunter2"
+    assert typed.type_text.sensitive and typed.type_text.text == "s3cret"
+
+
 def test_a_screen_that_keeps_changing_is_reported_not_raised(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda c: (

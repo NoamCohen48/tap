@@ -177,7 +177,7 @@ def test_a_secret_set_text_sends_the_value_and_records_none(daemon, device):
     assert prepared.action.command.set_text.text == ""
     daemon.devices.commands.clear()
     run(device, prepared, "hunter2")
-    assert sent(daemon)[-1] == command({"set_text": {"selector": SEARCH, "text": "hunter2"}})
+    assert sent(daemon)[-1] == command({"set_text": {"selector": SEARCH, "text": "hunter2", "sensitive": True}})
 
 
 def test_a_type_step_is_the_sdk_type_text_flow(daemon, device):

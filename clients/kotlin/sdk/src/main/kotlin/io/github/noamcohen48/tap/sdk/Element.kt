@@ -206,10 +206,14 @@ class Element internal constructor(
      * `ACTION_REJECTED` only when the node refuses the action; the field is not read back, so
      * assert the effect yourself with a selector that survives the edit:
      * `app.await(res("email")).textEquals("new")`.
+     *
+     * With [sensitive] (a password, a token) the server logs the call without [value], so the
+     * connection's event log, `tap-watcher` and exports never hold it.
      */
     suspend fun setText(
         value: String,
         timeout: Duration? = null,
+        sensitive: Boolean = false,
     ) {
         run(timeout) {
             setText =
@@ -217,6 +221,7 @@ class Element internal constructor(
                     .newBuilder()
                     .setSelector(target)
                     .setText(value)
+                    .setSensitive(sensitive)
                     .build()
         }
     }
@@ -226,16 +231,17 @@ class Element internal constructor(
      * the wait timeout), then types [value] as real key events with [Device.typeText]. Three
      * steps, so a failure says which one failed. Pass `awaitFocus = false` when focus goes
      * elsewhere (a child or a separate input view), and wait for what that app needs yourself.
-     * The field is not read back: assert the effect yourself.
+     * The field is not read back: assert the effect yourself. [sensitive] as for [setText].
      */
     suspend fun typeText(
         value: String,
         awaitFocus: Boolean = true,
         timeout: Duration? = null,
+        sensitive: Boolean = false,
     ) {
         tap(timeout)
         if (awaitFocus) await().focused()
-        device.typeText(value, timeout)
+        device.typeText(value, timeout, sensitive)
     }
 
     /** [setText] with an empty string: `ACTION_SET_TEXT` on the one matching node, not read back. */

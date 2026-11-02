@@ -272,6 +272,16 @@ def test_type_text_taps_waits_for_focus_then_types_into_the_focus(fake, device):
     assert [c.WhichOneof("op") for c in ops] == ["tap", "type_text"]
 
 
+def test_sensitive_text_is_sent_with_its_flag(fake, device):
+    device.screen.element(res("password")).set_text("hunter2", sensitive=True)
+    device.type_text("s3cret", sensitive=True)
+    device.screen.element(res("name")).set_text("Ada")
+    set_secret, type_secret, plain = fake.devices.commands[-3:]
+    assert set_secret.set_text.text == "hunter2" and set_secret.set_text.sensitive
+    assert type_secret.type_text.text == "s3cret" and type_secret.type_text.sensitive
+    assert not plain.set_text.sensitive
+
+
 def test_a_property_wait_polls_through_a_node_that_went_stale(fake, device):
     replies = iter([
         pb.CommandResult(error=pb.Error(code=pb.ERR_STALE_BEFORE_INPUT)),

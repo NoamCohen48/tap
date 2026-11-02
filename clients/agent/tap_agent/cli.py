@@ -92,9 +92,11 @@ def parser() -> argparse.ArgumentParser:
     p = verb("fill", "replace a field's text (no key events)", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("text")
+    p.add_argument("--sensitive", action="store_true", help="a secret: the session log and export never hold the text")
 
     p = verb("type", "type key events into the focused field", on_device, settle)
     p.add_argument("text")
+    p.add_argument("--sensitive", action="store_true", help="a secret: the session log and export never hold the text")
 
     p = verb("clear", "clear a field's text", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
@@ -247,9 +249,9 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "tap":
         return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double)
     if v == "fill":
-        return agent.fill(args.target, args.text, device, settle=settle)
+        return agent.fill(args.target, args.text, device, settle=settle, sensitive=args.sensitive)
     if v == "type":
-        return agent.type(args.text, device, settle=settle)
+        return agent.type(args.text, device, settle=settle, sensitive=args.sensitive)
     if v == "clear":
         return agent.clear(args.target, device, settle=settle)
     if v == "submit":

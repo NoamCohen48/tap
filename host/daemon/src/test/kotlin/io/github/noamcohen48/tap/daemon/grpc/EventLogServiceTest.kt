@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.EventsRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.LoggedEvent
+import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.DaemonDeviceSession
 import io.github.noamcohen48.tap.daemon.core.DeviceSessionOpener
@@ -26,6 +27,7 @@ import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.stamped
+import io.github.noamcohen48.tap.wire.v1.Request
 import io.grpc.Status
 import io.grpc.StatusException
 import io.grpc.inprocess.InProcessChannelBuilder
@@ -90,6 +92,7 @@ class EventLogServiceTest {
                 val channel = InProcessChannelBuilder.forName(name).directExecutor().build()
                 val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
                 val connections = ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineStub(channel)
+                val sent = mutableListOf<Request>()
                 try {
                     suspend fun execute(
                         command: Command,
@@ -107,6 +110,7 @@ class EventLogServiceTest {
                                 )
                             }
                         val frame = withTimeout(2_000) { withContext(Dispatchers.IO) { driver.nextFrame() } }
+                        sent += Request.parseFrom(frame.payload)
                         driver.respond(
                             frame.requestId,
                             Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = frame.requestId, generation = 3),
@@ -149,6 +153,23 @@ class EventLogServiceTest {
                         }.status.code,
                     )
                     assertEquals(Status.Code.INVALID_ARGUMENT, assertFailsWith<StatusException> { events(after = -1) }.status.code)
+
+                    // A sensitive text reaches the driver but not the log; the flag says it was withheld.
+                    val password = Commands.setText(Selectors.text("Password"), "hunter2")
+                    val sensitive = password.toBuilder().setSetText(password.setText.toBuilder().setSensitive(true)).build()
+                    execute(sensitive, CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
+                    val typed = Command.newBuilder().setTypeText(TypeText.newBuilder().setText("s3cret").setSensitive(true)).build()
+                    execute(typed, CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
+                    execute(password, CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
+                    assertEquals("hunter2", sent[sent.size - 3].command.setText.text)
+                    assertEquals("s3cret", sent[sent.size - 2].command.typeText.text)
+                    val (hidden, hiddenTyped, plain) = events(after = 2).eventsList
+                    assertEquals("", hidden.command.setText.text)
+                    assertTrue(hidden.command.setText.sensitive)
+                    assertEquals(sensitive.setText.selector, hidden.command.setText.selector)
+                    assertEquals("", hiddenTyped.command.typeText.text)
+                    assertTrue(hiddenTyped.command.typeText.sensitive)
+                    assertEquals(password, plain.command)
                 } finally {
                     channel.shutdownNow()
                     server.shutdownNow()

@@ -6,6 +6,9 @@ import { ErrorCode, type Command } from "./gen/command_pb";
 import { FailureReason } from "./gen/failure_pb";
 import { MatchMode, NodeFlag, Relation, TextProperty, type Node, type Selector } from "./gen/selector_pb";
 
+// A sensitive set/type text: the daemon logged it without the text.
+const HIDDEN = "(hidden)";
+
 export type Described = {
   /** The verb: "Tap", "Set text", "Launch". */
   verb: string;
@@ -105,9 +108,9 @@ function command(value: Command): Pick<Described, "verb" | "target" | "input"> {
     case "waitVisible":
       return { verb: "Wait for", target: selector(op.value.selector), input: "" };
     case "setText":
-      return { verb, target: selector(op.value.selector), input: quote(op.value.text) };
+      return { verb, target: selector(op.value.selector), input: op.value.sensitive ? HIDDEN : quote(op.value.text) };
     case "typeText":
-      return { verb, target: "", input: quote(op.value.text) };
+      return { verb, target: "", input: op.value.sensitive ? HIDDEN : quote(op.value.text) };
     case "swipe":
     case "scroll":
     case "fling":
