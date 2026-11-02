@@ -74,17 +74,18 @@ internal class UiObjectAccess(
             }
 
             is CompiledSelector.Traversal -> {
-                val matches = mutableListOf<UiObject2>()
-                collectMatches(container, target.predicate, matches, limit = 1)
+                val children = container.children
+                val matches = postOrderMatches(children, UiObject2::getChildren, target.predicate::matches, ::recycleQuietly, limit = 1)
                 matches.forEach(UiObject2::recycle)
                 matches.isNotEmpty()
             }
         }
 
     /**
-     * Up to [limit] matches, each window in order. The native plan keeps `ByMatcher`'s order,
-     * post-order (a match after the matches inside it); the traversal plan walks pre-order
-     * (DR-23 in `.docs/code-review-status.md`). The caller recycles them.
+     * Up to [limit] matches, each window in order, and within a window in post-order (a match
+     * after the matches inside it) on both plans: the native plan keeps `ByMatcher`'s order and
+     * the traversal plan walks the same way ([postOrderMatches]), so `first` / `at n` pick the
+     * same node whichever plan a selector compiles to. The caller recycles them.
      */
     private fun findObjects(
         compiled: CompiledSelector,
@@ -100,33 +101,7 @@ internal class UiObjectAccess(
 
             is CompiledSelector.Traversal -> {
                 // Depth 0 is each window's root, in the order the accessibility service reports windows.
-                val roots = device.findObjects(By.depth(0))
-                val matches = mutableListOf<UiObject2>()
-                val pending = ArrayDeque(roots)
-                try {
-                    while (pending.isNotEmpty()) {
-                        val root = pending.removeFirst()
-                        if (matches.size >= limit) {
-                            root.recycle()
-                            continue
-                        }
-                        try {
-                            val rootMatched = compiled.predicate.matches(root)
-                            if (rootMatched) matches += root
-                            if (matches.size < limit) collectMatches(root, compiled.predicate, matches, limit)
-                            if (!rootMatched) root.recycle()
-                        } catch (error: Throwable) {
-                            if (root !in matches) recycleQuietly(root)
-                            throw error
-                        }
-                    }
-                    matches
-                } catch (error: Throwable) {
-                    // Cleanup only; the error itself is rethrown unchanged.
-                    matches.forEach { recycleQuietly(it) }
-                    pending.forEach { recycleQuietly(it) }
-                    throw error
-                }
+                postOrderMatches(device.findObjects(By.depth(0)), UiObject2::getChildren, compiled.predicate::matches, ::recycleQuietly, limit)
             }
         }
     }
@@ -142,25 +117,57 @@ internal class UiObjectAccess(
         found.forEach { if (!seen.add(it)) it.recycle() }
         return seen.toList()
     }
+}
 
-    /** Depth-first pre-order over [root]'s descendants (not [root] itself). */
-    private fun collectMatches(
-        root: UiObject2,
-        predicate: NodePredicate,
-        matches: MutableList<UiObject2>,
-        limit: Int,
-    ) {
-        for (child in root.children) {
-            if (matches.size >= limit) {
-                child.recycle()
-                continue
+/**
+ * Up to [limit] of the nodes under [roots] (the roots included) that [matches] accepts, in
+ * depth-first post-order: a node comes after every match inside it, as `ByMatcher` returns
+ * them. Every node that is not returned is [recycle]d, as is everything when the walk throws
+ * (the error itself propagates unchanged).
+ */
+internal fun <T> postOrderMatches(
+    roots: List<T>,
+    children: (T) -> List<T>,
+    matches: (T) -> Boolean,
+    recycle: (T) -> Unit,
+    limit: Int,
+): List<T> {
+    val found = mutableListOf<T>()
+
+    // Its children's matches first, then the node itself while there is room.
+    fun visit(node: T) {
+        var kept = false
+        try {
+            if (found.size < limit) {
+                children(node).let { kids ->
+                    kids.forEachIndexed { i, child ->
+                        try {
+                            if (found.size < limit) visit(child) else recycle(child)
+                        } catch (error: Throwable) {
+                            kids.drop(i + 1).forEach(recycle)
+                            throw error
+                        }
+                    }
+                }
             }
-            val matched = predicate.matches(child)
-            if (matched) matches += child
-            if (matches.size < limit) collectMatches(child, predicate, matches, limit)
-            if (!matched) child.recycle()
+            if (found.size < limit && matches(node)) {
+                found += node
+                kept = true
+            }
+        } finally {
+            if (!kept) recycle(node)
         }
     }
+    roots.forEachIndexed { i, root ->
+        try {
+            if (found.size < limit) visit(root) else recycle(root)
+        } catch (error: Throwable) {
+            roots.drop(i + 1).forEach(recycle)
+            found.forEach(recycle)
+            throw error
+        }
+    }
+    return found
 }
 
 /** Recycles [element], ignoring an already recycled or stale object. */
