@@ -11,6 +11,7 @@ tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-
 tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK]
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
+tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
 tap version
 ```
 
@@ -26,6 +27,7 @@ tap version
 | `--driver-apk`, `--driver-test-apk` | a driver build of your own instead of the one bundled in the executable. Clients cannot pick a driver per attach |
 | `status` | prints `running 127.0.0.1:PORT pid=… version=… adb=…` (never the token); exit 1 when no server is running |
 | `stop` | terminates the server recorded in `daemon.json` after it answered an authenticated call; a stale file is removed and nothing is signalled |
+| `doctor` | checks the server and every device ADB lists (or `--serial`) for what a session that is no longer running left behind; `--fix` cleans it up. See [Cleaning up after a crash](#cleaning-up-after-a-crash) |
 
 One server per machine is the intended setup; every test process on that machine connects to
 it. Two servers with different `--state-dir`s are isolated from each other (separate journals
@@ -47,6 +49,31 @@ be using them. To reclaim space, stop every Tap server using that state director
 its `driver/` directory (including any older version-only subdirectories). The next start
 extracts its bundled APKs again. Leave `sessions/` intact: it holds device locks and recovery
 journals, not cached files.
+
+## Cleaning up after a crash
+
+When the server or a test process dies hard (a `kill -9`, a power cut), the device can keep
+what its session had set up: Tap's driver still running, a port forward, a journal that says
+the session is active, device settings it changed. The next attach recovers all of this on its
+own, so nothing needs doing before a test run. `tap doctor` shows it without waiting for one:
+
+```
+$ tap doctor
+server: not responding: daemon pid 2283187 at 127.0.0.1:35097 does not answer
+  `tap stop` removes the stale daemon.json; `tap start` starts a new server
+emulator-5554:
+  - a session (generation 314) ended without closing
+  - port forward tcp:46397 -> tcp:27183 has no session
+85e49002: in use by a session; skipped
+run `tap doctor --fix` to clean up what ended sessions left
+```
+
+`tap doctor --fix` runs the same recovery an attach would: it stops the driver, removes the
+forwards to Tap's device ports (never anyone else's), closes the journal and puts back the
+settings the session saved. A device that a live session holds, from any server or process, is
+skipped and never touched, so it is safe to run while tests are running. A quarantined device is
+reported with the journal file to remove and is never cleared: that stays your decision.
+`doctor` exits 1 while something is left unfixed or a device is quarantined.
 
 ## Who starts it
 

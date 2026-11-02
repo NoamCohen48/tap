@@ -1,5 +1,11 @@
 package io.github.noamcohen48.tap.daemon.cli
 
+import io.github.noamcohen48.tap.host.Adb
+import io.github.noamcohen48.tap.host.AdbDevice
+import io.github.noamcohen48.tap.host.AdbDeviceState
+import io.github.noamcohen48.tap.host.FakeAdb
+import io.github.noamcohen48.tap.host.ok
+import kotlinx.coroutines.runBlocking
 import java.net.ServerSocket
 import java.nio.file.Files
 import kotlin.test.Test
@@ -33,7 +39,60 @@ class CliTest {
         assertEquals("option --state-dir needs a value", refused("stop", "--state-dir", "--adb", "x"))
         assertEquals("unexpected argument 'extra'", refused("stop", "extra"))
         assertEquals("option --state-dir given twice", refused("stop", "--state-dir", "a", "--state-dir", "b"))
+        assertEquals(
+            CommandLine("doctor", mapOf("--fix" to "true", "--serial" to "emulator-5554")),
+            parseCommandLine(listOf("doctor", "--fix", "--serial", "emulator-5554")),
+        )
+        assertEquals("option --fix is not valid for `tap stop`", refused("stop", "--fix"))
     }
+
+    @Test
+    fun `doctor reports each device and fails while something is left`(): Unit =
+        runBlocking {
+            val stateDir = Files.createTempDirectory("tap-doctor-cli")
+            val adb =
+                FakeAdb().apply {
+                    responder = { serial, command ->
+                        when {
+                            serial == "emulator-5554" && command.startsWith("shell pidof") -> ok("4242")
+                            command.startsWith("shell pidof") -> Adb.Result(1, "")
+                            command == "forward --list" -> ok("")
+                            else -> null
+                        }
+                    }
+                }
+            val listed =
+                object : Adb("fake-adb") {
+                    override suspend fun deviceStates(timeoutMs: Long) =
+                        listOf(
+                            AdbDevice("emulator-5554", AdbDeviceState.ONLINE, "device"),
+                            AdbDevice("phone", AdbDeviceState.ONLINE, "device"),
+                            AdbDevice("85e49002", AdbDeviceState.UNAUTHORIZED, "unauthorized"),
+                        )
+
+                    override suspend fun execResult(
+                        serial: String,
+                        vararg arguments: String,
+                        timeoutMs: Long,
+                    ): Result = adb.responder!!(serial, arguments.joinToString(" ")) ?: error("unexpected ${arguments.toList()}")
+                }
+            val lines = mutableListOf<String>()
+            assertEquals(1, doctor(stateDir, listed, serial = null, fix = false, out = { lines += it }, server = { "no daemon" }))
+            assertEquals(
+                listOf(
+                    "server: no daemon",
+                    "emulator-5554:",
+                    "  - the driver is running with no session",
+                    "phone: clean",
+                    "85e49002: unauthorized; accept the USB debugging prompt on the device",
+                    "run `tap doctor --fix` to clean up what ended sessions left",
+                ),
+                lines,
+            )
+            lines.clear()
+            assertEquals(1, doctor(stateDir, listed, serial = "gone", fix = false, out = { lines += it }, server = { "no daemon" }))
+            assertEquals("gone: not listed by `adb devices`", lines.last())
+        }
 
     @Test
     fun `status and stop without a daemon`() {

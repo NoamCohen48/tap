@@ -196,8 +196,10 @@ read-back; passing on API 29, emulator run pending).
 - The late-mutation quarantine scenario (device reboot recovery) has not been re-run since
   the watchdog/heartbeat changes; the deviceTest suite excludes its `reboot` tag unless `-Ptap.reboot=true`. Needs an explicit go-ahead
   because it reboots both devices.
-- Journal recovery runs at session open, but there is no standalone `tap doctor` / cleanup
-  command for orphaned forwards, instrumentation, or leases outside a test run.
+- `tap doctor [--fix]` reports and cleans what ended sessions left (unclosed journal, driver
+  process, forwards to the device port range, unrestored settings) on devices nobody holds,
+  through the attach recovery (`DeviceDoctorTest`, `CliTest`; on emulator-5554 after killing
+  the daemon with SIGKILL mid-session). It never clears a quarantine.
 - ADB server supervision (restart on `adb` daemon death, `ADB_SERVER_SOCKET` pinning per CI
   worker) is not implemented; every call assumes a healthy default server.
 

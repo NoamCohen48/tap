@@ -32,6 +32,10 @@ Clients (Kotlin, Python):
 
 Server:
 
+- **`tap doctor`.** Reports, per device, what a session that is no longer running left behind
+  (an unclosed journal, the driver process, Tap's port forwards, unrestored settings) and a
+  stale server descriptor; `tap doctor --fix` runs the recovery an attach would run, now.
+  Devices a live session holds are skipped, and quarantines are reported, never cleared.
 - **Force-stop and clear data finish while a permission dialog is open.** A runtime permission
   dialog the app opened lives in the app's task but belongs to the permission controller, so
   `am force-stop` never removes it. `forceStop`, `clearData` and the stop before a cold launch
