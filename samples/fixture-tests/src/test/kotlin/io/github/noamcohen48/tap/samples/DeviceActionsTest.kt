@@ -392,6 +392,8 @@ class DeviceActionsTest {
             val message = app.awaitNotification("New message")
             assertEquals("from Ada" to listOf("Mark as read"), message.text to message.actions)
             assertTrue(message.clearable)
+            // Posted right after "New message": the listener may receive it a moment later.
+            app.awaitNotification("Syncing")
             val mine = device.notifications().filter { it.packageName == Fixture.PACKAGE }
             assertEquals(setOf("New message", "Syncing"), mine.map { it.title }.toSet())
             assertFalse(mine.single { it.title == "Syncing" }.clearable)
