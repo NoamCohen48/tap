@@ -50,16 +50,30 @@ NODE_UNCHANGED: NodeChange
 NODE_REMOVED: NodeChange
 
 class DeviceEntry(_message.Message):
-    __slots__ = ("serial", "state", "client_connection_id", "quarantine_reason")
+    __slots__ = ("serial", "state", "client_connection_id", "quarantine_reason", "properties")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
+    PROPERTIES_FIELD_NUMBER: _ClassVar[int]
     serial: str
     state: DeviceState
     client_connection_id: str
     quarantine_reason: str
-    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., client_connection_id: _Optional[str] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    properties: DeviceProperties
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., client_connection_id: _Optional[str] = ..., quarantine_reason: _Optional[str] = ..., properties: _Optional[_Union[DeviceProperties, _Mapping]] = ...) -> None: ...
+
+class DeviceProperties(_message.Message):
+    __slots__ = ("api_level", "manufacturer", "model", "emulator")
+    API_LEVEL_FIELD_NUMBER: _ClassVar[int]
+    MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    EMULATOR_FIELD_NUMBER: _ClassVar[int]
+    api_level: int
+    manufacturer: str
+    model: str
+    emulator: bool
+    def __init__(self, api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ...) -> None: ...
 
 class ListDevicesRequest(_message.Message):
     __slots__ = ()

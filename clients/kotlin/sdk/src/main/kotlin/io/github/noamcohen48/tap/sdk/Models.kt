@@ -439,6 +439,20 @@ data class DeviceEntry(
     val clientConnectionId: String?,
     /** Why the device is [DeviceState.QUARANTINED]. */
     val quarantineReason: String?,
+    /** What the device is; null for a device the server could not read (offline, unauthorized). */
+    val properties: DeviceProperties? = null,
+)
+
+/** What a device is ([DeviceEntry.properties]), read by the server from its system properties. */
+data class DeviceProperties(
+    /** `ro.build.version.sdk`. */
+    val apiLevel: Int,
+    /** `ro.product.manufacturer`. */
+    val manufacturer: String,
+    /** `ro.product.model`. */
+    val model: String,
+    /** An Android emulator. */
+    val emulator: Boolean,
 )
 
 /** What the server reports about itself ([TapClient.info]). */

@@ -73,6 +73,28 @@ class AdbTest {
         }
 
     @Test
+    fun `device properties come from one getprop dump`() {
+        val emulator =
+            """
+            [ro.boot.qemu]: [1]
+            [ro.build.version.sdk]: [34]
+            [ro.product.manufacturer]: [Google]
+            [ro.product.model]: [sdk_gphone64_x86_64]
+            """.trimIndent()
+        assertEquals(DeviceProperties(34, "Google", "sdk_gphone64_x86_64", emulator = true), parseDeviceProperties("emulator-5554", emulator))
+        val samsung =
+            """
+            [ro.build.version.sdk]: [29]
+            [ro.kernel.qemu]: [0]
+            [ro.product.manufacturer]: [samsung]
+            [ro.product.model]: [SM-J810G]
+            [ro.product.name]: [j8y18ltedx]
+            """.trimIndent()
+        assertEquals(DeviceProperties(29, "samsung", "SM-J810G", emulator = false), parseDeviceProperties("85e49002", samsung))
+        assertFailsWith<AdbCommandException> { parseDeviceProperties("x", "[ro.product.model]: [M]") }
+    }
+
+    @Test
     fun `a failing adb devices is a typed command failure`() =
         runBlocking {
             val failure = assertFailsWith<AdbCommandException> { scriptedAdb("error: protocol fault", exitCode = 1).deviceStates() }

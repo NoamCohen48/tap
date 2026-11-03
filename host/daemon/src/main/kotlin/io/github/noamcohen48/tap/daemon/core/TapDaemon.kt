@@ -9,6 +9,7 @@ import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
+import io.github.noamcohen48.tap.host.DeviceProperties
 import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_SESSION_CLOSE_TIMEOUT_MS
 import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
@@ -117,10 +118,14 @@ class HeldConnectionObserveException(
     id: String,
 ) : DaemonPreconditionException("Client connection $id is held: it has no Observe stream")
 
-/** One row of [TapDaemon.devices]: a serial ADB lists and what the lock and journal say about it. */
+/**
+ * One row of [TapDaemon.devices]: a serial ADB lists, what the lock and journal say about it,
+ * and what the device is (null while offline or unreadable).
+ */
 data class DeviceEntry(
     val serial: String,
     val status: DeviceStatus,
+    val properties: DeviceProperties? = null,
 )
 
 /**
@@ -307,6 +312,10 @@ class TapDaemon internal constructor(
     private val lifecycleLock = Any()
     private val clientConnectionsById = HashMap<String, ConnectedClient>()
     private val attachedDevicesById = HashMap<String, AttachedDevice>()
+
+    // What each online serial is, read once; a serial that leaves the online list is forgotten
+    // (it may come back as another device or rebooted into another build).
+    private val deviceProperties = java.util.concurrent.ConcurrentHashMap<String, DeviceProperties>()
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** What every connection does, for watchers (`WatchService.Watch`). */
@@ -697,6 +706,14 @@ class TapDaemon internal constructor(
     suspend fun devices(): List<DeviceEntry> {
         val listed = config.adb.deviceStates()
         val live = synchronized(lifecycleLock) { attachedDevicesById.values.toList() }
+        val online = listed.filter { it.state == AdbDeviceState.ONLINE }.map { it.serial }.toSet()
+        deviceProperties.keys.retainAll(online)
+        coroutineScope {
+            online
+                .filter { !deviceProperties.containsKey(it) }
+                .map { serial -> async { readProperties(serial)?.let { deviceProperties[serial] = it } } }
+                .awaitAll()
+        }
         return listed.map { device ->
             val serial = device.serial
             if (device.state != AdbDeviceState.ONLINE) return@map DeviceEntry(serial, DeviceStatus.Unavailable(device.state, device.rawState))
@@ -705,7 +722,7 @@ class TapDaemon internal constructor(
                 quarantine(store)?.let { DeviceStatus.Quarantined(it) }
                     ?: live.firstOrNull { it.deviceSession.serial == serial }?.let { DeviceStatus.Held(it.ownerConnectionId) }
                     ?: if (store.isLeased()) DeviceStatus.Held(null) else DeviceStatus.Free
-            DeviceEntry(serial, status)
+            DeviceEntry(serial, status, deviceProperties[serial])
         }
     }
 
@@ -717,6 +734,17 @@ class TapDaemon internal constructor(
             throw cancelled
         } catch (error: Exception) {
             config.log("device clock of $serial unreadable: ${error.message}")
+            null
+        }
+
+    /** [Adb.deviceProperties], or null when the device does not answer: listing never fails on one device. */
+    private suspend fun readProperties(serial: String): DeviceProperties? =
+        try {
+            config.adb.deviceProperties(serial)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            config.log("device properties of $serial unreadable: ${error.message}")
             null
         }
 

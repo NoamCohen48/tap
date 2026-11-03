@@ -534,6 +534,15 @@ open class Adb internal constructor(
         vararg arguments: String,
     ): String = exec(serial, "shell", "dumpsys", *arguments, timeoutMs = 30_000)
 
+    /**
+     * What the device is: API level, manufacturer, model and whether it is an emulator, from one
+     * `getprop` dump. Throws [AdbCommandException] when the API level is unreadable.
+     */
+    open suspend fun deviceProperties(serial: String): DeviceProperties {
+        val output = exec(serial, "shell", "getprop", timeoutMs = 10_000)
+        return parseDeviceProperties(serial, output)
+    }
+
     /** The device's API level (`ro.build.version.sdk`). */
     open suspend fun apiLevel(serial: String): Int {
         val output = exec(serial, "shell", "getprop", "ro.build.version.sdk").trim()
@@ -1398,6 +1407,37 @@ data class AdbDevice(
     val state: AdbDeviceState,
     val rawState: String,
 )
+
+/** What a device is ([Adb.deviceProperties]). */
+data class DeviceProperties(
+    val apiLevel: Int,
+    val manufacturer: String,
+    val model: String,
+    val emulator: Boolean,
+)
+
+private val GETPROP_LINE = Regex("""^\[([^\]]+)]: \[(.*)]$""")
+
+/** [DeviceProperties] from a `getprop` dump (`[key]: [value]` lines). */
+internal fun parseDeviceProperties(
+    serial: String,
+    output: String,
+): DeviceProperties {
+    val properties =
+        output
+            .lineSequence()
+            .mapNotNull { GETPROP_LINE.matchEntire(it.trim())?.destructured }
+            .associate { (key, value) -> key to value }
+    val api =
+        properties["ro.build.version.sdk"]?.toIntOrNull()
+            ?: throw AdbCommandException(serial, listOf("shell", "getprop"), null, output.take(200), "Unreadable API level on $serial")
+    return DeviceProperties(
+        apiLevel = api,
+        manufacturer = properties["ro.product.manufacturer"].orEmpty(),
+        model = properties["ro.product.model"].orEmpty(),
+        emulator = properties["ro.kernel.qemu"] == "1" || properties["ro.boot.qemu"] == "1",
+    )
+}
 
 enum class AdbDeviceState {
     /** `device`: connected, authorized and usable. */

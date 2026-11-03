@@ -157,6 +157,12 @@ internal fun DeviceEntryProto.toModel(): DeviceEntry =
         state = state.toModel(),
         clientConnectionId = if (hasClientConnectionId()) clientConnectionId else null,
         quarantineReason = if (hasQuarantineReason()) quarantineReason else null,
+        properties =
+            if (hasProperties()) {
+                DeviceProperties(properties.apiLevel, properties.manufacturer, properties.model, properties.emulator)
+            } else {
+                null
+            },
     )
 
 internal fun ProcessIdentity.toModel(): AppProcess = AppProcess(pid, startToken)
