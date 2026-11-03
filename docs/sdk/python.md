@@ -50,6 +50,28 @@ def test_delivers_a_message(tap_devices):
     ...
 ```
 
+A role given as a keyword also says which devices may play it. The criteria come from the
+server's device list (`client.devices()`, each entry's `properties`):
+
+```python
+@pytest.mark.tap_devices(device={"min_api": 33})           # the one default role
+def test_per_app_language(tap_device): ...
+
+@pytest.mark.tap_devices("sender", receiver={"emulator": False, "model_contains": "pixel"})
+def test_delivers_to_a_phone(tap_devices): ...
+```
+
+| Criterion | Matches |
+|---|---|
+| `min_api`, `max_api` | the API level, inclusive |
+| `emulator` | `True`: Android emulators only; `False`: everything else |
+| `manufacturer` | `ro.product.manufacturer`, ignoring case |
+| `model_contains` | a substring of `ro.product.model`, ignoring case |
+
+A device whose properties the server could not read matches no criteria. When no available
+device (or no combination of devices, one per role) fits, the test is skipped with a message
+that lists what was there; an unknown criterion or a wrong type is a usage error.
+
 How roles map to serials is on [Multi-device tests](../guide/multi-device.md). When a test
 fails, the plugin saves its devices' [failure artifacts](../guide/artifacts.md#failure-artifacts)
 under `tap-artifacts/<nodeid>/`.

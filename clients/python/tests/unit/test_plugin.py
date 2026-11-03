@@ -9,10 +9,16 @@ from tap_e2e import TapClient
 import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import _gen as pb
+from tap_e2e.models import DeviceEntry, DeviceProperties, DeviceState
 from tap_e2e.pytest_plugin import (
     _HELD,
+    DeviceCriteria,
     TapConfig,
     _assign,
+    _attach_matching,
+    _choose,
+    _criteria,
+    _declared,
     _attach_single,
     _capture_mode,
     _device_scope,
@@ -122,3 +128,91 @@ def test_held_devices_are_reused_only_while_they_answer(fake, pytestconfig):
         pytestconfig.stash[_HELD] = None
         connection.close()
         server.close()
+
+
+def _entry(serial: str, api: int | None, emulator: bool = False, model: str = "Pixel 8") -> DeviceEntry:
+    props = DeviceProperties(api, "Google", model, emulator) if api is not None else None
+    return DeviceEntry(serial, DeviceState.FREE, None, None, props)
+
+
+def test_criteria_match_every_field_that_is_set():
+    emu = _entry("emu", 34, emulator=True, model="sdk_gphone64")
+    phone = _entry("phone", 29, model="SM-J810G")
+    unknown = _entry("unknown", None)
+    assert DeviceCriteria(min_api=30).matches(emu) and not DeviceCriteria(min_api=30).matches(phone)
+    assert DeviceCriteria(max_api=29, emulator=False).matches(phone)
+    assert DeviceCriteria(model_contains="j810").matches(phone)
+    assert DeviceCriteria(manufacturer="GOOGLE").matches(emu)
+    # Unknown properties match nothing but the empty criteria.
+    assert DeviceCriteria().matches(unknown) and DeviceCriteria().matches(None)
+    assert not DeviceCriteria(emulator=False).matches(unknown)
+    assert str(DeviceCriteria(min_api=30, emulator=False)) == "min_api=30, emulator=False"
+
+
+def test_criteria_reject_unknown_names_and_wrong_types():
+    assert _criteria("left", {"min_api": 30}) == DeviceCriteria(min_api=30)
+    with pytest.raises(pytest.UsageError, match="unknown criterion 'api'"):
+        _criteria("left", {"api": 30})
+    with pytest.raises(pytest.UsageError, match="min_api must be int"):
+        _criteria("left", {"min_api": True})
+    with pytest.raises(pytest.UsageError, match="emulator must be bool"):
+        _criteria("left", {"emulator": 1})
+    with pytest.raises(pytest.UsageError, match="takes a dict"):
+        _criteria("left", 30)
+
+
+def test_choose_places_the_narrowest_role_first_and_keeps_rotation_order():
+    entries = {e.serial: e for e in (_entry("a", 34, emulator=True), _entry("b", 34), _entry("c", 29))}
+    # "any" would take "a" first; "phone34" can only have "b".
+    assert _choose(["any", "phone34"], {"phone34": DeviceCriteria(min_api=34, emulator=False)}, ["a", "b", "c"], entries) == {
+        "any": "a",
+        "phone34": "b",
+    }
+    assert _choose(["x", "y"], {"x": DeviceCriteria(min_api=34), "y": DeviceCriteria(min_api=34)}, ["c", "b", "a"], entries) == {
+        "x": "b",
+        "y": "a",
+    }
+    assert _choose(["x", "y"], {"x": DeviceCriteria(max_api=29), "y": DeviceCriteria(max_api=29)}, ["a", "b", "c"], entries) is None
+
+
+class _Request:
+    class node:  # noqa: N801 - mimics pytest's request.node
+        name = "test_x"
+
+
+def test_attach_matching_attaches_a_fitting_device_or_skips_naming_what_is_there(fake):
+    fake.devices.listed = [
+        pb.DeviceEntry(serial="emu", state=pb.DEVICE_FREE, properties=pb.DeviceProperties(api_level=34, emulator=True)),
+        pb.DeviceEntry(serial="phone", state=pb.DEVICE_FREE, properties=pb.DeviceProperties(api_level=29, manufacturer="samsung", model="SM-J810G")),
+    ]
+    config = TapConfig(serials=[], artifacts=pathlib.Path("tap-artifacts"), server=fake.address, acquire_timeout=0, manage_daemon=False)
+    server = TapClient.create(fake.address, TOKEN)
+    connection = server.connect("test")
+    try:
+        devices = _attach_matching(_Request(), connection, config, ["device"], {"device": DeviceCriteria(emulator=False)}, ["emu", "phone"])
+        assert {role: d.serial for role, d in devices.items()} == {"device": "phone"}
+        devices["device"].detach()
+        with pytest.raises(pytest.skip.Exception, match=r"device: min_api=35; no fit among emu \(API 34, emulator\), phone \(API 29, samsung SM-J810G\)"):
+            _attach_matching(_Request(), connection, config, ["device"], {"device": DeviceCriteria(min_api=35)}, ["emu", "phone"])
+    finally:
+        connection.close()
+        server.close()
+
+
+class _Item:
+    def __init__(self, mark):
+        self.mark = mark
+
+    def get_closest_marker(self, name):
+        return self.mark.mark if self.mark is not None else None
+
+
+def test_declared_roles_take_positional_names_then_keyword_criteria():
+    assert _declared(_Item(None)) == (["device"], {})
+    assert _declared(_Item(pytest.mark.tap_devices("left", "right"))) == (["left", "right"], {})
+    roles, criteria = _declared(_Item(pytest.mark.tap_devices("left", right={"emulator": False})))
+    assert roles == ["left", "right"] and criteria == {"right": DeviceCriteria(emulator=False)}
+    assert _declared(_Item(pytest.mark.tap_devices(device={"min_api": 30}))) == (
+        ["device"],
+        {"device": DeviceCriteria(min_api=30)},
+    )

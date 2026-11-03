@@ -58,6 +58,13 @@ Server, clients (additive):
   level, manufacturer, model and whether it is an emulator (`DeviceEntry.properties`, read
   once per serial with `getprop`; Kotlin and Python `DeviceEntry.properties`).
 
+Python client:
+
+- **pytest roles choose devices by what they are.** The marker takes `DeviceEntry.properties`
+  per role: `@pytest.mark.tap_devices("sender", receiver={"min_api": 30, "emulator": False})`,
+  with `min_api`, `max_api`, `emulator`, `manufacturer` and `model_contains`. A test no device
+  fits is skipped, naming the devices it saw.
+
 Server:
 
 - **`tap doctor`.** Reports, per device, what a session that is no longer running left behind

@@ -22,8 +22,12 @@ Configuration (ini option, or environment variable):
     tap_acquire_timeout            seconds to wait for a device another session holds (default 300)
 
 Fixtures: ``tap_device`` (role "device") and ``tap_devices`` (dict role → Device).
-Markers: ``@pytest.mark.tap_devices("left", "right")`` declares roles. A test needing more roles
-than available devices is skipped. The starting device rotates from test to test, and a
+Markers: ``@pytest.mark.tap_devices("left", "right")`` declares roles. A role given as a keyword
+also says which devices may play it: ``@pytest.mark.tap_devices(left={"min_api": 30},
+right={"emulator": False})`` (``device={...}`` for the single default role). Criteria:
+``min_api``, ``max_api``, ``emulator`` (True / False), ``manufacturer`` (case-insensitive) and
+``model_contains`` (case-insensitive), all from ``DeviceEntry.properties``. A test needing more
+roles than available devices, or a role no available device can play, is skipped. The starting device rotates from test to test, and a
 single-role test moves on to the next device when one is held by another session (waiting only
 when all are). Before each test one device per role is attached in sorted
 serial order so concurrent multi-device tests cannot deadlock; after it, a failed test's
@@ -54,6 +58,7 @@ import pytest  # type: ignore[import-not-found]
 from .device import Device
 from .errors import DeviceBusyError, DeviceQuarantinedError
 from .client import TapConnection, TapClient, start_daemon, stop_daemon
+from .models import DeviceEntry
 
 DEFAULT_ROLE = "device"
 
@@ -93,7 +98,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        "tap_devices(*roles): device roles this test needs (default: one 'device')",
+        "tap_devices(*roles, **role_criteria): device roles this test needs (default: one "
+        "'device'); role={'min_api': 30, 'emulator': False, ...} limits which devices play it",
     )
 
 
@@ -191,6 +197,7 @@ class _Held:
     key: str
     roles: list[str]
     devices: dict[str, Device]
+    criteria: dict[str, DeviceCriteria] = field(default_factory=dict)
 
 
 _HELD = pytest.StashKey[_Held | None]()
@@ -210,7 +217,12 @@ def _detach_all(devices: dict[str, Device]) -> list[Exception]:
     return errors
 
 
-def _reusable(config: pytest.Config, key: str | None, roles: list[str]) -> dict[str, Device] | None:
+def _reusable(
+    config: pytest.Config,
+    key: str | None,
+    roles: list[str],
+    criteria: dict[str, DeviceCriteria] | None = None,
+) -> dict[str, Device] | None:
     """The held devices when they belong to ``key``, serve ``roles`` and all still answer
     (``info()``, a few ms); otherwise None, after detaching whatever was held. A detach failure of
     a device that already stopped working is dropped: the attach that follows reports the
@@ -218,7 +230,7 @@ def _reusable(config: pytest.Config, key: str | None, roles: list[str]) -> dict[
     held = config.stash.get(_HELD, None)
     if held is None:
         return None
-    if held.key == key and held.roles == roles:
+    if held.key == key and held.roles == roles and held.criteria == (criteria or {}):
         try:
             for device in held.devices.values():
                 device.info()
@@ -301,10 +313,114 @@ def tap_connection(
     connection.close()
 
 
-def _declared_roles(item: pytest.Item) -> list[str]:
+@dataclass(frozen=True)
+class DeviceCriteria:
+    """Which devices may play a role (``@pytest.mark.tap_devices(left={...})``). Every field
+    that is set must hold; a device whose properties the server could not read matches only
+    the empty criteria."""
+
+    min_api: int | None = None
+    max_api: int | None = None
+    emulator: bool | None = None
+    manufacturer: str | None = None
+    model_contains: str | None = None
+
+    def matches(self, entry: DeviceEntry | None) -> bool:
+        """Whether the device ``entry`` describes may play the role."""
+        if self == DeviceCriteria():
+            return True
+        props = entry.properties if entry else None
+        if props is None:
+            return False
+        return (
+            (self.min_api is None or props.api_level >= self.min_api)
+            and (self.max_api is None or props.api_level <= self.max_api)
+            and (self.emulator is None or props.emulator == self.emulator)
+            and (self.manufacturer is None or props.manufacturer.lower() == self.manufacturer.lower())
+            and (self.model_contains is None or self.model_contains.lower() in props.model.lower())
+        )
+
+    def __str__(self) -> str:
+        return ", ".join(f"{name}={value!r}" for name, value in vars(self).items() if value is not None)
+
+
+_CRITERIA_TYPES: dict[str, type | tuple[type, ...]] = {
+    "min_api": int,
+    "max_api": int,
+    "emulator": bool,
+    "manufacturer": str,
+    "model_contains": str,
+}
+
+
+def _criteria(role: str, value: object) -> DeviceCriteria:
+    """``role={...}`` of a ``tap_devices`` marker as ``DeviceCriteria``; a usage error otherwise."""
+    if not isinstance(value, dict):
+        raise pytest.UsageError(f"tap_devices({role}=...) takes a dict of criteria, got {value!r}")
+    for name, given in value.items():
+        expected = _CRITERIA_TYPES.get(name)
+        if expected is None:
+            raise pytest.UsageError(
+                f"tap_devices({role}=...): unknown criterion {name!r}; use {sorted(_CRITERIA_TYPES)}"
+            )
+        # bool is an int: min_api=True is a mistake, emulator=1 too.
+        if not isinstance(given, expected) or (expected is int and isinstance(given, bool)):
+            raise pytest.UsageError(f"tap_devices({role}=...): {name} must be {expected.__name__}, got {given!r}")
+    return DeviceCriteria(**value)
+
+
+def _declared(item: pytest.Item) -> tuple[list[str], dict[str, DeviceCriteria]]:
+    """The roles a test declares, positional ones first, and the criteria of those given as
+    keywords."""
     marker = item.get_closest_marker("tap_devices")
-    roles = list(marker.args) if marker and marker.args else [DEFAULT_ROLE]
-    return list(dict.fromkeys(roles))
+    if marker is None or not (marker.args or marker.kwargs):
+        return [DEFAULT_ROLE], {}
+    criteria = {role: _criteria(role, value) for role, value in marker.kwargs.items()}
+    return list(dict.fromkeys([*marker.args, *criteria])), criteria
+
+
+def _declared_roles(item: pytest.Item) -> list[str]:
+    return _declared(item)[0]
+
+
+def _choose(
+    roles: list[str],
+    criteria: dict[str, DeviceCriteria],
+    available: list[str],
+    entries: dict[str, DeviceEntry],
+) -> dict[str, str] | None:
+    """One distinct serial per role from ``available`` (already rotated), in its order, that
+    each role's criteria accept; None when there is no such assignment. Roles with the fewest
+    candidates are placed first, and placements are undone when a later role is left without
+    a device."""
+    candidates = {
+        role: [s for s in available if criteria.get(role, DeviceCriteria()).matches(entries.get(s))]
+        for role in roles
+    }
+    order = sorted(roles, key=lambda role: len(candidates[role]))
+    chosen: dict[str, str] = {}
+
+    def place(index: int) -> bool:
+        if index == len(order):
+            return True
+        role = order[index]
+        for serial in candidates[role]:
+            if serial not in chosen.values():
+                chosen[role] = serial
+                if place(index + 1):
+                    return True
+                del chosen[role]
+        return False
+
+    return {role: chosen[role] for role in roles} if place(0) else None
+
+
+def _describe(serial: str, entry: DeviceEntry | None) -> str:
+    props = entry.properties if entry else None
+    if props is None:
+        return f"{serial} (properties unknown)"
+    kind = "emulator" if props.emulator else f"{props.manufacturer} {props.model}"
+    return f"{serial} (API {props.api_level}, {kind})"
 
 
 def _rotate(serials: list[str], start: int) -> list[str]:
@@ -369,7 +485,7 @@ def tap_devices(
     when there are fewer devices than roles. If the test fails, failure artifacts are saved for
     every device under ``tap_artifacts/<test id>/``.
     """
-    roles = _declared_roles(request.node)
+    roles, criteria = _declared(request.node)
     # Roles → serials is decided here (declaration order over a rotated device list); the
     # server only knows serials.
     available = tap_config.serials or tap_connection.available_serials()
@@ -381,10 +497,12 @@ def tap_devices(
         )
         pytest.skip(f"{request.node.name} needs {len(roles)} devices but {where}")
     key = _scope_key(request.node, tap_config.device_scope)
-    reused = _reusable(request.config, key, roles)
+    reused = _reusable(request.config, key, roles, criteria)
     start = next(_ROTATION)
     if reused is not None:
         devices = reused
+    elif criteria:
+        devices = _attach_matching(request, tap_connection, tap_config, roles, criteria, _rotate(available, start))
     elif len(roles) == 1:
         device = _attach_single(
             tap_connection, tap_config, _rotate(available, start)
@@ -395,7 +513,7 @@ def tap_devices(
             tap_connection, tap_config, _assign(roles, available, start)
         )
     if key is not None and reused is None:
-        request.config.stash[_HELD] = _Held(tap_config.device_scope, key, roles, devices)
+        request.config.stash[_HELD] = _Held(tap_config.device_scope, key, roles, devices, criteria)
     state = TestDevices(devices, [device.serial for device in devices.values()])
     request.node.stash[_STATE] = state
     yield devices
@@ -409,6 +527,33 @@ def tap_devices(
         # A cleanup failure after a passing test is a real failure: the device may be quarantined.
         if close_errors and not failed:
             raise close_errors[0]
+
+
+def _attach_matching(
+    request: pytest.FixtureRequest,
+    connection: TapConnection,
+    config: TapConfig,
+    roles: list[str],
+    criteria: dict[str, DeviceCriteria],
+    available: list[str],
+) -> dict[str, Device]:
+    """Attaches devices for roles with criteria: a single role moves past busy matching
+    devices as usual; several roles get one matching assignment, attached in serial order.
+    Skips the test when no available device (or no combination of them) fits."""
+    entries = {entry.serial: entry for entry in connection.client.devices()}
+    if len(roles) == 1:
+        role = roles[0]
+        matching = [s for s in available if criteria[role].matches(entries.get(s))]
+        if matching:
+            return {role: _attach_single(connection, config, matching)}
+        assignment = None
+    else:
+        assignment = _choose(roles, criteria, available, entries)
+        if assignment is not None:
+            return _attach_all(connection, config, assignment)
+    wanted = "; ".join(f"{role}: {criteria[role]}" for role in roles if role in criteria)
+    listed = ", ".join(_describe(s, entries.get(s)) for s in available)
+    pytest.skip(f"{request.node.name} needs {wanted}; no fit among {listed}")
 
 
 @pytest.fixture
