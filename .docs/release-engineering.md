@@ -60,8 +60,11 @@ app rebuilds for every server fix.
 `tap-client`/`tap-junit5` and `tap-e2e` each release independently: a client fix should not
 require a server rollout and vice versa. Each client release records which engine it was
 built against (the `tap-api` version in the Kotlin POM; the Python release notes and the
-committed `_gen` stubs), and the runtime check is `Info().daemon_version` /
-`protocol_version` from the server. `tap.v1` is the API compatibility contract: within it,
+committed `_gen` stubs, whose `engine_version.py` `gen_stubs.py` writes from
+`tap.version.engine`, so an engine bump needs a regeneration that the stub check enforces).
+At runtime the first `connect` of a client refuses a server whose `Info().daemon_version` is
+older than that engine version (`ServerVersion` in the Kotlin SDK, `server_incompatibility` in
+Python); a newer server is accepted. `tap.v1` is the API compatibility contract: within it,
 fields are only added (`buf breaking` in CI enforces wire compatibility), so a newer client
 against an older server degrades to "unknown field ignored" rather than breaking, and an
 older client against a newer server keeps working. A `tap.v2` package would be new

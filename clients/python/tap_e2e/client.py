@@ -34,6 +34,7 @@ from ._gen import (
     client_connection_pb2_grpc,
     device_pb2_grpc,
 )
+from ._gen.engine_version import ENGINE_VERSION
 from .errors import (
     AppLifecycleError,
     DeviceBusyError,
@@ -316,6 +317,28 @@ FIRST_EVENT_TIMEOUT = 30.0
 MAX_EVENTS = 200
 
 
+_VERSION_NUMBERS = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
+
+
+def server_incompatibility(daemon_version: str, engine_version: str = ENGINE_VERSION) -> str | None:
+    """Why a server reporting ``daemon_version`` cannot serve a client whose stubs come from
+    ``engine_version``, or ``None`` when it can. ``tap.v1`` only gains fields and calls, so a
+    server at least as new understands every request; an older one would silently ignore new
+    fields or answer ``UNIMPLEMENTED`` mid-test. A version that is not ``major.minor.patch`` (a
+    development or test server) is not checked."""
+    server = _VERSION_NUMBERS.match(daemon_version)
+    client = _VERSION_NUMBERS.match(engine_version)
+    if not server or not client:
+        return None
+    if tuple(map(int, server.groups())) >= tuple(map(int, client.groups())):
+        return None
+    return (
+        f"the tap server is version {daemon_version}, older than the engine {engine_version} this "
+        "client was built against; upgrade the server (`tap stop`, then `tap start` with the "
+        f"newer `tap`) or use a client built for engine {daemon_version}"
+    )
+
+
 class TapClient:
     """One gRPC channel to a host server. Cheap to create; share one per process.
 
@@ -338,6 +361,7 @@ class TapClient:
         )
         self.device_stub = device_pb2_grpc.DeviceServiceStub(self.channel)
         self.apps = app_pb2_grpc.AppServiceStub(self.channel)
+        self._version_checked = False
 
     @classmethod
     def create(cls, address: str | None = None, token: str | None = None) -> TapClient:
@@ -351,6 +375,15 @@ class TapClient:
         daemon carries a driver to install (``driver_available``) and its default timeouts."""
         with mapped_errors():
             return _proto.server_info(self.client_connections.Info(pb.InfoRequest(), timeout=10))
+
+    def _check_server_version(self) -> None:
+        """Raises ``TapError`` when the server is older than this client's stubs; once per client."""
+        if self._version_checked:
+            return
+        reason = server_incompatibility(self.info().daemon_version)
+        if reason:
+            raise TapError(reason)
+        self._version_checked = True
 
     def devices(self) -> list[DeviceEntry]:
         """Every device ADB lists, with its state (``FREE``, ``LEASED``, ``QUARANTINED``,
@@ -385,8 +418,12 @@ class TapClient:
         keep the default: a crashed test run would otherwise hold its devices until the timeout.
         ``hold`` is experimental (the agent surface): it may change in any release.
 
+        The first connect or resume of a client also checks the server's version: a server older
+        than the engine this client was built against raises ``TapError`` naming both versions.
+
         Use the result as a context manager, or call ``close`` when done.
         """
+        self._check_server_version()
         request = pb.ConnectRequest(name=name)
         if hold is not None:
             request.hold.idle_timeout_ms = int(hold * 1000)
@@ -415,6 +452,7 @@ class TapClient:
         connection has that name (it was closed, or it expired).
 
         Experimental: not covered by the compatibility promise; it may change in any release."""
+        self._check_server_version()
         entry = next((c for c in self.connections() if c.hold is not None and c.name == name), None)
         if entry is None:
             raise TapError(f"no held connection named {name!r} (closed, or idle past its timeout)")

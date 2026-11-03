@@ -36,6 +36,8 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         self.extra_events = 0
         self.seen_tokens: list[str | None] = []
         self.disconnect_error: grpc.StatusCode | None = None
+        # What Info reports; empty (not major.minor.patch) skips the client's version check.
+        self.daemon_version = ""
         self._drops: dict[str, threading.Event] = {}
         self._closing: dict[str, str] = {}
         # Live connections: id -> ConnectRequest (hold tells held from observed).
@@ -136,7 +138,7 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         return pb.DisconnectResponse()
 
     def Info(self, request, context):
-        return pb.InfoResponse()
+        return pb.InfoResponse(daemon_version=self.daemon_version)
 
 
 class FakeDevices(device_pb2_grpc.DeviceServiceServicer):

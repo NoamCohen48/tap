@@ -87,6 +87,37 @@ def test_connect_observes_before_returning(fake):
         server.close()
 
 
+def test_connect_refuses_a_server_older_than_the_client(fake):
+    fake.connections.daemon_version = "0.0.0"
+    server = TapClient.create(fake.address, TOKEN)
+    try:
+        with pytest.raises(TapError, match=r"version 0\.0\.0, older than the engine"):
+            server.connect("test")
+        with pytest.raises(TapError, match="older than the engine"):
+            server.resume("agent")
+        assert fake.connections.connects == 0
+    finally:
+        server.close()
+
+
+def test_connect_accepts_the_client_engine_version_and_newer(fake):
+    for version in (client_module.ENGINE_VERSION, "99.0.0"):
+        fake.connections.daemon_version = version
+        server = TapClient.create(fake.address, TOKEN)
+        try:
+            server.connect("test").close()
+        finally:
+            server.close()
+
+
+def test_server_incompatibility_compares_major_minor_patch():
+    assert client_module.server_incompatibility("0.0.2", "0.0.2") is None
+    assert client_module.server_incompatibility("0.1.0", "0.0.9") is None
+    assert client_module.server_incompatibility("1.0.0-rc1", "0.9.9") is None
+    assert client_module.server_incompatibility("0.9.0", "0.10.0") is not None
+    assert client_module.server_incompatibility("test", "0.0.2") is None
+
+
 def test_connect_fails_and_disconnects_when_the_stream_is_empty(fake):
     fake.connections.observe_mode = "empty"
     server = TapClient.create(fake.address, TOKEN)

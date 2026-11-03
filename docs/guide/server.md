@@ -31,6 +31,14 @@ One server per machine is the intended setup; every test process on that machine
 it. Two servers with different `--state-dir`s are isolated from each other (separate journals
 and device locks), which is how Tap's own CI keeps a scratch server apart from `~/.tap`.
 
+## Client and server versions
+
+A client needs a server at least as new as the engine it was built against: the Kotlin client's
+`tap-api` version, the Python client's `tap_e2e._gen.engine_version`. Newer servers keep
+accepting older clients. The first `connect` (or Python `resume`) of a client checks this and
+fails with both versions named, instead of the server silently ignoring a field it does not
+know. Upgrade the server with `tap stop`, then `tap start` from the newer `tap`.
+
 ## Extracted driver cache
 
 The bundled driver APKs live in `<state-dir>/driver/<version>-<digest>/`. Different builds keep
