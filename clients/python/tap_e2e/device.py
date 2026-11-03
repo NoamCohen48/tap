@@ -689,15 +689,18 @@ class Device:
         match = _notification_match(title, text, mode, package_name)
         self._execute_or_raise(timeout, dismiss_notification=pb.DismissNotification(match=match))
 
-    def type_text(self, value: str, timeout: float | None = None) -> None:
+    def type_text(
+        self, value: str, timeout: float | None = None, *, sensitive: bool = False
+    ) -> None:
         """Type ``value`` as real key events into whatever has input focus now.
 
         No target and no click (``Element.type_text`` taps first). Unsupported characters are
         rejected before any input with ``INVALID_REQUEST``/``UNSUPPORTED_CHARACTERS``; otherwise
         it reports whether every key event was accepted. Where the characters landed is for the
-        test to assert.
+        test to assert. With ``sensitive=True`` (a password, a token) the server logs the call
+        without ``value``.
         """
-        self._execute_or_raise(timeout, type_text=pb.TypeText(text=value))
+        self._execute_or_raise(timeout, type_text=pb.TypeText(text=value, sensitive=sensitive))
 
     def screenshot(self, timeout: float | None = None) -> Screenshot:
         """A PNG ``Screenshot`` of the screen, with its size. The server verifies the bytes

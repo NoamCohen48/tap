@@ -419,9 +419,12 @@ class Agent:
             return self._act(device, target, "double-tapped", lambda e: e.double_tap(), settle)
         return self._act(device, target, "tapped", lambda e: e.tap(), settle)
 
-    def fill(self, target: str, text: str, device: str | None = None, settle: bool = False) -> str:
-        """Replaces the node's text (accessibility SET_TEXT, no key events)."""
-        return self._act(device, target, "filled", lambda e: e.set_text(text), settle)
+    def fill(
+        self, target: str, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False
+    ) -> str:
+        """Replaces the node's text (accessibility SET_TEXT, no key events). ``sensitive``: the
+        daemon logs the call without the text, so ``export`` never holds it."""
+        return self._act(device, target, "filled", lambda e: e.set_text(text, sensitive=sensitive), settle)
 
     def clear(self, target: str, device: str | None = None, settle: bool = False) -> str:
         return self._act(device, target, "cleared", lambda e: e.clear_text(), settle)
@@ -504,12 +507,12 @@ class Agent:
 
         return self._run(step)
 
-    def type(self, text: str, device: str | None = None, settle: bool = False) -> str:
-        """Types real key events into whatever has input focus."""
+    def type(self, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False) -> str:
+        """Types real key events into whatever has input focus. ``sensitive`` as for ``fill``."""
 
         def step() -> str:
             d = self._device(device)
-            d.type_text(text)
+            d.type_text(text, sensitive=sensitive)
             return f"typed {len(text)} characters\n{self._settled(d)}" if settle else f"typed {len(text)} characters"
 
         return self._run(step)

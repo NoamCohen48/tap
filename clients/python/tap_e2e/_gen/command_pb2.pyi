@@ -331,18 +331,22 @@ class LongTap(_message.Message):
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ...) -> None: ...
 
 class SetText(_message.Message):
-    __slots__ = ("selector", "text")
+    __slots__ = ("selector", "text", "sensitive")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
+    SENSITIVE_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
     text: str
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ...) -> None: ...
+    sensitive: bool
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., sensitive: _Optional[bool] = ...) -> None: ...
 
 class TypeText(_message.Message):
-    __slots__ = ("text",)
+    __slots__ = ("text", "sensitive")
     TEXT_FIELD_NUMBER: _ClassVar[int]
+    SENSITIVE_FIELD_NUMBER: _ClassVar[int]
     text: str
-    def __init__(self, text: _Optional[str] = ...) -> None: ...
+    sensitive: bool
+    def __init__(self, text: _Optional[str] = ..., sensitive: _Optional[bool] = ...) -> None: ...
 
 class ClearText(_message.Message):
     __slots__ = ("selector",)

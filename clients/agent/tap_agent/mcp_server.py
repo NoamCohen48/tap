@@ -143,22 +143,24 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def fill(
         target: Target,
         text: Annotated[str, Field(description="The new text.")],
+        sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Replace a field's text (accessibility set-text; no key events)."""
-        return await call(session, lambda a: a.fill(target, text, device or None, settle=settle))
+        return await call(session, lambda a: a.fill(target, text, device or None, settle=settle, sensitive=sensitive))
 
     @mcp.tool(name="type_text")
     async def type_text(
         text: Annotated[str, Field(description="Characters to type.")],
+        sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Type key events into whatever has input focus (tap a field first)."""
-        return await call(session, lambda a: a.type(text, device or None, settle=settle))
+        return await call(session, lambda a: a.type(text, device or None, settle=settle, sensitive=sensitive))
 
     @mcp.tool(name="clear")
     async def clear(target: Target, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:

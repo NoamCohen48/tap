@@ -60,6 +60,15 @@ email.set_text("user@example.com")
 email.wait().text_equals("user@example.com")
 ```
 
+Pass `sensitive=True` (Kotlin `sensitive = true`) to `set_text`, `type_text` or
+`device.type_text` for a password or a token. The device still gets the text, but the server
+logs the call without it, so the connection's event log, `tap-watcher` and `tap-agent export`
+show that text was typed and not what it was:
+
+```python
+app.element(res("password")).set_text(os.environ["TEST_PASSWORD"], sensitive=True)
+```
+
 ## Accessibility actions and sliders
 
 | Method | What happens on the device |

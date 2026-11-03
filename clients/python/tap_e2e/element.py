@@ -148,29 +148,42 @@ class Element:
         content may keep moving, so wait for what you need next."""
         self._run(timeout, fling=pb.Fling(selector=self._target, direction=_proto.direction(direction)))
 
-    def set_text(self, value: str, timeout: float | None = None) -> None:
+    def set_text(
+        self, value: str, timeout: float | None = None, *, sensitive: bool = False
+    ) -> None:
         """Accessibility text replacement (``ACTION_SET_TEXT``) on the one matching node.
 
         Fails with ``ACTION_REJECTED`` only when the node refuses the action. The field is not
         read back: assert the effect with a selector that survives the edit, e.g.
         ``app.wait(res("email")).text_equals("new")``.
+
+        With ``sensitive=True`` (a password, a token) the server logs the call without
+        ``value``, so the connection's event log, ``tap-watcher`` and exports never hold it.
         """
-        self._run(timeout, set_text=pb.SetText(selector=self._target, text=value))
+        self._run(
+            timeout,
+            set_text=pb.SetText(selector=self._target, text=value, sensitive=sensitive),
+        )
 
     def type_text(
-        self, value: str, await_focus: bool = True, timeout: float | None = None
+        self,
+        value: str,
+        await_focus: bool = True,
+        timeout: float | None = None,
+        *,
+        sensitive: bool = False,
     ) -> None:
         """Tap the one matching node, wait until it reports focus, then type ``value``.
 
         Three steps (``tap``, ``wait().focused()`` when ``await_focus``, ``Device.type_text``),
         so a failure says which one failed. Pass ``await_focus=False`` when focus goes elsewhere
         (a child or a separate input view) and wait for what that app needs yourself. The field
-        is not read back: assert the effect yourself.
+        is not read back: assert the effect yourself. ``sensitive`` as for ``set_text``.
         """
         self.tap(timeout)
         if await_focus:
             self.wait().focused()
-        self.device.type_text(value, timeout)
+        self.device.type_text(value, timeout, sensitive=sensitive)
 
     def clear_text(self, timeout: float | None = None) -> None:
         """``set_text("")``: ``ACTION_SET_TEXT`` on the one matching node, not read back."""

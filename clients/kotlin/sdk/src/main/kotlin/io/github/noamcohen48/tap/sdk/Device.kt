@@ -876,12 +876,21 @@ class Device internal constructor(
      * click (see [Element.typeText] for tap-then-type). Unsupported characters are rejected
      * before any input with `INVALID_REQUEST`/`UNSUPPORTED_CHARACTERS`; otherwise it reports
      * whether every key event was accepted. Where the characters landed is for the test to assert.
+     * With [sensitive] (a password, a token) the server logs the call without [value].
      */
     suspend fun typeText(
         value: String,
         timeout: Duration? = null,
+        sensitive: Boolean = false,
     ) {
-        executeOrThrow(timeout ?: timeouts.action) { typeText = TypeText.newBuilder().setText(value).build() }
+        executeOrThrow(timeout ?: timeouts.action) {
+            typeText =
+                TypeText
+                    .newBuilder()
+                    .setText(value)
+                    .setSensitive(sensitive)
+                    .build()
+        }
     }
 
     /**

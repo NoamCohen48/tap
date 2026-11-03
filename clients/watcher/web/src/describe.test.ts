@@ -27,6 +27,12 @@ suite("describe", () => {
     expect(failed(event)).toBe(true);
   });
 
+  it("shows a sensitive text as hidden", () => {
+    const event = command({ case: "setText", value: { selector: resource("password"), text: "", sensitive: true } });
+    expect(describe(event).input).toBe("(hidden)");
+    expect(describe(command({ case: "typeText", value: { text: "", sensitive: true } })).input).toBe("(hidden)");
+  });
+
   it("shortens long input", () => {
     const event = command({ case: "typeText", value: { text: "x".repeat(100) } });
     expect(describe(event).input).toHaveLength(42);

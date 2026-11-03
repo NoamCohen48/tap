@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.LoggedEvent
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
@@ -47,3 +48,14 @@ internal suspend fun <T> AttachedDevice.recorded(
     finish()
     return result
 }
+
+/**
+ * This command as the event log keeps it: a `sensitive` set_text / type_text without its text
+ * (the flag stays, so a reader knows text was typed and withheld). Everything else as sent.
+ */
+internal fun Command.forLog(): Command =
+    when {
+        hasSetText() && setText.sensitive -> toBuilder().setSetText(setText.toBuilder().clearText()).build()
+        hasTypeText() && typeText.sensitive -> toBuilder().setTypeText(typeText.toBuilder().clearText()).build()
+        else -> this
+    }

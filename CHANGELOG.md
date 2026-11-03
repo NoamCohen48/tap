@@ -8,6 +8,13 @@ experimental may change in any release.
 
 Driver, server, clients (additive, protocol 5.1):
 
+- **Typed secrets stay out of the event log.** `SetText` and `TypeText` have a `sensitive`
+  flag: Kotlin `setText(…, sensitive = true)` / `typeText(…, sensitive = true)`, Python
+  `set_text(…, sensitive=True)` / `type_text(…, sensitive=True)`, `tap-agent fill/type
+  --sensitive` (MCP `sensitive`). The device gets the text; the server logs the command
+  without it (the flag stays), so `Events`, `tap-watcher` (which shows "(hidden)") and
+  `tap-agent export` never hold it. Tap Studio sends its recorded secrets this way. They used
+  to be logged verbatim, passwords included.
 - **A node re-rendered before input is `STALE_BEFORE_INPUT`.** When the matched node goes stale
   between the lookup and the input (a list re-binding, a re-laid-out form), the command fails
   with the new `STALE_BEFORE_INPUT` code: nothing was sent and it is retryable. It used to be

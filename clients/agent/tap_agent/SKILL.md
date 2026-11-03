@@ -55,7 +55,7 @@ the device, and says so.
 ## Acting
 
 `tap`, `tap --long`, `tap --double`, `fill <target> <text>` (replaces the text), `type <text>`
-(key events into the focused field), `clear`, `scroll <target> up|down|left|right` (`down`
+(key events into the focused field; add `--sensitive` to either for a password or token, which keeps it out of the log and export), `clear`, `scroll <target> up|down|left|right` (`down`
 reveals content below), `swipe <target> <direction>`, `fling <target> <direction>` (as
 `scroll`, fast; the content may keep moving), `drag <target> <destination>` (long-press, move
 onto the destination node, drop), `pinch <target> open|close [--percent 80]`,

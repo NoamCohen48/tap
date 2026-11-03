@@ -263,7 +263,11 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
     perform: dict[str, Callable[[], None]] = {
         "tap": lambda: element.tap(timeout),
         "long_tap": lambda: element.long_tap(timeout),
-        "set_text": lambda: element.set_text(secret_value if action.HasField("secret") else message.text, timeout),
+        "set_text": lambda: (
+            element.set_text(secret_value, timeout, sensitive=True)
+            if action.HasField("secret")
+            else element.set_text(message.text, timeout)
+        ),
         "clear_text": lambda: element.clear_text(timeout),
         "scroll": lambda: element.scroll(_direction(message.direction), message.distance_percent, timeout),
         "swipe": lambda: element.swipe(_direction(message.direction), message.distance_percent, timeout),

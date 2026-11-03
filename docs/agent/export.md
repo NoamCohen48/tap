@@ -34,8 +34,9 @@ usable for a test in any language. `tap-agent` does not generate code; you (or y
   needs.
 - The server keeps the newest 2 000 events per session; `dropped` counts older ones it let go.
   Export before `release`: the log ends with the session.
-- **Typed text is recorded verbatim, passwords included.** Treat an export file as a secret if
-  the session typed one.
+- **Typed text is recorded verbatim unless it was marked sensitive.** `fill … --sensitive` and
+  `type … --sensitive` (MCP `sensitive: true`) log the call without its text; anything else,
+  a password typed without the flag included, is in the export as typed.
 
 The [example session](session.md) becomes this test. The selectors that carry a `PROPERTY_PACKAGE_NAME` match
 are that app's (`device.app(…)`), and the agent's `wait` becomes the test's wait. In Kotlin the

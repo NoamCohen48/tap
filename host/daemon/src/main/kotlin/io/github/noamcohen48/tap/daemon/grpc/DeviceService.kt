@@ -160,7 +160,7 @@ class DeviceService(
                 if (command.opCase in UNLOGGED_OPS) {
                     resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                 } else {
-                    attachedDevice.recorded({ setCommand(command) }, { it.takeIf { it.hasError() }?.error }) {
+                    attachedDevice.recorded({ setCommand(command.forLog()) }, { it.takeIf { it.hasError() }?.error }) {
                         if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
                         resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                     }
