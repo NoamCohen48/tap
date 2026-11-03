@@ -42,6 +42,7 @@ private const val STOP_SLACK_MS = 5_000L
  * `tap serve  (same options)` — run in the foreground
  * `tap status [--state-dir DIR]`
  * `tap stop   [--state-dir DIR]`
+ * `tap doctor [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]` — what ended sessions left behind
  *
  * Starting the daemon is explicit: clients never spawn it. `start` is idempotent — a live
  * daemon is reported and reused — and like the ADB server a started daemon stays up until
@@ -68,6 +69,10 @@ fun main(args: Array<String>) {
             "serve" -> serve(options, stateDir).let { 0 }
             "status" -> status(stateDir)
             "stop" -> stop(stateDir)
+            "doctor" ->
+                runBlocking {
+                    doctor(stateDir, Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb"), options["--serial"], "--fix" in options)
+                }
             else -> println("tap daemon ${DAEMON_VERSION}").let { 0 }
         }
     if (exitCode != 0) exitProcess(exitCode)
@@ -110,6 +115,8 @@ private fun usage(): Nothing {
                tap serve   (same options as start; foreground)
                tap status  [--state-dir DIR]
                tap stop    [--state-dir DIR]
+               tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
+                           (what ended sessions left on the devices; --fix cleans it up)
                tap version
         """.trimIndent(),
     )
@@ -123,8 +130,12 @@ private val COMMAND_OPTIONS =
         "serve" to SERVE_OPTIONS,
         "status" to setOf("--state-dir"),
         "stop" to setOf("--state-dir"),
+        "doctor" to setOf("--state-dir", "--adb", "--serial", "--fix"),
         "version" to emptySet(),
     )
+
+/** Options that take no value. */
+private val FLAGS = setOf("--fix")
 
 /** `serve` exit status when another process holds the state dir's lock. */
 private const val EXIT_LOCKED = 3
@@ -139,6 +150,11 @@ private fun parseOptions(args: List<String>): Map<String, String> {
     while (i < args.size) {
         val key = args[i]
         if (!key.startsWith("--")) throw UsageException("unexpected argument '$key'")
+        if (key in FLAGS) {
+            if (options.put(key, "true") != null) throw UsageException("option $key given twice")
+            i += 1
+            continue
+        }
         val value = args.getOrNull(i + 1)?.takeUnless { it.startsWith("--") } ?: throw UsageException("option $key needs a value")
         if (options.put(key, value) != null) throw UsageException("option $key given twice")
         i += 2

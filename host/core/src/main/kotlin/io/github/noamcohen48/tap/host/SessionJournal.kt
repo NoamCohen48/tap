@@ -66,6 +66,9 @@ class SessionJournalStore(root: Path, private val serial: String) {
         .encodeToString(serial.encodeToByteArray())
     private val directory = root.toAbsolutePath()
     private val journalPath = directory.resolve("$encodedSerial.json")
+
+    /** The journal record's file (`<base64url(serial)>.json`), for telling a person what to remove. */
+    val file: Path get() = journalPath
     private val lockPath = directory.resolve("$encodedSerial.lock")
 
     init {
