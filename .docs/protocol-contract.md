@@ -337,9 +337,10 @@ dumps the hierarchy. `ByMatcher` searches a parent or ancestor relation from the
 and returns a node once per matching ancestor (a button under nested `LinearLayout`s), so the
 native plan de-duplicates the matches of a selector that has one (`UiObject2.equals`).
 `exactly_one` fetches at most two matches to decide `AMBIGUOUS`; `first` and `at n` take
-accessibility order and return `NOT_FOUND` when the index is absent. That order is
-plan-dependent today: the native plan keeps `ByMatcher`'s post-order (a match after the
-matches inside it), the traversal plan walks pre-order (DR-23 in `code-review-status.md`).
+accessibility order and return `NOT_FOUND` when the index is absent. That order is the same on
+both plans: windows in the order the accessibility service reports them, and within a window
+post-order, a match after the matches inside it (`ByMatcher`'s order, which the traversal plan
+reproduces), so a decor `LinearLayout` comes after the `LinearLayout` rows it holds.
 
 ## Execution Model
 

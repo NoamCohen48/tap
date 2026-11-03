@@ -37,6 +37,14 @@ Clients (Kotlin, Python):
   it did not know, or fail one call deep in a test with `UNIMPLEMENTED`. A newer server is
   accepted; a version that is not `major.minor.patch` is not checked.
 
+Driver:
+
+- **`first()` and `at(n)` count the same way for every selector.** A selector with a regular
+  expression, an `any_of` or a repeated property counted its matches outer node first, while
+  every other selector counted a container after the matching nodes inside it (UiAutomator's
+  order). On a screen with nested matches the same `at(n)` picked a different node depending on
+  how it was written. Both now use UiAutomator's order.
+
 Server:
 
 - **`tap doctor`.** Reports, per device, what a session that is no longer running left behind

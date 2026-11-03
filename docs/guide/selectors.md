@@ -129,8 +129,11 @@ app.element(text("Add").first()).tap()          # first in accessibility order
 app.element(class_name("Button").at(2)).tap()   # third in accessibility order
 ```
 
-Accessibility order is stable for a given screen but is not guaranteed to be visual order;
-prefer a distinguishing relation (`has_descendant(text(...))`) when there is one.
+Accessibility order is UiAutomator's: window by window, and inside a window a node comes after
+the matching nodes it contains, so a container that matches counts after its matching children
+(a list's `LinearLayout` rows come before the `LinearLayout` around them). Every selector counts
+the same way, whatever it uses. The order is stable for a given screen but is not guaranteed to
+be visual order; prefer a distinguishing relation (`has_descendant(text(...))`) when there is one.
 
 ## Limits and what is not supported
 
