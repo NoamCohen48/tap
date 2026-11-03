@@ -161,6 +161,8 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.device_logs = pb.DeviceLogsResponse(
             logcat="I ActivityManager: Start proc\n", activities="ACTIVITIES", windows="WINDOWS"
         )
+        # What ListDevices reports.
+        self.listed: list[pb.DeviceEntry] = []
         self.conditions: list = []
         self.foreground: tuple[str, str] | None = None
         # Device files by path; the headers and chunk sizes the uploads carried.
@@ -339,7 +341,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         return pb.DetachResponse(clean=True)
 
     def ListDevices(self, request, context):
-        return pb.ListDevicesResponse()
+        return pb.ListDevicesResponse(devices=self.listed)
 
 
 class FakeApps(app_pb2_grpc.AppServiceServicer):

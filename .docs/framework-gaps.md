@@ -248,7 +248,7 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 
 | Gap | Impact | Notes |
 |---|---|---|
-| pytest plugin exposes pinned serials only | `min_api`/`emulator`/`model_contains` are reachable from scripts but not from a marker | Add `@pytest.mark.tap_devices(left={"min_api": 30}, ...)`. |
+| JUnit has no device criteria | pytest roles take `min_api`/`max_api`/`emulator`/`manufacturer`/`model_contains` (`@pytest.mark.tap_devices(left={...})`, `test_plugin.py`); `@TapDevices` names roles only | The server reports the properties (`DeviceEntry.properties`); a JUnit annotation needs only the client side. |
 | Server has no per-run structured event stream | Bindings cannot build reports from server events | Partly there: every connection has an event log of its device calls (`Events` RPC, `event_log()` in Python, `tap-agent export`; experimental). No streaming, no run-level events, not in the Kotlin client. |
 | Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later; the Kotlin coroutine façade landed in client 0.2.0. |
 
