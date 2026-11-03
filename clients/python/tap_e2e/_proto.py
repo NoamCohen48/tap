@@ -16,6 +16,7 @@ from .models import (
     Bounds,
     ConnectionEntry,
     DeviceEntry,
+    DeviceProperties,
     DeviceInfo,
     ForegroundActivity,
     Notification,
@@ -257,6 +258,16 @@ def device_entry(entry: pb.DeviceEntry) -> DeviceEntry:
         state=device_state(entry.state),
         client_connection_id=_optional(entry, "client_connection_id"),
         quarantine_reason=_optional(entry, "quarantine_reason"),
+        properties=(
+            DeviceProperties(
+                api_level=entry.properties.api_level,
+                manufacturer=entry.properties.manufacturer,
+                model=entry.properties.model,
+                emulator=entry.properties.emulator,
+            )
+            if entry.HasField("properties")
+            else None
+        ),
     )
 
 

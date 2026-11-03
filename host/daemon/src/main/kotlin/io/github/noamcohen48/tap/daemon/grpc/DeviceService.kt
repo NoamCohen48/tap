@@ -15,6 +15,7 @@ import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
 import io.github.noamcohen48.tap.api.v1.DeviceCall
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.DeviceProperties
 import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
 import io.github.noamcohen48.tap.api.v1.DeviceLogsResponse
@@ -571,6 +572,16 @@ class DeviceService(
             .newBuilder()
             .apply {
                 serial = entry.serial
+                entry.properties?.let {
+                    properties =
+                        DeviceProperties
+                            .newBuilder()
+                            .setApiLevel(it.apiLevel)
+                            .setManufacturer(it.manufacturer)
+                            .setModel(it.model)
+                            .setEmulator(it.emulator)
+                            .build()
+                }
                 when (val status = entry.status) {
                     DeviceStatus.Free -> {
                         state = DeviceState.DEVICE_FREE

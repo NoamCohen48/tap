@@ -106,6 +106,19 @@ message DeviceEntry {
   // The holding connection when this daemon holds it (LEASED); absent for another process.
   optional string client_connection_id = 3;
   optional string quarantine_reason = 4;
+  // What the device is, for choosing one (`tap_devices(left={"min_api": 30})`). Set for an
+  // online device whose properties the daemon could read; absent for offline, unauthorized or
+  // unreadable ones.
+  optional DeviceProperties properties = 5;
+}
+
+// System properties of a device, read once per serial while it stays online.
+message DeviceProperties {
+  int32 api_level = 1; // ro.build.version.sdk
+  string manufacturer = 2; // ro.product.manufacturer
+  string model = 3; // ro.product.model
+  // An Android emulator (ro.kernel.qemu or ro.boot.qemu is 1).
+  bool emulator = 4;
 }
 
 message ListDevicesRequest {}

@@ -371,6 +371,21 @@ class DeviceEntry:
     state: DeviceState
     client_connection_id: str | None
     quarantine_reason: str | None
+    properties: DeviceProperties | None = None
+    """What the device is; ``None`` for a device the server could not read (offline,
+    unauthorized)."""
+
+
+@dataclass(frozen=True)
+class DeviceProperties:
+    """What a device is (``DeviceEntry.properties``), read by the server from its system
+    properties: ``ro.build.version.sdk``, ``ro.product.manufacturer``, ``ro.product.model``, and
+    whether it is an Android emulator."""
+
+    api_level: int
+    manufacturer: str
+    model: str
+    emulator: bool
 
 
 @dataclass(frozen=True)

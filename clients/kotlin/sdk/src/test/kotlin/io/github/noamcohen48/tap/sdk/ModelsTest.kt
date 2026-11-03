@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.DeviceEntry as DeviceEntryProto
+import io.github.noamcohen48.tap.api.v1.DeviceProperties as DevicePropertiesProto
 import io.github.noamcohen48.tap.api.v1.DeviceState as DeviceStateProto
 import io.github.noamcohen48.tap.api.v1.Direction as DirectionProto
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
@@ -30,6 +32,14 @@ class ModelsTest {
         known(DeviceStateProto.values()).forEach { assertEquals(it.name.removePrefix("DEVICE_"), it.toModel().name) }
         assertEquals(ErrorCode.UNKNOWN, ErrorCodeProto.ERR_UNSPECIFIED.toModel())
         assertEquals(DeviceState.UNKNOWN, DeviceStateProto.DEVICE_STATE_UNSPECIFIED.toModel())
+    }
+
+    @Test
+    fun `a device entry carries its properties only when the server read them`() {
+        val props = DevicePropertiesProto.newBuilder().setApiLevel(29).setManufacturer("samsung").setModel("SM-J810G").build()
+        val read = DeviceEntryProto.newBuilder().setSerial("85e49002").setProperties(props).build().toModel()
+        assertEquals(DeviceProperties(29, "samsung", "SM-J810G", emulator = false), read.properties)
+        assertEquals(null, DeviceEntryProto.newBuilder().setSerial("off").build().toModel().properties)
     }
 
     @Test

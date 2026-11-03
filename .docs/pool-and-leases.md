@@ -29,6 +29,15 @@ once a session is open. It also removes a `getprop` round trip per new serial. A
 wants to choose by API level or emulator-ness reads `getprop` itself. The removed matcher and
 facts are under `archive/pool-roles/`.
 
+Amended (2026-11-02): the facts are back in `ListDevices` as information
+(`DeviceEntry.properties`: API level, manufacturer, model, emulator), still without a matcher in
+the service. "The client reads `getprop` itself" did not hold: every ADB call lives behind the
+server (the layering invariant), so a client's only other way to learn a device's API level was
+to attach it, a driver start per device, before it could choose. The pytest plugin matches its
+role criteria (`tap_devices(left={"min_api": 30})`) client-side over that list. The cost is one
+`getprop` dump per serial while it stays online, cached in the daemon; a device that does not
+answer is listed without properties rather than failing the list.
+
 Consequence to know about: with nothing configured, two processes starting at once may pick
 the same free serial; the second waits for the first rather than being steered to another
 device. Fixing that belongs in the client's selection, not the service.

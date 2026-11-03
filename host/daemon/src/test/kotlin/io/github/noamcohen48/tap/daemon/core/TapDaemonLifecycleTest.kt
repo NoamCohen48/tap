@@ -19,6 +19,7 @@ import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_PORT
 import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.DRIVER_TEST_PACKAGE
+import io.github.noamcohen48.tap.host.DeviceProperties
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
 import io.github.noamcohen48.tap.host.DriverClient
@@ -319,6 +320,48 @@ class TapDaemonLifecycleTest {
             assertTrue(corrupt is DeviceStatus.Quarantined && corrupt.reason.startsWith("journal unreadable"), "got $corrupt")
             assertEquals(DeviceStatus.Unavailable(AdbDeviceState.OFFLINE, "offline"), offline)
             assertEquals(DeviceStatus.Unavailable(AdbDeviceState.UNAUTHORIZED, "unauthorized"), unauthorized)
+        }
+
+    @Test
+    fun `online devices carry their properties, read once per serial while online`(): Unit =
+        runBlocking {
+            val reads = java.util.concurrent.ConcurrentHashMap<String, Int>()
+            var listed =
+                listOf(
+                    AdbDevice("emu", AdbDeviceState.ONLINE, "device"),
+                    AdbDevice("phone", AdbDeviceState.ONLINE, "device"),
+                    AdbDevice("off1", AdbDeviceState.OFFLINE, "offline"),
+                )
+            val adb =
+                object : Adb("fake-adb") {
+                    override suspend fun deviceStates(timeoutMs: Long): List<AdbDevice> = listed
+
+                    override suspend fun deviceProperties(serial: String): DeviceProperties {
+                        reads.merge(serial, 1, Int::plus)
+                        return when (serial) {
+                            "emu" -> DeviceProperties(34, "Google", "sdk_gphone64_x86_64", emulator = true)
+                            "phone" -> throw AdbCommandException(serial, listOf("shell", "getprop"), 1, "", "boom")
+                            else -> error("no properties for $serial")
+                        }
+                    }
+                }
+            val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = Files.createTempDirectory("tap-props"), driver = null, log = {}), FakeOpener())
+            val (emu, phone, offline) = daemon.devices()
+            assertEquals(DeviceProperties(34, "Google", "sdk_gphone64_x86_64", emulator = true), emu.properties)
+            // An unreadable device is still listed, without properties, and is read again next time.
+            assertEquals(DeviceStatus.Free, phone.status)
+            assertNull(phone.properties)
+            assertNull(offline.properties)
+            daemon.devices()
+            assertEquals(1, reads["emu"])
+            assertEquals(2, reads["phone"])
+            assertNull(reads["off1"])
+            // A serial that leaves the online list is read again when it comes back.
+            listed = listOf(AdbDevice("emu", AdbDeviceState.OFFLINE, "offline"))
+            daemon.devices()
+            listed = listOf(AdbDevice("emu", AdbDeviceState.ONLINE, "device"))
+            daemon.devices()
+            assertEquals(2, reads["emu"])
         }
 
     @Test

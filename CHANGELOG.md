@@ -54,6 +54,9 @@ Server, clients (additive):
   extension and the pytest plugin save `logcat.txt`, `crashes.txt` (when something crashed),
   `activities.txt` and `windows.txt` next to the screenshot of a failed test. An app crash used
   to leave no trace in the artifacts.
+- **The device list says what each device is.** `ListDevices` reports each online device's API
+  level, manufacturer, model and whether it is an emulator (`DeviceEntry.properties`, read
+  once per serial with `getprop`; Kotlin and Python `DeviceEntry.properties`).
 
 Server:
 
