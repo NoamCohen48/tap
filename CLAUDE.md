@@ -123,23 +123,33 @@ Rules when doing so:
 
 ## Git workflow
 
-Work happens on a branch in a worktree; `main` changes only through squash-merged PRs (the
-"Protect main" ruleset requires a PR, the CI checks API contract / JVM / Python / tap-studio on
-an up-to-date branch, and linear history). Agents never check out, merge into or push `main`, and
-never merge PRs themselves (no `gh pr merge`, no `--admin`): the user merges.
+Work happens on a branch in a worktree; `main` changes only through PRs, squash- or
+rebase-merged (the "Protect main" ruleset requires a PR, the CI checks API contract / JVM /
+Python / tap-studio on an up-to-date branch, and linear history). Agents never check out, merge
+into or push `main`. The user merges, unless they explicitly ask an agent to merge given PRs
+(for example "merge each one once CI passes"): then wait for every check to pass on the
+up-to-date branch, squash a one-commit PR (`gh pr merge N --squash`), rebase-merge a
+multi-commit one (`gh pr merge N --rebase`) so its commits land as they are, and never use
+`--admin`. After each merge, rebase the next PR onto the new `main` and wait for its checks again.
 
 - When a task is done: `git fetch origin && git rebase origin/main` (resolve conflicts here;
   regenerate proto stubs instead of hand-merging them), run the relevant local checks, then
   `git push -u origin HEAD --force-with-lease` and `gh pr create` (or push again to update an
-  open PR). One task per PR; the PR title becomes the squash commit title.
-- Each PR is exactly one commit: squash the branch into one (`git reset --soft origin/main` and
-  commit again) before pushing, and amend that commit, then force-push with `--force-with-lease`,
-  for later changes. A task is never split across several PRs: no stacked PRs, no PR per phase or
-  group; a task that grows keeps growing its one PR.
+  open PR). One task per PR.
+- Commits are small: one commit per distinct change. A PR that does one thing is one commit
+  (squash the branch with `git reset --soft origin/main` and commit again; amend it for later
+  changes). A PR that does several things (a server API and the client feature built on it, a
+  refactor and the fix it enables) keeps one commit per thing, in order, each building and passing
+  its tests on its own; later changes are fixed up into the commit they belong to
+  (`git commit --fixup` + `git rebase --autosquash origin/main`), never added as "address review"
+  commits. Force-push with `--force-with-lease`. A task is never split across several PRs: no
+  stacked PRs, no PR per phase or group; a task that grows keeps growing its one PR.
 - PR body: what changed and why, the checks run, and a `Device matrix: run / not run` line
-  (device tests only when the user asked). No co-author or "Generated with" lines.
-- The PR title and body become the commit on `main` (squash = PR title + PR body), so write
-  them for a reader of `git log` who has never seen the PR, the branch or the `.docs/` plans:
+  (device tests only when the user asked); for a multi-commit PR, one section per commit. No
+  co-author or "Generated with" lines.
+- What lands on `main` is the commit messages: a squash merge's commit is the PR title + body, a
+  rebase merge keeps each commit's own title and body. Write each of them for a reader of
+  `git log` who has never seen the PR, the branch or the `.docs/` plans:
   - Title: `<Area>: <what changed>`, in plain words, capitalised, no trailing period, at most
     80 characters. Area is the part a reader looks for (`Driver`, `Host core`, `Daemon`,
     `Protocol`, `Kotlin SDK`, `JUnit`, `Python client`, `tap-agent`, `Tap Studio`, `Docs`,
