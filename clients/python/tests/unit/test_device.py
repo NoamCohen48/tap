@@ -189,7 +189,10 @@ def test_capture_keeps_the_parts_it_got_and_records_why_the_others_are_missing(f
     assert capture.info is not None and capture.info.api_level == 34
     assert capture.driver_log is not None and capture.driver_log.lines == ["line"]
     assert capture.hierarchy is None
-    assert list(capture.artifacts) == [Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG]
+    # Nothing crashed: no crashes part.
+    assert list(capture.artifacts) == [
+        Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG, Capture.LOGCAT, Capture.ACTIVITIES, Capture.WINDOWS
+    ]
     assert list(capture.failures) == [Capture.HIERARCHY]
     failure = capture.failures[Capture.HIERARCHY]
     assert isinstance(failure, CommandError) and failure.code is ErrorCode.DRIVER_UNHEALTHY
@@ -198,8 +201,24 @@ def test_capture_keeps_the_parts_it_got_and_records_why_the_others_are_missing(f
         "main-emulator-5554.screenshot.png",
         "main-emulator-5554.device-info.json",
         "main-emulator-5554.driver-log.txt",
+        "main-emulator-5554.logcat.txt",
+        "main-emulator-5554.activities.txt",
+        "main-emulator-5554.windows.txt",
     ]
     assert saved[0].read_bytes() == fake.devices.png
+    assert saved[3].read_text() == "I ActivityManager: Start proc\n"
+
+
+def test_device_logs_include_crashes_only_when_something_crashed(fake, device):
+    from tap_e2e import Capture
+
+    fake.devices.device_logs = pb.DeviceLogsResponse(
+        logcat="L", logcat_truncated=True, crashes="E AndroidRuntime: FATAL EXCEPTION: main", activities="A", windows="W"
+    )
+    logs = device.device_logs()
+    assert logs.logcat_truncated and logs.crashes.startswith("E AndroidRuntime")
+    assert list(logs.artifacts) == [Capture.LOGCAT, Capture.CRASHES, Capture.ACTIVITIES, Capture.WINDOWS]
+    assert ("device_logs", device.owner_connection.id) in fake.devices.owners
 
 
 def test_install_streams_a_header_then_1_mib_chunks(fake, device, tmp_path):

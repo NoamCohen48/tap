@@ -662,14 +662,29 @@ class TapClientTest {
                         val capture = device.capture()
                         assertEquals(34, capture.info?.apiLevel)
                         assertEquals(null, capture.hierarchy)
-                        assertEquals(listOf(Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG), capture.artifacts.keys.toList())
+                        // Nothing crashed: no crashes part.
+                        assertEquals(
+                            listOf(Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG, Capture.LOGCAT, Capture.ACTIVITIES, Capture.WINDOWS),
+                            capture.artifacts.keys.toList(),
+                        )
                         assertEquals(setOf(Capture.HIERARCHY), capture.failures.keys)
                         assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), assertIs<CommandException>(capture.failures[Capture.HIERARCHY]).code)
                         val saved = capture.saveTo(dir, "main-emulator-5554").map { it.fileName.toString() }
                         assertEquals(
-                            listOf("main-emulator-5554.screenshot.png", "main-emulator-5554.device-info.json", "main-emulator-5554.driver-log.txt"),
+                            listOf(
+                                "main-emulator-5554.screenshot.png",
+                                "main-emulator-5554.device-info.json",
+                                "main-emulator-5554.driver-log.txt",
+                                "main-emulator-5554.logcat.txt",
+                                "main-emulator-5554.activities.txt",
+                                "main-emulator-5554.windows.txt",
+                            ),
                             saved,
                         )
+                        fakeDevices.deviceLogs = fakeDevices.deviceLogs.toBuilder().setCrashes("E AndroidRuntime: FATAL EXCEPTION: main").build()
+                        val logs = device.deviceLogs()
+                        assertEquals("E AndroidRuntime: FATAL EXCEPTION: main", logs.crashes)
+                        assertEquals(listOf(Capture.LOGCAT, Capture.CRASHES, Capture.ACTIVITIES, Capture.WINDOWS), logs.artifacts.keys.toList())
                     } finally {
                         device.detach()
                     }
@@ -2273,6 +2288,17 @@ class TapClientTest {
         override suspend fun driverLog(request: io.github.noamcohen48.tap.api.v1.DriverLogRequest): io.github.noamcohen48.tap.api.v1.DriverLogResponse =
             io.github.noamcohen48.tap.api.v1.DriverLogResponse
                 .getDefaultInstance()
+
+        @Volatile var deviceLogs: io.github.noamcohen48.tap.api.v1.DeviceLogsResponse =
+            io.github.noamcohen48.tap.api.v1.DeviceLogsResponse
+                .newBuilder()
+                .setLogcat("I ActivityManager: Start proc\n")
+                .setActivities("ACTIVITIES")
+                .setWindows("WINDOWS")
+                .build()
+
+        override suspend fun deviceLogs(request: io.github.noamcohen48.tap.api.v1.DeviceLogsRequest): io.github.noamcohen48.tap.api.v1.DeviceLogsResponse =
+            deviceLogs
 
         val conditions = CopyOnWriteArrayList<Any>()
 

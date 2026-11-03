@@ -158,6 +158,9 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.log: FakeConnections | None = None
         self.deny: bool = False
         self.png = b"\x89PNG fake"
+        self.device_logs = pb.DeviceLogsResponse(
+            logcat="I ActivityManager: Start proc\n", activities="ACTIVITIES", windows="WINDOWS"
+        )
         self.conditions: list = []
         self.foreground: tuple[str, str] | None = None
         # Device files by path; the headers and chunk sizes the uploads carried.
@@ -232,6 +235,10 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def DriverLog(self, request, context):
         self._own("driver_log", request, context)
         return pb.DriverLogResponse(lines=["line"])
+
+    def DeviceLogs(self, request, context):
+        self._own("device_logs", request, context)
+        return self.device_logs
 
     def SetAnimations(self, request, context):
         self._own("set_animations", request, context)

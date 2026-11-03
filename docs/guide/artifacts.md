@@ -81,11 +81,22 @@ tap-artifacts/<nodeid>/                       (JUnit: build/tap-artifacts/<class
 ├── device-emulator-5554.screenshot.png       screenshot
 ├── device-emulator-5554.hierarchy.xml        accessibility hierarchy
 ├── device-emulator-5554.device-info.json     API, model, display, focused package
-└── device-emulator-5554.driver-log.txt       the driver's log for the session
+├── device-emulator-5554.driver-log.txt       the driver's log for the session
+├── device-emulator-5554.logcat.txt           logcat (main, system, crash) since the device was attached
+├── device-emulator-5554.crashes.txt          crashes and ANRs since then (only when there were any)
+├── device-emulator-5554.activities.txt       dumpsys activity activities, at the failure
+└── device-emulator-5554.windows.txt          dumpsys window windows, at the failure
 ```
 
+The logs come from the device itself, so they cover what the driver cannot see: the app's own
+log lines, a crash of the app (its `FATAL EXCEPTION` and stack trace) or an ANR, and which
+activity and windows were on screen. They start when the device was attached (on the device's
+clock), keep going across app restarts, and are capped at the newest 4 MiB of logcat. Android
+keeps logcat in ring buffers, so on a busy device the oldest lines of a long test may already be
+gone. `device.device_logs()` (Kotlin `deviceLogs()`) returns the same parts on their own.
+
 The file prefix is `<role>-<serial>`, so a two-device test yields `sender-…` and `receiver-…`.
-Devices are captured in parallel, and so are the four parts of each device, each within 30 s, so
+Devices are captured in parallel, and so are the parts of each device, each within 30 s, so
 one slow or hung device or part does not cost the others their artifacts. Capture never masks
 the original failure: a file that cannot be produced (the device went away, the time ran out) is
 simply missing, and the test still fails with its real error. `TAP_CAPTURE=off` turns this off

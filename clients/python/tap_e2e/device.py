@@ -22,6 +22,7 @@ from .models import (
     Capture,
     DeviceInfo,
     DisplayRotation,
+    DeviceLogs,
     DriverLog,
     ForegroundActivity,
     Hierarchy,
@@ -840,8 +841,30 @@ class Device:
                 ).lines
             )
 
+    def device_logs(self, timeout: float = 30.0) -> DeviceLogs:
+        """What the device recorded since this attachment opened: logcat, crashes and ANRs,
+        and the activity and window state now (``DeviceLogs``). Diagnostic; not in the event
+        log."""
+        self._ensure_usable("device_logs")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.DeviceLogs(
+                pb.DeviceLogsRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                ),
+                timeout=timeout,
+            )
+        return DeviceLogs(
+            logcat=response.logcat,
+            logcat_truncated=response.logcat_truncated,
+            crashes=response.crashes,
+            activities=response.activities,
+            windows=response.windows,
+        )
+
     def capture(self, timeout: float = 30.0) -> Capture:
-        """Takes a screenshot, the hierarchy, the device info and the driver log at once, each
+        """Takes a screenshot, the hierarchy, the device info, the driver log and the device
+        logs (``device_logs()``) at once, each
         within ``timeout`` seconds, and returns them as one ``Capture``. Never raises for the
         device: a part that fails or runs out of time is None in the result, with its cause in
         ``Capture.failures``. Use it wherever a test wants evidence (after a step, in an
@@ -851,6 +874,7 @@ class Device:
             Capture.HIERARCHY: lambda: self.dump_hierarchy(timeout),
             Capture.DEVICE_INFO: self.info,
             Capture.DRIVER_LOG: self.driver_log,
+            Capture.LOGS: lambda: self.device_logs(timeout),
         }
         produced: dict[str, object] = {}
         failures: dict[str, BaseException] = {}
@@ -875,6 +899,7 @@ class Device:
             produced.get(Capture.DEVICE_INFO),  # type: ignore[arg-type]
             produced.get(Capture.DRIVER_LOG),  # type: ignore[arg-type]
             failures,
+            produced.get(Capture.LOGS),  # type: ignore[arg-type]
         )
 
     def _await_app_visible(self, package_name: str, timeout: float | None) -> None:

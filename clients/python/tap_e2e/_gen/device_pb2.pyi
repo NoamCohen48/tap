@@ -201,6 +201,28 @@ class DriverLogResponse(_message.Message):
     lines: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, lines: _Optional[_Iterable[str]] = ...) -> None: ...
 
+class DeviceLogsRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ...) -> None: ...
+
+class DeviceLogsResponse(_message.Message):
+    __slots__ = ("logcat", "logcat_truncated", "crashes", "activities", "windows")
+    LOGCAT_FIELD_NUMBER: _ClassVar[int]
+    LOGCAT_TRUNCATED_FIELD_NUMBER: _ClassVar[int]
+    CRASHES_FIELD_NUMBER: _ClassVar[int]
+    ACTIVITIES_FIELD_NUMBER: _ClassVar[int]
+    WINDOWS_FIELD_NUMBER: _ClassVar[int]
+    logcat: str
+    logcat_truncated: bool
+    crashes: str
+    activities: str
+    windows: str
+    def __init__(self, logcat: _Optional[str] = ..., logcat_truncated: _Optional[bool] = ..., crashes: _Optional[str] = ..., activities: _Optional[str] = ..., windows: _Optional[str] = ...) -> None: ...
+
 class ScreenSnapshotRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id", "timeout_ms", "selector_candidates")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]

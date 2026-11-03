@@ -203,3 +203,46 @@ class DriverLog(
 
     override fun toString(): String = "DriverLog(${lines.size} lines)"
 }
+
+/** A plain-text record from the device (a [DeviceLogs] part). */
+class TextLog(
+    val text: String,
+) : Artifact {
+    override val bytes: ByteArray get() = text.encodeToByteArray()
+    override val mediaType: String get() = "text/plain"
+    override val extension: String get() = "txt"
+
+    override fun equals(other: Any?): Boolean = other is TextLog && other.text == text
+
+    override fun hashCode(): Int = text.hashCode()
+
+    override fun toString(): String = "TextLog(${text.length} chars)"
+}
+
+/**
+ * What the device itself recorded since the attachment opened ([Device.deviceLogs]): the
+ * evidence the driver cannot see. A part the server could not read holds one
+ * `<unavailable: …>` line.
+ */
+data class DeviceLogs(
+    /** `logcat -v threadtime` of the main, system and crash buffers since the attachment (ring buffers: what scrolled out is gone). */
+    val logcat: String,
+    /** The logcat was longer than 4 MiB and keeps its newest lines. */
+    val logcatTruncated: Boolean,
+    /** Crashes (`FATAL EXCEPTION`, native) and ANRs since the attachment; empty when none. */
+    val crashes: String,
+    /** `dumpsys activity activities` at the time of the call. */
+    val activities: String,
+    /** `dumpsys window windows` at the time of the call. */
+    val windows: String,
+) {
+    /** `logcat`, `crashes` (only when something crashed), `activities`, `windows`. */
+    val artifacts: Map<String, TextLog>
+        get() =
+            buildMap {
+                put(Capture.LOGCAT, TextLog(logcat))
+                if (crashes.isNotEmpty()) put(Capture.CRASHES, TextLog(crashes))
+                put(Capture.ACTIVITIES, TextLog(activities))
+                put(Capture.WINDOWS, TextLog(windows))
+            }
+}
