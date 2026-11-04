@@ -53,7 +53,8 @@ Server, clients (additive):
   `device.deviceLogs()`, Python `device.device_logs()`; `capture()` includes them, so the JUnit
   extension and the pytest plugin save `logcat.txt`, `crashes.txt` (when something crashed),
   `activities.txt` and `windows.txt` next to the screenshot of a failed test. An app crash used
-  to leave no trace in the artifacts.
+  to leave no trace in the artifacts. One stuck read (a `dumpsys` that hangs) costs only that
+  file: each read has its own deadline, shorter than the call's.
 - **The device list says what each device is.** `ListDevices` reports each online device's API
   level, manufacturer, model and whether it is an emulator (`DeviceEntry.properties`, read
   once per serial with `getprop`; Kotlin and Python `DeviceEntry.properties`).

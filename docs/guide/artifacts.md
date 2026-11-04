@@ -97,7 +97,9 @@ gone. `device.device_logs()` (Kotlin `deviceLogs()`) returns the same parts on t
 
 The file prefix is `<role>-<serial>`, so a two-device test yields `sender-…` and `receiver-…`.
 Devices are captured in parallel, and so are the parts of each device, each within 30 s, so
-one slow or hung device or part does not cost the others their artifacts. Capture never masks
+one slow or hung device or part does not cost the others their artifacts. The same goes inside
+the device logs: a `dumpsys` that hangs leaves a line saying so in `windows.txt`, next to a good
+`logcat.txt`. Capture never masks
 the original failure: a file that cannot be produced (the device went away, the time ran out) is
 simply missing, and the test still fails with its real error. `TAP_CAPTURE=off` turns this off
 ([Python + pytest](../sdk/python.md#configuration), [Kotlin + JUnit 5](../sdk/kotlin.md#configuration)).

@@ -2,6 +2,7 @@ package io.github.noamcohen48.tap.daemon.core
 
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbCommandException
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
@@ -51,6 +52,40 @@ class DeviceEvidenceTest {
             assertTrue(calls.all { "since=1700000000" in it }, calls.toString())
             assertTrue("logcat [events] since=1700000000 tags=[am_crash, am_anr]" in calls, calls.toString())
         }
+
+    @Test
+    fun `a stuck part costs only itself`(): Unit =
+        runBlocking {
+            val adb =
+                object : Adb("fake-adb") {
+                    override suspend fun logcat(
+                        serial: String,
+                        buffers: List<String>,
+                        sinceEpochSeconds: Long?,
+                        tags: List<String>,
+                    ): String = "line\n"
+
+                    override suspend fun dumpsys(
+                        serial: String,
+                        vararg arguments: String,
+                    ): String {
+                        if (arguments.first() == "window") awaitCancellation()
+                        return "ACTIVITIES"
+                    }
+                }
+            val evidence = DeviceEvidence.collect(adb, "emulator-5554", null, partTimeoutMs = 50)
+            assertEquals("line\n", evidence.logcat)
+            assertEquals("ACTIVITIES", evidence.activities)
+            assertEquals("<unavailable: not read within 50 ms>", evidence.windows)
+        }
+
+    @Test
+    fun `a part's deadline leaves room for the reply within the caller's`() {
+        assertEquals(DeviceEvidence.PART_TIMEOUT_MS, DeviceEvidence.partTimeoutMs(null))
+        assertEquals(DeviceEvidence.PART_TIMEOUT_MS, DeviceEvidence.partTimeoutMs(3_600_000))
+        assertEquals(7_500, DeviceEvidence.partTimeoutMs(10_000))
+        assertEquals(1, DeviceEvidence.partTimeoutMs(-5))
+    }
 
     @Test
     fun `long logcat keeps its newest whole lines`() {
