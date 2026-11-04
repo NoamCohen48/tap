@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.InvocationInterceptor
 import org.junit.jupiter.api.extension.ParameterContext
 import org.junit.jupiter.api.extension.ParameterResolver
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext
+import org.opentest4j.TestAbortedException
 import java.lang.reflect.Method
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
@@ -36,8 +37,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * root [Job], and opens one driver session per role — in sorted serial order, waiting up to `tap.acquireTimeoutSeconds` for a
  * device another session holds, so two multi-device tests can never deadlock — all as children
  * of the root job. The test body runs only inside [tapTest], which binds this state and
- * installs the SDK [TapContext]; [Device] calls outside it fail with a usage error, so plain
- * metadata-only tests stay possible but cannot touch live devices.
+ * installs the SDK [TapContext], in the test method and in its `@BeforeEach` / `@AfterEach`
+ * methods; [Device] calls outside it fail with a usage error, so plain metadata-only tests stay
+ * possible but cannot touch live devices.
  *
  * JUnit timeout/interruption cancels the root job (via [tapTest]'s `runBlocking`); sibling
  * failure in `coroutineScope`/`async` cancels the other device's in-flight RPC by structured
@@ -98,13 +100,50 @@ class TapExtension :
         invocation: InvocationInterceptor.Invocation<Void>,
         invocationContext: ReflectiveInvocationContext<Method>,
         extensionContext: ExtensionContext,
+    ) = bound(invocation, extensionContext)
+
+    /** `@RepeatedTest`, `@ParameterizedTest` and other templates reach their method here. */
+    override fun interceptTestTemplateMethod(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        invocationContext: ReflectiveInvocationContext<Method>,
+        extensionContext: ExtensionContext,
+    ) = bound(invocation, extensionContext)
+
+    override fun interceptBeforeEachMethod(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        invocationContext: ReflectiveInvocationContext<Method>,
+        extensionContext: ExtensionContext,
+    ) = bound(invocation, extensionContext)
+
+    /**
+     * An `@AfterEach` is cleanup: it still runs after a failing test, whose `tapTest` cancelled
+     * the root job, so it gets a job of its own and can use the devices.
+     */
+    override fun interceptAfterEachMethod(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        invocationContext: ReflectiveInvocationContext<Method>,
+        extensionContext: ExtensionContext,
     ) {
-        val state = extensionContext.store.get(KEY, TestState::class.java)
+        val cleanupJob = Job()
+        try {
+            bound(invocation, extensionContext) { TestState(cleanupJob, it.devices, it.assignment, it.method) }
+        } finally {
+            cleanupJob.cancel()
+        }
+    }
+
+    /** Runs a test or lifecycle method with [tapTest] bound to the test's state. */
+    private fun bound(
+        invocation: InvocationInterceptor.Invocation<Void>,
+        context: ExtensionContext,
+        binding: (TestState) -> TestState = { it },
+    ) {
+        val state = context.store.get(KEY, TestState::class.java)
         if (state == null) {
             invocation.proceed()
             return
         }
-        TapTestBinding.current.set(state)
+        TapTestBinding.current.set(binding(state))
         try {
             invocation.proceed()
         } finally {
@@ -120,7 +159,8 @@ class TapExtension :
         // Stop test coroutines promptly; sessions stay usable for artifact capture below.
         state.rootJob.cancel(CancellationException("test finished"))
         try {
-            if (failure != null && TapConfig.current.capture == CaptureMode.ON_FAILURE) {
+            // An aborted test (a failed assumption) was skipped, not failed: nothing to explain.
+            if (failure != null && failure !is TestAbortedException && TapConfig.current.capture == CaptureMode.ON_FAILURE) {
                 runBlocking(TapContext("junit:${state.method}:artifacts")) {
                     withContext(NonCancellable) { captureArtifacts(context, state, failure) }
                 }

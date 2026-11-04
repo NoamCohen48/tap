@@ -64,6 +64,11 @@ JUnit:
   DeviceKind.PHYSICAL)` on a test or class, with `minApi`, `maxApi`, `kind`, `manufacturer` and
   `modelContains`, the same criteria as the pytest marker. A test no device fits is skipped
   before anything is attached, naming the devices it saw.
+- **`@BeforeEach`, `@AfterEach` and test templates can use devices.** `tapTest` was bound only
+  around a plain `@Test`, so calling it in a `@BeforeEach`, an `@AfterEach`, a `@RepeatedTest` or a
+  `@ParameterizedTest` failed with a usage error. An `@AfterEach` also keeps working after a
+  failing test. A lifecycle method's failure saves the same artifacts as a test's.
+- **A skipped test saves no failure artifacts.** A failed assumption used to capture them.
 
 Python client:
 

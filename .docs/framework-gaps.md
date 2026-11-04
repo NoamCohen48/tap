@@ -107,9 +107,9 @@ Missing:
 - Per-test deadline: `tapTest` runs on the root job so JUnit `@Timeout`/interruption cancels
   in-flight RPCs, but there is no extension-owned wall-clock deadline beyond that; a hung
   test still relies on JUnit's own `@Timeout` and the driver watchdog.
-- `LifecycleMethodExecutionExceptionHandler` / `TestWatcher` / run-level
-  `TestExecutionListener`; failures in user `@BeforeEach`/`@AfterEach` are not captured
-  with device artifacts.
+- Run-level `TestExecutionListener`. A `@BeforeEach` / `@AfterEach` failure is captured with
+  device artifacts like a test failure (`executionException`; `TapTestBridgeTest`), and those
+  methods can use the devices (`LifecycleMethodsTest`). `@BeforeAll` / `@AfterAll` have no devices.
 - `CloseableResource` fallback when another extension aborts callback execution.
 - Quarantine metadata (owner, expiry) surfaced to the test report; the journal marks
   `QUARANTINED` but nothing reads it back into JUnit output.

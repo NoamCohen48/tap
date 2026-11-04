@@ -24,8 +24,8 @@ internal class TestState(
 
 /**
  * The JUnit-bound test state for the current thread, installed by the extension's
- * `InvocationInterceptor` for the duration of the test invocation only. `null` outside a
- * `@TapTest` test method (scripts, metadata-only tests, setup/teardown callbacks).
+ * `InvocationInterceptor` for each test, `@BeforeEach` and `@AfterEach` method invocation. `null`
+ * elsewhere (scripts, metadata-only tests, constructors, `@BeforeAll` / `@AfterAll`).
  */
 internal object TapTestBinding {
     val current = ThreadLocal<TestState?>()
@@ -44,7 +44,7 @@ internal object TapTestBinding {
  * deadlines are external real-time systems.
  *
  * Fails immediately with [TapUsageException] when called without an active `@TapTest` binding
- * (no `TapExtension`, or outside the test invocation), or when nested (`tapTest` inside
+ * (no `TapExtension`, or outside a test or `@BeforeEach` / `@AfterEach` method), or when nested (`tapTest` inside
  * `tapTest`/`tapScope`). Suspending `Device`/`App`/`Element` calls from a coroutine that does
  * not inherit this context (for example `GlobalScope`) fail in the SDK for the same reason:
  * they would otherwise run uncancelled beside the test. Plain metadata-only tests stay
@@ -70,7 +70,7 @@ fun tapTest(block: suspend CoroutineScope.() -> Unit) {
         TapTestBinding.current.get()
             ?: throw TapUsageException(
                 "tapTest { ... } requires an active @TapTest binding: annotate the class with @TapTest, " +
-                    "declare a Device/Devices parameter or @TapDevices, and call tapTest inside the test method",
+                    "declare a Device/Devices parameter or @TapDevices, and call tapTest inside the test or a @BeforeEach/@AfterEach method",
             )
     // Propagate the nesting flag to child coroutines so `async { tapTest { } }` also fails.
     val context = state.rootJob + TapContext("junit:${state.method}") + TapTestBinding.inTapTest.asContextElement(true)
