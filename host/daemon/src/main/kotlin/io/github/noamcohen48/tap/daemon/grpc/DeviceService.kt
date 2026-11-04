@@ -151,7 +151,8 @@ class DeviceService(
 
     /**
      * Forwards the client's command unchanged: package ownership is already represented by an
-     * ordinary selector predicate, and the result comes back as it was sent. The shared validation
+     * ordinary selector predicate, and the result comes back as it was sent, unless it failed
+     * because an app the attachment launched died ([AppDeaths]). The shared validation
      * runs first as a pre-flight, so a malformed command is `INVALID_ARGUMENT` before any device
      * work. Cancellation propagates to the pending TAP1 command and requests cooperative cancel.
      */
@@ -168,7 +169,7 @@ class DeviceService(
                 } else {
                     attachedDevice.recorded({ setCommand(command.forLog()) }, { it.takeIf { it.hasError() }?.error }) {
                         if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
-                        resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
+                        attachedDevice.appDeaths.explain(resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)))
                     }
                 }
             ExecuteResponse.newBuilder().setResult(result).build()

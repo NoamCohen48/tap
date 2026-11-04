@@ -42,7 +42,12 @@ tasks.test {
     listOf("tap.acquireTimeoutSeconds", "tap.server", "tap.token").forEach { name ->
         providers.gradleProperty(name).orNull?.let { systemProperty(name, it) }
     }
-    // Devices are the unit of parallelism; JUnit runs test classes concurrently when configured.
+    // Devices are the unit of parallelism. Do not queue every class's attach at once: on a
+    // single slow emulator the suite can outlast the acquisition timeout of those at the end.
+    val deviceCount = serials.getOrElse("").split(',').count { it.isNotBlank() }.coerceAtLeast(1)
+    systemProperty("junit.jupiter.execution.parallel.config.strategy", "fixed")
+    systemProperty("junit.jupiter.execution.parallel.config.fixed.parallelism", deviceCount)
+    systemProperty("junit.jupiter.execution.parallel.config.fixed.max-pool-size", deviceCount)
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
     systemProperty("junit.jupiter.execution.parallel.mode.default", "same_thread")
     systemProperty("junit.jupiter.execution.parallel.mode.classes.default", "concurrent")

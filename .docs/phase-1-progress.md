@@ -204,8 +204,9 @@ Latest successful generations (`host --no-reboot` run 8 plus the sample suite, 2
   waits for a quiet screen implicitly.
 - [ ] Plan §11 operations still missing: `device.wake`, `session.shutdown` (sessions end by
   closing the socket and force-stopping the instrumentation), `inspector.snapshot`.
-- [ ] Emit `AUT_CRASHED`/`AUT_ANR`/`AUT_NOT_INSTALLED` from observed process state (codes are
-  defined and fixture-covered, not yet produced).
+- [x] Emit `AUT_CRASHED`/`AUT_ANR`: the server replaces a command failure a dead app explains
+  (`AppDeathsServiceTest`, `AppDeathTest` on emulator-5554).
+- [ ] Emit `AUT_NOT_INSTALLED` (the code is defined, not yet produced).
 - [ ] Driver `<queries>` lists only the fixture's provider authorities; a product AUT's
   `<pkg>.tap-sync` is invisible to the driver on API 30+ until visibility is solved.
 - [x] Public Kotlin `Device`/`App`/`Element` API and JUnit 5 extension (Phase 2; see above).
