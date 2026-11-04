@@ -58,6 +58,13 @@ Server, clients (additive):
   level, manufacturer, model and whether it is an emulator (`DeviceEntry.properties`, read
   once per serial with `getprop`; Kotlin and Python `DeviceEntry.properties`).
 
+JUnit:
+
+- **Roles choose devices by what they are.** `@RequireDevice(role = "receiver", minApi = 30, kind =
+  DeviceKind.PHYSICAL)` on a test or class, with `minApi`, `maxApi`, `kind`, `manufacturer` and
+  `modelContains`, the same criteria as the pytest marker. A test no device fits is skipped
+  before anything is attached, naming the devices it saw.
+
 Python client:
 
 - **pytest roles choose devices by what they are.** The marker takes `DeviceEntry.properties`

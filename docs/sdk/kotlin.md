@@ -211,6 +211,33 @@ side proceeds until both arrive). `awaitAll` takes the deferreds:
 `coroutineScope { async { } async { } }.awaitAll()` does not compile, because the block's value
 is only the last `Deferred`.
 
+`@RequireDevice` says which devices may play a role. The criteria come from the server's device
+list (`client.devices()`, each entry's `properties`):
+
+```kotlin
+@Test
+@RequireDevice(minApi = 33)                                      // the one default role
+fun perAppLanguage(device: Device) = tapTest { ... }
+
+@Test
+@TapDevices("sender", "receiver")
+@RequireDevice(role = "receiver", kind = DeviceKind.PHYSICAL, modelContains = "pixel")
+fun deliversToAPhone(devices: Devices) = tapTest { ... }
+```
+
+| Part | Matches |
+|---|---|
+| `minApi`, `maxApi` | the API level, inclusive |
+| `kind` | `DeviceKind.EMULATOR`: Android emulators only; `PHYSICAL`: everything else |
+| `manufacturer` | `ro.product.manufacturer`, ignoring case |
+| `modelContains` | a part of `ro.product.model`, ignoring case |
+
+It goes on the method or the class, once per role; a method's annotation replaces its class's
+for the same role, and a method naming a role it does not declare is an error. A device whose
+properties the server could not read fits no criteria, and a role pinned with `tap.device.<role>`
+must fit too. When no available device (or no combination of devices, one per role) fits, the
+test is skipped before anything is attached, with a message that lists what was there.
+
 From the client by hand: `connection.availableSerials()` to look, then
 `connection.attachDevice(serial, options = DeviceOptions(waitForDevice = 60.seconds))` to open.
 How roles map to serials and why sessions cannot deadlock is on

@@ -63,7 +63,8 @@ class TapExtension :
             val state =
                 runBlocking(rootJob + TapContext("junit:$method:setup")) {
                     val roles = declaredRoles(context)
-                    val held = if (perClass(context)) reusable(context, roles) else null
+                    val criteria = declaredCriteria(context.requiredTestClass, context.requiredTestMethod, roles)
+                    val held = if (perClass(context)) reusable(context, roles, criteria) else null
                     if (held != null) return@runBlocking TestState(rootJob, held, held.mapValues { it.value.serial }, method)
                     val available =
                         config.serials.ifEmpty {
@@ -75,16 +76,15 @@ class TapExtension :
                             (if (config.serials.isEmpty()) "the pool has $available" else "tap.serials lists ${config.serials}")
                     }
                     val start = ROTATION.getAndIncrement()
-                    val assignment = assignSerials(roles, available, config.pinnedRoles, start)
                     val connection = SharedConnection.connection()
                     val single = roles.singleOrNull()?.takeIf { it !in config.pinnedRoles }
                     val devices =
-                        if (single != null) {
-                            openSingle(connection, single, rotate(available, start), config)
-                        } else {
-                            openAll(connection, assignment, config)
+                        when {
+                            criteria.isNotEmpty() -> openMatching(connection, roles, criteria, rotate(available, start), config, method)
+                            single != null -> openSingle(connection, single, rotate(available, start), config)
+                            else -> openAll(connection, assignSerials(roles, available, config.pinnedRoles, start), config)
                         }
-                    if (perClass(context)) context.classStore.put(HELD, HeldDevices(roles, devices))
+                    if (perClass(context)) context.classStore.put(HELD, HeldDevices(roles, criteria, devices))
                     TestState(rootJob, devices, devices.mapValues { it.value.serial }, method)
                 }
             context.store.put(KEY, state)
@@ -156,7 +156,7 @@ class TapExtension :
         context.requiredTestClass.getAnnotation(TapTest::class.java)?.deviceLifetime == DeviceLifetime.PER_CLASS
 
     /**
-     * The class's held devices when they serve [roles] and all still answer (`info()`, a few ms);
+     * The class's held devices when they serve [roles] under the same [criteria] and all still answer (`info()`, a few ms);
      * otherwise null, after detaching whatever was held so the caller attaches afresh. A detach
      * failure of a device that already stopped working is dropped: the attach that follows
      * reports the device's state (quarantined, offline) itself.
@@ -164,9 +164,10 @@ class TapExtension :
     private suspend fun reusable(
         context: ExtensionContext,
         roles: List<String>,
+        criteria: Map<String, DeviceCriteria>,
     ): Map<String, Device>? {
         val held = context.classStore.get(HELD, HeldDevices::class.java) ?: return null
-        val alive = held.roles == roles && held.devices.values.all { !it.isDetached && runCatching { it.info() }.isSuccess }
+        val alive = held.roles == roles && held.criteria == criteria && held.devices.values.all { !it.isDetached && runCatching { it.info() }.isSuccess }
         if (alive) return held.devices
         context.classStore.remove(HELD)
         withContext(NonCancellable) {
@@ -293,6 +294,33 @@ class TapExtension :
     }
 
     /**
+     * Opens devices for roles with [RequireDevice] criteria: an unpinned single role moves past
+     * busy matching devices as usual; otherwise one matching assignment is opened in sorted
+     * serial order. Skips the test, with nothing attached, when no device or combination fits.
+     */
+    private suspend fun openMatching(
+        connection: io.github.noamcohen48.tap.sdk.TapConnection,
+        roles: List<String>,
+        criteria: Map<String, DeviceCriteria>,
+        available: List<String>,
+        config: TapConfig,
+        method: String,
+    ): Map<String, Device> {
+        val entries = connection.client.devices().associateBy { it.serial }
+        val assignment = chooseSerials(roles, criteria, available, entries, config.pinnedRoles)
+        assumeTrue(assignment != null) {
+            val wanted = criteria.entries.joinToString("; ") { (role, wanted) -> "$role: $wanted" }
+            "$method needs $wanted; no fit among ${available.joinToString { describeDevice(it, entries[it]) }}"
+        }
+        val single = roles.singleOrNull()?.takeIf { it !in config.pinnedRoles }
+        if (single != null) {
+            val matching = available.filter { (criteria[single] ?: DeviceCriteria()).matches(entries[it]) }
+            return openSingle(connection, single, matching, config)
+        }
+        return openAll(connection, assignment!!, config)
+    }
+
+    /**
      * Opens the sessions one at a time in sorted serial order. Every process takes device locks
      * in the same order, so two tests wanting the same two devices cannot deadlock; the second
      * simply waits (bounded by `tap.acquireTimeoutSeconds`) for the first to finish. Caller
@@ -389,9 +417,10 @@ class TapExtension :
             return classContext.getStore(Namespace.create(TapExtension::class.java, classContext.requiredTestClass))
         }
 
-    /** Devices a PER_CLASS test class holds across its tests, with the roles they were opened for. */
+    /** Devices a PER_CLASS test class holds across its tests, with the roles and criteria they were opened for. */
     private class HeldDevices(
         val roles: List<String>,
+        val criteria: Map<String, DeviceCriteria>,
         val devices: Map<String, Device>,
     )
 
