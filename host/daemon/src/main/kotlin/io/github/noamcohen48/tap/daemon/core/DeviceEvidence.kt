@@ -4,11 +4,14 @@ import io.github.noamcohen48.tap.host.Adb
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.min
 
 /**
  * What a device itself recorded since an attachment opened (`DeviceService.DeviceLogs`): the
- * failure evidence the driver cannot see. Every part is read independently, at once; a part
- * that fails holds one `<unavailable: …>` line instead of failing the others.
+ * failure evidence the driver cannot see. Every part is read independently, at once, with its
+ * own deadline; a part that fails or runs out of time holds one `<unavailable: …>` line instead
+ * of failing the others.
  */
 internal data class DeviceEvidence(
     val logcat: String,
@@ -21,12 +24,25 @@ internal data class DeviceEvidence(
         /** Larger logcat output keeps its newest lines up to this many characters. */
         const val MAX_LOGCAT_CHARS = 4 * 1024 * 1024
 
+        /** How long one part may take when the caller's own deadline leaves room for it. */
+        const val PART_TIMEOUT_MS = 20_000L
+
+        /**
+         * A part's deadline for a call with [remainingMs] left (null: no deadline): short enough
+         * that the reply gets back before the caller gives up. A deadline as long as the call's
+         * would lose every part to one stuck `dumpsys`, the call failing while it waits.
+         */
+        fun partTimeoutMs(remainingMs: Long?): Long =
+            if (remainingMs == null) PART_TIMEOUT_MS else min(PART_TIMEOUT_MS, (remainingMs * 3 / 4).coerceAtLeast(1))
+
         suspend fun collect(
             adb: Adb,
             serial: String,
             sinceEpochSeconds: Long?,
+            partTimeoutMs: Long = PART_TIMEOUT_MS,
         ): DeviceEvidence =
             coroutineScope {
+                suspend fun part(read: suspend () -> String) = part(partTimeoutMs, read)
                 val logcat = async { part { adb.logcat(serial, listOf("main", "system", "crash"), sinceEpochSeconds) } }
                 val crashBuffer = async { part { adb.logcat(serial, listOf("crash"), sinceEpochSeconds) } }
                 val events = async { part { adb.logcat(serial, listOf("events"), sinceEpochSeconds, tags = listOf("am_crash", "am_anr")) } }
@@ -42,9 +58,12 @@ internal data class DeviceEvidence(
                 )
             }
 
-        private suspend fun part(read: suspend () -> String): String =
+        private suspend fun part(
+            timeoutMs: Long,
+            read: suspend () -> String,
+        ): String =
             try {
-                read()
+                withTimeoutOrNull(timeoutMs) { read() } ?: "<unavailable: not read within $timeoutMs ms>"
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

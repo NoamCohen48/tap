@@ -73,10 +73,12 @@ import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.Requests
+import io.grpc.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -268,7 +270,14 @@ class DeviceService(
     override suspend fun deviceLogs(request: DeviceLogsRequest): DeviceLogsResponse =
         reply {
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
-            val evidence = DeviceEvidence.collect(daemon.config.adb, attachedDevice.deviceSession.serial, attachedDevice.attachedAtEpochSeconds)
+            val remainingMs = Context.current().deadline?.timeRemaining(TimeUnit.MILLISECONDS)
+            val evidence =
+                DeviceEvidence.collect(
+                    daemon.config.adb,
+                    attachedDevice.deviceSession.serial,
+                    attachedDevice.attachedAtEpochSeconds,
+                    DeviceEvidence.partTimeoutMs(remainingMs),
+                )
             DeviceLogsResponse
                 .newBuilder()
                 .setLogcat(evidence.logcat)
