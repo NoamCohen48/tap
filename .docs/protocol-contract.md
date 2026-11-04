@@ -472,8 +472,8 @@ policy; Tap itself never retries.
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
 | `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |
-| `AUT_CRASHED` | yes | no | Reserved; not yet emitted. |
-| `AUT_ANR` | yes | no | Reserved; not yet emitted. |
+| `AUT_CRASHED` | yes | no | Never sent by the driver. The server replaces `NOT_FOUND`, `WAIT_TIMEOUT`, `NOT_INTERACTABLE`, `STALE_BEFORE_INPUT`, `STALE_DURING_COMMAND` or `ACTION_REJECTED` with it when an app the attachment started has a new `am_crash` event. The detail is the replaced code; the message names the app and keeps the original. Each event is reported once. It says "may have mutated" even when the replaced code does not, since the app's state is gone either way. |
+| `AUT_ANR` | yes | no | The same for a new `am_anr` event. |
 | `SYNC_PROVIDER_UNAVAILABLE` | no | yes | Synchronization provider unusable. `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `MALFORMED_STATE`, `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `PROVIDER_POISONED`. |
 | `DRIVER_UNHEALTHY` | no | no | Session poisoned by the watchdog (`WATCHDOG`, `HEARTBEAT_EXPIRED`); rebuild the session. |
 | `TRANSPORT_LOST` | no | no | Host-side: no response and no mutation risk. |
@@ -591,5 +591,4 @@ recorded in `framework-gaps.md` for the security review.
 ## Not Yet Implemented
 
 Protocol 5.1 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
-`inspector.snapshot`. `AUT_NOT_INSTALLED`, `AUT_CRASHED`, and
-`AUT_ANR` are defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.
+`inspector.snapshot`. `AUT_NOT_INSTALLED` is defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

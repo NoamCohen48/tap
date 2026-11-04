@@ -80,6 +80,11 @@ Python client:
 
 Server:
 
+- **A command failing because the app died says so.** When a command fails with `NOT_FOUND`,
+  `WAIT_TIMEOUT` or similar and an app started through the attachment has a new crash or ANR in
+  Android's event log, the failure becomes `AUT_CRASHED` / `AUT_ANR`, naming the app and the
+  exception, with the replaced code as its detail. Code that catches `NOT_FOUND` or a wait timeout
+  to handle a missing node now sees these instead after a crash. Passing commands pay nothing.
 - **`tap doctor`.** Reports, per device, what a session that is no longer running left behind
   (an unclosed journal, the driver process, Tap's port forwards, unrestored settings) and a
   stale server descriptor; `tap doctor --fix` runs the recovery an attach would run, now.

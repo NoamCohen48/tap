@@ -41,7 +41,7 @@ describes.
 |---|---|---|
 | `session.shutdown` | Sessions end by closing the socket and `am force-stop` of the instrumentation. Works, but the driver never gets a graceful close and the journal cannot distinguish "host asked" from "connection died". | Small; add an operation + a driver-side clean exit. |
 | `inspector.snapshot` | No JSON hierarchy with selector suggestions; `DUMP_HIERARCHY` returns raw UiAutomator XML only. | Phase 5 inspector UI depends on it; failure artifacts use the XML for now. |
-| `AUT_CRASHED` / `AUT_ANR` / `AUT_NOT_INSTALLED` emission | Crashes surface as `NOT_FOUND`/`WAIT_TIMEOUT` plus a process-identity change, not as a first-class code. | Requires driver-side process observation (`am`/`dumpsys activity` or `ActivityManager` crash/ANR detection) and a fixture that crashes/ANRs on demand. |
+| `AUT_NOT_INSTALLED` emission | A selector on an app that is not installed is `NOT_FOUND`. `AUT_CRASHED` / `AUT_ANR` are emitted by the server, not the driver (`AppDeaths`; `AppDeathsServiceTest`, `AppDeathTest` on emulator-5554). Their limits: only apps started through the attachment count, the failure comes when the running wait ends and not when the app dies, and a hang with no input waiting is no ANR to Android, so it stays a plain timeout. | Needs a package to check against, which a selector need not name. |
 | Occlusion check coverage | `OBSCURED` reads the window list only: a view covering the target inside the same window (a floating bar, an in-window bottom sheet) is not detected, only the default display is checked, and `set_text` / `clear_text` (accessibility actions, not touches) are not checked. | `.docs/app-and-screen.md` Limits. Same-window covering would need a hit test over the node tree. |
 | Secondary-display pointer gestures | `double_tap` and `drag` inject on the default display even when their selector resolves on another display, so they can touch an unrelated view. Tap and long tap use `UiObject2` on secondary displays; a refresh failure after the mutation gate is conservatively `STALE_DURING_COMMAND`, even if no touch was sent. | Follow-up: route pointer events with the node's display id (as AndroidX `GestureController` does), validate drag endpoints are on the same display, and add secondary-display device coverage. Until then use these pointer gestures only on the default display. |
 | Permission dialogs on API 26–28 and OEM builds | `wait_permission_prompt` / `choose_permission` match the permission controller's (and the older package installer's) button resource ids; proven on API 34 (emulator) and API 29 (Samsung SM-J810G), both showing the Google controller package. API 26–28 and other OEM controllers are not yet exercised on a device. | Add a device of that family to the matrix. |
@@ -133,8 +133,8 @@ Missing:
   (`DeviceLogs`, part of every failure capture; `DeviceEvidenceTest`, Python and Kotlin capture
   tests, checked on emulator-5554 with `am crash`), not streamed: on a busy device the oldest
   lines of a long test can be gone. `dumpsys window/activity` and crash/ANR *evidence* are in
-  the same capture; crash/ANR as command *codes* are not (below), nor is a redacted protocol
-  event log.
+  the same capture, and a command failing after the crash or ANR says so with `AUT_CRASHED` /
+  `AUT_ANR`. A redacted protocol event log is not there.
 - Incremental JSONL event stream; JUnit XML is whatever the build tool writes; no HTML report;
   no Flowdeck adapter.
 - Optional rotating **automatic failure-capture** video. Opt-in `Device.startRecording` /
@@ -174,7 +174,7 @@ display settings and the foreground activity — and its device tests are writte
 pass on the Samsung (API 29, 2026-10-02); the emulator (API 34) run is pending, so notifications
 stay listed below until they pass there too.
 
-Missing: crash/ANR detection as codes (above), activity-result assertions, the device-wide
+Missing: activity-result assertions, the device-wide
 locale (implemented, passing on API 29, API 34 run pending; see above), and
 the plan's "AUT restarted during a command" fault scenario, and group 4 on API 34
 (opening a notification's intent with background-start options, the display settings'
@@ -257,6 +257,5 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 2. Provider visibility decision + `session.shutdown` (small protocol
    additions; update `protocol-contract.md` and golden fixtures in the same change).
 3. Logcat + `dumpsys` in failure artifacts, run layout, JSONL events, then JUnit XML/HTML.
-4. Crash/ANR codes with a crashing fixture activity.
-5. Quarantine re-run and the remaining Phase 3 JUnit contracts. The coroutine façade and its
+4. Quarantine re-run and the remaining Phase 3 JUnit contracts. The coroutine façade and its
    13-device-test API 29/API 34 matrix are complete (`coroutines.md`).

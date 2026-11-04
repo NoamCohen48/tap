@@ -85,6 +85,7 @@ The codes, grouped by what they tell you:
 | Code | Meaning / details |
 |---|---|
 | `AUT_MISMATCH` | the app's process identity changed between observations (`PROCESS_RESTARTED`, `PROCESS_MISMATCH`) |
+| `AUT_CRASHED`, `AUT_ANR` | an app this attachment started crashed or stopped responding, and that explains why the command failed. The message names the app and the exception; the detail is the code it replaces (`NOT_FOUND`, `WAIT_TIMEOUT`, …). Each crash is reported once. See [below](#a-crashed-app) |
 | `SYNC_PROVIDER_UNAVAILABLE` | `await_idle` cannot read the app's sync provider: `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `PROVIDER_TIMEOUT`, … |
 | `DRIVER_UNHEALTHY` | the driver's watchdog poisoned the session (`WATCHDOG`, `HEARTBEAT_EXPIRED`); the next open rebuilds it |
 | `TRANSPORT_LOST` | no response and *no* mutation risk (the request never got out) |
@@ -96,6 +97,22 @@ Tap itself never retries. A code that says nothing ran (`NOT_FOUND`, `AMBIGUOUS`
 has started, such a failure is reported as `INDETERMINATE` instead. `INDETERMINATE`,
 `ACTION_REJECTED`, `AUT_CRASHED` and `AUT_ANR` mean the screen may have changed, so do not
 repeat a mutation after them blindly.
+
+## A crashed app
+
+A wait on an app that has died used to end in a timeout on a node that was never coming. Now
+the failure says what happened:
+
+```
+AUT_CRASHED/WAIT_TIMEOUT during execute res("pay") on emulator-5554 (request 7, generation 2, 5012 ms): com.shop crashed: [23554,0,com.shop,547,java.lang.IllegalStateException,Out of stock,Cart.kt,41,0]; the command reported WAIT_TIMEOUT: NO_MATCH
+```
+
+Only apps started through this attachment (`launch`, `cold_launch`, `foreground`, `open_link`)
+count, so another app crashing in the background changes nothing. The check runs only after a
+command fails, so the failure arrives when the running wait ends, not at the moment of the crash.
+Android reports an ANR only when input goes unanswered for about 5 s, so a hang with no input
+waiting stays a plain timeout. The logs of the crash are in the
+[failure artifacts](artifacts.md#failure-artifacts).
 
 ## Wait timeouts
 

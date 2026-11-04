@@ -139,6 +139,8 @@ def _hint(error: TapError) -> str:
             return f"{message}\nthe node was re-rendered before any input; nothing changed, so run the same command again"
         if error.code is ErrorCode.AMBIGUOUS:
             return f"{message}\nseveral nodes match; use a ref from `snapshot` or a narrower selector"
+        if error.code in (ErrorCode.AUT_CRASHED, ErrorCode.AUT_ANR):
+            return f"{message}\nthe app died, so nothing on its screen is there any more; launch it again"
         if error.code is ErrorCode.NOT_INTERACTABLE and error.detail == "OBSCURED":
             return f"{message}\nanother window covers the node; close it (often `key back`) or scroll the node clear"
     if isinstance(error, ServerError):

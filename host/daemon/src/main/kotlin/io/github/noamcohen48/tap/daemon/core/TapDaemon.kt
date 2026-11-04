@@ -236,6 +236,8 @@ class AttachedDevice internal constructor(
     val recording: ScrcpyRecorder,
     /** The device clock when the attachment opened: logs for evidence start here (null: unknown). */
     val attachedAtEpochSeconds: Long? = null,
+    /** Turns a command failure caused by a dead or hung app into `AUT_CRASHED` / `AUT_ANR`. */
+    internal val appDeaths: AppDeaths,
 ) {
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
     internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
@@ -843,6 +845,7 @@ class TapDaemon internal constructor(
                             deps.scrcpyLaunch?.let { ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable, it) }
                                 ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
                             attachedAt,
+                            AppDeaths(config.adb, serial, attachedAt, config.log),
                         )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     activity.append(

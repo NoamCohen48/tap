@@ -64,6 +64,9 @@ const val MAX_EXTRA_KEY_LENGTH = 256
 const val MAX_EXTRA_STRING_LENGTH = 4096
 private val URI_SCHEME = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
 
+/** The logged operations that bring an app up: from then on its crashes and ANRs are reported. */
+private val STARTS_THE_APP = setOf("launch", "cold_launch", "foreground", "open_link")
+
 /** Delegates to [AppLifecycle] in host core so lifecycle verification rules exist once. */
 class AppService(
     private val daemon: TapDaemon,
@@ -88,7 +91,11 @@ class AppService(
         val device = daemon.attachedDevice(target.attachedDeviceId, target.clientConnectionId)
         val app = device.deviceSession.app(target.packageName)
         val logged = AppCall.newBuilder().setOperation(operation).setPackageName(target.packageName).apply(call).build()
-        return device.recorded({ setApp(logged) }) { block(app) }
+        return device.recorded({ setApp(logged) }) {
+            // Before the call, so a crash on the way up counts and one before it does not.
+            if (operation in STARTS_THE_APP) device.appDeaths.watch(target.packageName)
+            block(app)
+        }
     }
 
     private fun checkTarget(target: AppTarget) {
