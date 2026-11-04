@@ -468,6 +468,85 @@ class TapTestBridgeTest {
         }
     }
 
+    private fun invocation(body: () -> Unit) =
+        object : org.junit.jupiter.api.extension.InvocationInterceptor.Invocation<Void> {
+            override fun proceed(): Void? {
+                body()
+                return null
+            }
+        }
+
+    /** A live one-device state in a stub method context, as `beforeEach` leaves it. */
+    private fun liveTest(
+        connection: TapConnection,
+        rootJob: Job = Job(),
+        failure: () -> Throwable? = { null },
+    ): Pair<TestState, ExtensionContext> {
+        val devices =
+            runBlocking(
+                io.github.noamcohen48.tap.sdk
+                    .TapContext("test:setup"),
+            ) { mapOf("device" to connection.attachDevice("serial-aaa")) }
+        val state = TestState(rootJob, devices, mapOf("device" to "serial-aaa"), "lifecycle")
+        val testMethod = TapTestBridgeTest::class.java.getDeclaredMethod("metadata-only test stays possible")
+        val store = stubStore(HashMap<Any, Any?>(mapOf("tap.devices" to state)))
+        return state to stubContext(store, TapTestBridgeTest::class.java, testMethod, failure)
+    }
+
+    @Test
+    fun `lifecycle methods and test templates can use the devices`() {
+        val connection = runBlocking { client().connect("test") }
+        try {
+            val (state, context) = liveTest(connection)
+            val extension = TapExtension()
+            val device = state.devices.getValue("device")
+            val call = invocation { tapTest { device.pressKey(KEYCODE_BACK) } }
+            extension.interceptBeforeEachMethod(call, stubInvocationContext(), context)
+            extension.interceptTestTemplateMethod(call, stubInvocationContext(), context)
+            extension.interceptAfterEachMethod(call, stubInvocationContext(), context)
+            assertEquals(3, fakeDevices.pressKeyExecutes.get())
+            assertEquals(null, TapTestBinding.current.get(), "the binding ends with the invocation")
+            extension.afterEach(context)
+        } finally {
+            runBlocking { connection.close() }
+        }
+    }
+
+    @Test
+    fun `an AfterEach method still uses the devices after a failing test`() {
+        val connection = runBlocking { client().connect("test") }
+        try {
+            val (state, context) = liveTest(connection)
+            val extension = TapExtension()
+            val device = state.devices.getValue("device")
+            assertFailsWith<AssertionError> {
+                extension.interceptTestMethod(invocation { tapTest { throw AssertionError("boom") } }, stubInvocationContext(), context)
+            }
+            assertTrue(state.rootJob.isCancelled, "the failing test cancelled the root job")
+            extension.interceptAfterEachMethod(invocation { tapTest { device.pressKey(KEYCODE_BACK) } }, stubInvocationContext(), context)
+            assertEquals(1, fakeDevices.pressKeyExecutes.get(), "cleanup ran on the devices")
+            extension.afterEach(context)
+        } finally {
+            runBlocking { connection.close() }
+        }
+    }
+
+    @Test
+    fun `a failing lifecycle method captures artifacts and a skipped test does not`() {
+        val connection = runBlocking { client().connect("test") }
+        try {
+            val (_, failed) = liveTest(connection) { IllegalStateException("@BeforeEach failed") }
+            TapExtension().afterEach(failed)
+            assertEquals(1, fakeDevices.screenshots.get(), "the failure was captured")
+
+            val (_, skipped) = liveTest(connection) { org.opentest4j.TestAbortedException("assumption") }
+            TapExtension().afterEach(skipped)
+            assertEquals(1, fakeDevices.screenshots.get(), "a skipped test captures nothing")
+        } finally {
+            runBlocking { connection.close() }
+        }
+    }
+
     @Test
     fun `assignSerials pins and keeps declaration order`() {
         val extension = TapExtension()
@@ -569,6 +648,14 @@ class TapTestBridgeTest {
         }
 
     /** Minimal `ExtensionContext`: store, no execution exception, fixed class/method. */
+    @Suppress("UNCHECKED_CAST")
+    private fun stubInvocationContext(): org.junit.jupiter.api.extension.ReflectiveInvocationContext<Method> =
+        Proxy.newProxyInstance(
+            javaClass.classLoader,
+            arrayOf(org.junit.jupiter.api.extension.ReflectiveInvocationContext::class.java),
+        ) { _, method, _ -> throw UnsupportedOperationException(method.name) }
+            as org.junit.jupiter.api.extension.ReflectiveInvocationContext<Method>
+
     private fun stubContext(
         store: ExtensionContext.Store,
         testClass: Class<*>,
@@ -655,6 +742,8 @@ class TapTestBridgeTest {
                 .build()
         }
 
+        val screenshots = java.util.concurrent.atomic.AtomicInteger()
+
         override suspend fun execute(request: ExecuteRequest): ExecuteResponse = ExecuteResponse.newBuilder().setResult(result(request)).build()
 
         private suspend fun result(request: ExecuteRequest): CommandResult {
@@ -685,9 +774,11 @@ class TapTestBridgeTest {
                 .build()
         }
 
-        override suspend fun screenshot(request: io.github.noamcohen48.tap.api.v1.ScreenshotRequest): io.github.noamcohen48.tap.api.v1.ScreenshotResponse =
-            io.github.noamcohen48.tap.api.v1.ScreenshotResponse
+        override suspend fun screenshot(request: io.github.noamcohen48.tap.api.v1.ScreenshotRequest): io.github.noamcohen48.tap.api.v1.ScreenshotResponse {
+            screenshots.incrementAndGet()
+            return io.github.noamcohen48.tap.api.v1.ScreenshotResponse
                 .getDefaultInstance()
+        }
 
         override suspend fun driverLog(request: io.github.noamcohen48.tap.api.v1.DriverLogRequest): io.github.noamcohen48.tap.api.v1.DriverLogResponse =
             io.github.noamcohen48.tap.api.v1.DriverLogResponse

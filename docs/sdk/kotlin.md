@@ -74,6 +74,9 @@ under `build/tap-artifacts/<class>/<method>/`.
     selectors (`text(...)`, `res(...)`) is not. Calls outside `tapTest`, or from `GlobalScope`,
     fail with `TapUsageException`, so a JUnit timeout or a failing sibling cancels in-flight
     calls. `fun x(device: Device) = tapTest { ... }` works too, since `tapTest` returns `Unit`.
+    `@BeforeEach` and `@AfterEach` methods take a `Device` and use `tapTest` the same way, and an
+    `@AfterEach` still can after the test failed; a failure in either saves the same artifacts
+    as a failing test. `@BeforeAll` and `@AfterAll` have no devices.
 
 ## Configuration
 
