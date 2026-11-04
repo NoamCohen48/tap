@@ -32,6 +32,7 @@ device locks.
 | Where calls run | anywhere | inside `tapTest { }` (JUnit) or `tapScope { }` / `attach { }` |
 | A test's device | the `tap_device` fixture | a `device: Device` parameter of a `@TapTest` class |
 | Several devices | `@pytest.mark.tap_devices("a", "b")` + `tap_devices` | `@TapDevices("a", "b")` + `devices: Devices` |
+| Which devices a role may use | `@pytest.mark.tap_devices(role={"min_api": 33})` | `@RequireDevice(role = "role", minApi = 33)` |
 
 Only the Python client has [held connections and screen snapshots](python.md#held-connections-and-screen-snapshots),
 the multi-process surface [tap-agent](../agent/index.md) and [Tap Studio](../studio/index.md)

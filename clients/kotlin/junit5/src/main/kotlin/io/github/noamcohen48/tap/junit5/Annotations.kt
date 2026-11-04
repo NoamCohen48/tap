@@ -64,6 +64,38 @@ annotation class TapDevices(
     vararg val roles: String,
 )
 
+/**
+ * Which devices may play [role], from what the server reports about them (`DeviceEntry.properties`).
+ * On a test method or class, once per role; a method's annotation replaces its class's for the
+ * same role, and the role must be one the test declares (a [Device] parameter, [TapDevice] or
+ * [TapDevices]). Every part that is set must hold. A device whose properties the server could not
+ * read fits no criteria, and a role pinned with `tap.device.<role>` must fit too. When no
+ * available device (or no combination of them, for several roles) fits, the test is skipped
+ * before anything is attached, naming the devices it saw.
+ */
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+@Repeatable
+annotation class RequireDevice(
+    val role: String = DEFAULT_ROLE,
+    /** Lowest API level, inclusive. */
+    val minApi: Int = 0,
+    /** Highest API level, inclusive. */
+    val maxApi: Int = Int.MAX_VALUE,
+    val kind: DeviceKind = DeviceKind.ANY,
+    /** `ro.product.manufacturer`, ignoring case; empty = any. */
+    val manufacturer: String = "",
+    /** A part of `ro.product.model`, ignoring case; empty = any. */
+    val modelContains: String = "",
+)
+
+/** Whether a role wants an emulator or a real device ([RequireDevice.kind]). */
+enum class DeviceKind {
+    ANY,
+    EMULATOR,
+    PHYSICAL,
+}
+
 const val DEFAULT_ROLE = "device"
 
 /** The devices opened for one test, by role. */

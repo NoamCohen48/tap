@@ -101,8 +101,9 @@ simultaneous phases).
 
 Missing:
 
-- `ExecutionCondition` for static prerequisites (API range, physical-only, tags) without
-  reserving devices.
+- `@RequireDevice` skips a test no device fits before anything is attached, from `beforeEach`
+  (`DeviceCriteriaTest` in the extension and in the samples). What it does not cover: an
+  `ExecutionCondition`, which would report the skip without opening a server connection.
 - Per-test deadline: `tapTest` runs on the root job so JUnit `@Timeout`/interruption cancels
   in-flight RPCs, but there is no extension-owned wall-clock deadline beyond that; a hung
   test still relies on JUnit's own `@Timeout` and the driver watchdog.
@@ -248,7 +249,6 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 
 | Gap | Impact | Notes |
 |---|---|---|
-| JUnit has no device criteria | pytest roles take `min_api`/`max_api`/`emulator`/`manufacturer`/`model_contains` (`@pytest.mark.tap_devices(left={...})`, `test_plugin.py`); `@TapDevices` names roles only | The server reports the properties (`DeviceEntry.properties`); a JUnit annotation needs only the client side. |
 | Server has no per-run structured event stream | Bindings cannot build reports from server events | Partly there: every connection has an event log of its device calls (`Events` RPC, `event_log()` in Python, `tap-agent export`; experimental). No streaming, no run-level events, not in the Kotlin client. |
 | Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later; the Kotlin coroutine façade landed in client 0.2.0. |
 
