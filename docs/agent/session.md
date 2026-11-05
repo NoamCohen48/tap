@@ -69,7 +69,9 @@ on the screen; `pkg=` keeps it to one app's nodes.
 their ref is unchanged; validation state does not change a node's identity. That is usually
 enough to pick the next step without another
 snapshot. A screen that never goes quiet (a blinking cursor, a spinner) prints
-`(screen still changing after 10s)` with the difference so far.
+`(screen still changing after 10s)` with the difference so far. If Android reports no focused
+app, settling fails with an actionable error instead of sending an empty package name. Use
+`snapshot` to inspect that state; do not repeat an action just because its settling step failed.
 
 ## Check the result
 

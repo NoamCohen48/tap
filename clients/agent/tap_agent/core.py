@@ -253,8 +253,11 @@ class Agent:
         """Waits for the focused window's hierarchy to stop changing, then diffs a new snapshot
         against the previous one. A screen that keeps changing is reported, not an error."""
         note = ""
+        package = device.info().current_package
+        if package is None:
+            raise AgentError("no focused app to settle; use snapshot to inspect the screen", EXIT_FAILED)
         try:
-            device.app(device.info().current_package).await_settled(SETTLE_STABLE_FOR, timeout)
+            device.app(package).await_settled(SETTLE_STABLE_FOR, timeout)
         except WaitTimeoutError:
             note = f"(screen still changing after {format_duration(timeout)})\n"
         return note + render.diff_text(device.screen_snapshot(), level, full)
