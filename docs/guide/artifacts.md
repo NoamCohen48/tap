@@ -87,6 +87,7 @@ Test IDs hash the runner's identity (pytest node ID or JUnit unique ID); attempt
 Parameterized/repeated invocations cannot overwrite another invocation's evidence. Device
 subdirectories hash the role/serial pair; the manifest maps them back to readable identities.
 Only tests using Tap fixtures are included in pytest; JUnit includes tests of `@TapTest` classes.
+Custom pytest collectors whose items have no fixture names run normally without Tap run setup.
 Setup, test and teardown outcomes are recorded, including skips and failed assumptions.
 JUnit container failures are recorded even when no test body can start.
 

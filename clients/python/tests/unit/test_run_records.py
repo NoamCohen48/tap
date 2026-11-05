@@ -12,13 +12,22 @@ import pytest
 from tap_e2e._run_records import RunRecords
 from tap_e2e.device import Device
 from tap_e2e.models import Capture, DeviceLogs
-from tap_e2e.pytest_plugin import TestDevices as DeviceState, _capture_run_artifacts
+from tap_e2e.pytest_plugin import TestDevices as DeviceState, _capture_run_artifacts, pytest_runtest_protocol
 
 pytest_plugins = ["pytester"]
 
 
 def read(path):
     return json.loads(path.read_text())
+
+
+def test_non_python_items_do_not_require_fixture_names():
+    # Custom pytest.Item collectors need not implement pytest.Function.fixturenames.
+    item = cast(pytest.Item, SimpleNamespace(stash=pytest.Stash()))
+    hook = pytest_runtest_protocol(item, None)
+    next(hook)
+    with pytest.raises(StopIteration):
+        next(hook)
 
 
 def test_records_are_incremental_and_repeated_attempts_do_not_overwrite(tmp_path):
@@ -85,7 +94,7 @@ def test_capture_keeps_good_parts_and_records_missing_parts_without_error_text(t
     device = SimpleNamespace(serial="s1", generation=4, capture=lambda: captured)
     item = SimpleNamespace(config=SimpleNamespace(stash=pytest.Stash()))
     state = DeviceState({"device": cast(Device, device)}, ["s1"], failure=AssertionError("original failure"))
-    _capture_run_artifacts(item, state, run, key)
+    _capture_run_artifacts(cast(pytest.Item, item), state, run, key)
     manifest = read(run.directory / "manifest.json")
     assert {a["part"] for a in manifest["artifacts"]} == {"failure", "logcat", "activities", "windows"}
     assert manifest["errors"][0]["part"] == "screenshot"
