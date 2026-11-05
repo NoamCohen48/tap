@@ -56,6 +56,46 @@ session.
 Decided and left alone: `App.launch()` keeps `am start -n` (starts that activity, on top of the
 task if one exists); `foreground()` is the "tap the icon" path.
 
+## Counted taps and timed presses
+
+`Element.tap(count = N, interval = …)` / `tap(count=N, interval=…)`, `tripleTap` /
+`triple_tap`, and optional `longTap(duration = …)` / `long_tap(duration=…)` extend the
+existing single/double/default long press. Agent CLI/MCP have count, interval, duration and
+command timeout parameters too. `multi_tap` and `hold` are new additive operations, so older
+implementations reject rather than silently ignore timing/count fields. No epoch/wire version
+bump is needed for an unsupported new operation.
+
+Count 1..100, release-to-press interval 40..1000 ms (default 100), hold 1..30000 ms. Each tap
+press lasts 50 ms; the whole sequence is limited to 30 seconds and must fit the remaining
+command budget before input. Resolve once, check occlusion once, never re-resolve or retry
+between taps. Default display only; refuse other displays before input instead of touching the
+wrong screen. Timing does not promise an app recognizes triple-clicks, and a short explicit
+press need not trigger a long-click handler. Existing defaults are unchanged.
+
+Current AndroidX `UiObject2.click(long)` delegates to `Gestures.click(point, duration)`; it
+refreshes the node again, so Tap keeps its already-checked-point `PointerGestures` path rather
+than refresh after the mutation gate. The pinned Appium click implementation uses an element
+or an explicit point; its persistent element-cache/coordinate surface is not adopted. No source
+was copied.
+
+Verification: protocol validation/dispatch and SDK fake-daemon regression tests; host
+`TimedTouchTest`, existing `GestureTest` and `AutLifecycleTest` passed on API 34. The raw-touch
+fixture observed all 3 + 7 taps and a 1206 ms press for a requested 1200 ms; insufficient
+budgets, missing and ambiguous targets sent no input and left the session usable. API 29
+verification is pending because the Samsung is disconnected. An initial restored-emulator
+startup failed before a readiness marker, without input; the failed journal was archived only
+after checking no driver process or listener remained, and all four device checks then passed.
+The Kotlin client timed-touch/lifecycle checks passed too. A broader 19-test SDK run had one
+media-scan timeout followed by two pre-readiness startup failures; all three passed on a
+targeted rerun alongside the touch/lifecycle checks. This is not a claim that the full matrix
+passed in one uninterrupted run.
+
+Lifecycle audit: launch, cold launch, force-stop, clear storage, install/uninstall,
+foreground/background and deep links already exist in both SDKs and the agent. Do not add
+duplicate lifecycle methods. Corrected stale contract/guide wording: launch and foreground
+report Android's acceptance, cold launch observes the new identity after stopping, and Home
+is not a promise Android retains the process. Explicit visibility waits remain explicit.
+
 ## Group 1 (implemented)
 
 Chosen 2026-10-01 as the actions real app tests hit most. Upstream references are the pinned

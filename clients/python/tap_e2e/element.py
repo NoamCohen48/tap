@@ -4,6 +4,7 @@ again on the device, so nothing goes stale between calls."""
 from __future__ import annotations
 
 import time
+import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -76,13 +77,44 @@ class Element:
 
     # --- actions (exactly one match required) -----------------------------------------------------
 
-    def tap(self, timeout: float | None = None) -> None:
-        """Click at the centre of the one matching node's visible bounds."""
-        self._run(timeout, tap=pb.Tap(selector=self._target))
+    def tap(self, timeout: float | None = None, *, count: int = 1, interval: float = 0.1) -> None:
+        """Tap ``count`` times (1..100) at the initially resolved visible centre.
 
-    def long_tap(self, timeout: float | None = None) -> None:
-        """Long click on the one matching node."""
-        self._run(timeout, long_tap=pb.LongTap(selector=self._target))
+        ``interval`` is the release-to-press gap in seconds (0.04..1, default 0.1).
+        Each press lasts 50 ms. The whole sequence must fit in 30 seconds and the remaining
+        timeout, or no input is sent. Resolves once, never retries. Does not promise that an
+        app recognizes a multi-click gesture. Counted taps require the default display.
+        """
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 100:
+            raise ValueError("count must be an integer in 1..100")
+        if isinstance(interval, bool) or not math.isfinite(interval) or not 0.04 <= interval <= 1:
+            raise ValueError("interval must be in 0.04..1 seconds")
+        gap_ms = round(interval * 1000)
+        if count * 50 + (count - 1) * gap_ms > 30_000:
+            raise ValueError("The tap sequence must not exceed 30 seconds")
+        if count == 1:
+            self._run(timeout, tap=pb.Tap(selector=self._target))
+        else:
+            self._run(timeout, multi_tap=pb.MultiTap(selector=self._target, count=count, interval_ms=gap_ms))
+
+    def triple_tap(self, timeout: float | None = None, *, interval: float = 0.1) -> None:
+        """Three taps with ``interval`` seconds between releases and presses; see :meth:`tap`."""
+        self.tap(timeout, count=3, interval=interval)
+
+    def long_tap(self, timeout: float | None = None, *, duration: float | None = None) -> None:
+        """Long press on one matching node.
+
+        Without ``duration``, uses Android's default long-press timing. Otherwise holds a
+        physical finger for ``duration`` seconds (0.001..30); a short duration may not trigger
+        the app's long-click handler. Must fit in the remaining timeout before any input.
+        Explicit-duration presses require the default display. Tap never retries the input.
+        """
+        if duration is None:
+            self._run(timeout, long_tap=pb.LongTap(selector=self._target))
+        else:
+            if isinstance(duration, bool) or not math.isfinite(duration) or not 0.001 <= duration <= 30:
+                raise ValueError("duration must be in 0.001..30 seconds")
+            self._run(timeout, hold=pb.TimedPress(selector=self._target, duration_ms=round(duration * 1000)))
 
     def double_tap(self, timeout: float | None = None) -> None:
         """Two taps at the centre of the one matching node's visible bounds, inside Android's

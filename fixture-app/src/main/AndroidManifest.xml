@@ -55,6 +55,9 @@
             android:name=".GestureActivity"
             android:exported="true" />
         <activity
+            android:name=".TimedTouchActivity"
+            android:exported="true" />
+        <activity
             android:name=".ControlsActivity"
             android:exported="true" />
         <activity

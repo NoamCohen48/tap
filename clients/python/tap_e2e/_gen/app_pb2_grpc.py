@@ -197,14 +197,14 @@ class AppServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Launch(self, request, context):
-        """Start the activity (or the launcher) and wait for the package to own the focused window.
+        """Start the activity (or the launcher); verify am start -W succeeded, not UI readiness.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ColdLaunch(self, request, context):
-        """Verified force-stop, launch, then a new process identity in the foreground.
+        """Verified force-stop, launch, then observe the new process identity; visibility is a separate wait.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

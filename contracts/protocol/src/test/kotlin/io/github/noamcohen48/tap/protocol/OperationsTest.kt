@@ -28,6 +28,8 @@ import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Orientation
@@ -100,7 +102,7 @@ class OperationsTest {
     @Test
     fun mutationsAreExactlyTheInputCommands() {
         val mutations = setOf(
-            "press_key", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll",
+            "press_key", "tap", "long_tap", "multi_tap", "hold", "set_text", "type_text", "clear_text", "swipe", "scroll",
             "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
             "dismiss_keyguard", "choose_permission", "double_tap", "drag", "pinch", "fling",
             "hide_keyboard", "perform_ime_action", "set_clipboard", "perform_accessibility_action", "set_progress",
@@ -327,6 +329,10 @@ class OperationsTest {
 
         override fun longTap(command: LongTap) = record("long_tap", Unit)
 
+        override fun multiTap(command: MultiTap) = record("multi_tap", Unit)
+
+        override fun hold(command: TimedPress) = record("hold", Unit)
+
         override fun setText(command: SetText) = record("set_text", Unit)
 
         override fun typeText(command: TypeText) = record("type_text", Unit)
@@ -407,6 +413,8 @@ class OperationsTest {
                 "wait_screen_stable" to Commands.waitScreenStable(AUT, stableForMs = 750, signal = StabilitySignal.STABILITY_PIXELS),
                 "tap" to Commands.tap(button),
                 "long_tap" to Commands.longTap(Selectors.contentDescription("More")),
+                "multi_tap" to Commands.multiTap(button, 3),
+                "hold" to Commands.hold(button, 2_000),
                 "set_text" to Commands.setText(button, "user@example.com"),
                 "type_text" to Commands.typeText("typed"),
                 "clear_text" to Commands.clearText(button),

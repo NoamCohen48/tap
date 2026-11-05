@@ -940,7 +940,7 @@ export const AppService: GenService<{
     output: typeof GetLocalesResponseSchema;
   },
   /**
-   * Start the activity (or the launcher) and wait for the package to own the focused window.
+   * Start the activity (or the launcher); verify am start -W succeeded, not UI readiness.
    *
    * @generated from rpc tap.v1.AppService.Launch
    */
@@ -950,7 +950,7 @@ export const AppService: GenService<{
     output: typeof LaunchResponseSchema;
   },
   /**
-   * Verified force-stop, launch, then a new process identity in the foreground.
+   * Verified force-stop, launch, then observe the new process identity; visibility is a separate wait.
    *
    * @generated from rpc tap.v1.AppService.ColdLaunch
    */

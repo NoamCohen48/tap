@@ -27,6 +27,16 @@ for deliberate breaking server-API changes, not additive fields or ordinary rele
 server-driver `protocol_version` is separate. Older clients predating the epoch check must be
 upgraded alongside a breaking daemon.
 
+## Counted touch commands
+
+`Command.multi_tap` (field 47, `MultiTap`) and `Command.hold` (field 48, `TimedPress`) are
+additive mutations returning `done`. Multi-tap count is 1..100, release-to-press interval
+40..1000 ms (default 100), including 50 ms per tap; total at most 30000 ms. Timed press
+holds for 1..30000 ms. Both resolve one selector once, check reachability and the remaining
+deadline before the mutation gate, and require the default display. They never replay input.
+New operations (not fields on old tap messages) ensure an old implementation rejects the
+request rather than silently injecting a single/default-duration tap. See `protocol-contract.md`.
+
 ## 2. Process model
 
 ```text

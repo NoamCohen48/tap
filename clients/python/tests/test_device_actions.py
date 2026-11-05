@@ -53,6 +53,21 @@ def test_gestures_reach_the_app_as_gestures(tap_device):
     app.wait(text("Zoomed out")).visible()
 
 
+def test_counted_taps_and_timed_press_reach_the_app(tap_device):
+    app = launch(tap_device, ".TimedTouchActivity")
+    target = app.element(res("timed_touch_target"))
+    target.triple_tap()
+    app.wait(text("Taps: 3")).visible()
+    target.tap(count=7, interval=0.2)
+    app.wait(text("Taps: 10")).visible()
+    target.long_tap(duration=1.2, timeout=5)
+    app.wait(text("Taps: 11")).visible()
+    duration_text = app.element(res("touch_duration")).text()
+    assert duration_text is not None
+    held = int(duration_text.removeprefix("Held: ").removesuffix(" ms"))
+    assert 1200 <= held <= 3000, held
+
+
 def test_permission_prompt_is_answered_by_choice(tap_device):
     app = launch(tap_device)
     app.clear_data()  # resets the permission, so the dialog shows on every run
@@ -214,7 +229,8 @@ def test_accessibility_actions_and_slider_progress(tap_device):
     app.wait(text("Archived")).visible()
 
     slider = app.element(res("volume_slider"))
-    assert slider.snapshot().range is not None and slider.snapshot().range.max == 100
+    slider_range = slider.snapshot().range
+    assert slider_range is not None and slider_range.max == 100
     slider.set_progress(55)
     app.wait(text("Volume: 55")).visible()
     with pytest.raises(CommandError) as outside:

@@ -9,6 +9,7 @@ import android.view.ViewConfiguration
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.ErrorDetail
+import io.github.noamcohen48.tap.protocol.TAP_DURATION_MS
 import kotlin.math.hypot
 import kotlin.math.roundToLong
 
@@ -25,16 +26,25 @@ internal class PointerGestures(
     private val density: Float,
 ) {
     /** One tap at [point]. */
-    fun tap(point: Point) = stroke(listOf(point), holdMs = TAP_MS)
+    fun tap(point: Point) = stroke(listOf(point), holdMs = TAP_DURATION_MS)
+
+    /** A physical press with an explicitly selected duration. */
+    fun hold(point: Point, durationMs: Long) = stroke(listOf(point), holdMs = durationMs)
+
+    /** One bounded sequence at an already validated point; never re-resolves or retries. */
+    fun multiTap(point: Point, count: Int, intervalMs: Long) {
+        repeat(count) { index ->
+            if (index > 0) SystemClock.sleep(intervalMs)
+            stroke(listOf(point), holdMs = TAP_DURATION_MS, partial = index > 0)
+        }
+    }
 
     /** A press at [point] held 1.5 × the system long-press timeout, as AndroidX `longClick`. */
     fun longTap(point: Point) = stroke(listOf(point), holdMs = LONG_PRESS_MS)
 
     /** Two taps at [point], the second inside Android's double-tap window. */
     fun doubleTap(point: Point) {
-        stroke(listOf(point), holdMs = TAP_MS)
-        SystemClock.sleep(DOUBLE_TAP_GAP_MS)
-        stroke(listOf(point), holdMs = TAP_MS, partial = true)
+        multiTap(point, count = 2, intervalMs = DOUBLE_TAP_GAP_MS)
     }
 
     /**
@@ -138,9 +148,6 @@ internal class PointerGestures(
     private companion object {
         /** AndroidX `Gestures.LONG_PRESS_DURATION_MS`: well past the long-press timeout. */
         val LONG_PRESS_MS: Long get() = (ViewConfiguration.getLongPressTimeout() * 1.5f).toLong()
-
-        /** Short of `ViewConfiguration.getTapTimeout()` (100 ms), so each touch is a tap. */
-        const val TAP_MS = 50L
 
         /** Inside the double-tap window: more than its 40 ms minimum, well under its 300 ms timeout. */
         const val DOUBLE_TAP_GAP_MS = 100L

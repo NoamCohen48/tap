@@ -27,6 +27,8 @@ import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.NotificationMatch
@@ -113,7 +115,7 @@ val Request.op: String
 val Command.isMutation: Boolean
     get() =
         when (opCase) {
-            OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
+            OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.MULTI_TAP, OpCase.HOLD, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
             OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL, OpCase.OPEN_SYSTEM_PANEL,
             OpCase.SET_ORIENTATION, OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION,
             OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG, OpCase.PINCH, OpCase.FLING,
@@ -143,6 +145,8 @@ val Command.targetSelector: Selector?
             OpCase.WAIT_GONE -> waitGone.selector
             OpCase.TAP -> tap.selector
             OpCase.LONG_TAP -> longTap.selector
+            OpCase.MULTI_TAP -> multiTap.selector
+            OpCase.HOLD -> hold.selector
             OpCase.SET_TEXT -> setText.selector
             OpCase.CLEAR_TEXT -> clearText.selector
             OpCase.SWIPE -> swipe.selector
@@ -278,6 +282,14 @@ object Commands {
     fun tap(selector: Selector): Command = Command.newBuilder().setTap(Tap.newBuilder().setSelector(selector)).build()
 
     fun longTap(selector: Selector): Command = Command.newBuilder().setLongTap(LongTap.newBuilder().setSelector(selector)).build()
+
+    fun multiTap(selector: Selector, count: Int, intervalMs: Long? = null): Command =
+        Command.newBuilder().setMultiTap(MultiTap.newBuilder().setSelector(selector).setCount(count).apply {
+            intervalMs?.let { setIntervalMs(it) }
+        }).build()
+
+    fun hold(selector: Selector, durationMs: Long): Command =
+        Command.newBuilder().setHold(TimedPress.newBuilder().setSelector(selector).setDurationMs(durationMs)).build()
 
     fun setText(
         selector: Selector,
@@ -521,6 +533,10 @@ interface CommandHandler {
 
     fun longTap(command: LongTap)
 
+    fun multiTap(command: MultiTap)
+
+    fun hold(command: TimedPress)
+
     fun setText(command: SetText)
 
     fun typeText(command: TypeText)
@@ -632,6 +648,8 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.WAIT_SCREEN_STABLE -> result.setDone(done).also { handler.waitScreenStable(waitScreenStable) }
         OpCase.TAP -> result.setDone(done).also { handler.tap(tap) }
         OpCase.LONG_TAP -> result.setDone(done).also { handler.longTap(longTap) }
+        OpCase.MULTI_TAP -> result.setDone(done).also { handler.multiTap(multiTap) }
+        OpCase.HOLD -> result.setDone(done).also { handler.hold(hold) }
         OpCase.SET_TEXT -> result.setDone(done).also { handler.setText(setText) }
         OpCase.TYPE_TEXT -> result.setDone(done).also { handler.typeText(typeText) }
         OpCase.CLEAR_TEXT -> result.setDone(done).also { handler.clearText(clearText) }

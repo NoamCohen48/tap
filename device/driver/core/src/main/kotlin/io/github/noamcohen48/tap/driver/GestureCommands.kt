@@ -8,6 +8,8 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Fling
+import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
@@ -19,6 +21,8 @@ import io.github.noamcohen48.tap.api.v1.Tap
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.DEFAULT_GESTURE_PERCENT
+import io.github.noamcohen48.tap.protocol.DEFAULT_TAP_INTERVAL_MS
+import io.github.noamcohen48.tap.protocol.multiTapDurationMs
 
 /**
  * Element gestures (`tap`, `long_tap`, `double_tap`, `drag`, `swipe`, `scroll`, `fling`,
@@ -57,6 +61,18 @@ internal class GestureCommands(
     ) = gesture(context, target, TouchPoints::center) { element, point ->
         if (element.displayId == Display.DEFAULT_DISPLAY) pointer.longTap(point) else element.longClick()
     }
+
+    fun multiTap(context: CommandContext, command: MultiTap, target: CompiledSelector) {
+        val interval = if (command.hasIntervalMs()) command.intervalMs else DEFAULT_TAP_INTERVAL_MS
+        gesture(context, target, TouchPoints::center, multiTapDurationMs(command.count, interval), true) { _, point ->
+            pointer.multiTap(point, command.count, interval)
+        }
+    }
+
+    fun hold(context: CommandContext, command: TimedPress, target: CompiledSelector) =
+        gesture(context, target, TouchPoints::center, command.durationMs, true) { _, point ->
+            pointer.hold(point, command.durationMs)
+        }
 
     /** Two taps on the element's visible centre as one gesture (Android's double-tap timing). */
     fun doubleTap(
@@ -204,6 +220,8 @@ internal class GestureCommands(
         context: CommandContext,
         target: CompiledSelector,
         touchDown: (UiObject2) -> Point,
+        minimumDurationMs: Long = 0,
+        defaultDisplayOnly: Boolean = false,
         action: (UiObject2, Point) -> Unit,
     ) {
         context.checkpoint()
@@ -211,6 +229,12 @@ internal class GestureCommands(
         try {
             val point = touchDown(element)
             reachability.requireReachable(element, point)
+            if (defaultDisplayOnly && element.displayId != Display.DEFAULT_DISPLAY) {
+                throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "Timed presses and counted taps require the default display")
+            }
+            if (minimumDurationMs > context.remainingMs()) {
+                throw CommandFailure(ErrorCode.ERR_DEADLINE_EXCEEDED, message = "The touch sequence does not fit in the remaining command deadline; no input was sent")
+            }
             // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
             // cancellation is ignored from here on and the gesture result is definitive.
             context.markMutationStarted()

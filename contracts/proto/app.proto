@@ -30,8 +30,8 @@ service AppService {
   rpc SetLocales(SetLocalesRequest) returns (SetLocalesResponse);
   // The app's own languages now (`cmd locale get-app-locales`); empty = it follows the system.
   rpc GetLocales(GetLocalesRequest) returns (GetLocalesResponse);
-  rpc Launch(LaunchRequest) returns (LaunchResponse); // Start the activity (or the launcher) and wait for the package to own the focused window.
-  rpc ColdLaunch(ColdLaunchRequest) returns (ColdLaunchResponse); // Verified force-stop, launch, then a new process identity in the foreground.
+  rpc Launch(LaunchRequest) returns (LaunchResponse); // Start the activity (or the launcher); verify am start -W succeeded, not UI readiness.
+  rpc ColdLaunch(ColdLaunchRequest) returns (ColdLaunchResponse); // Verified force-stop, launch, then observe the new process identity; visibility is a separate wait.
   // `am start -W` of the launcher intent, as the home screen does: the app's existing task comes
   // back as it was left; with no task, the launcher activity starts.
   rpc Foreground(ForegroundRequest) returns (ForegroundResponse);

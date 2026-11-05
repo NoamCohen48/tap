@@ -308,8 +308,8 @@ class App internal constructor(
     }
 
     /**
-     * Sends the app to the background with the Home key, as a user would; the process keeps
-     * running. Bring it back with [foreground].
+     * Injects Home, as a user would; this is not a force-stop. Android may still reclaim the
+     * background process. Bring the task back with [foreground]; wait for its UI explicitly.
      */
     suspend fun background() {
         device.pressHome()
