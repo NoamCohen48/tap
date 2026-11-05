@@ -314,7 +314,7 @@ def _record(config: pytest.Config, action) -> None:
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
-    if any(name in item.fixturenames for name in ("tap_device", "tap_devices", "tap_connection", "tap_client")):
+    if any(name in getattr(item, "fixturenames", ()) for name in ("tap_device", "tap_devices", "tap_connection", "tap_client")):
         config = TapConfig.from_pytest(item.config)
         if config.report and not item.config.stash.get(_RUN_DISABLED, False):
             def start() -> None:
