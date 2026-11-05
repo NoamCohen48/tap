@@ -5,7 +5,9 @@ Configuration (ini option, or environment variable):
     tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
                                    order, starting one device further on for each test
                                    (wrapping). Unset = whatever the server's device list offers.
-    tap_artifacts / TAP_ARTIFACTS  failure artifact directory (default tap-artifacts)
+    tap_artifacts / TAP_ARTIFACTS  run records and failure artifact root (default tap-artifacts)
+    tap_report    / TAP_REPORT     on (default) writes structured run records; off keeps legacy
+                                   failure-artifact paths only
     tap_capture   / TAP_CAPTURE    onFailure (default) = Device.capture() every device of a
                                    failed test into that directory; off = capture nothing
     tap_device_scope / TAP_DEVICE_SCOPE
@@ -49,6 +51,7 @@ import itertools
 import os
 import pathlib
 import re
+import sys
 import traceback
 from collections.abc import Generator
 from dataclasses import dataclass, field
@@ -59,6 +62,7 @@ from .device import Device
 from .errors import DeviceBusyError, DeviceQuarantinedError
 from .client import TapConnection, TapClient, start_daemon, stop_daemon
 from .models import DeviceEntry
+from ._run_records import RunRecords
 
 DEFAULT_ROLE = "device"
 
@@ -71,6 +75,7 @@ DEFAULT_ACQUIRE_TIMEOUT = 300.0
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("tap_serials", "comma-separated device serials")
+    parser.addini("tap_report", "on or off: write structured run records", default="on")
     parser.addini(
         "tap_artifacts", "failure artifact directory", default="tap-artifacts"
     )
@@ -111,7 +116,7 @@ class TapConfig:
     Attributes:
         serials: Devices to use, in order (``tap_serials`` / ``TAP_SERIALS``, comma-separated).
             Empty means every device the server lists.
-        artifacts: Where failure artifacts are written (``tap_artifacts`` / ``TAP_ARTIFACTS``,
+        artifacts: Root for run records and failure evidence (``tap_artifacts`` / ``TAP_ARTIFACTS``,
             default ``tap-artifacts``).
         server: ``host:port`` of the server (``tap_server`` / ``TAP_SERVER``). ``None`` finds
             the one ``tap start`` recorded.
@@ -121,6 +126,8 @@ class TapConfig:
             started it (``tap_manage_daemon`` / ``TAP_MANAGE_DAEMON``).
         capture_on_failure: Save screenshot, hierarchy, device info and driver log when a test
             fails (``tap_capture`` / ``TAP_CAPTURE``: ``onFailure`` or ``off``).
+        report: Write run metadata, lifecycle JSONL and an artifact manifest (``tap_report`` /
+            ``TAP_REPORT``: ``on`` or ``off``, default ``on``).
         device_scope: How long attached devices are kept: ``function`` (default), ``class``,
             ``module`` or ``session`` (``tap_device_scope`` / ``TAP_DEVICE_SCOPE``).
     """
@@ -132,6 +139,8 @@ class TapConfig:
     manage_daemon: bool
     capture_on_failure: bool = True
     device_scope: str = "function"
+    report: bool = True
+    """Write tap-run/1 metadata, lifecycle JSONL and artifact manifests (tap_report / TAP_REPORT)."""
 
     @classmethod
     def from_pytest(cls, config: pytest.Config) -> TapConfig:
@@ -146,6 +155,7 @@ class TapConfig:
         ]
         return cls(
             serials=serials,
+            report=_report_mode(option("tap_report", "TAP_REPORT", "on")),
             artifacts=pathlib.Path(
                 option("tap_artifacts", "TAP_ARTIFACTS", "tap-artifacts")
             ),
@@ -275,6 +285,82 @@ class TestDevices:
 
 # The attached devices of the running test, shared by the fixture and the report hook.
 _STATE = pytest.StashKey[TestDevices]()
+_RUN = pytest.StashKey[RunRecords]()
+_RUN_DISABLED = pytest.StashKey[bool]()
+_RUN_KEY = pytest.StashKey[str]()
+_OUTCOMES = pytest.StashKey[list[str]]()
+_ATTEMPT_FINISHED = pytest.StashKey[bool]()
+_ERROR_TYPE = pytest.StashKey[str | None]()
+
+
+def _report_mode(value: str) -> bool:
+    if value.strip().lower() not in ("on", "off"):
+        raise pytest.UsageError("tap_report must be on or off")
+    return value.strip().lower() == "on"
+
+
+def _record(config: pytest.Config, action) -> None:
+    # Reporting never replaces the real test result, even with warnings treated as errors.
+    try:
+        action()
+    except Exception as error:
+        if not config.stash.get(_RUN_DISABLED, False):
+            print(f"Tap run records incomplete: {type(error).__name__}", file=sys.stderr)
+        config.stash[_RUN_DISABLED] = True
+        records = config.stash.get(_RUN, None)
+        if records is not None:
+            records.mark_incomplete()
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
+    if any(name in item.fixturenames for name in ("tap_device", "tap_devices", "tap_connection", "tap_client")):
+        config = TapConfig.from_pytest(item.config)
+        if config.report and not item.config.stash.get(_RUN_DISABLED, False):
+            def start() -> None:
+                if _RUN not in item.config.stash:
+                    item.config.stash[_RUN] = RunRecords(config.artifacts)
+                item.stash[_RUN_KEY] = item.config.stash[_RUN].start_test(item.nodeid)
+                item.stash[_OUTCOMES] = []
+                item.stash[_ATTEMPT_FINISHED] = False
+                item.stash[_ERROR_TYPE] = None
+            _record(item.config, start)
+    yield
+    _finish_attempt(item, incomplete=True)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    # Retry plugins may loop runtestprotocol internally without repeating the outer hook.
+    if item.stash.get(_ATTEMPT_FINISHED, False):
+        def start() -> None:
+            item.stash[_RUN_KEY] = item.config.stash[_RUN].start_test(item.nodeid)
+            item.stash[_OUTCOMES] = []
+            item.stash[_ATTEMPT_FINISHED] = False
+            item.stash[_ERROR_TYPE] = None
+        _record(item.config, start)
+
+
+def _finish_attempt(item: pytest.Item, incomplete: bool = False) -> None:
+    key = item.stash.get(_RUN_KEY, None)
+    if key is not None and not item.stash.get(_ATTEMPT_FINISHED, False):
+        outcomes = item.stash.get(_OUTCOMES, [])
+        status = "incomplete" if incomplete else "failed" if "failed" in outcomes else "skipped" if "skipped" in outcomes else "passed" if "passed" in outcomes else "incomplete"
+        _record(item.config, lambda: item.config.stash[_RUN].finish_test(key, status, item.stash.get(_ERROR_TYPE, None)))
+        item.stash[_ATTEMPT_FINISHED] = True
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    records = session.config.stash.get(_RUN, None)
+    if records is not None:
+        status = "passed" if exitstatus == 0 else "interrupted" if exitstatus == 2 else "failed"
+        _record(session.config, lambda: records.finish(status))
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus: int, config: pytest.Config) -> None:
+    records = config.stash.get(_RUN, None)
+    if records is not None:
+        terminalreporter.write_line(f"Tap run: {records.directory}")
 
 
 @pytest.fixture(scope="session")
@@ -483,7 +569,8 @@ def tap_devices(
     Roles come from ``@pytest.mark.tap_devices("sender", "receiver")``; without the marker
     there is one role, ``"device"``. Each role gets a different serial, and the test is skipped
     when there are fewer devices than roles. If the test fails, failure artifacts are saved for
-    every device under ``tap_artifacts/<test id>/``.
+    every device under ``tap_artifacts/<run id>/tests/<test id>/<attempt>/``, indexed in the
+    run manifest. Reporting-off keeps the legacy ``tap_artifacts/<nodeid>/`` layout.
     """
     roles, criteria = _declared(request.node)
     # Roles → serials is decided here (declaration order over a rotated device list); the
@@ -516,6 +603,10 @@ def tap_devices(
         request.config.stash[_HELD] = _Held(tap_config.device_scope, key, roles, devices, criteria)
     state = TestDevices(devices, [device.serial for device in devices.values()])
     request.node.stash[_STATE] = state
+    run_key = request.node.stash.get(_RUN_KEY, None)
+    if run_key is not None:
+        for role, device in devices.items():
+            _record(request.config, lambda role=role, device=device: request.config.stash[_RUN].device(run_key, role, device.serial, device.generation))
     yield devices
     failed = any(report.failed for report in state.reports.values())
     try:
@@ -571,6 +662,12 @@ def tap_device(tap_devices: dict[str, Device]) -> Device:
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     outcome = yield
     report = outcome.get_result()
+    if _OUTCOMES in item.stash:
+        item.stash[_OUTCOMES].append(report.outcome)
+        if report.failed and call.excinfo is not None and item.stash.get(_ERROR_TYPE, None) is None:
+            item.stash[_ERROR_TYPE] = type(call.excinfo.value).__name__
+        if call.when == "teardown":
+            _finish_attempt(item)
     state = item.stash.get(_STATE, None)
     if state is not None and call.when in ("setup", "call"):
         state.reports[call.when] = report
@@ -584,6 +681,10 @@ def _capture_artifacts(
     """``failure.txt`` with the traceback, then ``Device.capture()`` of every device in parallel,
     saved as ``<role>-<serial>.<part>.<ext>``. Never masks the test failure: a part or file that
     cannot be produced is simply missing."""
+    key = item.stash.get(_RUN_KEY, None)
+    if key is not None:
+        _capture_run_artifacts(item, state, item.config.stash[_RUN], key)
+        return
     directory = config.artifacts / re.sub(r"[^A-Za-z0-9._-]", "_", item.nodeid)
     directory.mkdir(parents=True, exist_ok=True)
     if state.failure is not None:
@@ -598,6 +699,34 @@ def _capture_artifacts(
     ) as pool:
         for role, device in state.devices.items():
             pool.submit(_capture_device, directory, role, device)
+
+
+def _capture_run_artifacts(item: pytest.Item, state: TestDevices, records: RunRecords, key: str) -> None:
+    if state.failure is not None:
+        _record(item.config, lambda: records.artifact(
+            key, "failure", "".join(traceback.format_exception(state.failure)).encode(), "txt", "text/plain"
+        ))
+
+    def capture(role: str, device: Device) -> None:
+        identity = {"role": role, "serial": device.serial, "generation": device.generation}
+        try:
+            captured = device.capture()
+        except Exception as error:
+            _record(item.config, lambda: records.error(key, "capture", error, **identity))
+            return
+        for part, error in captured.failures.items():
+            _record(item.config, lambda part=part, error=error: records.error(key, part, error, **identity))
+        for part, artifact in captured.artifacts.items():
+            try:
+                records.artifact(key, part, artifact.bytes, artifact.extension, artifact.media_type, **identity)
+            except Exception as error:
+                _record(item.config, lambda: records.error(key, part, error, **identity))
+
+    if state.devices:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(state.devices), thread_name_prefix="tap-artifacts") as pool:
+            futures = [pool.submit(capture, role, device) for role, device in state.devices.items()]
+            for future in futures:
+                _record(item.config, future.result)
 
 
 def _capture_device(directory: pathlib.Path, role: str, device: Device) -> None:

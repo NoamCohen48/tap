@@ -548,6 +548,28 @@ class TapTestBridgeTest {
     }
 
     @Test
+    fun `a failed test indexes captured files and collection errors in its run`() {
+        val connection = runBlocking { client().connect("test") }
+        try {
+            val (_, context) = liveTest(connection) { IllegalStateException("original setup failure") }
+            val run = RunRecords(java.nio.file.Files.createTempDirectory("tap-run-capture"))
+            val recording = Recording(run, context.uniqueId, run.startTest(context.uniqueId))
+            RunReports.bind(recording)
+            try {
+                TapExtension().afterEach(context)
+            } finally {
+                RunReports.unbind(recording)
+            }
+            val manifest = java.nio.file.Files.readString(run.directory.resolve("manifest.json"))
+            assertTrue("screenshot" in manifest && "sha256" in manifest, manifest)
+            assertTrue("logs" in manifest && "error_type" in manifest, manifest)
+            assertEquals(1, fakeDevices.screenshots.get())
+        } finally {
+            runBlocking { connection.close() }
+        }
+    }
+
+    @Test
     fun `assignSerials pins and keeps declaration order`() {
         val extension = TapExtension()
         val assignment =
@@ -672,6 +694,7 @@ class TapTestBridgeTest {
                 "getRequiredTestMethod" -> testMethod
                 "getRequiredTestClass" -> testClass
                 "getDisplayName" -> "stub"
+                "getUniqueId" -> "stub:${testClass.name}:${testMethod.name}"
                 "toString" -> "stub-context"
                 else -> throw UnsupportedOperationException(method.name)
             }

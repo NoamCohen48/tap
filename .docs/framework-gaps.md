@@ -122,21 +122,25 @@ Missing:
 
 ## Artifacts, events, reports (plan §19) — Phase 3
 
-Implemented on failure: `screenshot`, hierarchy XML, `DEVICE_INFO` text, driver
-instrumentation log, `failure.txt`, under `<artifactsDir>/<class>/<method>/<role>-<serial>.*`.
+Implemented on failure: screenshot, hierarchy XML, device info JSON, driver instrumentation
+log, failure stack, logcat and dumpsys. The JUnit listener and pytest plugin now write
+client-owned `tap-run/1` metadata, incrementally flushed lifecycle JSONL and an atomically
+published manifest with artifact identities, sizes, SHA-256 and collection errors under
+`RUN_ID/tests/TEST_ID/ATTEMPT/DEVICE_ID/GENERATION` (`run-records.md`; Kotlin `RunRecordsTest`,
+bridge capture test, Python `test_run_records.py`). IDs hash unsafe test/role/serial names.
+Reporting-off retains the old artifact layout. Each worker/launcher has its own run ID.
 
 Missing:
 
-- Collision-proof run layout (`RUN_ID/tests/TEST_ID/ATTEMPT/ROLE-SERIAL/GENERATION`),
-  `run.json`, artifact manifest with checksums and collection errors.
 - Logcat is read at failure time from the device's ring buffers since the attachment
   (`DeviceLogs`, part of every failure capture; `DeviceEvidenceTest`, Python and Kotlin capture
   tests, checked on emulator-5554 with `am crash`), not streamed: on a busy device the oldest
   lines of a long test can be gone. `dumpsys window/activity` and crash/ANR *evidence* are in
   the same capture, and a command failing after the crash or ANR says so with `AUT_CRASHED` /
   `AUT_ANR`. A redacted protocol event log is not there.
-- Incremental JSONL event stream; JUnit XML is whatever the build tool writes; no HTML report;
-  no Flowdeck adapter.
+- Per-command JSONL events (v1 records runner lifecycle, device assignments and evidence only),
+  cross-worker aggregation and automatic indexing of manually saved artifacts. JUnit XML is
+  whatever the build tool writes; no HTML report or Flowdeck adapter.
 - Optional rotating **automatic failure-capture** video. Opt-in `Device.startRecording` /
   `start_recording` now records bounded scrcpy MP4/MKV on demand, but does not rotate files,
   start with each test, or attach video to JUnit/pytest failure artifacts.

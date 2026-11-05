@@ -30,6 +30,14 @@ Driver, server, clients (additive, protocol 5.1):
 
 Clients (Kotlin, Python):
 
+- **Test runs have structured records.** JUnit and pytest write `run.json`, incrementally
+  flushed lifecycle `events.jsonl`, and an artifact manifest with identities, sizes, SHA-256
+  and collection errors. Automatic evidence lives under a unique run/test/attempt/device/
+  generation path, so parameterized tests, retries and concurrent workers cannot overwrite
+  each other. `TAP_REPORT=off` opts out; `TAP_CAPTURE=off` disables evidence but keeps outcomes.
+  Reporting errors never replace the test failure. Individual command payloads and HTML
+  reports are not part of this first format.
+
 - **An incompatible newer server is refused too.** Connect (and Python resume) requires the
   server's explicit API compatibility epoch to match the client's generated bindings before
   applying the minimum engine-version check. A missing epoch is refused: upgrade an older

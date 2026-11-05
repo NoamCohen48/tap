@@ -65,7 +65,8 @@ class SmokeTest {
 
 `@TapTest` attaches a device before each test, injects it as the `Device` parameter, detaches
 it afterwards, and on failure writes a screenshot, hierarchy dump, device info and driver log
-under `build/tap-artifacts/<class>/<method>/`.
+under `build/tap-artifacts/<run-id>/tests/<test-id>/<attempt>/`, with
+[run metadata, lifecycle events and a checksummed manifest](../guide/artifacts.md#run-records).
 
 !!! note "Why `tapTest { ... }`"
 
@@ -88,7 +89,8 @@ name with camelCase and dots turned into underscores, upper-cased (`tap.artifact
 |---|---|---|
 | `tap.serials` | comma-separated serials to use; roles map to them in order, starting one device further on per test ([details](../guide/multi-device.md#which-serial-plays-which-role)) | any device the server lists |
 | `tap.device.<role>` | pin one role to a serial (must be in `tap.serials` when that is set) | — |
-| `tap.artifactsDir` | failure artifacts root | `build/tap-artifacts` |
+| `tap.artifactsDir` | run records and failure artifacts root | `build/tap-artifacts` |
+| `tap.report` | `on` = structured run records; `off` = legacy failure-artifact layout only | `on` |
 | `tap.capture` | `onFailure` = `device.capture()` every device of a failed test into the artifacts root; `off` = capture nothing | `onFailure` |
 | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds | `300` |
 | `tap.server` | `host:port` of a running server | the one in `daemon.json` |

@@ -90,6 +90,15 @@ class TapExtension :
                     TestState(rootJob, devices, devices.mapValues { it.value.serial }, method)
                 }
             context.store.put(KEY, state)
+            RunReports.current(context.uniqueId)?.let { recording ->
+                state.devices.forEach { (role, device) ->
+                    runCatching {
+                        recording.run.event("device_attached", mapOf(
+                            "test" to recording.key, "role" to role, "serial" to device.serial, "generation" to device.generation,
+                        ))
+                    }.onFailure { recording.run.markIncomplete() }
+                }
+            }
         } catch (failure: Throwable) {
             rootJob.cancel(CancellationException("beforeEach failed", failure))
             throw failure
@@ -427,6 +436,11 @@ class TapExtension :
         state: TestState,
         failure: Throwable,
     ) {
+        val recording = RunReports.current(context.uniqueId)
+        if (recording != null) {
+            captureRecorded(recording, state, failure)
+            return
+        }
         val dir =
             TapConfig.current.artifactsDir
                 .resolve(context.requiredTestClass.name)
@@ -442,6 +456,36 @@ class TapExtension :
                 launch {
                     val captured = runCatching { device.capture() }.getOrNull() ?: return@launch
                     withContext(Dispatchers.IO) { runCatching { captured.saveTo(dir, "$role-${device.serial}") } }
+                }
+            }
+        }
+    }
+
+    private suspend fun captureRecorded(recording: Recording, state: TestState, failure: Throwable) {
+        val run = recording.run
+        val key = recording.key
+        fun recordError(part: String, error: Throwable, identity: Map<String, Any?> = emptyMap()) {
+            runCatching { run.error(key, part, error, identity) }.onFailure { run.markIncomplete() }
+        }
+        withContext(Dispatchers.IO) {
+            runCatching { run.artifact(key, "failure", failure.stackTraceToString().encodeToByteArray(), "txt", "text/plain") }
+                .onFailure { recordError("failure", it) }
+        }
+        coroutineScope {
+            state.devices.forEach { (role, device) ->
+                launch {
+                    val identity = mapOf("role" to role, "serial" to device.serial, "generation" to device.generation)
+                    val captured = runCatching { device.capture() }.getOrElse { error ->
+                        recordError("capture", error, identity)
+                        return@launch
+                    }
+                    withContext(Dispatchers.IO) {
+                        captured.failures.forEach { (part, error) -> recordError(part, error, identity) }
+                        captured.artifacts.forEach { (part, artifact) ->
+                            runCatching { run.artifact(key, part, artifact.bytes, artifact.extension, artifact.mediaType, role, device.serial, device.generation) }
+                                .onFailure { error -> recordError(part, error, identity) }
+                        }
+                    }
                 }
             }
         }

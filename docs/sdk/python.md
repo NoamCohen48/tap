@@ -74,7 +74,9 @@ that lists what was there; an unknown criterion or a wrong type is a usage error
 
 How roles map to serials is on [Multi-device tests](../guide/multi-device.md). When a test
 fails, the plugin saves its devices' [failure artifacts](../guide/artifacts.md#failure-artifacts)
-under `tap-artifacts/<nodeid>/`.
+under `tap-artifacts/<run-id>/tests/<test-id>/<attempt>/`, with
+[run metadata, lifecycle events and a checksummed manifest](../guide/artifacts.md#run-records).
+Each pytest worker writes its own run directory.
 
 ## Configuration
 
@@ -84,7 +86,8 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | ini | Environment | Meaning | Default |
 |---|---|---|---|
 | `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, starting one device further on per test | any device the server lists |
-| `tap_artifacts` | `TAP_ARTIFACTS` | failure artifact directory | `tap-artifacts` |
+| `tap_artifacts` | `TAP_ARTIFACTS` | run records and failure artifacts root | `tap-artifacts` |
+| `tap_report` | `TAP_REPORT` | `on` = structured run records; `off` = legacy failure-artifact layout only | `on` |
 | `tap_device_scope` | `TAP_DEVICE_SCOPE` | `function` = attach before each test, detach after it; `class` / `module` / `session` = keep the devices for the next test of the same class / module / run ([Reusing devices](#reusing-devices)) | `function` |
 | `tap_capture` | `TAP_CAPTURE` | `onFailure` = `device.capture()` every device of a failed test into that directory; `off` = capture nothing | `onFailure` |
 | `tap_server` | `TAP_SERVER` | `host:port` of a running server | the one in `daemon.json` |
