@@ -21,6 +21,7 @@ class TapConfigTest {
         assertEquals(Timeouts.ACQUIRE, defaults.acquireTimeout)
         assertEquals(false, defaults.manageDaemon)
         assertEquals(CaptureMode.ON_FAILURE, defaults.capture)
+        assertEquals(true, defaults.report)
 
         val set =
             mapOf(
@@ -28,6 +29,7 @@ class TapConfigTest {
                 "tap.acquireTimeoutSeconds" to "7",
                 "tap.manageDaemon" to "true",
                 "tap.capture" to "off",
+                "tap.report" to "off",
             )
         val config = TapConfig.load(property = set::get, allProperties = { mapOf("tap.device.sender" to "b") })
         assertEquals(listOf("a", "b"), config.serials)
@@ -35,6 +37,10 @@ class TapConfigTest {
         assertEquals(true, config.manageDaemon)
         assertEquals(mapOf("sender" to "b"), config.pinnedRoles)
         assertEquals(CaptureMode.OFF, config.capture)
+        assertEquals(false, config.report)
+        assertFailsWith<IllegalArgumentException> {
+            TapConfig.load(property = mapOf("tap.report" to "always")::get, allProperties = { emptyMap() })
+        }
         assertFailsWith<IllegalArgumentException> {
             TapConfig.load(property = mapOf("tap.capture" to "always")::get, allProperties = { emptyMap() })
         }

@@ -11,15 +11,15 @@ dependencies {
     api(project(":clients:kotlin:sdk"))
     api(libs.junit.jupiter.api)
     api(libs.coroutines.core)
+    implementation(libs.serialization.json)
+    implementation(project(":contracts:api"))
     // TapLauncherSessionListener (stops a server this JVM started). The launcher is on every
     // JUnit Platform test runtime already; it is not forced onto consumers' compile classpath.
     compileOnly(libs.junit.platform.launcher)
 
     testImplementation(kotlin("test"))
-    // Fake daemons in the tests implement the generated services.
-    testImplementation(project(":contracts:api"))
     testImplementation(libs.coroutines.test)
     testImplementation(libs.grpc.inprocess)
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.platform.launcher)
+    testImplementation(libs.junit.platform.launcher)
 }

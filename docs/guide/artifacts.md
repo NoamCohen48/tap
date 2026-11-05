@@ -69,6 +69,47 @@ device.stop_recording().save("build/recordings/playback.mkv")
   the stop call. Do not stop a recording immediately after starting it. A static screen produces
   no new frames, so a video file can be shorter than the time it was recording.
 
+## Run records
+
+The pytest plugin and JUnit Platform listener create a unique directory for each run under
+`tap-artifacts` (JUnit: `build/tap-artifacts`). Pytest prints its location at the end. Concurrent
+processes, pytest workers and repeated launcher executions get separate run IDs:
+
+```text
+<artifacts-root>/<run-id>/
+├── run.json          tap-run/1: runner, engine version, API epoch, times, test outcomes
+├── events.jsonl      tap-events/1: incrementally flushed lifecycle events
+├── manifest.json     tap-artifacts/1: artifact paths, identities, sizes, SHA-256 and errors
+└── tests/<test-id>/<attempt>/...
+```
+
+Test IDs hash the runner's identity (pytest node ID or JUnit unique ID); attempts start at 1.
+Parameterized/repeated invocations cannot overwrite another invocation's evidence. Device
+subdirectories hash the role/serial pair; the manifest maps them back to readable identities.
+Only tests using Tap fixtures are included in pytest; JUnit includes tests of `@TapTest` classes.
+Setup, test and teardown outcomes are recorded, including skips and failed assumptions.
+JUnit container failures are recorded even when no test body can start.
+
+`run.json` and `manifest.json` are replaced atomically on the same filesystem. JSONL records
+have increasing `seq`, wall-clock `at_epoch_ms` and monotonic `elapsed_ns`; each complete record
+is flushed to disk without waiting for the run to end. After an abrupt process death, missing
+`run_finished` or `status: running` means the run did not finalize. Readers should ignore an
+unterminated final JSONL line. The files are independently published, not one transaction;
+`run_finished` is emitted before final metadata publication. `recording_status` is `recording`
+until finalization, then `complete`, or `incomplete` after a recoverable reporting I/O error.
+A reporting error never changes the real test outcome.
+
+Events cover `run_started`, `test_started`, `device_attached`, `artifact_saved`,
+`collection_error`, `test_finished`, `run_finished`, and JUnit `container_finished`. This first
+format does **not** include individual command payloads, HTML or a custom JUnit XML report.
+Test identities may contain parameter values; screenshots, logs and `failure.txt` can also
+contain application data. Treat the directory as sensitive evidence. Error records retain
+exception types, not their potentially sensitive messages.
+
+`TAP_REPORT=off` (`tap_report=off` in pytest, `tap.report=off` in JUnit) disables run records.
+Automatic failure capture still uses the legacy test directory layout in that mode.
+`TAP_CAPTURE=off` disables capture but keeps run metadata and outcomes.
+
 ## Failure artifacts
 
 When a test fails, the pytest plugin and the JUnit extension call `device.capture()` for each
@@ -76,16 +117,17 @@ device of the test, *before* detaching it, while the screen still shows the fail
 the result:
 
 ```
-tap-artifacts/<nodeid>/                       (JUnit: build/tap-artifacts/<class>/<method>/)
-├── failure.txt                               the exception and stack trace
-├── device-emulator-5554.screenshot.png       screenshot
-├── device-emulator-5554.hierarchy.xml        accessibility hierarchy
-├── device-emulator-5554.device-info.json     API, model, display, focused package
-├── device-emulator-5554.driver-log.txt       the driver's log for the session
-├── device-emulator-5554.logcat.txt           logcat (main, system, crash) since the device was attached
-├── device-emulator-5554.crashes.txt          crashes and ANRs since then (only when there were any)
-├── device-emulator-5554.activities.txt       dumpsys activity activities, at the failure
-└── device-emulator-5554.windows.txt          dumpsys window windows, at the failure
+<artifacts-root>/<run-id>/tests/<test-id>/<attempt>/
+├── failure.txt                    the exception and stack trace
+└── <device-id>/<generation>/
+    ├── screenshot.png             screenshot
+    ├── hierarchy.xml              accessibility hierarchy
+    ├── device-info.json           API, model, display, focused package
+    ├── driver-log.txt             the driver's log for the session
+    ├── logcat.txt                 logcat (main, system, crash) since attachment
+    ├── crashes.txt                crashes and ANRs, only when present
+    ├── activities.txt             dumpsys activity activities, at the failure
+    └── windows.txt                dumpsys window windows, at the failure
 ```
 
 The logs come from the device itself, so they cover what the driver cannot see: the app's own
@@ -95,13 +137,14 @@ clock), keep going across app restarts, and are capped at the newest 4 MiB of lo
 keeps logcat in ring buffers, so on a busy device the oldest lines of a long test may already be
 gone. `device.device_logs()` (Kotlin `deviceLogs()`) returns the same parts on their own.
 
-The file prefix is `<role>-<serial>`, so a two-device test yields `sender-…` and `receiver-…`.
+Each manifest entry names the test/attempt, role, serial, generation, media type, relative
+path, byte size and SHA-256. Missing capture parts have a collection-error entry instead.
 Devices are captured in parallel, and so are the parts of each device, each within 30 s, so
 one slow or hung device or part does not cost the others their artifacts. The same goes inside
 the device logs: a `dumpsys` that hangs leaves a line saying so in `windows.txt`, next to a good
 `logcat.txt`. Capture never masks
 the original failure: a file that cannot be produced (the device went away, the time ran out) is
-simply missing, and the test still fails with its real error. `TAP_CAPTURE=off` turns this off
+missing with its error recorded in the manifest, and the test still fails with its real error. `TAP_CAPTURE=off` turns this off
 ([Python + pytest](../sdk/python.md#configuration), [Kotlin + JUnit 5](../sdk/kotlin.md#configuration)).
 
 `device.capture()` is an ordinary call, so a test can take the same evidence whenever it wants:

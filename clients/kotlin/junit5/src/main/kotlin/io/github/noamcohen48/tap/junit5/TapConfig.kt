@@ -20,6 +20,8 @@ data class TapConfig(
     val manageDaemon: Boolean = false,
     /** `tap.capture`: `onFailure` (default) captures every device of a failed test into [artifactsDir]; `off` captures nothing. */
     val capture: CaptureMode = CaptureMode.ON_FAILURE,
+    /** Write structured run metadata, lifecycle JSONL and artifact manifests (`tap.report`, default true). */
+    val report: Boolean = true,
 ) {
     companion object {
         val current: TapConfig by lazy { load() }
@@ -59,6 +61,10 @@ data class TapConfig(
                 pinnedRoles = pinned,
                 manageDaemon = property("tap.manageDaemon")?.toBoolean() ?: false,
                 capture = property("tap.capture")?.let(CaptureMode::parse) ?: CaptureMode.ON_FAILURE,
+                report = property("tap.report")?.let { value ->
+                    require(value.trim().lowercase() in setOf("on", "off")) { "tap.report must be on or off" }
+                    value.trim().equals("on", ignoreCase = true)
+                } ?: true,
             )
         }
     }
