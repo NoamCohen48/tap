@@ -37,9 +37,13 @@ sourceSets.main {
 val generateApiVersion by tasks.registering {
     val version = project.version.toString()
     val outDir = layout.buildDirectory.dir("generated/api-version")
+    val compatibilityFile = rootProject.layout.projectDirectory.file("contracts/proto/API_COMPATIBILITY")
     inputs.property("version", version)
+    inputs.file(compatibilityFile)
     outputs.dir(outDir)
     doLast {
+        val compatibility = compatibilityFile.asFile.readText().trim().toInt()
+        require(compatibility > 0) { "API_COMPATIBILITY must be a positive integer" }
         val file = outDir.get().file("io/github/noamcohen48/tap/api/v1/TapApiVersion.kt").asFile
         file.parentFile.mkdirs()
         file.writeText(
@@ -49,6 +53,8 @@ val generateApiVersion by tasks.registering {
             |
             |/** The engine version whose tap.v1 server API these stubs were generated from. */
             |const val TAP_API_VERSION = "$version"
+            |/** tap.v1 compatibility epoch; breaking API changes increment it. */
+            |const val TAP_API_COMPATIBILITY = $compatibility
             |""".trimMargin(),
         )
     }

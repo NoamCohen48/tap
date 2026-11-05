@@ -411,6 +411,8 @@ class ServerInfo:
     driver_available: bool
     pid: int
     defaults: ServerDefaults
+    api_compatibility: int = 0
+    """tap.v1 compatibility epoch; zero means the daemon does not report one."""
 
 
 @dataclass(frozen=True)

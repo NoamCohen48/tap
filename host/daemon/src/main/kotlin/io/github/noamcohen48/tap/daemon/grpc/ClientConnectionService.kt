@@ -19,6 +19,7 @@ import io.github.noamcohen48.tap.api.v1.ListConnectionsResponse
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY
 import io.github.noamcohen48.tap.daemon.core.ConnectionInfo
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.protocol.HOST_BUILD_ID
@@ -112,6 +113,7 @@ class ClientConnectionService(
             InfoResponse
                 .newBuilder()
                 .setDaemonVersion(DAEMON_VERSION)
+                .setApiCompatibility(TAP_API_COMPATIBILITY)
                 .setHostBuildId(HOST_BUILD_ID)
                 .setProtocolVersion(SUPPORTED_PROTOCOL_VERSIONS.maxWith(PROTOCOL_VERSION_ORDER).render())
                 .setAdbExecutable(daemon.config.adb.executable)

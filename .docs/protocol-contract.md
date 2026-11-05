@@ -4,6 +4,11 @@ Date: 2026-10-01
 
 Status: application protocol `5.1`; Phase 1 contract is additive and not yet complete.
 
+The client↔daemon gRPC API additionally reports a separate compatibility epoch in
+`InfoResponse.api_compatibility`, generated from `contracts/proto/API_COMPATIBILITY`.
+Clients require an equal nonzero epoch before connecting; it does not change the TAP1 frame
+or server↔driver negotiation below. See `server-api.md` and `release-engineering.md`.
+
 This document describes the implemented wire contract. Planned but unimplemented features
 (events, typed element handles, multi-gesture input) remain design work in
 `android-e2e-framework-implementation-plan.md` and are not part of protocol 5.1 yet.

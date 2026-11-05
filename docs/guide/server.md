@@ -36,10 +36,13 @@ and device locks), which is how Tap's own CI keeps a scratch server apart from `
 ## Client and server versions
 
 A client needs a server at least as new as the engine it was built against: the Kotlin client's
-`tap-api` version, the Python client's `tap_e2e._gen.engine_version`. Newer servers keep
-accepting older clients. The first `connect` (or Python `resume`) of a client checks this and
-fails with both versions named, instead of the server silently ignoring a field it does not
-know. Upgrade the server with `tap stop`, then `tap start` from the newer `tap`.
+`tap-api` version, the Python client's `tap_e2e._gen.engine_version`. It also needs the same
+**API compatibility epoch**: newer servers are accepted only when their API remains compatible.
+The first `connect` (or Python `resume`) checks both before opening a connection. A missing
+or different epoch fails with the reported and required values and instructions to install
+matching server/client builds. This includes older daemons that do not report an epoch.
+Upgrade the server with `tap stop`, then `tap start` from the matching `tap`. The epoch is
+separate from the server-driver wire protocol version and stays unchanged for compatible releases.
 
 ## Extracted driver cache
 

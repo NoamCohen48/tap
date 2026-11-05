@@ -168,7 +168,7 @@ class ConnectionMemoTest {
         }
 
     private class FakeConnections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
-        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.getDefaultInstance()
+        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.newBuilder().setApiCompatibility(io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY).build()
 
         val connects = AtomicInteger(0)
         val disconnects = CopyOnWriteArrayList<String>()

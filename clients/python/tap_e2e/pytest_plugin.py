@@ -344,7 +344,7 @@ class DeviceCriteria:
         return ", ".join(f"{name}={value!r}" for name, value in vars(self).items() if value is not None)
 
 
-_CRITERIA_TYPES: dict[str, type | tuple[type, ...]] = {
+_CRITERIA_TYPES: dict[str, type] = {
     "min_api": int,
     "max_api": int,
     "emulator": bool,
@@ -553,7 +553,7 @@ def _attach_matching(
             return _attach_all(connection, config, assignment)
     wanted = "; ".join(f"{role}: {criteria[role]}" for role in roles if role in criteria)
     listed = ", ".join(_describe(s, entries.get(s)) for s in available)
-    pytest.skip(f"{request.node.name} needs {wanted}; no fit among {listed}")
+    raise pytest.skip.Exception(f"{request.node.name} needs {wanted}; no fit among {listed}")
 
 
 @pytest.fixture

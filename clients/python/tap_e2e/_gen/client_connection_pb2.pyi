@@ -79,7 +79,7 @@ class InfoRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class InfoResponse(_message.Message):
-    __slots__ = ("daemon_version", "host_build_id", "protocol_version", "adb_executable", "state_dir", "driver_available", "pid", "defaults")
+    __slots__ = ("daemon_version", "host_build_id", "protocol_version", "adb_executable", "state_dir", "driver_available", "pid", "defaults", "api_compatibility")
     DAEMON_VERSION_FIELD_NUMBER: _ClassVar[int]
     HOST_BUILD_ID_FIELD_NUMBER: _ClassVar[int]
     PROTOCOL_VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -88,6 +88,7 @@ class InfoResponse(_message.Message):
     DRIVER_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
     PID_FIELD_NUMBER: _ClassVar[int]
     DEFAULTS_FIELD_NUMBER: _ClassVar[int]
+    API_COMPATIBILITY_FIELD_NUMBER: _ClassVar[int]
     daemon_version: str
     host_build_id: str
     protocol_version: str
@@ -96,7 +97,8 @@ class InfoResponse(_message.Message):
     driver_available: bool
     pid: int
     defaults: Defaults
-    def __init__(self, daemon_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., driver_available: _Optional[bool] = ..., pid: _Optional[int] = ..., defaults: _Optional[_Union[Defaults, _Mapping]] = ...) -> None: ...
+    api_compatibility: int
+    def __init__(self, daemon_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., driver_available: _Optional[bool] = ..., pid: _Optional[int] = ..., defaults: _Optional[_Union[Defaults, _Mapping]] = ..., api_compatibility: _Optional[int] = ...) -> None: ...
 
 class Defaults(_message.Message):
     __slots__ = ("action_timeout_ms", "wait_timeout_ms", "lifecycle_timeout_ms", "idle_stable_ms", "acquire_timeout_ms")

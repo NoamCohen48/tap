@@ -34,7 +34,7 @@ from ._gen import (
     client_connection_pb2_grpc,
     device_pb2_grpc,
 )
-from ._gen.engine_version import ENGINE_VERSION
+from ._gen.engine_version import API_COMPATIBILITY, ENGINE_VERSION
 from .errors import (
     AppLifecycleError,
     DeviceBusyError,
@@ -322,7 +322,8 @@ _VERSION_NUMBERS = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
 
 def server_incompatibility(daemon_version: str, engine_version: str = ENGINE_VERSION) -> str | None:
     """Why a server reporting ``daemon_version`` cannot serve a client whose stubs come from
-    ``engine_version``, or ``None`` when it can. ``tap.v1`` only gains fields and calls, so a
+    ``engine_version``, or ``None`` when it can. Within one API epoch, ``tap.v1`` only gains
+    fields and calls, so a
     server at least as new understands every request; an older one would silently ignore new
     fields or answer ``UNIMPLEMENTED`` mid-test. A version that is not ``major.minor.patch`` (a
     development or test server) is not checked."""
@@ -377,10 +378,16 @@ class TapClient:
             return _proto.server_info(self.client_connections.Info(pb.InfoRequest(), timeout=10))
 
     def _check_server_version(self) -> None:
-        """Raises ``TapError`` when the server is older than this client's stubs; once per client."""
+        """Reject a missing/different API epoch or an older server; once per client."""
         if self._version_checked:
             return
-        reason = server_incompatibility(self.info().daemon_version)
+        server = self.info()
+        reason = (
+            None if server.api_compatibility == API_COMPATIBILITY else
+            f"the tap server reports API compatibility {server.api_compatibility}, but this client "
+            f"requires {API_COMPATIBILITY}; install a matching tap server and client, then run "
+            "`tap stop` and `tap start`"
+        ) or server_incompatibility(server.daemon_version)
         if reason:
             raise TapError(reason)
         self._version_checked = True

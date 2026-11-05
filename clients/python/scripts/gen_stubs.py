@@ -73,7 +73,15 @@ def generate(into: pathlib.Path) -> None:
         "# Generated from gradle.properties by scripts/gen_stubs.py; do not edit.\n"
         "# The engine whose tap.v1 server API these stubs were generated from.\n"
         f'ENGINE_VERSION = "{engine_version()}"\n'
+        f"API_COMPATIBILITY = {api_compatibility()}\n"
     )
+
+
+def api_compatibility() -> int:
+    value = int((API / "API_COMPATIBILITY").read_text().strip())
+    if value <= 0:
+        raise SystemExit("API_COMPATIBILITY must be a positive integer")
+    return value
 
 
 def engine_version() -> str:

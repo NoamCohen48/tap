@@ -57,6 +57,14 @@ class ClientConnectionServiceTest {
     private fun observe(id: String) = stub.observe(ObserveRequest.newBuilder().setClientConnectionId(id).build())
 
     @Test
+    fun `Info reports the generated API compatibility epoch`() {
+        assertEquals(
+            io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY,
+            stub.info(io.github.noamcohen48.tap.api.v1.InfoRequest.getDefaultInstance()).apiCompatibility,
+        )
+    }
+
+    @Test
     fun `observe acknowledges, heartbeats, and ends with closing on Disconnect`() {
         val id = connect()
         val events = observe(id)

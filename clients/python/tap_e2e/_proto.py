@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
+from typing import cast
 
 from google.protobuf import json_format
 
@@ -62,8 +63,8 @@ def match_mode(mode: MatchMode) -> int:
     return pb.MatchMode.Value(f"MATCH_{mode.name}")
 
 
-def direction(value: Direction) -> int:
-    return pb.Direction.Value(f"DIR_{value.name}")
+def direction(value: Direction) -> pb.Direction:
+    return cast(pb.Direction, pb.Direction.Value(f"DIR_{value.name}"))
 
 
 def orientation(value: Orientation) -> int:
@@ -93,8 +94,8 @@ def location_accuracy(value: LocationAccuracy) -> int:
     return pb.LocationAccuracy.Value(f"LOCATION_{value.name}")
 
 
-def standard_action(value: StandardAction) -> int:
-    return pb.StandardAction.Value(f"A11Y_{value.name}")
+def standard_action(value: StandardAction) -> pb.StandardAction:
+    return cast(pb.StandardAction, pb.StandardAction.Value(f"A11Y_{value.name}"))
 
 
 def stability_signal(signal: StabilitySignal) -> int:
@@ -285,6 +286,7 @@ def server_info(info: pb.InfoResponse) -> ServerInfo:
         state_dir=info.state_dir,
         driver_available=info.driver_available,
         pid=info.pid,
+        api_compatibility=info.api_compatibility,
         defaults=ServerDefaults(
             action=d.action_timeout_ms / 1000,
             wait=d.wait_timeout_ms / 1000,

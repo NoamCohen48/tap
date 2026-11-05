@@ -267,7 +267,7 @@ class WireContractTest {
     // --- Fakes ----------------------------------------------------------------------------------
 
     private class Connections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
-        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.getDefaultInstance()
+        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.newBuilder().setApiCompatibility(io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY).build()
 
         val closeWith = CompletableDeferred<String>()
 

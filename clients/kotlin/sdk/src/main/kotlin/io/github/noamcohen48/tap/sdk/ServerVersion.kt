@@ -1,14 +1,22 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.TAP_API_VERSION
+import io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY
 
 /**
- * The client↔server version rule. `tap.v1` only gains fields and calls, so a server at least as
+ * The client↔server version rule. Within one API epoch, `tap.v1` only gains fields and calls,
+ * so a server at least as
  * new as the engine this client's stubs come from ([TAP_API_VERSION]) understands every request;
  * an older one would silently ignore new fields or answer `UNIMPLEMENTED` mid-test.
  */
 internal object ServerVersion {
     private val NUMBERS = Regex("""^(\d+)\.(\d+)\.(\d+)""")
+
+    /** A missing epoch (zero) or a different one cannot establish API compatibility. */
+    fun compatibility(epoch: Int): String? =
+        if (epoch == TAP_API_COMPATIBILITY) null else
+            "the tap server reports API compatibility $epoch, but this client requires $TAP_API_COMPATIBILITY; " +
+                "install a matching tap server and client, then run `tap stop` and `tap start`"
 
     /**
      * Why a server reporting [daemonVersion] cannot serve a client built against [apiVersion],

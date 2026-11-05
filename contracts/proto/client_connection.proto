@@ -99,6 +99,10 @@ message InfoResponse {
   int64 pid = 7;
   // The defaults the daemon applies to an omitted timeout; clients use the same numbers.
   Defaults defaults = 8;
+  // tap.v1 compatibility epoch, from contracts/proto/API_COMPATIBILITY. Nonzero and equal
+  // on client and server; increment for breaking API changes, not additive fields or releases.
+  // Zero means an older daemon that cannot establish compatibility.
+  uint32 api_compatibility = 9;
 }
 
 message Defaults {
