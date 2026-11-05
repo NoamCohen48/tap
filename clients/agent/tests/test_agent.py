@@ -127,6 +127,17 @@ def test_settle_waits_for_the_focused_window_then_prints_the_diff(fake, agent):
     assert wait.package_name == "com.android.permissioncontroller" and wait.signal == pb.STABILITY_TREE
 
 
+def test_settle_without_a_focused_app_reports_an_actionable_error(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(device_info=pb.DeviceInfo()) if command.HasField("device_info") else None
+    )
+    with pytest.raises(AgentError, match="no focused app to settle") as error:
+        agent.settle()
+    assert error.value.exit_code == EXIT_FAILED
+    assert not any(c.HasField("wait_screen_stable") for c in fake.devices.commands)
+
+
 def test_fill_and_type_pass_sensitive_through(fake, agent):
     agent.attach("emulator-5554")
     agent.fill("text=Password", "hunter2", sensitive=True)
@@ -139,7 +150,9 @@ def test_fill_and_type_pass_sensitive_through(fake, agent):
 def test_a_screen_that_keeps_changing_is_reported_not_raised(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda c: (
-        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT)) if c.HasField("wait_screen_stable") else None
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT)) if c.HasField("wait_screen_stable")
+        else pb.CommandResult(device_info=pb.DeviceInfo(current_package="com.example")) if c.HasField("device_info")
+        else None
     )
     _screen(fake, _node("e1", "OK"))
     assert agent.settle().startswith("(screen still changing after 10s)\n")
