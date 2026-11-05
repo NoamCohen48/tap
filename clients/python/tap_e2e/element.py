@@ -139,7 +139,7 @@ class Element:
         """Two fingers moving together towards the one matching node's centre, across ``percent`` of its size."""
         self._pinch(pb.PINCH_CLOSE, percent, timeout)
 
-    def _pinch(self, direction: int, percent: int, timeout: float | None) -> None:
+    def _pinch(self, direction: pb.PinchDirection, percent: int, timeout: float | None) -> None:
         self._run(timeout, pinch=pb.Pinch(selector=self._target, direction=direction, percent=percent))
 
     def fling(self, direction: Direction, timeout: float | None = None) -> None:

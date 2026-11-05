@@ -467,6 +467,8 @@ data class ServerInfo(
     val pid: Long,
     /** The timeouts the daemon applies when a call leaves one out; clients use the same numbers. */
     val defaults: ServerDefaults,
+    /** tap.v1 compatibility epoch; zero means the server does not report one. */
+    val apiCompatibility: Int = 0,
 )
 
 /** The daemon's default timeouts ([ServerInfo.defaults]). */

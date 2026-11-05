@@ -16,6 +16,17 @@ small local daemon over gRPC. Every client, including the Kotlin SDK/JUnit exten
 generated client plus ergonomics. The server also owns the `DriverClient` connections, so
 bindings never touch framing, HMAC, request IDs or blobs.
 
+## API compatibility
+
+`InfoResponse.api_compatibility` (field 9) reports the positive epoch from
+`contracts/proto/API_COMPATIBILITY`, generated into both client bindings. Before opening a
+connection (or resuming a held one), clients require an equal epoch, then apply the existing
+minimum engine-version check. Zero/missing and different epochs fail with an actionable error,
+even if the daemon is newer. `Info` itself remains available for diagnosis. Increment the epoch
+for deliberate breaking server-API changes, not additive fields or ordinary releases. The
+server-driver `protocol_version` is separate. Older clients predating the epoch check must be
+upgraded alongside a breaking daemon.
+
 ## 2. Process model
 
 ```text

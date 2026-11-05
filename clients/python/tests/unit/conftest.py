@@ -13,6 +13,7 @@ import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import _gen as pb
 from tap_e2e._gen import app_pb2_grpc, client_connection_pb2_grpc, device_pb2_grpc
+from tap_e2e._gen.engine_version import API_COMPATIBILITY
 
 TOKEN = "ab" * 32
 
@@ -34,10 +35,11 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         self.disconnects: list[str] = []
         self.observe_mode = "hello"
         self.extra_events = 0
-        self.seen_tokens: list[str | None] = []
+        self.seen_tokens: list[str | bytes | None] = []
         self.disconnect_error: grpc.StatusCode | None = None
         # What Info reports; empty (not major.minor.patch) skips the client's version check.
         self.daemon_version = ""
+        self.api_compatibility = API_COMPATIBILITY
         self._drops: dict[str, threading.Event] = {}
         self._closing: dict[str, str] = {}
         # Live connections: id -> ConnectRequest (hold tells held from observed).
@@ -138,7 +140,7 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         return pb.DisconnectResponse()
 
     def Info(self, request, context):
-        return pb.InfoResponse(daemon_version=self.daemon_version)
+        return pb.InfoResponse(daemon_version=self.daemon_version, api_compatibility=self.api_compatibility)
 
 
 class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
@@ -320,6 +322,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         data = self.files.get(request.device_path)
         if data is None:
             fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DEVICE_FILE, "no such file")
+        assert data is not None  # fail aborts the RPC.
         yield pb.PullFileResponse(size_bytes=len(data))
         # Two chunks, so the client stitches them.
         half = len(data) // 2

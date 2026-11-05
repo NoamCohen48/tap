@@ -177,6 +177,7 @@ internal fun InfoResponse.toModel(): ServerInfo =
         driverAvailable = driverAvailable,
         pid = pid,
         defaults = defaults.toModel(),
+        apiCompatibility = apiCompatibility,
     )
 
 private fun DefaultsProto.toModel(): ServerDefaults =

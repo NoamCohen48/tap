@@ -30,6 +30,11 @@ Driver, server, clients (additive, protocol 5.1):
 
 Clients (Kotlin, Python):
 
+- **An incompatible newer server is refused too.** Connect (and Python resume) requires the
+  server's explicit API compatibility epoch to match the client's generated bindings before
+  applying the minimum engine-version check. A missing epoch is refused: upgrade an older
+  daemon together with the client. Ordinary compatible releases keep the same epoch.
+
 - **An older server is refused at connect.** The first `connect` of a client (and Python
   `resume`) compares the server's `Info().daemon_version` with the engine the client's stubs
   come from (Kotlin `TAP_API_VERSION` in `tap-api`, Python `tap_e2e._gen.engine_version`) and

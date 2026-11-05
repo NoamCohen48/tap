@@ -100,6 +100,20 @@ def test_connect_refuses_a_server_older_than_the_client(fake):
         server.close()
 
 
+@pytest.mark.parametrize("epoch", [0, client_module.API_COMPATIBILITY + 1])
+def test_connect_and_resume_refuse_missing_or_different_api_epoch(fake, epoch):
+    fake.connections.daemon_version = "99.0.0"
+    fake.connections.api_compatibility = epoch
+    server = TapClient.create(fake.address, TOKEN)
+    try:
+        for connect in (server.connect, server.resume):
+            with pytest.raises(TapError, match=f"API compatibility {epoch}"):
+                connect("test")
+        assert fake.connections.connects == 0
+    finally:
+        server.close()
+
+
 def test_connect_accepts_the_client_engine_version_and_newer(fake):
     for version in (client_module.ENGINE_VERSION, "99.0.0"):
         fake.connections.daemon_version = version

@@ -62,13 +62,19 @@ require a server rollout and vice versa. Each client release records which engin
 built against (the `tap-api` version in the Kotlin POM; the Python release notes and the
 committed `_gen` stubs, whose `engine_version.py` `gen_stubs.py` writes from
 `tap.version.engine`, so an engine bump needs a regeneration that the stub check enforces).
-At runtime the first `connect` of a client refuses a server whose `Info().daemon_version` is
-older than that engine version (`ServerVersion` in the Kotlin SDK, `server_incompatibility` in
-Python); a newer server is accepted. `tap.v1` is the API compatibility contract: within it,
-fields are only added (`buf breaking` in CI enforces wire compatibility), so a newer client
-against an older server degrades to "unknown field ignored" rather than breaking, and an
-older client against a newer server keeps working. A `tap.v2` package would be new
-files under `contracts/proto`.
+At runtime the first `connect` (also Python `resume`) requires the server's
+`Info().api_compatibility` to equal the nonzero epoch in `contracts/proto/API_COMPATIBILITY`.
+Both generated bindings carry that epoch; a missing value is refused, including on development
+servers. The existing minimum `Info().daemon_version` check then refuses older engine builds.
+A newer server is accepted only within the same epoch. This does not change the device wire
+protocol version.
+
+Increment `API_COMPATIBILITY` whenever a deliberate 0.x API break removes a field/call/value or
+changes its meaning incompatibly, and regenerate all bindings in the same commit. Leave it
+unchanged for additive API edits and release-only bumps. `buf breaking` checks wire compatibility,
+not behavioral changes: the epoch is an explicit maintainer assertion, not automatic feature
+detection. Clients predating this check cannot enforce it; upgrade those clients alongside a
+breaking daemon. A `tap.v2` package would be new files under `contracts/proto`.
 
 Because `tap-client` depends on `tap-api:<engine>`, a `client-kotlin/v*` release checks that
 the `tap-api` of the current engine version is already in GitHub Packages and fails with a

@@ -125,7 +125,8 @@ class TapClient public constructor(
      * shutting down) makes the connection unusable with the daemon's reason.
      *
      * The first connect of a client also checks the server's version: a server older than the
-     * engine this client was built against fails it with [TapException] naming both versions.
+     * engine this client was built against, or one with a missing/different API compatibility
+     * epoch, fails it with [TapException] before a connection is opened.
      */
     suspend fun connect(name: String): TapConnection {
         checkServerVersion()
@@ -143,7 +144,9 @@ class TapClient public constructor(
     /** Fails when the server is older than this client's stubs ([ServerVersion]); once per client. */
     private suspend fun checkServerVersion() {
         if (versionChecked.get()) return
-        ServerVersion.incompatibility(info().daemonVersion)?.let { throw TapException(it) }
+        val server = info()
+        (ServerVersion.compatibility(server.apiCompatibility) ?: ServerVersion.incompatibility(server.daemonVersion))
+            ?.let { throw TapException(it) }
         versionChecked.set(true)
     }
 

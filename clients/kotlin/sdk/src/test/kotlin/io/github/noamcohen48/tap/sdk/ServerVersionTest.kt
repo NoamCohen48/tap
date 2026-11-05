@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.api.v1.ConnectResponse
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.TAP_API_VERSION
+import io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
 import kotlinx.coroutines.runBlocking
@@ -44,6 +45,8 @@ class ServerVersionTest {
     fun `connect refuses an older server before opening a connection`(): Unit =
         runBlocking {
             val connects = AtomicInteger()
+            var epoch = TAP_API_COMPATIBILITY
+            var version = "0.0.0"
             val name = InProcessServerBuilder.generateName()
             val server =
                 InProcessServerBuilder
@@ -52,7 +55,7 @@ class ServerVersionTest {
                     .addService(
                         object : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
                             override suspend fun info(request: InfoRequest): InfoResponse =
-                                InfoResponse.newBuilder().setDaemonVersion("0.0.0").build()
+                                InfoResponse.newBuilder().setDaemonVersion(version).setApiCompatibility(epoch).build()
 
                             override suspend fun connect(request: ConnectRequest): ConnectResponse {
                                 connects.incrementAndGet()
@@ -65,6 +68,13 @@ class ServerVersionTest {
             try {
                 val failure = assertFailsWith<TapException> { client.connect("test") }
                 assertTrue(TAP_API_VERSION in failure.message.orEmpty(), failure.message)
+                version = "99.0.0"
+                for (incompatible in listOf(0, TAP_API_COMPATIBILITY + 1)) {
+                    epoch = incompatible
+                    val mismatch = assertFailsWith<TapException> { client.connect("test") }
+                    assertTrue("API compatibility $epoch" in mismatch.message.orEmpty(), mismatch.message)
+                }
+                assertNull(ServerVersion.compatibility(TAP_API_COMPATIBILITY))
                 assertEquals(0, connects.get())
             } finally {
                 client.close()
