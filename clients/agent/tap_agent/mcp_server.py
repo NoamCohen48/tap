@@ -12,9 +12,14 @@ import functools
 from collections.abc import Callable
 from typing import Annotated, Literal
 
-import anyio
-from mcp.server.mcpserver import MCPServer
-from mcp_types import CallToolResult, ImageContent, TextContent, ToolAnnotations
+import anyio  # pyright: ignore[reportMissingImports]
+from mcp.server.mcpserver import MCPServer  # pyright: ignore[reportMissingImports]
+from mcp_types import (  # pyright: ignore[reportMissingImports]
+    CallToolResult,
+    ImageContent,
+    TextContent,
+    ToolAnnotations,
+)
 from pydantic import Field
 
 from . import render
@@ -132,12 +137,17 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         target: Target,
         long: Annotated[bool, Field(description="Long-press instead.")] = False,
         double: Annotated[bool, Field(description="Double-tap instead.")] = False,
+        count: Annotated[int, Field(ge=1, le=100, description="Number of taps; cannot combine with long/double/duration.")] = 1,
+        interval: Annotated[float, Field(ge=0.04, le=1, description="Release-to-press gap in seconds for counted taps.")] = 0.1,
+        duration: Annotated[float | None, Field(ge=0.001, le=30, description="Hold duration in seconds; implies long press.")] = None,
+        timeout: Annotated[float | None, Field(gt=0, description="Command budget in seconds, including the whole gesture.")] = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Tap the one node matching target."""
-        return await call(session, lambda a: a.tap(target, device or None, long=long, settle=settle, double=double))
+        return await call(session, lambda a: a.tap(target, device or None, long=long, settle=settle, double=double,
+                                                 count=count, interval=interval, duration=duration, timeout=timeout))
 
     @mcp.tool(name="fill")
     async def fill(

@@ -123,6 +123,22 @@ object CommandValidation {
                 if (wait.signal == StabilitySignal.UNRECOGNIZED) invalidRequest("Unknown stability signal")
             }
 
+            OpCase.MULTI_TAP -> {
+                val tap = command.multiTap
+                if (tap.count !in 1..MAX_TAP_COUNT) invalidRequest("count must be in 1..$MAX_TAP_COUNT")
+                val interval = if (tap.hasIntervalMs()) tap.intervalMs else DEFAULT_TAP_INTERVAL_MS
+                if (interval !in 40..1_000) invalidRequest("interval_ms must be in 40..1000")
+                if (multiTapDurationMs(tap.count, interval) > MAX_TOUCH_SEQUENCE_MS) {
+                    invalidRequest("The tap sequence must not exceed $MAX_TOUCH_SEQUENCE_MS ms")
+                }
+            }
+
+            OpCase.HOLD -> {
+                if (command.hold.durationMs !in 1..MAX_TOUCH_SEQUENCE_MS) {
+                    invalidRequest("duration_ms must be in 1..$MAX_TOUCH_SEQUENCE_MS")
+                }
+            }
+
             OpCase.SET_TEXT -> {
                 checkText(command.setText.text)
             }

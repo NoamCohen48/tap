@@ -8,6 +8,13 @@ experimental may change in any release.
 
 Driver, server, clients (additive, protocol 5.1):
 
+- **Counted taps and timed presses.** Kotlin/Python `tap(count=…)`, `tripleTap` /
+  `triple_tap`, and `longTap(duration=…)` / `long_tap(duration=…)` send one bounded touch
+  sequence at the initially resolved point, without retries. Agent CLI/MCP expose count,
+  release-to-press interval, duration and timeout. Unsafe targets or an insufficient remaining
+  deadline fail before input. Counted taps and explicit-duration presses require the default
+  display; existing single/double/default long press behavior is unchanged.
+
 - **Typed secrets stay out of the event log.** `SetText` and `TypeText` have a `sensitive`
   flag: Kotlin `setText(…, sensitive = true)` / `typeText(…, sensitive = true)`, Python
   `set_text(…, sensitive=True)` / `type_text(…, sensitive=True)`, `tap-agent fill/type

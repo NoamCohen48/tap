@@ -8,6 +8,8 @@ import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
 import io.github.noamcohen48.tap.api.v1.Pinch
@@ -19,6 +21,7 @@ import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
@@ -71,9 +74,43 @@ class Element internal constructor(
         run(timeout) { tap = Tap.newBuilder().setSelector(target).build() }
     }
 
-    /** Long click on the one matching node. */
+    /**
+     * [count] taps (1..100) at the initially resolved visible centre, with [interval] between
+     * release and the next press (40..1000 ms; default 100 ms). The sequence, including each
+     * 50 ms press, must fit in 30 seconds and the remaining [timeout]. Resolves once, never
+     * retries; does not promise app-specific multi-click recognition. Single tap is unchanged.
+     */
+    suspend fun tap(count: Int, interval: Duration = 100.milliseconds, timeout: Duration? = null) {
+        val gap = interval.inWholeMilliseconds
+        require(count in 1..100) { "count must be in 1..100" }
+        require(interval in 40.milliseconds..1000.milliseconds) { "interval must be in 40..1000 ms" }
+        require(count * 50L + (count - 1L) * gap <= 30_000) { "The tap sequence must not exceed 30000 ms" }
+        if (count == 1) {
+            run(timeout) { tap = Tap.newBuilder().setSelector(target).build() }
+        } else {
+            run(timeout) { multiTap = MultiTap.newBuilder().setSelector(target).setCount(count).setIntervalMs(gap).build() }
+        }
+    }
+
+    /** Three taps with [interval] between releases and presses; see [tap]. */
+    suspend fun tripleTap(timeout: Duration? = null, interval: Duration = 100.milliseconds) {
+        tap(count = 3, interval = interval, timeout = timeout)
+    }
+
+    /** Long click on the one matching node, using Android's default long-press timing. */
     suspend fun longTap(timeout: Duration? = null) {
         run(timeout) { longTap = LongTap.newBuilder().setSelector(target).build() }
+    }
+
+    /**
+     * Holds a physical finger for [duration] (1..30000 ms); short presses may not trigger a
+     * long-click handler. Must fit the remaining [timeout], before any input. Requires the
+     * default display. Use the overload without [duration] for Android's default long press.
+     * The existing positional [timeout] argument keeps its meaning.
+     */
+    suspend fun longTap(timeout: Duration? = null, duration: Duration) {
+        require(duration in 1.milliseconds..30000.milliseconds) { "duration must be in 1..30000 ms" }
+        run(timeout) { hold = TimedPress.newBuilder().setSelector(target).setDurationMs(duration.inWholeMilliseconds).build() }
     }
 
     /** Two taps at the centre of the one matching node's visible bounds, inside Android's double-tap window. */

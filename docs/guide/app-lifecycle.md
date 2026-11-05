@@ -11,9 +11,11 @@ app it drives. Besides [finding its elements](app-or-screen.md) and
 lifecycle. The one package it refuses is Tap's own driver (`io.github.noamcohen48.tap.driver`):
 stopping it would end the session.
 
-Every lifecycle call is run by the server over ADB and **verified against a postcondition**: it
-returns when the device is provably in the requested state, or fails with
-`AppLifecycleError`.
+Lifecycle orchestration runs on the server. Install/uninstall and stop operations verify
+their postconditions; launches check Android's `am start -W` result, not UI readiness.
+`background()` injects Home without promising the process stays alive (Android may reclaim
+it). The table distinguishes acceptance from observed state; wait explicitly for the UI you
+need. Lifecycle failures raise `AppLifecycleError`.
 
 | Method | Does | Verified by |
 |---|---|---|
@@ -21,8 +23,8 @@ returns when the device is provably in the requested state, or fails with
 | `install(apk)` | uploads the local APK file (streamed in 1 MiB chunks, so the server may run on another machine), then `adb install -r -t` | package visible afterwards |
 | `uninstall()` | `pm uninstall` | package gone |
 | `launch(activity=None, *, extras=None)` | `am start -W` the given or the launcher activity, with typed intent extras | Android reports the launch complete (nothing about the UI: wait for it yourself) |
-| `cold_launch(activity=None, *, extras=None)` | force-stop, launch | **a new process identity** (PID + start token) is in the foreground; returned as an `AppProcess` |
-| `background()` | the Home key, as a user would; the process keeps running | nothing: it is a key press |
+| `cold_launch(activity=None, *, extras=None)` | force-stop, launch | **a new process identity** (PID + start token) is observed after the verified stop; returned as an `AppProcess`. Wait for visibility separately |
+| `background()` | the Home key, as a user would; not a force-stop | nothing: it is a key press |
 | `foreground()` | `am start -W` of the launcher intent, as the home screen sends it | Android reports the start complete. An existing task comes back as it was left, on whatever screen the user was; with no task, the launcher activity starts |
 | `open_link(uri, any_app=False)` | `am start -W` of a VIEW intent for a deep link or app link (`myapp://orders/42`, `https://…`), limited to this package so no browser or chooser can take it; `any_app=True` lets Android resolve it as a tapped link would | Android reports the start; returns the activity it named (`package/.Activity`) or `None`. No handler in the package is an `AppLifecycleError` |
 | `force_stop()` | `am force-stop` | no process of the package remains, and Android has destroyed its activities |
@@ -44,7 +46,7 @@ def test_survives_a_kill(tap_device):
     app.element(text("Add to cart")).tap()
     app.force_stop()
     second = app.cold_launch()
-    assert first.pid != second.pid
+    assert first != second  # Compare the full identity: Android can reuse a PID.
     app.wait(text("1 item")).visible()
 ```
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="timed_touch_target" type="id" />
+    <item name="timed_touch_duplicate" type="id" />
+    <item name="touch_count" type="id" />
+    <item name="touch_duration" type="id" />
+</resources>

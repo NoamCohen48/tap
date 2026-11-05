@@ -1,17 +1,17 @@
 """The agent core, the CLI and the MCP server over the in-process fake daemon."""
-# pyright: reportAttributeAccessIssue=false
+# pyright: reportAttributeAccessIssue=false, reportMissingImports=false
 
 from __future__ import annotations
 
 import pytest  # type: ignore[import-not-found]
 from mcp import Client
 from mcp_types import ImageContent, TextContent
+from tap_e2e import TapClient, res, text
+from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
 from tap_agent.core import EXIT_FAILED, EXIT_NO_DAEMON, EXIT_USAGE
 from tap_agent.mcp_server import create_server
-from tap_e2e import TapClient, res, text
-from tap_e2e import _gen as pb
 
 from .conftest import TOKEN
 
@@ -72,6 +72,22 @@ def test_tap_by_ref_sends_the_refs_selector(fake, agent):
     # pkg= binds the package through App.element; without it the selector searches the screen.
     assert agent.tap("text=Allow,pkg=com.android.permissioncontroller") == "tapped text=Allow,pkg=com.android.permissioncontroller"
     assert fake.devices.commands[-1].tap.selector == text("Allow")._in_package("com.android.permissioncontroller")._proto
+
+
+def test_counted_taps_timed_press_and_invalid_combinations(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.tap("text=OK", count=3, interval=0.2) == "tapped 3 times text=OK"
+    assert fake.devices.commands[-1].multi_tap.count == 3
+    assert fake.devices.commands[-1].multi_tap.interval_ms == 200
+    assert agent.tap("text=OK", duration=2, timeout=4) == "long-tapped text=OK"
+    assert fake.devices.commands[-1].hold.duration_ms == 2000
+    assert fake.devices.commands[-1].timeout_ms == 4000
+    for options in ({"count": 0}, {"long": True, "count": 3}, {"double": True, "duration": 2}, {"duration": 0}):
+        before = len(fake.devices.commands)
+        with pytest.raises(AgentError) as error:
+            agent.tap("text=OK", **options)
+        assert error.value.exit_code == EXIT_USAGE
+        assert len(fake.devices.commands) == before
 
 
 def test_an_obscured_node_says_to_close_the_covering_window(fake, agent):
@@ -433,6 +449,12 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     assert capsys.readouterr().out == "opened quick-settings\n"
     assert cli.main(["tap", "text=OK", "--double", "-s", "cli"]) == 0
     assert capsys.readouterr().out == "double-tapped text=OK\n"
+    assert cli.main(["tap", "text=OK", "--count", "3", "--interval", "200ms", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "tapped 3 times text=OK\n"
+    assert fake.devices.commands[-1].multi_tap.interval_ms == 200
+    assert cli.main(["tap", "text=OK", "--duration", "1500ms", "--timeout", "4s", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "long-tapped text=OK\n"
+    assert fake.devices.commands[-1].hold.duration_ms == 1500
     assert cli.main(["pinch", "text=Map", "open", "--percent", "50", "-s", "cli"]) == 0
     assert capsys.readouterr().out == "pinched open 50% text=Map\n"
     assert cli.main(["app", "open-link", "com.example", "example://x", "--any-app", "-s", "cli"]) == 0
@@ -533,7 +555,9 @@ def test_files_push_pull_and_media(fake, agent, tmp_path):
     assert agent.pull("/sdcard/Download/cat.png", out) == str(out)
     assert out.read_bytes() == b"\x89PNG"
     pulled = agent.pull("/sdcard/Download/cat.png")
-    assert pulled.endswith("-cat.png") and open(pulled, "rb").read() == b"\x89PNG"
+    assert pulled.endswith("-cat.png")
+    with open(pulled, "rb") as stream:
+        assert stream.read() == b"\x89PNG"
     assert agent.media(local) == "added /sdcard/Pictures/Tap/cat.png to the gallery (removed on release)"
     assert agent.media(local, "dog.png") == "added /sdcard/Pictures/Tap/dog.png to the gallery (removed on release)"
     with pytest.raises(AgentError) as missing:
@@ -594,6 +618,12 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert agent.snapshot().endswith('"OK"')
         result = await client.call_tool("tap", {"target": "@e42"})
         assert result.is_error and "run `snapshot`" in result.content[0].text
+        result = await client.call_tool("tap", {"target": "text=OK", "count": 3, "interval": 0.2})
+        assert not result.is_error and fake.devices.commands[-1].multi_tap.count == 3
+        result = await client.call_tool("tap", {"target": "text=OK", "duration": 1.5, "timeout": 4})
+        assert not result.is_error and fake.devices.commands[-1].hold.duration_ms == 1500
+        result = await client.call_tool("tap", {"target": "text=OK", "duration": 1.5, "double": True})
+        assert result.is_error
         result = await client.call_tool("screenshot", {})
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
         result = await client.call_tool("open_panel", {"panel": "quick_settings"})

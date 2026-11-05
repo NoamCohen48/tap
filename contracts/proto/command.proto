@@ -196,6 +196,21 @@ message WaitScreenStable {
 
 message Tap { Selector selector = 1; }
 message LongTap { Selector selector = 1; }
+// Counted taps at the same initially resolved centre. No lookup or retry between taps.
+// count: 1..100; interval_ms is the gap between release and the next press, 40..1000
+// (default 100). Including each 50 ms tap, the whole sequence must fit within 30000 ms
+// and the remaining command deadline. An older implementation rejects this operation.
+message MultiTap {
+  Selector selector = 1;
+  int32 count = 2;
+  optional int64 interval_ms = 3;
+}
+// A physical press held for duration_ms (1..30000), then released. This is not an
+// accessibility long-click; short durations may not trigger the app's long-press handler.
+message TimedPress {
+  Selector selector = 1;
+  int64 duration_ms = 2;
+}
 // `sensitive` (a password, a token): the daemon logs the command without its text, so the
 // per-connection event log, `tap-watcher` and exports never hold it. The driver ignores it.
 message SetText {
@@ -371,6 +386,8 @@ message Command {
     ListNotifications list_notifications = 44;
     OpenNotification open_notification = 45;
     DismissNotification dismiss_notification = 46;
+    MultiTap multi_tap = 47;
+    TimedPress hold = 48;
   }
 }
 

@@ -88,6 +88,10 @@ def parser() -> argparse.ArgumentParser:
     kind = p.add_mutually_exclusive_group()
     kind.add_argument("--long", action="store_true", help="long-press instead")
     kind.add_argument("--double", action="store_true", help="double-tap instead")
+    p.add_argument("--count", type=int, default=1, help="tap this many times, 1..100")
+    p.add_argument("--interval", type=_duration, default=0.1, help="release-to-press gap for counted taps, 40ms..1s (default 100ms)")
+    p.add_argument("--duration", type=_duration, help="hold the finger down for this duration, 1ms..30s (implies --long)")
+    p.add_argument("--timeout", type=_duration, help="command budget; must cover the whole gesture")
 
     p = verb("fill", "replace a field's text (no key events)", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
@@ -247,7 +251,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT)
     if v == "tap":
-        return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double)
+        return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double,
+                         count=args.count, interval=args.interval, duration=args.duration, timeout=args.timeout)
     if v == "fill":
         return agent.fill(args.target, args.text, device, settle=settle, sensitive=args.sensitive)
     if v == "type":

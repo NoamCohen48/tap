@@ -17,7 +17,8 @@ from pathlib import Path
 # argparse wraps usage lines to the terminal width; pin it so the output is the same everywhere.
 os.environ["COLUMNS"] = "96"
 
-import anyio  # noqa: E402
+import anyio  # noqa: E402  # pyright: ignore[reportMissingImports]
+from mcp_types import Tool  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 from tap_agent import cli  # noqa: E402
 from tap_agent.mcp_server import create_server  # noqa: E402
@@ -129,8 +130,8 @@ def subparsers(root: argparse.ArgumentParser) -> dict[str, argparse.ArgumentPars
     raise AssertionError("tap-agent has no verbs")
 
 
-def mcp_tools() -> dict[str, object]:
-    server = create_server(lambda name: None, default_session="agent")
+def mcp_tools() -> dict[str, Tool]:
+    server = create_server(default_session="agent")
     return {tool.name: tool for tool in anyio.run(server.list_tools)}
 
 
@@ -138,7 +139,7 @@ def mcp_name(verb: str) -> str | None:
     return MCP_NAMES.get(verb, verb)
 
 
-def check(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, object]) -> list[str]:
+def check(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, Tool]) -> list[str]:
     """Problems that would make the page incomplete; empty when it covers everything."""
     problems = []
     grouped = [verb for _, _, names in GROUPS for verb in names]
@@ -204,7 +205,7 @@ def usage(parser: argparse.ArgumentParser) -> str:
     return text.replace(" [-h]", "")
 
 
-def verb_section(verb: str, parser: argparse.ArgumentParser, tools: dict[str, object]) -> list[str]:
+def verb_section(verb: str, parser: argparse.ArgumentParser, tools: dict[str, Tool]) -> list[str]:
     lines = [f"### `{verb}`", "", sentence(parser.description) + ".", "", "```text", usage(parser), "```", ""]
     arguments = [a for a in parser._actions if a.dest not in COMMON_DESTS]
     arguments.sort(key=lambda a: bool(a.option_strings))  # positionals first, in their order
@@ -224,7 +225,7 @@ def verb_section(verb: str, parser: argparse.ArgumentParser, tools: dict[str, ob
     return lines
 
 
-def render(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, object]) -> str:
+def render(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, Tool]) -> str:
     from tap_agent.targets import SELECTOR_KEYS
 
     out = [

@@ -250,8 +250,8 @@ class App:
         self._call(self._apps.Foreground, request, timeout)
 
     def background(self) -> None:
-        """Send the app to the background with the Home key, as a user would; the process keeps
-        running. Bring it back with ``foreground``."""
+        """Inject Home, as a user would; this is not a force-stop. Android may still reclaim the
+        background process. Bring the task back with ``foreground``; wait for its UI explicitly."""
         self.device.press_home()
 
     def open_link(self, uri: str, any_app: bool = False, timeout: float | None = None) -> str | None:

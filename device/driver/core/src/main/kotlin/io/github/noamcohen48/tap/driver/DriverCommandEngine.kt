@@ -22,6 +22,8 @@ import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
@@ -229,6 +231,10 @@ internal class DriverCommandEngine(
         override fun tap(command: Tap) = gestures.tap(context, command, selectors[command.selector])
 
         override fun longTap(command: LongTap) = gestures.longTap(context, selectors[command.selector])
+
+        override fun multiTap(command: MultiTap) = gestures.multiTap(context, command, selectors[command.selector])
+
+        override fun hold(command: TimedPress) = gestures.hold(context, command, selectors[command.selector])
 
         override fun setText(command: SetText) = textInput.setText(context, command, selectors[command.selector])
 

@@ -919,6 +919,53 @@ class TapClientTest {
     }
 
     @Test
+    fun `counted taps and timed presses are single bounded commands`() = runBlocking {
+        fakeDevices.executeResponder = { CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build() }
+        val connection = client().connect("timed-touch")
+        try {
+            tapScope {
+                val device = connection.attachDevice("emulator-5554")
+                try {
+                    val element = device.screen.element(res("target"))
+                    element.tap(2.seconds)
+                    element.longTap(2.seconds)
+                    val legacy = fakeDevices.executeRequests.map { it.command }.filter {
+                        it.opCase == Command.OpCase.TAP || it.opCase == Command.OpCase.LONG_TAP
+                    }
+                    assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.LONG_TAP), legacy.map { it.opCase })
+                    assertTrue(legacy.all { it.timeoutMs == 2000L })
+                    element.tripleTap()
+                    element.tap(count = 7, interval = 200.milliseconds)
+                    element.longTap(duration = 2500.milliseconds, timeout = 4.seconds)
+                    val commands = fakeDevices.executeRequests.map { it.command }.filter {
+                        it.opCase == Command.OpCase.MULTI_TAP || it.opCase == Command.OpCase.HOLD
+                    }
+                    assertEquals(3, commands.size)
+                    assertEquals(3, commands[0].multiTap.count)
+                    assertEquals(100L, commands[0].multiTap.intervalMs)
+                    assertEquals(7, commands[1].multiTap.count)
+                    assertEquals(200L, commands[1].multiTap.intervalMs)
+                    assertEquals(2500L, commands[2].hold.durationMs)
+                    assertEquals(4000L, commands[2].timeoutMs)
+                    assertEquals(res("target").proto, commands[2].hold.selector)
+                    val before = fakeDevices.executeRequests.size
+                    assertFailsWith<IllegalArgumentException> { element.tap(count = 0) }
+                    assertFailsWith<IllegalArgumentException> { element.tap(count = 101) }
+                    assertFailsWith<IllegalArgumentException> { element.tap(count = 1, interval = 39.milliseconds) }
+                    assertFailsWith<IllegalArgumentException> { element.tap(count = 100, interval = 1.seconds) }
+                    assertFailsWith<IllegalArgumentException> { element.longTap(duration = 0.milliseconds) }
+                    assertFailsWith<IllegalArgumentException> { element.longTap(duration = 31.seconds) }
+                    assertEquals(before, fakeDevices.executeRequests.size)
+                } finally {
+                    device.detach()
+                }
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
+    @Test
     fun `screen, permission and gesture methods send their typed commands`() {
         runBlocking {
             val sent =

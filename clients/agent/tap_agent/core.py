@@ -16,7 +16,7 @@ import pathlib
 from collections.abc import Callable, Iterator, Sequence
 from typing import TypeVar
 
-from tap_e2e import (
+from tap_e2e import (  # pyright: ignore[reportMissingImports]
     CommandError,
     ConnectionEntry,
     Device,
@@ -414,15 +414,33 @@ class Agent:
     # --- actions --------------------------------------------------------------------------------
 
     def tap(
-        self, target: str, device: str | None = None, long: bool = False, settle: bool = False, double: bool = False
+        self, target: str, device: str | None = None, long: bool = False, settle: bool = False, double: bool = False,
+        *, count: int = 1, interval: float = 0.1, duration: float | None = None, timeout: float | None = None,
     ) -> str:
+        """Tap once or ``count`` times, double-tap, or hold for ``duration`` seconds.
+        ``interval`` is the release-to-press gap in seconds for counted taps.
+        """
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 100:
+            raise AgentError("count must be an integer in 1..100", EXIT_USAGE)
+        if isinstance(interval, bool) or not math.isfinite(interval) or not 0.04 <= interval <= 1:
+            raise AgentError("interval must be in 0.04..1 seconds", EXIT_USAGE)
+        if count * 50 + (count - 1) * round(interval * 1000) > 30_000:
+            raise AgentError("the tap sequence must not exceed 30 seconds", EXIT_USAGE)
+        if timeout is not None and (not math.isfinite(timeout) or not 0 < timeout <= 120):
+            raise AgentError("timeout must be positive and at most 120 seconds", EXIT_USAGE)
+        if duration is not None:
+            if isinstance(duration, bool) or not math.isfinite(duration) or not 0.001 <= duration <= 30:
+                raise AgentError("duration must be in 0.001..30 seconds", EXIT_USAGE)
+            long = True
         if long and double:
             raise AgentError("tap is either long or double, not both", EXIT_USAGE)
+        if (long or double) and (count != 1 or interval != 0.1):
+            raise AgentError("count/interval cannot be combined with long, duration or double", EXIT_USAGE)
         if long:
-            return self._act(device, target, "long-tapped", lambda e: e.long_tap(), settle)
+            return self._act(device, target, "long-tapped", lambda e: e.long_tap(timeout, duration=duration), settle)
         if double:
-            return self._act(device, target, "double-tapped", lambda e: e.double_tap(), settle)
-        return self._act(device, target, "tapped", lambda e: e.tap(), settle)
+            return self._act(device, target, "double-tapped", lambda e: e.double_tap(timeout), settle)
+        return self._act(device, target, "tapped" if count == 1 else f"tapped {count} times", lambda e: e.tap(timeout, count=count, interval=interval), settle)
 
     def fill(
         self, target: str, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False

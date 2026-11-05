@@ -54,7 +54,8 @@ the device, and says so.
 
 ## Acting
 
-`tap`, `tap --long`, `tap --double`, `fill <target> <text>` (replaces the text), `type <text>`
+`tap`, `tap --long`, `tap --double`, `tap <target> --count 3 [--interval 100ms]`,
+`tap <target> --duration 2500ms [--timeout 5s]` (physical hold; implies long press), `fill <target> <text>` (replaces the text), `type <text>`
 (key events into the focused field; add `--sensitive` to either for a password or token, which keeps it out of the log and export), `clear`, `scroll <target> up|down|left|right` (`down`
 reveals content below), `swipe <target> <direction>`, `fling <target> <direction>` (as
 `scroll`, fast; the content may keep moving), `drag <target> <destination>` (long-press, move

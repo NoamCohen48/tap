@@ -83,6 +83,14 @@ enum class FrameType(val wireValue: Byte) {
 
 // Defaults of optional command fields. The driver is the one place they are applied.
 
+const val TAP_DURATION_MS = 50L
+const val DEFAULT_TAP_INTERVAL_MS = 100L
+const val MAX_TOUCH_SEQUENCE_MS = 30_000L
+const val MAX_TAP_COUNT = 100
+
+/** Duration of all presses and release-to-press gaps; validate count/interval before calling. */
+fun multiTapDurationMs(count: Int, intervalMs: Long): Long = count * TAP_DURATION_MS + (count - 1L) * intervalMs
+
 /** `Swipe`/`Scroll.distance_percent`. */
 const val DEFAULT_GESTURE_PERCENT = 80
 
