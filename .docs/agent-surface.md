@@ -8,6 +8,9 @@ surface" and "Ref-addressed elements").
 
 The owner-approved practical SDK coverage follow-up (queries/selectors, workflows, owned-device
 recording and explicit exclusions) is recorded in [agent-api-coverage.md](agent-api-coverage.md).
+The subsequent owner-approved [named step recordings](agent-step-recordings.md) add durable
+client-owned intent: `record`/`export` for steps, `history` for the original event export, and
+`media-record` for video/audio. The original decision/history below retains its original names.
 
 ## Research summary
 

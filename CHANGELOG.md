@@ -8,6 +8,15 @@ experimental may change in any release.
 
 tap-agent:
 
+- **Named step recordings.** `record start|stop|list|clean` manages durable private recordings of
+  actions and explicit waits, with resolved selectors, device identity, sensitive redaction and
+  explicit unfinished outcomes. `export [NAME] [-o FILE]` exports them even after release.
+  The old raw event export is now `history`; video/audio capture is `media-record`. Capture is
+  client-owned, bounded, shared across CLI/MCP processes and never automatically replays input.
+  A failed action is `rejected_before_input`, `failed` (its error code proves nothing changed) or
+  `unknown` (the input may have happened), and `unknown` blocks further recorded input.
+- **MCP annotations.** Tools that write local files (`history`, `export`, `logs`, `screenshot`,
+  `capture`, `pull_file`) are no longer marked read-only.
 - **Element queries and richer selectors.** CLI/MCP `inspect`, `exists` and `count`, state/text/
   count waits, boolean and text-mode predicates, and bounded JSON selectors for logical and
   relational expressions reuse SDK semantics. No XPath or persistent handles. Command budgets

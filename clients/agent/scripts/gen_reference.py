@@ -39,7 +39,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
         "`screenshot`, which an agent has to look at.",
-        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "logs", "record"],
+        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "logs", "media-record"],
     ),
     (
         "Acting on elements",
@@ -99,10 +99,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Turning a session into a test",
-        "The event log lists every device call the session made, in order, with its outcome; refs "
-        "appear as the selectors they stood for. See "
+        "Named recordings capture high-level actions and explicit waits, survive release, and "
+        "export as JSON; history is the separate bounded raw SDK event trail. See "
         "[Sessions to tests](export.md).",
-        ["export"],
+        ["record", "export", "history"],
     ),
     (
         "Agent setup",
@@ -116,7 +116,7 @@ MCP_NAMES: dict[str, str | None] = {
     "server-info": "server_info",
     "device-info": "device_info",
     "scroll-until": "scroll_until",
-    "record": "recording",
+    "media-record": "media_record",
     "app-data": "app_data",
     "type": "type_text",
     "action": "accessibility_action",

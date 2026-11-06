@@ -171,8 +171,8 @@ new private files (0600), never inline or overwritten. Treat accessibility data 
 potentially sensitive. `snapshot --candidates` returns structured SDK data instead of rendered
 lines, including selector candidates; use the default view.
 
-`record start --max-seconds 10` explicitly starts silent video through the daemon's scrcpy;
-`record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,
+`media-record start --max-seconds 10` explicitly starts silent video through the daemon's scrcpy;
+`media-record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,
 audio-only 60s/3 MiB. Start can select `--audio-source output` (API 30+, mutes speakers), playback
 (API 33+, apps can opt out), or mic (captures microphone); `--no-video` selects audio only.
 Start acknowledgement is not first-frame readiness. Stop before detach/release; unfinished
@@ -180,14 +180,33 @@ capture is discarded. Failed start/stop is never replayed. Stop retains a privat
 under `.tap/agent/` before an optional custom copy: if that copy fails, use the artifact named
 in the error, do not repeat stop. No automatic app stop, launch or restore.
 
-## Exporting the session
+## Named steps, export and history
 
-`export` prints the session's event log as JSON (`-o FILE` writes it; `--after-seq N` reads only
-later events): every device call the
-session made, in order, with its outcome — commands with the selector they used (a ref appears
-as the selector it stood for) and app changes such as launch or clear. Snapshots, screenshots
-and `devices` are not in it. Export before `release`: the log ends with the session. The JSON
-is language-neutral; turn it into a test yourself if asked to.
+`record start NAME` begins a named action-and-explicit-wait recording; `record stop [NAME]`
+freezes it, `record list` lists archives, `record clean NAME` deletes a stopped one. Only
+`record clean --all` deletes all stopped archives; active/in-flight records must be stopped first.
+Names are unique. `export [NAME] [-o NEW_FILE]` returns `tap-agent-recording/1` to stdout or a new
+0600 file, even after release/offline. Omitted name chooses this session's active/latest archive.
+Export does not stop recording. Release stops the current connection's active recording.
+
+Storage is private under `$TAP_AGENT_DIR/records` (default `.tap/agent/records`); CLI/MCP must
+share that directory. One active recording per session name, pinned to its held connection ID;
+a new connection cannot silently continue it. Steps retain actual device/resolved SDK selectors,
+not transient refs or internal polls/snapshots. Sensitive text is redacted before storage;
+clipboard writes always are. Do not put secrets in later waits/selectors/extras or unmarked inputs.
+Output/exception messages are not saved. A failed action's status says what the device may have
+seen: `rejected_before_input` (nothing sent), `failed` (one command sent, and its error code proves
+it changed nothing) or `unknown` (the input may have happened: never repeat it without checking the
+screen). `unknown` blocks further recorded input until you stop the recording.
+
+Interrupted steps remain unfinished; inspect/stop their archive before further recorded input,
+never replay blindly. Limits: 10,000 steps, 1 MiB/step, 32 MiB/recording; no silent eviction.
+A post-input storage error preserves the action result with a warning not to repeat it.
+`complete: true` means a final capture with known outcomes, not a passing app/test assertion.
+
+`history [-o NEW_FILE] [--after-seq N]` is the old export: raw `tap-events/1` SDK calls/outcomes,
+including helper waits. It is bounded to the server's 2,000-event ring and ends at release.
+Both formats are language-neutral data, not automatic replay or generated test code.
 
 ## Several devices or sessions
 

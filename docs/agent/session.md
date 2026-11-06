@@ -138,16 +138,21 @@ ok, `1` the step failed, `2` usage, `3` no server running.
 `screenshot` and `capture` (screenshot, hierarchy, device info, driver log) save evidence
 under `.tap/agent/` and print the paths.
 
-## Export and release
+## History, named recordings and release
+
+The raw session log is now `history` (previously `export`):
 
 ```console
-$ tap-agent export -o session.json
+$ tap-agent history -o session.json
 wrote 9 events (3 failed) to session.json
 $ tap-agent release
 released session 'agent' (detached emulator-5554)
 ```
 
-[Sessions to tests](export.md) explains the export and turns it into a test.
+For a durable named flow, use `record start NAME` before the actions, `record stop` afterwards,
+then `export NAME [-o FILE]`—even after release. `record list` lists archives and `record clean NAME`
+deletes a stopped one. Only actions and explicit waits are steps, not inspections/polls.
+[Record steps and turn them into tests](export.md) explains persistence, redaction and outcomes.
 
 ## SDK workflows and diagnostics
 
@@ -192,9 +197,9 @@ MCP screenshot/capture now also accept `path`, matching CLI `-o`.
 ## Record an owned device
 
 ```sh
-tap-agent record start --max-seconds 10
+tap-agent media-record start --max-seconds 10
 # Perform explicit app actions.
-tap-agent record stop -o evidence.mp4
+tap-agent media-record stop -o evidence.mp4
 ```
 
 Recording uses the daemon's configured scrcpy, never a watcher or an implicit app lifecycle.
@@ -211,7 +216,8 @@ An optional new `-o` copy never overwrites. If that copy fails, the error names 
 canonical artifact: copy it locally, **do not repeat the device stop**. No failed start/stop is
 replayed automatically. The existing recorder startup/shutdown timing limits still apply.
 
-`export --after-seq N` retrieves events after a known sequence number; full export is unchanged.
+`history --after-seq N` retrieves raw events after a known sequence number. Named `export` reads
+stored action-and-wait recordings instead; it does not need a live session.
 
 ## What else it can do
 
@@ -230,4 +236,5 @@ its commands in the [reference](commands.md).
 
 Temporary rotation, conditions, location and files pushed through their corresponding commands
 are restored/removed on detach or release. App lifecycle changes and private app data are **not**
-rolled back. Stop/export a recording explicitly before releasing its device.
+rolled back. Stop media recording explicitly before releasing its device. Named step archives
+remain available after release.

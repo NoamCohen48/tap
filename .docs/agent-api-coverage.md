@@ -11,12 +11,14 @@ surface. `tests/test_api_coverage.py` compares it with generated protobuf descri
 methods/properties on nine Python SDK classes, CLI parser fields and MCP schemas. The existing
 reference check also requires every verb/tool in its generated documentation group.
 
-Current inventory:
+Current inventory (including the owner-approved [named step recordings](agent-step-recordings.md)
+follow-up: raw `export` is now `history`, named `record`/`export` is client-owned, media is
+`media-record`):
 
 - **52 of 56 RPCs** reached through SDK-backed tools/helpers; the other four are deliberately
   excluded below. This is practical reachability, not identical RPC signatures.
 - **42 of 42 Execute operations** mapped to tools, without exposing Execute itself.
-- **50 CLI verbs / 48 MCP tools**, including two local-only CLI verbs (`mcp`, `skill`). Field-name
+- **52 CLI verbs / 50 MCP tools**, including two local-only CLI verbs (`mcp`, `skill`). Field-name
   parity accounts explicitly for names/units (`--idle` versus minutes, CLI duration strings
   versus MCP seconds), views, session-wide discovery and optional-string normalization.
 - SDK aliases are grouped: element text/flags come from inspection, triple-tap from count=3,

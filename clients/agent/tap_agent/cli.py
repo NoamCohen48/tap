@@ -100,7 +100,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("kind", choices=("device", "driver", "hierarchy"), nargs="?", default="device")
     p.add_argument("-o", "--out", help="new local output file; never overwrite")
 
-    p = verb("record", "explicit bounded video/audio recording; save bytes privately on stop", on_device)
+    p = verb("record", "start/stop/list/clean named action-and-wait recordings", common)
+    p.add_argument("action", choices=("start", "stop", "list", "clean"), nargs="?", default="list")
+    p.add_argument("name", nargs="?", help="recording name; required for start, optional for stop")
+    p.add_argument("--all", dest="all_records", action="store_true", help="clean only: explicitly delete all stopped recordings")
+
+    p = verb("media-record", "explicit bounded video/audio recording; save bytes privately on stop", on_device)
     p.add_argument("action", choices=("start", "stop"))
     p.add_argument("--no-video", action="store_false", dest="video", help="start: audio only")
     p.add_argument("--audio-source", choices=("output", "playback", "mic"), help="start: output mutes speakers; mic captures microphone")
@@ -292,9 +297,13 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("local", nargs="?", help="read/write: local file; export-db/import-db: local bundle directory")
     p.add_argument("--overwrite", action="store_true", help="write/import-db: explicitly replace existing remote data")
 
-    p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
-    p.add_argument("-o", "--out", help="write it to this file instead")
+    p = verb("history", "raw session event history as JSON; export before release", common)
+    p.add_argument("-o", "--out", help="write to a new private file instead")
     p.add_argument("--after-seq", type=int, default=0, help="only events with larger sequence numbers")
+
+    p = verb("export", "export a named action-and-wait recording, even after release", common)
+    p.add_argument("name", nargs="?", help="default: this session's active recording, otherwise its latest archive")
+    p.add_argument("-o", "--out", help="write to a new 0600 file instead of stdout")
 
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
     verb("skill", "print the agent skill (SKILL.md)")
@@ -323,6 +332,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "logs":
         return agent.logs(args.kind, device, args.out)
     if v == "record":
+        return agent.record(args.action, args.name, all_records=args.all_records)
+    if v == "media-record":
         return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT, candidates=args.candidates)
@@ -396,8 +407,10 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return str(agent.screenshot(device, args.out))
     if v == "capture":
         return agent.capture(device, args.out)
+    if v == "history":
+        return agent.history(args.out, after_seq=args.after_seq)
     if v == "export":
-        return agent.export(args.out, after_seq=args.after_seq)
+        return agent.export(args.name, args.out)
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":

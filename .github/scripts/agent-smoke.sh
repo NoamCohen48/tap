@@ -37,16 +37,25 @@ step app cold-launch "$PACKAGE"
 step snapshot -i | tee "$OUT/snapshot.txt"
 ref=$(sed -n 's/^\(@e[0-9]*\) .*id=view_button.*/\1/p' "$OUT/snapshot.txt" | head -1)
 [ -n "$ref" ] || { echo "no view_button in the snapshot"; exit 1; }
+step record start smoke
 step tap "$ref" --settle
 step wait "text=View tapped"
-step export -o "$OUT/export.json"
+step record stop smoke
+step history -o "$OUT/history.json"
+step export smoke -o "$OUT/recording.json"
 
-python3 - "$OUT/export.json" "$PACKAGE" <<'EOF'
+python3 - "$OUT/history.json" "$PACKAGE" "$OUT/recording.json" <<'EOF'
 import json, sys
+recording = json.load(open(sys.argv[3]))
+assert recording["format"] == "tap-agent-recording/1", recording["format"]
+steps = [(s["action"], s["outcome"]["status"]) for s in recording["steps"]]
+print("recorded:", steps)
+assert recording["complete"] and [a for a, _ in steps] == ["tap", "wait"], steps
+assert steps[0][1] in ("succeeded", "post_settle_timeout") and steps[1][1] == "succeeded", steps
 doc = json.load(open(sys.argv[1]))
 assert doc["format"] == "tap-events/1", doc["format"]
 calls = [e.get("app", {}).get("operation") or next(iter(k for k in e["command"] if k != "timeout_ms")) for e in doc["events"]]
-print("exported:", calls)
+print("history:", calls)
 assert calls[:2] == ["install", "cold_launch"], calls
 tap = next(e for e in doc["events"] if "command" in e and "tap" in e["command"])
 # The ref was logged as the selector it stood for: the id, bound to the app's package.
