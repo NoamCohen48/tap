@@ -30,6 +30,12 @@ tap-agent:
   replay. Synchronization, observed liveness and passive watching remain excluded. A checked API
   registry makes new daemon/SDK APIs and CLI/MCP parameter drift visible in tests.
 
+Tap Studio:
+
+- **Secret typing is sensitive.** Type keys now marks named secret values sensitive on both
+  direct execution and replay, as Set text already did. The device receives the value but the
+  daemon's event history, watcher and event exports omit it; recording exports keep only its name.
+
 Server, Kotlin/Python clients and tap-agent:
 
 - **Debuggable private app data.** `app.data` probes actual run-as access, lists/reads/writes/

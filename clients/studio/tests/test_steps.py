@@ -191,6 +191,19 @@ def test_a_type_step_is_the_sdk_type_text_flow(daemon, device):
     run(device, prepare(step(type={"selector": SEARCH, "secret": "pin", "skip_focus_wait": True}), "1234"), "1234")
     assert [c.WhichOneof("op") for c in sent(daemon)] == ["wait_visible", "tap", "type_text"]
     assert sent(daemon)[-1].type_text.text == "1234"
+    assert sent(daemon)[-1].type_text.sensitive is True
+
+
+@pytest.mark.parametrize("skip_focus", [False, True])
+def test_secret_typing_marks_input_sensitive_on_every_run(daemon, device, skip_focus):
+    prepared = prepare(step(type={"selector": SEARCH, "secret": "password", "skip_focus_wait": skip_focus}), "synthetic")
+    for _ in range(2):  # the same prepared step is also what replay runs
+        daemon.devices.commands.clear()
+        run(device, prepared, "synthetic")
+        typed = sent(daemon)[-1].type_text
+        assert typed.text == "synthetic" and typed.sensitive
+        assert prepared.type.WhichOneof("input") == "secret"
+        assert "synthetic" not in str(prepared)
 
 
 @pytest.mark.parametrize(

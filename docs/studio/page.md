@@ -53,7 +53,9 @@ Each button runs its step on the device and records it. The composer's tabs, wit
   taps the field, waits for focus and types, for fields that react to key events, and **Clear**
   empties it. Turn off **Wait for focus** when the tap moves focus somewhere else, such as a
   child or a separate input view (`typeText(…, awaitFocus = false)`). **Secret** keeps the value out of the recording: the step names the secret, and a
-  replay asks for its value. Password fields default to secret. **Submit** presses the
+  replay asks for its value. Both Set text and Type keys mark secret input sensitive, so the
+  daemon's event history and watcher also omit the typed value. This does not mask the device's
+  screen or make ordinary selectors and notes secret. Password fields default to secret. **Submit** presses the
   keyboard's action key for the field (Search, Go, Done: `imeAction()`).
 - **Actions**: what the element offers through accessibility. Custom actions such as
   **Archive** on a list row (`performCustomAction("Archive")`) stand in for a swipe; standard

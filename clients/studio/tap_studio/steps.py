@@ -10,6 +10,7 @@ the studio and replaying its commands elsewhere send the same messages
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 from tap_e2e import (
     AppLifecycleError,
@@ -153,7 +154,7 @@ def _text_matches(step: studio.Step) -> list:
     op = command.WhichOneof("op") if command is not None else None
     if op in ("open_notification", "dismiss_notification", "await_notification"):
         return [getattr(command, op).match]
-    if op == "await_toast":
+    if op == "await_toast" and command is not None:
         return [command.await_toast]
     return []
 
@@ -264,7 +265,7 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
         "tap": lambda: element.tap(timeout),
         "long_tap": lambda: element.long_tap(timeout),
         "set_text": lambda: (
-            element.set_text(secret_value, timeout, sensitive=True)
+            element.set_text(secret_value or "", timeout, sensitive=True)
             if action.HasField("secret")
             else element.set_text(message.text, timeout)
         ),
@@ -326,7 +327,7 @@ def _type(device: Device, step: studio.TypeStep, secret_value: str | None) -> No
     value = secret_value if step.WhichOneof("input") == "secret" else step.text
     wait = device.screen.wait(Selector.from_proto(step.selector))
     element = wait.visible() if picks(step.selector) else wait.one()
-    element.type_text(value or "", await_focus=not step.skip_focus_wait)
+    element.type_text(value or "", await_focus=not step.skip_focus_wait, sensitive=step.WhichOneof("input") == "secret")
 
 
 def _wait(device: Device, step: studio.WaitStep) -> None:
@@ -420,17 +421,17 @@ def outcome(duration_ms: int, error: TapError | CheckFailed | None, serial: str)
     return result
 
 
-def _error_code(name: str) -> int:
+def _error_code(name: str) -> tap.ErrorCode:
     try:
-        return tap.ErrorCode.Value(f"ERR_{name}")
+        return cast(tap.ErrorCode, tap.ErrorCode.Value(f"ERR_{name}"))
     except ValueError:
         return tap.ERR_UNKNOWN
 
 
-def _failure_reason(error: TapError) -> int:
+def _failure_reason(error: TapError) -> tap.FailureReason:
     if isinstance(error, ServerError):
         try:
-            return tap.FailureReason.Value(f"FAILURE_REASON_{error.reason.name}")
+            return cast(tap.FailureReason, tap.FailureReason.Value(f"FAILURE_REASON_{error.reason.name}"))
         except ValueError:
             return tap.FAILURE_REASON_UNSPECIFIED
     by_type = {
