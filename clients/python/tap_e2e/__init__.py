@@ -13,11 +13,13 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 
 from .app import App
+from .app_data import AppData, AppDataAccess, DatabaseBundle, PrivateFileEntry
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .screen import Screen
 from .errors import (
     AppLifecycleError,
+    AppDataError,
     CommandError,
     DeviceBusyError,
     DeviceQuarantinedError,
@@ -118,6 +120,11 @@ __all__ = [
     "STARTS_WITH",
     "UP",
     "App",
+    "AppData",
+    "AppDataError",
+    "AppDataAccess",
+    "DatabaseBundle",
+    "PrivateFileEntry",
     "AppLifecycleError",
     "AppProcess",
     "Artifact",

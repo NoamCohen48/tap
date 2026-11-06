@@ -79,6 +79,9 @@ class DeviceSession private constructor(
 
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
+    /** Serialize explicit app lifecycle changes with stopped-app private-data operations. */
+    internal val appDataMutex = Mutex()
+
     /** Device-wide conditions (animations, dark mode, font scale, density) on this session. */
     val conditions: DeviceConditions = DeviceConditions(this)
 
@@ -243,8 +246,18 @@ class DeviceSession private constructor(
             values.forEach { (key, value) -> adb.writeState(serial, key, value) }
             // Compared as values: a setting the device reports absent (null) is a mismatch too.
             // Restoring compares the same way (StateKey.holds).
-            val wrong = values.mapNotNull { (key, value) -> adb.readState(serial, key).let { actual -> "$key=$actual (expected $value)".takeUnless { StateKey.holds(key, value, actual) } } }
-            if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "The device did not take the change on $serial: ${wrong.joinToString()}")
+            val wrong =
+                values.mapNotNull { (key, value) ->
+                    adb.readState(serial, key).let { actual ->
+                        "$key=$actual (expected $value)".takeUnless { StateKey.holds(key, value, actual) }
+                    }
+                }
+            if (wrong.isNotEmpty()) {
+                throw DeviceSettingException(
+                    serial,
+                    "The device did not take the change on $serial: ${wrong.joinToString()}",
+                )
+            }
         }
     }
 
@@ -662,7 +675,11 @@ internal suspend fun restorePriorState(
                 updatedAtEpochMs = System.currentTimeMillis(),
             ),
         )
-        throw DeviceQuarantinedException(serial, "Device state a previous session changed on $serial could not be restored; device quarantined", error)
+        throw DeviceQuarantinedException(
+            serial,
+            "Device state a previous session changed on $serial could not be restored; device quarantined",
+            error,
+        )
     }
     return prior.copy(savedState = emptyList(), updatedAtEpochMs = System.currentTimeMillis()).also(store::write)
 }

@@ -316,6 +316,54 @@ device is looked up: stopping, clearing or uninstalling them would end the sessi
 
 All of them delegate to `AppLifecycle` in `:host:core`.
 
+### AppDataService: debuggable private files and SQLite (`app_data.proto`)
+
+Every unary request/header carries the same owner-scoped `AppTarget` as lifecycle calls.
+Each RPC has a distinct request/response envelope. Stream envelopes contain `AppDataPart`,
+whose oneof is `header{app, path, size_bytes, overwrite}` or `chunk`. Headers identify the
+requested app/path on downloads too. No root, arbitrary shell, SQL execution or client-side ADB.
+
+| RPC | Semantics |
+|---|---|
+| `GetCapabilities(app)` → `{available, reason?}` | Probe actual `run-as` for the current Android user. Safe while running; no debug-label assumption/root fallback. |
+| `ListFiles(app, path)` → `{entries}` | Immediate children, at most 1024. Empty path lists the private root. Entries expose basename, regular-file size, directory/symlink flags; symlinks are not followed. |
+| `ReadFile(app, path)` → stream `{part}` | One header then chunks, regular files only; ≤ 64 MiB, server size/SHA-256 verified before streaming. |
+| `WriteFile(stream {part})` → `{}` | One header then exactly its declared bytes. Create parents; refuse an existing destination unless `overwrite`. Stage/hash-check then rename; toybox `mv -n -T` handles no-clobber writes (production `run_as_app` SELinux denies hard links). |
+| `DeleteFile(app, path)` → `{}` | One regular file only; no root/directory/recursive deletion. |
+| `ExportDatabase(app, name)` → stream `{part}` | Base `databases/name` first, then existing `-wal` and `-journal`; omit rebuildable SHM. Preserve committed WAL after force-stop. |
+| `ImportDatabase(stream {part})` → `{}` | Base first, then optional WAL/journal; ≤ 3 distinct files / 64 MiB total, same app/overwrite policy. Stage/hash-check all bytes, replace bundle, remove old sidecars including SHM. No restart or SQLite binary required. |
+
+Chunks are at most 1 MiB. Unsafe paths, malformed envelopes/headers/sizes/duplicates and
+inconsistent upload targets are `INVALID_ARGUMENT`. Paths are normalized UTF-8, relative to
+credential-encrypted private data: ≤ 1024 bytes, no absolute/traversal/empty components,
+control/replacement characters, backslashes or reserved `.tap-private-` components. Reject
+symlink parents/leaves on every access. Database names are basenames, never sidecar names.
+The driver/instrumentation packages remain protected, including capability probes.
+
+Other than the probe, require stopped app-UID processes (secondary/native/shared UID included)
+before and after access. Explicit lifecycle mutations and data calls share a device-wide mutex;
+UI/notifications/outside actors are not an OS-locked transaction and must not run concurrently.
+No implicit stop, relaunch, clear, or app-data restoration on detach. A post-check failure can
+follow a completed write; never infer that an error makes a mutation safe to replay.
+
+Data refusal is `FAILED_PRECONDITION` / `APP_DATA`, with stable `detail`:
+`RUN_AS_UNAVAILABLE`, `APP_RUNNING`, `SYMLINK`, `EXISTS`, `NOT_FOUND`, `NOT_REGULAR`, `LIMIT`,
+`IO_ERROR`, `INCONSISTENT_SNAPSHOT`, `INCOMPLETE_IMPORT`, `UNSUPPORTED_PROCESS_SCAN`.
+Kotlin/Python map these to `AppDataException` / `AppDataError` carrying detail and serial.
+Transport/ADB uncertainty retains the existing status/reason, never retries a mutation.
+
+Database replacement is not atomic across files. Definite commit-script failure rolls back;
+process/device loss can leave a partial import. Retain `.tap-private-backup-*` recovery data
+and refuse another import until explicitly repaired/cleared. Never silently launch into that
+state or discard a retained backup. All this is app/schema/key dependent, not decryption.
+
+Host spools use owner-only temporary directories; shell transfers are mode 0600, bounded and
+journaled as initially absent before creation, so detach/recovery removes them. Stage uploads
+through an owner-only host copy because adb push transmits source permissions. Private app
+changes are not journal-restored. A host crash can leave owner-only host spools or private app
+staging; do not treat those as portable backups. Events contain only package/operation
+(`app_data_*`), never private paths or bytes. See [app-data.md](app-data.md) for decisions.
+
 ### WatchService: read-only watching (`watch.proto`)
 
 A watcher owns nothing: it names no client connection, never claims Observe, never renews a held
@@ -372,6 +420,7 @@ failure, a client-side deadline).
 | Host wait timeout / ADB timeout | `DEADLINE_EXCEEDED` | `HOST_WAIT_TIMEOUT` / `ADB_TIMEOUT` |
 | Device quarantined | `FAILED_PRECONDITION` | `DEVICE_QUARANTINED` |
 | App lifecycle postcondition | `FAILED_PRECONDITION` | `APP_LIFECYCLE` |
+| Debuggable private data refused/failed (stable `detail`) | `FAILED_PRECONDITION` | `APP_DATA` |
 | Driver build mismatch | `FAILED_PRECONDITION` | `DRIVER_BUILD_MISMATCH` |
 | ADB reap uncertain | `FAILED_PRECONDITION` | `ADB_REAP_UNCERTAIN` |
 | Host-issued driver command failed | `FAILED_PRECONDITION` | `DRIVER_COMMAND` |

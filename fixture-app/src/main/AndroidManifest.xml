@@ -51,6 +51,8 @@
             android:name=".OcclusionActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustNothing|stateHidden" />
+        <activity android:name=".PrivateDataActivity" android:exported="true" />
+        <service android:name=".PrivateDataProcessService" android:exported="false" android:process=":private_data" />
         <activity
             android:name=".GestureActivity"
             android:exported="true" />

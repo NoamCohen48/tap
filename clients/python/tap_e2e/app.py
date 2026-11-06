@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from . import _gen as pb
 from . import _proto
+from .app_data import AppData
 from .client import mapped_errors
 from .models import AppProcess, Long, MatchMode, Notification, StabilitySignal, Toast
 from .element import Element, ElementWait
@@ -50,6 +51,8 @@ class App:
         self.package_name: str = package_name
         """The app's package name."""
         self._apps = device.client.apps
+        self.data = AppData(self)
+        """Debuggable-app private files/SQLite bundles; no implicit stop or relaunch."""
 
     def element(self, selector: Selector) -> Element:
         """A lazy element: ``selector`` restricted to this package's nodes. Nothing is looked

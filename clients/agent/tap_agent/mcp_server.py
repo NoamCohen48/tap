@@ -519,6 +519,22 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Save a screenshot, the hierarchy, device info and the driver log; returns the paths."""
         return await call(session, lambda a: a.capture(device or None))
 
+    @mcp.tool(name="app_data")
+    async def app_data(
+        action: Literal["capabilities", "list", "read", "write", "delete", "export-db", "import-db"],
+        package: Annotated[str, Field(description="Debuggable app package; no root fallback.")],
+        path: Annotated[str, Field(description="Normalized relative private path or database basename; list defaults to root.")] = "",
+        local: Annotated[str, Field(description="read/write: local file; export-db/import-db: bundle directory (database plus WAL/journal).")] = "",
+        overwrite: Annotated[bool, Field(description="Explicitly replace existing remote data for write/import-db only.")] = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Private files/SQLite bundles, never SQL or printed contents. Except capabilities,
+        requires a stopped app: use app stop/relaunch explicitly. Downloads create owner-only
+        files; export needs a new directory. No restore on release. Keep WAL/journal with base
+        database, not SHM. After interrupted import, repair/clear before launch; never retry blindly."""
+        return await call(session, lambda a: a.app_data(action, package, path, local or None, device or None, overwrite=overwrite))
+
     @mcp.tool(name="app")
     async def app(
         action: Literal[

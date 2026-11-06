@@ -83,6 +83,7 @@ class TapClientTest {
     private lateinit var fakeConnections: FakeConnections
     private lateinit var fakeDevices: FakeDevices
     private lateinit var fakeApps: FakeApps
+    private lateinit var fakeAppData: FakeAppPrivateDataService
     private lateinit var grpcServer: io.grpc.Server
     private lateinit var channel: ManagedChannel
 
@@ -92,6 +93,7 @@ class TapClientTest {
         fakeConnections = FakeConnections()
         fakeDevices = FakeDevices()
         fakeApps = FakeApps()
+        fakeAppData = FakeAppPrivateDataService()
         grpcServer =
             InProcessServerBuilder
                 .forName(serverName)
@@ -99,6 +101,7 @@ class TapClientTest {
                 .addService(fakeConnections)
                 .addService(fakeDevices)
                 .addService(fakeApps)
+                .addService(fakeAppData)
                 .build()
                 .start()
         channel = InProcessChannelBuilder.forName(serverName).directExecutor().build()
@@ -111,6 +114,102 @@ class TapClientTest {
     }
 
     private fun client() = TapClient("inprocess:$serverName", channel)
+
+    private suspend fun withPrivateApp(block: suspend (App) -> Unit) {
+        val connection = client().connect("private-data")
+        try {
+            tapScope {
+                val device = connection.attachDevice("emulator-5554")
+                try {
+                    block(device.app("com.example.fixture"))
+                } finally {
+                    device.detach()
+                }
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
+    @Test
+    fun `private bytes and WAL bundles stream with owner and overwrite policy`() =
+        runBlocking {
+            withPrivateApp { app ->
+                val payload = ByteArray((2 shl 20) + 7) { it.toByte() }
+                assertTrue(app.data.capabilities().available)
+                fakeAppData.files["files/a"] = payload
+                assertContentEquals(payload, app.data.read("files/a"))
+                app.data.write("files/a", payload)
+                val parts = fakeAppData.uploads.single()
+                assertEquals(4, parts.size)
+                assertEquals("files/a", parts.first().header.path)
+                assertEquals(
+                    "conn-1",
+                    parts
+                        .first()
+                        .header.app.clientConnectionId,
+                )
+                assertFalse(parts.first().header.overwrite)
+                assertContentEquals(payload, parts.drop(1).flatMap { it.chunk.toByteArray().toList() }.toByteArray())
+                fakeAppData.files["databases/state.db"] = byteArrayOf(1)
+                fakeAppData.files["databases/state.db-wal"] = byteArrayOf(2)
+                fakeAppData.files["databases/state.db-journal"] = byteArrayOf(3)
+                val bundle = app.data.exportDatabase("state.db")
+                assertContentEquals(byteArrayOf(2), bundle.wal)
+                assertContentEquals(byteArrayOf(3), bundle.journal)
+                app.data.importDatabase(bundle, name = "restored.db", overwrite = true)
+                val headers =
+                    fakeAppData.uploads
+                        .last()
+                        .filter { it.hasHeader() }
+                        .map { it.header }
+                assertEquals(
+                    listOf("databases/restored.db", "databases/restored.db-wal", "databases/restored.db-journal"),
+                    headers.map { it.path },
+                )
+                assertTrue(headers.all { it.overwrite && it.app.clientConnectionId == "conn-1" })
+            }
+        }
+
+    @Test
+    fun `private downloads reject chunks without a header and incomplete responses`() =
+        runBlocking {
+            withPrivateApp { app ->
+                fakeAppData.response = emptyList()
+                assertFailsWith<IllegalStateException> { app.data.read("files/a") }
+                fakeAppData.response =
+                    listOf(
+                        io.github.noamcohen48.tap.api.v1.AppDataPart
+                            .newBuilder()
+                            .setChunk(
+                                com.google.protobuf.ByteString
+                                    .copyFromUtf8("secret"),
+                            ).build(),
+                    )
+                assertFailsWith<IllegalStateException> { app.data.read("files/a") }
+                assertFailsWith<IllegalArgumentException> { app.data.importDatabase(DatabaseBundle("state.db", byteArrayOf())) }
+                assertTrue(fakeAppData.uploads.isEmpty())
+            }
+        }
+
+    @Test
+    fun `private data failure maps its stable detail and serial`() {
+        val trailers = io.grpc.Metadata()
+        trailers.put(
+            FAILURE_TRAILER,
+            io.github.noamcohen48.tap.api.v1.Failure
+                .newBuilder()
+                .setReason(
+                    FailureReason.FAILURE_REASON_APP_DATA,
+                ).setDetail("APP_RUNNING")
+                .setSerial("serial")
+                .build(),
+        )
+        val status = Status.FAILED_PRECONDITION.withDescription("private access refused")
+        val failure = assertIs<AppDataException>(mapStatus(status, null, status.asRuntimeException(trailers)))
+        assertEquals("APP_RUNNING", failure.detail)
+        assertEquals("serial", failure.serial)
+    }
 
     @Test
     fun `connect establishes attach before returning`() {
@@ -637,7 +736,7 @@ class TapClientTest {
         runBlocking {
             fakeDevices.executeResponder = { request ->
                 when {
-                    request.command.hasDeviceInfo() ->
+                    request.command.hasDeviceInfo() -> {
                         CommandResult
                             .newBuilder()
                             .setDeviceInfo(
@@ -645,12 +744,21 @@ class TapClientTest {
                                     .newBuilder()
                                     .setApiLevel(34),
                             ).build()
-                    request.command.hasDumpHierarchy() ->
+                    }
+
+                    request.command.hasDumpHierarchy() -> {
                         CommandResult
                             .newBuilder()
-                            .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(ErrorCode.ERR_DRIVER_UNHEALTHY))
-                            .build()
-                    else -> null
+                            .setError(
+                                io.github.noamcohen48.tap.api.v1.Error
+                                    .newBuilder()
+                                    .setCode(ErrorCode.ERR_DRIVER_UNHEALTHY),
+                            ).build()
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val dir = Files.createTempDirectory("tap-capture-test")
@@ -664,11 +772,21 @@ class TapClientTest {
                         assertEquals(null, capture.hierarchy)
                         // Nothing crashed: no crashes part.
                         assertEquals(
-                            listOf(Capture.SCREENSHOT, Capture.DEVICE_INFO, Capture.DRIVER_LOG, Capture.LOGCAT, Capture.ACTIVITIES, Capture.WINDOWS),
+                            listOf(
+                                Capture.SCREENSHOT,
+                                Capture.DEVICE_INFO,
+                                Capture.DRIVER_LOG,
+                                Capture.LOGCAT,
+                                Capture.ACTIVITIES,
+                                Capture.WINDOWS,
+                            ),
                             capture.artifacts.keys.toList(),
                         )
                         assertEquals(setOf(Capture.HIERARCHY), capture.failures.keys)
-                        assertEquals(ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(), assertIs<CommandException>(capture.failures[Capture.HIERARCHY]).code)
+                        assertEquals(
+                            ErrorCode.ERR_DRIVER_UNHEALTHY.toModel(),
+                            assertIs<CommandException>(capture.failures[Capture.HIERARCHY]).code,
+                        )
                         val saved = capture.saveTo(dir, "main-emulator-5554").map { it.fileName.toString() }
                         assertEquals(
                             listOf(
@@ -684,7 +802,10 @@ class TapClientTest {
                         fakeDevices.deviceLogs = fakeDevices.deviceLogs.toBuilder().setCrashes("E AndroidRuntime: FATAL EXCEPTION: main").build()
                         val logs = device.deviceLogs()
                         assertEquals("E AndroidRuntime: FATAL EXCEPTION: main", logs.crashes)
-                        assertEquals(listOf(Capture.LOGCAT, Capture.CRASHES, Capture.ACTIVITIES, Capture.WINDOWS), logs.artifacts.keys.toList())
+                        assertEquals(
+                            listOf(Capture.LOGCAT, Capture.CRASHES, Capture.ACTIVITIES, Capture.WINDOWS),
+                            logs.artifacts.keys.toList(),
+                        )
                     } finally {
                         device.detach()
                     }
@@ -729,7 +850,13 @@ class TapClientTest {
                     val device = connection.attachDevice("emulator-5554", Timeouts(action = 3.seconds, wait = 7.seconds))
                     device.info()
                     device.app("com.test").awaitVisible()
-                    device.execute(timeout = 2.seconds) { deviceInfo = io.github.noamcohen48.tap.api.v1.DeviceInfoQuery.getDefaultInstance() }
+                    device.execute(
+                        timeout = 2.seconds,
+                    ) {
+                        deviceInfo =
+                            io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+                                .getDefaultInstance()
+                    }
                     assertEquals(listOf(3_000L, 7_000L, 2_000L), fakeDevices.executeRequests.map { it.command.timeoutMs })
                     device.detach()
                 }
@@ -773,9 +900,21 @@ class TapClientTest {
             var scrolls = 0
             fakeDevices.executeResponder = { request ->
                 when {
-                    request.command.hasScroll() -> CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build().also { scrolls++ }
-                    request.command.hasExists() -> CommandResult.newBuilder().setBool(scrolls == 3).build()
-                    else -> null
+                    request.command.hasScroll() -> {
+                        CommandResult
+                            .newBuilder()
+                            .setDone(Done.getDefaultInstance())
+                            .build()
+                            .also { scrolls++ }
+                    }
+
+                    request.command.hasExists() -> {
+                        CommandResult.newBuilder().setBool(scrolls == 3).build()
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val connection = client().connect("test")
@@ -787,9 +926,17 @@ class TapClientTest {
                         val inList = res("list").descendant(text("row 40"))
                         assertEquals(inList, list.scrollUntil(text("row 40")).selector)
                         val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() || it.hasScroll() }
-                        assertEquals(List(3) { listOf("exists", "scroll") }.flatten() + "exists", ops.map { if (it.hasExists()) "exists" else "scroll" })
+                        assertEquals(
+                            List(3) { listOf("exists", "scroll") }.flatten() + "exists",
+                            ops.map { if (it.hasExists()) "exists" else "scroll" },
+                        )
                         assertTrue(ops.filter { it.hasExists() }.all { it.exists.selector == inList.proto })
-                        assertTrue(ops.filter { it.hasScroll() }.all { it.scroll.selector == res("list").proto && it.scroll.direction == Direction.DIR_DOWN })
+                        assertTrue(
+                            ops.filter { it.hasScroll() }.all {
+                                it.scroll.selector == res("list").proto &&
+                                    it.scroll.direction == Direction.DIR_DOWN
+                            },
+                        )
                         // A picked container cannot be carried into a relation: the bare target is used.
                         assertEquals(text("row 40"), list.first().scrollUntil(text("row 40")).selector)
                     } finally {
@@ -811,7 +958,13 @@ class TapClientTest {
                 if (!request.command.hasSnapshot()) {
                     null
                 } else if (snapshots++ == 0) {
-                    CommandResult.newBuilder().setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(ErrorCode.ERR_STALE_BEFORE_INPUT)).build()
+                    CommandResult
+                        .newBuilder()
+                        .setError(
+                            io.github.noamcohen48.tap.api.v1.Error
+                                .newBuilder()
+                                .setCode(ErrorCode.ERR_STALE_BEFORE_INPUT),
+                        ).build()
                 } else {
                     CommandResult.newBuilder().setSnapshot(ElementSnapshot.newBuilder().setEnabled(true)).build()
                 }
@@ -919,51 +1072,54 @@ class TapClientTest {
     }
 
     @Test
-    fun `counted taps and timed presses are single bounded commands`() = runBlocking {
-        fakeDevices.executeResponder = { CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build() }
-        val connection = client().connect("timed-touch")
-        try {
-            tapScope {
-                val device = connection.attachDevice("emulator-5554")
-                try {
-                    val element = device.screen.element(res("target"))
-                    element.tap(2.seconds)
-                    element.longTap(2.seconds)
-                    val legacy = fakeDevices.executeRequests.map { it.command }.filter {
-                        it.opCase == Command.OpCase.TAP || it.opCase == Command.OpCase.LONG_TAP
+    fun `counted taps and timed presses are single bounded commands`() =
+        runBlocking {
+            fakeDevices.executeResponder = { CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build() }
+            val connection = client().connect("timed-touch")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        val element = device.screen.element(res("target"))
+                        element.tap(2.seconds)
+                        element.longTap(2.seconds)
+                        val legacy =
+                            fakeDevices.executeRequests.map { it.command }.filter {
+                                it.opCase == Command.OpCase.TAP || it.opCase == Command.OpCase.LONG_TAP
+                            }
+                        assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.LONG_TAP), legacy.map { it.opCase })
+                        assertTrue(legacy.all { it.timeoutMs == 2000L })
+                        element.tripleTap()
+                        element.tap(count = 7, interval = 200.milliseconds)
+                        element.longTap(duration = 2500.milliseconds, timeout = 4.seconds)
+                        val commands =
+                            fakeDevices.executeRequests.map { it.command }.filter {
+                                it.opCase == Command.OpCase.MULTI_TAP || it.opCase == Command.OpCase.HOLD
+                            }
+                        assertEquals(3, commands.size)
+                        assertEquals(3, commands[0].multiTap.count)
+                        assertEquals(100L, commands[0].multiTap.intervalMs)
+                        assertEquals(7, commands[1].multiTap.count)
+                        assertEquals(200L, commands[1].multiTap.intervalMs)
+                        assertEquals(2500L, commands[2].hold.durationMs)
+                        assertEquals(4000L, commands[2].timeoutMs)
+                        assertEquals(res("target").proto, commands[2].hold.selector)
+                        val before = fakeDevices.executeRequests.size
+                        assertFailsWith<IllegalArgumentException> { element.tap(count = 0) }
+                        assertFailsWith<IllegalArgumentException> { element.tap(count = 101) }
+                        assertFailsWith<IllegalArgumentException> { element.tap(count = 1, interval = 39.milliseconds) }
+                        assertFailsWith<IllegalArgumentException> { element.tap(count = 100, interval = 1.seconds) }
+                        assertFailsWith<IllegalArgumentException> { element.longTap(duration = 0.milliseconds) }
+                        assertFailsWith<IllegalArgumentException> { element.longTap(duration = 31.seconds) }
+                        assertEquals(before, fakeDevices.executeRequests.size)
+                    } finally {
+                        device.detach()
                     }
-                    assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.LONG_TAP), legacy.map { it.opCase })
-                    assertTrue(legacy.all { it.timeoutMs == 2000L })
-                    element.tripleTap()
-                    element.tap(count = 7, interval = 200.milliseconds)
-                    element.longTap(duration = 2500.milliseconds, timeout = 4.seconds)
-                    val commands = fakeDevices.executeRequests.map { it.command }.filter {
-                        it.opCase == Command.OpCase.MULTI_TAP || it.opCase == Command.OpCase.HOLD
-                    }
-                    assertEquals(3, commands.size)
-                    assertEquals(3, commands[0].multiTap.count)
-                    assertEquals(100L, commands[0].multiTap.intervalMs)
-                    assertEquals(7, commands[1].multiTap.count)
-                    assertEquals(200L, commands[1].multiTap.intervalMs)
-                    assertEquals(2500L, commands[2].hold.durationMs)
-                    assertEquals(4000L, commands[2].timeoutMs)
-                    assertEquals(res("target").proto, commands[2].hold.selector)
-                    val before = fakeDevices.executeRequests.size
-                    assertFailsWith<IllegalArgumentException> { element.tap(count = 0) }
-                    assertFailsWith<IllegalArgumentException> { element.tap(count = 101) }
-                    assertFailsWith<IllegalArgumentException> { element.tap(count = 1, interval = 39.milliseconds) }
-                    assertFailsWith<IllegalArgumentException> { element.tap(count = 100, interval = 1.seconds) }
-                    assertFailsWith<IllegalArgumentException> { element.longTap(duration = 0.milliseconds) }
-                    assertFailsWith<IllegalArgumentException> { element.longTap(duration = 31.seconds) }
-                    assertEquals(before, fakeDevices.executeRequests.size)
-                } finally {
-                    device.detach()
                 }
+            } finally {
+                connection.close()
             }
-        } finally {
-            connection.close()
         }
-    }
 
     @Test
     fun `screen, permission and gesture methods send their typed commands`() {
@@ -981,7 +1137,7 @@ class TapClientTest {
                 )
             fakeDevices.executeResponder = { request ->
                 when (request.command.opCase) {
-                    Command.OpCase.WAIT_PERMISSION_PROMPT ->
+                    Command.OpCase.WAIT_PERMISSION_PROMPT -> {
                         CommandResult
                             .newBuilder()
                             .setPermissionPrompt(
@@ -991,8 +1147,15 @@ class TapClientTest {
                                     .addChoices(io.github.noamcohen48.tap.api.v1.PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY)
                                     .addChoices(io.github.noamcohen48.tap.api.v1.PermissionChoice.PERMISSION_DENY),
                             ).build()
-                    in sent -> CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
-                    else -> null
+                    }
+
+                    in sent -> {
+                        CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val connection = client().connect("test")
@@ -1078,14 +1241,37 @@ class TapClientTest {
             fakeDevices.executeResponder = { request ->
                 val result = CommandResult.newBuilder()
                 when (request.command.opCase) {
-                    Command.OpCase.GET_CLIPBOARD -> result.setText("copied").build()
-                    Command.OpCase.AWAIT_TOAST ->
-                        result.setToast(io.github.noamcohen48.tap.api.v1.Toast.newBuilder().setText("Saved").setPackageName("com.test")).build()
-                    Command.OpCase.DEVICE_INFO ->
-                        result.setDeviceInfo(io.github.noamcohen48.tap.api.v1.DeviceInfo.newBuilder().setApiLevel(34).setKeyboardShown(true)).build()
-                    Command.OpCase.HIDE_KEYBOARD, Command.OpCase.PERFORM_IME_ACTION, Command.OpCase.SET_CLIPBOARD ->
+                    Command.OpCase.GET_CLIPBOARD -> {
+                        result.setText("copied").build()
+                    }
+
+                    Command.OpCase.AWAIT_TOAST -> {
+                        result
+                            .setToast(
+                                io.github.noamcohen48.tap.api.v1.Toast
+                                    .newBuilder()
+                                    .setText("Saved")
+                                    .setPackageName("com.test"),
+                            ).build()
+                    }
+
+                    Command.OpCase.DEVICE_INFO -> {
+                        result
+                            .setDeviceInfo(
+                                io.github.noamcohen48.tap.api.v1.DeviceInfo
+                                    .newBuilder()
+                                    .setApiLevel(34)
+                                    .setKeyboardShown(true),
+                            ).build()
+                    }
+
+                    Command.OpCase.HIDE_KEYBOARD, Command.OpCase.PERFORM_IME_ACTION, Command.OpCase.SET_CLIPBOARD -> {
                         result.setDone(Done.getDefaultInstance()).build()
-                    else -> null
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val connection = client().connect("test")
@@ -1131,7 +1317,7 @@ class TapClientTest {
             fakeDevices.executeResponder = { request ->
                 val result = CommandResult.newBuilder()
                 when (request.command.opCase) {
-                    Command.OpCase.SNAPSHOT ->
+                    Command.OpCase.SNAPSHOT -> {
                         result
                             .setSnapshot(
                                 io.github.noamcohen48.tap.api.v1.ElementSnapshot
@@ -1147,9 +1333,15 @@ class TapClientTest {
                                             .setCurrent(20f),
                                     ),
                             ).build()
-                    Command.OpCase.PERFORM_ACCESSIBILITY_ACTION, Command.OpCase.SET_PROGRESS, Command.OpCase.CHOOSE_PERMISSION ->
+                    }
+
+                    Command.OpCase.PERFORM_ACCESSIBILITY_ACTION, Command.OpCase.SET_PROGRESS, Command.OpCase.CHOOSE_PERMISSION -> {
                         result.setDone(Done.getDefaultInstance()).build()
-                    else -> null
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val connection = client().connect("test")
@@ -1203,11 +1395,26 @@ class TapClientTest {
             fakeDevices.executeResponder = { request ->
                 val result = CommandResult.newBuilder()
                 when (request.command.opCase) {
-                    Command.OpCase.AWAIT_NOTIFICATION -> result.setNotification(message).build()
-                    Command.OpCase.LIST_NOTIFICATIONS ->
-                        result.setNotifications(io.github.noamcohen48.tap.api.v1.NotificationList.newBuilder().addNotifications(message)).build()
-                    Command.OpCase.OPEN_NOTIFICATION, Command.OpCase.DISMISS_NOTIFICATION -> result.setDone(Done.getDefaultInstance()).build()
-                    else -> null
+                    Command.OpCase.AWAIT_NOTIFICATION -> {
+                        result.setNotification(message).build()
+                    }
+
+                    Command.OpCase.LIST_NOTIFICATIONS -> {
+                        result
+                            .setNotifications(
+                                io.github.noamcohen48.tap.api.v1.NotificationList
+                                    .newBuilder()
+                                    .addNotifications(message),
+                            ).build()
+                    }
+
+                    Command.OpCase.OPEN_NOTIFICATION, Command.OpCase.DISMISS_NOTIFICATION -> {
+                        result.setDone(Done.getDefaultInstance()).build()
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val connection = client().connect("test")
@@ -1215,7 +1422,15 @@ class TapClientTest {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554")
                     try {
-                        val expected = Notification("com.test", "New message", null, listOf("Reply"), true, java.time.Instant.ofEpochMilli(1_790_000_000_000))
+                        val expected =
+                            Notification(
+                                "com.test",
+                                "New message",
+                                null,
+                                listOf("Reply"),
+                                true,
+                                java.time.Instant.ofEpochMilli(1_790_000_000_000),
+                            )
                         assertEquals(expected, device.app("com.test").awaitNotification("New", mode = MatchMode.STARTS_WITH))
                         assertEquals(listOf(expected), device.notifications())
                         device.openNotification(title = "New message", action = "Reply")
@@ -1284,11 +1499,19 @@ class TapClientTest {
                         app.foreground(timeout = 7.seconds)
                         assertEquals("com.test/.Orders", app.openLink("test://orders/42"))
                         assertEquals(null, app.openLink("https://example.com/x", anyApp = true))
-                        assertEquals(3, fakeDevices.executeRequests.single { it.command.hasPressKey() }.command.pressKey.keyCode)
+                        assertEquals(
+                            3,
+                            fakeDevices.executeRequests
+                                .single { it.command.hasPressKey() }
+                                .command.pressKey.keyCode,
+                        )
                         val foreground = fakeApps.requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.ForegroundRequest>().single()
                         assertEquals(7_000, foreground.timeoutMs)
                         val links = fakeApps.requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.OpenLinkRequest>()
-                        assertEquals(listOf("test://orders/42" to false, "https://example.com/x" to true), links.map { it.uri to it.anyApp })
+                        assertEquals(
+                            listOf("test://orders/42" to false, "https://example.com/x" to true),
+                            links.map { it.uri to it.anyApp },
+                        )
                         assertEquals("com.test", links.first().app.packageName)
                     } finally {
                         device.detach()
@@ -1307,10 +1530,17 @@ class TapClientTest {
             var snapshots = 0
             fakeDevices.executeResponder = { request ->
                 when {
-                    request.command.hasSnapshot() ->
+                    request.command.hasSnapshot() -> {
                         CommandResult.newBuilder().setSnapshot(ElementSnapshot.newBuilder().setFocused(++snapshots == 2)).build()
-                    request.command.hasTap() || request.command.hasTypeText() -> CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
-                    else -> null
+                    }
+
+                    request.command.hasTap() || request.command.hasTypeText() -> {
+                        CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
+                    }
+
+                    else -> {
+                        null
+                    }
                 }
             }
             val connection = client().connect("test")
@@ -1319,8 +1549,15 @@ class TapClientTest {
                     val device = connection.attachDevice("emulator-5554")
                     try {
                         device.screen.element(res("email")).typeText("abc")
-                        val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasTap() || it.hasSnapshot() || it.hasTypeText() }
-                        assertEquals(listOf(Command.OpCase.TAP, Command.OpCase.SNAPSHOT, Command.OpCase.SNAPSHOT, Command.OpCase.TYPE_TEXT), ops.map { it.opCase })
+                        val ops =
+                            fakeDevices.executeRequests.map { it.command }.filter {
+                                it.hasTap() || it.hasSnapshot() ||
+                                    it.hasTypeText()
+                            }
+                        assertEquals(
+                            listOf(Command.OpCase.TAP, Command.OpCase.SNAPSHOT, Command.OpCase.SNAPSHOT, Command.OpCase.TYPE_TEXT),
+                            ops.map { it.opCase },
+                        )
                         assertEquals("abc", ops.last().typeText.text)
 
                         fakeDevices.executeRequests.clear()
@@ -1346,7 +1583,13 @@ class TapClientTest {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554")
                     try {
-                        val timeout = assertFailsWith<WaitTimeoutException> { device.screen.element(res("list")).scrollUntil(text("row 40"), maxScrolls = 2) }
+                        val timeout =
+                            assertFailsWith<WaitTimeoutException> {
+                                device.screen
+                                    .element(
+                                        res("list"),
+                                    ).scrollUntil(text("row 40"), maxScrolls = 2)
+                            }
                         assertEquals(2, timeout.polls)
                         val ops = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() || it.hasScroll() }
                         assertEquals(listOf(true, false, true, false, true), ops.map { it.hasExists() })
@@ -1367,8 +1610,11 @@ class TapClientTest {
         waitMappingWith({
             CommandResult
                 .newBuilder()
-                .setError(io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(code))
-                .build()
+                .setError(
+                    io.github.noamcohen48.tap.api.v1.Error
+                        .newBuilder()
+                        .setCode(code),
+                ).build()
         }, call)
 
     private fun waitMappingWith(
@@ -1850,7 +2096,13 @@ class TapClientTest {
                     assertEquals(bytes.size.toLong(), header.sizeBytes)
                     assertEquals(90_000, header.timeoutMs)
                     val launches = requests.filterIsInstance<io.github.noamcohen48.tap.api.v1.LaunchRequest>()
-                    assertEquals(listOf(".Main" to 7_000L, "" to device.timeouts.lifecycle.inWholeMilliseconds), launches.map { it.activity to it.timeoutMs })
+                    assertEquals(
+                        listOf(".Main" to 7_000L, "" to device.timeouts.lifecycle.inWholeMilliseconds),
+                        launches.map {
+                            it.activity to
+                                it.timeoutMs
+                        },
+                    )
                     assertFalse(launches[1].hasActivity())
                     assertEquals(
                         listOf("query" to "shoes", "flag" to true, "count" to 3, "id" to 42L, "ratio" to 0.5f),
@@ -1999,16 +2251,54 @@ class TapClientTest {
                     for (request in sent) {
                         val ids =
                             when (request) {
-                                is io.github.noamcohen48.tap.api.v1.SetAnimationsRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetFontScaleRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetDensityRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetDarkModeRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetNetworkRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetLocationRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest -> request.clientConnectionId to request.attachedDeviceId
-                                is io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest -> request.clientConnectionId to request.attachedDeviceId
-                                else -> error("unexpected request $request")
+                                is io.github.noamcohen48.tap.api.v1.SetAnimationsRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetFontScaleRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetDensityRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetDarkModeRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetNetworkRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetLocationRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                is io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest -> {
+                                    request.clientConnectionId to
+                                        request.attachedDeviceId
+                                }
+
+                                else -> {
+                                    error("unexpected request $request")
+                                }
                             }
                         assertEquals(connection.id to device.attachedDeviceId, ids)
                     }
@@ -2195,7 +2485,13 @@ class TapClientTest {
                     }
 
                     ObserveMode.HELLO_THEN_PARK -> {
-                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
+                        emit(
+                            ObserveResponse
+                                .newBuilder()
+                                .setObserving(
+                                    Observing.newBuilder().setClientConnectionId(request.clientConnectionId),
+                                ).build(),
+                        )
                         try {
                             while (!parkCompletions.isCompleted) {
                                 delay(10)
@@ -2208,7 +2504,13 @@ class TapClientTest {
                     }
 
                     ObserveMode.HELLO_THEN_ERROR -> {
-                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
+                        emit(
+                            ObserveResponse
+                                .newBuilder()
+                                .setObserving(
+                                    Observing.newBuilder().setClientConnectionId(request.clientConnectionId),
+                                ).build(),
+                        )
                         try {
                             delay(20)
                             throw observeError
@@ -2218,7 +2520,13 @@ class TapClientTest {
                     }
 
                     ObserveMode.HELLO_THEN_COMPLETE -> {
-                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
+                        emit(
+                            ObserveResponse
+                                .newBuilder()
+                                .setObserving(
+                                    Observing.newBuilder().setClientConnectionId(request.clientConnectionId),
+                                ).build(),
+                        )
                         try {
                             delay(20)
                         } finally {
@@ -2227,7 +2535,13 @@ class TapClientTest {
                     }
 
                     ObserveMode.STUBBORN -> {
-                        emit(ObserveResponse.newBuilder().setObserving(Observing.newBuilder().setClientConnectionId(request.clientConnectionId)).build())
+                        emit(
+                            ObserveResponse
+                                .newBuilder()
+                                .setObserving(
+                                    Observing.newBuilder().setClientConnectionId(request.clientConnectionId),
+                                ).build(),
+                        )
                         try {
                             awaitCancellation()
                         } finally {
@@ -2328,11 +2642,15 @@ class TapClientTest {
                 .build()
         }
 
-        override suspend fun screenshot(request: io.github.noamcohen48.tap.api.v1.ScreenshotRequest): io.github.noamcohen48.tap.api.v1.ScreenshotResponse =
+        override suspend fun screenshot(
+            request: io.github.noamcohen48.tap.api.v1.ScreenshotRequest,
+        ): io.github.noamcohen48.tap.api.v1.ScreenshotResponse =
             io.github.noamcohen48.tap.api.v1.ScreenshotResponse
                 .getDefaultInstance()
 
-        override suspend fun driverLog(request: io.github.noamcohen48.tap.api.v1.DriverLogRequest): io.github.noamcohen48.tap.api.v1.DriverLogResponse =
+        override suspend fun driverLog(
+            request: io.github.noamcohen48.tap.api.v1.DriverLogRequest,
+        ): io.github.noamcohen48.tap.api.v1.DriverLogResponse =
             io.github.noamcohen48.tap.api.v1.DriverLogResponse
                 .getDefaultInstance()
 
@@ -2344,30 +2662,49 @@ class TapClientTest {
                 .setWindows("WINDOWS")
                 .build()
 
-        override suspend fun deviceLogs(request: io.github.noamcohen48.tap.api.v1.DeviceLogsRequest): io.github.noamcohen48.tap.api.v1.DeviceLogsResponse =
-            deviceLogs
+        override suspend fun deviceLogs(
+            request: io.github.noamcohen48.tap.api.v1.DeviceLogsRequest,
+        ): io.github.noamcohen48.tap.api.v1.DeviceLogsResponse = deviceLogs
 
         val conditions = CopyOnWriteArrayList<Any>()
 
-        override suspend fun setAnimations(request: io.github.noamcohen48.tap.api.v1.SetAnimationsRequest): io.github.noamcohen48.tap.api.v1.SetAnimationsResponse =
+        override suspend fun setAnimations(
+            request: io.github.noamcohen48.tap.api.v1.SetAnimationsRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetAnimationsResponse =
             io.github.noamcohen48.tap.api.v1.SetAnimationsResponse
                 .getDefaultInstance()
                 .also { conditions += request }
 
-        override suspend fun setDarkMode(request: io.github.noamcohen48.tap.api.v1.SetDarkModeRequest): io.github.noamcohen48.tap.api.v1.SetDarkModeResponse {
+        override suspend fun setDarkMode(
+            request: io.github.noamcohen48.tap.api.v1.SetDarkModeRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetDarkModeResponse {
             conditions += request
-            throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_UNSUPPORTED_API, "dark mode needs API 29", "emulator-5554")
+            throw daemonFailure(
+                Status.FAILED_PRECONDITION,
+                FailureReason.FAILURE_REASON_UNSUPPORTED_API,
+                "dark mode needs API 29",
+                "emulator-5554",
+            )
         }
 
-        override suspend fun setFontScale(request: io.github.noamcohen48.tap.api.v1.SetFontScaleRequest): io.github.noamcohen48.tap.api.v1.SetFontScaleResponse =
+        override suspend fun setFontScale(
+            request: io.github.noamcohen48.tap.api.v1.SetFontScaleRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetFontScaleResponse =
             io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
                 .getDefaultInstance()
                 .also { conditions += request }
 
-        override suspend fun setDensity(request: io.github.noamcohen48.tap.api.v1.SetDensityRequest): io.github.noamcohen48.tap.api.v1.SetDensityResponse {
+        override suspend fun setDensity(
+            request: io.github.noamcohen48.tap.api.v1.SetDensityRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetDensityResponse {
             conditions += request
             if (request.dpi == 999) {
-                throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_DEVICE_SETTING, "density read back 420", "emulator-5554")
+                throw daemonFailure(
+                    Status.FAILED_PRECONDITION,
+                    FailureReason.FAILURE_REASON_DEVICE_SETTING,
+                    "density read back 420",
+                    "emulator-5554",
+                )
             }
             return io.github.noamcohen48.tap.api.v1.SetDensityResponse
                 .getDefaultInstance()
@@ -2375,7 +2712,9 @@ class TapClientTest {
 
         var foreground: Pair<String, String>? = "io.example" to "io.example.MainActivity"
 
-        override suspend fun setStayAwake(request: io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest): io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse =
+        override suspend fun setStayAwake(
+            request: io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse =
             io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
                 .getDefaultInstance()
                 .also { conditions += request }
@@ -2395,7 +2734,9 @@ class TapClientTest {
                 .apply { foreground?.let { (pkg, activity) -> setPackageName(pkg).setActivity(activity) } }
                 .build()
 
-        override suspend fun setNetwork(request: io.github.noamcohen48.tap.api.v1.SetNetworkRequest): io.github.noamcohen48.tap.api.v1.SetNetworkResponse =
+        override suspend fun setNetwork(
+            request: io.github.noamcohen48.tap.api.v1.SetNetworkRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetNetworkResponse =
             io.github.noamcohen48.tap.api.v1.SetNetworkResponse
                 .getDefaultInstance()
                 .also { conditions += request }
@@ -2434,7 +2775,12 @@ class TapClientTest {
                 }
             }
             if (files.containsKey(path)) {
-                throw daemonFailure(Status.FAILED_PRECONDITION, FailureReason.FAILURE_REASON_DEVICE_FILE, "$path already exists", "emulator-5554")
+                throw daemonFailure(
+                    Status.FAILED_PRECONDITION,
+                    FailureReason.FAILURE_REASON_DEVICE_FILE,
+                    "$path already exists",
+                    "emulator-5554",
+                )
             }
             files[path] = bytes.toByteArray()
             return io.github.noamcohen48.tap.api.v1.PushFileResponse
@@ -2447,10 +2793,22 @@ class TapClientTest {
             kotlinx.coroutines.flow.flow {
                 fileHeaders += request
                 val bytes = files[request.devicePath] ?: throw Status.NOT_FOUND.asException()
-                emit(io.github.noamcohen48.tap.api.v1.PullFileResponse.newBuilder().setSizeBytes(bytes.size.toLong()).build())
+                emit(
+                    io.github.noamcohen48.tap.api.v1.PullFileResponse
+                        .newBuilder()
+                        .setSizeBytes(bytes.size.toLong())
+                        .build(),
+                )
                 // Two chunks, so the client stitches them.
                 for (part in listOf(bytes.copyOfRange(0, bytes.size / 2), bytes.copyOfRange(bytes.size / 2, bytes.size))) {
-                    emit(io.github.noamcohen48.tap.api.v1.PullFileResponse.newBuilder().setChunk(com.google.protobuf.ByteString.copyFrom(part)).build())
+                    emit(
+                        io.github.noamcohen48.tap.api.v1.PullFileResponse
+                            .newBuilder()
+                            .setChunk(
+                                com.google.protobuf.ByteString
+                                    .copyFrom(part),
+                            ).build(),
+                    )
                 }
             }
 
@@ -2481,7 +2839,9 @@ class TapClientTest {
         val installChunks = java.util.concurrent.CopyOnWriteArrayList<Int>()
         val installed = java.io.ByteArrayOutputStream()
 
-        override suspend fun isRunning(request: io.github.noamcohen48.tap.api.v1.IsRunningRequest): io.github.noamcohen48.tap.api.v1.IsRunningResponse =
+        override suspend fun isRunning(
+            request: io.github.noamcohen48.tap.api.v1.IsRunningRequest,
+        ): io.github.noamcohen48.tap.api.v1.IsRunningResponse =
             io.github.noamcohen48.tap.api.v1.IsRunningResponse
                 .newBuilder()
                 .setRunning(true)
@@ -2508,7 +2868,10 @@ class TapClientTest {
         ): io.github.noamcohen48.tap.api.v1.GrantPermissionResponse {
             requests += request
             if (request.permission == "android.permission.NOPE") {
-                throw io.grpc.StatusException(io.grpc.Status.FAILED_PRECONDITION.withDescription("not granted after pm grant"))
+                throw io.grpc.StatusException(
+                    io.grpc.Status.FAILED_PRECONDITION
+                        .withDescription("not granted after pm grant"),
+                )
             }
             return io.github.noamcohen48.tap.api.v1.GrantPermissionResponse
                 .getDefaultInstance()
@@ -2532,13 +2895,17 @@ class TapClientTest {
                 .build()
         }
 
-        override suspend fun setLocales(request: io.github.noamcohen48.tap.api.v1.SetLocalesRequest): io.github.noamcohen48.tap.api.v1.SetLocalesResponse {
+        override suspend fun setLocales(
+            request: io.github.noamcohen48.tap.api.v1.SetLocalesRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetLocalesResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.SetLocalesResponse
                 .getDefaultInstance()
         }
 
-        override suspend fun getLocales(request: io.github.noamcohen48.tap.api.v1.GetLocalesRequest): io.github.noamcohen48.tap.api.v1.GetLocalesResponse {
+        override suspend fun getLocales(
+            request: io.github.noamcohen48.tap.api.v1.GetLocalesRequest,
+        ): io.github.noamcohen48.tap.api.v1.GetLocalesResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.GetLocalesResponse
                 .newBuilder()
@@ -2546,19 +2913,25 @@ class TapClientTest {
                 .build()
         }
 
-        override suspend fun launch(request: io.github.noamcohen48.tap.api.v1.LaunchRequest): io.github.noamcohen48.tap.api.v1.LaunchResponse {
+        override suspend fun launch(
+            request: io.github.noamcohen48.tap.api.v1.LaunchRequest,
+        ): io.github.noamcohen48.tap.api.v1.LaunchResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.LaunchResponse
                 .getDefaultInstance()
         }
 
-        override suspend fun foreground(request: io.github.noamcohen48.tap.api.v1.ForegroundRequest): io.github.noamcohen48.tap.api.v1.ForegroundResponse {
+        override suspend fun foreground(
+            request: io.github.noamcohen48.tap.api.v1.ForegroundRequest,
+        ): io.github.noamcohen48.tap.api.v1.ForegroundResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.ForegroundResponse
                 .getDefaultInstance()
         }
 
-        override suspend fun openLink(request: io.github.noamcohen48.tap.api.v1.OpenLinkRequest): io.github.noamcohen48.tap.api.v1.OpenLinkResponse {
+        override suspend fun openLink(
+            request: io.github.noamcohen48.tap.api.v1.OpenLinkRequest,
+        ): io.github.noamcohen48.tap.api.v1.OpenLinkResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.OpenLinkResponse
                 .newBuilder()
@@ -2566,7 +2939,9 @@ class TapClientTest {
                 .build()
         }
 
-        override suspend fun coldLaunch(request: io.github.noamcohen48.tap.api.v1.ColdLaunchRequest): io.github.noamcohen48.tap.api.v1.ColdLaunchResponse {
+        override suspend fun coldLaunch(
+            request: io.github.noamcohen48.tap.api.v1.ColdLaunchRequest,
+        ): io.github.noamcohen48.tap.api.v1.ColdLaunchResponse {
             requests += request
             return io.github.noamcohen48.tap.api.v1.ColdLaunchResponse
                 .newBuilder()

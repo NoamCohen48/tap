@@ -499,7 +499,13 @@ open class Adb internal constructor(
     open suspend fun deviceEpochSeconds(serial: String): Long {
         val output = exec(serial, "shell", "date", "+%s", timeoutMs = 10_000).trim()
         return output.toLongOrNull()
-            ?: throw AdbCommandException(serial, listOf("shell", "date", "+%s"), null, output, "Unreadable device clock on $serial: $output")
+            ?: throw AdbCommandException(
+                serial,
+                listOf("shell", "date", "+%s"),
+                null,
+                output,
+                "Unreadable device clock on $serial: $output",
+            )
     }
 
     /**
@@ -547,7 +553,13 @@ open class Adb internal constructor(
     open suspend fun apiLevel(serial: String): Int {
         val output = exec(serial, "shell", "getprop", "ro.build.version.sdk").trim()
         return output.toIntOrNull()
-            ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.build.version.sdk"), null, output, "Unreadable API level on $serial: $output")
+            ?: throw AdbCommandException(
+                serial,
+                listOf("shell", "getprop", "ro.build.version.sdk"),
+                null,
+                output,
+                "Unreadable API level on $serial: $output",
+            )
     }
 
     /**
@@ -568,12 +580,24 @@ open class Adb internal constructor(
             StateKey.NightMode -> {
                 val output = exec(serial, "shell", "cmd", "uimode", "night").trim()
                 output.removePrefix("Night mode: ").takeIf { it != output && it.isNotBlank() }
-                    ?: throw AdbCommandException(serial, listOf("shell", "cmd", "uimode", "night"), null, output, "Unreadable night mode on $serial: $output")
+                    ?: throw AdbCommandException(
+                        serial,
+                        listOf("shell", "cmd", "uimode", "night"),
+                        null,
+                        output,
+                        "Unreadable night mode on $serial: $output",
+                    )
             }
             StateKey.Density -> {
                 val output = exec(serial, "shell", "wm", "density")
                 if (!output.contains("Physical density:")) {
-                    throw AdbCommandException(serial, listOf("shell", "wm", "density"), null, output, "Unreadable density on $serial: $output")
+                    throw AdbCommandException(
+                        serial,
+                        listOf("shell", "wm", "density"),
+                        null,
+                        output,
+                        "Unreadable density on $serial: $output",
+                    )
                 }
                 output.lineSequence().firstNotNullOfOrNull { line ->
                     line.trim().removePrefix("Override density:").takeIf { it != line.trim() }?.trim()
@@ -594,11 +618,33 @@ open class Adb internal constructor(
                 exec(serial, "shell", "settings", "get", "system", "system_locales").trim().takeUnless { it == "null" || it.isEmpty() }
                     ?: exec(serial, "shell", "getprop", "persist.sys.locale").trim().takeUnless { it.isEmpty() }
                     ?: exec(serial, "shell", "getprop", "ro.product.locale").trim().takeUnless { it.isEmpty() }
-                    ?: throw AdbCommandException(serial, listOf("shell", "getprop", "ro.product.locale"), null, "", "No readable locale on $serial")
+                    ?: throw AdbCommandException(
+                        serial,
+                        listOf("shell", "getprop", "ro.product.locale"),
+                        null,
+                        "",
+                        "No readable locale on $serial",
+                    )
             }
-            is StateKey.DeviceFile -> fileInfo(serial, parsed.path)?.let { "present" }
-            StateKey.MockLocationProviders -> mockLocationProviders(serial).sorted().joinToString(",")
-            StateKey.DriverNotificationListener -> if (DRIVER_NOTIFICATION_LISTENER in approvedNotificationListeners(serial)) "allowed" else "disallowed"
+
+            is StateKey.DeviceFile -> {
+                fileInfo(serial, parsed.path)?.let { "present" }
+            }
+
+            StateKey.MockLocationProviders -> {
+                mockLocationProviders(serial).sorted().joinToString(",")
+            }
+
+            StateKey.DriverNotificationListener -> {
+                if (DRIVER_NOTIFICATION_LISTENER in
+                    approvedNotificationListeners(serial)
+                ) {
+                    "allowed"
+                } else {
+                    "disallowed"
+                }
+            }
+
             is StateKey.AppOp -> {
                 val command = listOf("shell", "appops", "get", shellQuote(parsed.packageName), shellQuote(parsed.op))
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -606,8 +652,16 @@ open class Adb internal constructor(
                 if (output.startsWith("No operations")) {
                     "default"
                 } else {
-                    output.lineSequence().firstNotNullOfOrNull { line -> Regex("^[A-Za-z_:]+: (\\w+)").find(line.trim())?.groupValues?.get(1) }
-                        ?: throw AdbCommandException(serial, command, null, output, "Unreadable app-op ${parsed.op} of ${parsed.packageName} on $serial: $output")
+                    output.lineSequence().firstNotNullOfOrNull { line ->
+                        Regex("^[A-Za-z_:]+: (\\w+)").find(line.trim())?.groupValues?.get(1)
+                    }
+                        ?: throw AdbCommandException(
+                            serial,
+                            command,
+                            null,
+                            output,
+                            "Unreadable app-op ${parsed.op} of ${parsed.packageName} on $serial: $output",
+                        )
                 }
             }
             is StateKey.AppLocales -> {
@@ -615,7 +669,14 @@ open class Adb internal constructor(
                 val output = exec(serial, *command.toTypedArray()).trim()
                 // "Locales for <pkg> for user -2 are [fr-FR,en-US]"; an unknown package prints another line.
                 val list = output.substringAfterLast(" are [", "").takeIf { output.endsWith("]") }?.removeSuffix("]")
-                list ?: throw AdbCommandException(serial, command, null, output, "Unreadable locales of ${parsed.packageName} on $serial: $output")
+                list
+                    ?: throw AdbCommandException(
+                        serial,
+                        command,
+                        null,
+                        output,
+                        "Unreadable locales of ${parsed.packageName} on $serial: $output",
+                    )
             }
         }
 
@@ -636,17 +697,35 @@ open class Adb internal constructor(
         value: String?,
     ) {
         when (val parsed = StateKey.parse(key)) {
-            is StateKey.Setting ->
+            is StateKey.Setting -> {
                 if (value == null) {
-                    StateKey.NEUTRAL_BEFORE_DELETE[key]?.let { exec(serial, "shell", "settings", "put", parsed.namespace, parsed.name, shellQuote(it)) }
+                    StateKey.NEUTRAL_BEFORE_DELETE[key]?.let {
+                        exec(
+                            serial,
+                            "shell",
+                            "settings",
+                            "put",
+                            parsed.namespace,
+                            parsed.name,
+                            shellQuote(it),
+                        )
+                    }
                     exec(serial, "shell", "settings", "delete", parsed.namespace, parsed.name)
                 } else {
                     exec(serial, "shell", "settings", "put", parsed.namespace, parsed.name, shellQuote(value))
                 }
-            StateKey.NightMode -> exec(serial, "shell", "cmd", "uimode", "night", shellQuote(requireNotNull(value) { "night mode needs a value" }))
-            StateKey.Density -> exec(serial, "shell", "wm", "density", value?.let(::shellQuote) ?: "reset")
+            }
+
+            StateKey.NightMode -> {
+                exec(serial, "shell", "cmd", "uimode", "night", shellQuote(requireNotNull(value) { "night mode needs a value" }))
+            }
+
+            StateKey.Density -> {
+                exec(serial, "shell", "wm", "density", value?.let(::shellQuote) ?: "reset")
+            }
+
             // Null: the device had no such switch to put back.
-            is StateKey.Network ->
+            is StateKey.Network -> {
                 if (value != null) {
                     val verb = if (value == "1") "enable" else "disable"
                     when (parsed) {
@@ -655,6 +734,8 @@ open class Adb internal constructor(
                         StateKey.Network.MOBILE_DATA -> exec(serial, "shell", "svc", "data", verb)
                     }
                 }
+            }
+
             StateKey.MockLocationProviders -> {
                 val keep = value.orEmpty().split(',').filter(String::isNotEmpty).toSet()
                 val remove = mockLocationProviders(serial) - keep
@@ -672,15 +753,46 @@ open class Adb internal constructor(
             }
             StateKey.DriverNotificationListener -> {
                 val allow = value == "allowed"
-                exec(serial, "shell", "cmd", "notification", if (allow) "allow_listener" else "disallow_listener", DRIVER_NOTIFICATION_LISTENER)
+                exec(
+                    serial,
+                    "shell",
+                    "cmd",
+                    "notification",
+                    if (allow) "allow_listener" else "disallow_listener",
+                    DRIVER_NOTIFICATION_LISTENER,
+                )
                 if (!allow) awaitDriverListenerUnbound(serial)
             }
-            is StateKey.AppOp ->
-                exec(serial, "shell", "appops", "set", shellQuote(parsed.packageName), shellQuote(parsed.op), shellQuote(value ?: "default"))
-            StateKey.SystemLocales -> writeSystemLocales(serial, requireNotNull(value) { "system locales need a value" })
+
+            is StateKey.AppOp -> {
+                exec(
+                    serial,
+                    "shell",
+                    "appops",
+                    "set",
+                    shellQuote(parsed.packageName),
+                    shellQuote(parsed.op),
+                    shellQuote(value ?: "default"),
+                )
+            }
+
+            StateKey.SystemLocales -> {
+                writeSystemLocales(serial, requireNotNull(value) { "system locales need a value" })
+            }
+
             is StateKey.AppLocales -> {
                 val locales = if (value.isNullOrEmpty()) emptyList() else listOf("--locales", shellQuote(value))
-                exec(serial, "shell", "cmd", "locale", "set-app-locales", shellQuote(parsed.packageName), "--user", "current", *locales.toTypedArray())
+                exec(
+                    serial,
+                    "shell",
+                    "cmd",
+                    "locale",
+                    "set-app-locales",
+                    shellQuote(parsed.packageName),
+                    "--user",
+                    "current",
+                    *locales.toTypedArray(),
+                )
             }
         }
     }
@@ -741,6 +853,81 @@ open class Adb internal constructor(
         exec(serial, "pull", devicePath, local.absolutePathString(), timeoutMs = timeoutMs)
     }
 
+    /** Current Android user for run-as; never silently substitute user zero on a failed read. */
+    open suspend fun appDataUser(serial: String): Int =
+        exec(serial, "shell", "am", "get-current-user").trim().toIntOrNull()?.takeIf { it >= 0 }
+            ?: throw AppDataException("Android did not report a usable current user", serial = serial)
+
+    /** Processes under this app UID, including secondary/native and shared-UID processes. */
+    open suspend fun appDataProcesses(
+        serial: String,
+        uid: Int,
+    ): List<Int> {
+        val lines = exec(serial, "shell", "ps", "-A", "-n", "-o", "UID,PID").trim().lines()
+        if (lines.firstOrNull()?.trim()?.split(Regex("\\s+")) != listOf("UID", "PID")) {
+            throw AppDataException("Android cannot verify stopped app UID", "UNSUPPORTED_PROCESS_SCAN", serial)
+        }
+        return lines.drop(1).filter { it.isNotBlank() }.mapNotNull { line ->
+            val fields = line.trim().split(Regex("\\s+"))
+            val owner = fields.getOrNull(0)?.toIntOrNull()
+            val pid = fields.getOrNull(1)?.toIntOrNull()
+            if (fields.size != 2 || owner == null || pid == null || pid <= 0) {
+                throw AppDataException("Android returned an unreadable process table", "UNSUPPORTED_PROCESS_SCAN", serial)
+            }
+            pid.takeIf { owner == uid }
+        }
+    }
+
+    /**
+     * Runs a host-owned private-data script as this app, not as shell/root. Binary bytes go
+     * through shell-only staging files, never through the text output collector or argv.
+     * Scripts and redirects are framework-controlled; no RPC exposes arbitrary shell.
+     */
+    open suspend fun runAs(
+        serial: String,
+        packageName: String,
+        userId: Int,
+        script: String,
+        arguments: List<String> = emptyList(),
+        inputFile: String? = null,
+        outputFile: String? = null,
+    ): Result {
+        require(userId >= 0)
+        inputFile?.let(::checkAppDataTransfer)
+        outputFile?.let(::checkAppDataTransfer)
+        val command = listOf("run-as", packageName, "--user", userId.toString(), "sh", "-c", script, "tap-private-data") + arguments
+        val shell =
+            buildString {
+                append("umask 077; set -C; exec ")
+                append(command.joinToString(" ", transform = ::shellQuote))
+                inputFile?.let { append(" < ").append(shellQuote(it)) }
+                outputFile?.let { append(" > ").append(shellQuote(it)) }
+            }
+        return execResult(serial, "shell", "sh", "-c", shellQuote(shell))
+    }
+
+    /** Exclusively creates a mode-0600 shell staging file before adb push opens it. */
+    open suspend fun createAppDataTransfer(
+        serial: String,
+        path: String,
+    ) {
+        checkAppDataTransfer(path)
+        exec(serial, "shell", "sh", "-c", shellQuote("umask 077; set -C; : > ${shellQuote(path)}"))
+    }
+
+    /** Deletes only a framework-named private-data staging file. */
+    open suspend fun removeAppDataTransfer(
+        serial: String,
+        path: String,
+    ) {
+        checkAppDataTransfer(path)
+        exec(serial, "shell", "rm", "-f", shellQuote(path))
+    }
+
+    private fun checkAppDataTransfer(path: String) {
+        require(Regex("/data/local/tmp/tap-private-[0-9a-f-]{36}\\.bin").matches(path)) { "Invalid private-data staging path" }
+    }
+
     /**
      * Asks the media scanner to (re)index [path]: MediaProvider's synchronous `scan_file` call on
      * API 30+, the asynchronous `MEDIA_SCANNER_SCAN_FILE` broadcast otherwise, and when the call
@@ -756,7 +943,19 @@ open class Adb internal constructor(
     ) {
         if (apiLevel(serial) >= 30) {
             val canonical = exec(serial, "shell", "readlink", "-f", shellQuote(path)).trim().ifEmpty { path }
-            val output = exec(serial, "shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", shellQuote(canonical))
+            val output =
+                exec(
+                    serial,
+                    "shell",
+                    "content",
+                    "call",
+                    "--uri",
+                    "content://media/",
+                    "--method",
+                    "scan_file",
+                    "--arg",
+                    shellQuote(canonical),
+                )
             if ("Exception" !in output) return
         }
         exec(serial, "shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", shellQuote("file://$path"))
@@ -775,7 +974,18 @@ open class Adb internal constructor(
     ): Boolean {
         val collection = if (folder.startsWith("Movies/")) "video" else "images"
         val where = "_display_name='$name' AND _data LIKE '%/$folder/$name'"
-        val command = listOf("shell", "content", "query", "--uri", "content://media/external/$collection/media", "--projection", "_id", "--where", shellQuote(where))
+        val command =
+            listOf(
+                "shell",
+                "content",
+                "query",
+                "--uri",
+                "content://media/external/$collection/media",
+                "--projection",
+                "_id",
+                "--where",
+                shellQuote(where),
+            )
         val output = exec(serial, *command.toTypedArray())
         return output.lineSequence().any { it.trim().startsWith("Row:") }
     }
@@ -831,7 +1041,14 @@ open class Adb internal constructor(
     private suspend fun awaitDriverListenerUnbound(serial: String) {
         val deadline = System.nanoTime() + LISTENER_UNBIND_TIMEOUT_MS * 1_000_000
         while (driverListenerBound(serial)) {
-            if (System.nanoTime() >= deadline) throw DeviceSettingException(serial, "The driver's notification listener on $serial stayed bound after its access was taken back")
+            if (System.nanoTime() >=
+                deadline
+            ) {
+                throw DeviceSettingException(
+                    serial,
+                    "The driver's notification listener on $serial stayed bound after its access was taken back",
+                )
+            }
             delay(LISTENER_UNBIND_POLL_MS)
         }
     }
@@ -857,7 +1074,13 @@ open class Adb internal constructor(
         val lines = output.lines()
         val header = lines.indexOfFirst { it.trim() == "Allowed notification listeners:" }
         if (header < 0) {
-            throw AdbCommandException(serial, listOf("shell", "dumpsys", "notification"), null, output.take(2_000), "No notification listener list in dumpsys notification on $serial")
+            throw AdbCommandException(
+                serial,
+                listOf("shell", "dumpsys", "notification"),
+                null,
+                output.take(2_000),
+                "No notification listener list in dumpsys notification on $serial",
+            )
         }
         val indent = lines[header].indexOfFirst { !it.isWhitespace() }
         return lines
@@ -876,7 +1099,19 @@ open class Adb internal constructor(
         names: List<String>,
     ) {
         exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "android:mock_location", "allow")
-        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.MockLocationReceiver", "--es", "remove", shellQuote(names.joinToString(",")))
+        val command =
+            listOf(
+                "shell",
+                "am",
+                "broadcast",
+                "-f",
+                "32",
+                "-n",
+                "$DRIVER_PACKAGE/.MockLocationReceiver",
+                "--es",
+                "remove",
+                shellQuote(names.joinToString(",")),
+            )
         val output = exec(serial, *command.toTypedArray())
         if (!output.contains("Broadcast completed: result=1")) {
             val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
@@ -896,7 +1131,19 @@ open class Adb internal constructor(
         exec(serial, "shell", "pm", "grant", DRIVER_PACKAGE, "android.permission.CHANGE_CONFIGURATION")
         exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "WRITE_SETTINGS", "allow")
         // -f 0x20 (FLAG_INCLUDE_STOPPED_PACKAGES): the driver app may never have run on its own.
-        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.SystemLocaleReceiver", "--es", "locales", shellQuote(tags))
+        val command =
+            listOf(
+                "shell",
+                "am",
+                "broadcast",
+                "-f",
+                "32",
+                "-n",
+                "$DRIVER_PACKAGE/.SystemLocaleReceiver",
+                "--es",
+                "locales",
+                shellQuote(tags),
+            )
         val output = exec(serial, *command.toTypedArray())
         if (!output.contains("Broadcast completed: result=1")) {
             val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
@@ -915,8 +1162,18 @@ open class Adb internal constructor(
     ) {
         if (entries.any { it.key == StateKey.ACCELEROMETER_ROTATION }) writeState(serial, StateKey.ACCELEROMETER_ROTATION, "0")
         for (entry in entries.asReversed()) writeState(serial, entry.key, entry.value)
-        val wrong = entries.mapNotNull { entry -> readState(serial, entry.key).let { actual -> "${entry.key}=$actual (expected ${entry.value})".takeUnless { StateKey.holds(entry.key, entry.value, actual) } } }
-        if (wrong.isNotEmpty()) throw DeviceSettingException(serial, "Restoring device state on $serial did not take effect: ${wrong.joinToString()}")
+        val wrong =
+            entries.mapNotNull { entry ->
+                readState(serial, entry.key).let { actual ->
+                    "${entry.key}=$actual (expected ${entry.value})".takeUnless { StateKey.holds(entry.key, entry.value, actual) }
+                }
+            }
+        if (wrong.isNotEmpty()) {
+            throw DeviceSettingException(
+                serial,
+                "Restoring device state on $serial did not take effect: ${wrong.joinToString()}",
+            )
+        }
     }
 
     /** Whether a TCP socket is listening on [port] (IPv4 or IPv6), from `/proc/net/tcp*`. */
@@ -1014,7 +1271,13 @@ open class Adb internal constructor(
     ): List<String> {
         if (result.exitCode == 1 && result.output.isBlank()) return emptyList()
         if (result.exitCode != 0) throw AdbCommandException(serial, arguments, result.exitCode, result.output)
-        return result.output.lineSequence().map(String::trim).filter { it.startsWith("package:") }.map { it.removePrefix("package:") }.toList()
+        return result.output
+            .lineSequence()
+            .map(
+                String::trim,
+            ).filter { it.startsWith("package:") }
+            .map { it.removePrefix("package:") }
+            .toList()
     }
 
     /**
@@ -1288,7 +1551,13 @@ open class Adb internal constructor(
     ): Int {
         val output = exec(serial, "forward", "tcp:0", "tcp:$devicePort")
         return output.toIntOrNull()
-            ?: throw AdbCommandException(serial, listOf("forward", "tcp:0", "tcp:$devicePort"), null, output, "adb forward on $serial did not report a host port: $output")
+            ?: throw AdbCommandException(
+                serial,
+                listOf("forward", "tcp:0", "tcp:$devicePort"),
+                null,
+                output,
+                "adb forward on $serial did not report a host port: $output",
+            )
     }
 
     open suspend fun removeForward(
@@ -1329,7 +1598,15 @@ open class Adb internal constructor(
             return emptyList()
         }
         val tokens = result.output.split(WHITESPACE).filter(String::isNotBlank)
-        if (tokens.isEmpty()) throw AdbCommandException(serial, command, null, result.output, "pidof succeeded without reporting a PID on $serial")
+        if (tokens.isEmpty()) {
+            throw AdbCommandException(
+                serial,
+                command,
+                null,
+                result.output,
+                "pidof succeeded without reporting a PID on $serial",
+            )
+        }
         return tokens.map { token ->
             token.toIntOrNull()
                 ?: throw AdbCommandException(serial, command, null, result.output, "pidof returned a nonnumeric PID on $serial: $token")

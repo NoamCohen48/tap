@@ -12,7 +12,7 @@ import grpc
 import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import _gen as pb
-from tap_e2e._gen import app_pb2_grpc, client_connection_pb2_grpc, device_pb2_grpc
+from tap_e2e._gen import app_data_pb2_grpc, app_pb2_grpc, client_connection_pb2_grpc, device_pb2_grpc
 from tap_e2e._gen.engine_version import API_COMPATIBILITY
 
 TOKEN = "ab" * 32
@@ -428,6 +428,62 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
         return pb.InstallResponse()
 
 
+class FakeAppData(app_data_pb2_grpc.AppDataServiceServicer):
+    """Transport fixture, not a second implementation of the host's private-data rules."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.uploads: list[list[pb.AppDataPart]] = []
+        self.response_parts: list[pb.AppDataPart] | None = None
+        self.requests: list[object] = []
+
+    def GetCapabilities(self, request, context):
+        self.requests.append(request)
+        return pb.GetCapabilitiesResponse(available=True)
+
+    def ListFiles(self, request, context):
+        self.requests.append(request)
+        prefix = request.path + "/" if request.path else ""
+        return pb.ListFilesResponse(entries=[
+            pb.AppDataEntry(name=path[len(prefix):], size_bytes=len(data))
+            for path, data in self.files.items()
+            if path.startswith(prefix) and "/" not in path[len(prefix):]
+        ])
+
+    def _parts(self, app, path):
+        data = self.files[path]
+        yield pb.AppDataPart(header=pb.AppDataHeader(app=app, path=path, size_bytes=len(data)))
+        for start in range(0, len(data), 1 << 20):
+            yield pb.AppDataPart(chunk=data[start:start + (1 << 20)])
+
+    def ReadFile(self, request, context):
+        self.requests.append(request)
+        parts = self.response_parts if self.response_parts is not None else self._parts(request.app, request.path)
+        yield from (pb.ReadFileResponse(part=p) for p in parts)
+
+    def ExportDatabase(self, request, context):
+        self.requests.append(request)
+        if self.response_parts is not None:
+            yield from (pb.ExportDatabaseResponse(part=p) for p in self.response_parts)
+            return
+        for suffix in ("", "-wal", "-journal"):
+            path = f"databases/{request.name}{suffix}"
+            if path in self.files:
+                yield from (pb.ExportDatabaseResponse(part=p) for p in self._parts(request.app, path))
+
+    def WriteFile(self, request_iterator, context):
+        self.uploads.append([p.part for p in request_iterator])
+        return pb.WriteFileResponse()
+
+    def ImportDatabase(self, request_iterator, context):
+        self.uploads.append([p.part for p in request_iterator])
+        return pb.ImportDatabaseResponse()
+
+    def DeleteFile(self, request, context):
+        self.requests.append(request)
+        return pb.DeleteFileResponse()
+
+
 class _TokenCheck(grpc.ServerInterceptor):
     """Rejects calls without ``authorization: Bearer TOKEN`` when ``required`` is set."""
 
@@ -462,6 +518,7 @@ class Fake:
         self.connections = FakeConnections()
         self.devices = FakeDevices()
         self.apps = FakeApps()
+        self.app_data = FakeAppData()
         self.connections.devices = self.devices
         self.devices.log = self.connections
         self.apps.log = self.connections
@@ -474,6 +531,7 @@ class Fake:
         )
         device_pb2_grpc.add_DeviceServiceServicer_to_server(self.devices, self.server)
         app_pb2_grpc.add_AppServiceServicer_to_server(self.apps, self.server)
+        app_data_pb2_grpc.add_AppDataServiceServicer_to_server(self.app_data, self.server)
         self.port = self.server.add_insecure_port("127.0.0.1:0")
         self.address = f"127.0.0.1:{self.port}"
         self.server.start()

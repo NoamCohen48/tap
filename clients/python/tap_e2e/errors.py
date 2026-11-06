@@ -139,6 +139,18 @@ class WaitTimeoutError(TapError):
         )
 
 
+class AppDataError(TapError):
+    """Private-app data was refused/failed. ``detail`` is a stable server token (e.g.
+    ``APP_RUNNING``, ``SYMLINK``, ``EXISTS``); ``serial`` identifies the device.
+    Never relaunch or retry an interrupted database import blindly.
+    """
+
+    def __init__(self, detail: str, serial: str, message: str):
+        super().__init__(message)
+        self.detail = detail
+        self.serial = serial
+
+
 class AppLifecycleError(TapError):
     """Install/launch/stop did not reach the verified end state."""
 

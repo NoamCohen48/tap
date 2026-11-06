@@ -14,8 +14,8 @@ import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
 import io.github.noamcohen48.tap.host.AdbTimeoutException
+import io.github.noamcohen48.tap.host.AppDataException
 import io.github.noamcohen48.tap.host.AppLifecycleException
-import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DeviceBusyException
 import io.github.noamcohen48.tap.host.DeviceFileException
@@ -24,6 +24,7 @@ import io.github.noamcohen48.tap.host.DeviceSettingException
 import io.github.noamcohen48.tap.host.DriverBuildMismatchException
 import io.github.noamcohen48.tap.host.DriverStartException
 import io.github.noamcohen48.tap.host.HostWaitTimeoutException
+import io.github.noamcohen48.tap.host.RecordingException
 import io.github.noamcohen48.tap.host.RemoteCommandException
 import io.github.noamcohen48.tap.host.SessionUnusableException
 import io.github.noamcohen48.tap.host.UnsupportedApiException
@@ -120,11 +121,28 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
     val failure = Failure.newBuilder()
     val status: Status =
         when (this) {
-            is UnknownClientConnectionException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_CLIENT_CONNECTION }
-            is UnknownAttachedDeviceException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_ATTACHED_DEVICE }
-            is NotOwnerException -> Status.PERMISSION_DENIED.also { failure.reason = FailureReason.FAILURE_REASON_NOT_OWNER }
-            is InvalidArgumentException, is InvalidCommandException ->
+            is UnknownClientConnectionException -> {
+                Status.NOT_FOUND.also {
+                    failure.reason =
+                        FailureReason.FAILURE_REASON_UNKNOWN_CLIENT_CONNECTION
+                }
+            }
+
+            is UnknownAttachedDeviceException -> {
+                Status.NOT_FOUND.also {
+                    failure.reason =
+                        FailureReason.FAILURE_REASON_UNKNOWN_ATTACHED_DEVICE
+                }
+            }
+
+            is NotOwnerException -> {
+                Status.PERMISSION_DENIED.also { failure.reason = FailureReason.FAILURE_REASON_NOT_OWNER }
+            }
+
+            is InvalidArgumentException, is InvalidCommandException -> {
                 Status.INVALID_ARGUMENT.also { failure.reason = FailureReason.FAILURE_REASON_INVALID_ARGUMENT }
+            }
+
             // A busy device is a precondition failure when no wait was asked for, a timeout when it was.
             is DeviceBusyException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_BUSY).setSerial(serial).setWaitedMs(waitedMs)
@@ -146,8 +164,20 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_REAP_UNCERTAIN).setSerial(serial.orEmpty())
                 Status.FAILED_PRECONDITION
             }
-            is AppLifecycleException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_APP_LIFECYCLE }
-            is RecordingException -> Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+
+            is AppDataException -> {
+                failure.setReason(FailureReason.FAILURE_REASON_APP_DATA).setSerial(serial.orEmpty()).setDetail(detail)
+                Status.FAILED_PRECONDITION
+            }
+
+            is AppLifecycleException -> {
+                Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_APP_LIFECYCLE }
+            }
+
+            is RecordingException -> {
+                Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
             is UnsupportedApiException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_UNSUPPORTED_API).setSerial(serial).setDetail("REQUIRES_API_$requiredApi")
                 Status.FAILED_PRECONDITION
@@ -160,8 +190,11 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_SETTING).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
-            is DriverBuildMismatchException ->
+
+            is DriverBuildMismatchException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_BUILD_MISMATCH }
+            }
+
             is RemoteCommandException -> {
                 failure
                     .setReason(FailureReason.FAILURE_REASON_DRIVER_COMMAND)
@@ -174,22 +207,39 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 failure.setReason(FailureReason.FAILURE_REASON_DRIVER_TRANSPORT).setSerial(serial.orEmpty()).setErrorCode(code)
                 Status.UNAVAILABLE
             }
-            is DaemonPreconditionException ->
+
+            is DaemonPreconditionException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
             // A watcher fell behind: it reconnects from its last seq (activity) or key frame (video).
-            is ActivityReaderOverflowException, is VideoReaderOverflowException ->
+            is ActivityReaderOverflowException, is VideoReaderOverflowException -> {
                 Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
             // Video capture could not start or stopped; the device and its connections are untouched.
-            is VideoException -> Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
-            is UnknownRefException -> Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_REF }
-            is RefNotAddressableException ->
+            is VideoException -> {
+                Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
+            is UnknownRefException -> {
+                Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_REF }
+            }
+
+            is RefNotAddressableException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_REF_NOT_ADDRESSABLE }
+            }
+
             // The session is unusable: detach and attach again.
             is SessionUnusableException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_SESSION_UNUSABLE).setSerial(serial)
                 Status.ABORTED
             }
-            is DriverStartException -> Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_START_FAILED }
+
+            is DriverStartException -> {
+                Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_START_FAILED }
+            }
+
             is AdbCommandException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_FAILED).setSerial(serial.orEmpty())
                 Status.UNAVAILABLE

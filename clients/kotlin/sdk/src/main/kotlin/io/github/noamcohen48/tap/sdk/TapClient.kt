@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.AppDataServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
@@ -93,6 +94,7 @@ class TapClient public constructor(
     internal val clientConnections = ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineStub(callChannel)
     internal val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(callChannel)
     internal val apps = AppServiceGrpcKt.AppServiceCoroutineStub(callChannel)
+    internal val appData = AppDataServiceGrpcKt.AppDataServiceCoroutineStub(callChannel)
 
     private val versionChecked = AtomicBoolean(false)
 

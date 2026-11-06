@@ -575,7 +575,7 @@ EXPECTED_TOOLS = {
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
-    "foreground_activity", "notification",
+    "foreground_activity", "notification", "app_data",
 }
 
 

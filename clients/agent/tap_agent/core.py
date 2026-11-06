@@ -20,6 +20,7 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
     CommandError,
     ConnectionEntry,
     Device,
+    DatabaseBundle,
     DisplayRotation,
     Direction,
     ErrorCode,
@@ -122,6 +123,8 @@ class AgentError(Exception):
 
 
 NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
+
+APP_DATA_ACTIONS = ("capabilities", "list", "read", "write", "delete", "export-db", "import-db")
 
 APP_ACTIONS = (
     "launch", "cold-launch", "foreground", "background", "open-link",
@@ -880,6 +883,89 @@ class Agent:
             waiting = element.wait(timeout)
             {"visible": waiting.visible, "gone": waiting.gone, "one": waiting.one}[state]()
             return f"{described} is {'exactly one node' if state == 'one' else state}"
+
+        return self._run(step)
+
+    def app_data(
+        self, action: str, package: str, path: str = "", local: str | None = None,
+        device: str | None = None, *, overwrite: bool = False,
+    ) -> str:
+        """Debuggable-app private data: capabilities, list [PATH], read PATH LOCAL,
+        write PATH LOCAL, delete PATH, export-db NAME DIRECTORY, import-db NAME DIRECTORY.
+        Paths are relative private paths; database names are basenames. Except capabilities,
+        requires a stopped app: stop/relaunch explicitly. Never prints contents. Downloads
+        create owner-only files and refuse existing outputs; exports require a new directory.
+        Overwrite is explicit for remote write/import only. Bundles keep WAL/journal, not SHM.
+        After interrupted import, repair/clear data before launch; never retry blindly."""
+        if action not in APP_DATA_ACTIONS:
+            raise AgentError("unknown app-data action", EXIT_USAGE)
+        transfers = ("read", "write", "export-db", "import-db")
+        if action != "capabilities" and action != "list" and not path:
+            raise AgentError(f"app-data {action} needs a private path or database name", EXIT_USAGE)
+        if (action in transfers) != (local is not None):
+            raise AgentError(f"app-data {action}: local path {'required' if action in transfers else 'not accepted'}", EXIT_USAGE)
+        if action == "capabilities" and path:
+            raise AgentError("app-data capabilities takes no path", EXIT_USAGE)
+        if overwrite and action not in ("write", "import-db"):
+            raise AgentError("--overwrite is only for remote write/import-db", EXIT_USAGE)
+        if action in ("export-db", "import-db") and (
+            pathlib.PurePosixPath(path).name != path or path in (".", "..") or "\\" in path
+            or path.endswith(("-wal", "-journal", "-shm"))
+        ):
+            raise AgentError("database name must be a basename, not a path or sidecar", EXIT_USAGE)
+
+        def load(source: pathlib.Path, limit: int = 64 * 1024 * 1024) -> bytes:
+            with source.open("rb") as stream:
+                data = stream.read(limit + 1)
+            if len(data) > limit:
+                raise AgentError("private-data transfer exceeds 64 MiB", EXIT_USAGE)
+            return data
+
+        def save(destination: pathlib.Path, data: bytes) -> None:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+
+        def step() -> str:
+            data = self._device(device).app(package).data
+            if action == "capabilities":
+                access = data.capabilities()
+                return "private data available (run-as)" if access.available else f"private data unavailable: {access.reason}"
+            if action == "list":
+                return "\n".join(f"{'link' if e.is_symlink else 'dir' if e.is_directory else 'file'} {e.size_bytes} {json.dumps(e.name, ensure_ascii=False)}" for e in data.list(path)) or "(empty)"
+            if action == "delete":
+                data.delete(path)
+                return "deleted private file"
+            target = pathlib.Path(local or "")
+            if action == "read":
+                if target.exists():
+                    raise AgentError("local output already exists; choose a new path", EXIT_USAGE)
+                save(target, data.read(path))
+                return f"saved private file to {target}"
+            if action == "write":
+                data.write(path, load(target), overwrite=overwrite)
+                return "wrote private file"
+            if action == "export-db":
+                if target.exists():
+                    raise AgentError("database export needs a new local directory", EXIT_USAGE)
+                bundle = data.export_database(path)
+                target.mkdir(mode=0o700, parents=True)
+                for suffix, contents in (("", bundle.database), ("-wal", bundle.wal), ("-journal", bundle.journal)):
+                    if contents is not None:
+                        save(target / (path + suffix), contents)
+                return f"saved database bundle to {target} (keep database and sidecars together)"
+            base = load(target / path)
+            remaining = 64 * 1024 * 1024 - len(base)
+            sidecars: list[bytes | None] = []
+            for suffix in ("-wal", "-journal"):
+                source = target / (path + suffix)
+                contents = load(source, remaining) if source.exists() else None
+                if contents is not None:
+                    remaining -= len(contents)
+                sidecars.append(contents)
+            data.import_database(DatabaseBundle(path, base, *sidecars), overwrite=overwrite)
+            return "imported database bundle; app remains stopped"
 
         return self._run(step)
 

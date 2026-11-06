@@ -6,6 +6,16 @@ experimental may change in any release.
 
 ## Unreleased
 
+Server, Kotlin/Python clients and tap-agent:
+
+- **Debuggable private app data.** `app.data` probes actual run-as access, lists/reads/writes/
+  deletes relative private files, and exports/imports SQLite bundles including committed WAL
+  and rollback journals (not SHM). Binary-safe, bounded transfers; no private paths/bytes in
+  event records. Requires a stopped app, including secondary/shared-UID processes; stop and
+  relaunch explicitly. No root, arbitrary shell, SQL execution or data restore on detach.
+  Replacement requires explicit overwrite; interrupted multi-file import can require repair.
+  Agent CLI/MCP use owner-only local outputs and never print contents.
+
 Driver, server, clients (additive, protocol 5.1):
 
 - **Counted taps and timed presses.** Kotlin/Python `tap(count=…)`, `tripleTap` /

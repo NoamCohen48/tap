@@ -15,6 +15,7 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 | [Element](element.md) | `Element`, a lazy selector bound to a device; `ElementWait` |
 | [Selectors](selectors.md) | `text`, `res`, `desc`, … and the `Selector` they build; match modes |
 | [App](app.md) | `App`, from `device.app(package_name)` |
+| [Private app data](app-data.md) | `AppData`, `AppDataAccess`, `PrivateFileEntry`, `DatabaseBundle` |
 | [Screen](screen.md) | `Screen`, from `device.screen` |
 | [Client and connections](client.md) | `TapClient`, `TapConnection`, the server's device list, `start_daemon` / `stop_daemon` |
 | [Artifacts](artifacts.md) | `Screenshot`, `Hierarchy`, `DeviceInfo`, `DriverLog`, `Recording`, `Capture` |

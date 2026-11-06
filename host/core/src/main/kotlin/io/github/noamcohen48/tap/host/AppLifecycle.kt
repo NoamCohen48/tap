@@ -8,6 +8,7 @@ import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.wire.v1.SyncState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.withLock
 import java.nio.file.Path
 
 /** An AUT lifecycle postcondition did not hold (process still alive, window never appeared...). */
@@ -48,6 +49,9 @@ class AppLifecycle internal constructor(
     private val serial get() = session.serial
     private val client get() = session.client
 
+    /** Private files and SQLite bundles; access requires run-as and a stopped app. */
+    val data: AppPrivateData = AppPrivateData(this)
+
     /** Identity the synchronization provider handed out at bootstrap; reset by lifecycle changes. */
     @Volatile
     private var syncIdentity: SyncState? = null
@@ -59,11 +63,12 @@ class AppLifecycle internal constructor(
      * it follows the system. Read back afterwards and restored on detach, like the device
      * conditions. Tags must be well-formed ([canonicalLocales]).
      */
-    suspend fun setLocales(locales: List<String>) {
-        val canonical = canonicalLocales(locales)
-        session.requireApi(APP_LOCALES_API, "Per-app languages")
-        session.change(mapOf(StateKey.AppLocales(packageName).id to canonical.joinToString(",")))
-    }
+    suspend fun setLocales(locales: List<String>) =
+        session.appDataMutex.withLock {
+            val canonical = canonicalLocales(locales)
+            session.requireApi(APP_LOCALES_API, "Per-app languages")
+            session.change(mapOf(StateKey.AppLocales(packageName).id to canonical.joinToString(",")))
+        }
 
     /** The app's own languages now; empty = it follows the system. API 33+. */
     suspend fun locales(): List<String> {
@@ -75,20 +80,23 @@ class AppLifecycle internal constructor(
     suspend fun install(
         apk: Path,
         timeoutMs: Long,
-    ) {
+    ) = session.appDataMutex.withLock {
         session.guardAdb { adb.install(serial, apk, timeoutMs) }
         if (!isInstalled()) throw AppLifecycleException("$packageName is not installed after install on $serial")
         syncIdentity = null
     }
 
-    suspend fun uninstall() {
-        val output = session.guardAdb { adb.uninstall(serial, packageName) }
-        if (isInstalled()) throw AppLifecycleException("$packageName still installed after uninstall on $serial: $output")
-        syncIdentity = null
-    }
+    suspend fun uninstall() =
+        session.appDataMutex.withLock {
+            val output = session.guardAdb { adb.uninstall(serial, packageName) }
+            if (isInstalled()) throw AppLifecycleException("$packageName still installed after uninstall on $serial: $output")
+            syncIdentity = null
+        }
 
     /** `am force-stop` plus proof that no process, task or activity of the package remains. */
-    suspend fun forceStop(timeoutMs: Long) {
+    suspend fun forceStop(timeoutMs: Long) = session.appDataMutex.withLock { forceStopUnlocked(timeoutMs) }
+
+    private suspend fun forceStopUnlocked(timeoutMs: Long) {
         session.guardAdb { adb.forceStop(serial, packageName) }
         awaitStopped(timeoutMs, "force-stop")
         syncIdentity = null
@@ -102,23 +110,25 @@ class AppLifecycle internal constructor(
      * `dumpsys`, so the kill takes the process a following launch has just started and that
      * launch waits ~40 s. Stopped first, the task has no activity left and nothing is deferred.
      */
-    suspend fun clearData(timeoutMs: Long) {
-        val deadline = deadlineAfter(timeoutMs)
-        session.guardAdb { adb.forceStop(serial, packageName) }
-        awaitStopped(remainingMs(deadline), "force-stop")
-        val output = session.guardAdb { adb.clearData(serial, packageName) }
-        if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
-        awaitStopped(remainingMs(deadline), "pm clear")
-        syncIdentity = null
-    }
+    suspend fun clearData(timeoutMs: Long) =
+        session.appDataMutex.withLock {
+            val deadline = deadlineAfter(timeoutMs)
+            session.guardAdb { adb.forceStop(serial, packageName) }
+            awaitStopped(remainingMs(deadline), "force-stop")
+            val output = session.guardAdb { adb.clearData(serial, packageName) }
+            if ("Success" !in output) throw AppLifecycleException("pm clear $packageName failed on $serial: $output")
+            awaitStopped(remainingMs(deadline), "pm clear")
+            syncIdentity = null
+        }
 
     /** `pm grant`, then proof from `dumpsys package` that the permission reads as granted. */
-    suspend fun grantPermission(permission: String) {
-        session.guardAdb { adb.grantPermission(serial, packageName, permission) }
-        if (!session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }) {
-            throw AppLifecycleException("$permission is not granted to $packageName on $serial after pm grant")
+    suspend fun grantPermission(permission: String) =
+        session.appDataMutex.withLock {
+            session.guardAdb { adb.grantPermission(serial, packageName, permission) }
+            if (!session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }) {
+                throw AppLifecycleException("$permission is not granted to $packageName on $serial after pm grant")
+            }
         }
-    }
 
     /** Whether `dumpsys package` lists [permission] as granted to the package. */
     suspend fun isPermissionGranted(permission: String): Boolean =
@@ -128,12 +138,13 @@ class AppLifecycle internal constructor(
      * `pm revoke`, then proof from `dumpsys package` that the permission no longer reads as
      * granted. Android kills the app's process when one of its runtime permissions is revoked.
      */
-    suspend fun revokePermission(permission: String) {
-        session.guardAdb { adb.revokePermission(serial, packageName, permission) }
-        if (session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }) {
-            throw AppLifecycleException("$permission is still granted to $packageName on $serial after pm revoke")
+    suspend fun revokePermission(permission: String) =
+        session.appDataMutex.withLock {
+            session.guardAdb { adb.revokePermission(serial, packageName, permission) }
+            if (session.guardAdb { adb.isPermissionGranted(serial, packageName, permission) }) {
+                throw AppLifecycleException("$permission is still granted to $packageName on $serial after pm revoke")
+            }
         }
-    }
 
     /**
      * Starts [activity] (or the launcher activity) with `am start -W`, carrying [extras], and
@@ -146,7 +157,7 @@ class AppLifecycle internal constructor(
         activity: String?,
         timeoutMs: Long,
         extras: List<IntentExtra> = emptyList(),
-    ) {
+    ) = session.appDataMutex.withLock {
         launchUntil(activity, extras, deadlineAfter(timeoutMs), timeoutMs)
     }
 
@@ -159,14 +170,15 @@ class AppLifecycle internal constructor(
         timeoutMs: Long,
         stopTimeoutMs: Long = 10_000,
         extras: List<IntentExtra> = emptyList(),
-    ): ProcessObservation {
-        session.checkUsable()
-        forceStop(stopTimeoutMs)
-        val deadline = deadlineAfter(timeoutMs)
-        launchUntil(activity, extras, deadline, timeoutMs)
-        val remaining = remainingOrTimeout(deadline, timeoutMs, "a $packageName process after launch")
-        return session.guardAdb { observeProcess(adb, serial, packageName, remaining) }
-    }
+    ): ProcessObservation =
+        session.appDataMutex.withLock {
+            session.checkUsable()
+            forceStopUnlocked(stopTimeoutMs)
+            val deadline = deadlineAfter(timeoutMs)
+            launchUntil(activity, extras, deadline, timeoutMs)
+            val remaining = remainingOrTimeout(deadline, timeoutMs, "a $packageName process after launch")
+            session.guardAdb { observeProcess(adb, serial, packageName, remaining) }
+        }
 
     private suspend fun launchUntil(
         activity: String?,
@@ -188,16 +200,17 @@ class AppLifecycle internal constructor(
      * existing task returns as it was left (its back stack untouched); without one the launcher
      * activity starts. Like [launch], nothing about the app's UI is assumed.
      */
-    suspend fun foreground(timeoutMs: Long) {
-        session.checkUsable()
-        val deadline = deadlineAfter(timeoutMs)
-        val component = "$packageName/${launcherActivity()}"
-        val budget = remainingOrTimeout(deadline, timeoutMs, "am start $component")
-        val output = session.guardAdb { adb.startLauncherIntent(serial, component, budget) }
-        AmStartOutput.failure(output)?.let { failure ->
-            throw AppLifecycleException("am start $component failed on $serial: $failure\n$output")
+    suspend fun foreground(timeoutMs: Long) =
+        session.appDataMutex.withLock {
+            session.checkUsable()
+            val deadline = deadlineAfter(timeoutMs)
+            val component = "$packageName/${launcherActivity()}"
+            val budget = remainingOrTimeout(deadline, timeoutMs, "am start $component")
+            val output = session.guardAdb { adb.startLauncherIntent(serial, component, budget) }
+            AmStartOutput.failure(output)?.let { failure ->
+                throw AppLifecycleException("am start $component failed on $serial: $failure\n$output")
+            }
         }
-    }
 
     /**
      * Opens [uri] with a VIEW intent: only this package may handle it unless [anyApp], which
@@ -209,14 +222,15 @@ class AppLifecycle internal constructor(
         uri: String,
         anyApp: Boolean,
         timeoutMs: Long,
-    ): String? {
-        session.checkUsable()
-        val output = session.guardAdb { adb.startView(serial, uri, packageName.takeUnless { anyApp }, timeoutMs) }
-        AmStartOutput.failure(output)?.let { failure ->
-            throw AppLifecycleException("Opening $uri failed on $serial: $failure\n$output")
+    ): String? =
+        session.appDataMutex.withLock {
+            session.checkUsable()
+            val output = session.guardAdb { adb.startView(serial, uri, packageName.takeUnless { anyApp }, timeoutMs) }
+            AmStartOutput.failure(output)?.let { failure ->
+                throw AppLifecycleException("Opening $uri failed on $serial: $failure\n$output")
+            }
+            AmStartOutput.activity(output)
         }
-        return AmStartOutput.activity(output)
-    }
 
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
     suspend fun process(timeoutMs: Long): ProcessObservation = session.guardAdb { observeProcess(adb, serial, packageName, timeoutMs) }
@@ -406,9 +420,18 @@ internal object AmStartOutput {
         for (raw in output.lineSequence()) {
             val line = raw.trim()
             when {
-                line.startsWith("Error:") || line.startsWith("Error type") -> return line
-                line.startsWith("Exception occurred") -> return line
-                exceptionLine.matches(line) -> return line
+                line.startsWith("Error:") || line.startsWith("Error type") -> {
+                    return line
+                }
+
+                line.startsWith("Exception occurred") -> {
+                    return line
+                }
+
+                exceptionLine.matches(line) -> {
+                    return line
+                }
+
                 line.startsWith("Status:") -> {
                     // `timeout` only means the first frame took longer than am waits; the
                     // visibility wait that follows decides.

@@ -11,6 +11,7 @@ from . import render
 from .core import (
     ACCURACIES,
     APP_ACTIONS,
+    APP_DATA_ACTIONS,
     CONDITIONS,
     EXIT_OK,
     EXIT_USAGE,
@@ -227,6 +228,13 @@ def parser() -> argparse.ArgumentParser:
         help="launch/cold-launch: an intent extra; TYPE is string (default), int, long, float or bool; repeat for more",
     )
 
+    p = verb("app-data", "debuggable-app private files and SQLite bundles; stop the app explicitly first", on_device)
+    p.add_argument("action", choices=APP_DATA_ACTIONS)
+    p.add_argument("package", help="the debuggable app's package name")
+    p.add_argument("path", nargs="?", default="", help="relative private path, or database basename; list defaults to root")
+    p.add_argument("local", nargs="?", help="read/write: local file; export-db/import-db: local bundle directory")
+    p.add_argument("--overwrite", action="store_true", help="write/import-db: explicitly replace existing remote data")
+
     p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
     p.add_argument("-o", "--out", help="write it to this file instead")
 
@@ -318,6 +326,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.capture(device, args.out)
     if v == "export":
         return agent.export(args.out)
+    if v == "app-data":
+        return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
         return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra)
     raise AssertionError(v)

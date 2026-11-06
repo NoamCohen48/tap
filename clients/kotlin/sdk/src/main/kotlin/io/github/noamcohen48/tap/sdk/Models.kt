@@ -329,6 +329,9 @@ enum class FailureReason {
      * create it, its directory is missing, it is not a regular file, or it did not read back.
      */
     DEVICE_FILE,
+
+    /** Debuggable-app private data was refused or failed; [AppDataException.detail] identifies why. */
+    APP_DATA,
 }
 
 /** Why a device-side wait timed out ([WaitTimeoutException.reason]). */
