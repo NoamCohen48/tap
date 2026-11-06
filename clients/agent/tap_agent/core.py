@@ -41,6 +41,7 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
 )
 
 from . import render
+from .output import json_text
 from .targets import Target, UsageError, format_duration, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
@@ -48,6 +49,8 @@ DEFAULT_SESSION = "agent"
 EXPORT_FORMAT = "tap-events/1"
 DEFAULT_IDLE = 15 * 60.0
 DEFAULT_WAIT = 10.0
+MAX_COMMAND_TIMEOUT = 120.0
+WAIT_STATES = ("visible", "gone", "one", "enabled", "disabled", "checked", "unchecked", "focused", "text", "text-contains", "count")
 SETTLE_STABLE_FOR = 0.5
 SETTLE_TIMEOUT = 10.0
 PANELS = ("notifications", "quick-settings")
@@ -120,6 +123,21 @@ class AgentError(Exception):
     def __init__(self, message: str, exit_code: int = EXIT_FAILED):
         super().__init__(message)
         self.exit_code = exit_code
+
+
+def command_timeout(value: float | None) -> float | None:
+    """Validate the existing driver budget before resolving a target or sending any input."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AgentError("timeout must be a number of seconds", EXIT_USAGE)
+    try:
+        number = float(value)
+    except OverflowError:
+        number = math.inf
+    if not math.isfinite(number) or not 0 < number <= MAX_COMMAND_TIMEOUT:
+        raise AgentError("timeout must be positive and at most 120 seconds", EXIT_USAGE)
+    return number
 
 
 NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
@@ -275,6 +293,27 @@ class Agent:
 
         return self._run(step)
 
+    def inspect(self, target: str, device: str | None = None, timeout: float | None = None) -> str:
+        """The exact selector's current SDK element snapshot as JSON; ambiguity remains an error."""
+        return self._query(target, device, "snapshot", timeout)
+
+    def exists(self, target: str, device: str | None = None, timeout: float | None = None) -> str:
+        """Whether at least one node matches now; this is a read, not a wait."""
+        return self._query(target, device, "exists", timeout)
+
+    def count(self, target: str, device: str | None = None, timeout: float | None = None) -> str:
+        """The number of matches now, using the SDK's count semantics."""
+        return self._query(target, device, "count", timeout)
+
+    def _query(self, target: str, device: str | None, operation: str, timeout: float | None) -> str:
+        timeout = command_timeout(timeout)
+
+        def step() -> str:
+            element, _ = self._element(self._device(device), target)
+            return json_text(getattr(element, operation)(timeout=timeout))
+
+        return self._run(step)
+
     # --- sessions -------------------------------------------------------------------------------
 
     def attach(self, serial: str, idle: float = DEFAULT_IDLE, wait_for_device: float = 0) -> str:
@@ -362,6 +401,7 @@ class Agent:
 
     def settle(self, device: str | None = None, full: bool = False, timeout: float = SETTLE_TIMEOUT) -> str:
         """Waits for the screen to stop changing, then shows what changed since the last snapshot."""
+        command_timeout(timeout)
         return self._run(lambda: self._settled(self._device(device), full=full, timeout=timeout))
 
     def screenshot(self, device: str | None = None, out: str | os.PathLike[str] | None = None) -> pathlib.Path:
@@ -429,8 +469,7 @@ class Agent:
             raise AgentError("interval must be in 0.04..1 seconds", EXIT_USAGE)
         if count * 50 + (count - 1) * round(interval * 1000) > 30_000:
             raise AgentError("the tap sequence must not exceed 30 seconds", EXIT_USAGE)
-        if timeout is not None and (not math.isfinite(timeout) or not 0 < timeout <= 120):
-            raise AgentError("timeout must be positive and at most 120 seconds", EXIT_USAGE)
+        timeout = command_timeout(timeout)
         if duration is not None:
             if isinstance(duration, bool) or not math.isfinite(duration) or not 0.001 <= duration <= 30:
                 raise AgentError("duration must be in 0.001..30 seconds", EXIT_USAGE)
@@ -777,6 +816,7 @@ class Agent:
         """Waits for a toast of any app (only ``package``'s when given), shown in the last 3.5 s
         or arriving within ``timeout``; ``text`` must match it exactly, or be part of it with
         ``contains``."""
+        command_timeout(timeout)
         if contains and text is None:
             raise AgentError("toast --contains needs a text", EXIT_USAGE)
 
@@ -805,6 +845,7 @@ class Agent:
         the one that matches as a tap does (or press its ``button``); ``dismiss``: swipe it away.
         ``title`` / ``text`` match exactly, or as parts with ``contains``; ``package`` narrows to
         one app. Notification access is given to the driver for the session."""
+        command_timeout(timeout)
         if action not in NOTIFICATION_ACTIONS:
             raise AgentError(f"notification takes {', '.join(NOTIFICATION_ACTIONS)}, not {action!r}", EXIT_USAGE)
         if contains and title is None and text is None:
@@ -816,17 +857,17 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             if action == "list":
-                shown = d.notifications()
+                shown = d.notifications(timeout=timeout)
                 if package is not None:
                     shown = [n for n in shown if n.package_name == package]
                 return "\n".join(_notification_line(n) for n in shown) or "no notifications"
             if action == "await":
                 return _notification_line(d.await_notification(title, text, mode, package_name=package, timeout=timeout))
             if action == "open":
-                d.open_notification(title, text, mode, package_name=package, action=button)
+                d.open_notification(title, text, mode, package_name=package, action=button, timeout=timeout)
                 done = f"pressed {button!r} on the notification" if button else "opened the notification"
             else:
-                d.dismiss_notification(title, text, mode, package_name=package)
+                d.dismiss_notification(title, text, mode, package_name=package, timeout=timeout)
                 done = "dismissed the notification"
             return f"{done}\n{self._settled(d)}" if settle else done
 
@@ -843,6 +884,7 @@ class Agent:
         """Without ``choice``: waits for a runtime-permission dialog and lists the buttons it
         offers. With one (``allow``, ``allow-foreground-only``, ``deny``, ...): presses it, after
         picking ``accuracy`` (precise or approximate) on a location dialog that offers it."""
+        command_timeout(timeout)
         chosen = None
         if choice is not None:
             name = choice.strip().upper().replace("-", "_")
@@ -866,23 +908,38 @@ class Agent:
                 if prompt.accuracies:
                     text += f"; accuracy: {', '.join(a.name.lower() for a in prompt.accuracies)}"
                 return text
-            d.choose_permission(chosen, picked)
+            d.choose_permission(chosen, picked, timeout=timeout)
             text = f"pressed {choice}" + (f" ({picked.name.lower()})" if picked else "")
             return f"{text}\n{self._settled(d)}" if settle else text
 
         return self._run(step)
 
-    def wait(self, target: str, device: str | None = None, state: str = "visible", timeout: float = DEFAULT_WAIT) -> str:
-        """Waits on the device until the target is visible, gone, or matches exactly one node."""
-        if state not in ("visible", "gone", "one"):
-            raise AgentError(f"state must be visible, gone or one, not {state!r}", EXIT_USAGE)
+    def wait(self, target: str, device: str | None = None, state: str = "visible", timeout: float = DEFAULT_WAIT, *, value: str | int | None = None) -> str:
+        """Wait for visibility, uniqueness, state, text or count using SDK waits (no input)."""
+        command_timeout(timeout)
+        if state not in WAIT_STATES:
+            raise AgentError(f"state must be one of {', '.join(WAIT_STATES)}", EXIT_USAGE)
+        if state in ("text", "text-contains") and not isinstance(value, str):
+            raise AgentError(f"wait {state} needs a string value", EXIT_USAGE)
+        if state == "count":
+            if isinstance(value, bool) or not isinstance(value, (str, int)) or not str(value).isdigit() or int(value) >= 2**31:
+                raise AgentError("wait count needs an integer value in 0..2147483647", EXIT_USAGE)
+        elif state not in ("text", "text-contains") and value is not None:
+            raise AgentError(f"wait {state} does not take a value", EXIT_USAGE)
 
         def step() -> str:
-            d = self._device(device)
-            element, described = self._element(d, target)
+            element, described = self._element(self._device(device), target)
             waiting = element.wait(timeout)
-            {"visible": waiting.visible, "gone": waiting.gone, "one": waiting.one}[state]()
-            return f"{described} is {'exactly one node' if state == 'one' else state}"
+            if state == "count":
+                waiting.count(int(str(value)))
+            elif state == "text":
+                waiting.text_equals(str(value))
+            elif state == "text-contains":
+                waiting.text_contains(str(value))
+            else:
+                getattr(waiting, state)()
+            label = 'exactly one node' if state == 'one' else state
+            return f"{described} is {label}" + (f" {value!r}" if value is not None else "")
 
         return self._run(step)
 
