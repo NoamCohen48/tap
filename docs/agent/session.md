@@ -64,6 +64,25 @@ A **target** is a ref or `key=value` terms joined by commas: `id=`, `text=`, `te
 (contains), `desc=`, `desc~=`, `hint=`, `class=`, `pkg=`, `index=`. A target matches anywhere
 on the screen; `pkg=` keeps it to one app's nodes.
 
+Boolean predicates include `enabled=true`, `checked=false`, `focused=true`, `checkable`,
+`clickable`, `focusable`, `long_clickable`, `scrollable` and `selected` (each true/false).
+Use `text:starts_with=Order`, `desc:ends_with=button` or `text:regex=Order \\d+` for other
+match modes; `exact`, `contains`, `starts_with`, `ends_with` and RE2 full-match `regex` work
+with text, desc, hint, class and pkg. Escape a comma as `\,`; other regex backslashes stay
+literal. A simple `class=Button` retains its class-name suffix shorthand.
+
+For nested predicates, supply a JSON selector string (also accepted as the MCP target):
+
+```sh
+tap-agent tap '{"any":[{"text":"Save"},{"text":"Submit"}],"enabled":true,"ancestor":{"id":"dialog"}}'
+```
+
+JSON accepts the same property names, `{"text":{"value":"Order","mode":"starts_with"}}`,
+`all`/`any` arrays of at least two predicates, and `parent`/`ancestor`/`child`/`descendant`
+objects constraining this node's relatives. `index` or `first:true` is allowed only on the
+outer object. Targets are at most 64 KiB; the SDK/driver's 32-level, 256-node and 1024-character
+string limits still apply. There is no XPath or raw command escape hatch.
+
 `--settle` waits for the screen to stop changing after the action and prints the difference:
 `+` added and `-` removed nodes. Nodes with validation errors are also shown, marked `=` if
 their ref is unchanged; validation state does not change a node's identity. That is usually
@@ -81,7 +100,24 @@ text=Dark theme is visible
 ```
 
 `wait` polls on the device until the target is visible (`--gone`, `--one`), up to `--timeout`
-(10 s by default). Use it instead of a sleep, and to confirm what an action was supposed to do.
+(10 s by default, at most 120 s). Use it instead of a sleep, and to confirm what an action was supposed to do.
+
+`inspect <target>` returns the exact node's SDK state as JSON (text, bounds, flags, actions and
+range); no match or ambiguity remains an error. This explicitly reads accessibility text,
+which may contain sensitive data: do not copy it to shared logs. `exists` and `count` are
+immediate read-only queries. For property waits use:
+
+```sh
+tap-agent wait id=save --state enabled
+tap-agent wait id=terms --state checked
+tap-agent wait id=status --state text --value Saved
+tap-agent wait class=Button --state count --value 3
+```
+
+States also include disabled, unchecked, focused and text-contains. Text/count states require
+`--value`; other states reject it. Property/count waits use the existing SDK host polling;
+visibility/gone/one stay device-polled. CLI/core/MCP command budgets share the protocol's
+120-second maximum. Standalone MCP `settle` accepts `timeout_seconds`, matching CLI `--timeout`.
 
 ## When a step fails
 

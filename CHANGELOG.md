@@ -6,6 +6,13 @@ experimental may change in any release.
 
 ## Unreleased
 
+tap-agent:
+
+- **Element queries and richer selectors.** CLI/MCP `inspect`, `exists` and `count`, state/text/
+  count waits, boolean and text-mode predicates, and bounded JSON selectors for logical and
+  relational expressions reuse SDK semantics. No XPath or persistent handles. Command budgets
+  reject values above the protocol's 120-second maximum locally; MCP settle exposes its timeout.
+
 Server, Kotlin/Python clients and tap-agent:
 
 - **Debuggable private app data.** `app.data` probes actual run-as access, lists/reads/writes/

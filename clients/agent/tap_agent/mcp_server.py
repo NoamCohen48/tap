@@ -20,7 +20,7 @@ from mcp_types import (  # pyright: ignore[reportMissingImports]
     TextContent,
     ToolAnnotations,
 )
-from pydantic import Field
+from pydantic import Field, StrictInt
 
 from . import render
 from .core import EXIT_NO_DAEMON, EXIT_USAGE, Agent, AgentError
@@ -41,7 +41,8 @@ Target = Annotated[
     Field(
         description=(
             "A ref from snapshot (`@e7`) or selector terms joined by commas, all of which must "
-            f"match: `id=login`, `text=Log in`, `desc=Close`, `class=Button` (keys: {SELECTOR_KEYS})."
+            f"match: `id=login`, `text=Log in`, `class=Button` (keys: {SELECTOR_KEYS}). "
+            'Or a JSON selector string: {"any":[{"text":"Save"},{"text":"Submit"}],"enabled":true}.'
         )
     ),
 ]
@@ -132,6 +133,36 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         level = {"default": render.DEFAULT, "interactive": render.INTERACTIVE, "all": render.ALL}[view]
         return await call(session, lambda a: a.snapshot(device or None, level))
 
+    @mcp.tool(name="inspect", annotations=READ_ONLY)
+    async def inspect(
+        target: Target,
+        timeout_seconds: Annotated[float | None, Field(gt=0, le=120)] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """The exact selector's current SDK element state as JSON; ambiguity remains an error."""
+        return await call(session, lambda a: a.inspect(target, device or None, timeout_seconds))
+
+    @mcp.tool(name="exists", annotations=READ_ONLY)
+    async def exists(
+        target: Target,
+        timeout_seconds: Annotated[float | None, Field(gt=0, le=120)] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Whether any node matches now, without waiting or input."""
+        return await call(session, lambda a: a.exists(target, device or None, timeout_seconds))
+
+    @mcp.tool(name="count", annotations=READ_ONLY)
+    async def count(
+        target: Target,
+        timeout_seconds: Annotated[float | None, Field(gt=0, le=120)] = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Count matching nodes now, using SDK count semantics."""
+        return await call(session, lambda a: a.count(target, device or None, timeout_seconds))
+
     @mcp.tool(name="tap")
     async def tap(
         target: Target,
@@ -140,7 +171,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         count: Annotated[int, Field(ge=1, le=100, description="Number of taps; cannot combine with long/double/duration.")] = 1,
         interval: Annotated[float, Field(ge=0.04, le=1, description="Release-to-press gap in seconds for counted taps.")] = 0.1,
         duration: Annotated[float | None, Field(ge=0.001, le=30, description="Hold duration in seconds; implies long press.")] = None,
-        timeout: Annotated[float | None, Field(gt=0, description="Command budget in seconds, including the whole gesture.")] = None,
+        timeout: Annotated[float | None, Field(gt=0, le=120, description="Command budget in seconds, including the whole gesture.")] = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
@@ -343,7 +374,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         text: Annotated[str, Field(description="The toast's text; omit for any toast.")] = "",
         contains: Annotated[bool, Field(description="text is only part of the toast.")] = False,
         package: Annotated[str, Field(description="Only this package's toasts; omit for any app's.")] = "",
-        timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -364,7 +395,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         contains: Annotated[bool, Field(description="title/text are only part of it.")] = False,
         package: Annotated[str, Field(description="Only this package's notifications; omit for any app's.")] = "",
         button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
-        timeout_seconds: Annotated[float, Field(gt=0, le=600, description="await only.")] = 10,
+        timeout_seconds: Annotated[float, Field(gt=0, le=120, description="Command/wait budget in seconds.")] = 10,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
@@ -437,7 +468,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             str,
             Field(description="The button to press: allow, allow-foreground-only, allow-one-time, deny, ...; omit to list them."),
         ] = "",
-        timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
         accuracy: Annotated[
             Literal["precise", "approximate"] | None,
             Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
@@ -456,23 +487,26 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def wait_for(
         target: Target,
         state: Annotated[
-            Literal["visible", "gone", "one"], Field(description="one: exactly one node matches.")
+            Literal["visible", "gone", "one", "enabled", "disabled", "checked", "unchecked", "focused", "text", "text-contains", "count"],
+            Field(description="A visibility/state condition; text, text-contains and count require value."),
         ] = "visible",
-        timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 10,
+        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
+        value: Annotated[str | StrictInt | None, Field(description="Expected text or integer count for those states.")] = None,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Wait, polling on the device, until target is visible, gone, or exactly one node."""
-        return await call(session, lambda a: a.wait(target, device or None, state, timeout_seconds))
+        """Wait for visibility, state, text or count through SDK waits. Never sends input."""
+        return await call(session, lambda a: a.wait(target, device or None, state, timeout_seconds, value=value))
 
     @mcp.tool(name="settle", annotations=READ_ONLY)
     async def settle(
         full: Annotated[bool, Field(description="Also list unchanged nodes (=).")] = False,
+        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Wait for the screen to stop changing, then list what changed since the last snapshot."""
-        return await call(session, lambda a: a.settle(device or None, full=full))
+        return await call(session, lambda a: a.settle(device or None, full=full, timeout=timeout_seconds))
 
     @mcp.tool(name="screenshot", annotations=READ_ONLY)
     async def screenshot(session: Session = "", device: Device = "") -> CallToolResult:

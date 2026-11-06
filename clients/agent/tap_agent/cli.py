@@ -22,8 +22,10 @@ from .core import (
     PINCHES,
     ROTATIONS,
     SCREEN_ACTIONS,
+    WAIT_STATES,
     Agent,
     AgentError,
+    command_timeout,
 )
 from .targets import SELECTOR_KEYS, UsageError, parse_duration
 
@@ -44,13 +46,22 @@ A target is a ref from `snapshot` (@e3) or key=value terms joined by commas, all
 match: {keys}. Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon.
 """.format(keys=SELECTOR_KEYS)
 
-TARGET_HELP = "a ref (@e3) or selector terms: id=login, text=Log in, desc=Close, class=Button, …"
+TARGET_HELP = "a ref (@e3), comma-joined selector terms, or a JSON selector (all/any, relations, flags, text modes)"
 
 
 def _duration(value: str) -> float:
     try:
         return parse_duration(value)
     except UsageError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
+
+
+def _command_duration(value: str) -> float:
+    try:
+        seconds = parse_duration(value)
+        command_timeout(seconds)
+        return seconds
+    except (UsageError, AgentError) as error:
         raise argparse.ArgumentTypeError(str(error)) from None
 
 
@@ -84,6 +95,11 @@ def parser() -> argparse.ArgumentParser:
     level.add_argument("-i", "--interactive", dest="level", action="store_const", const=render.INTERACTIVE, help="only nodes an action can target")
     level.add_argument("--all", dest="level", action="store_const", const=render.ALL, help="every node, layout containers too")
 
+    for name, help in (("inspect", "read one node's complete SDK state as JSON"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
+        p = verb(name, help, on_device)
+        p.add_argument("target", help=TARGET_HELP)
+        p.add_argument("--timeout", type=_command_duration, help="read budget, at most 120s")
+
     p = verb("tap", "tap a node", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
     kind = p.add_mutually_exclusive_group()
@@ -92,7 +108,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--count", type=int, default=1, help="tap this many times, 1..100")
     p.add_argument("--interval", type=_duration, default=0.1, help="release-to-press gap for counted taps, 40ms..1s (default 100ms)")
     p.add_argument("--duration", type=_duration, help="hold the finger down for this duration, 1ms..30s (implies --long)")
-    p.add_argument("--timeout", type=_duration, help="command budget; must cover the whole gesture")
+    p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s; must cover the whole gesture")
 
     p = verb("fill", "replace a field's text (no key events)", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
@@ -180,14 +196,14 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
     p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")
-    p.add_argument("--timeout", type=_duration, default=10.0, help="how long to wait for the dialog (default 10s)")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="dialog wait/action budget, at most 120s (default 10s)")
     p.add_argument("--accuracy", choices=ACCURACIES, help="pick Precise or Approximate first (location dialog, Android 12+)")
 
     p = verb("toast", "wait for a toast (shown in the last 3.5s or coming) and print it", on_device)
     p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
     p.add_argument("--contains", action="store_true", help="text is only part of the toast")
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
-    p.add_argument("--timeout", type=_duration, default=10.0, help="default 10s")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
 
     p = verb("notification", "list the device's notifications, or wait for, open or dismiss one (read as data; the shade stays closed)", on_device, settle)
     p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", default="list")
@@ -196,18 +212,20 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--contains", action="store_true", help="title/text are only part of it")
     p.add_argument("--package", help="only this package's notifications")
     p.add_argument("--button", help="open: press the action button with this title instead")
-    p.add_argument("--timeout", type=_duration, default=10.0, help="await: default 10s")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="command/wait budget, at most 120s; default 10s")
 
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
     state = p.add_mutually_exclusive_group()
     state.add_argument("--gone", dest="state", action="store_const", const="gone")
     state.add_argument("--one", dest="state", action="store_const", const="one")
-    p.add_argument("--timeout", type=_duration, default=10.0, help="default 10s")
+    state.add_argument("--state", choices=WAIT_STATES, help="visibility, state, text, or count condition")
+    p.add_argument("--value", help="expected text or count for --state text/text-contains/count")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
 
     p = verb("settle", "wait for the screen to stop changing, then print what changed", on_device)
     p.add_argument("--full", action="store_true", help="also print unchanged nodes (=)")
-    p.add_argument("--timeout", type=_duration, default=10.0, help="default 10s")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
 
     p = verb("screenshot", "save a PNG and print its path", on_device)
     p.add_argument("-o", "--out", help="file (default .tap/agent/<serial>-<time>.png)")
@@ -258,6 +276,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.devices()
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT)
+    if v in ("inspect", "exists", "count"):
+        return getattr(agent, v)(args.target, device, args.timeout)
     if v == "tap":
         return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double,
                          count=args.count, interval=args.interval, duration=args.duration, timeout=args.timeout)
@@ -317,7 +337,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "permission":
         return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
     if v == "wait":
-        return agent.wait(args.target, device, args.state or "visible", args.timeout)
+        return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value)
     if v == "settle":
         return agent.settle(device, full=args.full, timeout=args.timeout)
     if v == "screenshot":

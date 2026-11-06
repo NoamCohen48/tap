@@ -49,6 +49,19 @@ dialogs).
   several matches). Write `\,` for a comma inside a value. Without `pkg` a selector searches
   the whole screen, other apps' windows included; add `pkg=` when another window has a match too.
 
+Also supported: boolean flags (`enabled=true`, `checked=false`, `focused=true`, checkable,
+clickable, focusable, long_clickable, scrollable, selected), and `text:starts_with=Order` /
+`text:regex=Order \\d+` (modes exact/contains/starts_with/ends_with/regex on text/desc/hint/class/pkg).
+Nested JSON selector strings support all/any groups and parent/ancestor/child/descendant predicates,
+e.g. `'{"text":"Save","enabled":true,"ancestor":{"id":"dialog"}}'`. Only the outer selector may
+pick index or first. Bounded at 64 KiB / 32 levels / 256 nodes; no XPath.
+
+`inspect TARGET` reads full SDK element state as JSON (may include sensitive text); `exists`
+and `count` read immediate matches. `wait TARGET --state enabled|disabled|checked|unchecked|focused`
+waits on state, `--state text|text-contains --value TEXT` on text, `--state count --value N` on count.
+All command/wait budgets are positive and at most 120 seconds; MCP settle now also accepts
+`timeout_seconds`. Do not treat a successful input as proof its expected result appeared.
+
 Every action needs exactly one matching node; with none or several it fails before touching
 the device, and says so.
 
