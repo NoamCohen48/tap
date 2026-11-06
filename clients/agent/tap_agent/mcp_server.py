@@ -51,6 +51,9 @@ Settle = Annotated[bool, Field(description="Wait for the screen to settle, then 
 Direction = Literal["up", "down", "left", "right"]
 Session = Annotated[str, Field(description="Session name; omit for the server's default session.")]
 
+Budget = Annotated[float | None, Field(ge=0.001, le=120, description="SDK command budget in seconds, 1ms..120s.")]
+Percent = Annotated[StrictInt, Field(ge=1, le=100, description="Gesture distance across the node.")]
+
 READ_ONLY = ToolAnnotations(read_only_hint=True)
 
 
@@ -120,23 +123,70 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """End the session: detach its devices so others can use them."""
         return await call(session, lambda a: a.release())
 
+    @mcp.tool(name="detach")
+    async def detach(session: Session = "", device: Device = "") -> CallToolResult:
+        """Detach one device, preserving the held session and its other devices."""
+        return await call(session, lambda a: a.detach(device or None))
+
+    @mcp.tool(name="server_info", annotations=READ_ONLY)
+    async def server_info() -> CallToolResult:
+        """Daemon version, compatibility and configuration as SDK JSON; never starts it."""
+        return await call("", lambda a: a.server_info())
+
+    @mcp.tool(name="device_info", annotations=READ_ONLY)
+    async def device_info(session: Session = "", device: Device = "") -> CallToolResult:
+        """Complete current device state as SDK JSON."""
+        return await call(session, lambda a: a.device_info(device or None))
+
+    @mcp.tool(name="logs", annotations=READ_ONLY)
+    async def logs(kind: Literal["device", "driver", "hierarchy"] = "device", path: str = "", session: Session = "", device: Device = "") -> CallToolResult:
+        """Save SDK device/driver logs or diagnostic hierarchy privately, never inline or overwrite."""
+        return await call(session, lambda a: a.logs(kind, device or None, path or None))
+
+    @mcp.tool(name="recording")
+    async def recording(
+        action: Literal["start", "stop"],
+        video: bool = True,
+        audio_source: Annotated[Literal["output", "playback", "mic"] | None, Field(description="Start: output mutes speakers; mic captures the microphone.")] = None,
+        max_seconds: Annotated[StrictInt | None, Field(ge=1, le=60, description="Start: at most 30 with video or 60 audio-only.")] = None,
+        path: Annotated[str, Field(description="Stop: additional new local output; a private canonical copy is retained.")] = "",
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """Explicit bounded recording of an agent-owned device. Start needs scrcpy; video-only
+        by default, audio needs API 30+. Stop saves SDK-verified bytes privately. Never replay
+        start/stop or relaunch an app on failure. Track/duration options are for start only."""
+        return await call(session, lambda a: a.recording(action, device or None, video=video, audio_source=audio_source, max_seconds=max_seconds, out=path or None))
+
+    @mcp.tool(name="scroll_until")
+    async def scroll_until(
+        target: Target, destination: Target, direction: Direction = "down",
+        max_scrolls: Annotated[StrictInt, Field(ge=1, le=1000)] = 20,
+        percent: Percent = 80, timeout_seconds: Budget = None,
+        session: Session = "", device: Device = "",
+    ) -> CallToolResult:
+        """Bounded SDK container/descendant scroll-until. No movement/end-of-list guarantee;
+        count and deadline bound the loop. Never replay a mutation after transport loss."""
+        return await call(session, lambda a: a.scroll_until(target, destination, direction, device or None, max_scrolls=max_scrolls, percent=percent, timeout=timeout_seconds))
+
     @mcp.tool(name="snapshot", annotations=READ_ONLY)
     async def snapshot(
         view: Annotated[
             Literal["default", "interactive", "all"],
             Field(description="interactive: only nodes an action can target; all: layout containers too."),
         ] = "default",
+        candidates: Annotated[bool, Field(description="Structured SDK snapshot with selector candidates; use default view.")] = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """The current screen, one node per line with its ref (`@eN`)."""
+        """The current screen with refs, or structured SDK data including selector candidates."""
         level = {"default": render.DEFAULT, "interactive": render.INTERACTIVE, "all": render.ALL}[view]
-        return await call(session, lambda a: a.snapshot(device or None, level))
+        return await call(session, lambda a: a.snapshot(device or None, level, candidates=candidates))
 
     @mcp.tool(name="inspect", annotations=READ_ONLY)
     async def inspect(
         target: Target,
-        timeout_seconds: Annotated[float | None, Field(gt=0, le=120)] = None,
+        timeout_seconds: Budget = None,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -146,7 +196,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="exists", annotations=READ_ONLY)
     async def exists(
         target: Target,
-        timeout_seconds: Annotated[float | None, Field(gt=0, le=120)] = None,
+        timeout_seconds: Budget = None,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -156,7 +206,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="count", annotations=READ_ONLY)
     async def count(
         target: Target,
-        timeout_seconds: Annotated[float | None, Field(gt=0, le=120)] = None,
+        timeout_seconds: Budget = None,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -171,7 +221,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         count: Annotated[int, Field(ge=1, le=100, description="Number of taps; cannot combine with long/double/duration.")] = 1,
         interval: Annotated[float, Field(ge=0.04, le=1, description="Release-to-press gap in seconds for counted taps.")] = 0.1,
         duration: Annotated[float | None, Field(ge=0.001, le=30, description="Hold duration in seconds; implies long press.")] = None,
-        timeout: Annotated[float | None, Field(gt=0, le=120, description="Command budget in seconds, including the whole gesture.")] = None,
+        timeout: Annotated[float | None, Field(ge=0.001, le=120, description="Command budget in seconds, including the whole gesture.")] = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
@@ -184,81 +234,88 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def fill(
         target: Target,
         text: Annotated[str, Field(description="The new text.")],
+        timeout_seconds: Budget = None,
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Replace a field's text (accessibility set-text; no key events)."""
-        return await call(session, lambda a: a.fill(target, text, device or None, settle=settle, sensitive=sensitive))
+        return await call(session, lambda a: a.fill(target, text, device or None, settle=settle, sensitive=sensitive, timeout=timeout_seconds))
 
     @mcp.tool(name="type_text")
     async def type_text(
         text: Annotated[str, Field(description="Characters to type.")],
+        target: Annotated[str, Field(description="Optional ref or selector; SDK taps it and waits for focus first.")] = "",
+        await_focus: Annotated[bool, Field(description="Only with a target: wait for focus before typing.")] = True,
+        timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="Per tap/type budget, not an overall deadline.")] = None,
+        focus_timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="Separate target focus wait; SDK default 10 seconds.")] = None,
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Type key events into whatever has input focus (tap a field first)."""
-        return await call(session, lambda a: a.type(text, device or None, settle=settle, sensitive=sensitive))
+        """Type into current focus, or tap a target and await its focus through the SDK helper."""
+        return await call(session, lambda a: a.type(text, device or None, settle=settle, sensitive=sensitive, target=target or None, await_focus=await_focus, timeout=timeout_seconds, focus_timeout=focus_timeout_seconds))
 
     @mcp.tool(name="clear")
-    async def clear(target: Target, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
+    async def clear(target: Target, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
         """Clear a field's text."""
-        return await call(session, lambda a: a.clear(target, device or None, settle=settle))
+        return await call(session, lambda a: a.clear(target, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="scroll")
     async def scroll(
-        target: Target, direction: Direction, settle: Settle = False, session: Session = "", device: Device = ""
+        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One scroll gesture on a scrollable node; `down` reveals content below."""
-        return await call(session, lambda a: a.scroll(target, direction, device or None, settle=settle))
+        return await call(session, lambda a: a.scroll(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
 
     @mcp.tool(name="swipe")
     async def swipe(
-        target: Target, direction: Direction, settle: Settle = False, session: Session = "", device: Device = ""
+        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One swipe across a node, the finger moving in `direction`."""
-        return await call(session, lambda a: a.swipe(target, direction, device or None, settle=settle))
+        return await call(session, lambda a: a.swipe(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
 
     @mcp.tool(name="fling")
     async def fling(
-        target: Target, direction: Direction, settle: Settle = False, session: Session = "", device: Device = ""
+        target: Target, direction: Direction, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One fast swipe on a scrollable node towards a content edge, as for scroll; the content
         may keep moving afterwards (use settle)."""
-        return await call(session, lambda a: a.fling(target, direction, device or None, settle=settle))
+        return await call(session, lambda a: a.fling(target, direction, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="drag")
     async def drag(
         target: Target,
         destination: Annotated[str, Field(description="Where to drop it: a ref (@e7) or selector terms, as for target.")],
+        timeout_seconds: Budget = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Long-press the node matching target, move it onto the node matching destination and drop it."""
-        return await call(session, lambda a: a.drag(target, destination, device or None, settle=settle))
+        return await call(session, lambda a: a.drag(target, destination, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="pinch")
     async def pinch(
         target: Target,
         how: Annotated[Literal["open", "close"], Field(description="open: fingers apart (zoom in); close: together.")],
-        percent: Annotated[int, Field(ge=1, le=100, description="How far across the node the fingers move.")] = 80,
+        percent: Percent = 80,
+        timeout_seconds: Budget = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Two-finger pinch on a node (a map, an image)."""
-        return await call(session, lambda a: a.pinch(target, how, percent, device or None, settle=settle))
+        return await call(session, lambda a: a.pinch(target, how, percent, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="submit")
-    async def submit(target: Target, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
+    async def submit(target: Target, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
         """Run a text field's keyboard action (Search, Go, Send, Done, ... as the app set it up),
         exactly as the keyboard's action key does; press_key enter is not the same. The field must
         have input focus (tap it first). Android 11 (API 30)+."""
-        return await call(session, lambda a: a.submit(target, device or None, settle=settle))
+        return await call(session, lambda a: a.submit(target, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="accessibility_action")
     async def accessibility_action(
@@ -272,6 +329,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             ),
         ] = "",
         custom: Annotated[bool, Field(description="name is a custom action's label (e.g. 'Archive').")] = False,
+        timeout_seconds: Budget = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
@@ -280,19 +338,20 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         the actions it offers and its range. Use it for what a node offers instead of a gesture:
         expand/collapse a section, a list item's custom "Archive"/"Delete". An action the node does
         not offer fails before anything happens."""
-        return await call(session, lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle))
+        return await call(session, lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="set_progress")
     async def set_progress(
         target: Target,
         value: Annotated[float, Field(description="The value in the node's own units (see accessibility_action's range).")],
+        timeout_seconds: Budget = None,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Set a slider (SeekBar, Slider, RatingBar) to an exact value through accessibility
         ACTION_SET_PROGRESS. A value outside the node's range fails before anything happens."""
-        return await call(session, lambda a: a.progress(target, value, device or None, settle=settle))
+        return await call(session, lambda a: a.progress(target, value, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="keyboard")
     async def keyboard(
@@ -374,7 +433,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         text: Annotated[str, Field(description="The toast's text; omit for any toast.")] = "",
         contains: Annotated[bool, Field(description="text is only part of the toast.")] = False,
         package: Annotated[str, Field(description="Only this package's toasts; omit for any app's.")] = "",
-        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
+        timeout_seconds: Annotated[float, Field(ge=0.001, le=120)] = 10,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -395,7 +454,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         contains: Annotated[bool, Field(description="title/text are only part of it.")] = False,
         package: Annotated[str, Field(description="Only this package's notifications; omit for any app's.")] = "",
         button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
-        timeout_seconds: Annotated[float, Field(gt=0, le=120, description="Command/wait budget in seconds.")] = 10,
+        timeout_seconds: Annotated[float, Field(ge=0.001, le=120, description="Command/wait budget in seconds.")] = 10,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
@@ -468,7 +527,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             str,
             Field(description="The button to press: allow, allow-foreground-only, allow-one-time, deny, ...; omit to list them."),
         ] = "",
-        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
+        timeout_seconds: Annotated[float, Field(ge=0.001, le=120)] = 10,
         accuracy: Annotated[
             Literal["precise", "approximate"] | None,
             Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
@@ -490,7 +549,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["visible", "gone", "one", "enabled", "disabled", "checked", "unchecked", "focused", "text", "text-contains", "count"],
             Field(description="A visibility/state condition; text, text-contains and count require value."),
         ] = "visible",
-        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
+        timeout_seconds: Annotated[float, Field(ge=0.001, le=120)] = 10,
         value: Annotated[str | StrictInt | None, Field(description="Expected text or integer count for those states.")] = None,
         session: Session = "",
         device: Device = "",
@@ -501,25 +560,28 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="settle", annotations=READ_ONLY)
     async def settle(
         full: Annotated[bool, Field(description="Also list unchanged nodes (=).")] = False,
-        timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 10,
+        timeout_seconds: Annotated[float, Field(ge=0.001, le=120)] = 10,
+        package: Annotated[str, Field(description="Explicit package; omit for the focused app.")] = "",
+        stable_for: Annotated[float, Field(ge=0.001, le=30, description="Quiet period in seconds, no greater than timeout.")] = 0.5,
+        signal: Literal["tree", "pixels", "all"] = "tree",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Wait for the screen to stop changing, then list what changed since the last snapshot."""
-        return await call(session, lambda a: a.settle(device or None, full=full, timeout=timeout_seconds))
+        return await call(session, lambda a: a.settle(device or None, full=full, timeout=timeout_seconds, package=package or None, stable_for=stable_for, signal=signal))
 
     @mcp.tool(name="screenshot", annotations=READ_ONLY)
-    async def screenshot(session: Session = "", device: Device = "") -> CallToolResult:
+    async def screenshot(session: Session = "", device: Device = "", path: str = "") -> CallToolResult:
         """A PNG of the screen, also saved to disk. Prefer snapshot: it is text and has refs."""
         try:
-            path = await anyio.to_thread.run_sync(lambda: agent(session).screenshot(device or None))
+            saved = await anyio.to_thread.run_sync(lambda: agent(session).screenshot(device or None, path or None))
         except AgentError as error:
             return _error(error)
-        data = base64.b64encode(path.read_bytes()).decode("ascii")
+        data = base64.b64encode(saved.read_bytes()).decode("ascii")
         return CallToolResult(
             content=[
                 ImageContent(type="image", data=data, mime_type="image/png"),
-                TextContent(type="text", text=str(path)),
+                TextContent(type="text", text=str(saved)),
             ]
         )
 
@@ -549,9 +611,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call(session, lambda a: a.condition(name, value or None, device or None))
 
     @mcp.tool(name="capture", annotations=READ_ONLY)
-    async def capture(session: Session = "", device: Device = "") -> CallToolResult:
+    async def capture(session: Session = "", device: Device = "", path: str = "") -> CallToolResult:
         """Save a screenshot, the hierarchy, device info and the driver log; returns the paths."""
-        return await call(session, lambda a: a.capture(device or None))
+        return await call(session, lambda a: a.capture(device or None, path or None))
 
     @mcp.tool(name="app_data")
     async def app_data(
@@ -573,7 +635,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def app(
         action: Literal[
             "launch", "cold-launch", "foreground", "background", "open-link",
-            "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale",
+            "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale", "installed", "process", "visible",
         ],
         package: Annotated[str, Field(description="The app's package name.")],
         argument: Annotated[
@@ -584,6 +646,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             ),
         ] = "",
         any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
+        timeout_seconds: Budget = None,
         extras: Annotated[
             list[str],
             Field(
@@ -601,18 +664,19 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release)."""
         return await call(
-            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras)
+            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras, timeout=timeout_seconds)
         )
 
     @mcp.tool(name="export", annotations=READ_ONLY)
     async def export(
         path: Annotated[str, Field(description="Write the JSON to this file and return a summary instead.")] = "",
+        after_seq: Annotated[StrictInt, Field(ge=0, le=9223372036854775807, description="Only events with larger sequence numbers.")] = 0,
         session: Session = "",
     ) -> CallToolResult:
         """The session's event log as JSON: every device call it made (commands and app changes),
         in order, with outcomes and the selectors refs stood for. Export before `release`: the
         log ends with the session. Converting it into a test is up to the user."""
-        return await call(session, lambda a: a.export(path or None))
+        return await call(session, lambda a: a.export(path or None, after_seq=after_seq))
 
     return mcp
 

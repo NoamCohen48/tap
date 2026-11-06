@@ -73,6 +73,9 @@ def parser() -> argparse.ArgumentParser:
     settle = argparse.ArgumentParser(add_help=False)
     settle.add_argument("--settle", action="store_true", help="wait for the screen to settle, then print what changed")
 
+    budget = argparse.ArgumentParser(add_help=False)
+    budget.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
+
     root = argparse.ArgumentParser(
         prog="tap-agent", description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -88,12 +91,27 @@ def parser() -> argparse.ArgumentParser:
 
     verb("sessions", "list sessions with their devices", common)
     verb("release", "end the session and detach its devices", common)
-    verb("devices", "list the devices ADB sees and who holds them", common)
+    verb("devices", "list devices, properties and who holds them", common)
+    verb("detach", "detach one device without ending its session", on_device)
+    verb("server-info", "daemon version, compatibility and configuration as JSON", common)
+    verb("device-info", "complete current device information as JSON", on_device)
+
+    p = verb("logs", "save device/driver logs or diagnostic hierarchy privately", on_device)
+    p.add_argument("kind", choices=("device", "driver", "hierarchy"), nargs="?", default="device")
+    p.add_argument("-o", "--out", help="new local output file; never overwrite")
+
+    p = verb("record", "explicit bounded video/audio recording; save bytes privately on stop", on_device)
+    p.add_argument("action", choices=("start", "stop"))
+    p.add_argument("--no-video", action="store_false", dest="video", help="start: audio only")
+    p.add_argument("--audio-source", choices=("output", "playback", "mic"), help="start: output mutes speakers; mic captures microphone")
+    p.add_argument("--max-seconds", type=int, help="start: 1..30 with video, 1..60 audio only")
+    p.add_argument("-o", "--out", help="stop: additional new output; a private canonical copy is retained")
 
     p = verb("snapshot", "print the screen, one node per line with its ref", on_device)
     level = p.add_mutually_exclusive_group()
     level.add_argument("-i", "--interactive", dest="level", action="store_const", const=render.INTERACTIVE, help="only nodes an action can target")
     level.add_argument("--all", dest="level", action="store_const", const=render.ALL, help="every node, layout containers too")
+    p.add_argument("--candidates", action="store_true", help="structured SDK snapshot with selector candidates instead of rendered lines")
 
     for name, help in (("inspect", "read one node's complete SDK state as JSON"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
         p = verb(name, help, on_device)
@@ -110,27 +128,31 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--duration", type=_duration, help="hold the finger down for this duration, 1ms..30s (implies --long)")
     p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s; must cover the whole gesture")
 
-    p = verb("fill", "replace a field's text (no key events)", on_device, settle)
+    p = verb("fill", "replace a field's text (no key events)", on_device, settle, budget)
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("text")
     p.add_argument("--sensitive", action="store_true", help="a secret: the session log and export never hold the text")
 
-    p = verb("type", "type key events into the focused field", on_device, settle)
+    p = verb("type", "type into current focus or a target with a focus wait", on_device, settle)
     p.add_argument("text")
+    p.add_argument("--target", help=TARGET_HELP)
+    p.add_argument("--no-await-focus", action="store_false", dest="await_focus", help="with a target: explicitly skip its SDK focus wait")
+    p.add_argument("--timeout", type=_command_duration, help="per tap/type budget, at most 120s (not an overall deadline)")
+    p.add_argument("--focus-timeout", type=_command_duration, help="target focus wait budget; SDK default 10s, at most 120s")
     p.add_argument("--sensitive", action="store_true", help="a secret: the session log and export never hold the text")
 
-    p = verb("clear", "clear a field's text", on_device, settle)
+    p = verb("clear", "clear a field's text", on_device, settle, budget)
     p.add_argument("target", help=TARGET_HELP)
 
-    p = verb("submit", "run a focused field's keyboard action (Search, Go, Send, Done, …); API 30+", on_device, settle)
+    p = verb("submit", "run a focused field's keyboard action (Search, Go, Send, Done, …); API 30+", on_device, settle, budget)
     p.add_argument("target", help=TARGET_HELP)
 
-    p = verb("action", "list a node's accessibility actions, or perform one as a screen reader does (no touch)", on_device, settle)
+    p = verb("action", "list a node's accessibility actions, or perform one as a screen reader does (no touch)", on_device, settle, budget)
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("name", nargs="?", help="a standard action (expand, collapse, dismiss, scroll-forward, ...) or, with --custom, a label")
     p.add_argument("--custom", action="store_true", help="NAME is a custom action's label (e.g. 'Archive')")
 
-    p = verb("progress", "set a slider (SeekBar, Slider, RatingBar) to a value in its own units", on_device, settle)
+    p = verb("progress", "set a slider (SeekBar, Slider, RatingBar) to a value in its own units", on_device, settle, budget)
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("value", type=float)
 
@@ -168,15 +190,28 @@ def parser() -> argparse.ArgumentParser:
         p = verb(name, help, on_device, settle)
         p.add_argument("target", help=TARGET_HELP)
         p.add_argument("direction", choices=("up", "down", "left", "right"))
+        p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
+        if name != "fling":
+            p.add_argument("--percent", type=int, default=80, help="distance across the node, 1..100")
+
+    p = verb("scroll-until", "bounded SDK scroll until a descendant target exists", on_device)
+    p.add_argument("target", help="scroll container: " + TARGET_HELP)
+    p.add_argument("destination", help="descendant to find: " + TARGET_HELP)
+    p.add_argument("--direction", choices=("up", "down", "left", "right"), default="down")
+    p.add_argument("--max-scrolls", type=int, default=20, help="1..1000; also bounded by the SDK deadline")
+    p.add_argument("--percent", type=int, default=80, help="scroll distance, 1..100")
+    p.add_argument("--timeout", type=_command_duration, help="overall SDK loop budget, at most 120s")
 
     p = verb("drag", "long-press a node, move it onto another node and drop it", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("destination", help="where to drop it: " + TARGET_HELP)
+    p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
 
     p = verb("pinch", "pinch a node open (fingers apart, zoom in) or closed", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("how", choices=PINCHES)
     p.add_argument("--percent", type=int, default=80, help="how far across the node, 1..100 (default 80)")
+    p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
 
     p = verb("key", "press a key: back, home, recents, enter, tab, delete, … or a key code", on_device, settle)
     p.add_argument("name")
@@ -225,6 +260,9 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("settle", "wait for the screen to stop changing, then print what changed", on_device)
     p.add_argument("--full", action="store_true", help="also print unchanged nodes (=)")
+    p.add_argument("--package", help="explicit package; otherwise use the focused app")
+    p.add_argument("--stable-for", type=_duration, default=0.5, help="quiet period, 1ms..30s, no greater than timeout")
+    p.add_argument("--signal", choices=("tree", "pixels", "all"), default="tree", help="what must stop changing")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
 
     p = verb("screenshot", "save a PNG and print its path", on_device)
@@ -238,6 +276,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
     p.add_argument("--any-app", action="store_true", help="open-link: let any app handle the link, not only this one")
+    p.add_argument("--timeout", type=_command_duration, help="supported lifecycle/visibility/process actions: at most 120s")
     p.add_argument(
         "--extra",
         action="append",
@@ -255,6 +294,7 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("export", "print the session's event log as JSON (every device call, in order)", common)
     p.add_argument("-o", "--out", help="write it to this file instead")
+    p.add_argument("--after-seq", type=int, default=0, help="only events with larger sequence numbers")
 
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
     verb("skill", "print the agent skill (SKILL.md)")
@@ -274,25 +314,35 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.release()
     if v == "devices":
         return agent.devices()
+    if v == "detach":
+        return agent.detach(device)
+    if v == "server-info":
+        return agent.server_info()
+    if v == "device-info":
+        return agent.device_info(device)
+    if v == "logs":
+        return agent.logs(args.kind, device, args.out)
+    if v == "record":
+        return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
     if v == "snapshot":
-        return agent.snapshot(device, args.level or render.DEFAULT)
+        return agent.snapshot(device, args.level or render.DEFAULT, candidates=args.candidates)
     if v in ("inspect", "exists", "count"):
         return getattr(agent, v)(args.target, device, args.timeout)
     if v == "tap":
         return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double,
                          count=args.count, interval=args.interval, duration=args.duration, timeout=args.timeout)
     if v == "fill":
-        return agent.fill(args.target, args.text, device, settle=settle, sensitive=args.sensitive)
+        return agent.fill(args.target, args.text, device, settle=settle, sensitive=args.sensitive, timeout=args.timeout)
     if v == "type":
-        return agent.type(args.text, device, settle=settle, sensitive=args.sensitive)
+        return agent.type(args.text, device, settle=settle, sensitive=args.sensitive, target=args.target, await_focus=args.await_focus, timeout=args.timeout, focus_timeout=args.focus_timeout)
     if v == "clear":
-        return agent.clear(args.target, device, settle=settle)
+        return agent.clear(args.target, device, settle=settle, timeout=args.timeout)
     if v == "submit":
-        return agent.submit(args.target, device, settle=settle)
+        return agent.submit(args.target, device, settle=settle, timeout=args.timeout)
     if v == "action":
-        return agent.action(args.target, args.name, device, custom=args.custom, settle=settle)
+        return agent.action(args.target, args.name, device, custom=args.custom, settle=settle, timeout=args.timeout)
     if v == "progress":
-        return agent.progress(args.target, args.value, device, settle=settle)
+        return agent.progress(args.target, args.value, device, settle=settle, timeout=args.timeout)
     if v == "keyboard":
         return agent.keyboard(args.action, device, settle=settle)
     if v == "location":
@@ -315,15 +365,17 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "toast":
         return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout)
     if v == "scroll":
-        return agent.scroll(args.target, args.direction, device, settle=settle)
+        return agent.scroll(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "swipe":
-        return agent.swipe(args.target, args.direction, device, settle=settle)
+        return agent.swipe(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "fling":
-        return agent.fling(args.target, args.direction, device, settle=settle)
+        return agent.fling(args.target, args.direction, device, settle=settle, timeout=args.timeout)
+    if v == "scroll-until":
+        return agent.scroll_until(args.target, args.destination, args.direction, device, max_scrolls=args.max_scrolls, percent=args.percent, timeout=args.timeout)
     if v == "drag":
-        return agent.drag(args.target, args.destination, device, settle=settle)
+        return agent.drag(args.target, args.destination, device, settle=settle, timeout=args.timeout)
     if v == "pinch":
-        return agent.pinch(args.target, args.how, args.percent, device, settle=settle)
+        return agent.pinch(args.target, args.how, args.percent, device, settle=settle, timeout=args.timeout)
     if v == "key":
         return agent.key(args.name, device, settle=settle)
     if v == "panel":
@@ -339,17 +391,17 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value)
     if v == "settle":
-        return agent.settle(device, full=args.full, timeout=args.timeout)
+        return agent.settle(device, full=args.full, timeout=args.timeout, package=args.package, stable_for=args.stable_for, signal=args.signal)
     if v == "screenshot":
         return str(agent.screenshot(device, args.out))
     if v == "capture":
         return agent.capture(device, args.out)
     if v == "export":
-        return agent.export(args.out)
+        return agent.export(args.out, after_seq=args.after_seq)
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
-        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra)
+        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra, timeout=args.timeout)
     raise AssertionError(v)
 
 

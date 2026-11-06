@@ -6,6 +6,7 @@ import dataclasses
 import enum
 import json
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -45,14 +46,23 @@ def json_text(value: Any) -> str:
 
 
 def save_private(path: Path, data: bytes) -> Path:
-    """Create a new mode-0600 file, refusing existing outputs including symlinks."""
+    """Create a new mode-0600 file, refusing existing outputs including symlinks. The file
+    appears complete or not at all: the bytes go to a hidden temporary file in the same directory,
+    are flushed to disk, and are then hard-linked to ``path``, which fails if anything is there."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.partial")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
-    except BaseException:
-        # Do not leave an apparently complete artifact after a definite local write failure.
-        path.unlink(missing_ok=True)
-        raise
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path, follow_symlinks=False)
+    finally:
+        temporary.unlink(missing_ok=True)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
     return path

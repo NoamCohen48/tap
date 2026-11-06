@@ -13,6 +13,8 @@ import json
 import math
 import os
 import pathlib
+import uuid
+from dataclasses import replace
 from collections.abc import Callable, Iterator, Sequence
 from typing import TypeVar
 
@@ -33,6 +35,7 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
     Orientation,
     PermissionChoice,
     ServerError,
+    StabilitySignal,
     StandardAction,
     TapClient,
     TapConnection,
@@ -41,8 +44,8 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
 )
 
 from . import render
-from .output import json_text
-from .targets import Target, UsageError, format_duration, parse_key, parse_target
+from .output import json_text, save_private
+from .targets import Target, UsageError, format_duration, parse_int32, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
 # `export`'s document format; bumped only for a change a reader must know about.
@@ -135,9 +138,15 @@ def command_timeout(value: float | None) -> float | None:
         number = float(value)
     except OverflowError:
         number = math.inf
-    if not math.isfinite(number) or not 0 < number <= MAX_COMMAND_TIMEOUT:
-        raise AgentError("timeout must be positive and at most 120 seconds", EXIT_USAGE)
+    if not math.isfinite(number) or not 0.001 <= number <= MAX_COMMAND_TIMEOUT:
+        raise AgentError("timeout must be at least 1ms and at most 120 seconds", EXIT_USAGE)
     return number
+
+
+def _integer(value: int, name: str, low: int, high: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise AgentError(f"{name} must be an integer in {low}..{high}", EXIT_USAGE)
+    return value
 
 
 NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
@@ -146,7 +155,7 @@ APP_DATA_ACTIONS = ("capabilities", "list", "read", "write", "delete", "export-d
 
 APP_ACTIONS = (
     "launch", "cold-launch", "foreground", "background", "open-link",
-    "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale",
+    "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale", "installed", "process", "visible",
 )
 
 
@@ -270,15 +279,15 @@ class Agent:
         scope = device.app(parsed.package) if parsed.package else device.screen
         return scope.element(parsed.selector), parsed.describe()
 
-    def _settled(self, device: Device, level: str = render.DEFAULT, full: bool = False, timeout: float = SETTLE_TIMEOUT) -> str:
+    def _settled(self, device: Device, level: str = render.DEFAULT, full: bool = False, timeout: float = SETTLE_TIMEOUT, *, package: str | None = None, stable_for: float = SETTLE_STABLE_FOR, signal: StabilitySignal = StabilitySignal.TREE) -> str:
         """Waits for the focused window's hierarchy to stop changing, then diffs a new snapshot
         against the previous one. A screen that keeps changing is reported, not an error."""
         note = ""
-        package = device.info().current_package
+        package = package or device.info().current_package
         if package is None:
             raise AgentError("no focused app to settle; use snapshot to inspect the screen", EXIT_FAILED)
         try:
-            device.app(package).await_settled(SETTLE_STABLE_FOR, timeout)
+            device.app(package).await_screen_stable(stable_for, timeout, signal)
         except WaitTimeoutError:
             note = f"(screen still changing after {format_duration(timeout)})\n"
         return note + render.diff_text(device.screen_snapshot(), level, full)
@@ -376,6 +385,22 @@ class Agent:
 
         return self._run(step)
 
+    def detach(self, device: str | None = None) -> str:
+        """Detach only the selected device; retain the held session and its other devices."""
+        def step() -> str:
+            selected = self._device(device)
+            selected.detach()
+            return f"detached {selected.serial} from session {self.session!r}"
+        return self._run(step)
+
+    def server_info(self) -> str:
+        """Daemon version, compatibility and configuration as SDK JSON; no daemon startup."""
+        return self._run(lambda: json_text(self.client.info()))
+
+    def device_info(self, device: str | None = None) -> str:
+        """Complete current SDK device information as JSON."""
+        return self._run(lambda: json_text(self._device(device).info()))
+
     def devices(self) -> str:
         """Every device ADB lists, its state, and the session holding it."""
 
@@ -384,6 +409,9 @@ class Agent:
             lines = []
             for d in self.client.devices():
                 line = f"{d.serial}  {d.state.name}"
+                if d.properties is not None:
+                    p = d.properties
+                    line += f"  API {p.api_level}  {p.manufacturer} {p.model}  {'emulator' if p.emulator else 'physical'}"
                 if d.client_connection_id:
                     line += f"  held by {names.get(d.client_connection_id, d.client_connection_id)!r}"
                 if d.quarantine_reason:
@@ -395,14 +423,23 @@ class Agent:
 
     # --- the screen -----------------------------------------------------------------------------
 
-    def snapshot(self, device: str | None = None, level: str = render.DEFAULT) -> str:
-        """The visible screen, one node per line with its ref."""
-        return self._run(lambda: render.snapshot_text(self._device(device).screen_snapshot(), level))
+    def snapshot(self, device: str | None = None, level: str = render.DEFAULT, *, candidates: bool = False) -> str:
+        """Ref-addressed screen; candidates returns structured SDK data instead of rendered lines."""
+        if candidates and level != render.DEFAULT:
+            raise AgentError("candidates returns complete structured data; use the default view", EXIT_USAGE)
+        def step() -> str:
+            snapshot = self._device(device).screen_snapshot(selector_candidates=candidates)
+            return json_text(snapshot) if candidates else render.snapshot_text(snapshot, level)
+        return self._run(step)
 
-    def settle(self, device: str | None = None, full: bool = False, timeout: float = SETTLE_TIMEOUT) -> str:
-        """Waits for the screen to stop changing, then shows what changed since the last snapshot."""
+    def settle(self, device: str | None = None, full: bool = False, timeout: float = SETTLE_TIMEOUT, *, package: str | None = None, stable_for: float = SETTLE_STABLE_FOR, signal: str = "tree") -> str:
+        """Wait for tree/pixel/both stability, then report a diff or an explicit changing-screen note."""
         command_timeout(timeout)
-        return self._run(lambda: self._settled(self._device(device), full=full, timeout=timeout))
+        if signal.upper() not in StabilitySignal.__members__:
+            raise AgentError("signal must be tree, pixels or all", EXIT_USAGE)
+        if isinstance(stable_for, bool) or not isinstance(stable_for, (int, float)) or not math.isfinite(stable_for) or not 0.001 <= stable_for <= min(30, timeout):
+            raise AgentError("stable_for must be 1ms..30s and no greater than timeout", EXIT_USAGE)
+        return self._run(lambda: self._settled(self._device(device), full=full, timeout=timeout, package=package, stable_for=stable_for, signal=StabilitySignal[signal.upper()]))
 
     def screenshot(self, device: str | None = None, out: str | os.PathLike[str] | None = None) -> pathlib.Path:
         """Saves a PNG and returns its path."""
@@ -427,13 +464,16 @@ class Agent:
 
         return self._run(step)
 
-    def export(self, out: str | os.PathLike[str] | None = None) -> str:
+    def export(self, out: str | os.PathLike[str] | None = None, *, after_seq: int = 0) -> str:
         """The session's event log as JSON (``EXPORT_FORMAT``): every device call it made, in
         order, with its outcome. Turning it into a test, in whatever language, is the user's job.
         With ``out``, writes the file and says so; otherwise returns the JSON."""
 
+        if isinstance(after_seq, bool) or not isinstance(after_seq, int) or not 0 <= after_seq < 2**63:
+            raise AgentError("after_seq must be an integer in 0..9223372036854775807", EXIT_USAGE)
+
         def step() -> str:
-            log = self._connection().event_log()
+            log = self._connection().event_log(after_seq)
             document = {
                 "format": EXPORT_FORMAT,
                 "session": self.session,
@@ -452,6 +492,86 @@ class Agent:
             dropped = f"; {log.dropped} older events were dropped" if log.dropped else ""
             return f"wrote {len(log.events)} events{note} to {path}{dropped}"
 
+        return self._run(step)
+
+    def logs(self, kind: str = "device", device: str | None = None, out: str | None = None) -> str:
+        """Save bounded SDK device/driver logs or diagnostic hierarchy to a new private file."""
+        if kind not in ("device", "driver", "hierarchy"):
+            raise AgentError("logs kind must be device, driver or hierarchy", EXIT_USAGE)
+        def step() -> str:
+            d = self._device(device)
+            suffix = "json" if kind == "device" else "xml" if kind == "hierarchy" else "txt"
+            path = pathlib.Path(out) if out else self.out_dir / f"{kind}-{d.serial}-{uuid.uuid4().hex}.{suffix}"
+            if os.path.lexists(path):
+                raise AgentError("local output already exists; choose a new path", EXIT_USAGE)
+            if kind == "device":
+                content = json_text(d.device_logs()).encode("utf-8")
+            else:
+                content = (d.driver_log() if kind == "driver" else d.dump_hierarchy()).bytes
+            return str(save_private(path, content))
+        return self._run(step)
+
+    def recording(self, action: str, device: str | None = None, *, video: bool = True, audio_source: str | None = None, max_seconds: int | None = None, out: str | None = None) -> str:
+        """Explicit bounded recording. Save verified stop bytes privately; never replay start/stop."""
+        if action not in ("start", "stop"):
+            raise AgentError("recording action must be start or stop", EXIT_USAGE)
+        if not isinstance(video, bool) or audio_source not in (None, "output", "playback", "mic"):
+            raise AgentError("choose video and/or audio output, playback or mic", EXIT_USAGE)
+        if action == "start":
+            if out is not None or (not video and audio_source is None):
+                raise AgentError("start needs a track; --out is only for stop", EXIT_USAGE)
+            if max_seconds is not None:
+                _integer(max_seconds, "max_seconds", 1, 30 if video else 60)
+        elif not video or audio_source is not None or max_seconds is not None:
+            raise AgentError("track/duration options are only for start", EXIT_USAGE)
+
+        def step() -> str:
+            d = self._device(device)
+            if action == "start":
+                try:
+                    d.start_recording(video=video, audio_source=audio_source, max_seconds=max_seconds)
+                except TapError as error:
+                    raise AgentError(f"recording start failed: {_hint(error)}; do not repeat start automatically") from error
+                note = "; output audio mutes the device speakers" if audio_source == "output" else "; microphone capture enabled" if audio_source == "mic" else ""
+                return f"recording started{note}"
+            target = pathlib.Path(out) if out is not None else None
+            if target is not None and os.path.lexists(target):
+                raise AgentError("local output already exists; choose a new path", EXIT_USAGE)
+            # Establish a private canonical destination before stopping. A later custom-copy
+            # error must not make the caller repeat the device stop to recover the artifact.
+            directory = self.out_dir / f"recording-{d.serial}-{uuid.uuid4().hex}"
+            directory.mkdir(mode=0o700, parents=True)
+            try:
+                recording = d.stop_recording()
+            except (TapError, ValueError) as error:
+                detail = _hint(error) if isinstance(error, TapError) else str(error)
+                raise AgentError(f"recording stop failed: {detail}; do not repeat stop automatically") from error
+            canonical = directory / f"recording.{recording.extension}"
+            try:
+                save_private(canonical, recording.bytes)
+            except OSError as error:
+                raise AgentError(f"recording stopped but local artifact save failed: {error}; do not repeat stop") from error
+            if target is not None:
+                try:
+                    save_private(target, recording.bytes)
+                except OSError as error:
+                    raise AgentError(f"recording stopped; artifact is saved at {canonical}; custom output failed: {error}") from error
+                return f"saved recording to {target} (private canonical copy: {canonical})"
+            return f"saved recording to {canonical}"
+        return self._run(step)
+
+    def scroll_until(self, target: str, destination: str, direction: str = "down", device: str | None = None, *, max_scrolls: int = 20, percent: int = 80, timeout: float | None = None) -> str:
+        """Use the bounded SDK container/descendant loop, never transport-level mutation replay."""
+        resolved = _direction(direction)
+        _integer(max_scrolls, "max_scrolls", 1, 1000)
+        _integer(percent, "percent", 1, 100)
+        timeout = command_timeout(timeout)
+        def step() -> str:
+            d = self._device(device)
+            container, described = self._element(d, target)
+            wanted, destination_description = self._element(d, destination)
+            container.scroll_until(wanted.selector, resolved, max_scrolls, percent, timeout)
+            return f"found {destination_description} inside {described}"
         return self._run(step)
 
     # --- actions --------------------------------------------------------------------------------
@@ -485,52 +605,61 @@ class Agent:
         return self._act(device, target, "tapped" if count == 1 else f"tapped {count} times", lambda e: e.tap(timeout, count=count, interval=interval), settle)
 
     def fill(
-        self, target: str, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False
+        self, target: str, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False, *, timeout: float | None = None
     ) -> str:
         """Replaces the node's text (accessibility SET_TEXT, no key events). ``sensitive``: the
         daemon logs the call without the text, so ``export`` never holds it."""
-        return self._act(device, target, "filled", lambda e: e.set_text(text, sensitive=sensitive), settle)
+        timeout = command_timeout(timeout)
+        return self._act(device, target, "filled", lambda e: e.set_text(text, timeout, sensitive=sensitive), settle)
 
-    def clear(self, target: str, device: str | None = None, settle: bool = False) -> str:
-        return self._act(device, target, "cleared", lambda e: e.clear_text(), settle)
+    def clear(self, target: str, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
+        timeout = command_timeout(timeout)
+        return self._act(device, target, "cleared", lambda e: e.clear_text(timeout), settle)
 
-    def scroll(self, target: str, direction: str, device: str | None = None, settle: bool = False) -> str:
-        """One scroll gesture towards ``direction``'s content edge (``down`` reveals content below)."""
+    def scroll(self, target: str, direction: str, device: str | None = None, settle: bool = False, *, percent: int = 80, timeout: float | None = None) -> str:
+        """One bounded SDK scroll; this does not promise that content moved."""
         resolved = _direction(direction)
-        return self._act(device, target, f"scrolled {direction}", lambda e: e.scroll(resolved), settle)
+        _integer(percent, "percent", 1, 100)
+        timeout = command_timeout(timeout)
+        return self._act(device, target, f"scrolled {direction}", lambda e: e.scroll(resolved, percent, timeout), settle)
 
-    def swipe(self, target: str, direction: str, device: str | None = None, settle: bool = False) -> str:
-        """One swipe across the node, the finger moving towards ``direction``."""
+    def swipe(self, target: str, direction: str, device: str | None = None, settle: bool = False, *, percent: int = 80, timeout: float | None = None) -> str:
+        """One bounded SDK swipe, the finger moving towards direction."""
         resolved = _direction(direction)
-        return self._act(device, target, f"swiped {direction}", lambda e: e.swipe(resolved), settle)
+        _integer(percent, "percent", 1, 100)
+        timeout = command_timeout(timeout)
+        return self._act(device, target, f"swiped {direction}", lambda e: e.swipe(resolved, percent, timeout), settle)
 
-    def fling(self, target: str, direction: str, device: str | None = None, settle: bool = False) -> str:
+    def fling(self, target: str, direction: str, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
         """One fast swipe towards ``direction``'s content edge, as for scroll; content may keep moving."""
         resolved = _direction(direction)
-        return self._act(device, target, f"flung {direction}", lambda e: e.fling(resolved), settle)
+        timeout = command_timeout(timeout)
+        return self._act(device, target, f"flung {direction}", lambda e: e.fling(resolved, timeout), settle)
 
-    def pinch(self, target: str, how: str, percent: int = 80, device: str | None = None, settle: bool = False) -> str:
+    def pinch(self, target: str, how: str, percent: int = 80, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
         """Two fingers moving apart (``open``, zoom in) or together (``close``) across ``percent`` of the node."""
         how = how.strip().lower()
         if how not in PINCHES:
             raise AgentError(f"pinch must be open or close, not {how!r}", EXIT_USAGE)
-        if not 1 <= percent <= 100:
-            raise AgentError(f"percent must be 1..100, not {percent}", EXIT_USAGE)
+        _integer(percent, "percent", 1, 100)
+        timeout = command_timeout(timeout)
         if how == "open":
-            return self._act(device, target, f"pinched open {percent}%", lambda e: e.pinch_open(percent), settle)
-        return self._act(device, target, f"pinched closed {percent}%", lambda e: e.pinch_close(percent), settle)
+            return self._act(device, target, f"pinched open {percent}%", lambda e: e.pinch_open(percent, timeout), settle)
+        return self._act(device, target, f"pinched closed {percent}%", lambda e: e.pinch_close(percent, timeout), settle)
 
-    def submit(self, target: str, device: str | None = None, settle: bool = False) -> str:
+    def submit(self, target: str, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
         """Runs a focused text field's keyboard action (Search, Go, Send, Done, ...) as the
         keyboard's action key does. API 30+."""
-        return self._act(device, target, "submitted", lambda e: e.ime_action(), settle)
+        timeout = command_timeout(timeout)
+        return self._act(device, target, "submitted", lambda e: e.ime_action(timeout), settle)
 
     def action(
-        self, target: str, name: str | None = None, device: str | None = None, custom: bool = False, settle: bool = False
+        self, target: str, name: str | None = None, device: str | None = None, custom: bool = False, settle: bool = False, *, timeout: float | None = None
     ) -> str:
         """Without ``name``: lists the accessibility actions the node offers (and its range). With
         one: performs that standard action (expand, collapse, dismiss, scroll-forward, ...), or with
         ``custom`` the custom action labelled ``name``, as a screen reader does (no touch)."""
+        timeout = command_timeout(timeout)
         if name is None:
             if custom:
                 raise AgentError("action --custom needs the action's label", EXIT_USAGE)
@@ -538,7 +667,7 @@ class Agent:
             def listing() -> str:
                 d = self._device(device)
                 element, described = self._element(d, target)
-                snapshot = element.snapshot()
+                snapshot = element.snapshot(timeout)
                 offered = [a.name.lower().replace("_", "-") for a in snapshot.actions] + [repr(c) for c in snapshot.custom_actions]
                 text = f"{described} offers: {', '.join(offered) if offered else 'no actions Tap can perform'}"
                 if snapshot.range is not None:
@@ -548,36 +677,50 @@ class Agent:
 
             return self._run(listing)
         if custom:
-            return self._act(device, target, f"performed {name!r} on", lambda e: e.perform_custom_action(name), settle)
+            return self._act(device, target, f"performed {name!r} on", lambda e: e.perform_custom_action(name, timeout), settle)
         key = name.strip().upper().replace("-", "_")
         if key not in StandardAction.__members__:
             raise AgentError(f"action takes {', '.join(STANDARD_ACTIONS)} (or --custom LABEL), not {name!r}", EXIT_USAGE)
         standard = StandardAction[key]
-        return self._act(device, target, f"performed {name.strip().lower()} on", lambda e: e.perform_action(standard), settle)
+        return self._act(device, target, f"performed {name.strip().lower()} on", lambda e: e.perform_action(standard, timeout), settle)
 
-    def progress(self, target: str, value: float, device: str | None = None, settle: bool = False) -> str:
+    def progress(self, target: str, value: float, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
         """Sets a slider (SeekBar, Slider, RatingBar) to ``value`` in its own units, exactly."""
-        return self._act(device, target, f"set progress {value:g} on", lambda e: e.set_progress(value), settle)
+        timeout = command_timeout(timeout)
+        return self._act(device, target, f"set progress {value:g} on", lambda e: e.set_progress(value, timeout), settle)
 
-    def drag(self, target: str, destination: str, device: str | None = None, settle: bool = False) -> str:
-        """Long-press ``target``, move to the centre of ``destination`` and drop it there."""
+    def drag(self, target: str, destination: str, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
+        """Long-press target, move to destination and drop once; never replay after uncertainty."""
+        timeout = command_timeout(timeout)
 
         def step() -> str:
             d = self._device(device)
             source, described = self._element(d, target)
             onto, onto_described = self._element(d, destination)
-            source.drag_to(onto.selector)
+            source.drag_to(onto.selector, timeout)
             text = f"dragged {described} onto {onto_described}"
             return f"{text}\n{self._settled(d)}" if settle else text
 
         return self._run(step)
 
-    def type(self, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False) -> str:
-        """Types real key events into whatever has input focus. ``sensitive`` as for ``fill``."""
+    def type(self, text: str, device: str | None = None, settle: bool = False, sensitive: bool = False, *, target: str | None = None, await_focus: bool = True, timeout: float | None = None, focus_timeout: float | None = None) -> str:
+        """SDK tap/focus-wait/type: timeout is per input; focus_timeout bounds its separate wait."""
+        timeout = command_timeout(timeout)
+        focus_timeout = command_timeout(focus_timeout)
+        if focus_timeout is not None and (target is None or not await_focus):
+            raise AgentError("focus_timeout requires a target with await_focus", EXIT_USAGE)
+        if not await_focus and target is None:
+            raise AgentError("await_focus is only configurable with a target", EXIT_USAGE)
 
         def step() -> str:
             d = self._device(device)
-            d.type_text(text, sensitive=sensitive)
+            if target is None:
+                d.type_text(text, timeout, sensitive=sensitive)
+            else:
+                if focus_timeout is not None:
+                    d.timeouts = replace(d.timeouts, wait=focus_timeout)
+                element, _ = self._element(d, target)
+                element.type_text(text, await_focus, timeout, sensitive=sensitive)
             return f"typed {len(text)} characters\n{self._settled(d)}" if settle else f"typed {len(text)} characters"
 
         return self._run(step)
@@ -921,9 +1064,12 @@ class Agent:
             raise AgentError(f"state must be one of {', '.join(WAIT_STATES)}", EXIT_USAGE)
         if state in ("text", "text-contains") and not isinstance(value, str):
             raise AgentError(f"wait {state} needs a string value", EXIT_USAGE)
+        count_value: int | None = None
         if state == "count":
-            if isinstance(value, bool) or not isinstance(value, (str, int)) or not str(value).isdigit() or int(value) >= 2**31:
-                raise AgentError("wait count needs an integer value in 0..2147483647", EXIT_USAGE)
+            try:
+                count_value = parse_int32(value, "wait count value")
+            except UsageError as error:
+                raise AgentError(str(error), EXIT_USAGE) from error
         elif state not in ("text", "text-contains") and value is not None:
             raise AgentError(f"wait {state} does not take a value", EXIT_USAGE)
 
@@ -931,7 +1077,8 @@ class Agent:
             element, described = self._element(self._device(device), target)
             waiting = element.wait(timeout)
             if state == "count":
-                waiting.count(int(str(value)))
+                assert count_value is not None
+                waiting.count(count_value)
             elif state == "text":
                 waiting.text_equals(str(value))
             elif state == "text-contains":
@@ -1034,6 +1181,7 @@ class Agent:
         device: str | None = None,
         any_app: bool = False,
         extras: Sequence[str] = (),
+        *, timeout: float | None = None,
     ) -> str:
         """App lifecycle for ``package``: launch [activity], cold-launch
         [activity] (both with ``extras`` on the intent, ``KEY[:TYPE]=VALUE``), foreground, background, open-link URI (``any_app``: any app may handle it),
@@ -1047,34 +1195,49 @@ class Agent:
             raise AgentError(f"app {action} needs an argument ({needs[action]})", EXIT_USAGE)
         if extras and action not in ("launch", "cold-launch"):
             raise AgentError(f"extras go with launch and cold-launch, not {action}", EXIT_USAGE)
+        timeout = command_timeout(timeout)
+        timed = {"launch", "cold-launch", "foreground", "open-link", "stop", "clear", "install", "process", "visible"}
+        if timeout is not None and action not in timed:
+            raise AgentError(f"app {action} uses the SDK's fixed/default budget, not --timeout", EXIT_USAGE)
+        if any_app and action != "open-link":
+            raise AgentError("--any-app is only for open-link", EXIT_USAGE)
+        if action in ("installed", "process", "visible") and argument is not None:
+            raise AgentError(f"app {action} takes no argument", EXIT_USAGE)
         intent = parse_extras(extras)
 
         def step() -> str:
             app = self._device(device).app(package)
             name = app.package_name
+            if action == "installed":
+                return json_text(app.is_installed())
+            if action == "process":
+                return json_text(app.process(timeout))
+            if action == "visible":
+                app.await_visible(timeout)
+                return f"{name} is visible"
             if action == "launch":
-                app.launch(argument, extras=intent)
+                app.launch(argument, timeout, extras=intent)
                 return f"launched {name}"
             if action == "cold-launch":
-                process = app.cold_launch(argument, extras=intent)
+                process = app.cold_launch(argument, timeout, extras=intent)
                 return f"cold-launched {name} (pid {process.pid})"
             if action == "foreground":
-                app.foreground()
+                app.foreground(timeout)
                 return f"brought {name} to the foreground"
             if action == "background":
                 app.background()
                 return f"sent {name} to the background (pressed home)"
             if action == "open-link":
-                activity = app.open_link(argument, any_app=any_app)  # type: ignore[arg-type]
+                activity = app.open_link(argument, any_app=any_app, timeout=timeout)  # type: ignore[arg-type]
                 return f"opened {argument}" + (f" in {activity}" if activity else "")
             if action == "stop":
-                app.force_stop()
+                app.force_stop(timeout)
                 return f"stopped {name}"
             if action == "clear":
-                app.clear_data()
+                app.clear_data(timeout)
                 return f"cleared data of {name}"
             if action == "install":
-                app.install(argument)  # type: ignore[arg-type]
+                app.install(argument, timeout)  # type: ignore[arg-type]
                 return f"installed {argument}"
             if action == "uninstall":
                 app.uninstall()

@@ -31,7 +31,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "CLI and the MCP server, and ends on `release` or after 15 idle minutes. `--session NAME` "
         "(or `TAP_AGENT_SESSION`) keeps several apart. A device is held by one session at a time, "
         "exactly as a test holds it.",
-        ["devices", "attach", "sessions", "release"],
+        ["devices", "attach", "sessions", "detach", "release", "server-info", "device-info"],
     ),
     (
         "Reading the screen",
@@ -39,7 +39,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
         "`screenshot`, which an agent has to look at.",
-        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture"],
+        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "logs", "record"],
     ),
     (
         "Acting on elements",
@@ -53,7 +53,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     (
         "Gestures",
         "Gestures run on one node, sized relative to it, never at screen coordinates.",
-        ["scroll", "swipe", "fling", "drag", "pinch"],
+        ["scroll", "scroll-until", "swipe", "fling", "drag", "pinch"],
     ),
     (
         "Keys, system panels and the display",
@@ -113,6 +113,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
 
 # CLI verb -> MCP tool, where the names differ. None: the verb has no MCP tool.
 MCP_NAMES: dict[str, str | None] = {
+    "server-info": "server_info",
+    "device-info": "device_info",
+    "scroll-until": "scroll_until",
+    "record": "recording",
     "app-data": "app_data",
     "type": "type_text",
     "action": "accessibility_action",

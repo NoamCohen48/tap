@@ -6,6 +6,9 @@ daemon changes that surface needs. The
 upstream reference is callstack/agent-device (`upstream-reference-audit.md`, rows "Agent-facing
 surface" and "Ref-addressed elements").
 
+The owner-approved practical SDK coverage follow-up (queries/selectors, workflows, owned-device
+recording and explicit exclusions) is recorded in [agent-api-coverage.md](agent-api-coverage.md).
+
 ## Research summary
 
 | Tool | Surface | Taken |
@@ -98,9 +101,11 @@ device at a time) and ignore the per-serial lock.
    Kotlin SDK (0.15.0) pulls Ktor server, kotlin-logging, Kotlin stdlib 2.4 and
    coroutines/serialization 1.11 into the native binary.
 
-Deliberately not done: cheaper attach by keeping the driver instrumentation alive (a separate
-performance TODO), Kotlin SDK APIs for held connections and snapshots (follow-up; the proto is
-there), recording evidence video, coordinate taps.
+At the original decision, deliberately not done: cheaper attach by keeping the driver
+instrumentation alive (a separate performance TODO), Kotlin SDK APIs for held connections and
+snapshots (follow-up; the proto is there), recording evidence video, coordinate taps. Owned-device
+recording was subsequently approved and added in the SDK coverage follow-up above; it is not a
+passive watcher stream, and coordinate taps remain excluded.
 
 ## CLI shape
 

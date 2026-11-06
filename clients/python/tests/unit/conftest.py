@@ -341,6 +341,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.detaches.append(request.attached_device_id)
         if self.detach_error is not None:
             context.abort(self.detach_error, "detach boom")
+        serial = request.attached_device_id.removeprefix("attached-")
+        self.attached[request.client_connection_id] = [
+            attached for attached in self.attached.get(request.client_connection_id, [])
+            if attached.serial != serial
+        ]
         return pb.DetachResponse(clean=True)
 
     def ListDevices(self, request, context):
