@@ -31,12 +31,14 @@ from . import _gen as pb
 from . import _proto
 from ._gen import (
     app_pb2_grpc,
+    app_data_pb2_grpc,
     client_connection_pb2_grpc,
     device_pb2_grpc,
 )
 from ._gen.engine_version import API_COMPATIBILITY, ENGINE_VERSION
 from .errors import (
     AppLifecycleError,
+    AppDataError,
     DeviceBusyError,
     DeviceQuarantinedError,
     ServerError,
@@ -299,6 +301,8 @@ def _map_rpc_error(error: grpc.RpcError, serial: str | None = None) -> TapError:
         return DeviceQuarantinedError(failed_serial, details)
     if reason is FailureReason.APP_LIFECYCLE:
         return AppLifecycleError(details)
+    if reason is FailureReason.APP_DATA:
+        return AppDataError(failure.detail, failed_serial, details)
     return ServerError(code.name, details, reason)
 
 
@@ -362,6 +366,7 @@ class TapClient:
         )
         self.device_stub = device_pb2_grpc.DeviceServiceStub(self.channel)
         self.apps = app_pb2_grpc.AppServiceStub(self.channel)
+        self.app_data = app_data_pb2_grpc.AppDataServiceStub(self.channel)
         self._version_checked = False
 
     @classmethod

@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.daemon.core.DAEMON_SHUTDOWN_TOTAL_MS
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.DriverApks
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
+import io.github.noamcohen48.tap.daemon.grpc.AppDataService
 import io.github.noamcohen48.tap.daemon.grpc.AppService
 import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
@@ -65,15 +66,31 @@ fun main(args: Array<String>) {
     val stateDir = Path.of(options["--state-dir"] ?: defaultStateDir()).toAbsolutePath()
     val exitCode =
         when (command) {
-            "start" -> start(options, stateDir).let { 0 }
-            "serve" -> serve(options, stateDir).let { 0 }
-            "status" -> status(stateDir)
-            "stop" -> stop(stateDir)
-            "doctor" ->
+            "start" -> {
+                start(options, stateDir).let { 0 }
+            }
+
+            "serve" -> {
+                serve(options, stateDir).let { 0 }
+            }
+
+            "status" -> {
+                status(stateDir)
+            }
+
+            "stop" -> {
+                stop(stateDir)
+            }
+
+            "doctor" -> {
                 runBlocking {
                     doctor(stateDir, Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb"), options["--serial"], "--fix" in options)
                 }
-            else -> println("tap daemon ${DAEMON_VERSION}").let { 0 }
+            }
+
+            else -> {
+                println("tap daemon ${DAEMON_VERSION}").let { 0 }
+            }
         }
     if (exitCode != 0) exitProcess(exitCode)
 }
@@ -199,6 +216,7 @@ private fun serve(
             .addService(ClientConnectionService(daemon))
             .addService(DeviceService(daemon))
             .addService(AppService(daemon))
+            .addService(AppDataService(daemon))
             .addService(WatchService(daemon))
             .intercept(TokenAuthInterceptor(token))
             .maxInboundMessageSize(8 * 1024 * 1024)
@@ -388,7 +406,14 @@ internal fun stop(
     val handle = ProcessHandle.of(descriptor.pid).orElse(null)
     val probe = probe(descriptor)
     if (probe != Probe.OK || handle == null) {
-        val why = if (probe == Probe.REJECTED) "port ${descriptor.port} rejects its token" else "daemon pid ${descriptor.pid} does not answer"
+        val why =
+            if (probe ==
+                Probe.REJECTED
+            ) {
+                "port ${descriptor.port} rejects its token"
+            } else {
+                "daemon pid ${descriptor.pid} does not answer"
+            }
         out("stale descriptor ($why); removing it, signalling nothing")
         DaemonDescriptor.deleteIfOwned(stateDir, descriptor.token)
         return 0

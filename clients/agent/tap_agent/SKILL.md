@@ -120,6 +120,15 @@ Tap did not create), `pull <device-path> [-o FILE]` (prints the local path), `me
 [--name NAME]` adds a photo or video to the gallery so pickers list it. Release removes what
 Tap pushed or added.
 
+Debuggable private data: `app-data capabilities <package>` probes actual run-as. Stop the app
+explicitly (`app stop`) before `app-data list <package> [relative-path]`,
+`app-data read|write <package> <relative-path> <local-file>`, `app-data delete <package> <path>`,
+or `app-data export-db|import-db <package> <database-name> <local-directory>`. No root, SQL,
+printed contents, implicit restart or restore on release. Transfers are ≤ 64 MiB. Downloads
+need new owner-only outputs; export requires a new directory. Keep database plus WAL/journal
+files together, never SHM. Remote replacement requires `--overwrite`. After an interrupted
+import, inspect/repair or explicitly clear fixture data before launching; do not retry blindly.
+
 Add `--settle` to an action to wait until the screen stops changing and print the difference:
 `+` added nodes, `-` removed ones. That is usually enough to decide the next step without a
 new `snapshot`. `settle` alone does the same without acting.

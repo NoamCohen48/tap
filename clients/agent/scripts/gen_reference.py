@@ -69,6 +69,16 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         ["app", "permission"],
     ),
     (
+        "Debuggable app data",
+        "`app-data <action> <package> [path] [local]` probes run-as, lists/reads/writes/deletes "
+        "private files and exports/imports SQLite bundles (database plus WAL/journal, never SHM). "
+        "Except the probe, stop the app explicitly first. No SQL, root, printed contents, implicit "
+        "restart or restore on release. Read outputs are owner-only and new; database export needs "
+        "a new directory. Use `--overwrite` explicitly for remote replacement. After interrupted "
+        "import, repair/clear data before launch; do not retry blindly.",
+        ["app-data"],
+    ),
+    (
         "Device conditions and location",
         "Everything changed here is restored on release: animations, dark mode, font scale, "
         "density, the network switches, the languages and the accessibility display settings, and "
@@ -103,6 +113,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
 
 # CLI verb -> MCP tool, where the names differ. None: the verb has no MCP tool.
 MCP_NAMES: dict[str, str | None] = {
+    "app-data": "app_data",
     "type": "type_text",
     "action": "accessibility_action",
     "progress": "set_progress",

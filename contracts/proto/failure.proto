@@ -67,6 +67,9 @@ enum FailureReason {
   // A device file Tap cannot write or read as asked: it exists and is not this session's, its
   // directory is missing, it is not a regular file, or it did not read back (FAILED_PRECONDITION).
   FAILURE_REASON_DEVICE_FILE = 24;
+  // Debuggable-app data access was refused or failed (FAILED_PRECONDITION). `detail`
+  // distinguishes RUN_AS_UNAVAILABLE, APP_RUNNING, SYMLINK, EXISTS, NOT_FOUND, LIMIT or IO_ERROR.
+  FAILURE_REASON_APP_DATA = 25;
 }
 
 message Failure {

@@ -133,6 +133,7 @@ nav:
           - Keys, screen and rotation: guide/device-control.md
       - Apps and the device:
           - App lifecycle: guide/app-lifecycle.md
+          - Private app data: guide/app-data.md
           - Permissions: guide/permissions.md
           - Device conditions: guide/device-conditions.md
           - Notifications and toasts: guide/notifications.md
@@ -153,6 +154,7 @@ nav:
               - Element: reference/python/element.md
               - Selectors: reference/python/selectors.md
               - App: reference/python/app.md
+              - Private app data: reference/python/app-data.md
               - Screen: reference/python/screen.md
               - Client and connections: reference/python/client.md
               - Artifacts: reference/python/artifacts.md

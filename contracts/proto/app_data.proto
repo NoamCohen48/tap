@@ -1,0 +1,108 @@
+// Private data of debuggable apps, through host-owned run-as; no root or arbitrary shell.
+syntax = "proto3";
+
+package tap.v1;
+
+import "app.proto";
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "AppDataProto";
+
+service AppDataService {
+  // Actual run-as access for the current Android user; safe while the app runs.
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+  // All data operations below need a stopped app. Never stop/relaunch implicitly.
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
+  // One header first, then chunks. Create missing parents; at most 64 MiB.
+  rpc WriteFile(stream WriteFileRequest) returns (WriteFileResponse);
+  // One regular file only; no root/directory/recursive deletion.
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  // Base database first, then existing WAL/rollback journal. Never includes rebuildable SHM.
+  rpc ExportDatabase(ExportDatabaseRequest) returns (stream ExportDatabaseResponse);
+  // Database first, optional WAL/journal; at most 3 files and 64 MiB total. Stage all bytes
+  // before replacement. Discard old sidecars, including SHM. Never launch. Multi-file
+  // replacement is not an OS transaction: an interrupted commit can require repair.
+  rpc ImportDatabase(stream ImportDatabaseRequest) returns (ImportDatabaseResponse);
+}
+
+message GetCapabilitiesRequest {
+  AppTarget app = 1;
+}
+
+message GetCapabilitiesResponse {
+  bool available = 1;
+  // Actionable reason without file contents; absent when available.
+  optional string reason = 2;
+}
+
+message ListFilesRequest {
+  AppTarget app = 1;
+  // Normalized relative UTF-8 path under credential-encrypted private data. No absolute paths,
+  // empty components, . or .., control characters or symlink components. Empty lists root only.
+  string path = 2;
+}
+
+message ListFilesResponse {
+  repeated AppDataEntry entries = 1; // immediate children only, at most 1024
+}
+
+message ReadFileRequest {
+  AppTarget app = 1;
+  string path = 2;
+}
+
+message ReadFileResponse {
+  AppDataPart part = 1;
+}
+
+message WriteFileRequest {
+  AppDataPart part = 1;
+}
+
+message WriteFileResponse {}
+
+message DeleteFileRequest {
+  AppTarget app = 1;
+  string path = 2;
+}
+
+message DeleteFileResponse {}
+
+message ExportDatabaseRequest {
+  AppTarget app = 1;
+  string name = 2; // basename in databases/, not a path or sidecar name
+}
+
+message ExportDatabaseResponse {
+  AppDataPart part = 1;
+}
+
+message ImportDatabaseRequest {
+  AppDataPart part = 1;
+}
+
+message ImportDatabaseResponse {}
+
+message AppDataEntry {
+  string name = 1; // basename, not an absolute path
+  int64 size_bytes = 2; // regular files only; 0 for directories and symlinks
+  bool is_directory = 3;
+  bool is_symlink = 4; // may be listed, never followed by data operations
+}
+
+message AppDataHeader {
+  AppTarget app = 1;
+  string path = 2;
+  int64 size_bytes = 3;
+  bool overwrite = 4; // upload only; false refuses an existing destination
+}
+
+// Shared transfer body, wrapped by each RPC's distinct request/response envelope.
+message AppDataPart {
+  oneof part {
+    AppDataHeader header = 1; // once per file; chunks must exactly match size_bytes
+    bytes chunk = 2; // at most 1 MiB
+  }
+}

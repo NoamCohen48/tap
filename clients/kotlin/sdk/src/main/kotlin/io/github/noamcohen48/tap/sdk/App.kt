@@ -1,5 +1,6 @@
 package io.github.noamcohen48.tap.sdk
 
+import com.google.protobuf.ByteString
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.AppTarget
 import io.github.noamcohen48.tap.api.v1.AwaitIdleRequest
@@ -20,7 +21,6 @@ import io.github.noamcohen48.tap.api.v1.ProcessRequest
 import io.github.noamcohen48.tap.api.v1.RevokePermissionRequest
 import io.github.noamcohen48.tap.api.v1.SetLocalesRequest
 import io.github.noamcohen48.tap.api.v1.UninstallRequest
-import com.google.protobuf.ByteString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -65,6 +65,9 @@ class App internal constructor(
     val packageName: String,
 ) {
     private val apps get() = device.ownerConnection.client.apps
+
+    /** Debuggable-app private files and SQLite bundles. Never stops/relaunches the app implicitly. */
+    val data: AppData = AppData(this)
 
     /** A lazy element: [selector] restricted to this package's nodes. Performs no I/O. */
     fun element(selector: Selector): Element = Element(device, selector.inPackage(packageName))
@@ -149,21 +152,39 @@ class App internal constructor(
     /** `am force-stop` plus proof that no process and no activity of the package remain. */
     suspend fun forceStop(timeout: Duration = device.timeouts.action) {
         call(timeout) {
-            it.forceStop(ForceStopRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
+            it.forceStop(
+                ForceStopRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .build(),
+            )
         }
     }
 
     /** `pm clear`: data, cache, and runtime permissions are gone; the app is left stopped, as after [forceStop]. */
     suspend fun clearData(timeout: Duration = device.timeouts.action) {
         call(timeout) {
-            it.clearData(ClearDataRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
+            it.clearData(
+                ClearDataRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .build(),
+            )
         }
     }
 
     /** `pm grant` a runtime permission, e.g. `android.permission.CAMERA`. */
     suspend fun grantPermission(permission: String) {
         call(null) {
-            it.grantPermission(GrantPermissionRequest.newBuilder().setApp(target).setPermission(permission).build())
+            it.grantPermission(
+                GrantPermissionRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setPermission(permission)
+                    .build(),
+            )
         }
     }
 
@@ -173,7 +194,13 @@ class App internal constructor(
      */
     suspend fun isPermissionGranted(permission: String): Boolean =
         call(null) {
-            it.isPermissionGranted(IsPermissionGrantedRequest.newBuilder().setApp(target).setPermission(permission).build())
+            it.isPermissionGranted(
+                IsPermissionGrantedRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setPermission(permission)
+                    .build(),
+            )
         }.granted
 
     /**
@@ -187,7 +214,13 @@ class App internal constructor(
      */
     suspend fun setLocales(locales: List<String>) {
         call(null) {
-            it.setLocales(SetLocalesRequest.newBuilder().setApp(target).addAllLocales(locales).build())
+            it.setLocales(
+                SetLocalesRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .addAllLocales(locales)
+                    .build(),
+            )
         }
     }
 
@@ -203,7 +236,13 @@ class App internal constructor(
      */
     suspend fun revokePermission(permission: String) {
         call(null) {
-            it.revokePermission(RevokePermissionRequest.newBuilder().setApp(target).setPermission(permission).build())
+            it.revokePermission(
+                RevokePermissionRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setPermission(permission)
+                    .build(),
+            )
         }
     }
 
@@ -303,7 +342,13 @@ class App internal constructor(
      */
     suspend fun foreground(timeout: Duration = device.timeouts.lifecycle) {
         call(timeout) {
-            it.foreground(ForegroundRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
+            it.foreground(
+                ForegroundRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .build(),
+            )
         }
     }
 
@@ -362,7 +407,13 @@ class App internal constructor(
     /** Current single process identity (PID + start token); waits briefly for it to exist. */
     suspend fun process(timeout: Duration = device.timeouts.action): AppProcess =
         call(timeout) {
-            it.process(ProcessRequest.newBuilder().setApp(target).setTimeoutMs(timeout.inWholeMilliseconds).build())
+            it.process(
+                ProcessRequest
+                    .newBuilder()
+                    .setApp(target)
+                    .setTimeoutMs(timeout.inWholeMilliseconds)
+                    .build(),
+            )
         }.process.toModel()
 
     /** Whether any process of the package is alive. */

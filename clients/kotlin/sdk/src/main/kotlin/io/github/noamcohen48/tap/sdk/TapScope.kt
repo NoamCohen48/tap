@@ -1,7 +1,6 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.Failure
-import io.github.noamcohen48.tap.api.v1.FailureReason as FailureReasonProto
 import io.grpc.Metadata
 import io.grpc.Status
 import io.grpc.StatusException
@@ -12,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.CoroutineContext
+import io.github.noamcohen48.tap.api.v1.FailureReason as FailureReasonProto
 
 /** The binary trailer carrying a serialized [Failure] on every non-OK status (`failure.proto`). */
 internal val FAILURE_TRAILER: Metadata.Key<Failure> =
@@ -119,10 +119,28 @@ internal fun mapStatus(
             )
         }
 
-        FailureReasonProto.FAILURE_REASON_HOST_WAIT_TIMEOUT -> WaitTimeoutException(details, failedSerial, failure.waitedMs, cause = cause)
-        FailureReasonProto.FAILURE_REASON_DEVICE_BUSY -> DeviceBusyException(details, cause)
-        FailureReasonProto.FAILURE_REASON_DEVICE_QUARANTINED -> DeviceQuarantinedException(failedSerial, details, cause)
-        FailureReasonProto.FAILURE_REASON_APP_LIFECYCLE -> AppLifecycleException(details, cause)
-        else -> ServerException(status.code.name, details, cause, failure.reason.toModel())
+        FailureReasonProto.FAILURE_REASON_HOST_WAIT_TIMEOUT -> {
+            WaitTimeoutException(details, failedSerial, failure.waitedMs, cause = cause)
+        }
+
+        FailureReasonProto.FAILURE_REASON_DEVICE_BUSY -> {
+            DeviceBusyException(details, cause)
+        }
+
+        FailureReasonProto.FAILURE_REASON_DEVICE_QUARANTINED -> {
+            DeviceQuarantinedException(failedSerial, details, cause)
+        }
+
+        FailureReasonProto.FAILURE_REASON_APP_LIFECYCLE -> {
+            AppLifecycleException(details, cause)
+        }
+
+        FailureReasonProto.FAILURE_REASON_APP_DATA -> {
+            AppDataException(failure.detail, failedSerial, details, cause)
+        }
+
+        else -> {
+            ServerException(status.code.name, details, cause, failure.reason.toModel())
+        }
     }
 }
