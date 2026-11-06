@@ -12,6 +12,14 @@ tap-agent:
   count waits, boolean and text-mode predicates, and bounded JSON selectors for logical and
   relational expressions reuse SDK semantics. No XPath or persistent handles. Command budgets
   reject values above the protocol's 120-second maximum locally; MCP settle exposes its timeout.
+- **Practical SDK workflows.** Add installed/process/visibility queries, device properties and
+  metadata, per-device detach, bounded scroll-until, gesture distance/budgets, targeted typing
+  with a separate focus wait, tree/pixel stability controls, selector candidates, incremental
+  event export and private diagnostics. CLI and MCP expose matching parameter surfaces.
+- **Explicit recording.** Bounded SDK video/audio capture on an owned device, private verified
+  outputs and retained canonical artifacts after custom-copy failure. No implicit lifecycle or
+  replay. Synchronization, observed liveness and passive watching remain excluded. A checked API
+  registry makes new daemon/SDK APIs and CLI/MCP parameter drift visible in tests.
 
 Server, Kotlin/Python clients and tap-agent:
 

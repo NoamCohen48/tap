@@ -100,7 +100,7 @@ text=Dark theme is visible
 ```
 
 `wait` polls on the device until the target is visible (`--gone`, `--one`), up to `--timeout`
-(10 s by default, at most 120 s). Use it instead of a sleep, and to confirm what an action was supposed to do.
+(10 s by default, 1ms..120s). Use it instead of a sleep, and to confirm what an action was supposed to do.
 
 `inspect <target>` returns the exact node's SDK state as JSON (text, bounds, flags, actions and
 range); no match or ambiguity remains an error. This explicitly reads accessibility text,
@@ -149,6 +149,70 @@ released session 'agent' (detached emulator-5554)
 
 [Sessions to tests](export.md) explains the export and turns it into a test.
 
+## SDK workflows and diagnostics
+
+`devices` includes API level, model/manufacturer and emulator/physical properties when available.
+`server-info` and `device-info` return the SDK's complete metadata as JSON. With several devices,
+pass `--device SERIAL`; `detach --device SERIAL` releases only that device (including its temporary
+settings/files), leaving the session and other attachments alive. `release` still ends them all.
+
+```sh
+tap-agent app installed com.example.app
+tap-agent app process com.example.app --timeout 3s
+tap-agent app visible com.example.app --timeout 5s
+tap-agent scroll id=list down --percent 40 --timeout 3s
+tap-agent scroll-until id=list text=Last --max-scrolls 12 --percent 50 --timeout 15s
+tap-agent type hello --target id=search --focus-timeout 2s --timeout 3s
+tap-agent settle --package com.example.app --signal all --stable-for 300ms --timeout 5s
+```
+
+Installed/process are SDK queries, not launch operations; visible waits without foregrounding.
+Element actions accept `--timeout` (at most 120s); automatic `--settle` is a separate default
+10-second tree wait. Targeted typing reuses the SDK's **tap → focus wait → type** helper, not an
+atomic command: `--timeout` is per input step, `--focus-timeout` bounds the separate SDK wait
+(default 10s). `--no-await-focus` explicitly skips it when focus belongs to a child/input view.
+Focus is not proof of IME readiness: explicitly observe the app/keyboard state when needed.
+Use `--sensitive` for secrets, then assert their effect without echoing them to logs.
+
+Scroll-until finds an existing descendant through bounded SDK queries and gestures. Count and
+time bound the loop; it does not detect the end of a list or replay uncertain input. Scroll/swipe
+`--percent` is distance across the node (1..100), not movement proof. Observe the expected result.
+
+Standalone settle accepts an explicit package, a 1ms..30s quiet period no longer than its timeout,
+and `tree`, `pixels` or `all` signals. The package must be the focused window; nothing launches
+or changes focus implicitly. As before, a changing-screen timeout returns a note, not a successful
+assertion about app state. These are ordinary SDK waits, **not** synchronization/`awaitIdle`.
+
+`snapshot --candidates` returns structured SDK screen data with selector candidates instead of
+rendered lines; use the default view. `logs device`, `logs driver` and `logs hierarchy` save SDK
+diagnostics to new mode-0600 files, not inline text. `-o PATH` chooses a new file, never overwrites.
+Hierarchy remains diagnostic only. Accessibility data and logs can contain secrets; keep them local.
+MCP screenshot/capture now also accept `path`, matching CLI `-o`.
+
+## Record an owned device
+
+```sh
+tap-agent record start --max-seconds 10
+# Perform explicit app actions.
+tap-agent record stop -o evidence.mp4
+```
+
+Recording uses the daemon's configured scrcpy, never a watcher or an implicit app lifecycle.
+Default: silent video, up to 30 seconds/16 MiB. Add `--audio-source output` (API 30+, **mutes
+speakers**), `playback` (API 33+, retains sound but apps can opt out) or `mic` (**captures the
+microphone**). `--no-video --audio-source mic` records audio only, up to 60 seconds/3 MiB.
+`--max-seconds` is an integer within the track limit. Options for tracks/duration belong to start;
+`-o` belongs to stop. Video-only is MP4, video+audio MKV, audio-only Opus.
+
+Start acknowledges spawning, not first-frame readiness; refusal can surface on stop. Stop before
+detach/release to retrieve the clip: unfinished recordings are discarded. The SDK verifies bytes,
+then the agent saves a private canonical copy (0700 directory, 0600 file) under `.tap/agent/`.
+An optional new `-o` copy never overwrites. If that copy fails, the error names the retained
+canonical artifact: copy it locally, **do not repeat the device stop**. No failed start/stop is
+replayed automatically. The existing recorder startup/shutdown timing limits still apply.
+
+`export --after-seq N` retrieves events after a known sequence number; full export is unchanged.
+
 ## What else it can do
 
 Beyond reading and tapping, the agent can drive most of what a test can. Each line links to
@@ -164,5 +228,6 @@ its commands in the [reference](commands.md).
 | [Notifications and toasts](commands.md#notifications-toasts-and-the-clipboard) | list, await, open (or press an action button) and dismiss notifications; await toasts; the clipboard |
 | [Files](commands.md#files-and-the-gallery) | `push` and `pull` files, add photos and videos to the gallery |
 
-Whatever the agent changes on the device (rotation, conditions, location, files it pushed) is
-restored or removed when the session is released.
+Temporary rotation, conditions, location and files pushed through their corresponding commands
+are restored/removed on detach or release. App lifecycle changes and private app data are **not**
+rolled back. Stop/export a recording explicitly before releasing its device.

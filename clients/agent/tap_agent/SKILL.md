@@ -59,7 +59,7 @@ pick index or first. Bounded at 64 KiB / 32 levels / 256 nodes; no XPath.
 `inspect TARGET` reads full SDK element state as JSON (may include sensitive text); `exists`
 and `count` read immediate matches. `wait TARGET --state enabled|disabled|checked|unchecked|focused`
 waits on state, `--state text|text-contains --value TEXT` on text, `--state count --value N` on count.
-All command/wait budgets are positive and at most 120 seconds; MCP settle now also accepts
+All command/wait budgets are 1ms..120s; MCP settle now also accepts
 `timeout_seconds`. Do not treat a successful input as proof its expected result appeared.
 
 Every action needs exactly one matching node; with none or several it fails before touching
@@ -148,15 +148,42 @@ new `snapshot`. `settle` alone does the same without acting.
 
 `wait <target>` waits for a node (`--gone`: until it disappears; `--timeout 30s`).
 
+`scroll`/`swipe --percent 40 --timeout 3s` control distance/budget. Use
+`scroll-until CONTAINER DESTINATION --max-scrolls 12 --percent 50 --timeout 15s` for the bounded
+SDK descendant loop; this is not end-of-list detection or a replay policy. All element inputs
+accept `--timeout` (up to 120s). `type TEXT --target id=input --focus-timeout 2s --timeout 3s`
+uses SDK tap/focus-wait/type: input budgets are per step, focus has its separate wait (default
+10s); `--no-await-focus` explicitly skips it. Focus alone does not prove IME readiness; observe
+the app/keyboard explicitly when needed. Keep `--sensitive` for secrets.
+
+`app installed PACKAGE` queries installation; `app process PACKAGE --timeout 3s` returns the
+SDK process identity; `app visible PACKAGE --timeout 5s` waits without launching/foregrounding.
+`settle --package PACKAGE --signal tree|pixels|all --stable-for 300ms --timeout 5s` selects its
+package/quiet period/signal. Package must be focused; timeout is still a changing-screen note,
+not an app-state assertion. None of this uses synchronization/awaitIdle.
+
 ## Evidence
 
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
 `capture` saves screenshot, hierarchy, device info and driver log together. Files go under
-`.tap/agent/` unless `-o` says otherwise.
+`.tap/agent/` unless `-o` says otherwise. `logs device|driver|hierarchy` saves SDK diagnostics to
+new private files (0600), never inline or overwritten. Treat accessibility data and logs as
+potentially sensitive. `snapshot --candidates` returns structured SDK data instead of rendered
+lines, including selector candidates; use the default view.
+
+`record start --max-seconds 10` explicitly starts silent video through the daemon's scrcpy;
+`record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,
+audio-only 60s/3 MiB. Start can select `--audio-source output` (API 30+, mutes speakers), playback
+(API 33+, apps can opt out), or mic (captures microphone); `--no-video` selects audio only.
+Start acknowledgement is not first-frame readiness. Stop before detach/release; unfinished
+capture is discarded. Failed start/stop is never replayed. Stop retains a private canonical copy
+under `.tap/agent/` before an optional custom copy: if that copy fails, use the artifact named
+in the error, do not repeat stop. No automatic app stop, launch or restore.
 
 ## Exporting the session
 
-`export` prints the session's event log as JSON (`-o FILE` writes it): every device call the
+`export` prints the session's event log as JSON (`-o FILE` writes it; `--after-seq N` reads only
+later events): every device call the
 session made, in order, with its outcome — commands with the selector they used (a ref appears
 as the selector it stood for) and app changes such as launch or clear. Snapshots, screenshots
 and `devices` are not in it. Export before `release`: the log ends with the session. The JSON
@@ -166,4 +193,7 @@ is language-neutral; turn it into a test yourself if asked to.
 
 `attach` another serial to the same session and pass `--device <serial>` to device steps.
 `--session <name>` (or `TAP_AGENT_SESSION`) keeps separate sessions apart; `sessions` lists
-them.
+them. `devices` includes API/model/emulator properties when available; `server-info` and
+`device-info` return complete SDK metadata. `detach --device SERIAL` releases only that device,
+including temporary settings/files, and keeps the held session and its other devices alive.
+Synchronization, observed test-client liveness and passive watcher streams are not agent tools.
