@@ -15,10 +15,15 @@ tap-agent release
 
 - Sessions are the daemon's *held connections*: they survive between calls and end after an
   idle timeout (15 min by default) or `release`. The CLI and the MCP server share them.
-- `tap-agent export [-o FILE]` writes the session's event log as JSON (format `tap-events/1`):
-  every device call, in order, with its outcome; `command` / `app` / `error` / `failure` are the
-  `tap.v1` messages in proto3 JSON. It is language-neutral: turning it into a Kotlin, Python or
-  any other test is left to the user.
+- `record start NAME`, `record stop`, `record list`, `record clean NAME` manage private named
+  recordings of high-level actions and explicit waits. `export [NAME] [-o FILE]` writes
+  `tap-agent-recording/1` to stdout or a new 0600 file, even after release. It retains resolved
+  selectors, device identity and outcomes, never replays input, and redacts sensitive text.
+  Storage is under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share that directory
+  between CLI/MCP processes. `clean --all` explicitly clears stopped archives.
+- `history [-o FILE] [--after-seq N]` is the old export: the bounded raw SDK event log,
+  `tap-events/1`, which ends with its session. `media-record start|stop` is video/audio capture.
+  Converting either JSON document into a test remains the user's job.
 - `tap-agent skill` prints `SKILL.md`, the instructions to give an agent that uses the CLI.
 - `tap-agent mcp` serves the same steps as MCP tools over stdio, e.g. for Claude Code:
   `claude mcp add tap -- tap-agent mcp`.

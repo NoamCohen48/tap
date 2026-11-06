@@ -469,7 +469,7 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     assert capsys.readouterr().out.startswith("---\nname: tap-android")
 
 
-def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
+def test_history_is_the_session_log_as_json(fake, agent, tmp_path):
     import json
 
     agent.attach("emulator-5554")
@@ -479,7 +479,7 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
     fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_FOUND))
     with pytest.raises(AgentError):
         agent.tap("text=Nope")
-    document = json.loads(agent.export())
+    document = json.loads(agent.history())
     assert document["format"] == "tap-events/1" and document["session"] == "agent" and document["dropped"] == 0
     cold, tapped, missing = document["events"]
     assert cold["app"] == {"operation": "cold_launch", "package_name": "com.example"} and cold["ok"]
@@ -487,7 +487,7 @@ def test_export_is_the_session_log_as_json(fake, agent, tmp_path):
     assert tapped["command"]["tap"]["selector"] == {"node": {"resource": {"name": "login"}}}
     assert missing["error"] == {"code": "ERR_NOT_FOUND"} and not missing["ok"]
     out = tmp_path / "log" / "session.json"
-    assert agent.export(out) == f"wrote 3 events (1 failed) to {out}"
+    assert agent.history(out) == f"wrote 3 events (1 failed) to {out}"
     assert json.loads(out.read_text())["events"] == document["events"]
 
 def test_condition_reads_back_and_app_locale(fake, agent):
@@ -576,7 +576,7 @@ EXPECTED_TOOLS = {
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count",
-    "detach", "server_info", "device_info", "logs", "recording", "scroll_until",
+    "detach", "server_info", "device_info", "logs", "media_record", "scroll_until", "record", "history",
 }
 
 
@@ -639,7 +639,7 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert not result.is_error and result.content[0].text == "clipboard set (2 characters)"
         result = await client.call_tool("app", {"action": "open-link", "package": "com.example", "argument": "example://x"})
         assert not result.is_error and result.content[0].text.startswith("opened example://x")
-        result = await client.call_tool("export", {})
+        result = await client.call_tool("history", {})
         assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text
 
 

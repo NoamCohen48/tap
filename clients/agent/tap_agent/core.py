@@ -1,8 +1,9 @@
 """The one implementation behind ``tap-agent <verb>`` and ``tap-agent mcp``.
 
-Every method is one agent step and returns the short text to show. State lives in the daemon,
-not here: a session is a held connection named after it (``TapClient.connect(name, hold=...)``),
-so any process — the next CLI call, an MCP server — resumes it by name.
+Every method returns the short text to show. Device/session state lives in the daemon:
+a session is a held connection named after it (``TapClient.connect(name, hold=...)``),
+so any process — the next CLI call, an MCP server — resumes it by name. Named high-level step
+recordings are client-owned durable intent under the private agent directory, not raw history.
 """
 
 from __future__ import annotations
@@ -45,11 +46,13 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
 
 from . import render
 from .output import json_text, save_private
+from .records import RecordError, RecordStore
+from .step_capture import CURRENT, instrument, sending
 from .targets import Target, UsageError, format_duration, parse_int32, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
-# `export`'s document format; bumped only for a change a reader must know about.
-EXPORT_FORMAT = "tap-events/1"
+# Raw history keeps the existing event format; named step recordings have their own format.
+HISTORY_FORMAT = "tap-events/1"
 DEFAULT_IDLE = 15 * 60.0
 DEFAULT_WAIT = 10.0
 MAX_COMMAND_TIMEOUT = 120.0
@@ -181,6 +184,7 @@ def _hint(error: TapError) -> str:
     return message
 
 
+@instrument
 class Agent:
     """Agent steps against the daemon, for one session name.
 
@@ -200,6 +204,7 @@ class Agent:
         self._client = client
         self._owns_client = client is None
         self.out_dir = pathlib.Path(out_dir or os.environ.get("TAP_AGENT_DIR") or ".tap/agent")
+        self.records = RecordStore(self.out_dir / "records")
 
     # --- plumbing -------------------------------------------------------------------------------
 
@@ -225,6 +230,8 @@ class Agent:
             raise
         except UsageError as error:
             raise AgentError(str(error), EXIT_USAGE) from error
+        except RecordError as error:
+            raise AgentError(str(error)) from error
         except ServerError as error:
             if error.code in ("UNAVAILABLE", "DEADLINE_EXCEEDED") and error.reason is FailureReason.UNSPECIFIED:
                 raise AgentError(
@@ -258,26 +265,38 @@ class Agent:
         if serial:
             for device in devices:
                 if device.serial == serial:
-                    return device
+                    return self._selected_device(device)
             raise AgentError(f"{serial} is not attached to session {self.session!r}; `attach {serial}`")
         if not devices:
             raise AgentError(f"session {self.session!r} has no device; `attach <serial>`")
         if len(devices) > 1:
             serials = ", ".join(d.serial for d in devices)
             raise AgentError(f"session {self.session!r} has several devices ({serials}); pass --device", EXIT_USAGE)
-        return devices[0]
+        return self._selected_device(devices[0])
 
     @staticmethod
-    def _element(device: Device, target: str | Target) -> tuple[Element, str]:
+    def _selected_device(device: Device) -> Device:
+        capture = CURRENT.get()
+        if capture is not None:
+            capture.device(device.serial, device.owner_connection.id)
+        return device
+
+    @staticmethod
+    def _element(device: Device, target: str | Target, *, slot: str = "target") -> tuple[Element, str]:
         """The target as an element: a ref's selector on the whole screen (it already names the
         node's package when that is needed), a written selector in ``pkg``'s nodes or else on
         the whole screen."""
         parsed = parse_target(target) if isinstance(target, str) else target
         if parsed.ref:
-            return device.screen.element(device.resolve_ref(parsed.ref)), parsed.describe()
-        assert parsed.selector is not None
-        scope = device.app(parsed.package) if parsed.package else device.screen
-        return scope.element(parsed.selector), parsed.describe()
+            element = device.screen.element(device.resolve_ref(parsed.ref))
+        else:
+            assert parsed.selector is not None
+            scope = device.app(parsed.package) if parsed.package else device.screen
+            element = scope.element(parsed.selector)
+        capture = CURRENT.get()
+        if capture is not None:
+            capture.target(slot, element.selector)
+        return element, parsed.describe()
 
     def _settled(self, device: Device, level: str = render.DEFAULT, full: bool = False, timeout: float = SETTLE_TIMEOUT, *, package: str | None = None, stable_for: float = SETTLE_STABLE_FOR, signal: StabilitySignal = StabilitySignal.TREE) -> str:
         """Waits for the focused window's hierarchy to stop changing, then diffs a new snapshot
@@ -296,7 +315,8 @@ class Agent:
         def step() -> str:
             device = self._device(device_serial)
             element, described = self._element(device, target)
-            action(element)
+            with sending():
+                action(element)
             text = f"{verb} {described}"
             return f"{text}\n{self._settled(device)}" if settle else text
 
@@ -381,7 +401,14 @@ class Agent:
                 return f"no session {self.session!r}"
             TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold).close()
             serials = ", ".join(d.serial for d in entry.attached_devices)
-            return f"released session {self.session!r}" + (f" (detached {serials})" if serials else "")
+            text = f"released session {self.session!r}" + (f" (detached {serials})" if serials else "")
+            try:
+                active = self.records.active(self.session)
+                if active is not None and active["connection_id"] == entry.id:
+                    self.records.stop(active["name"], self.session, reason="released")
+            except RecordError:
+                text += "\nWARNING: session released but recording could not be stopped; use record stop and inspect its outcome"
+            return text
 
         return self._run(step)
 
@@ -464,8 +491,8 @@ class Agent:
 
         return self._run(step)
 
-    def export(self, out: str | os.PathLike[str] | None = None, *, after_seq: int = 0) -> str:
-        """The session's event log as JSON (``EXPORT_FORMAT``): every device call it made, in
+    def history(self, out: str | os.PathLike[str] | None = None, *, after_seq: int = 0) -> str:
+        """The session's event log as JSON (``HISTORY_FORMAT``): every device call it made, in
         order, with its outcome. Turning it into a test, in whatever language, is the user's job.
         With ``out``, writes the file and says so; otherwise returns the JSON."""
 
@@ -475,7 +502,7 @@ class Agent:
         def step() -> str:
             log = self._connection().event_log(after_seq)
             document = {
-                "format": EXPORT_FORMAT,
+                "format": HISTORY_FORMAT,
                 "session": self.session,
                 "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
                 "dropped": log.dropped,
@@ -485,13 +512,60 @@ class Agent:
             if out is None:
                 return text
             path = pathlib.Path(out)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text + "\n", encoding="utf-8")
+            save_private(path, (text + "\n").encode("utf-8"))
             failed = sum(1 for e in log.events if not e.ok)
             note = f" ({failed} failed)" if failed else ""
             dropped = f"; {log.dropped} older events were dropped" if log.dropped else ""
             return f"wrote {len(log.events)} events{note} to {path}{dropped}"
 
+        return self._run(step)
+
+    def record(self, action: str = "list", name: str | None = None, *, all_records: bool = False) -> str:
+        """Start/stop/list/clean private named high-level recordings, not media or raw history.
+
+        Start needs a live held session; other controls are local. Names are unique, stop retains
+        data, and clean requires stopped records. A recording is pinned to its connection ID.
+        """
+        if not isinstance(all_records, bool) or (name is not None and not isinstance(name, str)):
+            raise AgentError("record needs a string name and boolean --all flag", EXIT_USAGE)
+        name = name or None
+        if action not in ("start", "stop", "list", "clean"):
+            raise AgentError("record action must be start, stop, list or clean", EXIT_USAGE)
+        if all_records and action != "clean":
+            raise AgentError("--all is only for record clean", EXIT_USAGE)
+        if action == "start" and not name:
+            raise AgentError("record start needs a name", EXIT_USAGE)
+        if action == "list" and name is not None:
+            raise AgentError("record list takes no name", EXIT_USAGE)
+        def step() -> str:
+            if action == "start":
+                assert name is not None
+                entry = self._connection()
+                metadata = self.records.start(name, self.session, entry.id)
+                return f"recording steps as {metadata['name']!r}"
+            if action == "stop":
+                metadata = self.records.stop(name, self.session)
+                return f"stopped step recording {metadata['name']!r} (retained; export it by name)"
+            if action == "clean":
+                count = self.records.clean(name, self.session, all_records=all_records)
+                return f"cleaned {count} step recording{'s' if count != 1 else ''}"
+            rows = self.records.list()
+            return "\n".join(f"{row['name']}  {row['state']}  {row['steps']} steps  session {row['session']!r}" for row in rows) or "no step recordings"
+        return self._run(step)
+
+    def export(self, name: str | None = None, out: str | os.PathLike[str] | None = None) -> str:
+        """Export a named high-level recording without a daemon, to JSON stdout or a new 0600 file.
+
+        With no name, choose this session's active recording, otherwise its latest archive.
+        Export does not stop capture. Incomplete/unfinished outcomes are explicit in the JSON.
+        """
+        def step() -> str:
+            document = self.records.export(name, self.session)
+            text = json_text(document)
+            if out is None:
+                return text
+            path = save_private(pathlib.Path(out), (text + "\n").encode("utf-8"))
+            return f"exported step recording {document['name']!r} to {path}"
         return self._run(step)
 
     def logs(self, kind: str = "device", device: str | None = None, out: str | None = None) -> str:
@@ -569,8 +643,9 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             container, described = self._element(d, target)
-            wanted, destination_description = self._element(d, destination)
-            container.scroll_until(wanted.selector, resolved, max_scrolls, percent, timeout)
+            wanted, destination_description = self._element(d, destination, slot="destination")
+            with sending(compound=True):
+                container.scroll_until(wanted.selector, resolved, max_scrolls, percent, timeout)
             return f"found {destination_description} inside {described}"
         return self._run(step)
 
@@ -696,8 +771,9 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             source, described = self._element(d, target)
-            onto, onto_described = self._element(d, destination)
-            source.drag_to(onto.selector, timeout)
+            onto, onto_described = self._element(d, destination, slot="destination")
+            with sending():
+                source.drag_to(onto.selector, timeout)
             text = f"dragged {described} onto {onto_described}"
             return f"{text}\n{self._settled(d)}" if settle else text
 
@@ -715,12 +791,14 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             if target is None:
-                d.type_text(text, timeout, sensitive=sensitive)
+                with sending():
+                    d.type_text(text, timeout, sensitive=sensitive)
             else:
                 if focus_timeout is not None:
                     d.timeouts = replace(d.timeouts, wait=focus_timeout)
                 element, _ = self._element(d, target)
-                element.type_text(text, await_focus, timeout, sensitive=sensitive)
+                with sending(compound=True):  # tap, focus wait, then type
+                    element.type_text(text, await_focus, timeout, sensitive=sensitive)
             return f"typed {len(text)} characters\n{self._settled(d)}" if settle else f"typed {len(text)} characters"
 
         return self._run(step)
@@ -731,7 +809,8 @@ class Agent:
         def step() -> str:
             code = parse_key(name)
             d = self._device(device)
-            d.press_key(code)
+            with sending():
+                d.press_key(code)
             return f"pressed {name}\n{self._settled(d)}" if settle else f"pressed {name}"
 
         return self._run(step)
@@ -745,10 +824,11 @@ class Agent:
 
         def step() -> str:
             d = self._device(device)
-            if panel == "quick-settings":
-                d.open_quick_settings()
-            else:
-                d.open_notifications()
+            with sending():
+                if panel == "quick-settings":
+                    d.open_quick_settings()
+                else:
+                    d.open_notifications()
             return f"opened {panel}\n{self._settled(d)}" if settle else f"opened {panel}"
 
         return self._run(step)
@@ -763,12 +843,13 @@ class Agent:
 
         def step() -> str:
             d = self._device(device)
-            if how == "auto":
-                d.unfreeze_rotation()
-            elif how in ("portrait", "landscape"):
-                d.set_orientation(Orientation[how.upper()])
-            else:
-                d.set_display_rotation(DisplayRotation[how.upper().replace("-", "_")])
+            with sending():
+                if how == "auto":
+                    d.unfreeze_rotation()
+                elif how in ("portrait", "landscape"):
+                    d.set_orientation(Orientation[how.upper()])
+                else:
+                    d.set_display_rotation(DisplayRotation[how.upper().replace("-", "_")])
             info = d.info()
             text = (
                 f"rotated {how}: display {info.orientation.name.lower()}, "
@@ -789,11 +870,14 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             if action in ("on", "unlock"):
-                d.wake()
+                with sending():
+                    d.wake()
             if action == "off":
-                d.sleep()
+                with sending():
+                    d.sleep()
             if action == "unlock":
-                d.dismiss_keyguard()
+                with sending():
+                    d.dismiss_keyguard()
             info = d.info()
             keyguard = "not showing"
             if info.keyguard_locked:
@@ -813,7 +897,8 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             if action == "hide":
-                d.hide_keyboard()
+                with sending():
+                    d.hide_keyboard()
             text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
             return f"{text}\n{self._settled(d)}" if settle and action == "hide" else text
 
@@ -836,7 +921,8 @@ class Agent:
         def step() -> str:
             d = self._device(device)
             if change is not None:
-                change(d)
+                with sending():
+                    change(d)
             info = d.info()
             shown = {
                 "animations": "on" if info.animations_enabled else "off",
@@ -876,7 +962,9 @@ class Agent:
             raise AgentError(f"altitude must be a finite number of meters, not {altitude}", EXIT_USAGE)
 
         def step() -> str:
-            self._device(device).set_location(latitude, longitude, accuracy_m=accuracy, altitude_m=altitude)
+            d = self._device(device)
+            with sending():
+                d.set_location(latitude, longitude, accuracy_m=accuracy, altitude_m=altitude)
             shown = (
                 f"{latitude:g}, {longitude:g}"
                 + (f" ±{accuracy:g} m" if accuracy is not None else "")
@@ -904,7 +992,9 @@ class Agent:
             raise AgentError(f"{source} is not a file", EXIT_USAGE)
 
         def step() -> str:
-            self._device(device).push_file(device_path, source)
+            d = self._device(device)
+            with sending():
+                d.push_file(device_path, source)
             return f"pushed {source.stat().st_size} bytes to {device_path} (removed on release)"
 
         return self._run(step)
@@ -931,7 +1021,9 @@ class Agent:
             raise AgentError(f"{source} is not a file", EXIT_USAGE)
 
         def step() -> str:
-            path = self._device(device).add_media(source, name)
+            d = self._device(device)
+            with sending():
+                path = d.add_media(source, name)
             return f"added {path} to the gallery (removed on release)"
 
         return self._run(step)
@@ -943,7 +1035,8 @@ class Agent:
             d = self._device(device)
             if text is None:
                 return d.clipboard()
-            d.set_clipboard(text)
+            with sending():
+                d.set_clipboard(text)
             return f"clipboard set ({len(text)} characters)"
 
         return self._run(step)
@@ -1007,10 +1100,12 @@ class Agent:
             if action == "await":
                 return _notification_line(d.await_notification(title, text, mode, package_name=package, timeout=timeout))
             if action == "open":
-                d.open_notification(title, text, mode, package_name=package, action=button, timeout=timeout)
+                with sending():
+                    d.open_notification(title, text, mode, package_name=package, action=button, timeout=timeout)
                 done = f"pressed {button!r} on the notification" if button else "opened the notification"
             else:
-                d.dismiss_notification(title, text, mode, package_name=package, timeout=timeout)
+                with sending():
+                    d.dismiss_notification(title, text, mode, package_name=package, timeout=timeout)
                 done = "dismissed the notification"
             return f"{done}\n{self._settled(d)}" if settle else done
 
@@ -1051,7 +1146,8 @@ class Agent:
                 if prompt.accuracies:
                     text += f"; accuracy: {', '.join(a.name.lower() for a in prompt.accuracies)}"
                 return text
-            d.choose_permission(chosen, picked, timeout=timeout)
+            with sending():
+                d.choose_permission(chosen, picked, timeout=timeout)
             text = f"pressed {choice}" + (f" ({picked.name.lower()})" if picked else "")
             return f"{text}\n{self._settled(d)}" if settle else text
 
@@ -1139,7 +1235,8 @@ class Agent:
             if action == "list":
                 return "\n".join(f"{'link' if e.is_symlink else 'dir' if e.is_directory else 'file'} {e.size_bytes} {json.dumps(e.name, ensure_ascii=False)}" for e in data.list(path)) or "(empty)"
             if action == "delete":
-                data.delete(path)
+                with sending():
+                    data.delete(path)
                 return "deleted private file"
             target = pathlib.Path(local or "")
             if action == "read":
@@ -1148,7 +1245,9 @@ class Agent:
                 save(target, data.read(path))
                 return f"saved private file to {target}"
             if action == "write":
-                data.write(path, load(target), overwrite=overwrite)
+                payload = load(target)
+                with sending():
+                    data.write(path, payload, overwrite=overwrite)
                 return "wrote private file"
             if action == "export-db":
                 if target.exists():
@@ -1168,7 +1267,8 @@ class Agent:
                 if contents is not None:
                     remaining -= len(contents)
                 sidecars.append(contents)
-            data.import_database(DatabaseBundle(path, base, *sidecars), overwrite=overwrite)
+            with sending():
+                data.import_database(DatabaseBundle(path, base, *sidecars), overwrite=overwrite)
             return "imported database bundle; app remains stopped"
 
         return self._run(step)
@@ -1216,37 +1316,48 @@ class Agent:
                 app.await_visible(timeout)
                 return f"{name} is visible"
             if action == "launch":
-                app.launch(argument, timeout, extras=intent)
+                with sending():
+                    app.launch(argument, timeout, extras=intent)
                 return f"launched {name}"
             if action == "cold-launch":
-                process = app.cold_launch(argument, timeout, extras=intent)
+                with sending():
+                    process = app.cold_launch(argument, timeout, extras=intent)
                 return f"cold-launched {name} (pid {process.pid})"
             if action == "foreground":
-                app.foreground(timeout)
+                with sending():
+                    app.foreground(timeout)
                 return f"brought {name} to the foreground"
             if action == "background":
-                app.background()
+                with sending():
+                    app.background()
                 return f"sent {name} to the background (pressed home)"
             if action == "open-link":
-                activity = app.open_link(argument, any_app=any_app, timeout=timeout)  # type: ignore[arg-type]
+                with sending():
+                    activity = app.open_link(argument, any_app=any_app, timeout=timeout)  # type: ignore[arg-type]
                 return f"opened {argument}" + (f" in {activity}" if activity else "")
             if action == "stop":
-                app.force_stop(timeout)
+                with sending():
+                    app.force_stop(timeout)
                 return f"stopped {name}"
             if action == "clear":
-                app.clear_data(timeout)
+                with sending():
+                    app.clear_data(timeout)
                 return f"cleared data of {name}"
             if action == "install":
-                app.install(argument, timeout)  # type: ignore[arg-type]
+                with sending():
+                    app.install(argument, timeout)  # type: ignore[arg-type]
                 return f"installed {argument}"
             if action == "uninstall":
-                app.uninstall()
+                with sending():
+                    app.uninstall()
                 return f"uninstalled {name}"
             if action == "grant":
-                app.grant_permission(argument)  # type: ignore[arg-type]
+                with sending():
+                    app.grant_permission(argument)  # type: ignore[arg-type]
                 return f"granted {argument} to {name}"
             if action == "revoke":
-                app.revoke_permission(argument)  # type: ignore[arg-type]
+                with sending():
+                    app.revoke_permission(argument)  # type: ignore[arg-type]
                 return f"revoked {argument} from {name} (Android stops its process)"
             if action == "granted":
                 granted = app.is_permission_granted(argument)  # type: ignore[arg-type]
@@ -1254,7 +1365,8 @@ class Agent:
             if action == "locale":
                 if argument is not None:
                     tags = [] if argument.strip().lower() == "system" else [t.strip() for t in argument.split(",") if t.strip()]
-                    app.set_locales(tags)
+                    with sending():
+                        app.set_locales(tags)
                 locales = app.locales()
                 return f"{name} languages: {', '.join(locales)}" if locales else f"{name} follows the system language"
             return f"{name} is {'running' if app.is_running() else 'not running'}"

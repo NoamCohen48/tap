@@ -34,7 +34,10 @@ snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pa
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen; an
 action with settle=true waits for the screen to settle and returns what changed (+ added,
 - removed), so a fresh snapshot is rarely needed. An action needs exactly one matching node.
-The session lives in the daemon and ends after 15 idle minutes or on release."""
+The session lives in the daemon and ends after 15 idle minutes or on release.
+Optional record(start, name) captures named high-level actions/waits, record(stop) retains it,
+and export(name) reads it even after release. history is the separate bounded raw SDK trail;
+media_record is video/audio. CLI/MCP share named records through the same TAP_AGENT_DIR."""
 
 Target = Annotated[
     str,
@@ -55,6 +58,11 @@ Budget = Annotated[float | None, Field(ge=0.001, le=120, description="SDK comman
 Percent = Annotated[StrictInt, Field(ge=1, le=100, description="Gesture distance across the node.")]
 
 READ_ONLY = ToolAnnotations(read_only_hint=True)
+# Changes nothing on the device but writes a new local file (never replacing one), so it is not
+# read-only for a client that asks before writes.
+WRITES_FILES = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
+# Writes a local file, replacing one already at the path the caller named.
+REPLACES_FILE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True)
 
 
 def _text(text: str) -> CallToolResult:
@@ -138,13 +146,25 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Complete current device state as SDK JSON."""
         return await call(session, lambda a: a.device_info(device or None))
 
-    @mcp.tool(name="logs", annotations=READ_ONLY)
+    @mcp.tool(name="logs", annotations=WRITES_FILES)
     async def logs(kind: Literal["device", "driver", "hierarchy"] = "device", path: str = "", session: Session = "", device: Device = "") -> CallToolResult:
         """Save SDK device/driver logs or diagnostic hierarchy privately, never inline or overwrite."""
         return await call(session, lambda a: a.logs(kind, device or None, path or None))
 
-    @mcp.tool(name="recording")
-    async def recording(
+    @mcp.tool(name="record")
+    async def record(
+        action: Literal["start", "stop", "list", "clean"] = "list",
+        name: Annotated[str, Field(description="Start: new unique name. Stop/export can select a name; clean requires a name or explicit all_records.")] = "",
+        all_records: Annotated[bool, Field(description="Clean only: explicitly delete all stopped recordings.")] = False,
+        session: Session = "",
+    ) -> CallToolResult:
+        """Control private named action-and-wait recordings, not video or raw history. Start
+        pins the live held connection. Stop retains data; export works after release/offline.
+        An unfinished step is explicit and is never replayed. CLI/MCP share TAP_AGENT_DIR."""
+        return await call(session, lambda a: a.record(action, name or None, all_records=all_records))
+
+    @mcp.tool(name="media_record")
+    async def media_record(
         action: Literal["start", "stop"],
         video: bool = True,
         audio_source: Annotated[Literal["output", "playback", "mic"] | None, Field(description="Start: output mutes speakers; mic captures the microphone.")] = None,
@@ -398,7 +418,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         overwritten."""
         return await call(session, lambda a: a.push(local_path, device_path, device or None))
 
-    @mcp.tool(name="pull_file", annotations=READ_ONLY)
+    @mcp.tool(name="pull_file", annotations=REPLACES_FILE)
     async def pull_file(
         device_path: Annotated[str, Field(description="Absolute path of a regular file on the device.")],
         out: Annotated[str | None, Field(description="Local file to write; omit for one under .tap/agent.")] = None,
@@ -570,7 +590,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Wait for the screen to stop changing, then list what changed since the last snapshot."""
         return await call(session, lambda a: a.settle(device or None, full=full, timeout=timeout_seconds, package=package or None, stable_for=stable_for, signal=signal))
 
-    @mcp.tool(name="screenshot", annotations=READ_ONLY)
+    @mcp.tool(name="screenshot", annotations=WRITES_FILES)
     async def screenshot(session: Session = "", device: Device = "", path: str = "") -> CallToolResult:
         """A PNG of the screen, also saved to disk. Prefer snapshot: it is text and has refs."""
         try:
@@ -610,7 +630,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         is mocked)."""
         return await call(session, lambda a: a.condition(name, value or None, device or None))
 
-    @mcp.tool(name="capture", annotations=READ_ONLY)
+    @mcp.tool(name="capture", annotations=WRITES_FILES)
     async def capture(session: Session = "", device: Device = "", path: str = "") -> CallToolResult:
         """Save a screenshot, the hierarchy, device info and the driver log; returns the paths."""
         return await call(session, lambda a: a.capture(device or None, path or None))
@@ -667,16 +687,27 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras, timeout=timeout_seconds)
         )
 
-    @mcp.tool(name="export", annotations=READ_ONLY)
-    async def export(
-        path: Annotated[str, Field(description="Write the JSON to this file and return a summary instead.")] = "",
+    @mcp.tool(name="history", annotations=WRITES_FILES)
+    async def history(
+        path: Annotated[str, Field(description="Write raw history to a new private file instead.")] = "",
         after_seq: Annotated[StrictInt, Field(ge=0, le=9223372036854775807, description="Only events with larger sequence numbers.")] = 0,
         session: Session = "",
     ) -> CallToolResult:
         """The session's event log as JSON: every device call it made (commands and app changes),
         in order, with outcomes and the selectors refs stood for. Export before `release`: the
         log ends with the session. Converting it into a test is up to the user."""
-        return await call(session, lambda a: a.export(path or None, after_seq=after_seq))
+        return await call(session, lambda a: a.history(path or None, after_seq=after_seq))
+
+    @mcp.tool(name="export", annotations=WRITES_FILES)
+    async def export(
+        name: Annotated[str, Field(description="Named step recording; omit for this session's active recording, otherwise latest archive.")] = "",
+        path: Annotated[str, Field(description="Write JSON to a new 0600 file instead of returning it.")] = "",
+        session: Session = "",
+    ) -> CallToolResult:
+        """Export tap-agent-recording/1: high-level actions/waits, resolved selectors, devices
+        and outcomes. No daemon is required and export does not stop an active recording.
+        Unknown/unfinished outcomes remain explicit; sensitive inputs are redacted. Not replay."""
+        return await call(session, lambda a: a.export(name or None, path or None))
 
     return mcp
 

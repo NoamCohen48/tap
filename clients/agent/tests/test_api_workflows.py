@@ -32,7 +32,7 @@ def test_detach_preserves_other_devices_and_the_session(fake, agent):
     assert "no device" in agent.sessions()
 
 
-def test_metadata_candidates_and_incremental_export(fake, agent):
+def test_metadata_candidates_and_incremental_history(fake, agent):
     fake.devices.listed = [pb.DeviceEntry(serial="first", state=pb.DEVICE_FREE,
         properties=pb.DeviceProperties(api_level=34, manufacturer="Google", model="Phone", emulator=True))]
     assert "API 34  Google Phone  emulator" in agent.devices()
@@ -44,9 +44,9 @@ def test_metadata_candidates_and_incremental_export(fake, agent):
     assert fake.devices.snapshot_requests[-1].selector_candidates
     agent.tap("id=save")
     agent.tap("id=cancel")
-    events = json.loads(agent.export())["events"]
+    events = json.loads(agent.history())["events"]
     assert len(events) == 2
-    later = json.loads(agent.export(after_seq=events[0]["seq"]))["events"]
+    later = json.loads(agent.history(after_seq=events[0]["seq"]))["events"]
     assert later == events[1:]
 
 
@@ -237,7 +237,7 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
     ("settle", {"stable_for": 31}), ("settle", {"stable_for": .0001}),
     ("settle", {"stable_for": 2, "timeout": 1}), ("settle", {"signal": "unknown"}),
     ("snapshot", {"candidates": True, "level": "all"}),
-    ("export", {"after_seq": -1}), ("export", {"after_seq": True}),
+    ("history", {"after_seq": -1}), ("history", {"after_seq": True}),
     ("wait", {"target": "id=input", "state": "count", "value": "²"}),
     ("wait", {"target": "id=input", "state": "count", "value": "9" * 5000}),
     ("wait", {"target": "id=input", "state": "count", "value": 10**5000}),
@@ -266,7 +266,7 @@ def test_cli_forwards_new_parameters(fake, agent):
     assert fake.devices.commands[-1].wait_screen_stable.stable_for_ms == 100
     assert fake.devices.commands[-1].wait_screen_stable.signal == pb.STABILITY_ALL
     assert json.loads(run(["app", "installed", "com.example"])) is True
-    assert json.loads(run(["export", "--after-seq", "999"]))["events"] == []
+    assert json.loads(run(["history", "--after-seq", "999"]))["events"] == []
     assert "detached" in run(["detach"])
 
 

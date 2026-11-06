@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
+import sys
 import time
 import uuid
 
@@ -74,9 +76,9 @@ def test_queries_typing_scrolling_stability_and_detach(real_agent):
     for kind in ("device", "driver", "hierarchy"):
         path = a.logs(kind)
         assert path
-    events = json.loads(a.export())["events"]
+    events = json.loads(a.history())["events"]
     assert events
-    assert json.loads(a.export(after_seq=events[-1]["seq"]))["events"] == []
+    assert json.loads(a.history(after_seq=events[-1]["seq"]))["events"] == []
     assert "detached" in a.detach()
     assert "no device" in a.sessions()
 
@@ -97,3 +99,33 @@ def test_recording_saves_verified_private_video(real_agent):
     assert str(path) in result and path.stat().st_size > 0
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
+def test_named_steps_across_cli_processes_and_export_after_release(real_agent, tmp_path):
+    a = real_agent
+    a.app("cold-launch", PACKAGE, ".FormActivity", timeout=10)
+    a.wait("id=search_field", timeout=5)
+    environment = {**os.environ, "TAP_AGENT_DIR": str(a.out_dir)}
+    def cli(*arguments):
+        return subprocess.run([sys.executable, "-m", "tap_agent", *arguments, "--session", a.session], env=environment, capture_output=True, text=True, check=True, timeout=30).stdout
+    cli("record", "start", "fixture-steps")
+    screen = cli("snapshot")
+    target = next(line.split()[0] for line in screen.splitlines() if "id=search_field" in line)
+    value = "private fixture input"
+    cli("fill", target, value, "--sensitive")
+    assert json.loads(a.inspect("id=search_field"))["text"] == value  # inspection is not a step
+    a.wait("id=search_field", state="enabled", timeout=5)
+    cli("record", "stop")
+    a.release()
+    document = json.loads(cli("export", "fixture-steps"))
+    assert document["complete"] and document["state"] == "stopped"
+    assert [step["action"] for step in document["steps"]] == ["fill", "wait"]
+    assert all(step["serial"] == SERIAL for step in document["steps"])
+    assert document["steps"][0]["targets"]["target"]
+    assert target not in json.dumps(document) and value not in json.dumps(document)
+    path = tmp_path / "named-recording.json"
+    cli("export", "fixture-steps", "-o", str(path))
+    assert json.loads(path.read_text())["name"] == "fixture-steps"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    cli("record", "clean", "fixture-steps")
+    assert "no step recordings" in cli("record", "list")
