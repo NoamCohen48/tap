@@ -24,12 +24,12 @@ one:
 
 === "Native binary"
 
-    1. Download `tap-0.0.2-linux-x86_64` (Linux) or `tap-0.0.2-macos-aarch64` (macOS on Apple
-       silicon) from the [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.0.2).
+    1. Download `tap-0.1.0-linux-x86_64` (Linux) or `tap-0.1.0-macos-aarch64` (macOS on Apple
+       silicon) from the [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.1.0).
     2. Rename it to `tap` and make it executable:
 
         ```bash
-        mv tap-0.0.2-linux-x86_64 tap && chmod +x tap
+        mv tap-0.1.0-linux-x86_64 tap && chmod +x tap
         ./tap version
         ```
 
@@ -40,7 +40,7 @@ one:
     `tap-<version>-jvm.zip` from the same release; needs a JDK 17+.
 
     ```bash
-    unzip tap-0.0.2-jvm.zip && export PATH="$PWD/tap-0.0.2/bin:$PATH"
+    unzip tap-0.1.0-jvm.zip && export PATH="$PWD/tap-0.1.0/bin:$PATH"
     tap version
     ```
 
@@ -66,7 +66,7 @@ Test runners can start and stop it for you: see [The tap server](server.md#who-s
 ## 2. Install the Python client
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
 ```
 
 The package `tap-e2e` (imported as `tap_e2e`) registers a pytest plugin that provides attached

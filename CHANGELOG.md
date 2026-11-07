@@ -6,6 +6,17 @@ experimental may change in any release.
 
 ## Unreleased
 
+## 0.1.0 — 2026-11-07
+
+Release set: engine, Kotlin client, Python client, tap-agent, Tap Studio and tap-watcher
+all move to 0.1.0. Python bindings target engine 0.1.0; agent, Studio and watcher require
+`tap-e2e>=0.1.0`. The API compatibility epoch is unchanged by this version-only bump.
+The unchanged, unreleased sync-sdk stays at 0.0.1. Release tags and artifacts are published
+separately; this section records the prepared release.
+
+From this release, features and breaking changes increment the minor version during 0.x;
+fix-only releases increment the patch. Families remain independently versioned.
+
 tap-agent:
 
 - **Concurrent recording startup.** Two first starts sharing an empty catalog now wait through

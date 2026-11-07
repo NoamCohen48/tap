@@ -4,28 +4,28 @@ Everything Tap ships, in one zip for your system: the `tap` server, the Kotlin c
 5 extension, the Python client and pytest plugin, `tap-agent`, Tap Studio, `tap-watcher`, this
 documentation and an install script.
 
-**Tap 0.0.2** (alpha):
+**Tap 0.1.0** (alpha):
 
-[Linux x86-64](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.0.2/tap-0.0.2-linux-x86_64.zip){ .md-button .md-button--primary }
-[macOS Apple silicon](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.0.2/tap-0.0.2-macos-aarch64.zip){ .md-button .md-button--primary }
-[Any OS with Java 17](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.0.2/tap-0.0.2-jvm.zip){ .md-button }
+[Linux x86-64](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.1.0/tap-0.1.0-linux-x86_64.zip){ .md-button .md-button--primary }
+[macOS Apple silicon](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.1.0/tap-0.1.0-macos-aarch64.zip){ .md-button .md-button--primary }
+[Any OS with Java 17](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.1.0/tap-0.1.0-jvm.zip){ .md-button }
 
 | Your system | Download | Server inside |
 |---|---|---|
-| Linux on x86-64 | `tap-0.0.2-linux-x86_64.zip` | native executable |
-| macOS on Apple silicon | `tap-0.0.2-macos-aarch64.zip` | native executable |
-| Windows, Linux on ARM, Intel Macs: anything with JDK 17+ | `tap-0.0.2-jvm.zip` | JVM distribution |
+| Linux on x86-64 | `tap-0.1.0-linux-x86_64.zip` | native executable |
+| macOS on Apple silicon | `tap-0.1.0-macos-aarch64.zip` | native executable |
+| Windows, Linux on ARM, Intel Macs: anything with JDK 17+ | `tap-0.1.0-jvm.zip` | JVM distribution |
 
 Checksums of the three zips are in `SHA256SUMS` on the
-[release page](https://github.com/NoamCohen48/tap/releases/tag/bundle/v0.0.2).
+[release page](https://github.com/NoamCohen48/tap/releases/tag/bundle/v0.1.0).
 
 ## Install
 
 On Linux and macOS:
 
 ```bash
-unzip tap-0.0.2-linux-x86_64.zip
-cd tap-0.0.2-linux-x86_64
+unzip tap-0.1.0-linux-x86_64.zip
+cd tap-0.1.0-linux-x86_64
 ./install.sh
 ```
 
@@ -69,7 +69,7 @@ tap start          # the server, once per machine; tap stop ends it
     }
 
     dependencies {
-        testImplementation("io.github.noamcohen48.tap:tap-junit5:0.0.2")
+        testImplementation("io.github.noamcohen48.tap:tap-junit5:0.1.0")
         testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
     }
     ```
@@ -79,7 +79,7 @@ tap start          # the server, once per machine; tap stop ends it
     In your test project's virtual environment:
 
     ```bash
-    pip install ~/.local/share/tap/python/tap_e2e-0.0.2-py3-none-any.whl
+    pip install ~/.local/share/tap/python/tap_e2e-0.1.0-py3-none-any.whl
     ```
 
 Then continue with [Getting started](guide/getting-started.md) from step 2 to write and run
@@ -88,11 +88,11 @@ your first test.
 ## What is inside
 
 ```text
-tap-0.0.2-<platform>/
+tap-0.1.0-<platform>/
 ├── install.sh, INSTALL.md
 ├── VERSIONS          the version of each part
 ├── SHA256SUMS        a checksum for every file
-├── server/           tap (native) or tap-0.0.2-jvm.zip
+├── server/           tap (native) or tap-0.1.0-jvm.zip
 ├── maven/            tap-junit5, tap-client, tap-api, tap-schema as a Maven repository
 ├── python/           tap_e2e, tap_agent, tap_studio, tap_watcher wheels
 ├── docs/             this documentation as Markdown, with the API references
@@ -101,7 +101,8 @@ tap-0.0.2-<platform>/
 
 The files are the ones published in each part's own release, repackaged. The parts are
 versioned separately (see [Releases and versions](reference/releases.md)), so one bundle can
-hold, for example, server 0.0.2 with Tap Studio 0.0.1; `VERSIONS` lists them.
+hold different server and Studio versions; `VERSIONS` lists them. The 0.1.0 set uses
+0.1.0 for all six bundled families.
 
 ## One part at a time
 
