@@ -16,7 +16,7 @@ dependencies {
 }
 
 /*
- * The engine version (gradle.properties `tap.version.engine`) is compiled in as
+ * The engine version (gradle.properties `tap.version`) is compiled in as
  * `ENGINE_VERSION`, which the host and driver build ids and the daemon version derive from, and
  * the catalog's UiAutomator version as `UIAUTOMATOR_VERSION` (the driver's reported build id).
  */

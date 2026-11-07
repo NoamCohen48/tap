@@ -75,9 +75,9 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/code-review.md` + `.docs/code-review-status.md` — the harsh review and its per-item fix
   status (open/partial gaps by area, decisions such as "the driver assumes nothing about the
   app"). Update the status row in the same change as the fix.
-- `.docs/release-engineering.md` — artifact families, version lines (`gradle.properties`
-  `tap.version.*`, `pyproject.toml`), CI jobs and tag-driven releases. Versions are bumped
-  there, never in code (`ENGINE_VERSION` is generated).
+- `.docs/release-engineering.md` — one Tap release version (`gradle.properties` `tap.version`,
+  mirrored by Python `pyproject.toml` metadata), CI jobs and unified `vX.Y.Z` releases after
+  successful main CI. Bump all mirrors together, never code (`ENGINE_VERSION` is generated).
 
 ## Learning from other testing tools
 

@@ -8,7 +8,7 @@ The [Python API reference](../reference/python/index.md) has every signature.
 ## Install
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
 ```
 
 Python 3.10 or newer. The [server](../guide/server.md) must be running (`tap start`), or let

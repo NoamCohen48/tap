@@ -1,74 +1,80 @@
+# Full action SHAs intentionally exceed the usual prose line length.
+# yamllint disable rule:line-length
 name: Release
 
-# One tag per artifact family (see .docs/release-engineering.md):
-#   daemon/v1.2.3         tap daemon: native binaries + JVM dist on a GitHub Release;
-#                         tap-schema + tap-api to GitHub Packages (same engine version)
-#   client-kotlin/v1.2.3  tap-client + tap-junit5 to GitHub Packages
-#   client-python/v1.2.3  tap-e2e wheel + sdist on a GitHub Release (PyPI when enabled)
-#   client-agent/v1.2.3   tap-agent (agent CLI + MCP server) wheel + sdist on a GitHub Release
-#                         (PyPI when enabled)
-#   client-studio/v1.2.3  tap-studio (browser inspector + recorder, page built in) wheel + sdist
-#                         on a GitHub Release (PyPI when enabled)
-#   client-watcher/v1.2.3 tap-watcher (read-only activity + video viewer, page built in) wheel +
-#                         sdist on a GitHub Release (PyPI when enabled)
-#   sync-sdk/v1.2.3       tap-sync-sdk (AAR) to GitHub Packages
-# The documentation is not attached here: it ships in the one-download bundles (bundle.yml).
-# The tag's version must equal the one in gradle.properties / pyproject.toml.
+# A successful main CI run ships its untagged tap.version once. Explicit v* tags
+# and manual dispatch are recovery paths; all require green CI for that SHA.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   push:
-    tags:
-      - "daemon/v*"
-      - "client-kotlin/v*"
-      - "client-python/v*"
-      - "client-agent/v*"
-      - "client-studio/v*"
-      - "client-watcher/v*"
-      - "sync-sdk/v*"
-  # Manual fallback: tag pushes normally trigger the run above, but when
-  # GitHub drops the event (seen 2026-09-30: four tags pushed, no runs),
-  # dispatch with the tag name instead. Checked-out code and release assets
-  # always follow the tag, never the branch the dispatch runs from.
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, e.g. client-studio/v0.0.1"
+        description: "Existing unified release tag, e.g. v0.1.0"
         required: true
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write
+  contents: read
+
+concurrency:
+  group: tap-release
+  cancel-in-progress: false
 
 env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
   resolve:
-    name: Resolve tag
+    name: Validate version and successful main CI
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     outputs:
-      family: ${{ steps.tag.outputs.family }}
-      version: ${{ steps.tag.outputs.version }}
-      engine: ${{ steps.tag.outputs.engine }}
-      tag: ${{ steps.tag.outputs.tag }}
+      publish: ${{ steps.plan.outputs.publish }}
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      version: ${{ steps.plan.outputs.version }}
+      python_version: ${{ steps.plan.outputs.python_version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
-      - id: tag
+          ref: >-
+            ${{ github.event.workflow_run.head_sha || inputs.tag ||
+                github.ref_name }}
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMPLETED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          python3 .github/scripts/release_version.py "$TAG" | \
-          tee -a "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "engine=$(sed -n 's/^tap.version.engine=//p' \
-          gradle.properties)" >> "$GITHUB_OUTPUT"
+          git fetch origin main:refs/remotes/origin/main --tags
+          if [ -n "$COMPLETED_SHA" ]; then
+            python .github/scripts/prepare_release.py \
+              --completed-sha "$COMPLETED_SHA" >> "$GITHUB_OUTPUT"
+          else
+            python .github/scripts/prepare_release.py \
+              --tag "$TAG" >> "$GITHUB_OUTPUT"
+          fi
 
-  # ---- daemon/v* ----------------------------------------------------------------------------
-  daemon-native:
-    name: Daemon native (${{ matrix.label }})
+  native:
+    name: Native server (${{ matrix.label }})
     needs: resolve
-    if: needs.resolve.outputs.family == 'daemon'
+    if: needs.resolve.outputs.publish == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -77,431 +83,294 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x86_64
-          - os: macos-latest
+          - os: macos-15
             label: macos-aarch64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: graalvm/setup-graalvm@v1
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1
         with:
           java-version: 21
           distribution: graalvm-community
-      - run: echo "GRAALVM_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
-      - uses: actions/setup-java@v4
+      - id: graal
+        run: printf 'home=%s\n' "$JAVA_HOME" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: platforms;android-36 build-tools;36.0.0 platform-tools
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :host:daemon:nativeCompile
-      - name: Smoke and rename
-        run: |
-          out=host/daemon/build/native/nativeCompile/tap
-          "$out" version | tee version.txt
-          grep -qx "tap daemon ${{ needs.resolve.outputs.version }}" \
-          version.txt
-          mkdir -p release
-          version="${{ needs.resolve.outputs.version }}"
-          label="${{ matrix.label }}"
-          cp "$out" "release/tap-${version}-${label}"
-      - uses: actions/upload-artifact@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
-          name: daemon-${{ matrix.label }}
-          path: release/*
+          cache-disabled: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: ./gradlew :host:daemon:nativeCompile
+        env:
+          GRAALVM_HOME: ${{ steps.graal.outputs.home }}
+      - name: Smoke the native server without a device
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          case "$LABEL:$(uname -m)" in
+            linux-x86_64:x86_64|macos-aarch64:arm64) ;;
+            *) echo "Runner architecture does not match $LABEL"; exit 1 ;;
+          esac
+          tap=host/daemon/build/native/nativeCompile/tap
+          test "$("$tap" version)" = "tap daemon $VERSION"
+          python -m pip install --quiet clients/python
+          "$tap" start
+          trap '"$tap" stop' EXIT
+          python .github/scripts/daemon_smoke.py
+          mkdir -p build/assets
+          cp "$tap" "build/assets/tap-$VERSION-$LABEL"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-native-${{ matrix.label }}
+          path: build/assets/*
           if-no-files-found: error
 
-  daemon-jvm:
-    name: Daemon JVM dist + tap-api
+  jvm:
+    name: JVM server and all Maven artifacts
     needs: resolve
-    if: needs.resolve.outputs.family == 'daemon'
+    if: needs.resolve.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: actions/setup-java@v4
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: platforms;android-36 build-tools;36.0.0 platform-tools
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Tests that guard the contract
-        run: >-
-          ./gradlew :contracts:protocol:test :host:core:test :host:daemon:test
-      - name: JVM distribution
-        run: |
-          ./gradlew :host:daemon:distZip
-          mkdir -p release
-          version="${{ needs.resolve.outputs.version }}"
-          cp "host/daemon/build/distributions/tap-${version}.zip" \
-             "release/tap-${version}-jvm.zip"
-      - name: >-
-          Publish tap-schema + tap-api ${{ needs.resolve.outputs.version }} to GitHub
-          Packages
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          ./gradlew
-          :contracts:schema:publishAllPublicationsToGitHubPackagesRepository
-          :contracts:api:publishAllPublicationsToGitHubPackagesRepository
-      - uses: actions/upload-artifact@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
-          name: daemon-jvm
-          path: release/*
+          cache-disabled: true
+      - name: Test and stage, without publishing
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          ./gradlew :contracts:protocol:test :host:core:test :host:daemon:test \
+            :clients:kotlin:sdk:test :clients:kotlin:junit5:test \
+            :host:daemon:distZip :contracts:schema:publishToMavenLocal \
+            :contracts:api:publishToMavenLocal \
+            :clients:kotlin:sdk:publishToMavenLocal \
+            :clients:kotlin:junit5:publishToMavenLocal \
+            :device:sync-sdk:publishToMavenLocal \
+            -Dmaven.repo.local="$PWD/build/release-maven"
+          mkdir -p build/assets
+          cp "host/daemon/build/distributions/tap-$VERSION.zip" \
+            "build/assets/tap-$VERSION-server-jvm.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-jvm
+          path: build/assets/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-maven
+          path: build/release-maven
           if-no-files-found: error
 
-  daemon-release:
-    name: GitHub Release (daemon)
-    needs: [resolve, daemon-native, daemon-jvm]
+  python:
+    name: Python package (${{ matrix.project }})
+    needs: resolve
+    if: needs.resolve.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [python, agent, studio, watcher]
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          pattern: daemon-*
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: matrix.project == 'studio' || matrix.project == 'watcher'
+        with:
+          bun-version: "1.3.11"
+          no-cache: true
+      - name: Test and build wheel and sdist
+        env:
+          PROJECT: ${{ matrix.project }}
+          VERSION: ${{ needs.resolve.outputs.python_version }}
+        run: |
+          generator=$(sed -n 's/^GENERATOR_VERSION = "\(.*\)"$/\1/p' \
+            clients/python/scripts/gen_stubs.py)
+          python -m pip install --quiet build "grpcio-tools==$generator" \
+            "clients/python[dev]" "clients/${PROJECT}[dev]"
+          case "$PROJECT" in
+            python)
+              python clients/python/scripts/gen_stubs.py --check
+              python -m pytest -q clients/python/tests/unit
+              package=tap_e2e ;;
+            agent)
+              python -m pytest -q clients/agent/tests
+              package=tap_agent ;;
+            studio|watcher)
+              (cd "clients/$PROJECT/web" && bun install --frozen-lockfile)
+              python "clients/$PROJECT/scripts/gen_protos.py" --check
+              (cd "clients/$PROJECT/web" && bun run test && bun run build)
+              python -m pytest -q "clients/$PROJECT/tests"
+              package="tap_$PROJECT" ;;
+          esac
+          # Build the wheel from the sdist too: both must be installable.
+          python -m build --outdir build/assets "clients/$PROJECT"
+          wheel="build/assets/${package}-${VERSION}-py3-none-any.whl"
+          python -m pip install --quiet --force-reinstall --no-deps "$wheel"
+          python -c "import importlib.metadata as m; \
+            assert m.version('$package') == '$VERSION'"
+          case "$PROJECT" in
+            agent) tap-agent --help > /dev/null ;;
+            studio|watcher) "tap-$PROJECT" --version ;;
+          esac
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-python-${{ matrix.project }}
+          path: build/assets/*
+          if-no-files-found: error
+
+  docs:
+    name: Documentation from the release commit
+    needs: resolve
+    if: needs.resolve.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: ./.github/actions/build-docs
+        with:
+          cache-disabled: "true"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-docs
+          path: build/docs-md
+          if-no-files-found: error
+
+  assemble:
+    name: Verify and assemble all downloads
+    needs: [resolve, native, jvm, python, docs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-native-*
           merge-multiple: true
-          path: release
-      - name: Checksums
-        run: cd release && sha256sum * > SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+          path: build/assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap daemon ${{ needs.resolve.outputs.version }}
-          files: release/*
-          body: |
-            `tap serve` host daemon ${{ needs.resolve.outputs.version }} with
-            the bundled driver.
-
-            - `tap-${{ needs.resolve.outputs.version }}-linux-x86_64`,
-            `tap-${{ needs.resolve.outputs.version }}-macos-aarch64`: native
-            binaries (`chmod +x`, put on `PATH` as `tap`)
-            - `tap-${{ needs.resolve.outputs.version }}-jvm.zip`: JVM
-            distribution (`bin/tap`, needs JDK 17+)
-            - Maven:
-            `io.github.noamcohen48.tap:tap-api:${{ needs.resolve.outputs.version }}`
-            (GitHub Packages)
-
-  # ---- client-kotlin/v* ---------------------------------------------------------------------
-  client-kotlin:
-    name: Kotlin client to GitHub Packages
-    needs: resolve
-    if: needs.resolve.outputs.family == 'client-kotlin'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
+          name: release-jvm
+          path: build/assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: actions/setup-java@v4
+          pattern: release-python-*
+          merge-multiple: true
+          path: build/assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
-      - name: >-
-          tap-api ${{ needs.resolve.outputs.engine }} must already be published
+          name: release-maven
+          path: build/release-maven
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-docs
+          path: build/docs-md
+      - name: Build platform bundles and verify every version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          engine=${{ needs.resolve.outputs.engine }}
-          base="https://maven.pkg.github.com/${GITHUB_REPOSITORY}"
-          url="${base}/io/github/noamcohen48/tap/tap-api/${engine}/tap-api-${engine}.pom"
-          if ! curl -fsSL -o /dev/null -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
-          "$url"; then
-            echo "::error::tap-client ${{ needs.resolve.outputs.version }} \
-            depends on tap-api ${engine}, which is not in GitHub Packages. Tag \
-            daemon/v${engine} first."
-            exit 1
-          fi
-      - run: ./gradlew :clients:kotlin:sdk:test :clients:kotlin:junit5:test
-      - name: Publish
+          scripts/build-bundle.sh --version "$VERSION" --assets build/assets \
+            --maven build/release-maven --docs build/docs-md --out build/release
+          (cd build/release && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-complete
+          path: build/release/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish one complete release
+    needs: [resolve, assemble]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.resolve.outputs.tag }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-complete
+          path: build/release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-maven
+          path: build/release-maven
+      - name: Stage a draft (never replace a published release)
+        run: python .github/scripts/stage_release.py
+      - name: Publish the staged Maven files unchanged
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          publish=publishAllPublicationsToGitHubPackagesRepository
-          sdk=":clients:kotlin:sdk:$publish"
-          junit=":clients:kotlin:junit5:$publish"
-          ./gradlew "$sdk" "$junit"
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap Kotlin client ${{ needs.resolve.outputs.version }}
-          body: |
-            ```kotlin
-            // brings tap-client and tap-api ${{ needs.resolve.outputs.engine }}
-            testImplementation("io.github.noamcohen48.tap:tap-junit5:${{ needs.resolve.outputs.version }}")
-            ```
-            Published to this repository's GitHub Packages Maven registry
-            (`https://maven.pkg.github.com/${{ github.repository }}`, read
-            access needs a token with `read:packages`).
-            Requires a `tap` daemon of engine version ${{
-            needs.resolve.outputs.engine }} (tag `daemon/v${{
-            needs.resolve.outputs.engine }}`).
-
-  # ---- client-python/v* ---------------------------------------------------------------------
-  client-python:
-    name: Python client
-    needs: resolve
-    if: needs.resolve.outputs.family == 'client-python'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Build
-        run: |
-          python -m pip install --quiet build "grpcio-tools==$(sed -n \
-          's/^GENERATOR_VERSION = "\(.*\)"$/\1/p' \
-          clients/python/scripts/gen_stubs.py)"
-          python clients/python/scripts/gen_stubs.py --check
-          python -m build --outdir dist clients/python
-          version="${{ needs.resolve.outputs.version }}"
-          python -m pip install --quiet \
-          "dist/tap_e2e-${version}-py3-none-any.whl"
-          python -c "import tap_e2e, sys; sys.exit(tap_e2e.__version__ != '${version}')"
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap Python client ${{ needs.resolve.outputs.version }}
-          files: dist/*
-          body: |
-            ```bash
-            pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_e2e-${{
-            needs.resolve.outputs.version }}-py3-none-any.whl
-            ```
-            Requires a `tap` daemon of engine version ${{
-            needs.resolve.outputs.engine }} (tag `daemon/v${{
-            needs.resolve.outputs.engine }}`).
-      # Opt in by setting the repository variable PUBLISH_TO_PYPI=true and registering this
-      # workflow as a trusted publisher of the tap-e2e project on PyPI.
-      - name: Publish to PyPI
-        if: vars.PUBLISH_TO_PYPI == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-
-  # ---- client-agent/v* ----------------------------------------------------------------------
-  client-agent:
-    name: tap-agent
-    needs: resolve
-    if: needs.resolve.outputs.family == 'client-agent'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Test and build
-        run: |
-          python -m pip install --quiet build "clients/python[dev]" \
-          "clients/agent[dev]"
-          python -m pytest -q clients/agent/tests
-          python -m build --outdir dist clients/agent
-          version="${{ needs.resolve.outputs.version }}"
-          python -m pip install --quiet --force-reinstall --no-deps \
-          "dist/tap_agent-${version}-py3-none-any.whl"
-          python -c "import tap_agent, sys; sys.exit(tap_agent.__version__ != '${version}')"
-          tap-agent --help > /dev/null
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap-agent ${{ needs.resolve.outputs.version }}
-          files: dist/*
-          body: |
-            CLI and MCP server for coding agents driving Android devices
-            through a running `tap` daemon (`tap-agent skill`,
-            `tap-agent mcp`). It depends on `tap-e2e`, which is not on PyPI
-            yet: install the `tap-e2e` wheel from its `client-python/v*`
-            release first, then
-
-            ```bash
-            pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_agent-${{
-            needs.resolve.outputs.version }}-py3-none-any.whl
-            ```
-            Requires a `tap` daemon of engine version ${{
-            needs.resolve.outputs.engine }} or later (tag `daemon/v${{
-            needs.resolve.outputs.engine }}`).
-      # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
-      - name: Publish to PyPI
-        if: vars.PUBLISH_TO_PYPI == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-
-  # ---- client-studio/v* ---------------------------------------------------------------------
-  client-studio:
-    name: tap-studio
-    needs: resolve
-    if: needs.resolve.outputs.family == 'client-studio'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.11"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      # The page is built into the package (tap_studio/static) before the wheel.
-      - name: Test and build
-        run: |
-          (cd clients/studio/web && bun install --frozen-lockfile)
-          python -m pip install --quiet build "clients/python[dev]" \
-          "clients/studio[dev]"
-          python clients/studio/scripts/gen_protos.py --check
-          (cd clients/studio/web && bun run test && bun run build)
-          python -m pytest -q clients/studio/tests
-          python -m build --outdir dist clients/studio
-          version="${{ needs.resolve.outputs.version }}"
-          wheel="dist/tap_studio-${version}-py3-none-any.whl"
-          python -m zipfile -l "$wheel" | grep -q "tap_studio/static/index.html"
-          python -m pip install --quiet --force-reinstall --no-deps "$wheel"
-          python -c "import tap_studio, sys; sys.exit(tap_studio.__version__ != '${version}')"
-          tap-studio --version
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap-studio ${{ needs.resolve.outputs.version }}
-          files: dist/*
-          body: |
-            Tap Studio (experimental): a browser inspector and action
-            recorder for Android apps, run on a device through a running
-            `tap` daemon. It records element interactions as
-            `tap-recording/2` files you replay or turn into tests (opens legacy /1). It
-            depends on `tap-e2e`, which is not on PyPI yet: install the
-            `tap-e2e` wheel from its `client-python/v*` release first, then
-
-            ```bash
-            pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_studio-${{
-            needs.resolve.outputs.version }}-py3-none-any.whl
-            tap-studio
-            ```
-            Requires a `tap` daemon of engine version ${{
-            needs.resolve.outputs.engine }} or later (tag `daemon/v${{
-            needs.resolve.outputs.engine }}`), started with `tap start`.
-      # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
-      - name: Publish to PyPI
-        if: vars.PUBLISH_TO_PYPI == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-
-  # ---- client-watcher/v* --------------------------------------------------------------------
-  client-watcher:
-    name: tap-watcher
-    needs: resolve
-    if: needs.resolve.outputs.family == 'client-watcher'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.11"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      # The page is built into the package (tap_watcher/static) before the wheel.
-      - name: Test and build
-        run: |
-          (cd clients/watcher/web && bun install --frozen-lockfile)
-          python -m pip install --quiet build "clients/python[dev]" \
-          "clients/watcher[dev]"
-          python clients/watcher/scripts/gen_protos.py --check
-          (cd clients/watcher/web && bun run test && bun run build)
-          python -m pytest -q clients/watcher/tests
-          python -m build --outdir dist clients/watcher
-          version="${{ needs.resolve.outputs.version }}"
-          wheel="dist/tap_watcher-${version}-py3-none-any.whl"
-          python -m zipfile -l "$wheel" | grep -q "tap_watcher/static/index.html"
-          python -m pip install --quiet --force-reinstall --no-deps "$wheel"
-          python -c "import tap_watcher, sys; sys.exit(tap_watcher.__version__ != '${version}')"
-          tap-watcher --version
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap-watcher ${{ needs.resolve.outputs.version }}
-          files: dist/*
-          body: |
-            tap-watcher (experimental): a read-only browser view of what
-            every connection does on each device, next to the device's
-            screen video, with clips, recordings and a Library. It never
-            attaches or sends commands, so it can watch any test run. It
-            depends on `tap-e2e`, which is not on PyPI yet: install the
-            `tap-e2e` wheel from its `client-python/v*` release first, then
-
-            ```bash
-            pip install https://github.com/${{ github.repository
-            }}/releases/download/${{ needs.resolve.outputs.tag }}/tap_watcher-${{
-            needs.resolve.outputs.version }}-py3-none-any.whl
-            tap-watcher
-            ```
-            Requires a `tap` daemon of engine version ${{
-            needs.resolve.outputs.engine }} or later (tag `daemon/v${{
-            needs.resolve.outputs.engine }}`), started with `tap start`;
-            the screen video also needs `tap start --scrcpy-server JAR`
-            (a scrcpy 4.1 server).
-      # Same opt-in as tap-e2e; tap-e2e must be on PyPI first.
-      - name: Publish to PyPI
-        if: vars.PUBLISH_TO_PYPI == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-
-  # ---- sync-sdk/v* --------------------------------------------------------------------------
-  sync-sdk:
-    name: sync-sdk to GitHub Packages
-    needs: resolve
-    if: needs.resolve.outputs.family == 'sync-sdk'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.tag }}
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platforms;android-36 build-tools;36.0.0 platform-tools
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Publish
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
-          ./gradlew
-          :device:sync-sdk:publishAllPublicationsToGitHubPackagesRepository
-      - uses: softprops/action-gh-release@v2
+          python .github/scripts/publish_maven.py --version "$VERSION"
+          --maven build/release-maven
+      - name: Prepare Python distributions
+        if: vars.PUBLISH_TO_PYPI == 'true'
+        run: |
+          mkdir -p build/pypi
+          cp build/release/*.whl build/release/*.tar.gz build/pypi/
+      - name: Publish Python packages to PyPI
+        if: vars.PUBLISH_TO_PYPI == 'true'
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: tap sync-sdk ${{ needs.resolve.outputs.version }}
-          body: |
-            ```kotlin
-            // in the E2E build flavour of the app under test
-            implementation("io.github.noamcohen48.tap:tap-sync-sdk:${{ needs.resolve.outputs.version }}")
-            ```
-            Published to this repository's GitHub Packages Maven registry.
+          packages-dir: build/pypi
+          skip-existing: true
+      - name: Publish only after every asset and registry upload succeeds
+        run: |
+          if [ "$PRERELEASE" = true ]; then
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
+      - name: Verify public download URLs
+        run: |
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          for file in build/release/*; do
+            curl --fail --silent --show-error --location --head \
+              --retry 5 --retry-delay 2 --retry-all-errors \
+              "$base/$(basename "$file")" > /dev/null
+          done
+      - name: Deploy website links only after downloads are public
+        run: gh workflow run Docs --ref main

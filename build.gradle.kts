@@ -28,25 +28,14 @@ dokka {
 }
 
 /*
- * Versioning. gradle.properties holds one version per artifact family; every module gets the
- * group and the version of the family it belongs to, so `maven-publish` coordinates and the
- * version strings compiled into the daemon/driver all come from the same place.
+ * Versioning. Every component uses the single tap.version in gradle.properties, including
+ * the daemon/driver build IDs and all Maven coordinates. CI checks Python metadata mirrors.
  */
-val engineVersion = providers.gradleProperty("tap.version.engine").get()
-val kotlinClientVersion = providers.gradleProperty("tap.version.client.kotlin").get()
-val syncSdkVersion = providers.gradleProperty("tap.version.sync-sdk").get()
-
-val clientProjects = setOf(":clients:kotlin:sdk", ":clients:kotlin:junit5", ":samples:fixture-tests")
-val syncSdkProjects = setOf(":device:sync-sdk")
+val tapVersion = providers.gradleProperty("tap.version").get()
 
 allprojects {
     group = "io.github.noamcohen48.tap"
-    version =
-        when (path) {
-            in clientProjects -> kotlinClientVersion
-            in syncSdkProjects -> syncSdkVersion
-            else -> engineVersion
-        }
+    version = tapVersion
 }
 
 /*

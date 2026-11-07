@@ -10,7 +10,7 @@ android {
         applicationId = "io.github.noamcohen48.tap.driver"
         minSdk = 26
         targetSdk = 36
-        // From gradle.properties tap.version.engine: 1.2.3 -> 10203 (pre-release suffixes ignored).
+        // From gradle.properties tap.version: 1.2.3 -> 10203 (pre-release suffixes ignored).
         versionName = project.version.toString()
         versionCode = versionName!!.substringBefore('-').split('.').map { it.toInt() }
             .let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }

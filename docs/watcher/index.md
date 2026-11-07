@@ -21,8 +21,8 @@ browser (Chrome, Edge, …: the video is decoded with WebCodecs). Install the Py
 first, then the watcher:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/client-watcher/v0.1.0/tap_watcher-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_watcher-0.1.0-py3-none-any.whl
 ```
 
 The [one-download bundle](../download.md) includes it too. Or install it from a checkout of the
