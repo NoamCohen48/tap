@@ -1,10 +1,12 @@
-"""Graph management and an explicitly opted-in sample-device pilot. No AI provider."""
+"""Graph management and an explicitly opted-in sample-device pilot. A model is asked only by
+``robots-propose --send``, through the person's own `pi` CLI."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -72,6 +74,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="write the tap-rule-questions/1 file a proposer answers (what each attempt saw)")
     robots.add_argument("--ask", action="store_true",
                         help="ask the review questions on the terminal and save the answers to --review first")
+    proposed = sub.add_parser("robots-propose",
+                              help="ask a model through the pi CLI to answer a --rules-out questions file; "
+                                   "sends the questions (and readable source) to the model's provider")
+    proposed.add_argument("--questions", required=True, type=Path, help="tap-rule-questions/1 from robots --rules-out")
+    proposed.add_argument("--out", required=True, type=Path, help="where to write the tap-rule-candidates/1 answer")
+    proposed.add_argument("--source", type=Path, help="the app's source directory, which the model may read")
+    proposed.add_argument("--model", default="openai-codex/gpt-6-luna", help="a pi model (provider/id)")
+    proposed.add_argument("--pi", default="pi", help="the pi executable")
+    proposed.add_argument("--send", action="store_true",
+                          help="actually send; without it, print what would leave the machine and stop")
     replay = sub.add_parser("robots-verify",
                             help="replay each draft method from a restored emulator snapshot (requires live extra)")
     replay.add_argument("--run", required=True, type=Path)
@@ -194,6 +206,20 @@ def main(argv: list[str] | None = None) -> int:
             parser.exit(1, f"tap-explorer label-review: {error}\n")
         except KeyboardInterrupt:
             return 0
+    if args.verb == "robots-propose":
+        if args.db is not None:
+            parser.error("robots-propose reads --questions only; do not pass --db")
+        from .propose import outgoing, propose
+
+        try:
+            if not args.send:
+                print(outgoing(args.questions, args.source))
+                print("nothing sent: pass --send to send this to " + args.model)
+                return 0
+            print(json.dumps(propose(args.questions, args.out, args.source, args.model, args.pi), indent=2))
+            return 0
+        except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
+            parser.exit(1, f"tap-explorer robots-propose: {error}\n")
     if args.verb == "robots-score":
         if args.db is not None:
             parser.error("robots-score reads --run only; do not pass --db")
