@@ -20,8 +20,8 @@ It needs the `tap` server ([The tap server](../guide/server.md)), Python 3.10+ a
 a browser. Install the Python client first, then the studio:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/client-studio/v0.1.0/tap_studio-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_studio-0.1.0-py3-none-any.whl
 ```
 
 Version 0.1.0 includes `/2` recordings, headless replay and pytest export; older `/1`

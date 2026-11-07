@@ -10,9 +10,11 @@ This bundle holds everything Tap ships, so you can install it from one download:
 | Agent CLI + MCP server (`tap-agent`, experimental) | @AGENT@ | `python/tap_agent-@AGENT@-py3-none-any.whl` |
 | Tap Studio, inspector + recorder (`tap-studio`, experimental) | @STUDIO@ | `python/tap_studio-@STUDIO@-py3-none-any.whl` |
 | Watcher, read-only view of device actions and video (`tap-watcher`, experimental) | @WATCHER@ | `python/tap_watcher-@WATCHER@-py3-none-any.whl` |
-| Documentation (guide and Kotlin, Python, gRPC references) | | `docs/` |
+| App synchronization SDK (`tap-sync-sdk`, experimental, optional) | @ENGINE@ | `maven/` (AAR) |
+| Documentation (guide and Kotlin, Python, gRPC references) | @BUNDLE@ | `docs/` |
 
-`VERSIONS` lists the same versions; `SHA256SUMS` has a checksum for every file.
+Every component uses the same Tap release version. `VERSIONS` records it for each part;
+`SHA256SUMS` has a checksum for every file.
 
 ## Requirements
 

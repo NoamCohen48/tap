@@ -21,8 +21,8 @@ android {
     }
 }
 
-// Published as io.github.noamcohen48.tap:tap-sync-sdk (its own version): apps under test add it to their
-// E2E builds, so it is released independently of the engine.
+// Published as io.github.noamcohen48.tap:tap-sync-sdk at the shared Tap release version.
+// Apps under test add this experimental library only to their E2E builds.
 afterEvaluate {
     publishing {
         publications {

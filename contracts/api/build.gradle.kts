@@ -30,7 +30,7 @@ sourceSets.main {
 }
 
 /*
- * The engine version (gradle.properties `tap.version.engine`) this artifact's tap.v1 stubs were
+ * The engine version (gradle.properties `tap.version`) this artifact's tap.v1 stubs were
  * generated from, as `TAP_API_VERSION`: clients refuse a server older than it, which would
  * ignore the fields and calls it does not know.
  */

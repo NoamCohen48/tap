@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerates tap_e2e/_gen from contracts/proto/*.proto, or verifies it is current (--check).
 
-`_gen/engine_version.py` records the engine version (gradle.properties `tap.version.engine`) the
+`_gen/engine_version.py` records the engine version (gradle.properties `tap.version`) the
 stubs belong to: the client refuses a server older than it. An engine version bump therefore
 needs a regeneration too, which --check enforces.
 
@@ -87,9 +87,9 @@ def api_compatibility() -> int:
 def engine_version() -> str:
     for line in GRADLE_PROPERTIES.read_text().splitlines():
         key, _, value = line.partition("=")
-        if key.strip() == "tap.version.engine":
+        if key.strip() == "tap.version":
             return value.strip()
-    raise SystemExit(f"no tap.version.engine in {GRADLE_PROPERTIES}")
+    raise SystemExit(f"no tap.version in {GRADLE_PROPERTIES}")
 
 
 def _relative_import(match: re.Match[str]) -> str:

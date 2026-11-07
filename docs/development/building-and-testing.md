@@ -124,9 +124,11 @@ guide alone.
 
 CI (`.github/workflows/ci.yml`) runs the proto checks, the JVM and Python unit tests, the
 native image, the `tap-studio` and `tap-watcher` pages and back ends, and both client suites
-plus the `tap-agent` and `tap-studio` smokes on an API 34 emulator. Tap has seven independently
-versioned artifact families: the engine (the `tap` server with the bundled driver, plus
-`tap-schema`/`tap-api`), the Kotlin client, the Python client, `tap-agent`, `tap-studio`,
-`tap-watcher` and `sync-sdk`. Versions are set in `gradle.properties` and the clients' `pyproject.toml` files; pushing a tag such
-as `daemon/v0.0.2` on a commit with the matching version publishes that family. See
+plus the `tap-agent` and `tap-studio` smokes on an API 34 emulator. Every component shares
+`tap.version` in `gradle.properties`; the Python packages mirror it in their `pyproject.toml`
+files so source packages remain self-contained. CI rejects version drift and tests the release
+packaging and publication guards. After successful CI on `main`, the Release workflow creates
+`v<version>` once and publishes all components and platform bundles on one GitHub Release.
+Existing public versions are never replaced. Manual dispatch with the same tag can resume an
+interrupted release. See
 [Releases and versions](../reference/releases.md).

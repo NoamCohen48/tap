@@ -65,9 +65,9 @@ With it, Gradle reads Tap from a local Maven repository and needs no GitHub toke
 the parts one by one instead:
 
 1. Download the Tap server for your system from the
-   [latest release](https://github.com/NoamCohen48/tap/releases/tag/daemon/v0.1.0):
+   [latest release](https://github.com/NoamCohen48/tap/releases/tag/v0.1.0):
    `tap-0.1.0-linux-x86_64` (Linux), `tap-0.1.0-macos-aarch64` (macOS on Apple silicon) or
-   `tap-0.1.0-jvm.zip` (any system with Java 17).
+   `tap-0.1.0-server-jvm.zip` (any system with Java 17).
 2. Start it:
 
    ```bash
@@ -106,7 +106,7 @@ Write a test like the one above, then run `./gradlew test`.
 ### Python
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
 ```
 
 ```python
@@ -127,8 +127,8 @@ Run it with `pytest`.
 device. It needs Python 3.10+ and a running Tap server:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl \
-            https://github.com/NoamCohen48/tap/releases/download/client-agent/v0.1.0/tap_agent-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl \
+            https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_agent-0.1.0-py3-none-any.whl
 claude mcp add tap -- tap-agent mcp      # register it with Claude Code
 ```
 

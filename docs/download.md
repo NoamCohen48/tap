@@ -1,14 +1,14 @@
 # Download
 
 Everything Tap ships, in one zip for your system: the `tap` server, the Kotlin client and JUnit
-5 extension, the Python client and pytest plugin, `tap-agent`, Tap Studio, `tap-watcher`, this
+5 extension, the Python client and pytest plugin, Tap agent, Tap Studio, Tap watcher, this
 documentation and an install script.
 
 **Tap 0.1.0** (alpha):
 
-[Linux x86-64](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.1.0/tap-0.1.0-linux-x86_64.zip){ .md-button .md-button--primary }
-[macOS Apple silicon](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.1.0/tap-0.1.0-macos-aarch64.zip){ .md-button .md-button--primary }
-[Any OS with Java 17](https://github.com/NoamCohen48/tap/releases/download/bundle/v0.1.0/tap-0.1.0-jvm.zip){ .md-button }
+[Linux x86-64](https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap-0.1.0-linux-x86_64.zip){ .md-button .md-button--primary }
+[macOS Apple silicon](https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap-0.1.0-macos-aarch64.zip){ .md-button .md-button--primary }
+[Any OS with Java 17](https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap-0.1.0-jvm.zip){ .md-button }
 
 | Your system | Download | Server inside |
 |---|---|---|
@@ -17,7 +17,7 @@ documentation and an install script.
 | Windows, Linux on ARM, Intel Macs: anything with JDK 17+ | `tap-0.1.0-jvm.zip` | JVM distribution |
 
 Checksums of the three zips are in `SHA256SUMS` on the
-[release page](https://github.com/NoamCohen48/tap/releases/tag/bundle/v0.1.0).
+[release page](https://github.com/NoamCohen48/tap/releases/tag/v0.1.0).
 
 ## Install
 
@@ -93,20 +93,20 @@ tap-0.1.0-<platform>/
 ├── VERSIONS          the version of each part
 ├── SHA256SUMS        a checksum for every file
 ├── server/           tap (native) or tap-0.1.0-jvm.zip
-├── maven/            tap-junit5, tap-client, tap-api, tap-schema as a Maven repository
+├── maven/            tap-junit5, tap-client, tap-api, tap-schema, tap-sync-sdk
 ├── python/           tap_e2e, tap_agent, tap_studio, tap_watcher wheels
 ├── docs/             this documentation as Markdown, with the API references
 └── LICENSE
 ```
 
-The files are the ones published in each part's own release, repackaged. The parts are
-versioned separately (see [Releases and versions](reference/releases.md)), so one bundle can
-hold different server and Studio versions; `VERSIONS` lists them. The 0.1.0 set uses
-0.1.0 for all six bundled families.
+Every component uses the same **0.1.0** version and comes from the same commit and release
+build. `VERSIONS` records that version for each part. The experimental sync SDK is included
+in the Maven repository too. See [Releases and versions](reference/releases.md).
 
 ## One part at a time
 
-Every part also has its own release, if you only need one: the server binaries, the Python
-wheels and the Kotlin artifacts (from GitHub Packages, which needs a token) are linked from
+The same release also carries individual server binaries, Python wheels and source packages,
+and `tap-0.1.0-maven.zip` (the Maven repository, without a GitHub token). Maven artifacts are
+also available from GitHub Packages, which needs a token. They are linked from
 [Getting started](guide/getting-started.md) and listed on the
 [releases page](https://github.com/NoamCohen48/tap/releases).
