@@ -1506,6 +1506,16 @@ code,
   color: var(--muted);
   font-size: 12px;
 }
+.tools .execution-controls + .execution-controls {
+  margin-top: 10px;
+}
+.tool-result {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  max-height: 260px;
+  font: 12px/1.5 var(--mono);
+}
 .check {
   display: flex;
   gap: 6px;

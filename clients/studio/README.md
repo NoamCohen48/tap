@@ -15,7 +15,11 @@ count), edit, insert, reorder and delete steps, replay all or part of the record
 the first failure), and export and reopen `tap-recording/2` files. Legacy `/1` files upgrade on
 open; older Studio refuses `/2` rather than silently dropping its new execution budgets.
 Counted taps, physical hold durations, phase budgets and whole-screen stability can be recorded
-and edited. It needs a running daemon (`tap start`).
+and edited. **Tools (not recorded)** adds app-state queries, private files/opaque SQLite bundles
+and diagnostic/history/metadata downloads. Private mutations require confirmation and native
+stopped-UID checks; browser artifacts are limited to 1 MiB. No implicit lifecycle, restore or
+retry. See `docs/studio/tools.md`; remaining work is `.docs/studio-todo.md`.
+It needs a running daemon (`tap start`).
 
 ```bash
 tap-studio              # serves on a free loopback port and opens the page
@@ -47,7 +51,8 @@ User guide: `docs/studio/` (published at
   from `contracts/proto`.
 - `tap_studio/`: the Python back end (Starlette + connect-python on `tap-e2e`): `server.py`
   (the app, login and access checks), `service.py` (`StudioService`: session, device,
-  recording), `screen.py` (the per-device worker thread and the frame loop), `steps.py`
+  recording), `tools.py` (closed SDK adapters for unrecorded app/private-data/diagnostic tools),
+  `screen.py` (the per-device worker thread and the frame loop), `steps.py`
   (completing and running a step), `recording.py` (the `/2` document and `/1` upgrade); `_gen/` is
   generated.
 - `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, the three

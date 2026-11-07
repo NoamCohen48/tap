@@ -31,6 +31,7 @@ import * as stepsApi from "./steps";
 import { synthesized, type Target } from "./steps";
 import { StepsPanel, type LastRun } from "./StepsPanel";
 import { ExecutionControls, requestBudgets, type Budgets } from "./ExecutionControls";
+import { Tools } from "./Tools";
 
 type Status = { kind: "loading" } | { kind: "ready"; info: InfoResponse } | { kind: "failed"; message: string };
 
@@ -346,7 +347,7 @@ function Workspace({
             className="iconbtn"
             aria-label="Release the device"
             title="Release the device"
-            disabled={replay.running}
+            disabled={locked}
             onClick={() => change(() => client.release({}))}
           >
             <Eject />
@@ -414,6 +415,7 @@ function Workspace({
             packages={packages}
           >
             <details className="execution-defaults"><summary>Defaults for new steps</summary><ExecutionControls values={budgets} onChange={setBudgets} /></details>
+            <Tools client={client} appPackage={appPackage} onAppPackage={setAppPackage} disabled={locked} onBusy={setBusy} />
           </Composer>
           <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={setSelected} />
         </div>

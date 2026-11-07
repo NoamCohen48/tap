@@ -64,6 +64,8 @@ def test_everything_else_needs_the_cookie(anonymous):
     for path in ("/", "/assets/x.js", f"{INFO}?encoding=json&message=%7B%7D"):
         assert anonymous.get(path).status_code == 401, path
     assert call(anonymous, "Info").status_code == 401
+    for method in ("QueryApp", "PrivateData", "ExportDiagnostic"):
+        assert call(anonymous, method).status_code == 401
     anonymous.cookies.set(cookie_name(TOKEN), "wrong")
     assert call(anonymous, "Info").status_code == 401
 

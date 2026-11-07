@@ -18,6 +18,8 @@ from connectrpc.errors import ConnectError
 from connectrpc.request import RequestContext
 from google.protobuf.timestamp_pb2 import Timestamp
 from tap_e2e import (
+    AppDataError,
+    Device,
     CommandError,
     DeviceBusyError,
     DeviceInfo,
@@ -31,7 +33,7 @@ from tap_e2e import (
 )
 from tap_e2e import proto as tap
 
-from . import __version__, steps
+from . import __version__, steps, tools
 from ._gen import studio_pb2 as studio
 from .recording import FORMAT, RecordingError, dumps, loads, secret_name
 from .screen import DeviceWorker, FrameError
@@ -55,6 +57,7 @@ class Studio:
         self._recording_on = True
         self._next_id = 1
         self._replaying = False
+        self._tool_running = False
         # Secret values by name, for this process only: never written anywhere.
         self._secrets: dict[str, str] = {}
 
@@ -256,6 +259,41 @@ class Studio:
             ]
         )
 
+    # --- explicit non-recorded tools --------------------------------------------------------------
+
+    async def query_app(self, request: studio.QueryAppRequest, ctx: RequestContext) -> studio.QueryAppResponse:
+        """Read app state through the SDK, never implicitly launch or record a query."""
+        return await self._tool_call(lambda device: tools.query_app(device, request))
+
+    async def private_data(self, request: studio.PrivateDataRequest, ctx: RequestContext) -> studio.PrivateDataResponse:
+        """Explicit private data access; stop/overwrite/recovery rules remain the SDK's."""
+        return await self._tool_call(lambda device: tools.private_data(device, request))
+
+    async def export_diagnostic(self, request: studio.DiagnosticRequest, ctx: RequestContext) -> studio.DiagnosticResponse:
+        """Download bounded diagnostics of Studio's device/connection, never another client's."""
+        return await self._tool_call(lambda device: tools.diagnostic(device, request))
+
+    async def _tool_call(self, function: Callable[[Device], T]) -> T:
+        self._require_idle()
+        worker = self._require_device()
+        device = worker.device
+        assert device is not None
+        self._tool_running = True
+        try:
+            return await worker.call(lambda: function(device), changes_screen=False)
+        except tools.ToolInputError as error:
+            raise ConnectError(Code.INVALID_ARGUMENT, str(error)) from None
+        except tools.ToolLimitError as error:
+            raise ConnectError(Code.RESOURCE_EXHAUSTED, str(error)) from None
+        except AppDataError as error:
+            raise ConnectError(Code.FAILED_PRECONDITION, f"{error.detail}: {error}; do not repeat a mutation blindly") from None
+        except TapError as error:
+            raise _connect_error(error) from None
+        except ValueError as error:
+            raise ConnectError(Code.DATA_LOSS, f"SDK data validation failed: {error}; do not repeat a mutation blindly") from None
+        finally:
+            self._tool_running = False
+
     # --- steps -----------------------------------------------------------------------------------
 
     async def perform(self, request: studio.PerformRequest, ctx: RequestContext) -> studio.PerformResponse:
@@ -321,6 +359,8 @@ class Studio:
     def _require_idle(self) -> None:
         if self._replaying:
             raise ConnectError(Code.FAILED_PRECONDITION, "a replay is running: stop it first")
+        if self._tool_running:
+            raise ConnectError(Code.FAILED_PRECONDITION, "a tool is running: wait for its result")
 
     def _sync_secrets(self) -> None:
         """``Recording.secrets``: every name the steps use, in step order; values of names no

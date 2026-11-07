@@ -41,9 +41,28 @@ Stability can watch a package or the whole screen, select tree/pixels/both and u
 quiet period. Typed/imported selectors are bounded by size, depth, node count, index and string
 length rather than relying only on the driver to refuse them.
 
+The `QueryApp`, `PrivateData` and `ExportDiagnostic` RPCs are explicit non-recorded SDK tools,
+not new replay kinds or raw Execute. They use the current device's single worker and refuse
+concurrent tools/replay; private mutations require one-attempt confirmation and explicit
+replacement, while native stopped-UID/path checks remain authoritative. Unary browser bytes
+are limited to 1 MiB; oversized outputs fail rather than truncate. `tap-studio-database/1`
+is an opaque proto3-JSON bundle with base bytes and present WAL/journal, not SQL or a recording.
+Downloads are browser-owned artifacts, not arbitrary host filesystem writes; browser permissions
+and retention apply. No implicit lifecycle, restoration or retry was added.
+
 Single-device ownership, successful-step-only editable recordings and manual export/open remain
 unchanged. Multi-device routing, durable named libraries/intent journals, agent archive conversion,
 media controls/readiness and other deferred work are explicit in the todo document.
+
+Verification: 318 backend tests, 118 browser component tests, 168 separate Python SDK unit tests,
+explicit project Pyright and the type-checked Vite build passed. Generated Python/TypeScript
+bindings match the proto. Tests cover binary data, WAL/journal presence, owner routing, explicit
+confirmation/overwrite, refusal without lifecycle/retry, tool/replay exclusion, export/open/replay
+budgets and all 120000 supported millisecond values through SDK float conversion (including the
+1001 ms truncation boundary). A descriptor guard classifies all 42 Execute operations; it is not
+claimed as complete RPC/SDK/UI parameter parity. The strict MkDocs site passed with unchanged
+Kotlin/gRPC reference artifacts reused to avoid another memory-heavy JVM build; the current
+agent command reference was regenerated. No local device tests or reboot were requested/run.
 
 ## Research summary
 

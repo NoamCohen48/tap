@@ -22,11 +22,23 @@ owner-approved Studio coverage work, not a promise that every agent command belo
 
 ## Operational tooling deferred from this change
 
+- [ ] Streamed browser transfers larger than 1 MiB (private files, whole database bundles and
+  diagnostics). The new unary tools deliberately cap bytes and refuse oversized results rather
+  than silently truncating or exposing arbitrary host paths. The SDK still supports its existing
+  larger/streamed limits. Design bounded upload sessions, download recovery and cancellation
+  before increasing browser transport/memory limits.
+- [ ] Tools before attachment/after release. The new toolkit is scoped to Studio's attached
+  device/connection, including its metadata/history downloads. Supporting offline archives or
+  discovery-only metadata in the device picker needs its own UI and ownership semantics.
 - [ ] Owned video/audio capture controls and private retained-output recovery in Studio. The
   existing host recorder can acknowledge start before frames exist and has shutdown-budget
   limits; its API 34 empty-output validation failure was explicitly deferred by the owner.
   Exposing capture must not hide this with mutation retries, implicit lifecycle or invented
   readiness guarantees. Passive shared video remains tap-watcher's surface.
+- [ ] Paired diagnostic capture bundles and standalone structured screen-snapshot/candidate JSON
+  downloads. The inspector already displays paired frames/candidates; the new tools export
+  screenshot, hierarchy, logs, metadata and raw history individually, not an agent-style capture
+  bundle. Define artifact packaging, bounds and retention rather than claiming these are the same.
 - [ ] Shared-storage push/pull/add-media and APK install/uninstall tools. They need an explicit
   browser upload/download and bounded-artifact design, not recorded arbitrary host paths.
 - [ ] Parameterized secrets for clipboard and other non-text-input step data. Current named
@@ -43,6 +55,9 @@ owner-approved Studio coverage work, not a promise that every agent command belo
 - [ ] Broader value editing for existing step kinds (for example app extras, condition values and
   count assertions). This change adds editors for the new press parameters, budgets and stability;
   it is not a complete form generator for every older step field.
+- [ ] A complete daemon-RPC/SDK/parameter coverage registry. The new regression guard classifies
+  all 42 Execute operations and affected adapters test value forwarding, but it does not claim
+  agent-style parity for every daemon RPC, SDK method or Kotlin convenience API.
 
 ## Explicitly excluded
 
