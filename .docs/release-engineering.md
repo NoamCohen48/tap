@@ -2,8 +2,13 @@
 
 Status: implemented 2026-09-19 (`.github/workflows/ci.yml`, `.github/workflows/release.yml`).
 The first release is **0.0.1 (alpha)** for every family (tagged 2026-09-29); the earlier 0.1.0–0.3.0
-numbers were never published and were reset to it. `sync-sdk` is experimental and is not
-tagged yet. Stability promises and the experimental list are public in
+numbers were never published and were reset to it. The next prepared set is **0.1.0**
+for engine, Kotlin, Python, agent, Studio and watcher; those families changed since their
+last tags (watcher has no previous tag). From this set, a 0.x feature or breaking release
+increments the minor, and a fix-only release increments the patch. Families can diverge
+after this coordinated bump. Version preparation does not publish tags or artifacts.
+`sync-sdk` has not changed since the previous release set and stays at 0.0.1; it is
+experimental and is not tagged yet. Stability promises and the experimental list are public in
 `docs/reference/releases.md`; `CHANGELOG.md` records each release.
 
 ## What is an artifact, and why
@@ -21,7 +26,7 @@ The repository builds seven artifact families, each on its own version line:
 | **sync-sdk** | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | `gradle.properties` `tap.version.sync-sdk` |
 
 The watcher is not released yet (`client-watcher` has no tag): the first bundle after it
-landed needs a `client-watcher/v0.0.1` release first, since the bundle takes every family
+landed needs a `client-watcher/v0.1.0` release first, since the bundle takes every family
 (below). Its user docs are `docs/watcher/`.
 
 ### The host daemon and the driver are one artifact (the engine)
@@ -183,7 +188,7 @@ full flow, using the 0.0.2 set as the example:
 1. **Bump versions and docs.** Edit the version (`gradle.properties`
    `tap.version.*`, or the family's `pyproject.toml`), add a `CHANGELOG.md`
    section, point the install links in `README.md` and the guides at the new
-   tag names. Commit and push to `main`.
+   tag names. Commit on a branch, open a PR and merge only after its checks pass.
 2. **Wait for CI green.** The device lane takes ~22 min. Never tag on red:
    a tag on a broken commit ships broken artifacts, and a published version
    can never be replaced (registries refuse republishes), so a bad release

@@ -20,13 +20,13 @@ It needs the `tap` server ([The tap server](../guide/server.md)), Python 3.10+ a
 a browser. Install the Python client first, then the studio:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.0.2/tap_e2e-0.0.2-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/client-studio/v0.0.1/tap_studio-0.0.1-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/client-studio/v0.1.0/tap_studio-0.1.0-py3-none-any.whl
 ```
 
-For the unreleased coverage additions and `/2` recordings, install from a current checkout;
-the older release above writes `/1`. The page is built with [Bun](https://bun.sh).
-Run these from the repository root:
+Version 0.1.0 includes `/2` recordings, headless replay and pytest export; older `/1`
+recordings upgrade on open. To install from a checkout instead, build the page with
+[Bun](https://bun.sh). Run these from the repository root:
 
 ```bash
 (cd clients/studio/web && bun install && bun run build)

@@ -1,6 +1,6 @@
 # Releases and versions
 
-Tap ships as six independently versioned artifact families. Each has its own tag prefix; a
+Tap ships as seven independently versioned artifact families. Each has its own tag prefix; a
 push of the tag builds and publishes that family from the tagged commit.
 
 | Family | Tag | Artifacts | Where |
@@ -9,7 +9,7 @@ push of the tag builds and publishes that family from the tagged commit.
 | **Kotlin client** | `client-kotlin/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-client`, `io.github.noamcohen48.tap:tap-junit5` | GitHub Packages |
 | **Python client** | `client-python/vX.Y.Z` | `tap_e2e-X.Y.Z-py3-none-any.whl`, sdist | GitHub Release (PyPI when enabled) |
 | **Agent tools** (experimental) | `client-agent/vX.Y.Z` | `tap_agent-X.Y.Z-py3-none-any.whl`, sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
-| **Tap Studio** (experimental, not released yet) | `client-studio/vX.Y.Z` | `tap_studio-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
+| **Tap Studio** (experimental) | `client-studio/vX.Y.Z` | `tap_studio-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **tap-watcher** (experimental, not released yet) | `client-watcher/vX.Y.Z` | `tap_watcher-X.Y.Z-py3-none-any.whl` (the page built in), sdist (needs `tap-e2e`) | GitHub Release (PyPI when enabled) |
 | **sync-sdk** (experimental, not released yet) | `sync-sdk/vX.Y.Z` | Maven `io.github.noamcohen48.tap:tap-sync-sdk` (AAR) | GitHub Packages |
 
@@ -32,21 +32,26 @@ version`, `ENGINE_VERSION`, the driver's `versionName`). They are never mixed.
 ## Compatibility
 
 - A client release states the engine version it was built against (`tap-client` depends on
-  `tap-api` of that engine version; the Python release notes name it). Clients speak `tap.v1`,
-  which evolves additively: newer servers accept older clients, and a client that uses a
-  field the server does not know gets a clear `UNSUPPORTED`/`INVALID_ARGUMENT` rather than
-  silent misbehaviour.
+  `tap-api` of that engine version; the Python bindings record it). Clients speak `tap.v1`
+  and require a matching API compatibility epoch plus a server no older than their engine
+  baseline. Deliberate 0.x API breaks increment the epoch, so upgrade the server and clients
+  together across those breaks. Additive changes within an epoch keep the wire compatible.
 - The device protocol between server and driver is internal to the engine; you never see it.
 - The device protocol version is reported by `Info()` next to the server version, for
   diagnostics only.
 
 ## Stability
 
-Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-09-30) is the current one.
+Tap is in **alpha**. The next release set is **0.1.0** for the server, Kotlin client,
+Python client, tap-agent, Tap Studio and tap-watcher. Tags and artifacts are published
+separately from version preparation. The unchanged, unreleased sync-sdk stays at 0.0.1.
+Earlier published sets used 0.0.x versions.
 
-- **0.x (now):** any release may change the client API, the `tap.v1` API or the CLI. Release
-  notes say what changed. The wire stays additive where it can (`buf breaking` runs in CI), so
-  mixing a newer client with an older server usually still works, but it is not promised.
+- **0.x (now):** from 0.1.0, new features or breaking changes increment the minor version
+  (0.1.0 → 0.2.0); fixes only increment the patch (0.1.0 → 0.1.1). Each family can still
+  release independently. Any 0.x minor release may change the client API, the `tap.v1` API
+  or the CLI; release notes say what changed. Clients require a matching API compatibility
+  epoch and refuse servers older than the engine version they were built against.
 - **From 1.0:** [semantic versioning](https://semver.org) per family. The client APIs (Kotlin
   `tap-client`/`tap-junit5`, Python `tap-e2e`), the `tap.v1` gRPC API and the `tap` CLI change
   incompatibly only in a new major version; `tap.v1` only ever gains fields, and a breaking
@@ -74,7 +79,7 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
 ## Checking what you have
 
 ```bash
-tap version                      # tap daemon 0.0.2
+tap version                      # tap daemon 0.1.0
 python -c "import tap_e2e; print(tap_e2e.__version__)"
 ```
 

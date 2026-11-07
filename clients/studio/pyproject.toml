@@ -4,17 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tap-studio"
-version = "0.0.1"
+version = "0.1.0"
 description = "Browser inspector and action recorder for Android apps, on the Tap daemon"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-# tap-e2e: screen snapshots, screenshots, refs and held connections (0.0.1, the first release),
-# and the tap.v1 messages the studio's generated code imports (tap_e2e._gen).
+# tap-e2e 0.1.0: recording/replay workflows and the tap.v1 messages imported by
+# Studio's generated code (tap_e2e._gen).
 # connect-python serves StudioService (proto/studio.proto) to the page; it is beta, so pinned to
 # the minor release the generated code (scripts/gen_protos.py) was made with.
 dependencies = [
-    "tap-e2e>=0.0.2",
+    "tap-e2e>=0.1.0",
     "protobuf>=7.35.1",
     "connect-python>=0.9,<0.10",
     "starlette>=0.40",

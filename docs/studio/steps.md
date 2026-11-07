@@ -54,7 +54,7 @@ export UI.
 {
   "format": "tap-recording/2",
   "recorded_at": "2026-09-30T09:12:44Z",
-  "recorder": "tap-studio 0.0.1",
+  "recorder": "tap-studio 0.1.0",
   "device": {"serial": "emulator-5554", "api_level": 34, "manufacturer": "Google", "model": "sdk_gphone64_x86_64"},
   "steps": [
     {"id": "s1", "app": {"operation": "cold_launch", "package_name": "com.example.basket"}},
