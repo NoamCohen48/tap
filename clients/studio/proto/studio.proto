@@ -85,6 +85,9 @@ service StudioService {
   // step, unchanged, with one. FAILED_PRECONDITION with nothing to undo or redo.
   rpc UndoRecording(UndoRecordingRequest) returns (UndoRecordingResponse);
   rpc RedoRecording(RedoRecordingRequest) returns (RedoRecordingResponse);
+  // Replaces the recording's parameters, whatever is attached. INVALID_ARGUMENT for a bad name, or
+  // for removing one a step uses. A changed value clears the outcome of the steps that use it.
+  rpc SetParameters(SetParametersRequest) returns (SetParametersResponse);
   // Replaces the recording with a /1 or /2 document to continue or replay; /1 upgrades to /2.
   // INVALID_ARGUMENT lists every rule the document breaks.
   rpc OpenRecording(OpenRecordingRequest) returns (OpenRecordingResponse);
@@ -451,6 +454,15 @@ message RedoRecordingResponse {
   repeated string missing_secrets = 2;
 }
 
+message SetParametersRequest {
+  repeated Parameter parameters = 1;
+}
+
+message SetParametersResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
 message OpenRecordingRequest {
   // A tap-recording/1 or /2 file. Secrets have no values until UpdateStep or Replay gives them.
   string document = 1;
@@ -526,6 +538,20 @@ message Recording {
   // Every secret name the steps use, each once, so a replayer can ask for all of them up front.
   repeated string secrets = 6;
   repeated Step steps = 7;
+  // Test data a step can name instead of holding it, unique by name. Written to the file, so never
+  // a secret: use `secrets` for those.
+  repeated Parameter parameters = 8;
+}
+
+// A named value. It stands for text a step types or expects, resolved before anything runs. A
+// parameter is never part of a selector, and it is text, not a template: "${x}" in a step's own
+// text is just those characters.
+message Parameter {
+  // A letter or "_", then letters, digits or "_"; at most 64. Not also the name of a secret.
+  string name = 1;
+  // At most 4096 characters; may be empty.
+  string value = 2;
+  optional string description = 3;
 }
 
 message RecordedDevice {
@@ -591,6 +617,8 @@ message ActionStep {
   // Unspecified for the ops on the device. A drag's destination is its own: resolved by the driver
   // on the same screen, it needs no wait.
   SelectorOrigin selector_origin = 4;
+  // set_text only: the name of the parameter whose value is the text; `set_text.text` is then empty.
+  optional string parameter = 5;
 }
 
 // The element typeText flow, three commands: tap `selector`, await it focused (unless
@@ -604,6 +632,8 @@ message TypeStep {
     string text = 2;
     // The name of the secret whose value is typed.
     string secret = 3;
+    // The name of the parameter whose value is typed.
+    string parameter = 9;
   }
   // The SDKs' `await_focus = false`: for fields whose focus lands elsewhere.
   bool skip_focus_wait = 4;
@@ -642,6 +672,7 @@ message WaitStep {
   oneof value {
     string text = 3;
     int32 count = 4; // ≥ 0
+    string parameter = 7; // the name of the parameter whose value is the text
   }
   SelectorOrigin selector_origin = 5;
   // 1..120000 ms; absent uses the SDK wait default.
@@ -675,6 +706,7 @@ message AssertionStep {
   oneof value {
     string text = 3;
     int32 count = 4; // ≥ 0
+    string parameter = 7; // the name of the parameter whose value is the text
   }
   SelectorOrigin selector_origin = 5;
   // One query's command budget, 1..120000 ms; not a wait for the assertion to hold.

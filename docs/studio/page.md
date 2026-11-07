@@ -129,6 +129,13 @@ page. **Clear data** also asks first, because it runs on the device and undo can
 Dialogs keep the keyboard until they close, and the screen tree picks elements the same way the
 screen does, including where a drag drops and what a scroll until looks for.
 
+**Parameters** are test data a step can name instead of holding, such as a user name or an expected
+title. Declare them above the steps, then choose one in a step's editor for the text it types or
+expects. A run looks up the value first and refuses before any input if it is missing. Changing a
+value clears the results of the steps that use it. Parameters are written to the recording file, so
+keep anything private in a secret, whose value never is. A parameter stands only for that text: it
+is never part of a selector, and `${x}` typed into a step is just those characters.
+
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow. Wait for the current operation before changing
 the recording mode.

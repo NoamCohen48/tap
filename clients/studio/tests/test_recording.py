@@ -235,7 +235,7 @@ def test_secret_set_text_and_every_action_op_load():
 def test_type_step_rules():
     recording = loads(text(with_steps({"id": "a", "type": {"selector": SEARCH, "text": "jonson", "skip_focus_wait": True}})))
     assert recording.steps[0].type.skip_focus_wait
-    rejects(with_steps({"id": "a", "type": {"selector": SEARCH}}), "type needs text or secret")
+    rejects(with_steps({"id": "a", "type": {"selector": SEARCH}}), "type needs text, secret or parameter")
     rejects(with_steps({"id": "a", "type": {"text": "x"}}), "type.selector has no node")
 
 

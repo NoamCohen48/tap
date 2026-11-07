@@ -62,6 +62,10 @@ work, including broader follow-ups beyond that approved scope.
   all 42 Execute operations and affected adapters test value forwarding, but it does not claim
   agent-style parity for every daemon RPC, SDK method or Kotlin convenience API.
 
+- [ ] Parameters in selectors, app calls and clipboard values. They stand for typed or expected text
+  only, so a selector cannot be changed by data; extending this needs rules for what stays validated
+  before input.
+
 ## Additional audit follow-ups outside the approved milestone
 
 - [ ] Kotlin/JUnit source export and a cross-language export conformance matrix. Python/pytest

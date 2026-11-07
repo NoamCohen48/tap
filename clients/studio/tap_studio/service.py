@@ -36,7 +36,7 @@ from tap_e2e import proto as tap
 
 from . import __version__, steps, tools
 from ._gen import studio_pb2 as studio
-from .recording import FORMAT, RecordingError, dumps, loads, secret_name
+from .recording import FORMAT, RecordingError, dumps, loads, parameter_name, parameter_problems, secret_name
 from .screen import DeviceWorker, FrameError
 
 CONNECTION_NAME = "tap-studio"
@@ -409,10 +409,11 @@ class Studio:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
         if request.before_step_id:
             self._index(request.before_step_id)
+        runnable = self._resolved(step)
         started = time.monotonic()
         failure: TapError | steps.CheckFailed | None = None
         try:
-            await worker.call(lambda: steps.run(device, step, secret_value))
+            await worker.call(lambda: steps.run(device, runnable, secret_value))
         except (TapError, steps.CheckFailed) as error:
             failure = error
         step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
@@ -433,15 +434,19 @@ class Studio:
 
     def _restore(self, snapshot: bytes | None) -> None:
         current = {step.id: step for step in self.recording.steps} if self.recording is not None else {}
+        values_now = {p.name: p.value for p in self.recording.parameters} if self.recording is not None else {}
         restored = None
         if snapshot is not None:
             restored = studio.Recording.FromString(snapshot)
+            values_then = {p.name: p.value for p in restored.parameters}
             for step in restored.steps:
                 # A result stands only if it is about this step as it is now: an old pass may have
-                # used a secret's earlier value.
+                # used a secret's earlier value, or another value of its parameter.
                 now = current.get(step.id)
                 step.ClearField("outcome")
-                if now is not None and now.HasField("outcome") and _same_run(now, step):
+                parameter = parameter_name(step)
+                same_value = parameter is None or values_now.get(parameter) == values_then.get(parameter)
+                if now is not None and now.HasField("outcome") and _same_run(now, step) and same_value:
                     step.outcome.CopyFrom(now.outcome)
         self.recording = restored
         if restored is not None:
@@ -461,7 +466,10 @@ class Studio:
         self._remember()
         if self.recording is None or not self.recording.steps:
             assert attached is not None
+            # A first step dates the recording; parameters declared before it stay.
+            declared = list(self.recording.parameters) if self.recording is not None else []
             self.recording = _new_recording(attached)
+            self.recording.parameters.extend(declared)
         step.id = self._new_id()
         name = secret_name(step)
         if name is not None:
@@ -475,6 +483,14 @@ class Studio:
             self.recording.steps.append(step)
         self._sync_secrets()
         self._touch()
+
+    def _resolved(self, step: studio.Step) -> studio.Step:
+        """The step with its parameter's value, refused before any input if it has none."""
+        declared = {p.name: p.value for p in self.recording.parameters} if self.recording is not None else {}
+        try:
+            return steps.resolve(step, declared)
+        except RecordingError as error:
+            raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
 
     def _new_id(self) -> str:
         taken = {step.id for step in self.recording.steps} if self.recording is not None else set()
@@ -550,6 +566,7 @@ class Studio:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
         if request.before_step_id:
             self._index(request.before_step_id)
+        self._resolved(step)
         self._add(step, secret_value, request.before_step_id)
         assert self.recording is not None
         return studio.AddStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
@@ -564,6 +581,7 @@ class Studio:
             step = steps.revise(request.step, secret_value)
         except RecordingError as error:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
+        self._resolved(step)
         self._remember()
         current = self.recording.steps[index]
         step.ClearField("outcome")
@@ -630,6 +648,32 @@ class Studio:
         self._step_history(self._redo, self._undo, "redo")
         return studio.RedoRecordingResponse(recording=self.recording, missing_secrets=self._missing_secrets())
 
+    async def set_parameters(self, request: studio.SetParametersRequest, ctx: RequestContext) -> studio.SetParametersResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        if self.recording is None:
+            if self._attached is None:
+                raise ConnectError(Code.FAILED_PRECONDITION, "no recording yet: attach a device or open one")
+            draft = _new_recording(self._attached)
+        else:
+            draft = studio.Recording()
+            draft.CopyFrom(self.recording)
+        before = {p.name: p.value for p in draft.parameters}
+        del draft.parameters[:]
+        draft.parameters.extend(request.parameters)
+        problems = parameter_problems(draft)
+        if problems:
+            raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(problems))
+        self._remember()
+        now = {p.name: p.value for p in draft.parameters}
+        for step in draft.steps:
+            name = parameter_name(step)
+            if name is not None and before.get(name) != now[name]:
+                step.ClearField("outcome")
+        self.recording = draft
+        self._touch()
+        return studio.SetParametersResponse(recording=self.recording, missing_secrets=self._missing_secrets())
+
     async def open_recording(self, request: studio.OpenRecordingRequest, ctx: RequestContext) -> studio.OpenRecordingResponse:
         self._require_control(ctx)
         self._require_idle()
@@ -684,7 +728,8 @@ class Studio:
                 name = secret_name(step)
                 value = self._secrets[name] if name is not None else None
 
-                self._replay_step = asyncio.create_task(self._run_replay_step(worker, device, step, value), name="tap-studio replay step")
+                runnable = self._resolved(step)
+                self._replay_step = asyncio.create_task(self._run_replay_step(worker, device, step, runnable, value), name="tap-studio replay step")
                 self._replay_step.add_done_callback(lambda done: None if done.cancelled() else done.exception())
                 failure = await asyncio.shield(self._replay_step)
                 yield studio.ReplayResponse(step_id=step_id, outcome=step.outcome, message=str(failure) if failure else "")
@@ -704,12 +749,12 @@ class Studio:
                 settled()
 
     async def _run_replay_step(
-        self, worker: DeviceWorker, device: Device, step: studio.Step, value: str | None
+        self, worker: DeviceWorker, device: Device, step: studio.Step, runnable: studio.Step, value: str | None
     ) -> TapError | steps.CheckFailed | None:
         started = time.monotonic()
         failure: TapError | steps.CheckFailed | None = None
         try:
-            await worker.call(lambda: steps.run(device, step, value))
+            await worker.call(lambda: steps.run(device, runnable, value))
         except (TapError, steps.CheckFailed) as error:
             failure = error
         step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
@@ -733,7 +778,8 @@ class Studio:
         return studio.NewRecordingResponse(session=self._session())
 
     async def get_recording(self, request: studio.GetRecordingRequest, ctx: RequestContext) -> studio.GetRecordingResponse:
-        if self.recording is None or not self.recording.steps:
+        # Parameters declared before the first step are a recording too: the page must see them.
+        if self.recording is None or not (self.recording.steps or self.recording.parameters):
             raise ConnectError(Code.NOT_FOUND, "nothing recorded yet")
         return studio.GetRecordingResponse(
             recording=self.recording, document=dumps(self.recording) + "\n", missing_secrets=self._missing_secrets()

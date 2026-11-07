@@ -372,7 +372,7 @@ const CONDITIONS: Record<Condition, string> = {
 /** An assertion as a test writes it: `kotlin.test` around the SDK's element query. */
 function assertion(a: AssertionStep): string {
   const query = element(a.selector);
-  const text = a.value.case === "text" ? quote(a.value.value) : "";
+  const text = a.value.case === "parameter" ? byName(a.value.value) : a.value.case === "text" ? quote(a.value.value) : "";
   switch (a.check) {
     case Check.EXISTS:
       return `assertTrue(${query}.exists())`;
@@ -421,6 +421,9 @@ function appWait(c: Command | undefined): string {
 function value(text: string, secret: string | undefined): string {
   return secret !== undefined ? `\${${secret}}` : quote(text);
 }
+
+/** A parameter's name, as a secret's: `${name}`. */
+const byName = (name: string) => `\${${name}}`;
 
 function command(c: Command | undefined, secret: string | undefined): string {
   if (!c) return "(no command)";
@@ -552,15 +555,15 @@ function describeCall(step: Step): string {
     case "deviceAssertion":
       return deviceAssertion(step.kind.value);
     case "action":
-      return command(step.kind.value.command, step.kind.value.secret);
+      return command(step.kind.value.command, step.kind.value.secret ?? step.kind.value.parameter);
     case "type": {
       const t = step.kind.value;
-      const input = t.input.case === "secret" ? `\${${t.input.value}}` : quote(t.input.value ?? "");
+      const input = t.input.case === "secret" || t.input.case === "parameter" ? byName(t.input.value) : quote(t.input.value ?? "");
       return `${element(t.selector)}.typeText(${input}${t.skipFocusWait ? ", awaitFocus = false" : ""})`;
     }
     case "wait": {
       const w = step.kind.value;
-      const argument = w.value.case === "text" ? quote(w.value.value) : w.value.case === "count" ? String(w.value.value) : "";
+      const argument = w.value.case === "parameter" ? byName(w.value.value) : w.value.case === "text" ? quote(w.value.value) : w.value.case === "count" ? String(w.value.value) : "";
       return `${awaiting(w.selector)}.${CONDITIONS[w.condition]}(${argument})`;
     }
     case "assertion":

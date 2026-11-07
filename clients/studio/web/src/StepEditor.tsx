@@ -24,6 +24,7 @@ export function StepEditor({
   nodes,
   client,
   busy,
+  parameters = [],
   onSave,
   onDirty,
 }: {
@@ -31,6 +32,8 @@ export function StepEditor({
   nodes: readonly ScreenNode[];
   client: StudioClient;
   busy: boolean;
+  /** The recording's parameters, by name, that the text can come from. */
+  parameters?: readonly string[];
   /** Resolves whether it was saved; a refused save keeps the draft. */
   onSave: (step: Step, secretValue?: string) => Promise<boolean>;
   /** Whether there are edits that are not saved; false when the editor closes. */
@@ -76,6 +79,7 @@ export function StepEditor({
   const [text, setText] = useState(initialText && "text" in initialText ? initialText.text : "");
   const [secret, setSecret] = useState<string | null>(initialText && "secret" in initialText ? initialText.secret : null);
   const [secretValue, setSecretValue] = useState("");
+  const [parameter, setParameter] = useState<string | null>(initialText && "parameter" in initialText ? initialText.parameter : null);
   const [note, setNote] = useState(step.note ?? "");
   const [budgets, setBudgets] = useState(() => stepBudgets(step));
   const [press, setPress] = useState(() => stepPress(step));
@@ -121,7 +125,7 @@ export function StepEditor({
     initialMovement &&
     (movement.direction !== initialMovement.direction || movement.distance !== initialMovement.distance || movement.maxScrolls !== initialMovement.maxScrolls);
   if (moved) edited = withMovement(edited, movement);
-  if (initialText) edited = withText(edited, secret !== null ? { secret: secret.trim() } : { text });
+  if (initialText) edited = withText(edited, parameter !== null ? { parameter } : secret !== null ? { secret: secret.trim() } : { text });
   if ((edited.note ?? "") !== note) {
     edited = clone(StepSchema, edited);
     edited.note = note || undefined;
@@ -275,12 +279,31 @@ export function StepEditor({
         {!stabilityOk && <p role="alert">Quiet period must be 1..30000 whole milliseconds.</p>}
       </fieldset>}
 
-      <StepValues step={values} onChange={changeValues} />
+      <StepValues step={values} parameters={parameters} onChange={changeValues} />
 
       {initialText && (
         <fieldset>
           <legend>Text</legend>
-          {secret === null ? (
+          {(parameters.length > 0 || parameter !== null) && (
+            <label className="field">
+              <span>From a parameter</span>
+              <select
+                value={parameter ?? ""}
+                onChange={(e) => {
+                  setParameter(e.target.value || null);
+                  if (e.target.value) setSecret(null);
+                }}
+              >
+                <option value="">No: the text below</option>
+                {[...new Set([...parameters, ...(parameter !== null ? [parameter] : [])])].map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {parameter !== null ? null : secret === null ? (
             <label className="field">
               <span className="sr-only">Text</span>
               <input value={text} onChange={(e) => setText(e.target.value)} />
@@ -303,7 +326,7 @@ export function StepEditor({
               </label>
             </div>
           )}
-          {takesSecret(step) && (
+          {takesSecret(step) && parameter === null && (
             <label className="check">
               <input
                 type="checkbox"
@@ -344,6 +367,7 @@ export function StepEditor({
               setText(initialText && "text" in initialText ? initialText.text : "");
               setSecret(initialText && "secret" in initialText ? initialText.secret : null);
               setSecretValue("");
+              setParameter(initialText && "parameter" in initialText ? initialText.parameter : null);
               setNote(step.note ?? "");
               setScrollTo(originalTarget ? describeSelector(originalTarget) : "");
               setMovement(initialMovement);

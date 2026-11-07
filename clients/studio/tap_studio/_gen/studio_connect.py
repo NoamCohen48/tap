@@ -77,6 +77,9 @@ class StudioService(Protocol):
     async def redo_recording(self, request: studio__pb2.RedoRecordingRequest, ctx: RequestContext) -> studio__pb2.RedoRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def set_parameters(self, request: studio__pb2.SetParametersRequest, ctx: RequestContext) -> studio__pb2.SetParametersResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def open_recording(self, request: studio__pb2.OpenRecordingRequest, ctx: RequestContext) -> studio__pb2.OpenRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -306,6 +309,16 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.redo_recording,
+                ),
+                "/tap.studio.v1.StudioService/SetParameters": Endpoint.unary(
+                    method=MethodInfo(
+                        name="SetParameters",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetParametersRequest,
+                        output=studio__pb2.SetParametersResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.set_parameters,
                 ),
                 "/tap.studio.v1.StudioService/OpenRecording": Endpoint.unary(
                     method=MethodInfo(
@@ -812,6 +825,26 @@ class StudioServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def set_parameters(
+        self,
+        request: studio__pb2.SetParametersRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetParametersResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetParameters",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetParametersRequest,
+                output=studio__pb2.SetParametersResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def open_recording(
         self,
         request: studio__pb2.OpenRecordingRequest,
@@ -1015,6 +1048,8 @@ class StudioServiceSync(Protocol):
     def undo_recording(self, request: studio__pb2.UndoRecordingRequest, ctx: RequestContext) -> studio__pb2.UndoRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def redo_recording(self, request: studio__pb2.RedoRecordingRequest, ctx: RequestContext) -> studio__pb2.RedoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def set_parameters(self, request: studio__pb2.SetParametersRequest, ctx: RequestContext) -> studio__pb2.SetParametersResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def open_recording(self, request: studio__pb2.OpenRecordingRequest, ctx: RequestContext) -> studio__pb2.OpenRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
@@ -1237,6 +1272,16 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.redo_recording,
+                ),
+                "/tap.studio.v1.StudioService/SetParameters": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="SetParameters",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetParametersRequest,
+                        output=studio__pb2.SetParametersResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.set_parameters,
                 ),
                 "/tap.studio.v1.StudioService/OpenRecording": EndpointSync.unary(
                     method=MethodInfo(
@@ -1737,6 +1782,26 @@ class StudioServiceClientSync(ConnectClientSync):
                 service_name="tap.studio.v1.StudioService",
                 input=studio__pb2.RedoRecordingRequest,
                 output=studio__pb2.RedoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def set_parameters(
+        self,
+        request: studio__pb2.SetParametersRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetParametersResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetParameters",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetParametersRequest,
+                output=studio__pb2.SetParametersResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

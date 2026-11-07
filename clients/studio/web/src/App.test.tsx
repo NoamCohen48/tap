@@ -10,6 +10,7 @@ import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
   OutcomeSchema,
+  ParameterSchema,
   PerformResponseSchema,
   RecordingSchema,
   SessionSchema,
@@ -20,6 +21,7 @@ import {
   SelectorOrigin,
   StudioService,
   type AddStepRequest,
+  type Parameter,
   type PerformRequest,
   type ReplayRequest,
   type Session,
@@ -88,6 +90,8 @@ function fakeStudio() {
     updates: [] as UpdateStepRequest[],
     added: [] as AddStepRequest[],
     failUpdate: null as string | null,
+    parameters: [] as Parameter[],
+    failParameters: null as string | null,
     undone: 0,
     redone: 0,
     replays: [] as ReplayRequest[],
@@ -99,7 +103,7 @@ function fakeStudio() {
     wake: (() => undefined) as () => void,
     takeControlError: null as string | null,
   };
-  const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps) });
+  const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps), parameters: state.parameters });
   const edited = () => ({ recording: recording(), missingSecrets: state.missing.filter((name) => secretsOf(state.steps).includes(name)) });
   const index = (stepId: string) => {
     const at = state.steps.findIndex((s) => s.id === stepId);
@@ -199,6 +203,11 @@ function fakeStudio() {
         state.steps[index(request.step!.id)] = clone(StepSchema, request.step!);
         return edited();
       },
+      setParameters: (request) => {
+        if (state.failParameters) throw new ConnectError(state.failParameters, Code.InvalidArgument);
+        state.parameters = request.parameters;
+        return edited();
+      },
       duplicateStep: (request) => {
         const at = index(request.stepId);
         const copy = clone(StepSchema, state.steps[at]!);
@@ -264,7 +273,8 @@ function fakeStudio() {
         return { session: state.session };
       },
       getRecording: () => {
-        if (!state.steps.length) throw new ConnectError("nothing recorded yet", Code.NotFound);
+        // As the server does: parameters declared before the first step are a recording too.
+        if (!state.steps.length && !state.parameters.length) throw new ConnectError("nothing recorded yet", Code.NotFound);
         return { ...edited(), document: toJsonString(RecordingSchema, recording(), { prettySpaces: 2 }) };
       },
     });
@@ -574,6 +584,80 @@ describe("editing every value of a step", () => {
     fireEvent.keyDown(within(editor).getByLabelText("Key code"), { key: "z", ctrlKey: true });
     await act(async () => undefined);
     expect(fake.state.undone).toBe(0);
+  });
+});
+
+describe("parameters", () => {
+  const typed = () => create(StepSchema, { id: "s1", kind: { case: "type", value: { selector: resSelector("x"), input: { case: "text", value: "ada" } } } });
+
+  async function withStep(step = typed(), parameters: { name: string; value: string }[] = [{ name: "user", value: "ada" }]) {
+    const fake = await attached();
+    fake.state.steps = [step];
+    fake.state.parameters = parameters.map((p) => create(ParameterSchema, p));
+    fake.state.nextId = 2;
+    await act(async () => fake.watch({ recordingRevision: 9n }));
+    await screen.findByText("Parameters (" + parameters.length + ")");
+    return fake;
+  }
+
+  it("keeps parameters declared before the first step when the recording is read again", async () => {
+    const fake = await attached();
+    fireEvent.click(screen.getByText("Parameters (0)"));
+    fireEvent.click(screen.getByRole("button", { name: "Add parameter" }));
+    const row = screen.getByRole("group", { name: "Parameter 1" });
+    fireEvent.change(within(row).getByLabelText("Name"), { target: { value: "user" } });
+    fireEvent.change(within(row).getByLabelText("Value"), { target: { value: "ada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save parameters" }));
+    await screen.findByText("Parameters (1)");
+    await act(async () => fake.watch({ recordingRevision: fake.state.session.recordingRevision + 1n }));
+    await act(async () => undefined);
+    expect(screen.getByText("Parameters (1)")).toBeTruthy();
+  });
+
+  it("declares a parameter and sends what was typed", async () => {
+    const fake = await withStep(typed(), []);
+    fireEvent.click(screen.getByText("Parameters (0)"));
+    fireEvent.click(screen.getByRole("button", { name: "Add parameter" }));
+    const row = screen.getByRole("group", { name: "Parameter 1" });
+    fireEvent.change(within(row).getByLabelText("Name"), { target: { value: " user " } });
+    fireEvent.change(within(row).getByLabelText("Value"), { target: { value: "ada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save parameters" }));
+    await screen.findByText("Parameters (1)");
+    expect(fake.state.parameters.map((p) => [p.name, p.value])).toEqual([["user", "ada"]]);
+  });
+
+  it("keeps the rows when the studio refuses them", async () => {
+    const fake = await withStep();
+    fake.state.failParameters = "the step uses the parameter 'user'";
+    fireEvent.click(screen.getByRole("button", { name: "Remove parameter 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save parameters" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("user");
+    expect(screen.queryByRole("group", { name: "Parameter 1" })).toBeNull();
+  });
+
+  it("takes a typed step's text from a parameter, and shows the name", async () => {
+    const fake = await withStep();
+    fireEvent.click(within(screen.getByRole("region", { name: "Steps" })).getByRole("button", { expanded: false }));
+    const editor = await screen.findByRole("form", { name: "Edit the step" });
+    fireEvent.change(within(editor).getByLabelText("From a parameter"), { target: { value: "user" } });
+    expect(within(editor).queryByRole("checkbox", { name: /Secret/ })).toBeNull();
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.updates).toHaveLength(1));
+    const kind = fake.state.updates[0]!.step!.kind;
+    expect(kind.case === "type" && kind.value.input).toEqual({ case: "parameter", value: "user" });
+    await screen.findByText('screen.element(res("x")).typeText(${user})');
+  });
+
+  it("takes an expected text from a parameter", async () => {
+    const fake = await withStep(create(StepSchema, { id: "s1", kind: { case: "assertion", value: { selector: resSelector("x"), check: Check.TEXT_EQUALS, value: { case: "text", value: "a" } } } }));
+    fireEvent.click(within(screen.getByRole("region", { name: "Steps" })).getByRole("button", { expanded: false }));
+    const editor = await screen.findByRole("form", { name: "Edit the step" });
+    fireEvent.change(within(editor).getByLabelText("From a parameter"), { target: { value: "user" } });
+    expect(within(editor).queryByLabelText("Expected text")).toBeNull();
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.updates).toHaveLength(1));
+    const kind = fake.state.updates[0]!.step!.kind;
+    expect(kind.case === "assertion" && kind.value.value).toEqual({ case: "parameter", value: "user" });
   });
 });
 
