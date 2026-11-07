@@ -1,5 +1,5 @@
 import { clone, equals } from "@bufbuild/protobuf";
-import { useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { StudioClient } from "./api";
 import { useCount } from "./count";
 import { describeSelector } from "./describe";
@@ -11,6 +11,10 @@ import { SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
 import { candidateChips } from "./nodes";
 import { parseSelector } from "./parse";
 import type { Target } from "./steps";
+import { budgetFields, ExecutionControls, stepBudgets, validBudgets, withBudgets } from "./ExecutionControls";
+import { PressFields, stepPress, validPress, withPress } from "./PressControls";
+import { StabilitySignal } from "./gen/command_pb";
+import { StepValues } from "./ValueFields";
 
 /** Edits one recorded step: its selector (another candidate of its node, or typed), what a scroll
  *  until scrolls to, how a swipe, scroll or scroll until moves, the text it enters or checks (or a
@@ -20,15 +24,33 @@ export function StepEditor({
   nodes,
   client,
   busy,
+  parameters = [],
   onSave,
+  onDirty,
 }: {
   step: Step;
   nodes: readonly ScreenNode[];
   client: StudioClient;
   busy: boolean;
-  onSave: (step: Step, secretValue?: string) => void;
+  /** The recording's parameters, by name, that the text can come from. */
+  parameters?: readonly string[];
+  /** Resolves whether it was saved; a refused save keeps the draft. */
+  onSave: (step: Step, secretValue?: string) => Promise<boolean>;
+  /** Whether there are edits that are not saved; false when the editor closes. */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const id = useId();
+  // The draft of the values `StepValues` edits. It follows the recording (a new outcome, a save)
+  // until something is typed here.
+  const [values, setValues] = useState(() => clone(StepSchema, step));
+  const typing = useRef(false);
+  useEffect(() => {
+    if (!typing.current) setValues(clone(StepSchema, step));
+  }, [step]);
+  const changeValues = () => {
+    typing.current = true;
+    setValues((draft) => clone(StepSchema, draft));
+  };
   const original = stepSelector(step);
   const node = nodeFor(nodes, original);
   const [target, setTarget] = useState<Target | null>(original ? { selector: original, origin: stepOrigin(step) } : null);
@@ -48,15 +70,23 @@ export function StepEditor({
   const movementError =
     movement && !(Number.isInteger(movement.distance) && movement.distance >= 1 && movement.distance <= 100)
       ? "The distance is 1 to 100 percent."
-      : movement?.maxScrolls !== undefined && !(Number.isInteger(movement.maxScrolls) && movement.maxScrolls >= 1 && movement.maxScrolls <= 1000)
-        ? "Max scrolls is 1 to 1000."
+      : movement?.maxScrolls !== undefined && !(Number.isInteger(movement.maxScrolls) && movement.maxScrolls >= 0 && movement.maxScrolls <= 1000)
+        ? "Max scrolls is 0 to 1000."
         : null;
 
-  const initialText = stepText(step);
+  // A wait's or an assertion's value goes with its condition (`StepValues`).
+  const initialText = step.kind.case === "wait" || step.kind.case === "assertion" ? null : stepText(step);
   const [text, setText] = useState(initialText && "text" in initialText ? initialText.text : "");
   const [secret, setSecret] = useState<string | null>(initialText && "secret" in initialText ? initialText.secret : null);
   const [secretValue, setSecretValue] = useState("");
+  const [parameter, setParameter] = useState<string | null>(initialText && "parameter" in initialText ? initialText.parameter : null);
   const [note, setNote] = useState(step.note ?? "");
+  const [budgets, setBudgets] = useState(() => stepBudgets(step));
+  const [press, setPress] = useState(() => stepPress(step));
+  const originalStability = step.kind.case === "appWait" && step.kind.value.command?.op.case === "waitScreenStable" ? step.kind.value.command.op.value : undefined;
+  const [quiet, setQuiet] = useState(Number(originalStability?.stableForMs ?? 500n));
+  const [stabilityPackage, setStabilityPackage] = useState(originalStability?.packageName ?? "");
+  const [signal, setSignal] = useState(originalStability?.signal ?? StabilitySignal.STABILITY_ALL);
 
   const originOf = (selector: Selector): SelectorOrigin => {
     const index = node?.candidates.findIndex((c) => c.selector && equals(SelectorSchema, c.selector, selector)) ?? -1;
@@ -82,7 +112,8 @@ export function StepEditor({
     setTypedError(null);
   };
 
-  let edited = step;
+  let edited = clone(StepSchema, values);
+  edited.outcome = step.outcome;
   if (target && original && !(equals(SelectorSchema, target.selector, original) && target.origin === stepOrigin(step))) {
     edited = withSelector(edited, target);
   }
@@ -94,14 +125,26 @@ export function StepEditor({
     initialMovement &&
     (movement.direction !== initialMovement.direction || movement.distance !== initialMovement.distance || movement.maxScrolls !== initialMovement.maxScrolls);
   if (moved) edited = withMovement(edited, movement);
-  if (initialText) edited = withText(edited, secret !== null ? { secret: secret.trim() } : { text });
+  if (initialText) edited = withText(edited, parameter !== null ? { parameter } : secret !== null ? { secret: secret.trim() } : { text });
   if ((edited.note ?? "") !== note) {
     edited = clone(StepSchema, edited);
     edited.note = note || undefined;
   }
+  if (validBudgets(budgets)) edited = withBudgets(edited, budgets);
+  if (press && validPress(press)) edited = withPress(edited, press);
+  const stabilityOk = !originalStability || (Number.isInteger(quiet) && quiet >= 1 && quiet <= 30000);
+  if (originalStability && stabilityOk && edited.kind.case === "appWait" && edited.kind.value.command?.op.case === "waitScreenStable") {
+    edited = clone(StepSchema, edited);
+    if (edited.kind.case === "appWait" && edited.kind.value.command?.op.case === "waitScreenStable") Object.assign(edited.kind.value.command.op.value, { packageName: stabilityPackage, stableForMs: BigInt(quiet), signal });
+  }
   const changed = !equals(StepSchema, edited, step) || (secret !== null && secretValue !== "");
+  // In the commit, not after it: a click right after an edit must already see it as unsaved.
+  useLayoutEffect(() => {
+    onDirty?.(changed);
+  }, [onDirty, changed]);
+  useLayoutEffect(() => () => onDirty?.(false), [onDirty]);
   const scrollToError = parsedScrollTo && "error" in parsedScrollTo ? `${parsedScrollTo.error} (at ${parsedScrollTo.at + 1})` : null;
-  const valid = !typedError && !scrollToError && !movementError && (secret === null || secret.trim() !== "");
+  const valid = !typedError && !scrollToError && !movementError && validBudgets(budgets) && (!press || validPress(press)) && stabilityOk && (secret === null || secret.trim() !== "");
 
   const movementFields = movement && (
     <>
@@ -132,7 +175,7 @@ export function StepEditor({
             <span>Max scrolls</span>
             <input
               type="number"
-              min={1}
+              min={0}
               max={1000}
               value={Number.isNaN(movement.maxScrolls) ? "" : movement.maxScrolls}
               aria-invalid={movementError?.startsWith("Max") ?? false}
@@ -151,7 +194,11 @@ export function StepEditor({
       aria-label="Edit the step"
       onSubmit={(e) => {
         e.preventDefault();
-        if (changed && valid) onSave(edited, secret !== null && secretValue !== "" ? secretValue : undefined);
+        if (changed && valid) {
+          void onSave(edited, secret !== null && secretValue !== "" ? secretValue : undefined).then((saved) => {
+            if (saved) typing.current = false;
+          });
+        }
       }}
     >
       {target && (
@@ -223,10 +270,40 @@ export function StepEditor({
         </fieldset>
       )}
 
+      <ExecutionControls fields={budgetFields(step)} values={budgets} onChange={setBudgets} />
+      {press && <fieldset><legend>Press parameters</legend><PressFields value={press} onChange={setPress} /></fieldset>}
+      {originalStability && <fieldset><legend>Screen stability</legend>
+        <label className="field"><span>Stability package (empty = whole screen)</span><input value={stabilityPackage} onChange={(e) => setStabilityPackage(e.target.value)} /></label>
+        <label className="field"><span>Quiet period (ms)</span><input type="number" min={1} max={30000} value={Number.isNaN(quiet) ? "" : quiet} onChange={(e) => setQuiet(e.target.valueAsNumber)} aria-invalid={!stabilityOk} /></label>
+        <label className="field"><span>Stability signal</span><select value={signal} onChange={(e) => setSignal(Number(e.target.value))}><option value={StabilitySignal.STABILITY_ALL}>Tree and pixels</option><option value={StabilitySignal.STABILITY_TREE}>Tree</option><option value={StabilitySignal.STABILITY_PIXELS}>Pixels</option></select></label>
+        {!stabilityOk && <p role="alert">Quiet period must be 1..30000 whole milliseconds.</p>}
+      </fieldset>}
+
+      <StepValues step={values} parameters={parameters} onChange={changeValues} />
+
       {initialText && (
         <fieldset>
-          <legend>{step.kind.case === "wait" || step.kind.case === "assertion" ? "Expected text" : "Text"}</legend>
-          {secret === null ? (
+          <legend>Text</legend>
+          {(parameters.length > 0 || parameter !== null) && (
+            <label className="field">
+              <span>From a parameter</span>
+              <select
+                value={parameter ?? ""}
+                onChange={(e) => {
+                  setParameter(e.target.value || null);
+                  if (e.target.value) setSecret(null);
+                }}
+              >
+                <option value="">No: the text below</option>
+                {[...new Set([...parameters, ...(parameter !== null ? [parameter] : [])])].map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {parameter !== null ? null : secret === null ? (
             <label className="field">
               <span className="sr-only">Text</span>
               <input value={text} onChange={(e) => setText(e.target.value)} />
@@ -249,7 +326,7 @@ export function StepEditor({
               </label>
             </div>
           )}
-          {takesSecret(step) && (
+          {takesSecret(step) && parameter === null && (
             <label className="check">
               <input
                 type="checkbox"
@@ -283,14 +360,22 @@ export function StepEditor({
             type="button"
             className="btn small"
             onClick={() => {
+              typing.current = false;
+              setValues(clone(StepSchema, step));
               if (original) choose(original);
               setTarget(original ? { selector: original, origin: stepOrigin(step) } : null);
               setText(initialText && "text" in initialText ? initialText.text : "");
               setSecret(initialText && "secret" in initialText ? initialText.secret : null);
               setSecretValue("");
+              setParameter(initialText && "parameter" in initialText ? initialText.parameter : null);
               setNote(step.note ?? "");
               setScrollTo(originalTarget ? describeSelector(originalTarget) : "");
               setMovement(initialMovement);
+              setBudgets(stepBudgets(step));
+              setPress(stepPress(step));
+              setQuiet(Number(originalStability?.stableForMs ?? 500n));
+              setStabilityPackage(originalStability?.packageName ?? "");
+              setSignal(originalStability?.signal ?? StabilitySignal.STABILITY_ALL);
             }}
           >
             Undo changes

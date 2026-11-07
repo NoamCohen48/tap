@@ -64,6 +64,8 @@ def test_everything_else_needs_the_cookie(anonymous):
     for path in ("/", "/assets/x.js", f"{INFO}?encoding=json&message=%7B%7D"):
         assert anonymous.get(path).status_code == 401, path
     assert call(anonymous, "Info").status_code == 401
+    for method in ("QueryApp", "PrivateData", "ExportDiagnostic"):
+        assert call(anonymous, method).status_code == 401
     anonymous.cookies.set(cookie_name(TOKEN), "wrong")
     assert call(anonymous, "Info").status_code == 401
 
@@ -76,12 +78,12 @@ def test_cookie_of_another_studio_does_not_count(anonymous):
 def test_info(signed_in):
     response = call(signed_in, "Info")
     assert response.status_code == 200
-    assert response.json() == {"recorder": f"tap-studio {__version__}", "format": "tap-recording/1"}
+    assert response.json() == {"recorder": f"tap-studio {__version__}", "format": "tap-recording/2"}
 
 
 def test_info_over_get_for_side_effect_free_methods(signed_in):
     response = signed_in.get(f"{INFO}?encoding=json&message=%7B%7D")
-    assert response.json()["format"] == "tap-recording/1"
+    assert response.json()["format"] == "tap-recording/2"
 
 
 def test_no_recording_yet_is_not_found(signed_in):
@@ -149,3 +151,20 @@ def test_built_page_is_served(tmp_path):
     assert "<title>Tap Studio</title>" in client.get("/").text
     assert client.get("/assets/app.js").text == "console.log(1)"
     assert call(client, "Info").status_code == 200
+
+
+def test_a_real_request_is_checked_against_the_controlling_tab(service, signed_in):
+    """Through the real server and its request context, with the header in any case."""
+    service._controller = "tab-a"
+    body = '{"recording": false}'
+    refused = signed_in.post(
+        "/tap.studio.v1.StudioService/SetRecording", content=body, headers={"Content-Type": "application/json", "X-Tap-Studio-Tab": "tab-b"}
+    )
+    assert refused.status_code != 200 and "take control" in refused.text
+    nameless = signed_in.post("/tap.studio.v1.StudioService/SetRecording", content=body, headers={"Content-Type": "application/json"})
+    assert nameless.status_code != 200
+    accepted = signed_in.post(
+        "/tap.studio.v1.StudioService/SetRecording", content=body, headers={"Content-Type": "application/json", "X-Tap-Studio-Tab": "tab-a"}
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert service._session().recording is False

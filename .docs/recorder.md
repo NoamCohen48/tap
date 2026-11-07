@@ -17,6 +17,80 @@ a human watches; here a human drives through Tap and Tap writes down what they d
 compatibility or by what is quickest to build. Where the right design needs a daemon, proto or
 driver change, it gets one.
 
+## SDK coverage extension (owner-approved follow-up)
+
+The owner requested the PR #40/#41 Studio gaps be fixed and every remainder tracked in
+[studio-todo.md](studio-todo.md). The original `/1` design/history below remains a record, not
+the current format definition: `clients/studio/proto/studio.proto` and its validator win.
+
+Current recordings are **`tap-recording/2`**. Added type, element-wait, assertion and scroll
+budgets would be silently ignored by a `/1` reader, so the existing versioning rule requires a
+bump. Studio opens `/1` and upgrades it before writing `/2`; older Studio refuses `/2`.
+Actions persist the inferred selector wait's budget in `action.wait.timeout_ms`; live requests
+supply it as `PerformRequest.precondition_timeout_ms`. Type steps carry separate input,
+precondition and focus budgets, scroll-until has separate container/search budgets, and element
+waits/assertions carry their own timeout. All explicit budgets are 1..120000 ms; unsupported
+fixed-budget calls refuse supplied options. SDK host-loop budgets are checked between calls,
+not a replacement for each in-flight command's timeout. Secret Type keys now propagates the
+SDK sensitive flag on direct execution and replay.
+
+Counted taps (single tap for count 1, `multi_tap` for 2..100) and physical timed holds are
+recordable, editable and replayed through SDK calls. Defaults and validation preserve the
+actual command parameters; invalid durations/sequence lengths fail before the initial wait.
+Stability can watch a package or the whole screen, select tree/pixels/both and use a custom
+quiet period. Typed/imported selectors are bounded by size, depth, node count, index and string
+length rather than relying only on the driver to refuse them.
+
+The `QueryApp`, `PrivateData` and `ExportDiagnostic` RPCs are explicit non-recorded SDK tools,
+not new replay kinds or raw Execute. They use the current device's single worker and refuse
+concurrent tools/replay; private mutations require one-attempt confirmation and explicit
+replacement, while native stopped-UID/path checks remain authoritative. Unary browser bytes
+are limited to 1 MiB; oversized outputs fail rather than truncate. `tap-studio-database/1`
+is an opaque proto3-JSON bundle with base bytes and present WAL/journal, not SQL or a recording.
+Downloads are browser-owned artifacts, not arbitrary host filesystem writes; browser permissions
+and retention apply. No implicit lifecycle, restoration or retry was added.
+
+Single-device ownership, successful-step-only editable recordings and manual export/open remain
+unchanged. Multi-device routing, durable named libraries/intent journals, agent archive conversion,
+media controls/readiness and other deferred work are explicit in the todo document.
+
+Verification: 318 backend tests, 118 browser component tests, 168 separate Python SDK unit tests,
+explicit project Pyright and the type-checked Vite build passed. Generated Python/TypeScript
+bindings match the proto. Tests cover binary data, WAL/journal presence, owner routing, explicit
+confirmation/overwrite, refusal without lifecycle/retry, tool/replay exclusion, export/open/replay
+budgets and all 120000 supported millisecond values through SDK float conversion (including the
+1001 ms truncation boundary). A descriptor guard classifies all 42 Execute operations; it is not
+claimed as complete RPC/SDK/UI parameter parity. The strict MkDocs site passed with unchanged
+Kotlin/gRPC reference artifacts reused to avoid another memory-heavy JVM build; the current
+agent command reference was regenerated. No local device tests or reboot were requested/run.
+
+## Authoring and reusable-flow follow-up (owner approved)
+
+The owner approved the audit's recommended scope and asked that the larger remainder stay in
+`studio-todo.md`. [studio-workflows.md](studio-workflows.md) records the scope, implementation
+order and boundaries. It explicitly supersedes JSON-only output/manual-file-only operation;
+Python/pytest export and a private named library are now in scope. Single-device ownership,
+SDK-only execution and no mutation replay remain invariants.
+
+Implemented first: service-owned tasks keep the operation gate through browser cancellation,
+reconcile accepted Perform/replay outcomes and drain before shutdown detaches. Recording edits,
+mode, tools, attach and release cannot race them. The worker also retains its urgent-call state
+until its thread future actually completes. Secret value changes invalidate affected outcomes.
+Regression verification: 333 backend tests and explicit project Pyright passed; no device run.
+
+Export is checked by running every step kind both through `steps.run` and through the generated
+source against a spy, comparing the SDK calls in order; a guard test fails when a new op, condition
+or check is not in that table. Selectors use readable builders only when they rebuild the same proto,
+and otherwise their text form, so no selector can change on the way out.
+
+Tab control: `WatchSession` (one stream per page load, random id) makes the first watcher the
+controller; a mutation names its tab in `x-tap-studio-tab` and is refused from any other while a
+controller exists. A header rather than a request field, so all mutating RPCs share one check. Only
+an explicit, idle-only `TakeControl` moves control between live tabs. When the controller's stream
+ends, the most recently opened watcher inherits it, which is what makes a reload keep control even
+if the new stream opens first. Connect only notices a disconnect when a stream sends, hence the
+1-second heartbeat (5 seconds left a reloaded page locked visibly long in a real browser). Web Locks or disabled buttons alone would not protect the server's state.
+
 ## Research summary
 
 ### Recorders and inspectors

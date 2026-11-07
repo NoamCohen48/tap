@@ -122,24 +122,25 @@ function Tree({
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
-      <div className="tree" role="list">
+      <ul className="tree" aria-label="Elements on the screen">
         {shown.map((n) => (
-          <button
-            key={n.ref}
-            type="button"
-            role="listitem"
-            className={n.ref === selectedRef ? "sel" : ""}
-            style={{ paddingLeft: 6 + (wanted ? 0 : n.depth * 14) }}
-            onClick={() => onSelect(n)}
-          >
-            <span className="r">@{n.ref}</span>
-            <span className="k">{shortClass(n)}</span>
-            <span className="l">{n.text || n.contentDescription ? `“${label(n)}”` : ""}</span>
-            {n.resourceName && <span className="k">id={n.resourceName.replace(/^.*:id\//, "")}</span>}
-            {n.interactive && !n.selector && <span className="x">no selector</span>}
-          </button>
+          <li key={n.ref}>
+            <button
+              type="button"
+              aria-current={n.ref === selectedRef ? "true" : undefined}
+              className={n.ref === selectedRef ? "sel" : ""}
+              style={{ paddingLeft: 6 + (wanted ? 0 : n.depth * 14) }}
+              onClick={() => onSelect(n)}
+            >
+              <span className="r">@{n.ref}</span>
+              <span className="k">{shortClass(n)}</span>
+              <span className="l">{n.text || n.contentDescription ? `“${label(n)}”` : ""}</span>
+              {n.resourceName && <span className="k">id={n.resourceName.replace(/^.*:id\//, "")}</span>}
+              {n.interactive && !n.selector && <span className="x">no selector</span>}
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
     </>
   );
 }

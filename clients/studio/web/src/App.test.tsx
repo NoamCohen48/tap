@@ -1,4 +1,5 @@
 import { clone, create, fromJsonString, toJsonString, type MessageInitShape } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, createClient, createRouterTransport, type HandlerContext } from "@connectrpc/connect";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,13 +10,27 @@ import { BoundsSchema, Direction, RangeType, StandardAction } from "./gen/comman
 import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
+  DiagnosticKind,
+  DeviceChoiceSchema,
+  LibraryEntrySchema,
+  LibraryLinkSchema,
+  RunResultSchema,
+  RunStatus,
   OutcomeSchema,
+  ParameterSchema,
   PerformResponseSchema,
   RecordingSchema,
   SessionSchema,
   StepSchema,
+  Check,
+  Condition,
+  DeviceCheck,
   SelectorOrigin,
   StudioService,
+  type AddStepRequest,
+  type RunResult,
+  type LibraryEntry,
+  type Parameter,
   type PerformRequest,
   type ReplayRequest,
   type Session,
@@ -82,12 +97,38 @@ function fakeStudio() {
     failNext: null as string | null,
     failAt: null as { stepId: string; message: string } | null,
     updates: [] as UpdateStepRequest[],
+    added: [] as AddStepRequest[],
+    failUpdate: null as string | null,
+    noServer: false,
+    failExport: null as string | null,
+    runs: [] as RunResult[],
+    wholeRun: null as RunResult | null,
+    devices: [
+      { serial: "emulator-5554", state: DeviceState.DEVICE_FREE },
+      { serial: "85e49002", state: DeviceState.DEVICE_LEASED },
+    ] as MessageInitShape<typeof DeviceChoiceSchema>[],
+    fetchedRuns: [] as string[],
+    diagnostics: [] as DiagnosticKind[],
+    library: [] as LibraryEntry[],
+    unreadable: 0,
+    nextEntry: 1,
+    failLibrary: null as string | null,
+    opened: [] as string[],
+    autosave: [] as boolean[],
+    parameters: [] as Parameter[],
+    failParameters: null as string | null,
+    undone: 0,
+    redone: 0,
     replays: [] as ReplayRequest[],
     counted: [] as string[],
     /** While set, each replayed step waits for it (or for the call to be cancelled). */
     replayGate: null as Promise<void> | null,
+    /** Sessions `WatchSession` has yet to send; `watch` sends one. */
+    watched: [] as Session[],
+    wake: (() => undefined) as () => void,
+    takeControlError: null as string | null,
   };
-  const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps) });
+  const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps), parameters: state.parameters });
   const edited = () => ({ recording: recording(), missingSecrets: state.missing.filter((name) => secretsOf(state.steps).includes(name)) });
   const index = (stepId: string) => {
     const at = state.steps.findIndex((s) => s.id === stepId);
@@ -98,12 +139,28 @@ function fakeStudio() {
     service(StudioService, {
       info: () => ({ recorder: "tap-studio 0.0.1", format: "tap-recording/1" }),
       getSession: () => ({ session: state.session }),
-      listDevices: () => ({
-        devices: [
-          { serial: "emulator-5554", state: DeviceState.DEVICE_FREE },
-          { serial: "85e49002", state: DeviceState.DEVICE_LEASED },
-        ],
-      }),
+      async *watchSession(_request, context: HandlerContext) {
+        while (!context.signal.aborted) {
+          const next = state.watched.shift();
+          if (next) yield { session: next };
+          else
+            await new Promise<void>((resolve) => {
+              state.wake = resolve;
+              context.signal.addEventListener("abort", () => resolve());
+            });
+        }
+      },
+      takeControl: (request) => {
+        if (state.takeControlError) throw new ConnectError(state.takeControlError, Code.FailedPrecondition);
+        state.session = clone(SessionSchema, state.session);
+        state.session.controllerTab = request.tab;
+        state.session.version += 1n;
+        return { session: state.session };
+      },
+      listDevices: () => {
+        if (state.noServer) throw new ConnectError("no Tap server: start one with `tap start`", Code.Unavailable);
+        return { devices: state.devices };
+      },
       attach: (request) => {
         state.session = create(SessionSchema, {
           recording: state.session.recording,
@@ -156,9 +213,97 @@ function fakeStudio() {
         state.steps.splice(at, 0, step);
         return create(PerformResponseSchema, { step, recorded: true });
       },
+      addStep: (request) => {
+        state.added.push(request);
+        const step = clone(StepSchema, request.step!);
+        step.id = `s${state.nextId++}`;
+        state.steps.splice(request.beforeStepId ? index(request.beforeStepId) : state.steps.length, 0, step);
+        return edited();
+      },
       updateStep: (request) => {
+        if (state.failUpdate) throw new ConnectError(state.failUpdate, Code.InvalidArgument);
         state.updates.push(request);
         state.steps[index(request.step!.id)] = clone(StepSchema, request.step!);
+        return edited();
+      },
+      exportPytest: () => {
+        if (state.failExport) throw new ConnectError(state.failExport, Code.FailedPrecondition);
+        return { source: "def test_recording(tap_device):\n    pass\n" };
+      },
+      listRuns: () => ({ runs: state.runs }),
+      getRun: (request) => {
+        state.fetchedRuns.push(request.id);
+        return { document: `{"id":"${request.id}"}`, run: state.wholeRun ?? undefined };
+      },
+      exportDiagnostic: (request) => {
+        state.diagnostics.push(request.kind);
+        return { data: new Uint8Array([1]), filename: "shot.png", contentType: "image/png" };
+      },
+      listLibrary: () => {
+        if (state.failLibrary) throw new ConnectError(state.failLibrary, Code.Aborted);
+        return { entries: state.library, unreadable: state.unreadable };
+      },
+      saveToLibrary: (request) => {
+        if (state.failLibrary) throw new ConnectError(state.failLibrary, Code.Aborted);
+        const revision = state.nextEntry++;
+        const entry = create(LibraryEntrySchema, { id: `e${revision}`, name: request.name ?? state.session.library?.name, revision: 1n, steps: state.steps.length });
+        if (request.asNew) state.library.push(entry);
+        state.session = Object.assign(clone(SessionSchema, state.session), {
+          version: state.session.version + 1n,
+          library: create(LibraryLinkSchema, { id: entry.id, name: entry.name, revision: 1n }),
+        });
+        return { session: state.session };
+      },
+      openFromLibrary: (request) => {
+        const entry = state.library.find((e) => e.id === request.id);
+        if (!entry) throw new ConnectError("no such recording", Code.NotFound);
+        state.opened.push(entry.id);
+        state.steps = [create(StepSchema, { id: "o1", kind: { case: "app", value: { operation: "launch", packageName: "com.opened" } } })];
+        state.session = Object.assign(clone(SessionSchema, state.session), {
+          version: state.session.version + 1n,
+          recordingRevision: state.session.recordingRevision + 1n,
+          steps: 1,
+          library: create(LibraryLinkSchema, { id: entry.id, name: entry.name, revision: entry.revision }),
+        });
+        return { session: state.session, ...edited() };
+      },
+      renameInLibrary: (request) => {
+        const entry = state.library.find((e) => e.id === request.id)!;
+        entry.name = request.name;
+        return { session: state.session };
+      },
+      deleteFromLibrary: (request) => {
+        state.library = state.library.filter((e) => e.id !== request.id);
+        return { session: state.session };
+      },
+      setAutosave: (request) => {
+        state.autosave.push(request.enabled);
+        state.session = Object.assign(clone(SessionSchema, state.session), {
+          version: state.session.version + 1n,
+          library: Object.assign(clone(LibraryLinkSchema, state.session.library ?? create(LibraryLinkSchema)), { autosave: request.enabled }),
+        });
+        return { session: state.session };
+      },
+      setParameters: (request) => {
+        if (state.failParameters) throw new ConnectError(state.failParameters, Code.InvalidArgument);
+        state.parameters = request.parameters;
+        return edited();
+      },
+      duplicateStep: (request) => {
+        const at = index(request.stepId);
+        const copy = clone(StepSchema, state.steps[at]!);
+        copy.id = `s${state.nextId++}`;
+        copy.outcome = undefined;
+        state.steps.splice(at + 1, 0, copy);
+        return edited();
+      },
+      undoRecording: () => {
+        state.undone += 1;
+        state.steps.pop();
+        return edited();
+      },
+      redoRecording: () => {
+        state.redone += 1;
         return edited();
       },
       deleteStep: (request) => {
@@ -209,12 +354,19 @@ function fakeStudio() {
         return { session: state.session };
       },
       getRecording: () => {
-        if (!state.steps.length) throw new ConnectError("nothing recorded yet", Code.NotFound);
+        // As the server does: parameters declared before the first step are a recording too.
+        if (!state.steps.length && !state.parameters.length) throw new ConnectError("nothing recorded yet", Code.NotFound);
         return { ...edited(), document: toJsonString(RecordingSchema, recording(), { prettySpaces: 2 }) };
       },
     });
   });
-  return { state, client: createClient(StudioService, transport) };
+  /** The server's session changed: the page hears it on its stream. */
+  const watch = (change: Partial<Session>) => {
+    state.session = Object.assign(clone(SessionSchema, state.session), { version: state.session.version + 1n }, change);
+    state.watched.push(state.session);
+    state.wake();
+  };
+  return { state, watch, client: createClient(StudioService, transport) };
 }
 
 function secretsOf(steps: readonly Step[]): string[] {
@@ -298,10 +450,688 @@ const opOf = (request: PerformRequest | undefined) => {
   return kind?.case === "action" ? kind.value.command?.op : undefined;
 };
 
+describe("selector-first checks", () => {
+  const typeSelector = (value: string) => fireEvent.change(within(composer()).getByLabelText("Selector"), { target: { value } });
+
+  it("waits for an element that is not on the screen, with nothing selected", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Wait"));
+    typeSelector('res("later")');
+    fireEvent.click(await within(composer()).findByRole("button", { name: "Visible" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const kind = fake.state.performed[0]!.step!.kind;
+    expect(kind.case).toBe("wait");
+    if (kind.case === "wait") {
+      expect(describeSelector(kind.value.selector)).toBe('res("later")');
+      expect(kind.value.selectorOrigin).toBe(SelectorOrigin.EDITED);
+    }
+  });
+
+  it("asserts that nothing matches, and a count of zero is sent as zero", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Assert"));
+    typeSelector('res("gone")');
+    fireEvent.click(await within(composer()).findByRole("button", { name: "None match" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const first = fake.state.performed[0]!.step!.kind;
+    expect(first.case === "assertion" && first.value.check).toBe(Check.COUNT);
+    expect(first.case === "assertion" && first.value.value).toEqual({ case: "count", value: 0 });
+    fireEvent.change(within(composer()).getByLabelText("Count"), { target: { value: "0" } });
+    fireEvent.click(within(within(composer()).getByRole("form", { name: "Assert count" })).getByRole("button", { name: "Assert" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(2));
+    const second = fake.state.performed[1]!.step!.kind;
+    expect(second.case === "assertion" && second.value.value).toEqual({ case: "count", value: 0 });
+  });
+
+  it("refuses a selector that does not parse, and says where", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Wait"));
+    typeSelector('res("unfinished');
+    expect(await within(composer()).findByText(/\(at \d+\)/)).toBeTruthy();
+    expect(within(composer()).queryByRole("button", { name: "Visible" })).toBeNull();
+    expect(fake.state.performed).toHaveLength(0);
+  });
+
+  it("offers checks on a selected element that has left the screen", async () => {
+    const fake = await attached();
+    act(() => click(300, 450));
+    fireEvent.click(tab("Wait"));
+    const gone = await within(composer()).findByRole("button", { name: "Gone" });
+    expect((gone as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(gone);
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+  });
+
+  it("adds a check without running it, for a screen that is not here yet", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Wait"));
+    typeSelector('res("later")');
+    fireEvent.click(within(composer()).getByRole("checkbox", { name: "Add to the recording without running it now" }));
+    fireEvent.click(within(composer()).getByRole("button", { name: "Visible" }));
+    await waitFor(() => expect(fake.state.added).toHaveLength(1));
+    expect(fake.state.performed).toHaveLength(0);
+    expect(await screen.findByText(/res\("later"\)/, { selector: "code" })).toBeTruthy();
+  });
+
+  it("names the format the export really is", async () => {
+    await attached();
+    expect(screen.getByRole("button", { name: "Open" }).title).toBe("Open a Tap recording file");
+  });
+});
+
+describe("editing every value of a step", () => {
+  /** Opens a recording of one step, selects it and returns its editor. */
+  async function editing(step: MessageInitShape<typeof StepSchema>) {
+    const fake = await attached();
+    fake.state.steps = [create(StepSchema, { id: "s1", ...step })];
+    fake.state.nextId = 2;
+    await act(async () => fake.watch({ recordingRevision: 9n, canUndo: true, canRedo: true }));
+    fireEvent.click(await within(screen.getByRole("region", { name: "Steps" })).findByRole("button", { expanded: false }));
+    return { fake, editor: await screen.findByRole("form", { name: "Edit the step" }) };
+  }
+  const save = async (fake: ReturnType<typeof fakeStudio>, editor: HTMLElement) => {
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.updates).toHaveLength(1));
+    return fake.state.updates[0]!.step!;
+  };
+  const action = (op: unknown) => ({ kind: { case: "action", value: { command: { op } } } }) as MessageInitShape<typeof StepSchema>;
+  const selector = resSelector("x");
+
+  it("edits an app call's own fields, and only those", async () => {
+    const { fake, editor } = await editing({ kind: { case: "app", value: { operation: "open_link", packageName: "com.a", uri: "a://b" } } });
+    expect(within(editor).queryByLabelText("Permission")).toBeNull();
+    fireEvent.change(within(editor).getByLabelText("Uri"), { target: { value: "a://c" } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "app" && saved.kind.value.uri).toBe("a://c");
+  });
+
+  it("edits a launch's extras as rows", async () => {
+    const { fake, editor } = await editing({ kind: { case: "app", value: { operation: "launch", packageName: "com.a" } } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Add" }));
+    fireEvent.change(within(editor).getByLabelText("Key"), { target: { value: "k" } });
+    fireEvent.change(within(editor).getByLabelText("Value"), { target: { value: "intValue" } });
+    fireEvent.change(within(editor).getByLabelText("Int value"), { target: { value: "7" } });
+    const saved = await save(fake, editor);
+    const extra = saved.kind.case === "app" ? saved.kind.value.extras[0] : undefined;
+    expect(extra?.key).toBe("k");
+    expect(extra?.value).toEqual({ case: "intValue", value: 7 });
+  });
+
+  it("edits a device condition, with an unset choice for a value it leaves alone", async () => {
+    const { fake, editor } = await editing({ kind: { case: "device", value: { operation: "set_network", wifi: true } } });
+    fireEvent.change(within(editor).getByLabelText("Wifi"), { target: { value: "false" } });
+    fireEvent.change(within(editor).getByLabelText("Mobile data"), { target: { value: "true" } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "device" && [saved.kind.value.wifi, saved.kind.value.mobileData, saved.kind.value.airplaneMode]).toEqual([false, true, undefined]);
+  });
+
+  it("edits what a key press, a fling and a progress hold", async () => {
+    const key = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fireEvent.change(within(key.editor).getByLabelText("Key code"), { target: { value: "66" } });
+    const saved = await save(key.fake, key.editor);
+    const op = saved.kind.case === "action" ? saved.kind.value.command?.op : undefined;
+    expect(op?.case === "pressKey" && op.value.keyCode).toBe(66);
+    cleanup();
+    const progress = await editing(action({ case: "setProgress", value: { selector, value: 2 } }));
+    fireEvent.change(within(progress.editor).getByLabelText("Value"), { target: { value: "2.5" } });
+    const savedProgress = await save(progress.fake, progress.editor);
+    const setProgress = savedProgress.kind.case === "action" ? savedProgress.kind.value.command?.op : undefined;
+    expect(setProgress?.case === "setProgress" && setProgress.value.value).toBe(2.5);
+    cleanup();
+    const fling = await editing(action({ case: "fling", value: { selector, direction: Direction.DIR_UP } }));
+    fireEvent.change(within(fling.editor).getByLabelText("Direction"), { target: { value: String(Direction.DIR_DOWN) } });
+    const savedFling = await save(fling.fake, fling.editor);
+    const flung = savedFling.kind.case === "action" ? savedFling.kind.value.command?.op : undefined;
+    expect(flung?.case === "fling" && flung.value.direction).toBe(Direction.DIR_DOWN);
+  });
+
+  it("edits a drag's destination as a selector", async () => {
+    const { fake, editor } = await editing(action({ case: "drag", value: { selector, target: resSelector("old") } }));
+    fireEvent.change(within(editor).getByLabelText("Target"), { target: { value: 'res("new")' } });
+    const saved = await save(fake, editor);
+    const op = saved.kind.case === "action" ? saved.kind.value.command?.op : undefined;
+    expect(op?.case === "drag" && describeSelector(op.value.target)).toBe('res("new")');
+  });
+
+  it("edits a notification's match", async () => {
+    const { fake, editor } = await editing(action({ case: "dismissNotification", value: { match: { title: "Old" } } }));
+    fireEvent.change(within(editor).getByLabelText("Title"), { target: { value: "New" } });
+    const saved = await save(fake, editor);
+    const op = saved.kind.case === "action" ? saved.kind.value.command?.op : undefined;
+    expect(op?.case === "dismissNotification" && op.value.match?.title).toBe("New");
+  });
+
+  it("changes a wait's condition, and the value goes with it", async () => {
+    const { fake, editor } = await editing({ kind: { case: "wait", value: { selector, condition: Condition.VISIBLE } } });
+    fireEvent.change(within(editor).getByLabelText("Condition"), { target: { value: String(Condition.COUNT) } });
+    fireEvent.change(within(editor).getByLabelText("Expected count"), { target: { value: "0" } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "wait" && saved.kind.value.condition).toBe(Condition.COUNT);
+    expect(saved.kind.case === "wait" && saved.kind.value.value).toEqual({ case: "count", value: 0 });
+  });
+
+  it("changes an assertion's expected text, and a check that takes none drops it", async () => {
+    const { fake, editor } = await editing({ kind: { case: "assertion", value: { selector, check: Check.TEXT_EQUALS, value: { case: "text", value: "a" } } } });
+    fireEvent.change(within(editor).getByLabelText("Check"), { target: { value: String(Check.EXISTS) } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "assertion" && saved.kind.value.value.case).toBeUndefined();
+  });
+
+  it("edits a device wait and a device check", async () => {
+    const wait = await editing({ kind: { case: "deviceWait", value: { command: { op: { case: "awaitToast", value: { text: "Old" } } } } } });
+    fireEvent.change(within(wait.editor).getByLabelText("Text"), { target: { value: "New" } });
+    const saved = await save(wait.fake, wait.editor);
+    const toast = saved.kind.case === "deviceWait" ? saved.kind.value.command?.op : undefined;
+    expect(toast?.case === "awaitToast" && toast.value.text).toBe("New");
+    cleanup();
+    const check = await editing({ kind: { case: "deviceAssertion", value: { check: DeviceCheck.CLIPBOARD_EQUALS, text: "a" } } });
+    fireEvent.change(within(check.editor).getByLabelText("Text"), { target: { value: "b" } });
+    const savedCheck = await save(check.fake, check.editor);
+    expect(savedCheck.kind.case === "deviceAssertion" && savedCheck.kind.value.text).toBe("b");
+  });
+
+  it("does not call a step changed just for looking at it", async () => {
+    const { editor } = await editing({ kind: { case: "deviceWait", value: { command: { op: { case: "awaitNotification", value: {} } } } } });
+    expect((within(editor).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps the draft when the studio refuses the save", async () => {
+    const { fake, editor } = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fake.state.failUpdate = "keyCode is out of range";
+    const input = within(editor).getByLabelText("Key code") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "99999" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("out of range");
+    expect(input.value).toBe("99999");
+  });
+
+  it("duplicates a step, undoes and redoes the recording", async () => {
+    const { fake } = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    await waitFor(() => expect(fake.state.steps).toHaveLength(2));
+    expect(fake.state.steps[1]!.id).not.toBe(fake.state.steps[0]!.id);
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(fake.state.undone).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    await waitFor(() => expect(fake.state.redone).toBe(1));
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(fake.state.undone).toBe(2));
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(fake.state.redone).toBe(2));
+  });
+
+  it("leaves Ctrl+Z to a text field", async () => {
+    const { fake, editor } = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fireEvent.keyDown(within(editor).getByLabelText("Key code"), { key: "z", ctrlKey: true });
+    await act(async () => undefined);
+    expect(fake.state.undone).toBe(0);
+  });
+});
+
+describe("pytest export", () => {
+  async function drawer() {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    return { fake, drawer: await screen.findByRole("dialog", { name: "Export recording" }) };
+  }
+
+  it("shows the source when asked", async () => {
+    const { drawer: panel } = await drawer();
+    fireEvent.click(within(panel).getByRole("button", { name: "pytest" }));
+    expect((await within(panel).findByTestId("recording-python")).textContent).toContain("def test_recording(tap_device)");
+    expect(within(panel).getByRole("button", { name: "Download" })).toBeTruthy();
+  });
+
+  it("says why when a recording cannot be exported, and offers nothing to download", async () => {
+    const { fake, drawer: panel } = await drawer();
+    fake.state.failExport = "cannot export the action 'new_thing'";
+    fireEvent.click(within(panel).getByRole("button", { name: "pytest" }));
+    expect((await within(panel).findByRole("alert")).textContent).toContain("new_thing");
+    expect(within(panel).queryByRole("button", { name: "Download" })).toBeNull();
+  });
+});
+
+describe("runs", () => {
+  it("lists past runs and downloads a run's results when asked", async () => {
+    const fake = await attached();
+    fake.state.runs = [create(RunResultSchema, { id: "r1", status: RunStatus.FAILED, ran: 2, planned: 3, serial: "emulator-5554", failedStepId: "s2" })];
+    await act(async () => fake.watch({ recordingRevision: 4n }));
+    const runs = await screen.findByRole("list", { name: "Recent runs" });
+    expect(runs.textContent).toContain("Failed");
+    expect(runs.textContent).toContain("2 of 3 steps on emulator-5554");
+    fireEvent.click(within(runs).getByRole("button", { name: /results/i }));
+    await waitFor(() => expect(fake.state.fetchedRuns).toEqual(["r1"]));
+  });
+
+  it("captures evidence only when asked", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    expect(fake.state.diagnostics).toEqual([]);
+    fireEvent.click(within(screen.getByRole("group", { name: "Capture from the device" })).getByRole("button", { name: "Screenshot" }));
+    await waitFor(() => expect(fake.state.diagnostics).toEqual([DiagnosticKind.DIAGNOSTIC_SCREENSHOT]));
+  });
+});
+
+describe("the library", () => {
+  const entry = (name: string, id = name) => create(LibraryEntrySchema, { id, name, revision: 3n, steps: 2 });
+  const library = () => screen.getByRole("list", { name: "Saved recordings" });
+  /** A fake with entries, with nothing attached. */
+  async function offline(...names: string[]) {
+    const fake = fakeStudio();
+    fake.state.library = names.map((name) => entry(name));
+    render(<App client={fake.client} />);
+    await screen.findByRole("region", { name: "Recordings" });
+    return fake;
+  }
+
+  it("offers no save form until there is a recording to save, and says what saved recordings are", async () => {
+    const fake = await offline();
+    await screen.findByText("Nothing saved yet.");
+    await screen.findByText(/They stay on this computer/);
+    expect(screen.queryByLabelText("Save as")).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Autosave/ })).toBeNull();
+    await act(async () => fake.watch({ steps: 1 }));
+    await screen.findByLabelText("Save as");
+  });
+
+  it("reads the device list again by itself after it could not reach the server", async () => {
+    const fake = fakeStudio();
+    fake.state.noServer = true;
+    render(<App client={fake.client} />);
+    const picker = await screen.findByRole("region", { name: "Attach a device" });
+    await within(picker).findByText(/no Tap server/);
+    fake.state.noServer = false; // `tap start` ran
+    await within(picker).findByText("emulator-5554", undefined, { timeout: 5000 });
+    expect(within(picker).queryByText(/no Tap server/)).toBeNull();
+  });
+
+  it("says what each device is, and reads the list again while one is not ready", async () => {
+    const fake = fakeStudio();
+    fake.state.devices = [{ serial: "emulator-5554", state: DeviceState.DEVICE_LEASED, apiLevel: 34, model: "sdk_gphone64", emulator: true }];
+    render(<App client={fake.client} />);
+    const picker = await screen.findByRole("region", { name: "Attach a device" });
+    await within(picker).findByText("sdk_gphone64");
+    within(picker).getByText("emulator-5554");
+    within(picker).getByText("API 34");
+    within(picker).getByText("Emulator");
+    within(picker).getByText("In use by another test or tool");
+    expect((within(picker).getByRole("button", { name: "Attach" }) as HTMLButtonElement).disabled).toBe(true);
+    // Released a moment ago: no Refresh needed.
+    fake.state.devices = [{ serial: "emulator-5554", state: DeviceState.DEVICE_FREE, apiLevel: 34, model: "sdk_gphone64", emulator: true }];
+    await waitFor(() => expect((within(picker).getByRole("button", { name: "Attach" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+    expect(within(picker).queryByText("In use by another test or tool")).toBeNull();
+  });
+
+  it("lists, opens and shows a recording with no device attached", async () => {
+    const fake = await offline("Checkout");
+    fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Open Checkout" }));
+    await waitFor(() => expect(fake.state.opened).toEqual(["Checkout"]));
+    await within(await screen.findByRole("list", { name: "Steps of the open recording" })).findByText(/com\.opened/);
+    expect(screen.getByRole("button", { name: "Export" })).toBeTruthy();
+  });
+
+  it("still lists the library when no Tap server runs", async () => {
+    const fake = fakeStudio();
+    fake.state.library = [entry("Checkout")];
+    fake.state.noServer = true;
+    render(<App client={fake.client} />);
+    expect((await screen.findByRole("alert")).textContent).toContain("tap start");
+    expect(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByText("Checkout")).toBeTruthy();
+  });
+
+  it("renames in place, and deletes only after asking", async () => {
+    const fake = await offline("Checkout");
+    fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Rename Checkout" }));
+    fireEvent.change(screen.getByLabelText("New name for Checkout"), { target: { value: "Basket" } });
+    fireEvent.click(within(library()).getByRole("button", { name: "Rename" }));
+    await within(library()).findByText("Basket");
+    fireEvent.click(within(library()).getByRole("button", { name: "Delete Basket" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Basket?" });
+    expect(fake.state.library).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await screen.findByText("Nothing saved yet.");
+    expect(fake.state.library).toHaveLength(0);
+  });
+
+  it("asks before replacing unsaved work, and not otherwise", async () => {
+    const fake = await offline("Checkout");
+    await act(async () => fake.watch({ steps: 2, library: create(LibraryLinkSchema, { unsaved: true }) }));
+    fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Open Checkout" }));
+    const dialog = await screen.findByRole("dialog", { name: "Open Checkout?" });
+    expect(dialog.textContent).toContain("cannot be undone");
+    expect(fake.state.opened).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(fake.state.opened).toEqual(["Checkout"]));
+  });
+
+  it("says when files could not be read", async () => {
+    const fake = fakeStudio();
+    fake.state.unreadable = 2;
+    render(<App client={fake.client} />);
+    await screen.findByText(/2 files in the library could not be read/);
+  });
+
+  it("saves a recording under a name, then Save and autosave become available", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    await act(async () => fake.watch({ steps: 1 }));
+    const steps = screen.getByRole("region", { name: "Steps" });
+    const autosave = within(steps).getByRole("checkbox", { name: "Autosave" }) as HTMLInputElement;
+    expect(autosave.disabled).toBe(true);
+    fireEvent.change(within(steps).getByLabelText("Save as"), { target: { value: "Checkout" } });
+    fireEvent.click(within(steps).getByRole("button", { name: "Save as new" }));
+    await within(steps).findByText(/Saved recordings · Checkout/);
+    await waitFor(() => expect(autosave.disabled).toBe(false));
+    fireEvent.click(autosave);
+    await waitFor(() => expect(fake.state.autosave).toEqual([true]));
+    await waitFor(() => expect(autosave.checked).toBe(true));
+  });
+
+  it("says why when a save is refused and keeps the name typed", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ steps: 1 }));
+    fake.state.failLibrary = "another Studio changed this recording since it was read";
+    const steps = screen.getByRole("region", { name: "Steps" });
+    fireEvent.change(within(steps).getByLabelText("Save as"), { target: { value: "Checkout" } });
+    fireEvent.click(within(steps).getByRole("button", { name: "Save as new" }));
+    expect((await within(steps).findByRole("alert")).textContent).toContain("another Studio");
+    expect((within(steps).getByLabelText("Save as") as HTMLInputElement).value).toBe("Checkout");
+  });
+
+  it("shows why autosave stopped", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ library: create(LibraryLinkSchema, { id: "e1", name: "x", autosaveError: "disk full" }) }));
+    expect((await screen.findByText(/Autosave stopped: disk full/)).getAttribute("role")).toBe("alert");
+  });
+});
+
+describe("parameters", () => {
+  const typed = () => create(StepSchema, { id: "s1", kind: { case: "type", value: { selector: resSelector("x"), input: { case: "text", value: "ada" } } } });
+
+  async function withStep(step = typed(), parameters: { name: string; value: string }[] = [{ name: "user", value: "ada" }]) {
+    const fake = await attached();
+    fake.state.steps = [step];
+    fake.state.parameters = parameters.map((p) => create(ParameterSchema, p));
+    fake.state.nextId = 2;
+    await act(async () => fake.watch({ recordingRevision: 9n }));
+    await screen.findByText("Parameters (" + parameters.length + ")");
+    return fake;
+  }
+
+  it("keeps parameters declared before the first step when the recording is read again", async () => {
+    const fake = await attached();
+    fireEvent.click(screen.getByText("Parameters (0)"));
+    fireEvent.click(screen.getByRole("button", { name: "Add parameter" }));
+    const row = screen.getByRole("group", { name: "Parameter 1" });
+    fireEvent.change(within(row).getByLabelText("Name"), { target: { value: "user" } });
+    fireEvent.change(within(row).getByLabelText("Value"), { target: { value: "ada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save parameters" }));
+    await screen.findByText("Parameters (1)");
+    await act(async () => fake.watch({ recordingRevision: fake.state.session.recordingRevision + 1n }));
+    await act(async () => undefined);
+    expect(screen.getByText("Parameters (1)")).toBeTruthy();
+  });
+
+  it("declares a parameter and sends what was typed", async () => {
+    const fake = await withStep(typed(), []);
+    fireEvent.click(screen.getByText("Parameters (0)"));
+    fireEvent.click(screen.getByRole("button", { name: "Add parameter" }));
+    const row = screen.getByRole("group", { name: "Parameter 1" });
+    fireEvent.change(within(row).getByLabelText("Name"), { target: { value: " user " } });
+    fireEvent.change(within(row).getByLabelText("Value"), { target: { value: "ada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save parameters" }));
+    await screen.findByText("Parameters (1)");
+    expect(fake.state.parameters.map((p) => [p.name, p.value])).toEqual([["user", "ada"]]);
+  });
+
+  it("keeps the rows when the studio refuses them", async () => {
+    const fake = await withStep();
+    fake.state.failParameters = "the step uses the parameter 'user'";
+    fireEvent.click(screen.getByRole("button", { name: "Remove parameter 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save parameters" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("user");
+    expect(screen.queryByRole("group", { name: "Parameter 1" })).toBeNull();
+  });
+
+  it("takes a typed step's text from a parameter, and shows the name", async () => {
+    const fake = await withStep();
+    fireEvent.click(within(screen.getByRole("region", { name: "Steps" })).getByRole("button", { expanded: false }));
+    const editor = await screen.findByRole("form", { name: "Edit the step" });
+    fireEvent.change(within(editor).getByLabelText("From a parameter"), { target: { value: "user" } });
+    expect(within(editor).queryByRole("checkbox", { name: /Secret/ })).toBeNull();
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.updates).toHaveLength(1));
+    const kind = fake.state.updates[0]!.step!.kind;
+    expect(kind.case === "type" && kind.value.input).toEqual({ case: "parameter", value: "user" });
+    await screen.findByText('screen.element(res("x")).typeText(${user})');
+  });
+
+  it("takes an expected text from a parameter", async () => {
+    const fake = await withStep(create(StepSchema, { id: "s1", kind: { case: "assertion", value: { selector: resSelector("x"), check: Check.TEXT_EQUALS, value: { case: "text", value: "a" } } } }));
+    fireEvent.click(within(screen.getByRole("region", { name: "Steps" })).getByRole("button", { expanded: false }));
+    const editor = await screen.findByRole("form", { name: "Edit the step" });
+    fireEvent.change(within(editor).getByLabelText("From a parameter"), { target: { value: "user" } });
+    expect(within(editor).queryByLabelText("Expected text")).toBeNull();
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.updates).toHaveLength(1));
+    const kind = fake.state.updates[0]!.step!.kind;
+    expect(kind.case === "assertion" && kind.value.value).toEqual({ case: "parameter", value: "user" });
+  });
+});
+
+describe("not losing work", () => {
+  async function dirtyStep() {
+    const fake = await attached();
+    fake.state.steps = [
+      create(StepSchema, { id: "s1", kind: { case: "action", value: { command: { op: { case: "pressKey", value: { keyCode: 4 } } } } } }),
+      create(StepSchema, { id: "s2", kind: { case: "action", value: { command: { op: { case: "pressKey", value: { keyCode: 5 } } } } } }),
+    ];
+    fake.state.nextId = 3;
+    await act(async () => fake.watch({ recordingRevision: 9n }));
+    const steps = screen.getByRole("region", { name: "Steps" });
+    fireEvent.click((await within(steps).findAllByRole("button", { expanded: false }))[0]!);
+    const editor = await screen.findByRole("form", { name: "Edit the step" });
+    fireEvent.change(within(editor).getByLabelText("Key code"), { target: { value: "66" } });
+    return { fake, steps, editor };
+  }
+
+  it("asks before leaving a step with unsaved edits, and keeps them on cancel", async () => {
+    const { steps, editor } = await dirtyStep();
+    fireEvent.click(within(steps).getAllByRole("button", { expanded: false })[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Discard your changes to this step?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect((within(editor).getByLabelText("Key code") as HTMLInputElement).value).toBe("66");
+    fireEvent.click(within(steps).getAllByRole("button", { expanded: false })[0]!);
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(within(steps).getAllByRole("button", { expanded: true })[0]!.textContent).toContain("5"));
+  });
+
+  it("asks before releasing the device with unsaved edits", async () => {
+    const { fake } = await dirtyStep();
+    fireEvent.click(screen.getByRole("button", { name: "Release the device" }));
+    await screen.findByRole("dialog", { name: "Discard your changes to this step?" });
+    expect(fake.state.session.device).toBeDefined();
+  });
+
+  it("warns the browser only while there are unsaved edits", async () => {
+    const leaving = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    await attached();
+    expect(leaving()).toBe(false);
+    cleanup();
+    const { editor } = await dirtyStep();
+    await waitFor(() => expect(leaving()).toBe(true));
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(leaving()).toBe(false));
+  });
+
+  it("confirms Clear data before it runs, and says undo cannot bring it back", async () => {
+    const fake = await attached();
+    fireEvent.click(within(appPanel()).getByRole("button", { name: "Clear data" }));
+    const dialog = await screen.findByRole("dialog", { name: "Clear the data of com.example?" });
+    expect(dialog.textContent).toContain("cannot be undone");
+    expect(fake.state.performed).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(fake.state.performed).toHaveLength(0);
+    fireEvent.click(within(screen.getByRole("group", { name: "App" })).getByRole("button", { name: "Clear data" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Clear data" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const kind = fake.state.performed[0]!.step!.kind;
+    expect(kind.case === "app" && kind.value.operation).toBe("clear_data");
+  });
+});
+
+describe("dialogs and the keyboard", () => {
+  async function confirmDialog() {
+    const fake = await attached();
+    const opener = within(appPanel()).getByRole("button", { name: "Clear data" });
+    opener.focus();
+    fireEvent.click(opener);
+    return { fake, opener, dialog: await screen.findByRole("dialog") };
+  }
+
+  it("moves focus in, keeps it in, makes the page inert, and puts focus back", async () => {
+    const { opener, dialog } = await confirmDialog();
+    const buttons = within(dialog).getAllByRole("button");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(composer().closest("[inert]")).not.toBeNull();
+    buttons[buttons.length - 1]!.focus();
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(document.activeElement).toBe(buttons[0]);
+    fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(composer().closest("[inert]")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("does not steal focus from a field when the page re-renders", async () => {
+    const { fake, dialog } = await confirmDialog();
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    const clear = within(dialog).getByRole("button", { name: "Clear data" });
+    clear.focus();
+    await act(async () => fake.watch({ recordingRevision: 3n }));
+    expect(document.activeElement).toBe(clear);
+    expect(cancel).toBeTruthy();
+  });
+
+  it("keeps the page's shortcuts out of a dialog", async () => {
+    const { dialog } = await confirmDialog();
+    fireEvent.keyDown(within(dialog).getByRole("button", { name: "Cancel" }), { key: "2" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(tab("App").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("makes the export drawer modal too", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    const opener = screen.getByRole("button", { name: "Export" });
+    opener.focus();
+    fireEvent.click(opener);
+    const drawer = await screen.findByRole("dialog", { name: "Export recording" });
+    expect(document.activeElement).toBe(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("finishes a drag from the screen tree, by keyboard as by mouse", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Drag to…");
+    await screen.findByRole("region", { name: "Drag" });
+    fireEvent.click(within(screen.getByRole("region", { name: "Inspector" })).getByRole("tab", { name: "Screen tree" }));
+    const tree = screen.getByRole("list", { name: "Elements on the screen" });
+    fireEvent.click(within(tree).getByRole("button", { name: /@e2/ }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const op = opOf(fake.state.performed[0]);
+    expect(op?.case === "drag" && describeSelector(op.value.target)).toBe('res("search")');
+  });
+});
+
+describe("control of the studio", () => {
+  it("watches while another tab controls, and every change is unavailable", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    await act(async () => fake.watch({ controllerTab: "another-tab" }));
+    await screen.findByText("Another tab controls this Studio.", undefined, { timeout: 3000 });
+    expect((screen.getByRole("button", { name: "Recording" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Replay" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(composer()).getByRole("button", { name: "Tap" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Release the device" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not warn about another tab in the moment after a reload", async () => {
+    const fake = fakeStudio();
+    render(<App client={fake.client} />);
+    await screen.findByRole("region", { name: "Attach a device" });
+    await act(async () => fake.watch({ controllerTab: "the-page-before-the-reload" }));
+    expect(screen.queryByText("Another tab controls this Studio.")).toBeNull();
+    await screen.findByText("Another tab controls this Studio.", undefined, { timeout: 3000 });
+  });
+
+  it("takes control when asked, and keeps the choice to the server", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ controllerTab: "another-tab", operation: "action" }));
+    const take = await screen.findByRole("button", { name: "Take control" }, { timeout: 3000 });
+    expect((take as HTMLButtonElement).disabled).toBe(true); // a transfer never interrupts an operation
+    await act(async () => fake.watch({ operation: "" }));
+    await waitFor(() => expect((take as HTMLButtonElement).disabled).toBe(false));
+    fake.state.takeControlError = "a Studio action is running";
+    fireEvent.click(take);
+    expect((await screen.findByRole("alert")).textContent).toContain("a Studio action is running");
+    fake.state.takeControlError = null;
+    fireEvent.click(take);
+    await waitFor(() => expect(screen.queryByText("Another tab controls this Studio.")).toBeNull());
+    expect((screen.getByRole("button", { name: "Recording" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps the page locked while the server finishes a step whose request is gone", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    await act(async () => fake.watch({ operation: "replay" }));
+    await screen.findByText(/Finishing what was already sent/);
+    expect((screen.getByRole("button", { name: "Replay" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => fake.watch({ operation: "" }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Replay" }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("reads the recording again when the server says it changed", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    fake.state.steps = [];
+    await act(async () => fake.watch({ recordingRevision: 5n }));
+    await screen.findByText(/Select an element on the screen, then act/);
+  });
+
+  it("ignores a response older than the session it already has", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ recording: false }));
+    await screen.findByRole("button", { name: "Paused" });
+    fake.state.session = Object.assign(clone(SessionSchema, fake.state.session), { recording: true, version: 0n });
+    fake.state.watched.push(fake.state.session);
+    await act(async () => fake.state.wake());
+    await screen.findByRole("button", { name: "Paused" });
+  });
+});
+
 describe("App", () => {
   it("shows which studio it is connected to", async () => {
     render(<App client={fakeStudio().client} />);
-    expect(await screen.findByText("tap-studio 0.0.1 · writes tap-recording/1")).toBeTruthy();
+    expect(await screen.findByText("tap-studio 0.0.1")).toBeTruthy();
   });
 
   it("says when the studio cannot be reached", async () => {
@@ -462,6 +1292,21 @@ describe("App", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Assert" }));
     await screen.findByText('assertContains(screen.element(res("go")).text().orEmpty(), "G")');
     expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["assertion", "assertion"]);
+  });
+
+  it("does not record an empty contains check, which every text would pass", async () => {
+    const fake = await attached();
+    fireEvent.keyDown(document, { key: "3" });
+    act(() => click(300, 450));
+    const form = await within(composer()).findByRole("form", { name: "Wait text" });
+    fireEvent.change(within(form).getByLabelText("Text"), { target: { value: "" } });
+    const wait = within(form).getByRole("button", { name: "Wait" }) as HTMLButtonElement;
+    expect(wait.disabled).toBe(false); // equals nothing is a real check: the text is empty
+    fireEvent.click(within(form).getByRole("button", { name: "contains" }));
+    expect(wait.disabled).toBe(true);
+    fireEvent.change(within(form).getByLabelText("Text"), { target: { value: "G" } });
+    expect(wait.disabled).toBe(false);
+    expect(fake.state.performed).toHaveLength(0);
   });
 
   it("Wait records an element wait, prefilling the count it matches now", async () => {
@@ -886,6 +1731,43 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Stop" }));
       expect(await screen.findByText("Stopped after 0 steps.")).toBeTruthy();
       expect(screen.queryByText("running…")).toBeNull();
+    });
+
+    it("says a stopped replay failed when the step it had sent then failed", async () => {
+      const fake = await recordTwo();
+      fake.state.replayGate = new Promise(() => undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Replay as it is" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      await screen.findByText("Stopped after 0 steps.");
+      // The run was still going: the page keeps its count until the server has settled it.
+      fake.state.runs = [
+        create(RunResultSchema, {
+          id: "r1",
+          status: RunStatus.FAILED,
+          ran: 2,
+          planned: 2,
+          failedStepId: "s2",
+          startedAt: timestampFromDate(new Date(Date.now() + 60_000)),
+        }),
+      ];
+      // As the server does: the list has summaries, and only GetRun has the steps.
+      fake.state.wholeRun = create(RunResultSchema, { id: "r1", failedStepId: "s2", steps: [{ stepId: "s2", outcome: { error: { message: "no key" } } }] });
+      await act(async () => fake.watch({ operation: "replay" }));
+      await act(async () => fake.watch({ operation: "" }));
+      expect((await screen.findByRole("alert")).textContent).toBe("Step 2 failed. no key");
+    });
+
+    it("keeps the count when a stopped replay left no run of its own", async () => {
+      const fake = await recordTwo();
+      fake.state.runs = [create(RunResultSchema, { id: "old", status: RunStatus.PASSED, ran: 9, startedAt: timestampFromDate(new Date(0)) })];
+      fake.state.replayGate = new Promise(() => undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Replay as it is" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      await screen.findByText("Stopped after 0 steps.");
+      await act(async () => undefined);
+      expect(screen.getByText("Stopped after 0 steps.")).toBeTruthy();
     });
 
     it("an opened recording asks for its secret values before replaying", async () => {

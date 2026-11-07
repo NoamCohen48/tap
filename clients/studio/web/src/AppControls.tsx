@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { useId, useState } from "react";
 import { Row } from "./controls";
+import { ChoiceDialog } from "./Dialogs";
 import { IntentExtraSchema, type IntentExtra } from "./gen/app_pb";
 import type { PerformRequest } from "./gen/studio_pb";
 import { KEY_HOME } from "./keys";
@@ -65,12 +66,16 @@ type Props = {
  */
 export function AppControls({ appPackage, onAppPackage, packages, busy, onPerform }: Props) {
   const id = useId();
+  const [clearing, setClearing] = useState(false);
   const [permission, setPermission] = useState("");
   const [activity, setActivity] = useState("");
   const [extras, setExtras] = useState<ExtraRow[]>([]);
   const [link, setLink] = useState("");
   const [anyApp, setAnyApp] = useState(false);
   const [locales, setLocales] = useState("");
+  const [wholeScreen, setWholeScreen] = useState(false);
+  const [quiet, setQuiet] = useState(500);
+  const quietOk = Number.isInteger(quiet) && quiet >= 1 && quiet <= 30000;
   const app = appPackage.trim();
   const built = extras.map(extraOf);
   const extrasOk = built.every((e) => e !== null);
@@ -223,11 +228,35 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
       </form>
       <Row label="Stop">
         {STOP.map(({ operation, label, title }) => (
-          <button key={operation} type="button" className="btn" title={title} disabled={!usable} onClick={() => onPerform(steps.app(operation, app))}>
+          <button
+            key={operation}
+            type="button"
+            className="btn"
+            title={title}
+            disabled={!usable}
+            onClick={() => (operation === "clear_data" ? setClearing(true) : onPerform(steps.app(operation, app)))}
+          >
             {label}
           </button>
         ))}
       </Row>
+      {clearing && (
+        <ChoiceDialog
+          title={`Clear the data of ${app}?`}
+          body={<p>This runs on the device now and cannot be undone: the app loses its data and its permissions. Undo in Studio only changes the recording.</p>}
+          choices={[
+            {
+              label: "Clear data",
+              primary: true,
+              onChoose: () => {
+                setClearing(false);
+                onPerform(steps.app("clear_data", app));
+              },
+            },
+          ]}
+          onCancel={() => setClearing(false)}
+        />
+      )}
       <form
         className="crow"
         aria-label="Grant or revoke a permission"
@@ -287,9 +316,14 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
         </div>
         <div className="why">This app's own languages (Android 13 and up), leaving the system's alone.</div>
       </form>
+      <Row label="Stability">
+        <label className="chk"><input type="checkbox" checked={wholeScreen} onChange={(e) => setWholeScreen(e.target.checked)} />Whole screen</label>
+        <label className="field"><span>Quiet period (ms)</span><input type="number" min={1} max={30000} value={Number.isNaN(quiet) ? "" : quiet} onChange={(e) => setQuiet(e.target.valueAsNumber)} aria-invalid={!quietOk} /></label>
+      </Row>
+      {!quietOk && <p role="alert">Quiet period must be 1..30000 whole milliseconds.</p>}
       <Row label="Wait until">
         {WAITS.map(({ kind, label, title }) => (
-          <button key={kind} type="button" className="btn wait" title={title} disabled={!usable} onClick={() => onPerform(steps.appWait(kind, app))}>
+          <button key={kind} type="button" className="btn wait" title={kind === "visible" ? title : "Wait for the selected stability signal and quiet period"} disabled={busy || (kind === "visible" ? !app : (!wholeScreen && !app) || !quietOk)} onClick={() => onPerform(steps.appWait(kind, kind === "visible" || !wholeScreen ? app : "", quiet))}>
             {label}
           </button>
         ))}

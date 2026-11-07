@@ -26,6 +26,12 @@ class StudioService(Protocol):
     async def list_devices(self, request: studio__pb2.ListDevicesRequest, ctx: RequestContext) -> studio__pb2.ListDevicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    def watch_session(self, request: studio__pb2.WatchSessionRequest, ctx: RequestContext) -> AsyncIterator[studio__pb2.WatchSessionResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def take_control(self, request: studio__pb2.TakeControlRequest, ctx: RequestContext) -> studio__pb2.TakeControlResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -50,6 +56,9 @@ class StudioService(Protocol):
     async def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def add_step(self, request: studio__pb2.AddStepRequest, ctx: RequestContext) -> studio__pb2.AddStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def update_step(self, request: studio__pb2.UpdateStepRequest, ctx: RequestContext) -> studio__pb2.UpdateStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -59,10 +68,31 @@ class StudioService(Protocol):
     async def move_step(self, request: studio__pb2.MoveStepRequest, ctx: RequestContext) -> studio__pb2.MoveStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def duplicate_step(self, request: studio__pb2.DuplicateStepRequest, ctx: RequestContext) -> studio__pb2.DuplicateStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def undo_recording(self, request: studio__pb2.UndoRecordingRequest, ctx: RequestContext) -> studio__pb2.UndoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def redo_recording(self, request: studio__pb2.RedoRecordingRequest, ctx: RequestContext) -> studio__pb2.RedoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def set_parameters(self, request: studio__pb2.SetParametersRequest, ctx: RequestContext) -> studio__pb2.SetParametersResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def open_recording(self, request: studio__pb2.OpenRecordingRequest, ctx: RequestContext) -> studio__pb2.OpenRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
     def replay(self, request: studio__pb2.ReplayRequest, ctx: RequestContext) -> AsyncIterator[studio__pb2.ReplayResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def export_pytest(self, request: studio__pb2.ExportPytestRequest, ctx: RequestContext) -> studio__pb2.ExportPytestResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def list_runs(self, request: studio__pb2.ListRunsRequest, ctx: RequestContext) -> studio__pb2.ListRunsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def get_run(self, request: studio__pb2.GetRunRequest, ctx: RequestContext) -> studio__pb2.GetRunResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
     async def set_recording(self, request: studio__pb2.SetRecordingRequest, ctx: RequestContext) -> studio__pb2.SetRecordingResponse:
@@ -72,6 +102,33 @@ class StudioService(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
     async def get_recording(self, request: studio__pb2.GetRecordingRequest, ctx: RequestContext) -> studio__pb2.GetRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def list_library(self, request: studio__pb2.ListLibraryRequest, ctx: RequestContext) -> studio__pb2.ListLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def save_to_library(self, request: studio__pb2.SaveToLibraryRequest, ctx: RequestContext) -> studio__pb2.SaveToLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def open_from_library(self, request: studio__pb2.OpenFromLibraryRequest, ctx: RequestContext) -> studio__pb2.OpenFromLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def rename_in_library(self, request: studio__pb2.RenameInLibraryRequest, ctx: RequestContext) -> studio__pb2.RenameInLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def delete_from_library(self, request: studio__pb2.DeleteFromLibraryRequest, ctx: RequestContext) -> studio__pb2.DeleteFromLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def set_autosave(self, request: studio__pb2.SetAutosaveRequest, ctx: RequestContext) -> studio__pb2.SetAutosaveResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def query_app(self, request: studio__pb2.QueryAppRequest, ctx: RequestContext) -> studio__pb2.QueryAppResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def private_data(self, request: studio__pb2.PrivateDataRequest, ctx: RequestContext) -> studio__pb2.PrivateDataResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def export_diagnostic(self, request: studio__pb2.DiagnosticRequest, ctx: RequestContext) -> studio__pb2.DiagnosticResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
@@ -109,6 +166,26 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.list_devices,
+                ),
+                "/tap.studio.v1.StudioService/WatchSession": Endpoint.server_stream(
+                    method=MethodInfo(
+                        name="WatchSession",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.WatchSessionRequest,
+                        output=studio__pb2.WatchSessionResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.watch_session,
+                ),
+                "/tap.studio.v1.StudioService/TakeControl": Endpoint.unary(
+                    method=MethodInfo(
+                        name="TakeControl",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.TakeControlRequest,
+                        output=studio__pb2.TakeControlResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.take_control,
                 ),
                 "/tap.studio.v1.StudioService/Attach": Endpoint.unary(
                     method=MethodInfo(
@@ -190,6 +267,16 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                     ),
                     function=svc.perform,
                 ),
+                "/tap.studio.v1.StudioService/AddStep": Endpoint.unary(
+                    method=MethodInfo(
+                        name="AddStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.AddStepRequest,
+                        output=studio__pb2.AddStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.add_step,
+                ),
                 "/tap.studio.v1.StudioService/UpdateStep": Endpoint.unary(
                     method=MethodInfo(
                         name="UpdateStep",
@@ -220,6 +307,46 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                     ),
                     function=svc.move_step,
                 ),
+                "/tap.studio.v1.StudioService/DuplicateStep": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DuplicateStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DuplicateStepRequest,
+                        output=studio__pb2.DuplicateStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.duplicate_step,
+                ),
+                "/tap.studio.v1.StudioService/UndoRecording": Endpoint.unary(
+                    method=MethodInfo(
+                        name="UndoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.UndoRecordingRequest,
+                        output=studio__pb2.UndoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.undo_recording,
+                ),
+                "/tap.studio.v1.StudioService/RedoRecording": Endpoint.unary(
+                    method=MethodInfo(
+                        name="RedoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.RedoRecordingRequest,
+                        output=studio__pb2.RedoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.redo_recording,
+                ),
+                "/tap.studio.v1.StudioService/SetParameters": Endpoint.unary(
+                    method=MethodInfo(
+                        name="SetParameters",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetParametersRequest,
+                        output=studio__pb2.SetParametersResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.set_parameters,
+                ),
                 "/tap.studio.v1.StudioService/OpenRecording": Endpoint.unary(
                     method=MethodInfo(
                         name="OpenRecording",
@@ -239,6 +366,36 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.replay,
+                ),
+                "/tap.studio.v1.StudioService/ExportPytest": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ExportPytest",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ExportPytestRequest,
+                        output=studio__pb2.ExportPytestResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.export_pytest,
+                ),
+                "/tap.studio.v1.StudioService/ListRuns": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListRuns",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListRunsRequest,
+                        output=studio__pb2.ListRunsResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.list_runs,
+                ),
+                "/tap.studio.v1.StudioService/GetRun": Endpoint.unary(
+                    method=MethodInfo(
+                        name="GetRun",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetRunRequest,
+                        output=studio__pb2.GetRunResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.get_run,
                 ),
                 "/tap.studio.v1.StudioService/SetRecording": Endpoint.unary(
                     method=MethodInfo(
@@ -269,6 +426,96 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.get_recording,
+                ),
+                "/tap.studio.v1.StudioService/ListLibrary": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListLibraryRequest,
+                        output=studio__pb2.ListLibraryResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.list_library,
+                ),
+                "/tap.studio.v1.StudioService/SaveToLibrary": Endpoint.unary(
+                    method=MethodInfo(
+                        name="SaveToLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SaveToLibraryRequest,
+                        output=studio__pb2.SaveToLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.save_to_library,
+                ),
+                "/tap.studio.v1.StudioService/OpenFromLibrary": Endpoint.unary(
+                    method=MethodInfo(
+                        name="OpenFromLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.OpenFromLibraryRequest,
+                        output=studio__pb2.OpenFromLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.open_from_library,
+                ),
+                "/tap.studio.v1.StudioService/RenameInLibrary": Endpoint.unary(
+                    method=MethodInfo(
+                        name="RenameInLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.RenameInLibraryRequest,
+                        output=studio__pb2.RenameInLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.rename_in_library,
+                ),
+                "/tap.studio.v1.StudioService/DeleteFromLibrary": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DeleteFromLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DeleteFromLibraryRequest,
+                        output=studio__pb2.DeleteFromLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.delete_from_library,
+                ),
+                "/tap.studio.v1.StudioService/SetAutosave": Endpoint.unary(
+                    method=MethodInfo(
+                        name="SetAutosave",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetAutosaveRequest,
+                        output=studio__pb2.SetAutosaveResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.set_autosave,
+                ),
+                "/tap.studio.v1.StudioService/QueryApp": Endpoint.unary(
+                    method=MethodInfo(
+                        name="QueryApp",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.QueryAppRequest,
+                        output=studio__pb2.QueryAppResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.query_app,
+                ),
+                "/tap.studio.v1.StudioService/PrivateData": Endpoint.unary(
+                    method=MethodInfo(
+                        name="PrivateData",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.PrivateDataRequest,
+                        output=studio__pb2.PrivateDataResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.private_data,
+                ),
+                "/tap.studio.v1.StudioService/ExportDiagnostic": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ExportDiagnostic",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DiagnosticRequest,
+                        output=studio__pb2.DiagnosticResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.export_diagnostic,
                 ),
             },
             interceptors=interceptors,
@@ -347,6 +594,46 @@ class StudioServiceClient(ConnectClient):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def watch_session(
+        self,
+        request: studio__pb2.WatchSessionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> AsyncIterator[studio__pb2.WatchSessionResponse]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchSession",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.WatchSessionRequest,
+                output=studio__pb2.WatchSessionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def take_control(
+        self,
+        request: studio__pb2.TakeControlRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.TakeControlResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="TakeControl",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.TakeControlRequest,
+                output=studio__pb2.TakeControlResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )
 
     async def attach(
@@ -515,6 +802,26 @@ class StudioServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def add_step(
+        self,
+        request: studio__pb2.AddStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.AddStepResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="AddStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.AddStepRequest,
+                output=studio__pb2.AddStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def update_step(
         self,
         request: studio__pb2.UpdateStepRequest,
@@ -575,6 +882,86 @@ class StudioServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def duplicate_step(
+        self,
+        request: studio__pb2.DuplicateStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DuplicateStepResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DuplicateStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DuplicateStepRequest,
+                output=studio__pb2.DuplicateStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def undo_recording(
+        self,
+        request: studio__pb2.UndoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.UndoRecordingResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="UndoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.UndoRecordingRequest,
+                output=studio__pb2.UndoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def redo_recording(
+        self,
+        request: studio__pb2.RedoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.RedoRecordingResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RedoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.RedoRecordingRequest,
+                output=studio__pb2.RedoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def set_parameters(
+        self,
+        request: studio__pb2.SetParametersRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetParametersResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetParameters",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetParametersRequest,
+                output=studio__pb2.SetParametersResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def open_recording(
         self,
         request: studio__pb2.OpenRecordingRequest,
@@ -613,6 +1000,72 @@ class StudioServiceClient(ConnectClient):
             ),
             headers=headers,
             timeout_ms=timeout_ms,
+        )
+
+    async def export_pytest(
+        self,
+        request: studio__pb2.ExportPytestRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ExportPytestResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportPytest",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ExportPytestRequest,
+                output=studio__pb2.ExportPytestResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def list_runs(
+        self,
+        request: studio__pb2.ListRunsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListRunsResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListRuns",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListRunsRequest,
+                output=studio__pb2.ListRunsResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def get_run(
+        self,
+        request: studio__pb2.GetRunRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetRunResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetRun",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetRunRequest,
+                output=studio__pb2.GetRunResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
         )
 
     async def set_recording(
@@ -677,6 +1130,188 @@ class StudioServiceClient(ConnectClient):
             use_get=use_get,
         )
 
+    async def list_library(
+        self,
+        request: studio__pb2.ListLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListLibraryResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListLibraryRequest,
+                output=studio__pb2.ListLibraryResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def save_to_library(
+        self,
+        request: studio__pb2.SaveToLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SaveToLibraryResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SaveToLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SaveToLibraryRequest,
+                output=studio__pb2.SaveToLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def open_from_library(
+        self,
+        request: studio__pb2.OpenFromLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.OpenFromLibraryResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="OpenFromLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.OpenFromLibraryRequest,
+                output=studio__pb2.OpenFromLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def rename_in_library(
+        self,
+        request: studio__pb2.RenameInLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.RenameInLibraryResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RenameInLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.RenameInLibraryRequest,
+                output=studio__pb2.RenameInLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def delete_from_library(
+        self,
+        request: studio__pb2.DeleteFromLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DeleteFromLibraryResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DeleteFromLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DeleteFromLibraryRequest,
+                output=studio__pb2.DeleteFromLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def set_autosave(
+        self,
+        request: studio__pb2.SetAutosaveRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetAutosaveResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetAutosave",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetAutosaveRequest,
+                output=studio__pb2.SetAutosaveResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def query_app(
+        self,
+        request: studio__pb2.QueryAppRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.QueryAppResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="QueryApp",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.QueryAppRequest,
+                output=studio__pb2.QueryAppResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def private_data(
+        self,
+        request: studio__pb2.PrivateDataRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.PrivateDataResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="PrivateData",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.PrivateDataRequest,
+                output=studio__pb2.PrivateDataResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def export_diagnostic(
+        self,
+        request: studio__pb2.DiagnosticRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DiagnosticResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportDiagnostic",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DiagnosticRequest,
+                output=studio__pb2.DiagnosticResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
 
 class StudioServiceSync(Protocol):
     def info(self, request: studio__pb2.InfoRequest, ctx: RequestContext) -> studio__pb2.InfoResponse:
@@ -684,6 +1319,10 @@ class StudioServiceSync(Protocol):
     def get_session(self, request: studio__pb2.GetSessionRequest, ctx: RequestContext) -> studio__pb2.GetSessionResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def list_devices(self, request: studio__pb2.ListDevicesRequest, ctx: RequestContext) -> studio__pb2.ListDevicesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def watch_session(self, request: studio__pb2.WatchSessionRequest, ctx: RequestContext) -> Iterator[studio__pb2.WatchSessionResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def take_control(self, request: studio__pb2.TakeControlRequest, ctx: RequestContext) -> studio__pb2.TakeControlResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
@@ -701,21 +1340,55 @@ class StudioServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def add_step(self, request: studio__pb2.AddStepRequest, ctx: RequestContext) -> studio__pb2.AddStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def update_step(self, request: studio__pb2.UpdateStepRequest, ctx: RequestContext) -> studio__pb2.UpdateStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def delete_step(self, request: studio__pb2.DeleteStepRequest, ctx: RequestContext) -> studio__pb2.DeleteStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def move_step(self, request: studio__pb2.MoveStepRequest, ctx: RequestContext) -> studio__pb2.MoveStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def duplicate_step(self, request: studio__pb2.DuplicateStepRequest, ctx: RequestContext) -> studio__pb2.DuplicateStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def undo_recording(self, request: studio__pb2.UndoRecordingRequest, ctx: RequestContext) -> studio__pb2.UndoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def redo_recording(self, request: studio__pb2.RedoRecordingRequest, ctx: RequestContext) -> studio__pb2.RedoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def set_parameters(self, request: studio__pb2.SetParametersRequest, ctx: RequestContext) -> studio__pb2.SetParametersResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def open_recording(self, request: studio__pb2.OpenRecordingRequest, ctx: RequestContext) -> studio__pb2.OpenRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def replay(self, request: studio__pb2.ReplayRequest, ctx: RequestContext) -> Iterator[studio__pb2.ReplayResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def export_pytest(self, request: studio__pb2.ExportPytestRequest, ctx: RequestContext) -> studio__pb2.ExportPytestResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def list_runs(self, request: studio__pb2.ListRunsRequest, ctx: RequestContext) -> studio__pb2.ListRunsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def get_run(self, request: studio__pb2.GetRunRequest, ctx: RequestContext) -> studio__pb2.GetRunResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def set_recording(self, request: studio__pb2.SetRecordingRequest, ctx: RequestContext) -> studio__pb2.SetRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def new_recording(self, request: studio__pb2.NewRecordingRequest, ctx: RequestContext) -> studio__pb2.NewRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def get_recording(self, request: studio__pb2.GetRecordingRequest, ctx: RequestContext) -> studio__pb2.GetRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def list_library(self, request: studio__pb2.ListLibraryRequest, ctx: RequestContext) -> studio__pb2.ListLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def save_to_library(self, request: studio__pb2.SaveToLibraryRequest, ctx: RequestContext) -> studio__pb2.SaveToLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def open_from_library(self, request: studio__pb2.OpenFromLibraryRequest, ctx: RequestContext) -> studio__pb2.OpenFromLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def rename_in_library(self, request: studio__pb2.RenameInLibraryRequest, ctx: RequestContext) -> studio__pb2.RenameInLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def delete_from_library(self, request: studio__pb2.DeleteFromLibraryRequest, ctx: RequestContext) -> studio__pb2.DeleteFromLibraryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def set_autosave(self, request: studio__pb2.SetAutosaveRequest, ctx: RequestContext) -> studio__pb2.SetAutosaveResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def query_app(self, request: studio__pb2.QueryAppRequest, ctx: RequestContext) -> studio__pb2.QueryAppResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def private_data(self, request: studio__pb2.PrivateDataRequest, ctx: RequestContext) -> studio__pb2.PrivateDataResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def export_diagnostic(self, request: studio__pb2.DiagnosticRequest, ctx: RequestContext) -> studio__pb2.DiagnosticResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
@@ -752,6 +1425,26 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.list_devices,
+                ),
+                "/tap.studio.v1.StudioService/WatchSession": EndpointSync.server_stream(
+                    method=MethodInfo(
+                        name="WatchSession",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.WatchSessionRequest,
+                        output=studio__pb2.WatchSessionResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.watch_session,
+                ),
+                "/tap.studio.v1.StudioService/TakeControl": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="TakeControl",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.TakeControlRequest,
+                        output=studio__pb2.TakeControlResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.take_control,
                 ),
                 "/tap.studio.v1.StudioService/Attach": EndpointSync.unary(
                     method=MethodInfo(
@@ -833,6 +1526,16 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.perform,
                 ),
+                "/tap.studio.v1.StudioService/AddStep": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="AddStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.AddStepRequest,
+                        output=studio__pb2.AddStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.add_step,
+                ),
                 "/tap.studio.v1.StudioService/UpdateStep": EndpointSync.unary(
                     method=MethodInfo(
                         name="UpdateStep",
@@ -863,6 +1566,46 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.move_step,
                 ),
+                "/tap.studio.v1.StudioService/DuplicateStep": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DuplicateStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DuplicateStepRequest,
+                        output=studio__pb2.DuplicateStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.duplicate_step,
+                ),
+                "/tap.studio.v1.StudioService/UndoRecording": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="UndoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.UndoRecordingRequest,
+                        output=studio__pb2.UndoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.undo_recording,
+                ),
+                "/tap.studio.v1.StudioService/RedoRecording": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="RedoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.RedoRecordingRequest,
+                        output=studio__pb2.RedoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.redo_recording,
+                ),
+                "/tap.studio.v1.StudioService/SetParameters": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="SetParameters",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetParametersRequest,
+                        output=studio__pb2.SetParametersResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.set_parameters,
+                ),
                 "/tap.studio.v1.StudioService/OpenRecording": EndpointSync.unary(
                     method=MethodInfo(
                         name="OpenRecording",
@@ -882,6 +1625,36 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.replay,
+                ),
+                "/tap.studio.v1.StudioService/ExportPytest": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ExportPytest",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ExportPytestRequest,
+                        output=studio__pb2.ExportPytestResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.export_pytest,
+                ),
+                "/tap.studio.v1.StudioService/ListRuns": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListRuns",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListRunsRequest,
+                        output=studio__pb2.ListRunsResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.list_runs,
+                ),
+                "/tap.studio.v1.StudioService/GetRun": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="GetRun",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetRunRequest,
+                        output=studio__pb2.GetRunResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.get_run,
                 ),
                 "/tap.studio.v1.StudioService/SetRecording": EndpointSync.unary(
                     method=MethodInfo(
@@ -912,6 +1685,96 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.get_recording,
+                ),
+                "/tap.studio.v1.StudioService/ListLibrary": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListLibraryRequest,
+                        output=studio__pb2.ListLibraryResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.list_library,
+                ),
+                "/tap.studio.v1.StudioService/SaveToLibrary": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="SaveToLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SaveToLibraryRequest,
+                        output=studio__pb2.SaveToLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.save_to_library,
+                ),
+                "/tap.studio.v1.StudioService/OpenFromLibrary": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="OpenFromLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.OpenFromLibraryRequest,
+                        output=studio__pb2.OpenFromLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.open_from_library,
+                ),
+                "/tap.studio.v1.StudioService/RenameInLibrary": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="RenameInLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.RenameInLibraryRequest,
+                        output=studio__pb2.RenameInLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.rename_in_library,
+                ),
+                "/tap.studio.v1.StudioService/DeleteFromLibrary": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DeleteFromLibrary",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DeleteFromLibraryRequest,
+                        output=studio__pb2.DeleteFromLibraryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.delete_from_library,
+                ),
+                "/tap.studio.v1.StudioService/SetAutosave": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="SetAutosave",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.SetAutosaveRequest,
+                        output=studio__pb2.SetAutosaveResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.set_autosave,
+                ),
+                "/tap.studio.v1.StudioService/QueryApp": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="QueryApp",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.QueryAppRequest,
+                        output=studio__pb2.QueryAppResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.query_app,
+                ),
+                "/tap.studio.v1.StudioService/PrivateData": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="PrivateData",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.PrivateDataRequest,
+                        output=studio__pb2.PrivateDataResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.private_data,
+                ),
+                "/tap.studio.v1.StudioService/ExportDiagnostic": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ExportDiagnostic",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DiagnosticRequest,
+                        output=studio__pb2.DiagnosticResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.export_diagnostic,
                 ),
             },
             interceptors=interceptors,
@@ -990,6 +1853,46 @@ class StudioServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def watch_session(
+        self,
+        request: studio__pb2.WatchSessionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> Iterator[studio__pb2.WatchSessionResponse]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchSession",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.WatchSessionRequest,
+                output=studio__pb2.WatchSessionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def take_control(
+        self,
+        request: studio__pb2.TakeControlRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.TakeControlResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="TakeControl",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.TakeControlRequest,
+                output=studio__pb2.TakeControlResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )
 
     def attach(
@@ -1158,6 +2061,26 @@ class StudioServiceClientSync(ConnectClientSync):
             timeout_ms=timeout_ms,
         )
 
+    def add_step(
+        self,
+        request: studio__pb2.AddStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.AddStepResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="AddStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.AddStepRequest,
+                output=studio__pb2.AddStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     def update_step(
         self,
         request: studio__pb2.UpdateStepRequest,
@@ -1218,6 +2141,86 @@ class StudioServiceClientSync(ConnectClientSync):
             timeout_ms=timeout_ms,
         )
 
+    def duplicate_step(
+        self,
+        request: studio__pb2.DuplicateStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DuplicateStepResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DuplicateStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DuplicateStepRequest,
+                output=studio__pb2.DuplicateStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def undo_recording(
+        self,
+        request: studio__pb2.UndoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.UndoRecordingResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="UndoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.UndoRecordingRequest,
+                output=studio__pb2.UndoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def redo_recording(
+        self,
+        request: studio__pb2.RedoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.RedoRecordingResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RedoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.RedoRecordingRequest,
+                output=studio__pb2.RedoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def set_parameters(
+        self,
+        request: studio__pb2.SetParametersRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetParametersResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetParameters",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetParametersRequest,
+                output=studio__pb2.SetParametersResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     def open_recording(
         self,
         request: studio__pb2.OpenRecordingRequest,
@@ -1256,6 +2259,72 @@ class StudioServiceClientSync(ConnectClientSync):
             ),
             headers=headers,
             timeout_ms=timeout_ms,
+        )
+
+    def export_pytest(
+        self,
+        request: studio__pb2.ExportPytestRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ExportPytestResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportPytest",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ExportPytestRequest,
+                output=studio__pb2.ExportPytestResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def list_runs(
+        self,
+        request: studio__pb2.ListRunsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListRunsResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListRuns",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListRunsRequest,
+                output=studio__pb2.ListRunsResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def get_run(
+        self,
+        request: studio__pb2.GetRunRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetRunResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetRun",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetRunRequest,
+                output=studio__pb2.GetRunResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
         )
 
     def set_recording(
@@ -1318,4 +2387,186 @@ class StudioServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def list_library(
+        self,
+        request: studio__pb2.ListLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListLibraryResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListLibraryRequest,
+                output=studio__pb2.ListLibraryResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def save_to_library(
+        self,
+        request: studio__pb2.SaveToLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SaveToLibraryResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SaveToLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SaveToLibraryRequest,
+                output=studio__pb2.SaveToLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def open_from_library(
+        self,
+        request: studio__pb2.OpenFromLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.OpenFromLibraryResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="OpenFromLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.OpenFromLibraryRequest,
+                output=studio__pb2.OpenFromLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def rename_in_library(
+        self,
+        request: studio__pb2.RenameInLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.RenameInLibraryResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RenameInLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.RenameInLibraryRequest,
+                output=studio__pb2.RenameInLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def delete_from_library(
+        self,
+        request: studio__pb2.DeleteFromLibraryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DeleteFromLibraryResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DeleteFromLibrary",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DeleteFromLibraryRequest,
+                output=studio__pb2.DeleteFromLibraryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def set_autosave(
+        self,
+        request: studio__pb2.SetAutosaveRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.SetAutosaveResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetAutosave",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.SetAutosaveRequest,
+                output=studio__pb2.SetAutosaveResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def query_app(
+        self,
+        request: studio__pb2.QueryAppRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.QueryAppResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="QueryApp",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.QueryAppRequest,
+                output=studio__pb2.QueryAppResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def private_data(
+        self,
+        request: studio__pb2.PrivateDataRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.PrivateDataResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="PrivateData",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.PrivateDataRequest,
+                output=studio__pb2.PrivateDataResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def export_diagnostic(
+        self,
+        request: studio__pb2.DiagnosticRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DiagnosticResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportDiagnostic",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DiagnosticRequest,
+                output=studio__pb2.DiagnosticResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )

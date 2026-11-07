@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from tap_e2e import Bounds, Device, NodeChange, ScreenNode, ScreenSnapshot, Screenshot, SelectorKind, TapError
@@ -71,9 +71,7 @@ class DeviceWorker:
             self._urgent += 1
             self._touched = self._touched or changes_screen
             self._calm.clear()
-        try:
-            return await asyncio.get_running_loop().run_in_executor(self._executor, function)
-        finally:
+        def settled() -> None:
             if urgent:
                 self._urgent -= 1
                 if self._urgent == 0:
@@ -81,6 +79,21 @@ class DeviceWorker:
                     if self._touched:
                         self._touched = False
                         self._kick.set()
+
+        try:
+            future = asyncio.get_running_loop().run_in_executor(self._executor, function)
+        except BaseException:
+            settled()
+            raise
+
+        def finished(done) -> None:
+            settled()
+            # The request may have gone away. Observe failures without logging input values.
+            if not done.cancelled():
+                done.exception()
+
+        future.add_done_callback(finished)
+        return await asyncio.shield(future)
 
     async def frames(self) -> AsyncIterator[studio.FramesResponse]:
         """The newest frame, then each new one; a reader that falls behind skips frames. Ends
@@ -191,7 +204,7 @@ def screen_node(node: ScreenNode) -> tap.ScreenNode:
         depth=node.depth,
         window_package=node.window_package,
         bounds=tap.Bounds(left=node.bounds.left, top=node.bounds.top, right=node.bounds.right, bottom=node.bounds.bottom),
-        flags=sorted(tap.NodeFlag.Value(f"FLAG_{flag.name}") for flag in node.flags),
+        flags=sorted(cast(tap.NodeFlag, tap.NodeFlag.Value(f"FLAG_{flag.name}")) for flag in node.flags),
         password=node.password,
         showing_hint=node.showing_hint,
         content_invalid=node.content_invalid,

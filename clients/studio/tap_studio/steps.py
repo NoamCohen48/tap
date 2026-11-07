@@ -9,7 +9,9 @@ the studio and replaying its commands elsewhere send the same messages
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import replace
+from typing import cast
 
 from tap_e2e import (
     AppLifecycleError,
@@ -34,7 +36,8 @@ from tap_e2e import (
 from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
-from .recording import UNTARGETED_OPS, RecordingError, picks, secret_name, validate_step
+from .recording import UNTARGETED_OPS, RecordingError, parameter_name, picks, secret_name, validate_step
+from .timing import seconds_from_ms
 
 DEFAULT_GESTURE_PERCENT = 80
 """The distance ``scroll``, ``swipe`` and ``scroll_until`` get when the page leaves it out, as the
@@ -50,7 +53,7 @@ class CheckFailed(Exception):
     was found."""
 
 
-def prepare(step: studio.Step, secret_value: str | None) -> studio.Step:
+def prepare(step: studio.Step, secret_value: str | None, *, precondition_timeout_ms: int | None = None) -> studio.Step:
     """The step the page asked for, completed into what the recording holds: no id or outcome,
     the inferred wait before an action on a node (decision 6), the gesture distance made
     explicit. Raises ``RecordingError`` when the request breaks a rule of the format or the secret
@@ -64,6 +67,11 @@ def prepare(step: studio.Step, secret_value: str | None) -> studio.Step:
         if prepared.action.HasField("wait"):
             problems.append("action.wait is inferred by the studio: leave it out")
         problems += _complete_action(prepared.action)
+    if precondition_timeout_ms is not None:
+        if prepared.WhichOneof("kind") != "action" or not prepared.action.HasField("wait"):
+            problems.append("precondition_timeout_ms requires an element action")
+        else:
+            prepared.action.wait.timeout_ms = precondition_timeout_ms
     _complete_defaults(prepared)
     problems += _problems(prepared)
     name = secret_name(prepared)
@@ -99,6 +107,27 @@ def revise(step: studio.Step, secret_value: str | None) -> studio.Step:
     return revised
 
 
+def resolve(step: studio.Step, parameters: Mapping[str, str]) -> studio.Step:
+    """The step as it runs: a parameter's value in place of its name. Raises ``RecordingError`` for
+    an unknown parameter, before anything is sent. The recording keeps the name."""
+    name = parameter_name(step)
+    if name is None:
+        return step
+    if name not in parameters:
+        raise RecordingError([f"the step uses the parameter {name!r}, which is not declared"])
+    value = parameters[name]
+    resolved = studio.Step()
+    resolved.CopyFrom(step)
+    kind = resolved.WhichOneof("kind")
+    if kind == "action":
+        resolved.action.ClearField("parameter")
+        resolved.action.command.set_text.text = value
+    else:
+        # Setting another field of the oneof replaces the parameter.
+        getattr(resolved, kind).text = value  # type: ignore[arg-type]
+    return resolved
+
+
 def _problems(step: studio.Step) -> list[str]:
     try:
         validate_step(step)
@@ -118,6 +147,8 @@ def _complete_action(action: studio.ActionStep) -> list[str]:
         gesture = getattr(command, op)
         if not gesture.HasField("distance_percent"):
             gesture.distance_percent = DEFAULT_GESTURE_PERCENT
+    if op == "multi_tap" and not command.multi_tap.HasField("interval_ms"):
+        command.multi_tap.interval_ms = 100
     if op == "pinch" and not command.pinch.HasField("percent"):
         command.pinch.percent = DEFAULT_GESTURE_PERCENT
     if op is not None and not action.HasField("wait") and getattr(command, op).HasField("selector"):
@@ -153,7 +184,7 @@ def _text_matches(step: studio.Step) -> list:
     op = command.WhichOneof("op") if command is not None else None
     if op in ("open_notification", "dismiss_notification", "await_notification"):
         return [getattr(command, op).match]
-    if op == "await_toast":
+    if op == "await_toast" and command is not None:
         return [command.await_toast]
     return []
 
@@ -188,7 +219,7 @@ def run(device: Device, step: studio.Step, secret_value: str | None = None) -> N
 
 
 def _seconds(message) -> float | None:
-    return message.timeout_ms / 1000 if message.HasField("timeout_ms") else None
+    return seconds_from_ms(message.timeout_ms) if message.HasField("timeout_ms") else None
 
 
 def _app(device: Device, call: tap.AppCall) -> None:
@@ -263,17 +294,19 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
     perform: dict[str, Callable[[], None]] = {
         "tap": lambda: element.tap(timeout),
         "long_tap": lambda: element.long_tap(timeout),
+        "multi_tap": lambda: element.tap(timeout, count=message.count, interval=message.interval_ms / 1000 if message.HasField("interval_ms") else 0.1),
+        "hold": lambda: element.long_tap(timeout, duration=message.duration_ms / 1000),
         "set_text": lambda: (
-            element.set_text(secret_value, timeout, sensitive=True)
+            element.set_text(secret_value or "", timeout, sensitive=True)
             if action.HasField("secret")
             else element.set_text(message.text, timeout)
         ),
         "clear_text": lambda: element.clear_text(timeout),
-        "scroll": lambda: element.scroll(_direction(message.direction), message.distance_percent, timeout),
-        "swipe": lambda: element.swipe(_direction(message.direction), message.distance_percent, timeout),
+        "scroll": lambda: element.scroll(_direction(message.direction), message.distance_percent if message.HasField("distance_percent") else DEFAULT_GESTURE_PERCENT, timeout),
+        "swipe": lambda: element.swipe(_direction(message.direction), message.distance_percent if message.HasField("distance_percent") else DEFAULT_GESTURE_PERCENT, timeout),
         "double_tap": lambda: element.double_tap(timeout),
         "fling": lambda: element.fling(_direction(message.direction), timeout),
-        "pinch": lambda: (element.pinch_open if message.direction == tap.PINCH_OPEN else element.pinch_close)(message.percent, timeout),
+        "pinch": lambda: (element.pinch_open if message.direction == tap.PINCH_OPEN else element.pinch_close)(message.percent if message.HasField("percent") else DEFAULT_GESTURE_PERCENT, timeout),
         "drag": lambda: element.drag_to(Selector.from_proto(message.target), timeout),
         "perform_ime_action": lambda: element.ime_action(timeout),
         "perform_accessibility_action": lambda: (
@@ -324,13 +357,23 @@ def _device_action(device: Device, command: tap.Command) -> None:
 
 def _type(device: Device, step: studio.TypeStep, secret_value: str | None) -> None:
     value = secret_value if step.WhichOneof("input") == "secret" else step.text
-    wait = device.screen.wait(Selector.from_proto(step.selector))
+    wait = device.screen.wait(Selector.from_proto(step.selector), _seconds_field(step, "precondition_timeout_ms"))
     element = wait.visible() if picks(step.selector) else wait.one()
-    element.type_text(value or "", await_focus=not step.skip_focus_wait)
+    original = device.timeouts
+    try:
+        if step.HasField("focus_timeout_ms"):
+            device.timeouts = replace(original, wait=seconds_from_ms(step.focus_timeout_ms))
+        element.type_text(value or "", await_focus=not step.skip_focus_wait, timeout=_seconds(step), sensitive=step.WhichOneof("input") == "secret")
+    finally:
+        device.timeouts = original
+
+
+def _seconds_field(message, field: str) -> float | None:
+    return seconds_from_ms(getattr(message, field)) if message.HasField(field) else None
 
 
 def _wait(device: Device, step: studio.WaitStep) -> None:
-    wait = device.screen.wait(Selector.from_proto(step.selector))
+    wait = device.screen.wait(Selector.from_proto(step.selector), _seconds(step))
     conditions: dict[int, Callable[[], object]] = {
         studio.CONDITION_VISIBLE: wait.visible,
         studio.CONDITION_ONE: wait.one,
@@ -350,37 +393,41 @@ def _wait(device: Device, step: studio.WaitStep) -> None:
 def _assertion(device: Device, step: studio.AssertionStep) -> None:
     element = device.screen.element(Selector.from_proto(step.selector))
     check = step.check
+    timeout = _seconds(step)
     if check == studio.CHECK_EXISTS:
-        if not element.exists():
+        if not element.exists(timeout):
             raise CheckFailed("expected at least one match, found none")
     elif check == studio.CHECK_COUNT:
-        count = element.count()
+        count = element.count(timeout)
         if count != step.count:
             raise CheckFailed(f"expected {step.count} matches, found {count}")
     elif check in (studio.CHECK_TEXT_EQUALS, studio.CHECK_TEXT_CONTAINS):
-        text = element.text()
+        text = element.text(timeout)
         holds = text == step.text if check == studio.CHECK_TEXT_EQUALS else step.text in (text or "")
         if not holds:
             expected = "text" if check == studio.CHECK_TEXT_EQUALS else "text containing"
             raise CheckFailed(f"expected {expected} {step.text!r}, found {text!r}")
     elif check in (studio.CHECK_ENABLED, studio.CHECK_DISABLED):
-        if element.is_enabled() != (check == studio.CHECK_ENABLED):
+        if element.is_enabled(timeout) != (check == studio.CHECK_ENABLED):
             raise CheckFailed(f"expected {'enabled' if check == studio.CHECK_ENABLED else 'disabled'}, it is not")
     elif check in (studio.CHECK_CHECKED, studio.CHECK_UNCHECKED):
-        if element.is_checked() != (check == studio.CHECK_CHECKED):
+        if element.is_checked(timeout) != (check == studio.CHECK_CHECKED):
             raise CheckFailed(f"expected {'checked' if check == studio.CHECK_CHECKED else 'unchecked'}, it is not")
     elif check == studio.CHECK_FOCUSED:
-        if not element.snapshot().focused:
+        if not element.snapshot(timeout).focused:
             raise CheckFailed("expected focused, it is not")
     else:
         raise ValueError(f"unknown check {check}")
 
 
 def _scroll_until(device: Device, step: studio.ScrollUntilStep) -> None:
-    wait = device.screen.wait(Selector.from_proto(step.container))
+    wait = device.screen.wait(Selector.from_proto(step.container), _seconds_field(step, "precondition_timeout_ms"))
     container = wait.visible() if picks(step.container) else wait.one()
     container.scroll_until(
-        Selector.from_proto(step.target), _direction(step.direction), step.max_scrolls, step.distance_percent
+        Selector.from_proto(step.target), _direction(step.direction),
+        step.max_scrolls if step.HasField("max_scrolls") else DEFAULT_MAX_SCROLLS,
+        step.distance_percent if step.HasField("distance_percent") else DEFAULT_GESTURE_PERCENT,
+        timeout=_seconds(step),
     )
 
 
@@ -391,8 +438,9 @@ def _app_wait(device: Device, step: studio.AppWaitStep) -> None:
         device.app(command.wait_app_visible.package_name).await_visible(timeout)
         return
     wait = command.wait_screen_stable
-    signal = StabilitySignal[tap.StabilitySignal.Name(wait.signal).removeprefix("STABILITY_")]
-    device.app(wait.package_name).await_screen_stable(wait.stable_for_ms / 1000, timeout, signal)
+    signal = StabilitySignal[tap.StabilitySignal.Name(wait.signal or tap.STABILITY_ALL).removeprefix("STABILITY_")]
+    quiet_ms = wait.stable_for_ms if wait.HasField("stable_for_ms") else DEFAULT_STABLE_FOR_MS
+    device.app(wait.package_name).await_screen_stable(seconds_from_ms(quiet_ms), timeout, signal)
 
 
 def outcome(duration_ms: int, error: TapError | CheckFailed | None, serial: str) -> studio.Outcome:
@@ -420,17 +468,17 @@ def outcome(duration_ms: int, error: TapError | CheckFailed | None, serial: str)
     return result
 
 
-def _error_code(name: str) -> int:
+def _error_code(name: str) -> tap.ErrorCode:
     try:
-        return tap.ErrorCode.Value(f"ERR_{name}")
+        return cast(tap.ErrorCode, tap.ErrorCode.Value(f"ERR_{name}"))
     except ValueError:
         return tap.ERR_UNKNOWN
 
 
-def _failure_reason(error: TapError) -> int:
+def _failure_reason(error: TapError) -> tap.FailureReason:
     if isinstance(error, ServerError):
         try:
-            return tap.FailureReason.Value(f"FAILURE_REASON_{error.reason.name}")
+            return cast(tap.FailureReason, tap.FailureReason.Value(f"FAILURE_REASON_{error.reason.name}"))
         except ValueError:
             return tap.FAILURE_REASON_UNSPECIFIED
     by_type = {

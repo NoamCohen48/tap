@@ -23,6 +23,7 @@ import {
 } from "./gen/command_pb";
 import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
 import { KEY_BACK, KEY_HOME, KEY_SLEEP, KEY_WAKEUP, keyName } from "./keys";
+import { stepBudgets } from "./ExecutionControls";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
 export const quote = (value: string) => JSON.stringify(value).replace(/\$/g, "\\$");
@@ -371,7 +372,7 @@ const CONDITIONS: Record<Condition, string> = {
 /** An assertion as a test writes it: `kotlin.test` around the SDK's element query. */
 function assertion(a: AssertionStep): string {
   const query = element(a.selector);
-  const text = a.value.case === "text" ? quote(a.value.value) : "";
+  const text = a.value.case === "parameter" ? byName(a.value.value) : a.value.case === "text" ? quote(a.value.value) : "";
   switch (a.check) {
     case Check.EXISTS:
       return `assertTrue(${query}.exists())`;
@@ -421,6 +422,9 @@ function value(text: string, secret: string | undefined): string {
   return secret !== undefined ? `\${${secret}}` : quote(text);
 }
 
+/** A parameter's name, as a secret's: `${name}`. */
+const byName = (name: string) => `\${${name}}`;
+
 function command(c: Command | undefined, secret: string | undefined): string {
   if (!c) return "(no command)";
   switch (c.op.case) {
@@ -435,6 +439,10 @@ function command(c: Command | undefined, secret: string | undefined): string {
       return `${element(c.op.value.selector)}.tap()`;
     case "longTap":
       return `${element(c.op.value.selector)}.longTap()`;
+    case "multiTap":
+      return `${element(c.op.value.selector)}.tap(count = ${c.op.value.count}, interval = ${c.op.value.intervalMs ?? 100n}.milliseconds)`;
+    case "hold":
+      return `${element(c.op.value.selector)}.longTap(duration = ${c.op.value.durationMs}.milliseconds)`;
     case "setText":
       return `${element(c.op.value.selector)}.setText(${value(c.op.value.text, secret)})`;
     case "clearText":
@@ -529,8 +537,14 @@ export function stepKind(step: Step): StepKind | null {
   }
 }
 
-/** The step as the SDK call it replays as. */
+/** Budgets are annotations, not invented parameters on fixed-signature SDK methods. */
 export function describeStep(step: Step): string {
+  const budgets = Object.entries(stepBudgets(step)).filter(([, value]) => value !== undefined).map(([name, value]) => `${name} = ${value} ms`);
+  return describeCall(step) + (budgets.length ? ` /* ${budgets.join(", ")} */` : "");
+}
+
+/** The step as the SDK call it replays as. */
+function describeCall(step: Step): string {
   switch (step.kind.case) {
     case "app":
       return appCall(step.kind.value);
@@ -541,15 +555,15 @@ export function describeStep(step: Step): string {
     case "deviceAssertion":
       return deviceAssertion(step.kind.value);
     case "action":
-      return command(step.kind.value.command, step.kind.value.secret);
+      return command(step.kind.value.command, step.kind.value.secret ?? step.kind.value.parameter);
     case "type": {
       const t = step.kind.value;
-      const input = t.input.case === "secret" ? `\${${t.input.value}}` : quote(t.input.value ?? "");
+      const input = t.input.case === "secret" || t.input.case === "parameter" ? byName(t.input.value) : quote(t.input.value ?? "");
       return `${element(t.selector)}.typeText(${input}${t.skipFocusWait ? ", awaitFocus = false" : ""})`;
     }
     case "wait": {
       const w = step.kind.value;
-      const argument = w.value.case === "text" ? quote(w.value.value) : w.value.case === "count" ? String(w.value.value) : "";
+      const argument = w.value.case === "parameter" ? byName(w.value.value) : w.value.case === "text" ? quote(w.value.value) : w.value.case === "count" ? String(w.value.value) : "";
       return `${awaiting(w.selector)}.${CONDITIONS[w.condition]}(${argument})`;
     }
     case "assertion":

@@ -30,6 +30,47 @@ tap-agent:
   replay. Synchronization, observed liveness and passive watching remain excluded. A checked API
   registry makes new daemon/SDK APIs and CLI/MCP parameter drift visible in tests.
 
+Tap Studio:
+
+- **Accepted operations own their completion.** Recording replacement, edits, tools, pause,
+  attachment and release cannot race an in-flight action. Canceling its browser request keeps
+  the operation gate until its result is reconciled; a canceled replay finishes only its accepted
+  step. Shutdown drains it before detach. Changing a shared secret invalidates old outcomes.
+- **Headless replay and pytest export.** `tap-studio replay` runs a recording with no browser and
+  `tap-studio export` (or the export drawer) writes a pytest file on the public client API. Both
+  need `tap start`, retry nothing and refuse rather than lose meaning.
+- **Per-run results.** Each replay has an identity and bounded step results with known secret values
+  scrubbed. Evidence from the device is captured only when asked.
+- **Saved recordings, a private library of named flows,** usable with no device or Tap server, with opt-in
+  autosave. It stores definitions only, never secret values or results, and refuses to overwrite
+  an entry another Studio changed.
+- **Parameters.** Named, non-secret test data for the text a step types or expects, kept in the
+  recording and resolved before any input.
+- **Harder to lose work.** Unsaved step edits and Clear data ask first. Dialogs trap and restore
+  focus and stop stealing it when frames arrive, and the screen tree can finish a drag or a scroll
+  until by keyboard.
+- **Every step value is editable,** with undo, redo and duplicate. These change the recording only,
+  never the device, and an old result does not come back for a step that has changed.
+- **Checks start from a selector.** Assert and Wait take a typed selector without needing a live
+  element, offer absence and zero-count checks, and can add a step without running it. The open
+  tooltip and export drawer name the real format.
+- **One tab controls a Studio.** Other tabs watch and the server refuses their changes. Take
+  control moves it once nothing is running; a closed or reloaded tab passes it on. The page's busy
+  state now comes from the server, so it stays locked until a cancelled step has really finished.
+- **Secret typing is sensitive.** Type keys now marks named secret values sensitive on both
+  direct execution and replay, as Set text already did. The device receives the value but the
+  daemon's event history, watcher and event exports omit it; recording exports keep only its name.
+- **Gesture and execution controls.** Counted taps, physical hold duration, command/query,
+  selector-precondition and typing-focus budgets, and whole-screen/package stability with custom
+  quiet periods and signals can be recorded, edited and replayed. Invalid parameters and bounded
+  selectors are rejected before input. New recordings use `tap-recording/2` so older readers cannot
+  silently discard the added budgets; legacy `/1` files upgrade on open.
+- **Explicit tools, not replay steps.** Read app installed/running/process/locale/permission
+  state; use the SDK private file and SQLite bundle APIs with confirmation, explicit overwrite
+  and the daemon's stopped-UID safeguards; download screenshots, hierarchy, logs, incremental
+  raw history and metadata. Browser artifacts are bounded to 1 MiB and never silently truncated.
+  No implicit stop/relaunch, data restoration, arbitrary host paths, shell, SQL or mutation retry.
+
 Server, Kotlin/Python clients and tap-agent:
 
 - **Debuggable private app data.** `app.data` probes actual run-as access, lists/reads/writes/

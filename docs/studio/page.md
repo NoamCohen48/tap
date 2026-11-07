@@ -34,7 +34,10 @@ Each button runs its step on the device and records it. The composer's tabs, wit
 
 **Act** offers, for the selected element:
 
-- **Tap**, **Double tap** and **Long press**.
+- **Tap**, **Double tap** and Android's default **Long press**. **Tap sequence** selects 1–100
+  taps with a release-to-press interval of 40–1000 ms (at most 30 seconds total). **Hold for
+  duration** injects a physical press for 1–30000 ms, which is not an accessibility long-click.
+  Each resolves the target once, requires an unobscured touch point and never retries input.
 - **Drag to…**: the element is outlined; click the element to drop it on, and one
   `dragTo(res("bin"))` step is recorded. Esc cancels.
 - **Swipe** up, down, left or right on the element.
@@ -53,7 +56,9 @@ Each button runs its step on the device and records it. The composer's tabs, wit
   taps the field, waits for focus and types, for fields that react to key events, and **Clear**
   empties it. Turn off **Wait for focus** when the tap moves focus somewhere else, such as a
   child or a separate input view (`typeText(…, awaitFocus = false)`). **Secret** keeps the value out of the recording: the step names the secret, and a
-  replay asks for its value. Password fields default to secret. **Submit** presses the
+  replay asks for its value. Both Set text and Type keys mark secret input sensitive, so the
+  daemon's event history and watcher also omit the typed value. This does not mask the device's
+  screen or make ordinary selectors and notes secret. Password fields default to secret. **Submit** presses the
   keyboard's action key for the field (Search, Go, Done: `imeAction()`).
 - **Actions**: what the element offers through accessibility. Custom actions such as
   **Archive** on a list row (`performCustomAction("Archive")`) stand in for a swipe; standard
@@ -78,7 +83,13 @@ or any app's), **Force stop** and **Clear data**, **Grant** or **Revoke** a perm
 stops the app, as Android does), the app's own **Languages** (Android 13+; **Follow system**
 undoes them), and waits until the app is in the foreground (`awaitVisible()`), its screen is
 stable, settled (the elements stop changing) or its animation ended (the pixels stop changing).
-Selecting an element on the screen switches back to **Act**.
+For stability, choose **Whole screen** to omit the package requirement, and set **Quiet period
+(ms)** (1–30000). Foreground visibility still requires a package. These waits do not use
+synchronization or `awaitIdle`. Selecting an element on the screen switches back to **Act**.
+
+**Defaults for new steps**, at the top of the composer, sets separate command/wait,
+selector-precondition and typing-focus budgets where the SDK supports them. The step editor
+can change these later; replay keeps the recorded values. See [Steps and export](steps.md).
 
 **Device** starts with what the device is now: the screen, its rotation, the keyboard and the
 activity in front, read again after every step. Each control below marks the value the device
@@ -103,8 +114,67 @@ a test sets what it relies on.
 - **Assert:** the activity in front (prefilled with the one there now), the keyboard shown or
   hidden, or the clipboard's text.
 
+**Assert** and **Wait** also take a typed selector, such as `res("login")`, so a check can be about
+an element that is not on the screen or has gone. They offer every check then, including **None
+match** (a count of zero). Tick **Add to the recording without running it now** to write a step
+for a screen that is not here yet: it shows no result until it runs.
+
+Every value of a step can be edited after it is recorded, and Studio checks it when you save: a
+refused save keeps what you typed. **Duplicate** copies a step, which then shows no result until it
+runs. **Undo** and **Redo** (Ctrl+Z, Ctrl+Shift+Z) change the recording only. What already ran on
+the device stays done, and a restored step keeps its result only if it has not changed since.
+
+Studio asks before you leave a step with unsaved edits, release the device with them, or close the
+page. **Clear data** also asks first, because it runs on the device and undo cannot bring it back.
+Dialogs keep the keyboard until they close, and the screen tree picks elements the same way the
+screen does, including where a drag drops and what a scroll until looks for.
+
+**Parameters** are test data a step can name instead of holding, such as a user name or an expected
+title. Declare them above the steps, then choose one in a step's editor for the text it types or
+expects. A run looks up the value first and refuses before any input if it is missing. Changing a
+value clears the results of the steps that use it. Parameters are written to the recording file, so
+keep anything private in a secret, whose value never is. A parameter stands only for that text: it
+is never part of a selector, and `${x}` typed into a step is just those characters.
+
+**Saved recordings** keeps named recordings privately on this machine, in
+`~/.tap/studio/recordings`. It works with no device attached and no Tap server running, so you can open, rename, delete, read and
+export a recording; attach a device to edit or replay it. Saved recordings hold definitions only:
+never a secret's value, and no results. If another Studio changed an entry since you opened it,
+saving is refused rather than overwriting it.
+
+**Autosave** is off until you turn it on for a saved recording, and turns itself off and says why if
+a write fails. A file recovered after a crash is the recording as it was last saved. It records
+your edits, not what ran on the device, so it cannot tell you whether input was sent before the
+crash.
+
+**Runs** lists the last 20 replays of this Studio: whether each passed, failed or was stopped, and a
+download of its results. Results stay in memory and do not hold secrets; known secret values are
+also removed from their messages, though that cannot catch a value the app changed. Studio captures
+a screenshot, hierarchy or device logs only when you ask, showing the device as it is at that moment,
+and any of them can show private data, such as a secret typed into a field Android does not mask.
+Results cover the steps that finished, so they cannot say
+whether a step cut off by a crash sent its input.
+
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
-app into a state you do not want in the flow.
+app into a state you do not want in the flow. Wait for the current operation before changing
+the recording mode.
+
+The server serializes actions, tools, recording edits and attachment changes. Closing or
+canceling a browser request does not interrupt accepted input: the operation finishes and
+reconciles its result before Studio allows a conflicting change. A stopped replay runs no
+further steps. Shutdown also drains the accepted operation before releasing the device;
+process termination or a machine failure is not recoverable execution journaling.
+
+One tab controls a Studio. Any other tab open on it watches: it follows the screen and the
+recording but cannot change anything, and the server refuses it if it tries. **Take control**
+moves control to the tab you are in, once nothing is running, and what you have typed there
+stays. When the controlling tab closes or reloads, control passes to the tab opened last.
+
+While Studio is finishing something a cancelled request left behind, the page stays locked and
+says so. The result is not known until it finishes.
+
+Changing a named secret's value marks every affected step as needing verification. Notes alone
+do not invalidate a step's result.
 
 A tap on a row that only an index could single out (a preference or list row with no id or
 text of its own) is recorded as a tap on its title, `text("Apps")`, which lands on the row and

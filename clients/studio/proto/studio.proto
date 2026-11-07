@@ -1,5 +1,5 @@
 // tap.studio.v1 — Tap Studio: the page's API (served by `tap-studio` over Connect) and the
-// `tap-recording/1` document.
+// `tap-recording/2` document (Studio can also open legacy /1 files).
 //
 // The one contract between the studio's Python back end and its TypeScript page: both sides are
 // generated from this file (clients/studio/scripts/gen_protos.py). It imports tap.v1 from
@@ -29,6 +29,14 @@ service StudioService {
   rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // This tab's view of the session: the current state at once, then on every change and at least
+  // every second. One tab controls Studio; while its stream is open no other tab can change
+  // anything unless it takes control. When the controlling tab's stream ends, control passes to
+  // the tab that opened its stream last, so a reloaded page gets control back.
+  rpc WatchSession(WatchSessionRequest) returns (stream WatchSessionResponse);
+  // Moves control to this tab. FAILED_PRECONDITION while an operation runs: a transfer never
+  // interrupts accepted work, and for a tab with no open WatchSession stream.
+  rpc TakeControl(TakeControlRequest) returns (TakeControlResponse);
   // Attaches a device, releasing the one attached before. It names no app: app steps carry
   // their package, and the page keeps the one its App menu acts on.
   rpc Attach(AttachRequest) returns (AttachResponse);
@@ -60,13 +68,27 @@ service StudioService {
   rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
   // Runs one step on the attached device and, while recording, adds it when it passed.
   rpc Perform(PerformRequest) returns (PerformResponse);
+  // Adds a step without running it, whether recording is on or not: a wait or check for a screen
+  // that is not here yet. Checked as Perform's step; it has no outcome until it runs.
+  // FAILED_PRECONDITION with no device attached and no recording to add to.
+  rpc AddStep(AddStepRequest) returns (AddStepResponse);
   // Replaces a recorded step without running it. NOT_FOUND for an unknown id.
   rpc UpdateStep(UpdateStepRequest) returns (UpdateStepResponse);
   // Removes a recorded step.
   rpc DeleteStep(DeleteStepRequest) returns (DeleteStepResponse);
   // Moves a recorded step.
   rpc MoveStep(MoveStepRequest) returns (MoveStepResponse);
-  // Replaces the recording with a tap-recording/1 document to continue or replay it.
+  // Adds a copy of a step right after it, with a new id and no outcome. Nothing runs.
+  rpc DuplicateStep(DuplicateStepRequest) returns (DuplicateStepResponse);
+  // Takes back the last change to the recording, or brings it back. The recording only: what ran
+  // on the device stays done. A step keeps its outcome only if the current recording has the same
+  // step, unchanged, with one. FAILED_PRECONDITION with nothing to undo or redo.
+  rpc UndoRecording(UndoRecordingRequest) returns (UndoRecordingResponse);
+  rpc RedoRecording(RedoRecordingRequest) returns (RedoRecordingResponse);
+  // Replaces the recording's parameters, whatever is attached. INVALID_ARGUMENT for a bad name, or
+  // for removing one a step uses. A changed value clears the outcome of the steps that use it.
+  rpc SetParameters(SetParametersRequest) returns (SetParametersResponse);
+  // Replaces the recording with a /1 or /2 document to continue or replay; /1 upgrades to /2.
   // INVALID_ARGUMENT lists every rule the document breaks.
   rpc OpenRecording(OpenRecordingRequest) returns (OpenRecordingResponse);
   // Runs recorded steps in order on the attached device, stopping after the first that fails; each
@@ -75,6 +97,19 @@ service StudioService {
   // and NewRecording are FAILED_PRECONDITION, and so is a replay for another app than the one
   // attached, or with a secret whose value the studio does not have.
   rpc Replay(ReplayRequest) returns (stream ReplayResponse);
+  // The recording as a pytest file on tap-e2e's public API. NOT_FOUND before anything is recorded;
+  // FAILED_PRECONDITION for a recording it cannot write without changing what it does.
+  rpc ExportPytest(ExportPytestRequest) returns (ExportPytestResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The last replays of this process, newest first, without their steps.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // One run's results. NOT_FOUND once it is no longer kept.
+  rpc GetRun(GetRunRequest) returns (GetRunResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   // Record or pause: paused, Perform still runs steps but records nothing.
   rpc SetRecording(SetRecordingRequest) returns (SetRecordingResponse);
   // Discards the recording and starts an empty one.
@@ -83,6 +118,183 @@ service StudioService {
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // The private library of named recordings on this machine. These need no device and no Tap
+  // server. Definitions only: no outcomes and no secret values. NOT_FOUND for an unknown id, ABORTED
+  // when another Studio changed the entry since `revision` was read, ALREADY_EXISTS for a name in
+  // use, RESOURCE_EXHAUSTED over a limit.
+  rpc ListLibrary(ListLibraryRequest) returns (ListLibraryResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Saves the recording: over the entry it came from, or as a new one with `as_new` (or when it came
+  // from none, and then `name` is required). FAILED_PRECONDITION with no recording.
+  rpc SaveToLibrary(SaveToLibraryRequest) returns (SaveToLibraryResponse);
+  // Replaces the recording with an entry. This cannot be undone: earlier versions of the recording
+  // would otherwise be saved over this entry. Secrets have no values until given.
+  rpc OpenFromLibrary(OpenFromLibraryRequest) returns (OpenFromLibraryResponse);
+  rpc RenameInLibrary(RenameInLibraryRequest) returns (RenameInLibraryResponse);
+  // The recording in progress stays, no longer saved anywhere.
+  rpc DeleteFromLibrary(DeleteFromLibraryRequest) returns (DeleteFromLibraryResponse);
+  // Saves every change of a recording that has been saved, a moment after it happens, until turned
+  // off or the recording is replaced. FAILED_PRECONDITION when it has not been saved. A failure
+  // turns it off and says why in the session's `library`. Not an execution journal: a recovered
+  // file says nothing about what ran on the device.
+  rpc SetAutosave(SetAutosaveRequest) returns (SetAutosaveResponse);
+  // Explicit one-shot reads; never recorded. PROCESS can wait for a process identity.
+  rpc QueryApp(QueryAppRequest) returns (QueryAppResponse);
+  // SDK private data tools, never recorded. Browser transfers are capped at 1 MiB total;
+  // larger files/bundles need the SDK's streaming surface, not this unary browser endpoint.
+  rpc PrivateData(PrivateDataRequest) returns (PrivateDataResponse);
+  // Explicit download of SDK diagnostics/metadata, at most 1 MiB. Not selector input.
+  rpc ExportDiagnostic(DiagnosticRequest) returns (DiagnosticResponse);
+}
+
+// ---- the library -------------------------------------------------------------------------------
+
+message LibraryEntry {
+  string id = 1;
+  string name = 2;
+  int64 revision = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  int32 steps = 5;
+}
+
+message ListLibraryRequest {}
+
+message ListLibraryResponse {
+  // Newest first.
+  repeated LibraryEntry entries = 1;
+  // Files that could not be read; they are left in place.
+  int32 unreadable = 2;
+}
+
+message SaveToLibraryRequest {
+  // Required for a new entry; otherwise absent keeps its name.
+  optional string name = 1;
+  bool as_new = 2;
+}
+
+message SaveToLibraryResponse {
+  Session session = 1;
+}
+
+message OpenFromLibraryRequest {
+  string id = 1;
+}
+
+message OpenFromLibraryResponse {
+  Session session = 1;
+  Recording recording = 2;
+  repeated string missing_secrets = 3;
+}
+
+message RenameInLibraryRequest {
+  string id = 1;
+  string name = 2;
+  int64 revision = 3;
+}
+
+message RenameInLibraryResponse {
+  Session session = 1;
+}
+
+message DeleteFromLibraryRequest {
+  string id = 1;
+  int64 revision = 2;
+}
+
+message DeleteFromLibraryResponse {
+  Session session = 1;
+}
+
+message SetAutosaveRequest {
+  bool enabled = 1;
+}
+
+message SetAutosaveResponse {
+  Session session = 1;
+}
+
+// ---- explicit, non-recorded SDK tools -----------------------------------------------------------
+// These operate only on Studio's own attached device. They never become replay steps.
+enum AppQuery {
+  APP_QUERY_UNSPECIFIED = 0;
+  APP_QUERY_INSTALLED = 1;
+  APP_QUERY_RUNNING = 2;
+  APP_QUERY_PROCESS = 3;
+  APP_QUERY_LOCALES = 4;
+  APP_QUERY_PERMISSION = 5;
+}
+message QueryAppRequest {
+  string package_name = 1;
+  AppQuery query = 2;
+  string permission = 3;
+  // Only PROCESS accepts an explicit 1..120000 ms budget.
+  optional int64 timeout_ms = 4;
+}
+message QueryAppResponse { string json = 1; }
+
+enum PrivateDataOperation {
+  PRIVATE_DATA_OPERATION_UNSPECIFIED = 0;
+  PRIVATE_DATA_CAPABILITIES = 1;
+  PRIVATE_DATA_LIST = 2;
+  PRIVATE_DATA_READ = 3;
+  PRIVATE_DATA_WRITE = 4;
+  PRIVATE_DATA_DELETE = 5;
+  PRIVATE_DATA_EXPORT_DATABASE = 6;
+  PRIVATE_DATA_IMPORT_DATABASE = 7;
+}
+// An opaque portable bundle, not SQL. Optional WAL/journal retain presence, even when empty.
+message DatabaseBundle {
+  // Exactly "tap-studio-database/1"; not a recording or a shared SDK interchange format.
+  string format = 1;
+  string name = 2;
+  bytes database = 3;
+  optional bytes wal = 4;
+  optional bytes journal = 5;
+}
+message PrivateDataRequest {
+  string package_name = 1;
+  PrivateDataOperation operation = 2;
+  string path = 3;
+  // Export basename, or optional import destination basename.
+  string name = 4;
+  bytes data = 5;
+  DatabaseBundle bundle = 6;
+  // WRITE / IMPORT only; defaults to refusing replacement.
+  bool overwrite = 7;
+  // WRITE / DELETE / IMPORT require explicit confirmation. Still checked by the daemon;
+  // no implicit stop, launch, restore or retry. Except capabilities, the whole UID must be stopped.
+  bool confirmed = 8;
+  // READ / WRITE / EXPORT / IMPORT only, 1..120000 ms.
+  optional int64 timeout_ms = 9;
+}
+message PrivateDataResponse {
+  // Metadata/status only, never file bytes or paths in a recording.
+  string json = 1;
+  bytes data = 2;
+  DatabaseBundle bundle = 3;
+}
+
+enum DiagnosticKind {
+  DIAGNOSTIC_UNSPECIFIED = 0;
+  DIAGNOSTIC_SCREENSHOT = 1;
+  DIAGNOSTIC_HIERARCHY = 2;
+  DIAGNOSTIC_DEVICE_LOGS = 3;
+  DIAGNOSTIC_DRIVER_LOG = 4;
+  DIAGNOSTIC_EVENTS = 5;
+  DIAGNOSTIC_SERVER_INFO = 6;
+  DIAGNOSTIC_DEVICE_INFO = 7;
+  DIAGNOSTIC_DEVICES = 8;
+}
+message DiagnosticRequest {
+  DiagnosticKind kind = 1;
+  // EVENTS only; nonnegative, reports dropped-ring state in the output.
+  optional int64 after_seq = 2;
+}
+message DiagnosticResponse {
+  bytes data = 1;
+  string filename = 2;
+  string content_type = 3;
 }
 
 message InfoRequest {}
@@ -90,7 +302,7 @@ message InfoRequest {}
 message InfoResponse {
   // The tool and its version, as a recording's `recorder`.
   string recorder = 1;
-  // The recording format this studio writes: "tap-recording/1".
+  // The recording format this studio writes: "tap-recording/2".
   string format = 2;
 }
 
@@ -112,11 +324,55 @@ message Session {
   bool recording = 2;
   // Steps in the recording.
   int32 steps = 3;
+  // The tab that may change anything; every other tab reads. A request names its tab in the
+  // `x-tap-studio-tab` header. Empty until a tab watches the session.
+  string controller_tab = 4;
+  // What Studio is doing and every change waits for: "action", "tool", "attachment", "release",
+  // "save" or "replay". It outlives a cancelled request: accepted work finishes first. Empty when idle.
+  string operation = 5;
+  // Increases with every change of the session, so a late response cannot replace a newer one.
+  int64 version = 6;
+  // Increases with every change of the recording, including a step's outcome.
+  int64 recording_revision = 7;
+  bool can_undo = 8;
+  bool can_redo = 9;
+  // Where the recording is saved in the library, and whether it has changed since.
+  LibraryLink library = 10;
+}
+
+message LibraryLink {
+  // Empty when the recording is not saved in the library.
+  string id = 1;
+  string name = 2;
+  // The entry's revision as last read or written.
+  int64 revision = 3;
+  // The recording has changed since it was saved or opened.
+  bool unsaved = 4;
+  bool autosave = 5;
+  // Why autosave turned itself off.
+  string autosave_error = 6;
 }
 
 message GetSessionRequest {}
 
 message GetSessionResponse {
+  Session session = 1;
+}
+
+message WatchSessionRequest {
+  // Random per page load, at most 64 characters.
+  string tab = 1;
+}
+
+message WatchSessionResponse {
+  Session session = 1;
+}
+
+message TakeControlRequest {
+  string tab = 1;
+}
+
+message TakeControlResponse {
   Session session = 1;
 }
 
@@ -131,6 +387,10 @@ message DeviceChoice {
   bool attached = 3;
   // QUARANTINED: why.
   string quarantine_reason = 4;
+  // What the device is. Zero and empty when the server could not read it (offline, unauthorized).
+  int32 api_level = 5;
+  string model = 6;
+  bool emulator = 7;
 }
 
 message ListDevicesResponse {
@@ -229,6 +489,9 @@ message PerformRequest {
   // Run the step but never record it, whether recording is on or not: the page's own probes,
   // such as the scrolls that look for a scroll until's target before the user picks it.
   bool skip_recording = 4;
+  // An element action's inferred wait budget, 1..120000 ms. Only with a targeted action;
+  // persisted in action.wait.timeout_ms, never treated as the input command's own budget.
+  optional int64 precondition_timeout_ms = 5;
 }
 
 message PerformResponse {
@@ -238,6 +501,18 @@ message PerformResponse {
   bool recorded = 2;
   // Why it failed, for a person; empty when it passed.
   string message = 3;
+}
+
+message AddStepRequest {
+  // As PerformRequest's.
+  Step step = 1;
+  optional string secret_value = 2;
+  string before_step_id = 3;
+}
+
+message AddStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
 }
 
 message UpdateStepRequest {
@@ -275,8 +550,40 @@ message MoveStepResponse {
   repeated string missing_secrets = 2;
 }
 
+message DuplicateStepRequest {
+  string step_id = 1;
+}
+
+message DuplicateStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message UndoRecordingRequest {}
+
+message UndoRecordingResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message RedoRecordingRequest {}
+
+message RedoRecordingResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message SetParametersRequest {
+  repeated Parameter parameters = 1;
+}
+
+message SetParametersResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
 message OpenRecordingRequest {
-  // A tap-recording/1 file. Its secrets have no values until UpdateStep or Replay gives them.
+  // A tap-recording/1 or /2 file. Secrets have no values until UpdateStep or Replay gives them.
   string document = 1;
 }
 
@@ -303,6 +610,71 @@ message ReplayResponse {
   Outcome outcome = 2;
   // Why it failed, for a person; empty when it passed or runs.
   string message = 3;
+  // The run this step belongs to (`GetRun`).
+  string run_id = 4;
+}
+
+message ExportPytestRequest {}
+
+message ExportPytestResponse {
+  string source = 1;
+}
+
+message ListRunsRequest {}
+
+message ListRunsResponse {
+  repeated RunResult runs = 1;
+}
+
+message GetRunRequest {
+  string id = 1;
+}
+
+message GetRunResponse {
+  RunResult run = 1;
+  // The same run as a JSON file (tap-studio-run/1), to download.
+  string document = 2;
+}
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_RUNNING = 1;
+  // Every planned step ran and passed.
+  RUN_STATUS_PASSED = 2;
+  // A step failed, so the run ended there.
+  RUN_STATUS_FAILED = 3;
+  // It ended early with no failure: cancelled, interrupted or Studio shut down.
+  RUN_STATUS_STOPPED = 4;
+}
+
+// What one replay did (tap-studio-run/1), from Studio or `tap-studio replay`. It covers the steps
+// that finished and is not an execution journal: it cannot say whether input was sent by a step
+// that a crash or interruption cut off.
+message RunResult {
+  // Exactly "tap-studio-run/1".
+  string format = 1;
+  string id = 2;
+  google.protobuf.Timestamp started_at = 3;
+  // Absent while it runs.
+  google.protobuf.Timestamp finished_at = 4;
+  RunStatus status = 5;
+  string serial = 6;
+  // How many steps it set out to run, and how many finished.
+  int32 planned = 7;
+  int32 ran = 8;
+  string failed_step_id = 9;
+  // The parameter values it ran with. Secrets are never here: known values are also scrubbed from
+  // every message, which cannot catch a value the device or app has changed.
+  map<string, string> parameters = 10;
+  repeated StepResult steps = 11;
+  // More steps ran than a result keeps; `ran` still counts them.
+  bool truncated = 12;
+}
+
+message StepResult {
+  string step_id = 1;
+  Outcome outcome = 2;
+  string message = 3;
 }
 
 message SetRecordingRequest {
@@ -323,7 +695,7 @@ message GetRecordingRequest {}
 
 message GetRecordingResponse {
   Recording recording = 1;
-  // The same recording as its tap-recording/1 file (tap_studio.recording.dumps), so the page
+  // The same recording as its tap-recording/2 file (tap_studio.recording.dumps), so the page
   // exports exactly what the back end writes and validates.
   string document = 2;
   // Secrets the steps use whose values the studio does not have (an opened recording): Replay
@@ -331,14 +703,15 @@ message GetRecordingResponse {
   repeated string missing_secrets = 3;
 }
 
-// ---- tap-recording/1 ----------------------------------------------------------------------------
+// ---- tap-recording/2 ----------------------------------------------------------------------------
 //
 // The document is this message in proto3 JSON with the original (snake_case) field names, as
-// `tap-events/1`. Readers ignore unknown fields: additive changes keep `/1`. Rules proto cannot
-// state are checked by tap_studio.recording.validate and listed on each field.
+// `tap-events/1`. /2 adds explicit type/wait/scroll budgets which /1 readers would silently drop;
+// older Studio versions must refuse it. This Studio upgrades /1 documents on open. Rules proto
+// cannot state are checked by tap_studio.recording.validate and listed on each field.
 
 message Recording {
-  // Exactly "tap-recording/1".
+  // Exactly "tap-recording/2" when written; legacy /1 is upgraded on open.
   string format = 1;
   // When recording started.
   google.protobuf.Timestamp recorded_at = 2;
@@ -349,6 +722,20 @@ message Recording {
   // Every secret name the steps use, each once, so a replayer can ask for all of them up front.
   repeated string secrets = 6;
   repeated Step steps = 7;
+  // Test data a step can name instead of holding it, unique by name. Written to the file, so never
+  // a secret: use `secrets` for those.
+  repeated Parameter parameters = 8;
+}
+
+// A named value. It stands for text a step types or expects, resolved before anything runs. A
+// parameter is never part of a selector, and it is text, not a template: "${x}" in a step's own
+// text is just those characters.
+message Parameter {
+  // A letter or "_", then letters, digits or "_"; at most 64. Not also the name of a secret.
+  string name = 1;
+  // At most 4096 characters; may be empty.
+  string value = 2;
+  optional string description = 3;
 }
 
 message RecordedDevice {
@@ -398,7 +785,7 @@ message Step {
 
 // One command; a command with a selector is preceded by the wait that proved it could run.
 message ActionStep {
-  // On an element: tap, long_tap, double_tap, set_text, clear_text, scroll, swipe, fling, pinch,
+  // On an element: tap, long_tap, double_tap, multi_tap, hold, set_text, clear_text, scroll, swipe, fling, pinch,
   // drag, perform_ime_action, perform_accessibility_action or set_progress. On the device, with no
   // selector: press_key, open_system_panel, set_orientation, set_display_rotation,
   // unfreeze_rotation, dismiss_keyguard, hide_keyboard, set_clipboard, choose_permission,
@@ -414,6 +801,8 @@ message ActionStep {
   // Unspecified for the ops on the device. A drag's destination is its own: resolved by the driver
   // on the same screen, it needs no wait.
   SelectorOrigin selector_origin = 4;
+  // set_text only: the name of the parameter whose value is the text; `set_text.text` is then empty.
+  optional string parameter = 5;
 }
 
 // The element typeText flow, three commands: tap `selector`, await it focused (unless
@@ -427,10 +816,17 @@ message TypeStep {
     string text = 2;
     // The name of the secret whose value is typed.
     string secret = 3;
+    // The name of the parameter whose value is typed.
+    string parameter = 9;
   }
   // The SDKs' `await_focus = false`: for fields whose focus lands elsewhere.
   bool skip_focus_wait = 4;
   SelectorOrigin selector_origin = 5;
+  // Separate 1..120000 ms budgets for tap/type, initial selector wait, and the focus wait.
+  // Absent fields use the SDK defaults; none promises keyboard/IME readiness.
+  optional int64 timeout_ms = 6;
+  optional int64 precondition_timeout_ms = 7;
+  optional int64 focus_timeout_ms = 8;
 }
 
 // The SDKs' element waits (`ElementWait`).
@@ -460,8 +856,11 @@ message WaitStep {
   oneof value {
     string text = 3;
     int32 count = 4; // ≥ 0
+    string parameter = 7; // the name of the parameter whose value is the text
   }
   SelectorOrigin selector_origin = 5;
+  // 1..120000 ms; absent uses the SDK wait default.
+  optional int64 timeout_ms = 6;
 }
 
 // What an assertion checks, with the SDKs' element queries, once and at once.
@@ -491,8 +890,11 @@ message AssertionStep {
   oneof value {
     string text = 3;
     int32 count = 4; // ≥ 0
+    string parameter = 7; // the name of the parameter whose value is the text
   }
   SelectorOrigin selector_origin = 5;
+  // One query's command budget, 1..120000 ms; not a wait for the assertion to hold.
+  optional int64 timeout_ms = 6;
 }
 
 // The SDKs' `Element.scrollUntil`: scrolls `container` towards `direction` until `target` exists
@@ -512,11 +914,15 @@ message ScrollUntilStep {
   optional int32 distance_percent = 5;
   // The container's.
   SelectorOrigin selector_origin = 6;
+  // Separate 1..120000 ms search and initial container-wait budgets.
+  optional int64 timeout_ms = 7;
+  optional int64 precondition_timeout_ms = 8;
 }
 
 // An app wait, one command on the app's package: `wait_app_visible` (`App.awaitVisible`: the app
 // owns the focused window) or `wait_screen_stable` (`App.awaitScreenStable`, or its shorthands
-// `awaitSettled` for STABILITY_TREE and `awaitAnimationEnd` for STABILITY_PIXELS).
+// `awaitSettled` for STABILITY_TREE and `awaitAnimationEnd` for STABILITY_PIXELS). An empty
+// wait_screen_stable.package_name watches the whole screen; wait_app_visible requires a package.
 message AppWaitStep {
   tap.v1.Command command = 1;
 }

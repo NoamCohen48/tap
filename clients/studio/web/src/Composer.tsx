@@ -1,5 +1,5 @@
 import { create, equals } from "@bufbuild/protobuf";
-import { useId, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import type { StudioClient } from "./api";
 import { AppControls } from "./AppControls";
 import { DIRECTIONS, Directions, Group, Row, directionName } from "./controls";
@@ -13,10 +13,12 @@ import { Check, Condition, SelectorOrigin, type PerformRequest } from "./gen/stu
 import { isEditable, isScrollable, scrollableAround, shortClass, tapLabel } from "./geometry";
 import { Arrow } from "./icons";
 import { assertsFor, candidateChips, looksDynamic, waitsFor } from "./nodes";
+import { parseSelector } from "./parse";
 import type { Intent } from "./ScreenView";
 import * as steps from "./steps";
 import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
+import { PressControls } from "./PressControls";
 
 /** The composer's tabs: the three kinds of step on the selected element, then the app and the device. */
 export type Tab = Intent | "app" | "device";
@@ -49,6 +51,7 @@ export type Seek = {
 
 type Props = {
   client: StudioClient;
+  children?: ReactNode;
   tab: Tab;
   onTab: (tab: Tab) => void;
   /** The selected node, as on the newest frame that had it. */
@@ -64,6 +67,8 @@ type Props = {
   /** Picks the candidate steps on the node use. */
   onChoose: (node: ScreenNode, index: number) => void;
   onPerform: (request: PerformRequest) => void;
+  /** Adds the step without running it: a wait or check for a screen that is not here yet. */
+  onAdd: (request: PerformRequest) => void;
   /** How far swipes and scrolls move, in percent of the element. */
   distance: number;
   onDistance: (percent: number) => void;
@@ -96,11 +101,22 @@ type Props = {
  */
 export function Composer(props: Props) {
   const { tab, node, target } = props;
-  const count = useCount(props.client, props.onScreen ? target?.selector : undefined);
+  const checking = tab === "assert" || tab === "wait";
+  // Waits and assertions may be about what is not on the screen, so a selector can be typed.
+  const [typed, setTyped] = useState("");
+  const [withoutRunning, setWithoutRunning] = useState(false);
+  const parsed = useMemo(() => (typed.trim() ? parseSelector(typed) : null), [typed]);
+  const authored = useMemo<Target | null>(() => (checking && parsed && "selector" in parsed ? { selector: parsed.selector, origin: SelectorOrigin.EDITED } : null), [checking, parsed]);
+  const checkTarget = authored ?? target;
+  const count = useCount(props.client, authored?.selector ?? (props.onScreen ? target?.selector : undefined));
   const info = useElementInfo(props.client, props.onScreen && tab === "act" ? target?.selector : undefined);
   const picking = !!props.seek || !!props.drag;
   const live = count.state === "done" ? count.count : null;
   const usable = !!target && props.onScreen && !props.busy;
+  const checkUsable = !!checkTarget && !(parsed && "error" in parsed) && !props.busy;
+  // What a check offers follows the element on the screen; a typed selector has none.
+  const checkNode = !authored && props.onScreen ? node : null;
+  const submitCheck = withoutRunning ? props.onAdd : props.onPerform;
   const panel = useId();
   return (
     <section className={`panel composer tone-${tab}`} aria-label="Composer">
@@ -124,6 +140,7 @@ export function Composer(props: Props) {
         ))}
       </div>
       <div className="panel-b" role="tabpanel" id={panel} aria-labelledby={`${panel}-${tab}`}>
+        {props.children}
         {tab === "app" ? (
           <AppControls appPackage={props.appPackage} onAppPackage={props.onAppPackage} packages={props.packages} busy={props.busy} onPerform={props.onPerform} />
         ) : tab === "device" ? (
@@ -135,10 +152,9 @@ export function Composer(props: Props) {
         ) : (
           <>
             <Selected node={node} onScreen={props.onScreen} target={target} count={count} onChoose={props.onChoose} />
-            {node && target && (
-              <div key={`${tab}-${node.ref}`}>
-                {tab === "act" && (
-                  <ActOnElement
+            {tab === "act" && node && target && (
+              <div key={node.ref}>
+                <ActOnElement
                     node={node}
                     target={target}
                     usable={usable}
@@ -150,14 +166,52 @@ export function Composer(props: Props) {
                     onPerform={props.onPerform}
                     onSeek={props.onSeek}
                     onDrag={props.onDrag}
-                    info={info}
-                  />
-                )}
-                {tab === "assert" && <AssertOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
-                {tab === "wait" && <WaitOnElement node={node} target={target} usable={usable} live={live} onPerform={props.onPerform} />}
+                  info={info}
+                />
               </div>
             )}
-            {tab === "assert" && node && (
+            {checking && (
+              <div className="crow">
+                <label className="rl" htmlFor={`${panel}-typed`}>
+                  Selector
+                </label>
+                <div className="actions">
+                  <input
+                    id={`${panel}-typed`}
+                    className="grow mono"
+                    value={typed}
+                    spellCheck={false}
+                    placeholder={'Or type one, e.g. res("login")'}
+                    aria-invalid={!!parsed && "error" in parsed}
+                    onChange={(e) => setTyped(e.target.value)}
+                  />
+                </div>
+                <div className={`why${parsed && "error" in parsed ? " bad" : ""}`} aria-live="polite">
+                  {parsed && "error" in parsed
+                    ? `${parsed.error} (at ${parsed.at + 1})`
+                    : authored
+                      ? count.state === "done"
+                        ? `Matches ${count.count} element${count.count === 1 ? "" : "s"} now. It does not have to be on the screen.`
+                        : count.state === "failed"
+                          ? count.message
+                          : " "
+                      : "For an element that is not on the screen, or has gone."}
+                </div>
+                {checkTarget && (
+                  <label className="check">
+                    <input type="checkbox" checked={withoutRunning} onChange={(e) => setWithoutRunning(e.target.checked)} />
+                    Add to the recording without running it now
+                  </label>
+                )}
+              </div>
+            )}
+            {checking && checkTarget && (
+              <div key={`${tab}-${authored ? "typed" : (node?.ref ?? "none")}`}>
+                {tab === "assert" && <AssertOnElement node={checkNode} target={checkTarget} usable={checkUsable} live={live} verb={withoutRunning ? "Add" : "Assert"} onPerform={submitCheck} />}
+                {tab === "wait" && <WaitOnElement node={checkNode} target={checkTarget} usable={checkUsable} live={live} verb={withoutRunning ? "Add" : "Wait"} onPerform={submitCheck} />}
+              </div>
+            )}
+            {tab === "assert" && checkTarget && (
               <p className="hint-line">An assertion checks the element as it is now and fails at once. For something that is still on its way, use Wait.</p>
             )}
           </>
@@ -302,6 +356,7 @@ function ActOnElement({
           Drag to…
         </button>
       </Row>
+      <PressControls target={pressTarget} disabled={!usable} onPerform={onPerform} />
       <Row label="Swipe">
         <Directions verb="Swipe" disabled={!usable} onDirection={(d) => onPerform(steps.swipe(target, d, distance))} />
       </Row>
@@ -535,18 +590,20 @@ function ValueChecks({
   live,
   usable,
   verb,
+  tone,
   onText,
   onCount,
 }: {
-  node: ScreenNode;
+  node: ScreenNode | null;
   live: number | null;
   usable: boolean;
   verb: string;
+  tone: "assert" | "wait";
   onText: (text: string, contains: boolean) => void;
   onCount: (count: number) => void;
 }) {
   const id = useId();
-  const [text, setText] = useState(node.text ?? "");
+  const [text, setText] = useState(node?.text ?? "");
   const [contains, setContains] = useState(false);
   const [countText, setCountText] = useState<string | null>(null);
   const shown = countText ?? (live !== null ? String(live) : "");
@@ -574,7 +631,12 @@ function ValueChecks({
             </button>
           </span>
           <input id={`${id}-text`} className="grow" value={text} onChange={(e) => setText(e.target.value)} />
-          <button type="submit" className={`btn ${verb === "Assert" ? "assert" : "wait"}`} disabled={!usable}>
+          <button
+            type="submit"
+            className={`btn ${tone}`}
+            disabled={!usable || (contains && !text)}
+            title={contains && !text ? "Every text contains nothing: enter the text to look for" : undefined}
+          >
             {verb}
           </button>
         </div>
@@ -600,7 +662,7 @@ function ValueChecks({
             onChange={(e) => setCountText(e.target.value)}
           />
           <span className="unit">matching elements</span>
-          <button type="submit" className={`btn ${verb === "Assert" ? "assert" : "wait"}`} disabled={!usable || count === null}>
+          <button type="submit" className={`btn ${tone}`} disabled={!usable || count === null}>
             {verb}
           </button>
         </div>
@@ -614,12 +676,14 @@ function AssertOnElement({
   target,
   usable,
   live,
+  verb,
   onPerform,
 }: {
-  node: ScreenNode;
+  node: ScreenNode | null;
   target: Target;
   usable: boolean;
   live: number | null;
+  verb: string;
   onPerform: (r: PerformRequest) => void;
 }) {
   return (
@@ -635,7 +699,8 @@ function AssertOnElement({
         node={node}
         live={live}
         usable={usable}
-        verb="Assert"
+        verb={verb}
+        tone="assert"
         onText={(text, contains) => onPerform(steps.assertion(target, { check: contains ? Check.TEXT_CONTAINS : Check.TEXT_EQUALS, text }))}
         onCount={(count) => onPerform(steps.assertion(target, { check: Check.COUNT, count }))}
       />
@@ -648,12 +713,14 @@ function WaitOnElement({
   target,
   usable,
   live,
+  verb,
   onPerform,
 }: {
-  node: ScreenNode;
+  node: ScreenNode | null;
   target: Target;
   usable: boolean;
   live: number | null;
+  verb: string;
   onPerform: (r: PerformRequest) => void;
 }) {
   return (
@@ -676,7 +743,8 @@ function WaitOnElement({
         node={node}
         live={live}
         usable={usable}
-        verb="Wait"
+        verb={verb}
+        tone="wait"
         onText={(text, contains) => onPerform(steps.wait(target, { condition: contains ? Condition.TEXT_CONTAINS : Condition.TEXT_EQUALS, text }))}
         onCount={(count) => onPerform(steps.wait(target, { condition: Condition.COUNT, count }))}
       />

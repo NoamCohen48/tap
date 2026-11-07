@@ -1,7 +1,8 @@
 import { clone } from "@bufbuild/protobuf";
+import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { StudioClient } from "./api";
+import { TAB_ID, type StudioClient } from "./api";
 import { describeStep } from "./describe";
 import { DevicePicker } from "./DevicePicker";
 import { useAppPackage } from "./appPackage";
@@ -12,11 +13,14 @@ import { nodeFor, stepSelector, stepText } from "./edit";
 import {
   PerformRequestSchema,
   SelectorOrigin,
+  RunStatus,
   StepSchema,
   type InfoResponse,
   type Outcome,
+  type Parameter,
   type PerformRequest,
   type Recording,
+  type RunResult,
   type Session,
   type Step,
 } from "./gen/studio_pb";
@@ -29,13 +33,33 @@ import { ScreenView, type OverlayFilter } from "./ScreenView";
 import { useReplay, type ReplayRequest } from "./replay";
 import * as stepsApi from "./steps";
 import { synthesized, type Target } from "./steps";
-import { StepsPanel, type LastRun } from "./StepsPanel";
+import { ExportDrawer, StepsPanel, type LastRun } from "./StepsPanel";
+import { Library } from "./Library";
+import { ExecutionControls, requestBudgets, type Budgets } from "./ExecutionControls";
+import { Tools } from "./Tools";
 
 type Status = { kind: "loading" } | { kind: "ready"; info: InfoResponse } | { kind: "failed"; message: string };
 
 export function App({ client }: { client: StudioClient }) {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSessionState] = useState<Session | null>(null);
+  // A response can arrive after a newer watched session; the version decides.
+  const setSession = useCallback((next: Session) => setSessionState((now) => (now && next.version < now.version ? now : next)), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      while (!controller.signal.aborted) {
+        try {
+          for await (const r of client.watchSession({ tab: TAB_ID }, { signal: controller.signal })) if (r.session) setSession(r.session);
+        } catch {
+          // Reported by Info; the next attempt shows when the studio is back.
+        }
+        if (!controller.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    })();
+    return () => controller.abort();
+  }, [client, setSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,25 +68,122 @@ export function App({ client }: { client: StudioClient }) {
       (error: unknown) => !cancelled && setStatus({ kind: "failed", message: errorMessage(error) }),
     );
     client.getSession({}).then(
-      (r) => !cancelled && setSession(r.session ?? null),
+      (r) => {
+        if (!cancelled && r.session) setSession(r.session);
+      },
       () => undefined, // reported by Info
     );
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, setSession]);
 
+  const observing = !!session && isObserver(session);
   return (
     <div className="app">
+      {session && <ControlBanner client={client} session={session} onSession={setSession} />}
       {session?.device ? (
         <Workspace client={client} session={session} onSession={setSession} status={status} />
       ) : (
         <>
           <TopBar status={status} />
-          {session && <DevicePicker client={client} onSession={setSession} />}
+          {session && (
+            <main className="start">
+              <DevicePicker client={client} onSession={setSession} disabled={observing} />
+              <Offline client={client} session={session} onSession={setSession} disabled={observing} />
+            </main>
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/** Another tab controls this Studio: this one reads, and every change would be refused. */
+const isObserver = (session: Session) => session.controllerTab !== "" && session.controllerTab !== TAB_ID;
+
+/** Longer than the session stream's heartbeat (one second), which is how the server learns a page has gone. */
+const RELOAD_GRACE_MS = 1500;
+
+function ControlBanner({ client, session, onSession }: { client: StudioClient; session: Session; onSession: (session: Session) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  // Just after a reload the server still counts the page that went away as the controlling tab,
+  // until its next heartbeat. No other tab exists to warn about, so give that a moment.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(true), RELOAD_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  if (!isObserver(session) || !settled) return null;
+  return (
+    <div className="control-banner" role="status">
+      <span>
+        <b>Another tab controls this Studio.</b> This tab only watches. Taking control keeps what you typed here.
+      </span>
+      <button
+        type="button"
+        className="btn small"
+        disabled={session.operation !== ""}
+        title={session.operation ? "Available when the running operation has finished" : undefined}
+        onClick={() => {
+          setError(null);
+          client.takeControl({ tab: TAB_ID }).then(
+            (r) => r.session && onSession(r.session),
+            (e: unknown) => setError(errorMessage(e)),
+          );
+        }}
+      >
+        Take control
+      </button>
+      {error && <span role="alert">{error}</span>}
+    </div>
+  );
+}
+
+/** Why a run's failed step failed. */
+function failureIn(run: RunResult): string {
+  const step = run.steps.find((s) => s.stepId === run.failedStepId);
+  const outcome = step?.outcome;
+  return step?.message || outcome?.mismatch || outcome?.error?.message || outcome?.failure?.detail || "It did not pass.";
+}
+
+/** With no device: the saved recordings, and the recording opened from it to read and export. */
+function Offline({ client, session, onSession, disabled }: { client: StudioClient; session: Session; onSession: (session: Session) => void; disabled: boolean }) {
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const { recordingRevision } = session;
+  useEffect(() => {
+    let cancelled = false;
+    client.getRecording({}).then(
+      (r) => !cancelled && setSteps(r.recording?.steps ?? []),
+      () => !cancelled && setSteps([]), // nothing yet
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, recordingRevision]);
+  return (
+    <section className="offline" aria-label="Recordings">
+      <Library client={client} session={session} busy={disabled || session.operation !== ""} open onSession={onSession} />
+      {steps.length > 0 && (
+        <div className="offline-open">
+          <div className="start-h">
+            <h2>Open recording</h2>
+            <button type="button" className="btn small" onClick={() => setExporting(true)}>
+              Export
+            </button>
+          </div>
+          <ol aria-label="Steps of the open recording">
+            {steps.map((step) => (
+              <li key={step.id}>
+                <code>{describeStep(step)}</code>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {exporting && <ExportDrawer client={client} onClose={() => setExporting(false)} />}
+    </section>
   );
 }
 
@@ -76,7 +197,7 @@ function TopBar({ status, children }: { status: Status; children?: ReactNode }) 
       {children ?? (
         <span className="status" role="status">
           {status.kind === "loading" && "Connecting…"}
-          {status.kind === "ready" && `${status.info.recorder} · writes ${status.info.format}`}
+          {status.kind === "ready" && status.info.recorder}
           {status.kind === "failed" && `Cannot reach tap-studio: ${status.message}`}
         </span>
       )}
@@ -84,11 +205,14 @@ function TopBar({ status, children }: { status: Status; children?: ReactNode }) 
   );
 }
 
-type RecordingState = { steps: Step[]; missingSecrets: string[] };
+type RecordingState = { steps: Step[]; missingSecrets: string[]; parameters: Parameter[] };
 
 /** `launched`: the cold launch was just performed as step 1, so the replay starts after it and counts it. */
 type Checked = { launch?: boolean; launched?: boolean };
-type Dialog = { kind: "launch"; request: ReplayRequest } | { kind: "secrets"; names: string[]; request: ReplayRequest; checked: Checked };
+type Dialog =
+  | { kind: "launch"; request: ReplayRequest }
+  | { kind: "secrets"; names: string[]; request: ReplayRequest; checked: Checked }
+  | { kind: "discard"; then: () => void };
 
 function Workspace({
   client,
@@ -110,16 +234,25 @@ function Workspace({
   const [selected, setSelected] = useState<ScreenNode | null>(null);
   // The candidate picked in the composer for one node; steps on other nodes use their first.
   const [chosen, setChosen] = useState<{ ref: string; index: number } | null>(null);
-  const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [] });
+  const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [], parameters: [] });
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
+  const [dirty, setDirtyState] = useState(false);
+  // Read by the guards: a click can run before the render that this state would give it.
+  const dirtyNow = useRef(false);
+  const setDirty = useCallback((value: boolean) => {
+    dirtyNow.current = value;
+    setDirtyState(value);
+  }, []);
   const [busy, setBusy] = useState(false);
   const running = useRef(false); // set at once, so a second click cannot start another step
   const [lastRun, setLastRun] = useState<LastRun>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [distance, setDistance] = useState(stepsApi.DEFAULT_DISTANCE);
+  const [budgets, setBudgets] = useState<Budgets>({});
   const [seek, setSeek] = useState<Seek | null>(null);
   const [drag, setDrag] = useState<DragFrom | null>(null);
   const [revision, setRevision] = useState(0);
+  const history = useRef({ undo: () => undefined as unknown, redo: () => undefined as unknown }); // for the key handler
   const searching = useRef(false); // for the key handler: the tab cannot change during a search or a drag
   searching.current = seek !== null || drag !== null;
   const { steps } = recording;
@@ -131,25 +264,37 @@ function Workspace({
 
   const apply = useCallback((r: { recording?: Recording; missingSecrets: string[] }) => {
     const next = r.recording?.steps ?? [];
-    setRecording({ steps: next, missingSecrets: r.missingSecrets });
+    setRecording({ steps: next, missingSecrets: r.missingSecrets, parameters: r.recording?.parameters ?? [] });
     setSelectedStep((id) => (id && next.some((s) => s.id === id) ? id : null));
   }, []);
 
+  // The server's recording is the truth: read it again when another tab changed it, or a step a
+  // cancelled request left behind has finished.
+  const { recordingRevision } = session;
   useEffect(() => {
     let cancelled = false;
     client.getRecording({}).then(
       (r) => !cancelled && apply(r),
-      (e: unknown) =>
-        !cancelled && !(e instanceof ConnectError && e.code === Code.NotFound) && setLastRun({ tone: "fail", text: errorMessage(e) }),
+      (e: unknown) => {
+        if (cancelled) return;
+        if (e instanceof ConnectError && e.code === Code.NotFound) apply({ missingSecrets: [] });
+        else setLastRun({ tone: "fail", text: errorMessage(e) });
+      },
     );
     return () => {
       cancelled = true;
     };
-  }, [client, apply]);
+  }, [client, apply, recordingRevision]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]")) return;
+      if (document.querySelector('[aria-modal="true"]')) return; // the dialog has the keyboard
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        (e.shiftKey ? history.current.redo : history.current.undo)();
+        return;
+      }
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "Escape") {
         setSeek(null);
@@ -185,7 +330,7 @@ function Workspace({
       const sent = clone(PerformRequestSchema, request);
       sent.beforeStepId = before;
       try {
-        const response = await client.perform(sent);
+        const response = await client.perform(requestBudgets(sent, budgets));
         const step = response.step!;
         if (response.recorded) {
           setRecording((r) => {
@@ -210,7 +355,7 @@ function Workspace({
         setRevision((n) => n + 1);
       }
     },
-    [client, replay, selectedStep, steps],
+    [client, replay, selectedStep, steps, budgets],
   );
 
   const change = async (call: () => Promise<{ session?: Session }>) => {
@@ -222,13 +367,15 @@ function Workspace({
     }
   };
 
-  const edit = async (call: () => Promise<{ recording?: Recording; missingSecrets: string[] }>) => {
+  const edit = async (call: () => Promise<{ recording?: Recording; missingSecrets: string[] }>): Promise<boolean> => {
     replay.clearSummary();
     try {
       apply(await call());
       setLastRun(null);
+      return true;
     } catch (e) {
       setLastRun({ tone: "fail", text: errorMessage(e) });
+      return false;
     }
   };
 
@@ -321,14 +468,69 @@ function Workspace({
   const packages = [...new Set(nodes.map((n) => n.windowPackage).filter(Boolean))];
   const current = selected ? (nodes.find((n) => n.ref === selected.ref) ?? null) : null;
   const inspected = current ?? selected;
-  const locked = busy || replay.running;
+  const observing = isObserver(session);
+  const finishing = session.operation !== "" && !busy && !replay.running;
+  // A stop drops the replay stream, so the step already sent finishes unseen. Its result is in the
+  // run, which may have failed: say that, rather than how many steps the page saw finish.
+  const stoppedAfter = replay.summary?.stoppedAfter;
+  const settleReplay = replay.settle;
+  useEffect(() => {
+    if (stoppedAfter === undefined || finishing) return;
+    let cancelled = false;
+    client.listRuns({}).then(
+      ({ runs }) => {
+        const run = runs[0];
+        // Stopped before it began, no run was kept: the newest one is an earlier replay's.
+        if (cancelled || !run?.startedAt || timestampDate(run.startedAt).getTime() < stoppedAfter) return;
+        if (run.status === RunStatus.RUNNING) return;
+        if (run.status !== RunStatus.FAILED) return settleReplay(run, "");
+        // The list holds summaries: why it failed is in the whole run.
+        return client.getRun({ id: run.id }).then((whole) => {
+          if (!cancelled) settleReplay(run, whole.run ? failureIn(whole.run) : "It did not pass.");
+        });
+      },
+      () => undefined, // the count stands
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, stoppedAfter, finishing, settleReplay]);
+  const locked = busy || replay.running || session.operation !== "" || observing;
   const seeking = seek ? (nodeFor(nodes, seek.container.selector) ?? seek.containerNode) : null;
 
-  const selectStep = (stepId: string | null) => {
-    setSelectedStep(stepId);
-    const step = steps.find((s) => s.id === stepId);
-    const node = step && nodeFor(nodes, stepSelector(step));
-    if (node) setSelected(node);
+  // The recording lives in the server, but an open step's unsaved edits only here.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const unlessDiscarding = (then: () => void) => (dirtyNow.current ? setDialog({ kind: "discard", then }) : then());
+
+  const undo = () => {
+    if (session.canUndo && !locked) void edit(() => client.undoRecording({}));
+  };
+  const redo = () => {
+    if (session.canRedo && !locked) void edit(() => client.redoRecording({}));
+  };
+  history.current = { undo, redo };
+
+  const selectStep = (stepId: string | null) =>
+    unlessDiscarding(() => {
+      setSelectedStep(stepId);
+      const step = steps.find((s) => s.id === stepId);
+      const node = step && nodeFor(nodes, stepSelector(step));
+      if (node) setSelected(node);
+    });
+
+  /** An element picked on the screen or in the tree: the same choice by mouse or keyboard. */
+  const pick = (node: ScreenNode) => {
+    if (seek) return void pickTarget(seek, node);
+    if (drag) return void pickDrop(drag, node);
+    setSelected(node);
+    // Picking an element is for a step on it: leave the App and Device tabs.
+    setTab((t) => (t === "app" || t === "device" ? "act" : t));
   };
 
   return (
@@ -344,8 +546,8 @@ function Workspace({
             className="iconbtn"
             aria-label="Release the device"
             title="Release the device"
-            disabled={replay.running}
-            onClick={() => change(() => client.release({}))}
+            disabled={locked}
+            onClick={() => unlessDiscarding(() => void change(() => client.release({})))}
           >
             <Eject />
           </button>
@@ -355,6 +557,7 @@ function Workspace({
           type="button"
           className="rec"
           aria-pressed={session.recording}
+          disabled={locked}
           title={session.recording ? "Pause: steps still run on the device but are not recorded" : "Resume recording"}
           onClick={() => change(() => client.setRecording({ recording: !session.recording }))}
         >
@@ -371,13 +574,7 @@ function Workspace({
           onOverlay={setOverlay}
           selectedRef={inspected?.ref ?? null}
           busy={locked}
-          onSelect={(node) => {
-            if (seek) return void pickTarget(seek, node);
-            if (drag) return void pickDrop(drag, node);
-            setSelected(node);
-            // Picking an element is for a step on it: leave the App and Device tabs.
-            setTab((t) => (t === "app" || t === "device" ? "act" : t));
-          }}
+          onSelect={pick}
           targetOf={targetOf}
           seeking={seeking}
           dragging={drag ? (nodes.find((n) => n.ref === drag.node.ref) ?? drag.node) : null}
@@ -397,6 +594,12 @@ function Workspace({
             target={inspected ? targetOf(inspected) : null}
             onChoose={(node, index) => setChosen({ ref: node.ref, index })}
             onPerform={(request) => void perform(request)}
+            onAdd={(request) => {
+              const index = selectedStep ? steps.findIndex((s) => s.id === selectedStep) : -1;
+              const beforeStepId = index >= 0 ? (steps[index + 1]?.id ?? "") : "";
+              const { step, secretValue } = requestBudgets(request, budgets);
+              void edit(() => client.addStep({ step, secretValue, beforeStepId }));
+            }}
             distance={distance}
             onDistance={setDistance}
             seek={seek}
@@ -410,25 +613,34 @@ function Workspace({
             appPackage={appPackage}
             onAppPackage={setAppPackage}
             packages={packages}
-          />
-          <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={setSelected} />
+          >
+            <details className="execution-defaults"><summary>Defaults for new steps</summary><ExecutionControls values={budgets} onChange={setBudgets} /></details>
+            <Tools client={client} appPackage={appPackage} onAppPackage={setAppPackage} disabled={locked} onBusy={setBusy} />
+          </Composer>
+          <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={pick} />
         </div>
         <StepsPanel
           client={client}
           steps={steps}
           missingSecrets={recording.missingSecrets}
           recording={session.recording}
-          lastRun={replay.running ? { tone: "info", text: "Replaying…" } : (summary ?? lastRun)}
+          lastRun={
+            replay.running
+              ? { tone: "info", text: replay.stopping ? "Stopping: no further step will start." : "Replaying…" }
+              : finishing && !observing
+                ? { tone: "info", text: "Finishing what was already sent to the device. It cannot be interrupted, and its result is not known yet." }
+                : (summary ?? lastRun)
+          }
           selectedId={selectedStep}
           states={replay.states}
           replaying={replay.running}
-          busy={busy}
+          busy={locked}
           nodes={nodes}
           onSelect={selectStep}
           onNewRecording={() =>
             change(async () => {
               const response = await client.newRecording({});
-              setRecording({ steps: [], missingSecrets: [] });
+              setRecording({ steps: [], missingSecrets: [], parameters: [] });
               setSelectedStep(null);
               setLastRun(null);
               replay.clearSummary();
@@ -448,8 +660,35 @@ function Workspace({
           onUpdate={(step, secretValue) => edit(() => client.updateStep({ step, secretValue }))}
           onDelete={(stepId) => edit(() => client.deleteStep({ stepId }))}
           onMove={(stepId, beforeStepId) => edit(() => client.moveStep({ stepId, beforeStepId }))}
+          onDuplicate={(stepId) => edit(() => client.duplicateStep({ stepId }))}
+          onDirty={setDirty}
+          session={session}
+          onSession={onSession}
+          parameters={recording.parameters}
+          onParameters={(parameters) => edit(() => client.setParameters({ parameters }))}
+          canUndo={session.canUndo}
+          canRedo={session.canRedo}
+          onUndo={undo}
+          onRedo={redo}
         />
       </main>
+      {dialog?.kind === "discard" && (
+        <ChoiceDialog
+          title="Discard your changes to this step?"
+          body={<p>The edits in the open step have not been saved.</p>}
+          choices={[
+            {
+              label: "Discard",
+              primary: true,
+              onChoose: () => {
+                setDialog(null);
+                dialog.then();
+              },
+            },
+          ]}
+          onCancel={() => setDialog(null)}
+        />
+      )}
       {dialog?.kind === "launch" && (
         <ChoiceDialog
           title="Start from a cold launch?"

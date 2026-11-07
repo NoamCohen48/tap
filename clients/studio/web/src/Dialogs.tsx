@@ -1,22 +1,58 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * What makes a dialog modal: focus moves in and stays in, the rest of the page is inert, Escape
+ * cancels, and closing puts focus back where it was. Once per dialog, not per render: frames
+ * re-render the page, and focus must not jump while someone types.
+ */
+export function useModal(box: RefObject<HTMLElement | null>, onCancel: () => void, first = "input, button.primary, button") {
+  const cancel = useRef(onCancel);
+  cancel.current = onCancel;
+  useEffect(() => {
+    const dialog = box.current;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const others = Array.from(document.body.children).filter((el): el is HTMLElement => el instanceof HTMLElement && !el.contains(dialog) && !el.hasAttribute("inert"));
+    for (const el of others) el.setAttribute("inert", "");
+    dialog?.querySelector<HTMLElement>(first)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return cancel.current();
+      if (e.key !== "Tab" || !dialog) return;
+      const stops = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+      const [start, end] = [stops[0], stops[stops.length - 1]];
+      if (!start || !end) return e.preventDefault();
+      if (e.shiftKey && (document.activeElement === start || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        end.focus();
+      } else if (!e.shiftKey && (document.activeElement === end || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        start.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      for (const el of others) el.removeAttribute("inert");
+      before?.focus();
+    };
+  }, [box, first]);
+}
 
 /** A small modal: a question and its answers. Escape and the backdrop cancel. */
 function Modal({ title, children, onCancel }: { title: string; children: ReactNode; onCancel: () => void }) {
   const id = useId();
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    box.current?.querySelector<HTMLElement>("input, button.primary, button")?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-  return (
+  useModal(box, onCancel);
+  return createPortal(
     <div className="modal-back" onClick={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby={id} ref={box}>
         <h2 id={id}>{title}</h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

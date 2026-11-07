@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import pathlib
 import secrets
 import socket
 import sys
@@ -11,8 +12,9 @@ import webbrowser
 
 import uvicorn
 
-from . import __version__
+from . import __version__, export, headless
 from ._gen import studio_pb2 as studio
+from .recording import RecordingError, load
 from .server import create_app
 from .service import Studio
 
@@ -20,7 +22,7 @@ from .service import Studio
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tap-studio",
-        description="Inspect an Android app's screen in the browser and record what you do as tap-recording/1 JSON.",
+        description="Inspect an Android app's screen in the browser and record what you do as tap-recording/2 JSON (opens legacy /1).",
     )
     parser.add_argument("--port", type=int, default=0, help="loopback port to serve on (default: a free one)")
     parser.add_argument("--no-open", action="store_true", help="print the link but do not open a browser")
@@ -31,12 +33,85 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--serial", help="attach this device at start")
     parser.add_argument("--version", action="version", version=f"tap-studio {__version__}")
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND", title="without a browser")
+    replay = commands.add_parser(
+        "replay",
+        help="run a recording on a device",
+        description="Run a recording on a device, with no browser. Needs a running Tap server (`tap start`). Nothing is retried.",
+    )
+    replay.add_argument("recording", help="a tap-recording file")
+    replay.add_argument("--serial", required=True, help="the device to run it on")
+    replay.add_argument("--param", action="append", default=[], metavar="NAME=VALUE", help="a parameter's value for this run")
+    replay.add_argument(
+        "--secret", action="append", default=[], metavar="NAME=ENV_VAR", help="the environment variable holding a secret's value (never the value itself)"
+    )
+    replay.add_argument("--from-step", metavar="ID", help="start at this step")
+    replay.add_argument("--results", metavar="FILE", help="write the run's results (tap-studio-run/1) to this new file")
+    replay.add_argument("--evidence-dir", metavar="DIR", help="after a failure, save a screenshot, hierarchy and device logs here; they can show private data")
+    exported = commands.add_parser("export", help="write a recording as a pytest file", description="Write a recording as a pytest file on tap-e2e's public API.")
+    exported.add_argument("recording", help="a tap-recording file")
+    exported.add_argument("-o", "--output", metavar="FILE", help="write to this new file (default: standard output)")
+    exported.add_argument("--name", help="the test's name (default: the file's)")
     return parser
+
+
+def _pairs(values: list[str], flag: str) -> dict[str, str] | None:
+    pairs: dict[str, str] = {}
+    for value in values:
+        name, separator, rest = value.partition("=")
+        if not separator or not name:
+            print(f"tap-studio: {flag} takes NAME=VALUE, not {value.split('=')[0]!r}", file=sys.stderr)
+            return None
+        if name in pairs:
+            print(f"tap-studio: {flag} {name} is given twice", file=sys.stderr)
+            return None
+        pairs[name] = rest
+    return pairs
+
+
+def _replay(args: argparse.Namespace) -> int:
+    parameters, secrets = _pairs(args.param, "--param"), _pairs(args.secret, "--secret")
+    if parameters is None or secrets is None:
+        return headless.INVALID
+    return headless.replay(
+        args.recording,
+        args.serial,
+        parameters=parameters,
+        secret_env=secrets,
+        from_step=args.from_step,
+        results=args.results,
+        evidence_dir=args.evidence_dir,
+    )
+
+
+def _export(args: argparse.Namespace) -> int:
+    try:
+        source = export.to_pytest(load(args.recording), args.name or pathlib.Path(args.recording).name.split(".")[0])
+    except (export.ExportError, RecordingError) as error:
+        print(f"tap-studio: cannot export {args.recording}: {error}", file=sys.stderr)
+        return headless.INVALID
+    except OSError as error:
+        print(f"tap-studio: cannot read {args.recording}: {error.strerror}", file=sys.stderr)
+        return headless.INVALID
+    if not args.output:
+        sys.stdout.write(source)
+        return 0
+    try:
+        with open(args.output, "x", encoding="utf-8") as file:
+            file.write(source)
+    except OSError as error:
+        print(f"tap-studio: cannot write {args.output}: {error.strerror}", file=sys.stderr)
+        return headless.INVALID
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.command == "replay":
+        return _replay(args)
+    if args.command == "export":
+        return _export(args)
     token = secrets.token_urlsafe(32)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

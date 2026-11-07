@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import cast
+from unittest.mock import Mock
 
 import pytest
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
+from connectrpc.request import RequestContext
 from google.protobuf import json_format
 
 from tap_e2e import TapError
@@ -72,16 +75,31 @@ async def test_no_daemon_is_unavailable_and_nothing_attached_is_a_precondition(d
         raise TapError("no server running")
 
     lonely = Studio(no_server)
-    await refused(lonely.list_devices(pb.ListDevicesRequest(), None), Code.UNAVAILABLE, "tap start")
-    await refused(lonely.attach(attach_request("emulator-5554"), None), Code.UNAVAILABLE)
-    await refused(lonely.perform(tap_search(), None), Code.FAILED_PRECONDITION, "no device attached")
-    await refused(lonely.count(pb.CountRequest(), None), Code.FAILED_PRECONDITION)
-    await refused(anext(lonely.frames(pb.FramesRequest(), None)), Code.FAILED_PRECONDITION)
-    await refused(lonely.attach(pb.AttachRequest(), None), Code.INVALID_ARGUMENT, "serial")
+    ctx = cast(RequestContext, Mock(spec=RequestContext))
+    await refused(lonely.list_devices(pb.ListDevicesRequest(), ctx), Code.UNAVAILABLE, "tap start")
+    await refused(lonely.attach(attach_request("emulator-5554"), ctx), Code.UNAVAILABLE)
+    await refused(lonely.perform(tap_search(), ctx), Code.FAILED_PRECONDITION, "no device attached")
+    await refused(lonely.count(pb.CountRequest(), ctx), Code.FAILED_PRECONDITION)
+    await refused(anext(lonely.frames(pb.FramesRequest(), ctx)), Code.FAILED_PRECONDITION)
+    await refused(lonely.attach(pb.AttachRequest(), ctx), Code.INVALID_ARGUMENT, "serial")
 
 
 async def test_list_devices_asks_the_daemon(studio):
     assert list((await studio.list_devices(pb.ListDevicesRequest(), None)).devices) == []
+
+
+async def test_list_devices_says_what_each_device_is(studio, daemon):
+    daemon.devices.listed = [
+        tap.DeviceEntry(
+            serial="emulator-5554",
+            state=tap.DEVICE_FREE,
+            properties=tap.DeviceProperties(api_level=34, model="sdk_gphone64", emulator=True),
+        ),
+        tap.DeviceEntry(serial="R58", state=tap.DEVICE_UNAUTHORIZED),
+    ]
+    free, unreadable = (await studio.list_devices(pb.ListDevicesRequest(), None)).devices
+    assert (free.api_level, free.model, free.emulator) == (34, "sdk_gphone64", True)
+    assert (unreadable.api_level, unreadable.model, unreadable.emulator) == (0, "", False)
 
 
 async def test_a_passing_step_is_recorded_with_its_wait_and_the_header(attached, daemon):
@@ -92,7 +110,7 @@ async def test_a_passing_step_is_recorded_with_its_wait_and_the_header(attached,
     [first, second] = [c.WhichOneof("op") for c in daemon.devices.commands[-2:]]
     assert (first, second) == ("wait_visible", "tap")
     recording = (await attached.get_recording(pb.GetRecordingRequest(), None)).recording
-    assert (recording.format, recording.device.serial, recording.device.api_level) == ("tap-recording/1", "emulator-5554", 34)
+    assert (recording.format, recording.device.serial, recording.device.api_level) == ("tap-recording/2", "emulator-5554", 34)
     assert recording.recorder.startswith("tap-studio ") and recording.recorded_at.seconds > 0
     assert [s.id for s in recording.steps] == ["s1"]
     document = (await attached.get_recording(pb.GetRecordingRequest(), None)).document
