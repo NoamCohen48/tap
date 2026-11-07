@@ -123,22 +123,25 @@ export function withMovement(step: Step, { direction, distance, maxScrolls }: Mo
 }
 
 /** The text a step enters or checks: typed text, or the name of the secret it enters. */
-export type StepText = { text: string } | { secret: string };
+export type StepText = { text: string } | { secret: string } | { parameter: string };
 
 export function stepText(step: Step): StepText | null {
   switch (step.kind.case) {
     case "action": {
-      const { command, secret } = step.kind.value;
+      const { command, secret, parameter } = step.kind.value;
       if (command?.op.case !== "setText") return null;
+      if (parameter !== undefined) return { parameter };
       return secret !== undefined ? { secret } : { text: command.op.value.text };
     }
     case "type": {
       const input = step.kind.value.input;
       if (input.case === "secret") return { secret: input.value };
+      if (input.case === "parameter") return { parameter: input.value };
       return { text: input.value ?? "" };
     }
     case "wait":
     case "assertion":
+      if (step.kind.value.value.case === "parameter") return { parameter: step.kind.value.value.value };
       return step.kind.value.value.case === "text" ? { text: step.kind.value.value.value } : null;
     default:
       return null;
@@ -154,10 +157,12 @@ export function withText(step: Step, value: StepText): Step {
       if (op?.case !== "setText") break;
       op.value.text = "text" in value ? value.text : "";
       copy.kind.value.secret = "secret" in value ? value.secret : undefined;
+      copy.kind.value.parameter = "parameter" in value ? value.parameter : undefined;
       break;
     }
     case "type":
-      copy.kind.value.input = "secret" in value ? { case: "secret", value: value.secret } : { case: "text", value: value.text };
+      copy.kind.value.input =
+        "secret" in value ? { case: "secret", value: value.secret } : "parameter" in value ? { case: "parameter", value: value.parameter } : { case: "text", value: value.text };
       break;
     case "wait":
     case "assertion":
@@ -189,6 +194,7 @@ export function stepChips(step: Step, missingSecrets: readonly string[]): Chip[]
   }
   if (stepOrigin(step) === SelectorOrigin.EDITED) chips.push({ text: "typed selector", tone: "info" });
   const text = stepText(step);
+  if (text && "parameter" in text) chips.push({ text: "parameter", tone: "info", title: `The value of ${text.parameter}` });
   if (text && "secret" in text) {
     const missing = missingSecrets.includes(text.secret);
     chips.push(

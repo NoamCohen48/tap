@@ -327,7 +327,7 @@ const TEXT_CHECKS: readonly number[] = [Check.TEXT_EQUALS, Check.TEXT_CONTAINS];
 const TEXT_CONDITIONS: readonly number[] = [Condition.TEXT_EQUALS, Condition.TEXT_CONTAINS];
 
 /** A wait's condition or an assertion's check, with the value it takes. */
-function Expectation({ step, onChange }: { step: Step; onChange: () => void }) {
+function Expectation({ step, parameters, onChange }: { step: Step; parameters: readonly string[]; onChange: () => void }) {
   if (step.kind.case !== "wait" && step.kind.case !== "assertion") return null;
   const value = step.kind.value;
   const wait = step.kind.case === "wait";
@@ -350,7 +350,7 @@ function Expectation({ step, onChange }: { step: Step; onChange: () => void }) {
             const text = wait ? TEXT_CONDITIONS.includes(next) : TEXT_CHECKS.includes(next);
             const count = next === (wait ? Condition.COUNT : Check.COUNT);
             const before = value.value;
-            value.value = text ? { case: "text", value: before.case === "text" ? before.value : "" } : count ? { case: "count", value: before.case === "count" ? before.value : 0 } : { case: undefined };
+            value.value = text ? (before.case === "text" || before.case === "parameter" ? before : { case: "text", value: "" }) : count ? { case: "count", value: before.case === "count" ? before.value : 0 } : { case: undefined };
             onChange();
           }}
         >
@@ -361,7 +361,26 @@ function Expectation({ step, onChange }: { step: Step; onChange: () => void }) {
           ))}
         </select>
       </label>
-      {takesText && (
+      {takesText && (parameters.length > 0 || value.value.case === "parameter") && (
+        <label className="field">
+          <span>From a parameter</span>
+          <select
+            value={value.value.case === "parameter" ? value.value.value : ""}
+            onChange={(e) => {
+              value.value = e.target.value ? { case: "parameter", value: e.target.value } : { case: "text", value: "" };
+              onChange();
+            }}
+          >
+            <option value="">No: the text below</option>
+            {[...new Set([...parameters, ...(value.value.case === "parameter" ? [value.value.value] : [])])].map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {takesText && value.value.case !== "parameter" && (
         <label className="field">
           <span>Expected text</span>
           <input
@@ -394,7 +413,7 @@ function Expectation({ step, onChange }: { step: Step; onChange: () => void }) {
 
 /** Every value of the step that the editor has no control of its own for. `step` is the draft: it
  *  is changed in place and `onChange` says so. */
-export function StepValues({ step, onChange }: { step: Step; onChange: () => void }) {
+export function StepValues({ step, parameters, onChange }: { step: Step; parameters: readonly string[]; onChange: () => void }) {
   const kind = step.kind;
   switch (kind.case) {
     case "app":
@@ -436,7 +455,7 @@ export function StepValues({ step, onChange }: { step: Step; onChange: () => voi
       );
     case "wait":
     case "assertion":
-      return <Expectation step={step} onChange={onChange} />;
+      return <Expectation step={step} parameters={parameters} onChange={onChange} />;
     case "deviceAssertion":
       return (
         <fieldset>

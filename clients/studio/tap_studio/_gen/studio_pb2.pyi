@@ -559,6 +559,20 @@ class RedoRecordingResponse(_message.Message):
     missing_secrets: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
 
+class SetParametersRequest(_message.Message):
+    __slots__ = ("parameters",)
+    PARAMETERS_FIELD_NUMBER: _ClassVar[int]
+    parameters: _containers.RepeatedCompositeFieldContainer[Parameter]
+    def __init__(self, parameters: _Optional[_Iterable[_Union[Parameter, _Mapping]]] = ...) -> None: ...
+
+class SetParametersResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
 class OpenRecordingRequest(_message.Message):
     __slots__ = ("document",)
     DOCUMENT_FIELD_NUMBER: _ClassVar[int]
@@ -639,20 +653,32 @@ class GetRecordingResponse(_message.Message):
     def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., document: _Optional[str] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Recording(_message.Message):
-    __slots__ = ("format", "recorded_at", "recorder", "device", "secrets", "steps")
+    __slots__ = ("format", "recorded_at", "recorder", "device", "secrets", "steps", "parameters")
     FORMAT_FIELD_NUMBER: _ClassVar[int]
     RECORDED_AT_FIELD_NUMBER: _ClassVar[int]
     RECORDER_FIELD_NUMBER: _ClassVar[int]
     DEVICE_FIELD_NUMBER: _ClassVar[int]
     SECRETS_FIELD_NUMBER: _ClassVar[int]
     STEPS_FIELD_NUMBER: _ClassVar[int]
+    PARAMETERS_FIELD_NUMBER: _ClassVar[int]
     format: str
     recorded_at: _timestamp_pb2.Timestamp
     recorder: str
     device: RecordedDevice
     secrets: _containers.RepeatedScalarFieldContainer[str]
     steps: _containers.RepeatedCompositeFieldContainer[Step]
-    def __init__(self, format: _Optional[str] = ..., recorded_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., recorder: _Optional[str] = ..., device: _Optional[_Union[RecordedDevice, _Mapping]] = ..., secrets: _Optional[_Iterable[str]] = ..., steps: _Optional[_Iterable[_Union[Step, _Mapping]]] = ...) -> None: ...
+    parameters: _containers.RepeatedCompositeFieldContainer[Parameter]
+    def __init__(self, format: _Optional[str] = ..., recorded_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., recorder: _Optional[str] = ..., device: _Optional[_Union[RecordedDevice, _Mapping]] = ..., secrets: _Optional[_Iterable[str]] = ..., steps: _Optional[_Iterable[_Union[Step, _Mapping]]] = ..., parameters: _Optional[_Iterable[_Union[Parameter, _Mapping]]] = ...) -> None: ...
+
+class Parameter(_message.Message):
+    __slots__ = ("name", "value", "description")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    value: str
+    description: str
+    def __init__(self, name: _Optional[str] = ..., value: _Optional[str] = ..., description: _Optional[str] = ...) -> None: ...
 
 class RecordedDevice(_message.Message):
     __slots__ = ("serial", "api_level", "manufacturer", "model")
@@ -697,22 +723,25 @@ class Step(_message.Message):
     def __init__(self, id: _Optional[str] = ..., note: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., app: _Optional[_Union[_event_log_pb2.AppCall, _Mapping]] = ..., action: _Optional[_Union[ActionStep, _Mapping]] = ..., type: _Optional[_Union[TypeStep, _Mapping]] = ..., wait: _Optional[_Union[WaitStep, _Mapping]] = ..., assertion: _Optional[_Union[AssertionStep, _Mapping]] = ..., scroll_until: _Optional[_Union[ScrollUntilStep, _Mapping]] = ..., app_wait: _Optional[_Union[AppWaitStep, _Mapping]] = ..., device_wait: _Optional[_Union[DeviceWaitStep, _Mapping]] = ..., device: _Optional[_Union[_event_log_pb2.DeviceCall, _Mapping]] = ..., device_assertion: _Optional[_Union[DeviceAssertionStep, _Mapping]] = ...) -> None: ...
 
 class ActionStep(_message.Message):
-    __slots__ = ("command", "wait", "secret", "selector_origin")
+    __slots__ = ("command", "wait", "secret", "selector_origin", "parameter")
     COMMAND_FIELD_NUMBER: _ClassVar[int]
     WAIT_FIELD_NUMBER: _ClassVar[int]
     SECRET_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    PARAMETER_FIELD_NUMBER: _ClassVar[int]
     command: _command_pb2.Command
     wait: _command_pb2.Command
     secret: str
     selector_origin: SelectorOrigin
-    def __init__(self, command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., wait: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., secret: _Optional[str] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+    parameter: str
+    def __init__(self, command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., wait: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., secret: _Optional[str] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., parameter: _Optional[str] = ...) -> None: ...
 
 class TypeStep(_message.Message):
-    __slots__ = ("selector", "text", "secret", "skip_focus_wait", "selector_origin", "timeout_ms", "precondition_timeout_ms", "focus_timeout_ms")
+    __slots__ = ("selector", "text", "secret", "parameter", "skip_focus_wait", "selector_origin", "timeout_ms", "precondition_timeout_ms", "focus_timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     SECRET_FIELD_NUMBER: _ClassVar[int]
+    PARAMETER_FIELD_NUMBER: _ClassVar[int]
     SKIP_FOCUS_WAIT_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
@@ -721,44 +750,49 @@ class TypeStep(_message.Message):
     selector: _selector_pb2.Selector
     text: str
     secret: str
+    parameter: str
     skip_focus_wait: bool
     selector_origin: SelectorOrigin
     timeout_ms: int
     precondition_timeout_ms: int
     focus_timeout_ms: int
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., secret: _Optional[str] = ..., skip_focus_wait: _Optional[bool] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ..., precondition_timeout_ms: _Optional[int] = ..., focus_timeout_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., secret: _Optional[str] = ..., parameter: _Optional[str] = ..., skip_focus_wait: _Optional[bool] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ..., precondition_timeout_ms: _Optional[int] = ..., focus_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class WaitStep(_message.Message):
-    __slots__ = ("selector", "condition", "text", "count", "selector_origin", "timeout_ms")
+    __slots__ = ("selector", "condition", "text", "count", "parameter", "selector_origin", "timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     CONDITION_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
+    PARAMETER_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
     condition: Condition
     text: str
     count: int
+    parameter: str
     selector_origin: SelectorOrigin
     timeout_ms: int
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., parameter: _Optional[str] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
 
 class AssertionStep(_message.Message):
-    __slots__ = ("selector", "check", "text", "count", "selector_origin", "timeout_ms")
+    __slots__ = ("selector", "check", "text", "count", "parameter", "selector_origin", "timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     CHECK_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
+    PARAMETER_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
     check: Check
     text: str
     count: int
+    parameter: str
     selector_origin: SelectorOrigin
     timeout_ms: int
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., check: _Optional[_Union[Check, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., check: _Optional[_Union[Check, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., parameter: _Optional[str] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
 
 class ScrollUntilStep(_message.Message):
     __slots__ = ("container", "target", "direction", "max_scrolls", "distance_percent", "selector_origin", "timeout_ms", "precondition_timeout_ms")

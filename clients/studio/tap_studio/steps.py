@@ -9,7 +9,7 @@ the studio and replaying its commands elsewhere send the same messages
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import cast
 
@@ -36,7 +36,7 @@ from tap_e2e import (
 from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
-from .recording import UNTARGETED_OPS, RecordingError, picks, secret_name, validate_step
+from .recording import UNTARGETED_OPS, RecordingError, parameter_name, picks, secret_name, validate_step
 from .timing import seconds_from_ms
 
 DEFAULT_GESTURE_PERCENT = 80
@@ -105,6 +105,27 @@ def revise(step: studio.Step, secret_value: str | None) -> studio.Step:
     if problems:
         raise RecordingError(problems)
     return revised
+
+
+def resolve(step: studio.Step, parameters: Mapping[str, str]) -> studio.Step:
+    """The step as it runs: a parameter's value in place of its name. Raises ``RecordingError`` for
+    an unknown parameter, before anything is sent. The recording keeps the name."""
+    name = parameter_name(step)
+    if name is None:
+        return step
+    if name not in parameters:
+        raise RecordingError([f"the step uses the parameter {name!r}, which is not declared"])
+    value = parameters[name]
+    resolved = studio.Step()
+    resolved.CopyFrom(step)
+    kind = resolved.WhichOneof("kind")
+    if kind == "action":
+        resolved.action.ClearField("parameter")
+        resolved.action.command.set_text.text = value
+    else:
+        # Setting another field of the oneof replaces the parameter.
+        getattr(resolved, kind).text = value  # type: ignore[arg-type]
+    return resolved
 
 
 def _problems(step: studio.Step) -> list[str]:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import os
 import pathlib
+import re
 
 from google.protobuf import json_format
 from tap_e2e import proto as tap
@@ -94,6 +95,9 @@ _TEXT_CONDITIONS = (studio.CONDITION_TEXT_EQUALS, studio.CONDITION_TEXT_CONTAINS
 _TEXT_CHECKS = (studio.CHECK_TEXT_EQUALS, studio.CHECK_TEXT_CONTAINS)
 _DIRECTIONS = (tap.DIR_UP, tap.DIR_DOWN, tap.DIR_LEFT, tap.DIR_RIGHT)
 _MAX_ID = 64
+_PARAMETER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+MAX_PARAMETERS = 256
+MAX_PARAMETER_VALUE = 4096
 
 
 class RecordingError(ValueError):
@@ -169,8 +173,31 @@ def validate(recording: studio.Recording) -> None:
             "secrets must list exactly the names the steps use "
             f"(missing {sorted(used - listed)}, unused {sorted(listed - used)})"
         )
+    problems += parameter_problems(recording)
     if problems:
         raise RecordingError(problems)
+
+
+def parameter_problems(recording: studio.Recording) -> list[str]:
+    """The rules of ``Recording.parameters``, and that every step's parameter is one of them."""
+    problems: list[str] = []
+    names = [parameter.name for parameter in recording.parameters]
+    if len(names) > MAX_PARAMETERS:
+        problems.append(f"at most {MAX_PARAMETERS} parameters")
+    if len(set(names)) != len(names):
+        problems.append("parameters lists a name twice")
+    for parameter in recording.parameters:
+        if not _PARAMETER_NAME.fullmatch(parameter.name):
+            problems.append(f"parameter name {parameter.name!r} must be a letter or _, then letters, digits or _ (at most 64)")
+        if len(parameter.value) > MAX_PARAMETER_VALUE:
+            problems.append(f"parameter {parameter.name!r} is over {MAX_PARAMETER_VALUE} characters")
+        if parameter.name in recording.secrets:
+            problems.append(f"{parameter.name!r} is both a parameter and a secret")
+    for step in recording.steps:
+        name = parameter_name(step)
+        if name is not None and name not in names:
+            problems.append(f"step {step.id or '?'} uses the parameter {name!r}, which is not declared")
+    return problems
 
 
 def validate_step(step: studio.Step) -> None:
@@ -187,6 +214,20 @@ def secret_name(step: studio.Step) -> str | None:
         return step.action.secret
     if kind == "type" and step.type.WhichOneof("input") == "secret":
         return step.type.secret
+    return None
+
+
+def parameter_name(step: studio.Step) -> str | None:
+    """The parameter a step types or expects, if any."""
+    kind = step.WhichOneof("kind")
+    if kind == "action" and step.action.HasField("parameter"):
+        return step.action.parameter
+    if kind == "type" and step.type.WhichOneof("input") == "parameter":
+        return step.type.parameter
+    if kind == "wait" and step.wait.WhichOneof("value") == "parameter":
+        return step.wait.parameter
+    if kind == "assertion" and step.assertion.WhichOneof("value") == "parameter":
+        return step.assertion.parameter
     return None
 
 
@@ -349,6 +390,15 @@ def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
             problems.append("a secret set_text carries no text")
         if not action.secret:
             problems.append("action.secret names a secret")
+    if action.HasField("parameter"):
+        if op != "set_text":
+            problems.append("action.parameter applies to set_text only")
+        elif action.command.set_text.text:
+            problems.append("a parameter set_text carries no text")
+        if not action.parameter:
+            problems.append("action.parameter names a parameter")
+        if action.HasField("secret"):
+            problems.append("action has a secret or a parameter, not both")
     return problems
 
 
@@ -356,11 +406,13 @@ def _type(step: studio.TypeStep, used: set[str]) -> list[str]:
     problems = [] if step.selector.HasField("node") else ["type.selector has no node"]
     which = step.WhichOneof("input")
     if which is None:
-        problems.append("type needs text or secret")
+        problems.append("type needs text, secret or parameter")
     elif which == "secret":
         used.add(step.secret)
         if not step.secret:
             problems.append("type.secret names a secret")
+    elif which == "parameter" and not step.parameter:
+        problems.append("type.parameter names a parameter")
     return problems
 
 
@@ -383,7 +435,9 @@ def _assertion(step: studio.AssertionStep, used: set[str]) -> list[str]:
 def _value(step: studio.WaitStep | studio.AssertionStep, name: str, takes: str | None) -> list[str]:
     """The value a wait's condition or an assertion's check takes: text, a count ≥ 0, or none."""
     value = step.WhichOneof("value")
-    if takes == "text" and value != "text":
+    if value == "parameter" and not step.parameter:
+        return [f"{name}: parameter names a parameter"]
+    if takes == "text" and value not in ("text", "parameter"):
         return [f"{name} needs a text value"]
     if takes == "count" and (value != "count" or step.count < 0):
         return [f"{name} needs a count ≥ 0"]

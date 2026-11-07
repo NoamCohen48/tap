@@ -15,6 +15,7 @@ import {
   StepSchema,
   type InfoResponse,
   type Outcome,
+  type Parameter,
   type PerformRequest,
   type Recording,
   type Session,
@@ -148,7 +149,7 @@ function TopBar({ status, children }: { status: Status; children?: ReactNode }) 
   );
 }
 
-type RecordingState = { steps: Step[]; missingSecrets: string[] };
+type RecordingState = { steps: Step[]; missingSecrets: string[]; parameters: Parameter[] };
 
 /** `launched`: the cold launch was just performed as step 1, so the replay starts after it and counts it. */
 type Checked = { launch?: boolean; launched?: boolean };
@@ -177,7 +178,7 @@ function Workspace({
   const [selected, setSelected] = useState<ScreenNode | null>(null);
   // The candidate picked in the composer for one node; steps on other nodes use their first.
   const [chosen, setChosen] = useState<{ ref: string; index: number } | null>(null);
-  const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [] });
+  const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [], parameters: [] });
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [dirty, setDirtyState] = useState(false);
   // Read by the guards: a click can run before the render that this state would give it.
@@ -207,7 +208,7 @@ function Workspace({
 
   const apply = useCallback((r: { recording?: Recording; missingSecrets: string[] }) => {
     const next = r.recording?.steps ?? [];
-    setRecording({ steps: next, missingSecrets: r.missingSecrets });
+    setRecording({ steps: next, missingSecrets: r.missingSecrets, parameters: r.recording?.parameters ?? [] });
     setSelectedStep((id) => (id && next.some((s) => s.id === id) ? id : null));
   }, []);
 
@@ -558,7 +559,7 @@ function Workspace({
           onNewRecording={() =>
             change(async () => {
               const response = await client.newRecording({});
-              setRecording({ steps: [], missingSecrets: [] });
+              setRecording({ steps: [], missingSecrets: [], parameters: [] });
               setSelectedStep(null);
               setLastRun(null);
               replay.clearSummary();
@@ -580,6 +581,8 @@ function Workspace({
           onMove={(stepId, beforeStepId) => edit(() => client.moveStep({ stepId, beforeStepId }))}
           onDuplicate={(stepId) => edit(() => client.duplicateStep({ stepId }))}
           onDirty={setDirty}
+          parameters={recording.parameters}
+          onParameters={(parameters) => edit(() => client.setParameters({ parameters }))}
           canUndo={session.canUndo}
           canRedo={session.canRedo}
           onUndo={undo}

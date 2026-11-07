@@ -5,10 +5,11 @@ import { describeStep, describeWait, stepKind } from "./describe";
 import { stepChips } from "./edit";
 import { errorMessage } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
-import type { Outcome, Step } from "./gen/studio_pb";
+import type { Outcome, Parameter, Step } from "./gen/studio_pb";
 import { ChoiceDialog, useModal } from "./Dialogs";
 import { Close, Down, Download, Play, Stop, Trash, Up, Upload } from "./icons";
 import { passed, type ReplayRequest, type StepState } from "./replay";
+import { Parameters } from "./Parameters";
 import { StepEditor } from "./StepEditor";
 
 export type LastRun = { tone: "fail" | "info" | "ok"; text: string } | null;
@@ -35,6 +36,8 @@ export function StepsPanel({
   onDelete,
   onMove,
   onDuplicate,
+  parameters,
+  onParameters,
   onDirty,
   canUndo,
   canRedo,
@@ -63,6 +66,8 @@ export function StepsPanel({
   onDelete: (stepId: string) => void;
   onMove: (stepId: string, beforeStepId: string) => void;
   onDuplicate: (stepId: string) => void;
+  parameters: readonly Parameter[];
+  onParameters: (parameters: Parameter[]) => Promise<boolean>;
   /** Whether the open step has edits that are not saved. */
   onDirty: (dirty: boolean) => void;
   canUndo: boolean;
@@ -160,6 +165,7 @@ export function StepsPanel({
           {lastRun.text}
         </div>
       )}
+      <Parameters parameters={parameters} busy={locked} onSave={onParameters} />
       <ol className="steps" ref={list}>
         {steps.length === 0 ? (
           <li className="empty">Select an element on the screen, then act on it, assert or wait. Or open a recording.</li>
@@ -246,7 +252,7 @@ export function StepsPanel({
                         <Trash />
                       </button>
                     </div>
-                    <StepEditor key={step.id} step={step} nodes={nodes} client={client} busy={locked} onSave={onUpdate} onDirty={onDirty} />
+                    <StepEditor key={step.id} step={step} nodes={nodes} client={client} busy={locked} parameters={parameters.map((p) => p.name)} onSave={onUpdate} onDirty={onDirty} />
                   </div>
                 )}
               </li>
