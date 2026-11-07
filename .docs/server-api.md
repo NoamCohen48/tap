@@ -393,7 +393,7 @@ same `clock_id` as `LoggedEvent`).
 Subscriptions atomically register and snapshot the header and the current GOP (the latest
 key frame and the frames since), then receive live packets. The daemon keeps no other video
 history: looking back is the reader's job (the watcher keeps its own). A GOP over 16 MiB
-(`VIDEO_JOIN_BYTES`) is not kept; a reader joining then waits for the next key frame. Limits: four producers, eight readers per producer; each reader queue is 128
+(`VIDEO_JOIN_BYTES`) is not kept; a reader joining then waits for the next key frame. Limits: 16 producers (one per device), eight readers per producer; each reader queue is 128
 updates / 4 MiB. Slow readers receive `RESOURCE_EXHAUSTED` (`VideoReaderOverflowException`),
 never blocking the producer or owner. Cancellation removes only that reader; last-reader exit
 stops capture. A stopping producer cannot be replaced before cleanup ends; unproven cleanup
