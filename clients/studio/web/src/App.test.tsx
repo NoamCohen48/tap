@@ -14,8 +14,12 @@ import {
   RecordingSchema,
   SessionSchema,
   StepSchema,
+  Check,
+  Condition,
+  DeviceCheck,
   SelectorOrigin,
   StudioService,
+  type AddStepRequest,
   type PerformRequest,
   type ReplayRequest,
   type Session,
@@ -82,6 +86,10 @@ function fakeStudio() {
     failNext: null as string | null,
     failAt: null as { stepId: string; message: string } | null,
     updates: [] as UpdateStepRequest[],
+    added: [] as AddStepRequest[],
+    failUpdate: null as string | null,
+    undone: 0,
+    redone: 0,
     replays: [] as ReplayRequest[],
     counted: [] as string[],
     /** While set, each replayed step waits for it (or for the call to be cancelled). */
@@ -178,9 +186,34 @@ function fakeStudio() {
         state.steps.splice(at, 0, step);
         return create(PerformResponseSchema, { step, recorded: true });
       },
+      addStep: (request) => {
+        state.added.push(request);
+        const step = clone(StepSchema, request.step!);
+        step.id = `s${state.nextId++}`;
+        state.steps.splice(request.beforeStepId ? index(request.beforeStepId) : state.steps.length, 0, step);
+        return edited();
+      },
       updateStep: (request) => {
+        if (state.failUpdate) throw new ConnectError(state.failUpdate, Code.InvalidArgument);
         state.updates.push(request);
         state.steps[index(request.step!.id)] = clone(StepSchema, request.step!);
+        return edited();
+      },
+      duplicateStep: (request) => {
+        const at = index(request.stepId);
+        const copy = clone(StepSchema, state.steps[at]!);
+        copy.id = `s${state.nextId++}`;
+        copy.outcome = undefined;
+        state.steps.splice(at + 1, 0, copy);
+        return edited();
+      },
+      undoRecording: () => {
+        state.undone += 1;
+        state.steps.pop();
+        return edited();
+      },
+      redoRecording: () => {
+        state.redone += 1;
         return edited();
       },
       deleteStep: (request) => {
@@ -325,6 +358,360 @@ const opOf = (request: PerformRequest | undefined) => {
   const kind = request?.step?.kind;
   return kind?.case === "action" ? kind.value.command?.op : undefined;
 };
+
+describe("selector-first checks", () => {
+  const typeSelector = (value: string) => fireEvent.change(within(composer()).getByLabelText("Selector"), { target: { value } });
+
+  it("waits for an element that is not on the screen, with nothing selected", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Wait"));
+    typeSelector('res("later")');
+    fireEvent.click(await within(composer()).findByRole("button", { name: "Visible" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const kind = fake.state.performed[0]!.step!.kind;
+    expect(kind.case).toBe("wait");
+    if (kind.case === "wait") {
+      expect(describeSelector(kind.value.selector)).toBe('res("later")');
+      expect(kind.value.selectorOrigin).toBe(SelectorOrigin.EDITED);
+    }
+  });
+
+  it("asserts that nothing matches, and a count of zero is sent as zero", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Assert"));
+    typeSelector('res("gone")');
+    fireEvent.click(await within(composer()).findByRole("button", { name: "None match" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const first = fake.state.performed[0]!.step!.kind;
+    expect(first.case === "assertion" && first.value.check).toBe(Check.COUNT);
+    expect(first.case === "assertion" && first.value.value).toEqual({ case: "count", value: 0 });
+    fireEvent.change(within(composer()).getByLabelText("Count"), { target: { value: "0" } });
+    fireEvent.click(within(within(composer()).getByRole("form", { name: "Assert count" })).getByRole("button", { name: "Assert" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(2));
+    const second = fake.state.performed[1]!.step!.kind;
+    expect(second.case === "assertion" && second.value.value).toEqual({ case: "count", value: 0 });
+  });
+
+  it("refuses a selector that does not parse, and says where", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Wait"));
+    typeSelector('res("unfinished');
+    expect(await within(composer()).findByText(/\(at \d+\)/)).toBeTruthy();
+    expect(within(composer()).queryByRole("button", { name: "Visible" })).toBeNull();
+    expect(fake.state.performed).toHaveLength(0);
+  });
+
+  it("offers checks on a selected element that has left the screen", async () => {
+    const fake = await attached();
+    act(() => click(300, 450));
+    fireEvent.click(tab("Wait"));
+    const gone = await within(composer()).findByRole("button", { name: "Gone" });
+    expect((gone as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(gone);
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+  });
+
+  it("adds a check without running it, for a screen that is not here yet", async () => {
+    const fake = await attached();
+    fireEvent.click(tab("Wait"));
+    typeSelector('res("later")');
+    fireEvent.click(within(composer()).getByRole("checkbox", { name: "Add to the recording without running it now" }));
+    fireEvent.click(within(composer()).getByRole("button", { name: "Visible" }));
+    await waitFor(() => expect(fake.state.added).toHaveLength(1));
+    expect(fake.state.performed).toHaveLength(0);
+    expect(await screen.findByText(/res\("later"\)/, { selector: "code" })).toBeTruthy();
+  });
+
+  it("names the format the export really is", async () => {
+    await attached();
+    expect(screen.getByRole("button", { name: "Open" }).title).toBe("Open a Tap recording file");
+  });
+});
+
+describe("editing every value of a step", () => {
+  /** Opens a recording of one step, selects it and returns its editor. */
+  async function editing(step: MessageInitShape<typeof StepSchema>) {
+    const fake = await attached();
+    fake.state.steps = [create(StepSchema, { id: "s1", ...step })];
+    fake.state.nextId = 2;
+    await act(async () => fake.watch({ recordingRevision: 9n, canUndo: true, canRedo: true }));
+    fireEvent.click(await within(screen.getByRole("region", { name: "Steps" })).findByRole("button", { expanded: false }));
+    return { fake, editor: await screen.findByRole("form", { name: "Edit the step" }) };
+  }
+  const save = async (fake: ReturnType<typeof fakeStudio>, editor: HTMLElement) => {
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.updates).toHaveLength(1));
+    return fake.state.updates[0]!.step!;
+  };
+  const action = (op: unknown) => ({ kind: { case: "action", value: { command: { op } } } }) as MessageInitShape<typeof StepSchema>;
+  const selector = resSelector("x");
+
+  it("edits an app call's own fields, and only those", async () => {
+    const { fake, editor } = await editing({ kind: { case: "app", value: { operation: "open_link", packageName: "com.a", uri: "a://b" } } });
+    expect(within(editor).queryByLabelText("Permission")).toBeNull();
+    fireEvent.change(within(editor).getByLabelText("Uri"), { target: { value: "a://c" } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "app" && saved.kind.value.uri).toBe("a://c");
+  });
+
+  it("edits a launch's extras as rows", async () => {
+    const { fake, editor } = await editing({ kind: { case: "app", value: { operation: "launch", packageName: "com.a" } } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Add" }));
+    fireEvent.change(within(editor).getByLabelText("Key"), { target: { value: "k" } });
+    fireEvent.change(within(editor).getByLabelText("Value"), { target: { value: "intValue" } });
+    fireEvent.change(within(editor).getByLabelText("Int value"), { target: { value: "7" } });
+    const saved = await save(fake, editor);
+    const extra = saved.kind.case === "app" ? saved.kind.value.extras[0] : undefined;
+    expect(extra?.key).toBe("k");
+    expect(extra?.value).toEqual({ case: "intValue", value: 7 });
+  });
+
+  it("edits a device condition, with an unset choice for a value it leaves alone", async () => {
+    const { fake, editor } = await editing({ kind: { case: "device", value: { operation: "set_network", wifi: true } } });
+    fireEvent.change(within(editor).getByLabelText("Wifi"), { target: { value: "false" } });
+    fireEvent.change(within(editor).getByLabelText("Mobile data"), { target: { value: "true" } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "device" && [saved.kind.value.wifi, saved.kind.value.mobileData, saved.kind.value.airplaneMode]).toEqual([false, true, undefined]);
+  });
+
+  it("edits what a key press, a fling and a progress hold", async () => {
+    const key = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fireEvent.change(within(key.editor).getByLabelText("Key code"), { target: { value: "66" } });
+    const saved = await save(key.fake, key.editor);
+    const op = saved.kind.case === "action" ? saved.kind.value.command?.op : undefined;
+    expect(op?.case === "pressKey" && op.value.keyCode).toBe(66);
+    cleanup();
+    const progress = await editing(action({ case: "setProgress", value: { selector, value: 2 } }));
+    fireEvent.change(within(progress.editor).getByLabelText("Value"), { target: { value: "2.5" } });
+    const savedProgress = await save(progress.fake, progress.editor);
+    const setProgress = savedProgress.kind.case === "action" ? savedProgress.kind.value.command?.op : undefined;
+    expect(setProgress?.case === "setProgress" && setProgress.value.value).toBe(2.5);
+    cleanup();
+    const fling = await editing(action({ case: "fling", value: { selector, direction: Direction.DIR_UP } }));
+    fireEvent.change(within(fling.editor).getByLabelText("Direction"), { target: { value: String(Direction.DIR_DOWN) } });
+    const savedFling = await save(fling.fake, fling.editor);
+    const flung = savedFling.kind.case === "action" ? savedFling.kind.value.command?.op : undefined;
+    expect(flung?.case === "fling" && flung.value.direction).toBe(Direction.DIR_DOWN);
+  });
+
+  it("edits a drag's destination as a selector", async () => {
+    const { fake, editor } = await editing(action({ case: "drag", value: { selector, target: resSelector("old") } }));
+    fireEvent.change(within(editor).getByLabelText("Target"), { target: { value: 'res("new")' } });
+    const saved = await save(fake, editor);
+    const op = saved.kind.case === "action" ? saved.kind.value.command?.op : undefined;
+    expect(op?.case === "drag" && describeSelector(op.value.target)).toBe('res("new")');
+  });
+
+  it("edits a notification's match", async () => {
+    const { fake, editor } = await editing(action({ case: "dismissNotification", value: { match: { title: "Old" } } }));
+    fireEvent.change(within(editor).getByLabelText("Title"), { target: { value: "New" } });
+    const saved = await save(fake, editor);
+    const op = saved.kind.case === "action" ? saved.kind.value.command?.op : undefined;
+    expect(op?.case === "dismissNotification" && op.value.match?.title).toBe("New");
+  });
+
+  it("changes a wait's condition, and the value goes with it", async () => {
+    const { fake, editor } = await editing({ kind: { case: "wait", value: { selector, condition: Condition.VISIBLE } } });
+    fireEvent.change(within(editor).getByLabelText("Condition"), { target: { value: String(Condition.COUNT) } });
+    fireEvent.change(within(editor).getByLabelText("Expected count"), { target: { value: "0" } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "wait" && saved.kind.value.condition).toBe(Condition.COUNT);
+    expect(saved.kind.case === "wait" && saved.kind.value.value).toEqual({ case: "count", value: 0 });
+  });
+
+  it("changes an assertion's expected text, and a check that takes none drops it", async () => {
+    const { fake, editor } = await editing({ kind: { case: "assertion", value: { selector, check: Check.TEXT_EQUALS, value: { case: "text", value: "a" } } } });
+    fireEvent.change(within(editor).getByLabelText("Check"), { target: { value: String(Check.EXISTS) } });
+    const saved = await save(fake, editor);
+    expect(saved.kind.case === "assertion" && saved.kind.value.value.case).toBeUndefined();
+  });
+
+  it("edits a device wait and a device check", async () => {
+    const wait = await editing({ kind: { case: "deviceWait", value: { command: { op: { case: "awaitToast", value: { text: "Old" } } } } } });
+    fireEvent.change(within(wait.editor).getByLabelText("Text"), { target: { value: "New" } });
+    const saved = await save(wait.fake, wait.editor);
+    const toast = saved.kind.case === "deviceWait" ? saved.kind.value.command?.op : undefined;
+    expect(toast?.case === "awaitToast" && toast.value.text).toBe("New");
+    cleanup();
+    const check = await editing({ kind: { case: "deviceAssertion", value: { check: DeviceCheck.CLIPBOARD_EQUALS, text: "a" } } });
+    fireEvent.change(within(check.editor).getByLabelText("Text"), { target: { value: "b" } });
+    const savedCheck = await save(check.fake, check.editor);
+    expect(savedCheck.kind.case === "deviceAssertion" && savedCheck.kind.value.text).toBe("b");
+  });
+
+  it("does not call a step changed just for looking at it", async () => {
+    const { editor } = await editing({ kind: { case: "deviceWait", value: { command: { op: { case: "awaitNotification", value: {} } } } } });
+    expect((within(editor).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps the draft when the studio refuses the save", async () => {
+    const { fake, editor } = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fake.state.failUpdate = "keyCode is out of range";
+    const input = within(editor).getByLabelText("Key code") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "99999" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("out of range");
+    expect(input.value).toBe("99999");
+  });
+
+  it("duplicates a step, undoes and redoes the recording", async () => {
+    const { fake } = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    await waitFor(() => expect(fake.state.steps).toHaveLength(2));
+    expect(fake.state.steps[1]!.id).not.toBe(fake.state.steps[0]!.id);
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(fake.state.undone).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    await waitFor(() => expect(fake.state.redone).toBe(1));
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(fake.state.undone).toBe(2));
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(fake.state.redone).toBe(2));
+  });
+
+  it("leaves Ctrl+Z to a text field", async () => {
+    const { fake, editor } = await editing(action({ case: "pressKey", value: { keyCode: 4 } }));
+    fireEvent.keyDown(within(editor).getByLabelText("Key code"), { key: "z", ctrlKey: true });
+    await act(async () => undefined);
+    expect(fake.state.undone).toBe(0);
+  });
+});
+
+describe("not losing work", () => {
+  async function dirtyStep() {
+    const fake = await attached();
+    fake.state.steps = [
+      create(StepSchema, { id: "s1", kind: { case: "action", value: { command: { op: { case: "pressKey", value: { keyCode: 4 } } } } } }),
+      create(StepSchema, { id: "s2", kind: { case: "action", value: { command: { op: { case: "pressKey", value: { keyCode: 5 } } } } } }),
+    ];
+    fake.state.nextId = 3;
+    await act(async () => fake.watch({ recordingRevision: 9n }));
+    const steps = screen.getByRole("region", { name: "Steps" });
+    fireEvent.click((await within(steps).findAllByRole("button", { expanded: false }))[0]!);
+    const editor = await screen.findByRole("form", { name: "Edit the step" });
+    fireEvent.change(within(editor).getByLabelText("Key code"), { target: { value: "66" } });
+    return { fake, steps, editor };
+  }
+
+  it("asks before leaving a step with unsaved edits, and keeps them on cancel", async () => {
+    const { steps, editor } = await dirtyStep();
+    fireEvent.click(within(steps).getAllByRole("button", { expanded: false })[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Discard your changes to this step?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect((within(editor).getByLabelText("Key code") as HTMLInputElement).value).toBe("66");
+    fireEvent.click(within(steps).getAllByRole("button", { expanded: false })[0]!);
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(within(steps).getAllByRole("button", { expanded: true })[0]!.textContent).toContain("5"));
+  });
+
+  it("asks before releasing the device with unsaved edits", async () => {
+    const { fake } = await dirtyStep();
+    fireEvent.click(screen.getByRole("button", { name: "Release the device" }));
+    await screen.findByRole("dialog", { name: "Discard your changes to this step?" });
+    expect(fake.state.session.device).toBeDefined();
+  });
+
+  it("warns the browser only while there are unsaved edits", async () => {
+    const leaving = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    await attached();
+    expect(leaving()).toBe(false);
+    cleanup();
+    const { editor } = await dirtyStep();
+    await waitFor(() => expect(leaving()).toBe(true));
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(leaving()).toBe(false));
+  });
+
+  it("confirms Clear data before it runs, and says undo cannot bring it back", async () => {
+    const fake = await attached();
+    fireEvent.click(within(appPanel()).getByRole("button", { name: "Clear data" }));
+    const dialog = await screen.findByRole("dialog", { name: "Clear the data of com.example?" });
+    expect(dialog.textContent).toContain("cannot be undone");
+    expect(fake.state.performed).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(fake.state.performed).toHaveLength(0);
+    fireEvent.click(within(screen.getByRole("group", { name: "App" })).getByRole("button", { name: "Clear data" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Clear data" }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const kind = fake.state.performed[0]!.step!.kind;
+    expect(kind.case === "app" && kind.value.operation).toBe("clear_data");
+  });
+});
+
+describe("dialogs and the keyboard", () => {
+  async function confirmDialog() {
+    const fake = await attached();
+    const opener = within(appPanel()).getByRole("button", { name: "Clear data" });
+    opener.focus();
+    fireEvent.click(opener);
+    return { fake, opener, dialog: await screen.findByRole("dialog") };
+  }
+
+  it("moves focus in, keeps it in, makes the page inert, and puts focus back", async () => {
+    const { opener, dialog } = await confirmDialog();
+    const buttons = within(dialog).getAllByRole("button");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(composer().closest("[inert]")).not.toBeNull();
+    buttons[buttons.length - 1]!.focus();
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(document.activeElement).toBe(buttons[0]);
+    fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(composer().closest("[inert]")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("does not steal focus from a field when the page re-renders", async () => {
+    const { fake, dialog } = await confirmDialog();
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    const clear = within(dialog).getByRole("button", { name: "Clear data" });
+    clear.focus();
+    await act(async () => fake.watch({ recordingRevision: 3n }));
+    expect(document.activeElement).toBe(clear);
+    expect(cancel).toBeTruthy();
+  });
+
+  it("keeps the page's shortcuts out of a dialog", async () => {
+    const { dialog } = await confirmDialog();
+    fireEvent.keyDown(within(dialog).getByRole("button", { name: "Cancel" }), { key: "2" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(tab("App").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("makes the export drawer modal too", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    const opener = screen.getByRole("button", { name: "Export" });
+    opener.focus();
+    fireEvent.click(opener);
+    const drawer = await screen.findByRole("dialog", { name: "Export recording" });
+    expect(document.activeElement).toBe(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("finishes a drag from the screen tree, by keyboard as by mouse", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Drag to…");
+    await screen.findByRole("region", { name: "Drag" });
+    fireEvent.click(within(screen.getByRole("region", { name: "Inspector" })).getByRole("tab", { name: "Screen tree" }));
+    const tree = screen.getByRole("list", { name: "Elements on the screen" });
+    fireEvent.click(within(tree).getByRole("button", { name: /@e2/ }));
+    await waitFor(() => expect(fake.state.performed).toHaveLength(1));
+    const op = opOf(fake.state.performed[0]);
+    expect(op?.case === "drag" && describeSelector(op.value.target)).toBe('res("search")');
+  });
+});
 
 describe("control of the studio", () => {
   it("watches while another tab controls, and every change is unavailable", async () => {
@@ -559,6 +946,21 @@ describe("App", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Assert" }));
     await screen.findByText('assertContains(screen.element(res("go")).text().orEmpty(), "G")');
     expect(fake.state.performed.map((r) => r.step?.kind.case)).toEqual(["assertion", "assertion"]);
+  });
+
+  it("does not record an empty contains check, which every text would pass", async () => {
+    const fake = await attached();
+    fireEvent.keyDown(document, { key: "3" });
+    act(() => click(300, 450));
+    const form = await within(composer()).findByRole("form", { name: "Wait text" });
+    fireEvent.change(within(form).getByLabelText("Text"), { target: { value: "" } });
+    const wait = within(form).getByRole("button", { name: "Wait" }) as HTMLButtonElement;
+    expect(wait.disabled).toBe(false); // equals nothing is a real check: the text is empty
+    fireEvent.click(within(form).getByRole("button", { name: "contains" }));
+    expect(wait.disabled).toBe(true);
+    fireEvent.change(within(form).getByLabelText("Text"), { target: { value: "G" } });
+    expect(wait.disabled).toBe(false);
+    expect(fake.state.performed).toHaveLength(0);
   });
 
   it("Wait records an element wait, prefilling the count it matches now", async () => {

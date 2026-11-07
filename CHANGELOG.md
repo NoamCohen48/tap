@@ -36,6 +36,14 @@ Tap Studio:
   attachment and release cannot race an in-flight action. Canceling its browser request keeps
   the operation gate until its result is reconciled; a canceled replay finishes only its accepted
   step. Shutdown drains it before detach. Changing a shared secret invalidates old outcomes.
+- **Harder to lose work.** Unsaved step edits and Clear data ask first. Dialogs trap and restore
+  focus and stop stealing it when frames arrive, and the screen tree can finish a drag or a scroll
+  until by keyboard.
+- **Every step value is editable,** with undo, redo and duplicate. These change the recording only,
+  never the device, and an old result does not come back for a step that has changed.
+- **Checks start from a selector.** Assert and Wait take a typed selector without needing a live
+  element, offer absence and zero-count checks, and can add a step without running it. The open
+  tooltip and export drawer name the real format.
 - **One tab controls a Studio.** Other tabs watch and the server refuses their changes. Take
   control moves it once nothing is running; a closed or reloaded tab passes it on. The page's busy
   state now comes from the server, so it stays locked until a cancelled step has really finished.

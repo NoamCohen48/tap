@@ -20,7 +20,7 @@ export const picks = (selector: Selector | undefined) => selector?.pick.case ===
  * waiting for a spinner to go is the point. No "Exactly one" for a selector that picks: it
  * matches several nodes, so the wait could only time out.
  */
-export function waitsFor(node: ScreenNode, selector: Selector | undefined): WaitOption[] {
+export function waitsFor(node: ScreenNode | null, selector: Selector | undefined): WaitOption[] {
   const options: WaitOption[] = [{ label: "Visible", until: { condition: Condition.VISIBLE } }];
   if (!picks(selector)) options.push({ label: "Exactly one", until: { condition: Condition.ONE } });
   options.push(
@@ -28,10 +28,10 @@ export function waitsFor(node: ScreenNode, selector: Selector | undefined): Wait
     { label: "Enabled", until: { condition: Condition.ENABLED } },
     { label: "Disabled", until: { condition: Condition.DISABLED } },
   );
-  if (isCheckable(node)) {
+  if (!node || isCheckable(node)) {
     options.push({ label: "Checked", until: { condition: Condition.CHECKED } }, { label: "Unchecked", until: { condition: Condition.UNCHECKED } });
   }
-  if (has(node, NodeFlag.FLAG_FOCUSABLE) || has(node, NodeFlag.FLAG_FOCUSED)) {
+  if (!node || has(node, NodeFlag.FLAG_FOCUSABLE) || has(node, NodeFlag.FLAG_FOCUSED)) {
     options.push({ label: "Focused", until: { condition: Condition.FOCUSED } });
   }
   return options;
@@ -39,10 +39,22 @@ export function waitsFor(node: ScreenNode, selector: Selector | undefined): Wait
 
 /**
  * The assertions offered for a node: the state it is in on this frame, so recording one passes
- * (an assertion does not wait for a change). Text and count take a value, asked for apart.
+ * (an assertion does not wait for a change). Text and count take a value, asked for apart. With no
+ * node on the screen (a typed selector, an element that has gone), every check is offered.
  */
-export function assertsFor(node: ScreenNode): AssertOption[] {
+export function assertsFor(node: ScreenNode | null): AssertOption[] {
   const options: AssertOption[] = [{ label: "Exists", expect: { check: Check.EXISTS } }];
+  if (!node) {
+    options.push(
+      { label: "None match", expect: { check: Check.COUNT, count: 0 } },
+      { label: "Is enabled", expect: { check: Check.ENABLED } },
+      { label: "Is disabled", expect: { check: Check.DISABLED } },
+      { label: "Is checked", expect: { check: Check.CHECKED } },
+      { label: "Is unchecked", expect: { check: Check.UNCHECKED } },
+      { label: "Is focused", expect: { check: Check.FOCUSED } },
+    );
+    return options;
+  }
   options.push(
     has(node, NodeFlag.FLAG_ENABLED) ? { label: "Is enabled", expect: { check: Check.ENABLED } } : { label: "Is disabled", expect: { check: Check.DISABLED } },
   );

@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { StudioClient } from "./api";
 import { describeStep, describeWait, stepKind } from "./describe";
 import { stepChips } from "./edit";
 import { errorMessage } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
 import type { Outcome, Step } from "./gen/studio_pb";
-import { ChoiceDialog } from "./Dialogs";
+import { ChoiceDialog, useModal } from "./Dialogs";
 import { Close, Down, Download, Play, Stop, Trash, Up, Upload } from "./icons";
 import { passed, type ReplayRequest, type StepState } from "./replay";
 import { StepEditor } from "./StepEditor";
@@ -33,6 +34,12 @@ export function StepsPanel({
   onUpdate,
   onDelete,
   onMove,
+  onDuplicate,
+  onDirty,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: {
   client: StudioClient;
   steps: readonly Step[];
@@ -52,9 +59,16 @@ export function StepsPanel({
   onReplay: (request: ReplayRequest) => void;
   onStop: () => void;
   onOpen: (document: string) => void;
-  onUpdate: (step: Step, secretValue?: string) => void;
+  onUpdate: (step: Step, secretValue?: string) => Promise<boolean>;
   onDelete: (stepId: string) => void;
   onMove: (stepId: string, beforeStepId: string) => void;
+  onDuplicate: (stepId: string) => void;
+  /** Whether the open step has edits that are not saved. */
+  onDirty: (dirty: boolean) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   const [exporting, setExporting] = useState(false);
   // Replacing recorded steps asks first, in the page's own dialog (not a blocking `confirm`).
@@ -100,11 +114,17 @@ export function StepsPanel({
             Replay
           </button>
         )}
+        <button type="button" className="btn small" disabled={!canUndo || locked} title="Undo (Ctrl+Z). The recording only: what ran on the device stays done." onClick={onUndo}>
+          Undo
+        </button>
+        <button type="button" className="btn small" disabled={!canRedo || locked} title="Redo (Ctrl+Shift+Z)" onClick={onRedo}>
+          Redo
+        </button>
         <button
           type="button"
           className="btn small"
           disabled={locked}
-          title="Open a tap-recording/1 file"
+          title="Open a Tap recording file"
           onClick={() => file.current?.click()}
         >
           <Upload />
@@ -212,6 +232,9 @@ export function StepsPanel({
                       >
                         <Down />
                       </button>
+                      <button type="button" className="btn small" disabled={locked} onClick={() => onDuplicate(step.id)}>
+                        Duplicate
+                      </button>
                       <button
                         type="button"
                         className="iconbtn"
@@ -223,7 +246,7 @@ export function StepsPanel({
                         <Trash />
                       </button>
                     </div>
-                    <StepEditor key={step.id} step={step} nodes={nodes} client={client} busy={locked} onSave={onUpdate} />
+                    <StepEditor key={step.id} step={step} nodes={nodes} client={client} busy={locked} onSave={onUpdate} onDirty={onDirty} />
                   </div>
                 )}
               </li>
@@ -292,24 +315,21 @@ function Result({ state, outcome }: { state: StepState | undefined; outcome: Out
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () => void }) {
-  const [state, setState] = useState<{ document: string; name: string } | { error: string } | null>(null);
+  const [state, setState] = useState<{ document: string; name: string; format: string } | { error: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const close = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useModal(box, onClose, 'button[aria-label="Close"]');
 
   useEffect(() => {
     let cancelled = false;
     client.getRecording({}).then(
-      (r) => !cancelled && setState({ document: r.document, name: fileName(firstApp(r.recording?.steps ?? []) ?? "recording") }),
+      (r) => !cancelled && setState({ document: r.document, format: r.recording?.format ?? "", name: fileName(firstApp(r.recording?.steps ?? []) ?? "recording") }),
       (e: unknown) => !cancelled && setState({ error: errorMessage(e) }),
     );
-    close.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
     return () => {
       cancelled = true;
-      document.removeEventListener("keydown", onKey);
     };
-  }, [client, onClose]);
+  }, [client]);
 
   const download = (document: string, name: string) => {
     const url = URL.createObjectURL(new Blob([document], { type: "application/json" }));
@@ -324,14 +344,14 @@ function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () =
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
-  return (
+  return createPortal(
     <div className="drawer-back" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="export-title">
+      <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="export-title" ref={box}>
         <div className="panel-h">
           <h2 id="export-title">Export recording</h2>
-          <span className="count">tap-recording/1</span>
+          <span className="count">{state && "format" in state ? state.format : ""}</span>
           <span className="spacer" />
-          <button type="button" className="iconbtn" aria-label="Close" ref={close} onClick={onClose}>
+          <button type="button" className="iconbtn" aria-label="Close" onClick={onClose}>
             <Close />
           </button>
         </div>
@@ -371,7 +391,8 @@ function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () =
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -81,7 +81,7 @@ describe("execution budgets", () => {
   });
   it("saves gesture and budget edits rather than merely changing the labels", async () => {
     const client = { count: vi.fn().mockResolvedValue({ count: 1 }) } as unknown as StudioClient;
-    const saved = vi.fn();
+    const saved = vi.fn().mockResolvedValue(true);
     const step = countedTap(target, 3).step!;
     if (step.kind.case !== "action") throw new Error("action");
     step.id = "s1";

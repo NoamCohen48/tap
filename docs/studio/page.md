@@ -114,6 +114,21 @@ a test sets what it relies on.
 - **Assert:** the activity in front (prefilled with the one there now), the keyboard shown or
   hidden, or the clipboard's text.
 
+**Assert** and **Wait** also take a typed selector, such as `res("login")`, so a check can be about
+an element that is not on the screen or has gone. They offer every check then, including **None
+match** (a count of zero). Tick **Add to the recording without running it now** to write a step
+for a screen that is not here yet: it shows no result until it runs.
+
+Every value of a step can be edited after it is recorded, and Studio checks it when you save: a
+refused save keeps what you typed. **Duplicate** copies a step, which then shows no result until it
+runs. **Undo** and **Redo** (Ctrl+Z, Ctrl+Shift+Z) change the recording only. What already ran on
+the device stays done, and a restored step keeps its result only if it has not changed since.
+
+Studio asks before you leave a step with unsaved edits, release the device with them, or close the
+page. **Clear data** also asks first, because it runs on the device and undo cannot bring it back.
+Dialogs keep the keyboard until they close, and the screen tree picks elements the same way the
+screen does, including where a drag drops and what a scroll until looks for.
+
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow. Wait for the current operation before changing
 the recording mode.
