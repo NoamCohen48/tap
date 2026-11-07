@@ -78,6 +78,11 @@ mode, tools, attach and release cannot race them. The worker also retains its ur
 until its thread future actually completes. Secret value changes invalidate affected outcomes.
 Regression verification: 333 backend tests and explicit project Pyright passed; no device run.
 
+Export is checked by running every step kind both through `steps.run` and through the generated
+source against a spy, comparing the SDK calls in order; a guard test fails when a new op, condition
+or check is not in that table. Selectors use readable builders only when they rebuild the same proto,
+and otherwise their text form, so no selector can change on the way out.
+
 Tab control: `WatchSession` (one stream per page load, random id) makes the first watcher the
 controller; a mutation names its tab in `x-tap-studio-tab` and is refused from any other while a
 controller exists. A header rather than a request field, so all mutating RPCs share one check. Only

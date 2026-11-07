@@ -36,6 +36,11 @@ Tap Studio:
   attachment and release cannot race an in-flight action. Canceling its browser request keeps
   the operation gate until its result is reconciled; a canceled replay finishes only its accepted
   step. Shutdown drains it before detach. Changing a shared secret invalidates old outcomes.
+- **Headless replay and pytest export.** `tap-studio replay` runs a recording with no browser and
+  `tap-studio export` (or the export drawer) writes a pytest file on the public client API. Both
+  need `tap start`, retry nothing and refuse rather than lose meaning.
+- **Per-run results.** Each replay has an identity and bounded step results with known secret values
+  scrubbed. Evidence from the device is captured only when asked.
 - **A private library of named recordings,** usable with no device or Tap server, with opt-in
   autosave. It stores definitions only, never secret values or results, and refuses to overwrite
   an entry another Studio changed.

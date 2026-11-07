@@ -106,3 +106,49 @@ each step that way.
 
 Keep the selectors the studio chose: they matched exactly one element when the step was
 recorded, and replay proved them.
+
+## Run a recording without the page
+
+`tap-studio replay` runs a recording on a device with no browser, using the same steps and checks as
+the page. It needs a running server (`tap start`), which it never starts itself:
+
+```bash
+export CHECKOUT_PASSWORD=...
+tap-studio replay checkout.tap-recording.json --serial emulator-5554 \
+  --param user=ada --secret password=CHECKOUT_PASSWORD --results run.json
+```
+
+- `--param NAME=VALUE` replaces a declared parameter's value for this run.
+- `--secret NAME=ENV_VAR` names the environment variable holding a secret's value, so the value
+  stays out of your shell history and process list.
+- `--from-step ID` starts at that step.
+- `--results FILE` writes the run's results to a new file. It never replaces an existing one.
+- `--evidence-dir DIR` saves a screenshot, hierarchy and device logs after a failure. These can show
+  private data, so nothing is captured unless you ask.
+
+Everything is checked before the device is touched. It stops at the first failure and retries
+nothing.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Every step passed |
+| 1 | A step failed |
+| 2 | The recording or the options are wrong, and nothing ran |
+| 3 | No server, or the device could not be attached, and nothing ran |
+| 130 | Interrupted. The running step may have sent its input, and it is not retried |
+
+## Export a pytest file
+
+The export drawer's **pytest** view, or this command, writes a recording as a pytest file on the
+`tap-e2e` client's public API, using the plugin's `tap_device` fixture:
+
+```bash
+tap-studio export checkout.tap-recording.json -o test_checkout.py
+pytest test_checkout.py
+```
+
+The file makes the same SDK calls a replay does, including every step's budgets. Parameters become
+constants at the top of the file. Each secret comes from an environment variable named in the file's
+docstring (`password` is `TAP_SECRET_PASSWORD`), read before any input. The test does not start the
+server and retries nothing. A recording the exporter cannot write exactly is refused, rather than
+exported with something missing.

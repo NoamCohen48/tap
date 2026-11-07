@@ -151,3 +151,20 @@ def test_built_page_is_served(tmp_path):
     assert "<title>Tap Studio</title>" in client.get("/").text
     assert client.get("/assets/app.js").text == "console.log(1)"
     assert call(client, "Info").status_code == 200
+
+
+def test_a_real_request_is_checked_against_the_controlling_tab(service, signed_in):
+    """Through the real server and its request context, with the header in any case."""
+    service._controller = "tab-a"
+    body = '{"recording": false}'
+    refused = signed_in.post(
+        "/tap.studio.v1.StudioService/SetRecording", content=body, headers={"Content-Type": "application/json", "X-Tap-Studio-Tab": "tab-b"}
+    )
+    assert refused.status_code != 200 and "take control" in refused.text
+    nameless = signed_in.post("/tap.studio.v1.StudioService/SetRecording", content=body, headers={"Content-Type": "application/json"})
+    assert nameless.status_code != 200
+    accepted = signed_in.post(
+        "/tap.studio.v1.StudioService/SetRecording", content=body, headers={"Content-Type": "application/json", "X-Tap-Studio-Tab": "tab-a"}
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert service._session().recording is False

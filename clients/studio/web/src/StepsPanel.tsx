@@ -11,6 +11,7 @@ import { Close, Down, Download, Play, Stop, Trash, Up, Upload } from "./icons";
 import { passed, type ReplayRequest, type StepState } from "./replay";
 import { Library } from "./Library";
 import { Parameters } from "./Parameters";
+import { Runs } from "./Runs";
 import { StepEditor } from "./StepEditor";
 
 export type LastRun = { tone: "fail" | "info" | "ok"; text: string } | null;
@@ -170,8 +171,11 @@ export function StepsPanel({
           {lastRun.text}
         </div>
       )}
-      <Library client={client} session={session} busy={locked} onSession={onSession} />
-      <Parameters parameters={parameters} busy={locked} onSave={onParameters} />
+      <div className="steps-sections">
+        <Library client={client} session={session} busy={locked} onSession={onSession} />
+        <Parameters parameters={parameters} busy={locked} onSave={onParameters} />
+        <Runs client={client} revision={session.recordingRevision} busy={locked} />
+      </div>
       <ol className="steps" ref={list}>
         {steps.length === 0 ? (
           <li className="empty">Select an element on the screen, then act on it, assert or wait. Or open a recording.</li>
@@ -328,6 +332,8 @@ const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ?
 
 export function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () => void }) {
   const [state, setState] = useState<{ document: string; name: string; format: string } | { error: string } | null>(null);
+  const [language, setLanguage] = useState<"json" | "pytest">("json");
+  const [python, setPython] = useState<{ source: string } | { error: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useModal(box, onClose, 'button[aria-label="Close"]');
@@ -343,8 +349,20 @@ export function ExportDrawer({ client, onClose }: { client: StudioClient; onClos
     };
   }, [client]);
 
-  const download = (document: string, name: string) => {
-    const url = URL.createObjectURL(new Blob([document], { type: "application/json" }));
+  useEffect(() => {
+    if (language !== "pytest" || python) return;
+    let cancelled = false;
+    client.exportPytest({}).then(
+      (r) => !cancelled && setPython({ source: r.source }),
+      (e: unknown) => !cancelled && setPython({ error: errorMessage(e) }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, language, python]);
+
+  const download = (document: string, name: string, contentType = "application/json") => {
+    const url = URL.createObjectURL(new Blob([document], { type: contentType }));
     const a = window.document.createElement("a");
     a.href = url;
     a.download = name;
@@ -361,13 +379,33 @@ export function ExportDrawer({ client, onClose }: { client: StudioClient; onClos
       <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="export-title" ref={box}>
         <div className="panel-h">
           <h2 id="export-title">Export recording</h2>
-          <span className="count">{state && "format" in state ? state.format : ""}</span>
+          <span className="count">{language === "pytest" ? "pytest" : state && "format" in state ? state.format : ""}</span>
+          <span className="seg" role="group" aria-label="Export as">
+            <button type="button" aria-pressed={language === "json"} onClick={() => setLanguage("json")}>
+              Recording
+            </button>
+            <button type="button" aria-pressed={language === "pytest"} onClick={() => setLanguage("pytest")}>
+              pytest
+            </button>
+          </span>
           <span className="spacer" />
           <button type="button" className="iconbtn" aria-label="Close" onClick={onClose}>
             <Close />
           </button>
         </div>
-        {state === null ? (
+        {language === "pytest" ? (
+          python === null ? (
+            <div className="empty">Loading…</div>
+          ) : "error" in python ? (
+            <div className="panel-b">
+              <div className="error" role="alert">
+                {python.error}
+              </div>
+            </div>
+          ) : (
+            <pre data-testid="recording-python">{python.source}</pre>
+          )
+        ) : state === null ? (
           <div className="empty">Loading…</div>
         ) : "error" in state ? (
           <div className="panel-b">
@@ -378,10 +416,24 @@ export function ExportDrawer({ client, onClose }: { client: StudioClient; onClos
         )}
         <div className="foot">
           <small>
-            Commands are <code>tap.v1</code> messages in proto3 JSON: replay one by sending it unchanged. Secret values are not in the file,
-            only their names.
+            {language === "pytest" ? (
+              <>
+                Uses <code>tap-e2e</code>'s public API and retries nothing. It needs <code>tap start</code> first, and secrets come from the environment.
+              </>
+            ) : (
+              <>
+                Commands are <code>tap.v1</code> messages in proto3 JSON: replay one by sending it unchanged. Secret values are not in the file,
+                only their names.
+              </>
+            )}
           </small>
-          {state && "document" in state && (
+          {language === "pytest" && python && "source" in python && (
+            <button type="button" className="btn primary" onClick={() => download(python.source, "test_recording.py", "text/x-python")}>
+              <Download />
+              Download
+            </button>
+          )}
+          {language === "json" && state && "document" in state && (
             <>
               <button
                 type="button"

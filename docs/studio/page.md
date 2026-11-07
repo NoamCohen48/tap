@@ -147,6 +147,13 @@ a write fails. A file recovered after a crash is the recording as it was last sa
 your edits, not what ran on the device, so it cannot tell you whether input was sent before the
 crash.
 
+**Runs** lists the last 20 replays of this Studio: whether each passed, failed or was stopped, and a
+download of its results. Results stay in memory and do not hold secrets; known secret values are
+also removed from their messages, though that cannot catch a value the app changed. Studio captures
+a screenshot, hierarchy or device logs only when you ask, showing the device as it is at that moment,
+and any of them can show private data. Results cover the steps that finished, so they cannot say
+whether a step cut off by a crash sent its input.
+
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow. Wait for the current operation before changing
 the recording mode.

@@ -48,6 +48,14 @@ class DiagnosticKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     DIAGNOSTIC_DEVICE_INFO: _ClassVar[DiagnosticKind]
     DIAGNOSTIC_DEVICES: _ClassVar[DiagnosticKind]
 
+class RunStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    RUN_STATUS_UNSPECIFIED: _ClassVar[RunStatus]
+    RUN_STATUS_RUNNING: _ClassVar[RunStatus]
+    RUN_STATUS_PASSED: _ClassVar[RunStatus]
+    RUN_STATUS_FAILED: _ClassVar[RunStatus]
+    RUN_STATUS_STOPPED: _ClassVar[RunStatus]
+
 class SelectorOrigin(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     SELECTOR_ORIGIN_UNSPECIFIED: _ClassVar[SelectorOrigin]
@@ -113,6 +121,11 @@ DIAGNOSTIC_EVENTS: DiagnosticKind
 DIAGNOSTIC_SERVER_INFO: DiagnosticKind
 DIAGNOSTIC_DEVICE_INFO: DiagnosticKind
 DIAGNOSTIC_DEVICES: DiagnosticKind
+RUN_STATUS_UNSPECIFIED: RunStatus
+RUN_STATUS_RUNNING: RunStatus
+RUN_STATUS_PASSED: RunStatus
+RUN_STATUS_FAILED: RunStatus
+RUN_STATUS_STOPPED: RunStatus
 SELECTOR_ORIGIN_UNSPECIFIED: SelectorOrigin
 SELECTOR_ORIGIN_SYNTHESIZED: SelectorOrigin
 SELECTOR_ORIGIN_ALTERNATIVE: SelectorOrigin
@@ -723,6 +736,87 @@ class ReplayRequest(_message.Message):
     def __init__(self, from_step_id: _Optional[str] = ..., only: _Optional[bool] = ..., secret_values: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class ReplayResponse(_message.Message):
+    __slots__ = ("step_id", "outcome", "message", "run_id")
+    STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    OUTCOME_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    step_id: str
+    outcome: Outcome
+    message: str
+    run_id: str
+    def __init__(self, step_id: _Optional[str] = ..., outcome: _Optional[_Union[Outcome, _Mapping]] = ..., message: _Optional[str] = ..., run_id: _Optional[str] = ...) -> None: ...
+
+class ExportPytestRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ExportPytestResponse(_message.Message):
+    __slots__ = ("source",)
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    source: str
+    def __init__(self, source: _Optional[str] = ...) -> None: ...
+
+class ListRunsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ListRunsResponse(_message.Message):
+    __slots__ = ("runs",)
+    RUNS_FIELD_NUMBER: _ClassVar[int]
+    runs: _containers.RepeatedCompositeFieldContainer[RunResult]
+    def __init__(self, runs: _Optional[_Iterable[_Union[RunResult, _Mapping]]] = ...) -> None: ...
+
+class GetRunRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class GetRunResponse(_message.Message):
+    __slots__ = ("run", "document")
+    RUN_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_FIELD_NUMBER: _ClassVar[int]
+    run: RunResult
+    document: str
+    def __init__(self, run: _Optional[_Union[RunResult, _Mapping]] = ..., document: _Optional[str] = ...) -> None: ...
+
+class RunResult(_message.Message):
+    __slots__ = ("format", "id", "started_at", "finished_at", "status", "serial", "planned", "ran", "failed_step_id", "parameters", "steps", "truncated")
+    class ParametersEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
+    ID_FIELD_NUMBER: _ClassVar[int]
+    STARTED_AT_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_AT_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    PLANNED_FIELD_NUMBER: _ClassVar[int]
+    RAN_FIELD_NUMBER: _ClassVar[int]
+    FAILED_STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    PARAMETERS_FIELD_NUMBER: _ClassVar[int]
+    STEPS_FIELD_NUMBER: _ClassVar[int]
+    TRUNCATED_FIELD_NUMBER: _ClassVar[int]
+    format: str
+    id: str
+    started_at: _timestamp_pb2.Timestamp
+    finished_at: _timestamp_pb2.Timestamp
+    status: RunStatus
+    serial: str
+    planned: int
+    ran: int
+    failed_step_id: str
+    parameters: _containers.ScalarMap[str, str]
+    steps: _containers.RepeatedCompositeFieldContainer[StepResult]
+    truncated: bool
+    def __init__(self, format: _Optional[str] = ..., id: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., finished_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., status: _Optional[_Union[RunStatus, str]] = ..., serial: _Optional[str] = ..., planned: _Optional[int] = ..., ran: _Optional[int] = ..., failed_step_id: _Optional[str] = ..., parameters: _Optional[_Mapping[str, str]] = ..., steps: _Optional[_Iterable[_Union[StepResult, _Mapping]]] = ..., truncated: _Optional[bool] = ...) -> None: ...
+
+class StepResult(_message.Message):
     __slots__ = ("step_id", "outcome", "message")
     STEP_ID_FIELD_NUMBER: _ClassVar[int]
     OUTCOME_FIELD_NUMBER: _ClassVar[int]
