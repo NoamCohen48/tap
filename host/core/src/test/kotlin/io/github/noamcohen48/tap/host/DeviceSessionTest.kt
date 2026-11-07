@@ -648,6 +648,15 @@ class DeviceSessionTest {
                             ok(userRotation.toString())
                         }
 
+                        // No SystemUI copy of the lock on this device.
+                        command == "shell settings get secure device_state_rotation_lock" -> {
+                            ok("null")
+                        }
+
+                        command == "shell settings delete secure device_state_rotation_lock" -> {
+                            ok("Deleted 0 rows")
+                        }
+
                         command.startsWith("shell settings put system accelerometer_rotation ") -> {
                             accelerometer = command.substringAfterLast(' ').toInt()
                             ok("")
@@ -681,10 +690,11 @@ class DeviceSessionTest {
                 fake.respond(frame.requestId, Responses.done(1))
                 rotating.await()
 
+                // Captured once, before the mutation, not again when the device reported it.
+                assertEquals(1, adb.calls.count { it.endsWith("settings get system accelerometer_rotation") })
                 session.close(timeoutMs = 5_000)
                 assertEquals(1, accelerometer)
                 assertEquals(2, userRotation)
-                assertEquals(2, adb.calls.count { it.endsWith("settings get system accelerometer_rotation") })
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
             } finally {
                 fake.close()
@@ -723,6 +733,38 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `rotation restore also restores SystemUI's copy of the lock so SystemUI cannot undo it`() =
+        runBlocking {
+            val copy = StateKey.DEVICE_STATE_ROTATION_LOCK
+            // Device state 0 unlocked (2): auto-rotate on, as the session found it.
+            val state = FakeDeviceState(mapOf(StateKey.ACCELEROMETER_ROTATION to "1", StateKey.USER_ROTATION to "2", copy to "0:2"))
+            openWithState("session-systemui-rotation-lock", state) { session, adb ->
+                session.captureBeforeChange(StateKey.ROTATION)
+                // The test locks rotation; SystemUI mirrors the lock into its copy.
+                state.values[StateKey.ACCELEROMETER_ROTATION] = "0"
+                state.values[StateKey.USER_ROTATION] = "1"
+                state.values[copy] = "0:1"
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    // SystemUI, late: when its copy disagrees with the live lock, it writes the
+                    // copy back (DeviceStateRotationLockSettingController.readPersistedSetting).
+                    val copyLocked = state.values[copy] == "0:1"
+                    if (command.startsWith("shell settings get") && copyLocked != (state.values[StateKey.ACCELEROMETER_ROTATION] == "0")) {
+                        state.values[StateKey.ACCELEROMETER_ROTATION] = if (copyLocked) "0" else "1"
+                    }
+                    priorResponder?.invoke(requestSerial, command)
+                }
+
+                session.close(timeoutMs = 10_000)
+
+                assertEquals("1", state.values[StateKey.ACCELEROMETER_ROTATION])
+                assertEquals("2", state.values[StateKey.USER_ROTATION])
+                assertEquals("0:2", state.values[copy])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+            }
+        }
+
+    @Test
     fun `uncertain instrumentation cleanup retains rotation in the quarantine journal`() =
         runBlocking {
             val state = FakeDeviceState(mapOf(StateKey.ACCELEROMETER_ROTATION to "1", StateKey.USER_ROTATION to "2"))
@@ -743,7 +785,11 @@ class DeviceSessionTest {
                 val journal = journalStore().read()
                 assertEquals(JournalState.QUARANTINED, journal?.state)
                 assertEquals(
-                    listOf(SavedState(StateKey.ACCELEROMETER_ROTATION, "1"), SavedState(StateKey.USER_ROTATION, "2")),
+                    listOf(
+                        SavedState(StateKey.DEVICE_STATE_ROTATION_LOCK, null),
+                        SavedState(StateKey.ACCELEROMETER_ROTATION, "1"),
+                        SavedState(StateKey.USER_ROTATION, "2"),
+                    ),
                     journal?.savedState,
                 )
             }
@@ -1236,6 +1282,10 @@ class DeviceSessionTest {
                             ok("2")
                         }
 
+                        "shell settings get secure device_state_rotation_lock" -> {
+                            ok("null")
+                        }
+
                         "shell settings put system accelerometer_rotation 0" -> {
                             throw AdbCommandException(requestSerial, command.split(' '), 1, "denied")
                         }
@@ -1264,7 +1314,11 @@ class DeviceSessionTest {
                 assertEquals(JournalState.QUARANTINED, record?.state)
                 assertTrue(record?.quarantineReason?.contains("SESSION_CLEANUP_UNCERTAIN") == true)
                 assertEquals(
-                    listOf(SavedState(StateKey.ACCELEROMETER_ROTATION, "0"), SavedState(StateKey.USER_ROTATION, "2")),
+                    listOf(
+                        SavedState(StateKey.DEVICE_STATE_ROTATION_LOCK, null),
+                        SavedState(StateKey.ACCELEROMETER_ROTATION, "0"),
+                        SavedState(StateKey.USER_ROTATION, "2"),
+                    ),
                     record?.savedState,
                 )
             } finally {

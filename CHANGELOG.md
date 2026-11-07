@@ -11,6 +11,12 @@ Engine:
 - **Restore rotation after instrumentation stops.** Android's UiAutomation teardown can no
   longer overwrite the session's restored auto-rotate and frozen-rotation settings. If driver
   cleanup is uncertain, the device is quarantined and its saved rotation remains journaled.
+- **Restore rotation reliably on devices whose SystemUI syncs the rotation lock** (API 33+
+  images with per-device-state rotation locks, such as the API 34 emulator). SystemUI's own copy
+  of the lock is now saved and restored with it, restoring auto-rotate *on* no longer writes a
+  momentary lock that SystemUI could re-apply afterwards, and the restored rotation must hold
+  for a second (written again if Android changes it back, for up to five seconds) before
+  detach counts it as restored. This intermittently quarantined the device after a rotation test.
 
 ## 0.1.0 — 2026-11-07
 
