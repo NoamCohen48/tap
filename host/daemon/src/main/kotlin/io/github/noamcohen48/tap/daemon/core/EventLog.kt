@@ -5,11 +5,13 @@ import io.github.noamcohen48.tap.api.v1.LoggedEvent
 /**
  * A connection's event log (`event_log.proto`): the last [capacity] device calls it made, each
  * numbered by [LoggedEvent.getSeq] from 1. [dropped] counts the events evicted to stay within it.
- * [onAppend] sees each event once, in order, under the log's lock (the daemon's [ActivityLog]).
+ * [onAppend] sees each event once, in order, under the log's lock (the daemon's [ActivityLog]);
+ * [onStart] sees each call as it begins, before its event exists.
  */
 class EventLog(
     private val capacity: Int = EVENT_LOG_CAPACITY,
     private val onAppend: (LoggedEvent) -> Unit = {},
+    private val onStart: (LoggedEvent) -> Unit = {},
 ) {
     private val events = ArrayDeque<LoggedEvent>()
     private var lastSeq = 0L
@@ -26,6 +28,13 @@ class EventLog(
         events.addLast(recorded)
         onAppend(recorded)
     }
+
+    /**
+     * A call is starting: [call] is its event before it ran (no seq, duration or outcome). Only
+     * watchers see it; the log keeps the call when [append] records how it ended.
+     */
+    @Synchronized
+    fun started(call: LoggedEvent) = onStart(call)
 
     /** The kept events with `seq > afterSeq`, oldest first, and the evicted count. */
     @Synchronized

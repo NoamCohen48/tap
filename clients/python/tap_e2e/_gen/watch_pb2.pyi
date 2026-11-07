@@ -26,7 +26,7 @@ class WatchResponse(_message.Message):
     def __init__(self, connections: _Optional[_Iterable[_Union[_client_connection_pb2.ConnectionEntry, _Mapping]]] = ..., activities: _Optional[_Iterable[_Union[Activity, _Mapping]]] = ..., dropped: _Optional[int] = ...) -> None: ...
 
 class Activity(_message.Message):
-    __slots__ = ("seq", "at_epoch_ms", "client_connection_id", "connection_opened", "connection_closed", "device_attached", "device_detached", "event")
+    __slots__ = ("seq", "at_epoch_ms", "client_connection_id", "connection_opened", "connection_closed", "device_attached", "device_detached", "event", "call_started")
     SEQ_FIELD_NUMBER: _ClassVar[int]
     AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
@@ -35,6 +35,7 @@ class Activity(_message.Message):
     DEVICE_ATTACHED_FIELD_NUMBER: _ClassVar[int]
     DEVICE_DETACHED_FIELD_NUMBER: _ClassVar[int]
     EVENT_FIELD_NUMBER: _ClassVar[int]
+    CALL_STARTED_FIELD_NUMBER: _ClassVar[int]
     seq: int
     at_epoch_ms: int
     client_connection_id: str
@@ -43,7 +44,14 @@ class Activity(_message.Message):
     device_attached: DeviceAttached
     device_detached: DeviceDetached
     event: _event_log_pb2.LoggedEvent
-    def __init__(self, seq: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., client_connection_id: _Optional[str] = ..., connection_opened: _Optional[_Union[ConnectionOpened, _Mapping]] = ..., connection_closed: _Optional[_Union[ConnectionClosed, _Mapping]] = ..., device_attached: _Optional[_Union[DeviceAttached, _Mapping]] = ..., device_detached: _Optional[_Union[DeviceDetached, _Mapping]] = ..., event: _Optional[_Union[_event_log_pb2.LoggedEvent, _Mapping]] = ...) -> None: ...
+    call_started: CallStarted
+    def __init__(self, seq: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., client_connection_id: _Optional[str] = ..., connection_opened: _Optional[_Union[ConnectionOpened, _Mapping]] = ..., connection_closed: _Optional[_Union[ConnectionClosed, _Mapping]] = ..., device_attached: _Optional[_Union[DeviceAttached, _Mapping]] = ..., device_detached: _Optional[_Union[DeviceDetached, _Mapping]] = ..., event: _Optional[_Union[_event_log_pb2.LoggedEvent, _Mapping]] = ..., call_started: _Optional[_Union[CallStarted, _Mapping]] = ...) -> None: ...
+
+class CallStarted(_message.Message):
+    __slots__ = ("call",)
+    CALL_FIELD_NUMBER: _ClassVar[int]
+    call: _event_log_pb2.LoggedEvent
+    def __init__(self, call: _Optional[_Union[_event_log_pb2.LoggedEvent, _Mapping]] = ...) -> None: ...
 
 class ConnectionOpened(_message.Message):
     __slots__ = ("name", "held")

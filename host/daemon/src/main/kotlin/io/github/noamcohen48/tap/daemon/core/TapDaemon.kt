@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.daemon.core
 
 import io.github.noamcohen48.tap.api.v1.Activity
+import io.github.noamcohen48.tap.api.v1.CallStarted
 import io.github.noamcohen48.tap.api.v1.ConnectionClosed
 import io.github.noamcohen48.tap.api.v1.ConnectionOpened
 import io.github.noamcohen48.tap.api.v1.DeviceAttached
@@ -160,9 +161,10 @@ class ConnectedClient internal constructor(
 
     /** The device calls this connection made (`Events`). */
     val events =
-        EventLog(onAppend = { event ->
-            activity?.append(Activity.newBuilder().setClientConnectionId(id).setEvent(event))
-        })
+        EventLog(
+            onAppend = { event -> activity?.append(Activity.newBuilder().setClientConnectionId(id).setEvent(event)) },
+            onStart = { call -> activity?.append(Activity.newBuilder().setClientConnectionId(id).setCallStarted(CallStarted.newBuilder().setCall(call))) },
+        )
 }
 
 /**

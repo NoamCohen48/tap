@@ -146,6 +146,21 @@ class EventLogServiceTest {
                     assertEquals(ErrorCode.ERR_NOT_FOUND, second.error.code)
                     assertEquals(listOf(2L), events(after = 1).eventsList.map { it.seq })
 
+                    // Watchers see each logged call start, then end: a started call has no seq or
+                    // outcome yet, and its event repeats the serial and the start boundary.
+                    val watched = daemon.watch(0).second.backlog.filter { it.clientConnectionId == connection.id }
+                    val calls = watched.filter { it.hasCallStarted() || it.hasEvent() }
+                    assertEquals(listOf("start", "end", "start", "end"), calls.map { if (it.hasCallStarted()) "start" else "end" })
+                    val startedTap = calls[0].callStarted.call
+                    assertEquals(0L, startedTap.seq)
+                    assertEquals(tap, startedTap.command)
+                    assertEquals("log-serial", startedTap.serial)
+                    assertFalse(startedTap.hasFinishedMonotonicNs() || startedTap.hasError())
+                    assertEquals(first.startedMonotonicNs, startedTap.startedMonotonicNs)
+                    // device_info is not logged, so nothing announces it either.
+                    assertEquals(missing, calls[2].callStarted.call.command)
+                    assertEquals(second.startedMonotonicNs, calls[2].callStarted.call.startedMonotonicNs)
+
                     assertEquals(
                         Status.Code.NOT_FOUND,
                         assertFailsWith<StatusException> {

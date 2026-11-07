@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file watch.proto.
  */
 export const file_watch: GenFile = /*@__PURE__*/
-  fileDesc("Cgt3YXRjaC5wcm90bxIGdGFwLnYxIiEKDFdhdGNoUmVxdWVzdBIRCglhZnRlcl9zZXEYASABKAMidAoNV2F0Y2hSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkSJAoKYWN0aXZpdGllcxgCIAMoCzIQLnRhcC52MS5BY3Rpdml0eRIPCgdkcm9wcGVkGAMgASgDIswCCghBY3Rpdml0eRILCgNzZXEYASABKAMSEwoLYXRfZXBvY2hfbXMYAiABKAMSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYAyABKAkSNQoRY29ubmVjdGlvbl9vcGVuZWQYBCABKAsyGC50YXAudjEuQ29ubmVjdGlvbk9wZW5lZEgAEjUKEWNvbm5lY3Rpb25fY2xvc2VkGAUgASgLMhgudGFwLnYxLkNvbm5lY3Rpb25DbG9zZWRIABIxCg9kZXZpY2VfYXR0YWNoZWQYBiABKAsyFi50YXAudjEuRGV2aWNlQXR0YWNoZWRIABIxCg9kZXZpY2VfZGV0YWNoZWQYByABKAsyFi50YXAudjEuRGV2aWNlRGV0YWNoZWRIABIkCgVldmVudBgIIAEoCzITLnRhcC52MS5Mb2dnZWRFdmVudEgAQgYKBGtpbmQiLgoQQ29ubmVjdGlvbk9wZW5lZBIMCgRuYW1lGAEgASgJEgwKBGhlbGQYAiABKAgiIgoQQ29ubmVjdGlvbkNsb3NlZBIOCgZyZWFzb24YASABKAkiUAoORGV2aWNlQXR0YWNoZWQSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDIkwKDkRldmljZURldGFjaGVkEhoKEmF0dGFjaGVkX2RldmljZV9pZBgBIAEoCRIOCgZzZXJpYWwYAiABKAkSDgoGcmVhc29uGAMgASgJIiMKEVdhdGNoVmlkZW9SZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCSJoCgtWaWRlb0hlYWRlchIRCglzdHJlYW1faWQYASABKAkSEAoIY2xvY2tfaWQYAiABKAkSDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQgASgNEhUKDWNvbmZpZ3VyYXRpb24YBSABKAwihAEKClZpZGVvRnJhbWUSCwoDc2VxGAEgASgEEg4KBnB0c191cxgCIAEoAxIRCglrZXlfZnJhbWUYAyABKAgSDAoEZGF0YRgEIAEoDBIdChVyZWNlaXZlZF9tb25vdG9uaWNfbnMYBSABKAMSGQoRcmVjZWl2ZWRfZXBvY2hfbXMYBiABKAMiagoSV2F0Y2hWaWRlb1Jlc3BvbnNlEiUKBmhlYWRlchgBIAEoCzITLnRhcC52MS5WaWRlb0hlYWRlckgAEiMKBWZyYW1lGAIgASgLMhIudGFwLnYxLlZpZGVvRnJhbWVIAEIICgZ1cGRhdGUyjQEKDFdhdGNoU2VydmljZRI2CgVXYXRjaBIULnRhcC52MS5XYXRjaFJlcXVlc3QaFS50YXAudjEuV2F0Y2hSZXNwb25zZTABEkUKCldhdGNoVmlkZW8SGS50YXAudjEuV2F0Y2hWaWRlb1JlcXVlc3QaGi50YXAudjEuV2F0Y2hWaWRlb1Jlc3BvbnNlMAFCMAogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCCldhdGNoUHJvdG9QAWIGcHJvdG8z", [file_client_connection, file_event_log]);
+  fileDesc("Cgt3YXRjaC5wcm90bxIGdGFwLnYxIiEKDFdhdGNoUmVxdWVzdBIRCglhZnRlcl9zZXEYASABKAMidAoNV2F0Y2hSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkSJAoKYWN0aXZpdGllcxgCIAMoCzIQLnRhcC52MS5BY3Rpdml0eRIPCgdkcm9wcGVkGAMgASgDIvkCCghBY3Rpdml0eRILCgNzZXEYASABKAMSEwoLYXRfZXBvY2hfbXMYAiABKAMSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYAyABKAkSNQoRY29ubmVjdGlvbl9vcGVuZWQYBCABKAsyGC50YXAudjEuQ29ubmVjdGlvbk9wZW5lZEgAEjUKEWNvbm5lY3Rpb25fY2xvc2VkGAUgASgLMhgudGFwLnYxLkNvbm5lY3Rpb25DbG9zZWRIABIxCg9kZXZpY2VfYXR0YWNoZWQYBiABKAsyFi50YXAudjEuRGV2aWNlQXR0YWNoZWRIABIxCg9kZXZpY2VfZGV0YWNoZWQYByABKAsyFi50YXAudjEuRGV2aWNlRGV0YWNoZWRIABIkCgVldmVudBgIIAEoCzITLnRhcC52MS5Mb2dnZWRFdmVudEgAEisKDGNhbGxfc3RhcnRlZBgJIAEoCzITLnRhcC52MS5DYWxsU3RhcnRlZEgAQgYKBGtpbmQiMAoLQ2FsbFN0YXJ0ZWQSIQoEY2FsbBgBIAEoCzITLnRhcC52MS5Mb2dnZWRFdmVudCIuChBDb25uZWN0aW9uT3BlbmVkEgwKBG5hbWUYASABKAkSDAoEaGVsZBgCIAEoCCIiChBDb25uZWN0aW9uQ2xvc2VkEg4KBnJlYXNvbhgBIAEoCSJQCg5EZXZpY2VBdHRhY2hlZBIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhIKCmdlbmVyYXRpb24YAyABKAMiTAoORGV2aWNlRGV0YWNoZWQSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRIOCgZyZWFzb24YAyABKAkiIwoRV2F0Y2hWaWRlb1JlcXVlc3QSDgoGc2VyaWFsGAEgASgJImgKC1ZpZGVvSGVhZGVyEhEKCXN0cmVhbV9pZBgBIAEoCRIQCghjbG9ja19pZBgCIAEoCRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0SFQoNY29uZmlndXJhdGlvbhgFIAEoDCKEAQoKVmlkZW9GcmFtZRILCgNzZXEYASABKAQSDgoGcHRzX3VzGAIgASgDEhEKCWtleV9mcmFtZRgDIAEoCBIMCgRkYXRhGAQgASgMEh0KFXJlY2VpdmVkX21vbm90b25pY19ucxgFIAEoAxIZChFyZWNlaXZlZF9lcG9jaF9tcxgGIAEoAyJqChJXYXRjaFZpZGVvUmVzcG9uc2USJQoGaGVhZGVyGAEgASgLMhMudGFwLnYxLlZpZGVvSGVhZGVySAASIwoFZnJhbWUYAiABKAsyEi50YXAudjEuVmlkZW9GcmFtZUgAQggKBnVwZGF0ZTKNAQoMV2F0Y2hTZXJ2aWNlEjYKBVdhdGNoEhQudGFwLnYxLldhdGNoUmVxdWVzdBoVLnRhcC52MS5XYXRjaFJlc3BvbnNlMAESRQoKV2F0Y2hWaWRlbxIZLnRhcC52MS5XYXRjaFZpZGVvUmVxdWVzdBoaLnRhcC52MS5XYXRjaFZpZGVvUmVzcG9uc2UwAUIwCiBpby5naXRodWIubm9hbWNvaGVuNDgudGFwLmFwaS52MUIKV2F0Y2hQcm90b1ABYgZwcm90bzM", [file_client_connection, file_event_log]);
 
 /**
  * @generated from message tap.v1.WatchRequest
@@ -129,6 +129,14 @@ export type Activity = Message<"tap.v1.Activity"> & {
      */
     value: LoggedEvent;
     case: "event";
+  } | {
+    /**
+     * A call the connection started; its `event` follows when it finishes.
+     *
+     * @generated from field: tap.v1.CallStarted call_started = 9;
+     */
+    value: CallStarted;
+    case: "callStarted";
   } | { case: undefined; value?: undefined };
 };
 
@@ -138,6 +146,30 @@ export type Activity = Message<"tap.v1.Activity"> & {
  */
 export const ActivitySchema: GenMessage<Activity> = /*@__PURE__*/
   messageDesc(file_watch, 2);
+
+/**
+ * A device call as it begins, so a watcher can show what runs now. `call` is the event the log
+ * will keep, before it ran: serial, call, `at_epoch_ms`, `started_monotonic_ns` and `clock_id`
+ * are set; seq, duration, outcome and `finished_monotonic_ns` are not. The `event` activity for
+ * the same call repeats the serial and `started_monotonic_ns`, which is how a watcher pairs them.
+ * A call cancelled before it finished is never logged, so no `event` follows it; its device
+ * detaching or its connection closing ends it.
+ *
+ * @generated from message tap.v1.CallStarted
+ */
+export type CallStarted = Message<"tap.v1.CallStarted"> & {
+  /**
+   * @generated from field: tap.v1.LoggedEvent call = 1;
+   */
+  call?: LoggedEvent | undefined;
+};
+
+/**
+ * Describes the message tap.v1.CallStarted.
+ * Use `create(CallStartedSchema)` to create a new message.
+ */
+export const CallStartedSchema: GenMessage<CallStarted> = /*@__PURE__*/
+  messageDesc(file_watch, 3);
 
 /**
  * @generated from message tap.v1.ConnectionOpened
@@ -161,7 +193,7 @@ export type ConnectionOpened = Message<"tap.v1.ConnectionOpened"> & {
  * Use `create(ConnectionOpenedSchema)` to create a new message.
  */
 export const ConnectionOpenedSchema: GenMessage<ConnectionOpened> = /*@__PURE__*/
-  messageDesc(file_watch, 3);
+  messageDesc(file_watch, 4);
 
 /**
  * @generated from message tap.v1.ConnectionClosed
@@ -178,7 +210,7 @@ export type ConnectionClosed = Message<"tap.v1.ConnectionClosed"> & {
  * Use `create(ConnectionClosedSchema)` to create a new message.
  */
 export const ConnectionClosedSchema: GenMessage<ConnectionClosed> = /*@__PURE__*/
-  messageDesc(file_watch, 4);
+  messageDesc(file_watch, 5);
 
 /**
  * @generated from message tap.v1.DeviceAttached
@@ -205,7 +237,7 @@ export type DeviceAttached = Message<"tap.v1.DeviceAttached"> & {
  * Use `create(DeviceAttachedSchema)` to create a new message.
  */
 export const DeviceAttachedSchema: GenMessage<DeviceAttached> = /*@__PURE__*/
-  messageDesc(file_watch, 5);
+  messageDesc(file_watch, 6);
 
 /**
  * @generated from message tap.v1.DeviceDetached
@@ -234,7 +266,7 @@ export type DeviceDetached = Message<"tap.v1.DeviceDetached"> & {
  * Use `create(DeviceDetachedSchema)` to create a new message.
  */
 export const DeviceDetachedSchema: GenMessage<DeviceDetached> = /*@__PURE__*/
-  messageDesc(file_watch, 6);
+  messageDesc(file_watch, 7);
 
 /**
  * @generated from message tap.v1.WatchVideoRequest
@@ -251,7 +283,7 @@ export type WatchVideoRequest = Message<"tap.v1.WatchVideoRequest"> & {
  * Use `create(WatchVideoRequestSchema)` to create a new message.
  */
 export const WatchVideoRequestSchema: GenMessage<WatchVideoRequest> = /*@__PURE__*/
-  messageDesc(file_watch, 7);
+  messageDesc(file_watch, 8);
 
 /**
  * @generated from message tap.v1.VideoHeader
@@ -290,7 +322,7 @@ export type VideoHeader = Message<"tap.v1.VideoHeader"> & {
  * Use `create(VideoHeaderSchema)` to create a new message.
  */
 export const VideoHeaderSchema: GenMessage<VideoHeader> = /*@__PURE__*/
-  messageDesc(file_watch, 8);
+  messageDesc(file_watch, 9);
 
 /**
  * @generated from message tap.v1.VideoFrame
@@ -337,7 +369,7 @@ export type VideoFrame = Message<"tap.v1.VideoFrame"> & {
  * Use `create(VideoFrameSchema)` to create a new message.
  */
 export const VideoFrameSchema: GenMessage<VideoFrame> = /*@__PURE__*/
-  messageDesc(file_watch, 9);
+  messageDesc(file_watch, 10);
 
 /**
  * @generated from message tap.v1.WatchVideoResponse
@@ -371,7 +403,7 @@ export type WatchVideoResponse = Message<"tap.v1.WatchVideoResponse"> & {
  * Use `create(WatchVideoResponseSchema)` to create a new message.
  */
 export const WatchVideoResponseSchema: GenMessage<WatchVideoResponse> = /*@__PURE__*/
-  messageDesc(file_watch, 10);
+  messageDesc(file_watch, 11);
 
 /**
  * @generated from service tap.v1.WatchService
