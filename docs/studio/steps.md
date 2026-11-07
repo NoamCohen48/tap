@@ -81,7 +81,7 @@ was made on, but it replays on any device. It never contains a secret's value, o
 ## Turning a recording into a test
 
 The studio does not generate code. A recording maps one to one onto the client APIs, so you,
-or a coding agent ([tap-agent](../agent/index.md)), write the test from it:
+or a coding agent ([Tap agent](../agent/index.md)), write the test from it:
 
 | Step | Kotlin | Python |
 |---|---|---|

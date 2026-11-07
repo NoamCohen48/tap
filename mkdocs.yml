@@ -164,7 +164,7 @@ nav:
               - Errors: reference/python/errors.md
               - pytest plugin: reference/python/pytest.md
           - Kotlin: reference/kotlin.md
-  - tap-agent:
+  - Tap agent:
       - agent/index.md
       - A session, step by step: agent/session.md
       - Sessions to tests: agent/export.md
@@ -175,7 +175,7 @@ nav:
       - The page: studio/page.md
       - Steps and export: studio/steps.md
       - App data and diagnostics: studio/tools.md
-  - tap-watcher:
+  - Tap watcher:
       - watcher/index.md
       - The Live view: watcher/live.md
       - Clips, recordings and the Library: watcher/library.md

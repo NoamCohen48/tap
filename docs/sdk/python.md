@@ -158,7 +158,7 @@ driver itself is the server's: clients cannot pick one per attach.
 ## Held connections and screen snapshots
 
 These are for scripts and tools that drive a device over several processes, such as a coding
-agent exploring an app one command at a time ([tap-agent](../agent/index.md) is built on them).
+agent exploring an app one command at a time ([Tap agent](../agent/index.md) is built on them).
 Tests should not use them. They are in the Python client only.
 
 A normal connection lasts as long as the process that opened it. A *held* connection stays

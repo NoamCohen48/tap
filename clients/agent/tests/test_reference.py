@@ -33,4 +33,4 @@ def test_reference_covers_every_verb_and_mcp_tool():
 def test_reference_is_written(tmp_path):
     out = tmp_path / "agent.md"
     assert _generator().main(["gen_reference.py", str(out)]) == 0
-    assert out.read_text(encoding="utf-8").startswith("# tap-agent command reference\n")
+    assert out.read_text(encoding="utf-8").startswith("# Tap agent command reference\n")

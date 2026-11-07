@@ -74,7 +74,7 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
 === "Let an agent drive"
 
-    `tap-agent` gives Claude Code, Cursor or any MCP client the same device: it reads the screen
+    Tap agent gives Claude Code, Cursor or any MCP client the same device: it reads the screen
     as text, acts on it, and checks the result. A real session on an emulator:
 
     ```console
@@ -100,7 +100,7 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
     several nodes match; use a ref from `snapshot` or a narrower selector
     ```
 
-    [tap-agent](agent/index.md){ .md-button } [Commands](agent/commands.md){ .md-button }
+    [Tap agent](agent/index.md){ .md-button } [Commands](agent/commands.md){ .md-button }
 
 === "Record in the browser"
 
@@ -114,19 +114,19 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
 === "Watch a run"
 
-    `tap-watcher` shows every device in your browser while your tests run: which test process
+    Tap watcher shows every device in your browser while your tests run: which test process
     holds it, each action it runs, and the device's screen as video. Look back at the seconds
     before a failure, compare the screen before and after an action, and save clips. It only
     watches, so the tests run exactly as they would without it.
 
-    [tap-watcher](watcher/index.md){ .md-button }
+    [Tap watcher](watcher/index.md){ .md-button }
 
 ## How it works
 
 <div class="tap-flow" role="list" aria-label="How a Tap command reaches the device">
   <div class="tap-flow__box" role="listitem">
     <strong>Your tests and tools</strong>
-    <span>JUnit 5, pytest, tap-agent, Tap Studio, tap-watcher</span>
+    <span>JUnit 5, pytest, Tap agent, Tap Studio, Tap watcher</span>
   </div>
   <div class="tap-flow__arrow" aria-hidden="true">gRPC</div>
   <div class="tap-flow__box tap-flow__box--accent" role="listitem">
@@ -147,7 +147,7 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
 You start the server once (`tap start`). Every client talks to it, so tests in Kotlin and Python,
 an agent and Studio share the same devices without stepping on each other: a device is held by
-one of them at a time, and `tap-watcher` can watch all of them. The driver is a separate app, so it survives your app being force-stopped
+one of them at a time, and Tap watcher can watch all of them. The driver is a separate app, so it survives your app being force-stopped
 or cleared. [Architecture](development/architecture.md) has the details.
 
 ## Why Tap
@@ -196,7 +196,7 @@ or cleared. [Architecture](development/architecture.md) has the details.
     A CLI and an MCP server that read the screen as text with refs, report what each step
     changed, and export the session for a test.
 
-    [:octicons-arrow-right-24: tap-agent](agent/index.md)
+    [:octicons-arrow-right-24: Tap agent](agent/index.md)
 
 -   :material-language-markdown-outline:{ .lg .middle } **Docs your agent can read**
 

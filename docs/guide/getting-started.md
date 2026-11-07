@@ -99,7 +99,7 @@ plugin saves a screenshot, the hierarchy dump, the device info and the driver lo
   you will use in every test.
 - [Python + pytest](../sdk/python.md) has the plugin's options and using the client from a
   script; [Kotlin + JUnit 5](../sdk/kotlin.md) is the same for Kotlin.
-- [tap-agent](../agent/index.md) lets Claude Code or another coding agent drive a device through
+- [Tap agent](../agent/index.md) lets Claude Code or another coding agent drive a device through
   the same server, [Tap Studio](../studio/index.md) records steps from your browser, and
-  [tap-watcher](../watcher/index.md) shows your tests' actions and the device's screen while
+  [Tap watcher](../watcher/index.md) shows your tests' actions and the device's screen while
   they run.

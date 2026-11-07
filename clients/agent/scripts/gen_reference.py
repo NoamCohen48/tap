@@ -244,14 +244,14 @@ def render(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, Tool]) ->
     from tap_agent.targets import SELECTOR_KEYS
 
     out = [
-        "# tap-agent command reference",
+        "# Tap agent command reference",
         "",
         '!!! warning "Experimental"',
         "    `tap-agent` and its export format may change in any release until this notice goes away.",
         "",
         "Every `tap-agent` verb, its arguments and the MCP tool that does the same. The page is",
         "generated from the CLI parser and the MCP server, so it matches `tap-agent <verb> --help`.",
-        "The [tap-agent](index.md) pages explain the flow; this page is for looking",
+        "The [Tap agent](index.md) pages explain the flow; this page is for looking",
         "things up.",
         "",
         "## Conventions",

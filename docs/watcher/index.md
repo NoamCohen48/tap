@@ -1,10 +1,10 @@
-# tap-watcher: watch actions and video
+# Tap watcher
 
 !!! warning "Experimental"
     `tap-watcher`, its page and the `tap-watch-steps/2` file are experimental: they may change in
     any release, including after 1.0, until this notice goes away.
 
-`tap-watcher` shows, in your browser, every device the `tap` server sees: which connection is
+Tap watcher (`tap-watcher`) shows, in your browser, every device the `tap` server sees: which connection is
 using it, every action that connection runs on it, and the device's screen as video. Watch a
 test suite while it runs, look back at what happened just before a failure, compare the screen
 before and after an action, and save clips and recordings to a Library.
