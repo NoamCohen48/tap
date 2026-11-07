@@ -20,6 +20,7 @@ export const passed = (outcome: Outcome | undefined) => !!outcome && !outcome.er
 
 export function useReplay(client: StudioClient, onOutcome: (stepId: string, outcome: Outcome) => void) {
   const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [states, setStates] = useState<Record<string, StepState>>({});
   const [summary, setSummary] = useState<ReplaySummary | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -30,6 +31,7 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
       const controller = new AbortController();
       abort.current = controller;
       setRunning(true);
+      setStopping(false);
       setStates({});
       setSummary(null);
       // Steps run just before the stream (a prepended cold launch) count in the summary.
@@ -73,12 +75,16 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
       } finally {
         abort.current = null;
         setRunning(false);
+        setStopping(false);
       }
     },
     [client, onOutcome],
   );
 
-  const stop = useCallback(() => abort.current?.abort(), []);
+  const stop = useCallback(() => {
+    setStopping(true);
+    abort.current?.abort();
+  }, []);
 
-  return { running, states, summary, start, stop, clearSummary: () => setSummary(null) };
+  return { running, stopping, states, summary, start, stop, clearSummary: () => setSummary(null) };
 }

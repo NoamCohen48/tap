@@ -86,6 +86,10 @@ function fakeStudio() {
     counted: [] as string[],
     /** While set, each replayed step waits for it (or for the call to be cancelled). */
     replayGate: null as Promise<void> | null,
+    /** Sessions `WatchSession` has yet to send; `watch` sends one. */
+    watched: [] as Session[],
+    wake: (() => undefined) as () => void,
+    takeControlError: null as string | null,
   };
   const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps) });
   const edited = () => ({ recording: recording(), missingSecrets: state.missing.filter((name) => secretsOf(state.steps).includes(name)) });
@@ -98,6 +102,24 @@ function fakeStudio() {
     service(StudioService, {
       info: () => ({ recorder: "tap-studio 0.0.1", format: "tap-recording/1" }),
       getSession: () => ({ session: state.session }),
+      async *watchSession(_request, context: HandlerContext) {
+        while (!context.signal.aborted) {
+          const next = state.watched.shift();
+          if (next) yield { session: next };
+          else
+            await new Promise<void>((resolve) => {
+              state.wake = resolve;
+              context.signal.addEventListener("abort", () => resolve());
+            });
+        }
+      },
+      takeControl: (request) => {
+        if (state.takeControlError) throw new ConnectError(state.takeControlError, Code.FailedPrecondition);
+        state.session = clone(SessionSchema, state.session);
+        state.session.controllerTab = request.tab;
+        state.session.version += 1n;
+        return { session: state.session };
+      },
       listDevices: () => ({
         devices: [
           { serial: "emulator-5554", state: DeviceState.DEVICE_FREE },
@@ -214,7 +236,13 @@ function fakeStudio() {
       },
     });
   });
-  return { state, client: createClient(StudioService, transport) };
+  /** The server's session changed: the page hears it on its stream. */
+  const watch = (change: Partial<Session>) => {
+    state.session = Object.assign(clone(SessionSchema, state.session), { version: state.session.version + 1n }, change);
+    state.watched.push(state.session);
+    state.wake();
+  };
+  return { state, watch, client: createClient(StudioService, transport) };
 }
 
 function secretsOf(steps: readonly Step[]): string[] {
@@ -297,6 +325,75 @@ const opOf = (request: PerformRequest | undefined) => {
   const kind = request?.step?.kind;
   return kind?.case === "action" ? kind.value.command?.op : undefined;
 };
+
+describe("control of the studio", () => {
+  it("watches while another tab controls, and every change is unavailable", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    await act(async () => fake.watch({ controllerTab: "another-tab" }));
+    await screen.findByText("Another tab controls this Studio.", undefined, { timeout: 3000 });
+    expect((screen.getByRole("button", { name: "Recording" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Replay" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(composer()).getByRole("button", { name: "Tap" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Release the device" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not warn about another tab in the moment after a reload", async () => {
+    const fake = fakeStudio();
+    render(<App client={fake.client} />);
+    await screen.findByRole("region", { name: "Attach a device" });
+    await act(async () => fake.watch({ controllerTab: "the-page-before-the-reload" }));
+    expect(screen.queryByText("Another tab controls this Studio.")).toBeNull();
+    await screen.findByText("Another tab controls this Studio.", undefined, { timeout: 3000 });
+  });
+
+  it("takes control when asked, and keeps the choice to the server", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ controllerTab: "another-tab", operation: "action" }));
+    const take = await screen.findByRole("button", { name: "Take control" }, { timeout: 3000 });
+    expect((take as HTMLButtonElement).disabled).toBe(true); // a transfer never interrupts an operation
+    await act(async () => fake.watch({ operation: "" }));
+    await waitFor(() => expect((take as HTMLButtonElement).disabled).toBe(false));
+    fake.state.takeControlError = "a Studio action is running";
+    fireEvent.click(take);
+    expect((await screen.findByRole("alert")).textContent).toContain("a Studio action is running");
+    fake.state.takeControlError = null;
+    fireEvent.click(take);
+    await waitFor(() => expect(screen.queryByText("Another tab controls this Studio.")).toBeNull());
+    expect((screen.getByRole("button", { name: "Recording" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps the page locked while the server finishes a step whose request is gone", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    await act(async () => fake.watch({ operation: "replay" }));
+    await screen.findByText(/Finishing what was already sent/);
+    expect((screen.getByRole("button", { name: "Replay" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => fake.watch({ operation: "" }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Replay" }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("reads the recording again when the server says it changed", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    fake.state.steps = [];
+    await act(async () => fake.watch({ recordingRevision: 5n }));
+    await screen.findByText(/Select an element on the screen, then act/);
+  });
+
+  it("ignores a response older than the session it already has", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ recording: false }));
+    await screen.findByRole("button", { name: "Paused" });
+    fake.state.session = Object.assign(clone(SessionSchema, fake.state.session), { recording: true, version: 0n });
+    fake.state.watched.push(fake.state.session);
+    await act(async () => fake.state.wake());
+    await screen.findByRole("button", { name: "Paused" });
+  });
+});
 
 describe("App", () => {
   it("shows which studio it is connected to", async () => {

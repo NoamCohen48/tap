@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import suppress
 from typing import TypeVar, cast
 
 from connectrpc.code import Code
@@ -39,6 +40,10 @@ from .recording import FORMAT, RecordingError, dumps, loads, secret_name
 from .screen import DeviceWorker, FrameError
 
 CONNECTION_NAME = "tap-studio"
+TAB_HEADER = "x-tap-studio-tab"
+WATCH_HEARTBEAT_SECONDS = 1.0
+"""The server only notices a closed stream when it sends, so a closed tab gives up control this soon,
+and a reloaded page is locked out for no longer. One small message a second on loopback costs little."""
 T = TypeVar("T")
 
 
@@ -58,6 +63,16 @@ class Studio:
         self._next_id = 1
         self._replaying = False
         self._tool_running = False
+        self._operation: asyncio.Task | None = None
+        self._operation_name = ""
+        self._replay_step: asyncio.Task | None = None
+        self._closing = False
+        # Open WatchSession streams by tab, oldest first; the controller is one of them.
+        self._watchers: list[str] = []
+        self._controller = ""
+        self._version = 0
+        self._recording_revision = 0
+        self._changed = asyncio.Event()
         # Secret values by name, for this process only: never written anywhere.
         self._secrets: dict[str, str] = {}
 
@@ -68,6 +83,54 @@ class Studio:
 
     async def get_session(self, request: studio.GetSessionRequest, ctx: RequestContext) -> studio.GetSessionResponse:
         return studio.GetSessionResponse(session=self._session())
+
+    async def watch_session(
+        self, request: studio.WatchSessionRequest, ctx: RequestContext
+    ) -> AsyncIterator[studio.WatchSessionResponse]:
+        _check_tab(request.tab)
+        if self._closing:
+            raise ConnectError(Code.FAILED_PRECONDITION, "Studio is shutting down")
+        self._watchers.append(request.tab)
+        if not self._controller:
+            self._controller = request.tab
+            self._publish()
+        try:
+            while not self._closing:
+                changed = self._changed  # before the read, so a change during the yield wakes it
+                yield studio.WatchSessionResponse(session=self._session())
+                with suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(changed.wait(), WATCH_HEARTBEAT_SECONDS)
+        finally:
+            self._watchers.remove(request.tab)
+            if self._controller == request.tab:
+                self._controller = self._watchers[-1] if self._watchers else ""
+                self._publish()
+
+    async def take_control(self, request: studio.TakeControlRequest, ctx: RequestContext) -> studio.TakeControlResponse:
+        _check_tab(request.tab)
+        if request.tab not in self._watchers:
+            raise ConnectError(Code.FAILED_PRECONDITION, "this tab is not watching the session")
+        self._require_idle()
+        self._controller = request.tab
+        self._publish()
+        return studio.TakeControlResponse(session=self._session())
+
+    def _publish(self) -> None:
+        """Wakes every WatchSession stream."""
+        self._version += 1
+        changed, self._changed = self._changed, asyncio.Event()
+        changed.set()
+
+    def _touch(self) -> None:
+        """The recording changed."""
+        self._recording_revision += 1
+        self._publish()
+
+    def _require_control(self, ctx: RequestContext | None) -> None:
+        """While a tab controls Studio, a browser request must come from it. ``ctx`` is None for
+        Studio's own calls (the ``--serial`` attach at start)."""
+        if ctx is not None and self._controller and ctx.request_headers().get(TAB_HEADER) != self._controller:
+            raise ConnectError(Code.FAILED_PRECONDITION, "another tab controls this Studio: take control first")
 
     async def list_devices(self, request: studio.ListDevicesRequest, ctx: RequestContext) -> studio.ListDevicesResponse:
         client = await self._daemon()
@@ -86,6 +149,10 @@ class Studio:
         )
 
     async def attach(self, request: studio.AttachRequest, ctx: RequestContext) -> studio.AttachResponse:
+        self._require_control(ctx)
+        return await self._operate("attachment", lambda: self._attach(request))
+
+    async def _attach(self, request: studio.AttachRequest) -> studio.AttachResponse:
         if not request.serial:
             raise ConnectError(Code.INVALID_ARGUMENT, "serial is required")
         async with self._attaching:
@@ -115,12 +182,25 @@ class Studio:
         return studio.AttachResponse(session=self._session())
 
     async def release(self, request: studio.ReleaseRequest, ctx: RequestContext) -> studio.ReleaseResponse:
+        self._require_control(ctx)
+        return await self._operate("release", self._detach)
+
+    async def _detach(self) -> studio.ReleaseResponse:
         async with self._attaching:
             await self._release()
         return studio.ReleaseResponse(session=self._session())
 
     async def close(self) -> None:
         """Releases the device and closes the daemon connection (server shutdown)."""
+        self._closing = True
+        self._publish()  # ends the WatchSession streams
+        # A browser/request disappearing never cancels a command already handed to the worker.
+        # Shutdown drains its owner before clearing attachment or recording state.
+        for task in (self._operation, self._replay_step):
+            if task is not None:
+                # Its caller receives the failure; detach still runs. Do not log secret text.
+                with suppress(Exception):
+                    await asyncio.shield(task)
         async with self._attaching:
             await self._release()
             connection, client = self._connection, self._client
@@ -157,7 +237,13 @@ class Studio:
         return self._connection
 
     def _session(self) -> studio.Session:
-        session = studio.Session(recording=self._recording_on)
+        session = studio.Session(
+            recording=self._recording_on,
+            controller_tab=self._controller,
+            operation="replay" if self._replaying else self._operation_name,
+            version=self._version,
+            recording_revision=self._recording_revision,
+        )
         if self._attached is not None:
             session.device.CopyFrom(self._attached)
         if self.recording is not None:
@@ -263,17 +349,21 @@ class Studio:
 
     async def query_app(self, request: studio.QueryAppRequest, ctx: RequestContext) -> studio.QueryAppResponse:
         """Read app state through the SDK, never implicitly launch or record a query."""
-        return await self._tool_call(lambda device: tools.query_app(device, request))
+        return await self._tool_call(lambda device: tools.query_app(device, request), ctx)
 
     async def private_data(self, request: studio.PrivateDataRequest, ctx: RequestContext) -> studio.PrivateDataResponse:
         """Explicit private data access; stop/overwrite/recovery rules remain the SDK's."""
-        return await self._tool_call(lambda device: tools.private_data(device, request))
+        return await self._tool_call(lambda device: tools.private_data(device, request), ctx)
 
     async def export_diagnostic(self, request: studio.DiagnosticRequest, ctx: RequestContext) -> studio.DiagnosticResponse:
         """Download bounded diagnostics of Studio's device/connection, never another client's."""
-        return await self._tool_call(lambda device: tools.diagnostic(device, request))
+        return await self._tool_call(lambda device: tools.diagnostic(device, request), ctx)
 
-    async def _tool_call(self, function: Callable[[Device], T]) -> T:
+    async def _tool_call(self, function: Callable[[Device], T], ctx: RequestContext | None = None) -> T:
+        self._require_control(ctx)
+        return await self._operate("tool", lambda: self._run_tool(function))
+
+    async def _run_tool(self, function: Callable[[Device], T]) -> T:
         self._require_idle()
         worker = self._require_device()
         device = worker.device
@@ -297,6 +387,10 @@ class Studio:
     # --- steps -----------------------------------------------------------------------------------
 
     async def perform(self, request: studio.PerformRequest, ctx: RequestContext) -> studio.PerformResponse:
+        self._require_control(ctx)
+        return await self._operate("action", lambda: self._perform(request))
+
+    async def _perform(self, request: studio.PerformRequest) -> studio.PerformResponse:
         worker = self._require_device()
         device = worker.device
         assert device is not None and self._attached is not None
@@ -317,9 +411,7 @@ class Studio:
         step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
         recorded = self._recording_on and failure is None and not request.skip_recording
         if recorded:
-            # Edits wait for the replay, not for a running Perform: the step it goes before may be gone.
-            before = request.before_step_id if request.before_step_id and self._has_step(request.before_step_id) else ""
-            self._add(step, secret_value, before)
+            self._add(step, secret_value, request.before_step_id)
         return studio.PerformResponse(step=step, recorded=recorded, message=str(failure) if failure else "")
 
     def _add(self, step: studio.Step, secret_value: str | None, before_step_id: str) -> None:
@@ -331,12 +423,15 @@ class Studio:
         name = secret_name(step)
         if name is not None:
             assert secret_value is not None
+            if name in self._secrets and self._secrets[name] != secret_value:
+                self._invalidate_secret(name)
             self._secrets[name] = secret_value
         if before_step_id:
             self.recording.steps.insert(self._index(before_step_id), step)
         else:
             self.recording.steps.append(step)
         self._sync_secrets()
+        self._touch()
 
     def _new_id(self) -> str:
         taken = {step.id for step in self.recording.steps} if self.recording is not None else set()
@@ -356,11 +451,34 @@ class Studio:
                     return index
         raise ConnectError(Code.NOT_FOUND, f"no step {step_id!r} in the recording")
 
+    async def _operate(self, name: str, function: Callable[[], Awaitable[T]]) -> T:
+        """The task, not the HTTP request, owns completion and the mutation gate."""
+        self._require_idle()
+
+        async def owned():
+            try:
+                return await function()
+            finally:
+                self._operation = None
+                self._operation_name = ""
+                self._publish()
+
+        task = asyncio.create_task(owned(), name=f"tap-studio {name}")
+        self._operation, self._operation_name = task, name
+        self._publish()
+        # Retrieve an orphaned exception without logging possibly sensitive exception text.
+        task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+        return await asyncio.shield(task)
+
     def _require_idle(self) -> None:
+        if self._closing:
+            raise ConnectError(Code.FAILED_PRECONDITION, "Studio is shutting down")
         if self._replaying:
             raise ConnectError(Code.FAILED_PRECONDITION, "a replay is running: stop it first")
         if self._tool_running:
             raise ConnectError(Code.FAILED_PRECONDITION, "a tool is running: wait for its result")
+        if self._operation is not None and self._operation is not asyncio.current_task():
+            raise ConnectError(Code.FAILED_PRECONDITION, f"a Studio {self._operation_name} is running: wait for its result")
 
     def _sync_secrets(self) -> None:
         """``Recording.secrets``: every name the steps use, in step order; values of names no
@@ -378,6 +496,7 @@ class Studio:
     # --- editing ---------------------------------------------------------------------------------
 
     async def update_step(self, request: studio.UpdateStepRequest, ctx: RequestContext) -> studio.UpdateStepResponse:
+        self._require_control(ctx)
         self._require_idle()
         index = self._index(request.step.id)
         assert self.recording is not None
@@ -388,33 +507,43 @@ class Studio:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
         current = self.recording.steps[index]
         step.ClearField("outcome")
-        if current.HasField("outcome") and _same_run(current, step):
+        name = secret_name(step)
+        value_changed = name is not None and secret_value is not None and self._secrets.get(name) != secret_value
+        if current.HasField("outcome") and _same_run(current, step) and not value_changed:
             step.outcome.CopyFrom(current.outcome)
         current.CopyFrom(step)
         name = secret_name(step)
         if name is not None and secret_value is not None:
             self._secrets[name] = secret_value
+            if value_changed:
+                self._invalidate_secret(name)
         self._sync_secrets()
+        self._touch()
         return studio.UpdateStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
 
     async def delete_step(self, request: studio.DeleteStepRequest, ctx: RequestContext) -> studio.DeleteStepResponse:
+        self._require_control(ctx)
         self._require_idle()
         index = self._index(request.step_id)
         assert self.recording is not None
         del self.recording.steps[index]
         self._sync_secrets()
+        self._touch()
         return studio.DeleteStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
 
     async def move_step(self, request: studio.MoveStepRequest, ctx: RequestContext) -> studio.MoveStepResponse:
+        self._require_control(ctx)
         self._require_idle()
         index = self._index(request.step_id)
         assert self.recording is not None
         target = self._index(request.before_step_id) if request.before_step_id else len(self.recording.steps)
         _move(self.recording.steps, index, target)
         self._sync_secrets()
+        self._touch()
         return studio.MoveStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
 
     async def open_recording(self, request: studio.OpenRecordingRequest, ctx: RequestContext) -> studio.OpenRecordingResponse:
+        self._require_control(ctx)
         self._require_idle()
         try:
             recording = loads(request.document)
@@ -423,11 +552,19 @@ class Studio:
         self.recording = recording
         self._secrets.clear()
         self._next_id = 1
+        self._touch()
         return studio.OpenRecordingResponse(session=self._session(), recording=recording, missing_secrets=self._missing_secrets())
+
+    def _invalidate_secret(self, name: str) -> None:
+        if self.recording is not None:
+            for step in self.recording.steps:
+                if secret_name(step) == name:
+                    step.ClearField("outcome")
 
     # --- replay ----------------------------------------------------------------------------------
 
     async def replay(self, request: studio.ReplayRequest, ctx: RequestContext) -> AsyncIterator[studio.ReplayResponse]:
+        self._require_control(ctx)
         worker = self._require_device()
         device = worker.device
         assert device is not None and self._attached is not None
@@ -438,39 +575,71 @@ class Studio:
         chosen = [step.id for step in self.recording.steps[start : start + 1 if request.only else None]]
         for name, value in request.secret_values.items():
             if name in self.recording.secrets:
+                if self._secrets.get(name) != value:
+                    self._invalidate_secret(name)
                 self._secrets[name] = value
         needed = {name for step in self.recording.steps if step.id in chosen and (name := secret_name(step)) is not None}
         missing = [name for name in self.recording.secrets if name in needed and name not in self._secrets]
         if missing:
             raise ConnectError(Code.FAILED_PRECONDITION, f"values are needed for the secrets {', '.join(missing)}")
         self._replaying = True
+        self._publish()
         try:
             for step_id in chosen:
+                if self._closing:
+                    return
                 step = self.recording.steps[self._index(step_id)]
                 yield studio.ReplayResponse(step_id=step_id)
+                if self._closing:
+                    return
                 name = secret_name(step)
                 value = self._secrets[name] if name is not None else None
-                started = time.monotonic()
-                failure: TapError | steps.CheckFailed | None = None
-                try:
-                    await worker.call(lambda: steps.run(device, step, value))
-                except (TapError, steps.CheckFailed) as error:
-                    failure = error
-                step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
+
+                self._replay_step = asyncio.create_task(self._run_replay_step(worker, device, step, value), name="tap-studio replay step")
+                self._replay_step.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+                failure = await asyncio.shield(self._replay_step)
                 yield studio.ReplayResponse(step_id=step_id, outcome=step.outcome, message=str(failure) if failure else "")
                 if failure is not None:
                     return
         finally:
-            self._replaying = False
+            # A canceled stream stops before the next step, but its accepted step still owns
+            # the recording until its outcome is reconciled.
+            def settled(_=None):
+                self._replaying = False
+                self._replay_step = None
+                self._publish()
+
+            if self._replay_step is not None and not self._replay_step.done():
+                self._replay_step.add_done_callback(settled)
+            else:
+                settled()
+
+    async def _run_replay_step(
+        self, worker: DeviceWorker, device: Device, step: studio.Step, value: str | None
+    ) -> TapError | steps.CheckFailed | None:
+        started = time.monotonic()
+        failure: TapError | steps.CheckFailed | None = None
+        try:
+            await worker.call(lambda: steps.run(device, step, value))
+        except (TapError, steps.CheckFailed) as error:
+            failure = error
+        step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
+        self._touch()
+        return failure
 
     async def set_recording(self, request: studio.SetRecordingRequest, ctx: RequestContext) -> studio.SetRecordingResponse:
+        self._require_control(ctx)
+        self._require_idle()
         self._recording_on = request.recording
+        self._publish()
         return studio.SetRecordingResponse(session=self._session())
 
     async def new_recording(self, request: studio.NewRecordingRequest, ctx: RequestContext) -> studio.NewRecordingResponse:
+        self._require_control(ctx)
         self._require_idle()
         self.recording = None
         self._secrets.clear()
+        self._touch()
         return studio.NewRecordingResponse(session=self._session())
 
     async def get_recording(self, request: studio.GetRecordingRequest, ctx: RequestContext) -> studio.GetRecordingResponse:
@@ -479,6 +648,11 @@ class Studio:
         return studio.GetRecordingResponse(
             recording=self.recording, document=dumps(self.recording) + "\n", missing_secrets=self._missing_secrets()
         )
+
+
+def _check_tab(tab: str) -> None:
+    if not 1 <= len(tab) <= 64:
+        raise ConnectError(Code.INVALID_ARGUMENT, "tab is 1 to 64 characters")
 
 
 def _new_recording(attached: studio.AttachedDevice) -> studio.Recording:

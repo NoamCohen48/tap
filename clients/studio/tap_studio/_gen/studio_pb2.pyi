@@ -256,20 +256,52 @@ class AttachedDevice(_message.Message):
     def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
 
 class Session(_message.Message):
-    __slots__ = ("device", "recording", "steps")
+    __slots__ = ("device", "recording", "steps", "controller_tab", "operation", "version", "recording_revision")
     DEVICE_FIELD_NUMBER: _ClassVar[int]
     RECORDING_FIELD_NUMBER: _ClassVar[int]
     STEPS_FIELD_NUMBER: _ClassVar[int]
+    CONTROLLER_TAB_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    VERSION_FIELD_NUMBER: _ClassVar[int]
+    RECORDING_REVISION_FIELD_NUMBER: _ClassVar[int]
     device: AttachedDevice
     recording: bool
     steps: int
-    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ...) -> None: ...
+    controller_tab: str
+    operation: str
+    version: int
+    recording_revision: int
+    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., controller_tab: _Optional[str] = ..., operation: _Optional[str] = ..., version: _Optional[int] = ..., recording_revision: _Optional[int] = ...) -> None: ...
 
 class GetSessionRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
 class GetSessionResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class WatchSessionRequest(_message.Message):
+    __slots__ = ("tab",)
+    TAB_FIELD_NUMBER: _ClassVar[int]
+    tab: str
+    def __init__(self, tab: _Optional[str] = ...) -> None: ...
+
+class WatchSessionResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class TakeControlRequest(_message.Message):
+    __slots__ = ("tab",)
+    TAB_FIELD_NUMBER: _ClassVar[int]
+    tab: str
+    def __init__(self, tab: _Optional[str] = ...) -> None: ...
+
+class TakeControlResponse(_message.Message):
     __slots__ = ("session",)
     SESSION_FIELD_NUMBER: _ClassVar[int]
     session: Session

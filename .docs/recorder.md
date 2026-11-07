@@ -64,6 +64,28 @@ claimed as complete RPC/SDK/UI parameter parity. The strict MkDocs site passed w
 Kotlin/gRPC reference artifacts reused to avoid another memory-heavy JVM build; the current
 agent command reference was regenerated. No local device tests or reboot were requested/run.
 
+## Authoring and reusable-flow follow-up (owner approved)
+
+The owner approved the audit's recommended scope and asked that the larger remainder stay in
+`studio-todo.md`. [studio-workflows.md](studio-workflows.md) records the scope, implementation
+order and boundaries. It explicitly supersedes JSON-only output/manual-file-only operation;
+Python/pytest export and a private named library are now in scope. Single-device ownership,
+SDK-only execution and no mutation replay remain invariants.
+
+Implemented first: service-owned tasks keep the operation gate through browser cancellation,
+reconcile accepted Perform/replay outcomes and drain before shutdown detaches. Recording edits,
+mode, tools, attach and release cannot race them. The worker also retains its urgent-call state
+until its thread future actually completes. Secret value changes invalidate affected outcomes.
+Regression verification: 333 backend tests and explicit project Pyright passed; no device run.
+
+Tab control: `WatchSession` (one stream per page load, random id) makes the first watcher the
+controller; a mutation names its tab in `x-tap-studio-tab` and is refused from any other while a
+controller exists. A header rather than a request field, so all mutating RPCs share one check. Only
+an explicit, idle-only `TakeControl` moves control between live tabs. When the controller's stream
+ends, the most recently opened watcher inherits it, which is what makes a reload keep control even
+if the new stream opens first. Connect only notices a disconnect when a stream sends, hence the
+1-second heartbeat (5 seconds left a reloaded page locked visibly long in a real browser). Web Locks or disabled buttons alone would not protect the server's state.
+
 ## Research summary
 
 ### Recorders and inspectors

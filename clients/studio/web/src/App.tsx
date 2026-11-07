@@ -1,7 +1,7 @@
 import { clone } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { StudioClient } from "./api";
+import { TAB_ID, type StudioClient } from "./api";
 import { describeStep } from "./describe";
 import { DevicePicker } from "./DevicePicker";
 import { useAppPackage } from "./appPackage";
@@ -37,7 +37,24 @@ type Status = { kind: "loading" } | { kind: "ready"; info: InfoResponse } | { ki
 
 export function App({ client }: { client: StudioClient }) {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSessionState] = useState<Session | null>(null);
+  // A response can arrive after a newer watched session; the version decides.
+  const setSession = useCallback((next: Session) => setSessionState((now) => (now && next.version < now.version ? now : next)), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      while (!controller.signal.aborted) {
+        try {
+          for await (const r of client.watchSession({ tab: TAB_ID }, { signal: controller.signal })) if (r.session) setSession(r.session);
+        } catch {
+          // Reported by Info; the next attempt shows when the studio is back.
+        }
+        if (!controller.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    })();
+    return () => controller.abort();
+  }, [client, setSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,24 +63,69 @@ export function App({ client }: { client: StudioClient }) {
       (error: unknown) => !cancelled && setStatus({ kind: "failed", message: errorMessage(error) }),
     );
     client.getSession({}).then(
-      (r) => !cancelled && setSession(r.session ?? null),
+      (r) => {
+        if (!cancelled && r.session) setSession(r.session);
+      },
       () => undefined, // reported by Info
     );
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, setSession]);
 
+  const observing = !!session && isObserver(session);
   return (
     <div className="app">
+      {session && <ControlBanner client={client} session={session} onSession={setSession} />}
       {session?.device ? (
         <Workspace client={client} session={session} onSession={setSession} status={status} />
       ) : (
         <>
           <TopBar status={status} />
-          {session && <DevicePicker client={client} onSession={setSession} />}
+          {session && <DevicePicker client={client} onSession={setSession} disabled={observing} />}
         </>
       )}
+    </div>
+  );
+}
+
+/** Another tab controls this Studio: this one reads, and every change would be refused. */
+const isObserver = (session: Session) => session.controllerTab !== "" && session.controllerTab !== TAB_ID;
+
+/** Longer than the session stream's heartbeat (one second), which is how the server learns a page has gone. */
+const RELOAD_GRACE_MS = 1500;
+
+function ControlBanner({ client, session, onSession }: { client: StudioClient; session: Session; onSession: (session: Session) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  // Just after a reload the server still counts the page that went away as the controlling tab,
+  // until its next heartbeat. No other tab exists to warn about, so give that a moment.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(true), RELOAD_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  if (!isObserver(session) || !settled) return null;
+  return (
+    <div className="control-banner" role="status">
+      <span>
+        <b>Another tab controls this Studio.</b> This tab only watches. Taking control keeps what you typed here.
+      </span>
+      <button
+        type="button"
+        className="btn small"
+        disabled={session.operation !== ""}
+        title={session.operation ? "Available when the running operation has finished" : undefined}
+        onClick={() => {
+          setError(null);
+          client.takeControl({ tab: TAB_ID }).then(
+            (r) => r.session && onSession(r.session),
+            (e: unknown) => setError(errorMessage(e)),
+          );
+        }}
+      >
+        Take control
+      </button>
+      {error && <span role="alert">{error}</span>}
     </div>
   );
 }
@@ -138,17 +200,23 @@ function Workspace({
     setSelectedStep((id) => (id && next.some((s) => s.id === id) ? id : null));
   }, []);
 
+  // The server's recording is the truth: read it again when another tab changed it, or a step a
+  // cancelled request left behind has finished.
+  const { recordingRevision } = session;
   useEffect(() => {
     let cancelled = false;
     client.getRecording({}).then(
       (r) => !cancelled && apply(r),
-      (e: unknown) =>
-        !cancelled && !(e instanceof ConnectError && e.code === Code.NotFound) && setLastRun({ tone: "fail", text: errorMessage(e) }),
+      (e: unknown) => {
+        if (cancelled) return;
+        if (e instanceof ConnectError && e.code === Code.NotFound) apply({ missingSecrets: [] });
+        else setLastRun({ tone: "fail", text: errorMessage(e) });
+      },
     );
     return () => {
       cancelled = true;
     };
-  }, [client, apply]);
+  }, [client, apply, recordingRevision]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -324,7 +392,9 @@ function Workspace({
   const packages = [...new Set(nodes.map((n) => n.windowPackage).filter(Boolean))];
   const current = selected ? (nodes.find((n) => n.ref === selected.ref) ?? null) : null;
   const inspected = current ?? selected;
-  const locked = busy || replay.running;
+  const observing = isObserver(session);
+  const finishing = session.operation !== "" && !busy && !replay.running;
+  const locked = busy || replay.running || session.operation !== "" || observing;
   const seeking = seek ? (nodeFor(nodes, seek.container.selector) ?? seek.containerNode) : null;
 
   const selectStep = (stepId: string | null) => {
@@ -358,6 +428,7 @@ function Workspace({
           type="button"
           className="rec"
           aria-pressed={session.recording}
+          disabled={locked}
           title={session.recording ? "Pause: steps still run on the device but are not recorded" : "Resume recording"}
           onClick={() => change(() => client.setRecording({ recording: !session.recording }))}
         >
@@ -424,11 +495,17 @@ function Workspace({
           steps={steps}
           missingSecrets={recording.missingSecrets}
           recording={session.recording}
-          lastRun={replay.running ? { tone: "info", text: "Replaying…" } : (summary ?? lastRun)}
+          lastRun={
+            replay.running
+              ? { tone: "info", text: replay.stopping ? "Stopping: no further step will start." : "Replaying…" }
+              : finishing && !observing
+                ? { tone: "info", text: "Finishing what was already sent to the device. It cannot be interrupted, and its result is not known yet." }
+                : (summary ?? lastRun)
+          }
           selectedId={selectedStep}
           states={replay.states}
           replaying={replay.running}
-          busy={busy}
+          busy={locked}
           nodes={nodes}
           onSelect={selectStep}
           onNewRecording={() =>

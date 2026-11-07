@@ -115,7 +115,25 @@ a test sets what it relies on.
   hidden, or the clipboard's text.
 
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
-app into a state you do not want in the flow.
+app into a state you do not want in the flow. Wait for the current operation before changing
+the recording mode.
+
+The server serializes actions, tools, recording edits and attachment changes. Closing or
+canceling a browser request does not interrupt accepted input: the operation finishes and
+reconciles its result before Studio allows a conflicting change. A stopped replay runs no
+further steps. Shutdown also drains the accepted operation before releasing the device;
+process termination or a machine failure is not recoverable execution journaling.
+
+One tab controls a Studio. Any other tab open on it watches: it follows the screen and the
+recording but cannot change anything, and the server refuses it if it tries. **Take control**
+moves control to the tab you are in, once nothing is running, and what you have typed there
+stays. When the controlling tab closes or reloads, control passes to the tab opened last.
+
+While Studio is finishing something a cancelled request left behind, the page stays locked and
+says so. The result is not known until it finishes.
+
+Changing a named secret's value marks every affected step as needing verification. Notes alone
+do not invalidate a step's result.
 
 A tap on a row that only an index could single out (a preference or list row with no id or
 text of its own) is recorded as a tap on its title, `text("Apps")`, which lands on the row and

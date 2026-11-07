@@ -4,15 +4,21 @@ Audit baseline: merged PR #40 (counted/timed presses and private app data) and t
 PR #41 (agent SDK adapters and durable intent recordings), not yet merged when this was written. This is the explicit remainder of the
 owner-approved Studio coverage work, not a promise that every agent command belongs in Studio.
 
+## Approved workflow follow-up (in progress, not deferred)
+
+The owner subsequently approved the audit's recommended improvements. The execution gate,
+selector-first composer, complete field editing, recording-only undo/redo/duplicate, browser
+control, parameters, private named library, headless replay/Python export and per-run diagnostics
+are tracked in [studio-workflows.md](studio-workflows.md). Do not treat this as evidence that
+unfinished features are implemented. The remaining sections below are the explicitly deferred
+work, including broader follow-ups beyond that approved scope.
+
 ## Larger recording-model work
 
 - [ ] Multi-device sessions and per-step routing. Studio deliberately owns one worker/device at a
   time and its recording has one provenance device. Define roles, routing, release and replay
   behavior before replacing that model; merely retaining two attachments would produce ambiguous
   recordings.
-- [ ] Persistent named recording library (start/stop/list/clean, offline exports and crash
-  recovery). Studio currently owns an in-memory editable flow with manual export/open. Define
-  private storage, process locking, secret retention, migration and archive ownership first.
 - [ ] Agent archive import/conversion. `tap-agent-recording/1` is an intent/outcome archive, not
   Studio's replay contract. Reject automatic replay of uncertain/interrupted actions and require
   explicit device routing and supplied redacted values before designing an interchange adapter.
@@ -52,12 +58,24 @@ owner-approved Studio coverage work, not a promise that every agent command belo
   scroll commands retain their own default command budget. Do not describe the phase option as
   a hard end-to-end deadline or silently invent retries. Fixing the shared SDKs requires their
   own Kotlin/Python regressions; the Studio adapter tests explicitly verify forwarding.
-- [ ] Broader value editing for existing step kinds (for example app extras, condition values and
-  count assertions). This change adds editors for the new press parameters, budgets and stability;
-  it is not a complete form generator for every older step field.
 - [ ] A complete daemon-RPC/SDK/parameter coverage registry. The new regression guard classifies
   all 42 Execute operations and affected adapters test value forwarding, but it does not claim
   agent-style parity for every daemon RPC, SDK method or Kotlin convenience API.
+
+## Additional audit follow-ups outside the approved milestone
+
+- [ ] Kotlin/JUnit source export and a cross-language export conformance matrix. Python/pytest
+  export is in scope; do not silently promise another generated language or omit unsupported
+  semantics.
+- [ ] Reusable subflows, branching and loops. Explicit parameters/test cases do not make Studio
+  a general workflow language. Design composition, failure and secret boundaries first.
+- [ ] Performance profiling on large hierarchies and long flows, followed by measured tree/step
+  virtualization if needed. No claim that a particular node count is performant without evidence.
+- [ ] Durable, automatically collected failure-evidence/intent archives. Bounded per-run results
+  and explicit diagnostic downloads are in scope; recovering accepted input after a process crash,
+  storing screenshots/logs by default and retention policies need additional privacy/design work.
+- [ ] Cross-platform private-store locking and permission verification beyond supported POSIX
+  behavior. Do not infer Windows guarantees from a successful Linux run.
 
 ## Explicitly excluded
 

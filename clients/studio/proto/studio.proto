@@ -29,6 +29,14 @@ service StudioService {
   rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // This tab's view of the session: the current state at once, then on every change and at least
+  // every second. One tab controls Studio; while its stream is open no other tab can change
+  // anything unless it takes control. When the controlling tab's stream ends, control passes to
+  // the tab that opened its stream last, so a reloaded page gets control back.
+  rpc WatchSession(WatchSessionRequest) returns (stream WatchSessionResponse);
+  // Moves control to this tab. FAILED_PRECONDITION while an operation runs: a transfer never
+  // interrupts accepted work, and for a tab with no open WatchSession stream.
+  rpc TakeControl(TakeControlRequest) returns (TakeControlResponse);
   // Attaches a device, releasing the one attached before. It names no app: app steps carry
   // their package, and the page keeps the one its App menu acts on.
   rpc Attach(AttachRequest) returns (AttachResponse);
@@ -202,11 +210,38 @@ message Session {
   bool recording = 2;
   // Steps in the recording.
   int32 steps = 3;
+  // The tab that may change anything; every other tab reads. A request names its tab in the
+  // `x-tap-studio-tab` header. Empty until a tab watches the session.
+  string controller_tab = 4;
+  // What Studio is doing and every change waits for: "action", "tool", "attachment", "release" or
+  // "replay". It outlives a cancelled request: accepted work finishes first. Empty when idle.
+  string operation = 5;
+  // Increases with every change of the session, so a late response cannot replace a newer one.
+  int64 version = 6;
+  // Increases with every change of the recording, including a step's outcome.
+  int64 recording_revision = 7;
 }
 
 message GetSessionRequest {}
 
 message GetSessionResponse {
+  Session session = 1;
+}
+
+message WatchSessionRequest {
+  // Random per page load, at most 64 characters.
+  string tab = 1;
+}
+
+message WatchSessionResponse {
+  Session session = 1;
+}
+
+message TakeControlRequest {
+  string tab = 1;
+}
+
+message TakeControlResponse {
   Session session = 1;
 }
 

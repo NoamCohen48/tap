@@ -32,6 +32,13 @@ tap-agent:
 
 Tap Studio:
 
+- **Accepted operations own their completion.** Recording replacement, edits, tools, pause,
+  attachment and release cannot race an in-flight action. Canceling its browser request keeps
+  the operation gate until its result is reconciled; a canceled replay finishes only its accepted
+  step. Shutdown drains it before detach. Changing a shared secret invalidates old outcomes.
+- **One tab controls a Studio.** Other tabs watch and the server refuses their changes. Take
+  control moves it once nothing is running; a closed or reloaded tab passes it on. The page's busy
+  state now comes from the server, so it stays locked until a cancelled step has really finished.
 - **Secret typing is sensitive.** Type keys now marks named secret values sensitive on both
   direct execution and replay, as Set text already did. The device receives the value but the
   daemon's event history, watcher and event exports omit it; recording exports keep only its name.

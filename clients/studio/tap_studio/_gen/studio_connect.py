@@ -26,6 +26,12 @@ class StudioService(Protocol):
     async def list_devices(self, request: studio__pb2.ListDevicesRequest, ctx: RequestContext) -> studio__pb2.ListDevicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    def watch_session(self, request: studio__pb2.WatchSessionRequest, ctx: RequestContext) -> AsyncIterator[studio__pb2.WatchSessionResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def take_control(self, request: studio__pb2.TakeControlRequest, ctx: RequestContext) -> studio__pb2.TakeControlResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -118,6 +124,26 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.list_devices,
+                ),
+                "/tap.studio.v1.StudioService/WatchSession": Endpoint.server_stream(
+                    method=MethodInfo(
+                        name="WatchSession",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.WatchSessionRequest,
+                        output=studio__pb2.WatchSessionResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.watch_session,
+                ),
+                "/tap.studio.v1.StudioService/TakeControl": Endpoint.unary(
+                    method=MethodInfo(
+                        name="TakeControl",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.TakeControlRequest,
+                        output=studio__pb2.TakeControlResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.take_control,
                 ),
                 "/tap.studio.v1.StudioService/Attach": Endpoint.unary(
                     method=MethodInfo(
@@ -386,6 +412,46 @@ class StudioServiceClient(ConnectClient):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def watch_session(
+        self,
+        request: studio__pb2.WatchSessionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> AsyncIterator[studio__pb2.WatchSessionResponse]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchSession",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.WatchSessionRequest,
+                output=studio__pb2.WatchSessionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def take_control(
+        self,
+        request: studio__pb2.TakeControlRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.TakeControlResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="TakeControl",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.TakeControlRequest,
+                output=studio__pb2.TakeControlResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )
 
     async def attach(
@@ -784,6 +850,10 @@ class StudioServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def list_devices(self, request: studio__pb2.ListDevicesRequest, ctx: RequestContext) -> studio__pb2.ListDevicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def watch_session(self, request: studio__pb2.WatchSessionRequest, ctx: RequestContext) -> Iterator[studio__pb2.WatchSessionResponse]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def take_control(self, request: studio__pb2.TakeControlRequest, ctx: RequestContext) -> studio__pb2.TakeControlResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def release(self, request: studio__pb2.ReleaseRequest, ctx: RequestContext) -> studio__pb2.ReleaseResponse:
@@ -857,6 +927,26 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.list_devices,
+                ),
+                "/tap.studio.v1.StudioService/WatchSession": EndpointSync.server_stream(
+                    method=MethodInfo(
+                        name="WatchSession",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.WatchSessionRequest,
+                        output=studio__pb2.WatchSessionResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.watch_session,
+                ),
+                "/tap.studio.v1.StudioService/TakeControl": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="TakeControl",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.TakeControlRequest,
+                        output=studio__pb2.TakeControlResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.take_control,
                 ),
                 "/tap.studio.v1.StudioService/Attach": EndpointSync.unary(
                     method=MethodInfo(
@@ -1125,6 +1215,46 @@ class StudioServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def watch_session(
+        self,
+        request: studio__pb2.WatchSessionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> Iterator[studio__pb2.WatchSessionResponse]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchSession",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.WatchSessionRequest,
+                output=studio__pb2.WatchSessionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def take_control(
+        self,
+        request: studio__pb2.TakeControlRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.TakeControlResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="TakeControl",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.TakeControlRequest,
+                output=studio__pb2.TakeControlResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )
 
     def attach(
