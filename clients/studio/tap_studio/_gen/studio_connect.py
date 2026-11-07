@@ -74,6 +74,15 @@ class StudioService(Protocol):
     async def get_recording(self, request: studio__pb2.GetRecordingRequest, ctx: RequestContext) -> studio__pb2.GetRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def query_app(self, request: studio__pb2.QueryAppRequest, ctx: RequestContext) -> studio__pb2.QueryAppResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def private_data(self, request: studio__pb2.PrivateDataRequest, ctx: RequestContext) -> studio__pb2.PrivateDataResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def export_diagnostic(self, request: studio__pb2.DiagnosticRequest, ctx: RequestContext) -> studio__pb2.DiagnosticResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
 
 class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
     def __init__(self, service: StudioService | AsyncGenerator[StudioService], *, interceptors: Iterable[Interceptor]=(), read_max_bytes: int | None = None, compressions: Iterable[Compression] | None = None) -> None:
@@ -269,6 +278,36 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.get_recording,
+                ),
+                "/tap.studio.v1.StudioService/QueryApp": Endpoint.unary(
+                    method=MethodInfo(
+                        name="QueryApp",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.QueryAppRequest,
+                        output=studio__pb2.QueryAppResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.query_app,
+                ),
+                "/tap.studio.v1.StudioService/PrivateData": Endpoint.unary(
+                    method=MethodInfo(
+                        name="PrivateData",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.PrivateDataRequest,
+                        output=studio__pb2.PrivateDataResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.private_data,
+                ),
+                "/tap.studio.v1.StudioService/ExportDiagnostic": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ExportDiagnostic",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DiagnosticRequest,
+                        output=studio__pb2.DiagnosticResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.export_diagnostic,
                 ),
             },
             interceptors=interceptors,
@@ -677,6 +716,66 @@ class StudioServiceClient(ConnectClient):
             use_get=use_get,
         )
 
+    async def query_app(
+        self,
+        request: studio__pb2.QueryAppRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.QueryAppResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="QueryApp",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.QueryAppRequest,
+                output=studio__pb2.QueryAppResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def private_data(
+        self,
+        request: studio__pb2.PrivateDataRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.PrivateDataResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="PrivateData",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.PrivateDataRequest,
+                output=studio__pb2.PrivateDataResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def export_diagnostic(
+        self,
+        request: studio__pb2.DiagnosticRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DiagnosticResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportDiagnostic",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DiagnosticRequest,
+                output=studio__pb2.DiagnosticResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
 
 class StudioServiceSync(Protocol):
     def info(self, request: studio__pb2.InfoRequest, ctx: RequestContext) -> studio__pb2.InfoResponse:
@@ -716,6 +815,12 @@ class StudioServiceSync(Protocol):
     def new_recording(self, request: studio__pb2.NewRecordingRequest, ctx: RequestContext) -> studio__pb2.NewRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def get_recording(self, request: studio__pb2.GetRecordingRequest, ctx: RequestContext) -> studio__pb2.GetRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def query_app(self, request: studio__pb2.QueryAppRequest, ctx: RequestContext) -> studio__pb2.QueryAppResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def private_data(self, request: studio__pb2.PrivateDataRequest, ctx: RequestContext) -> studio__pb2.PrivateDataResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def export_diagnostic(self, request: studio__pb2.DiagnosticRequest, ctx: RequestContext) -> studio__pb2.DiagnosticResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
@@ -912,6 +1017,36 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.get_recording,
+                ),
+                "/tap.studio.v1.StudioService/QueryApp": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="QueryApp",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.QueryAppRequest,
+                        output=studio__pb2.QueryAppResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.query_app,
+                ),
+                "/tap.studio.v1.StudioService/PrivateData": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="PrivateData",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.PrivateDataRequest,
+                        output=studio__pb2.PrivateDataResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.private_data,
+                ),
+                "/tap.studio.v1.StudioService/ExportDiagnostic": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ExportDiagnostic",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DiagnosticRequest,
+                        output=studio__pb2.DiagnosticResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.export_diagnostic,
                 ),
             },
             interceptors=interceptors,
@@ -1318,4 +1453,64 @@ class StudioServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
             use_get=use_get,
+        )
+
+    def query_app(
+        self,
+        request: studio__pb2.QueryAppRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.QueryAppResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="QueryApp",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.QueryAppRequest,
+                output=studio__pb2.QueryAppResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def private_data(
+        self,
+        request: studio__pb2.PrivateDataRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.PrivateDataResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="PrivateData",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.PrivateDataRequest,
+                output=studio__pb2.PrivateDataResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def export_diagnostic(
+        self,
+        request: studio__pb2.DiagnosticRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DiagnosticResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportDiagnostic",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DiagnosticRequest,
+                output=studio__pb2.DiagnosticResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
         )

@@ -64,3 +64,5 @@ until the studio releases it.
 - [The page](page.md): the screen, the composer and its tabs, and how steps are recorded.
 - [Steps and export](steps.md): editing and replaying steps, the `/2` file and `/1` upgrade, and
   turning a recording into a test.
+- [App data and diagnostics](tools.md): explicit app queries, private files/SQLite bundles and
+  bounded diagnostic downloads, separate from recording/replay.

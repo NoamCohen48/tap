@@ -40,6 +40,11 @@ Tap Studio:
   quiet periods and signals can be recorded, edited and replayed. Invalid parameters and bounded
   selectors are rejected before input. New recordings use `tap-recording/2` so older readers cannot
   silently discard the added budgets; legacy `/1` files upgrade on open.
+- **Explicit tools, not replay steps.** Read app installed/running/process/locale/permission
+  state; use the SDK private file and SQLite bundle APIs with confirmation, explicit overwrite
+  and the daemon's stopped-UID safeguards; download screenshots, hierarchy, logs, incremental
+  raw history and metadata. Browser artifacts are bounded to 1 MiB and never silently truncated.
+  No implicit stop/relaunch, data restoration, arbitrary host paths, shell, SQL or mutation retry.
 
 Server, Kotlin/Python clients and tap-agent:
 

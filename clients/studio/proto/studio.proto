@@ -83,6 +83,96 @@ service StudioService {
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // Explicit one-shot reads; never recorded. PROCESS can wait for a process identity.
+  rpc QueryApp(QueryAppRequest) returns (QueryAppResponse);
+  // SDK private data tools, never recorded. Browser transfers are capped at 1 MiB total;
+  // larger files/bundles need the SDK's streaming surface, not this unary browser endpoint.
+  rpc PrivateData(PrivateDataRequest) returns (PrivateDataResponse);
+  // Explicit download of SDK diagnostics/metadata, at most 1 MiB. Not selector input.
+  rpc ExportDiagnostic(DiagnosticRequest) returns (DiagnosticResponse);
+}
+
+// ---- explicit, non-recorded SDK tools -----------------------------------------------------------
+// These operate only on Studio's own attached device. They never become replay steps.
+enum AppQuery {
+  APP_QUERY_UNSPECIFIED = 0;
+  APP_QUERY_INSTALLED = 1;
+  APP_QUERY_RUNNING = 2;
+  APP_QUERY_PROCESS = 3;
+  APP_QUERY_LOCALES = 4;
+  APP_QUERY_PERMISSION = 5;
+}
+message QueryAppRequest {
+  string package_name = 1;
+  AppQuery query = 2;
+  string permission = 3;
+  // Only PROCESS accepts an explicit 1..120000 ms budget.
+  optional int64 timeout_ms = 4;
+}
+message QueryAppResponse { string json = 1; }
+
+enum PrivateDataOperation {
+  PRIVATE_DATA_OPERATION_UNSPECIFIED = 0;
+  PRIVATE_DATA_CAPABILITIES = 1;
+  PRIVATE_DATA_LIST = 2;
+  PRIVATE_DATA_READ = 3;
+  PRIVATE_DATA_WRITE = 4;
+  PRIVATE_DATA_DELETE = 5;
+  PRIVATE_DATA_EXPORT_DATABASE = 6;
+  PRIVATE_DATA_IMPORT_DATABASE = 7;
+}
+// An opaque portable bundle, not SQL. Optional WAL/journal retain presence, even when empty.
+message DatabaseBundle {
+  // Exactly "tap-studio-database/1"; not a recording or a shared SDK interchange format.
+  string format = 1;
+  string name = 2;
+  bytes database = 3;
+  optional bytes wal = 4;
+  optional bytes journal = 5;
+}
+message PrivateDataRequest {
+  string package_name = 1;
+  PrivateDataOperation operation = 2;
+  string path = 3;
+  // Export basename, or optional import destination basename.
+  string name = 4;
+  bytes data = 5;
+  DatabaseBundle bundle = 6;
+  // WRITE / IMPORT only; defaults to refusing replacement.
+  bool overwrite = 7;
+  // WRITE / DELETE / IMPORT require explicit confirmation. Still checked by the daemon;
+  // no implicit stop, launch, restore or retry. Except capabilities, the whole UID must be stopped.
+  bool confirmed = 8;
+  // READ / WRITE / EXPORT / IMPORT only, 1..120000 ms.
+  optional int64 timeout_ms = 9;
+}
+message PrivateDataResponse {
+  // Metadata/status only, never file bytes or paths in a recording.
+  string json = 1;
+  bytes data = 2;
+  DatabaseBundle bundle = 3;
+}
+
+enum DiagnosticKind {
+  DIAGNOSTIC_UNSPECIFIED = 0;
+  DIAGNOSTIC_SCREENSHOT = 1;
+  DIAGNOSTIC_HIERARCHY = 2;
+  DIAGNOSTIC_DEVICE_LOGS = 3;
+  DIAGNOSTIC_DRIVER_LOG = 4;
+  DIAGNOSTIC_EVENTS = 5;
+  DIAGNOSTIC_SERVER_INFO = 6;
+  DIAGNOSTIC_DEVICE_INFO = 7;
+  DIAGNOSTIC_DEVICES = 8;
+}
+message DiagnosticRequest {
+  DiagnosticKind kind = 1;
+  // EVENTS only; nonnegative, reports dropped-ring state in the output.
+  optional int64 after_seq = 2;
+}
+message DiagnosticResponse {
+  bytes data = 1;
+  string filename = 2;
+  string content_type = 3;
 }
 
 message InfoRequest {}

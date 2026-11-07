@@ -16,6 +16,38 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class AppQuery(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    APP_QUERY_UNSPECIFIED: _ClassVar[AppQuery]
+    APP_QUERY_INSTALLED: _ClassVar[AppQuery]
+    APP_QUERY_RUNNING: _ClassVar[AppQuery]
+    APP_QUERY_PROCESS: _ClassVar[AppQuery]
+    APP_QUERY_LOCALES: _ClassVar[AppQuery]
+    APP_QUERY_PERMISSION: _ClassVar[AppQuery]
+
+class PrivateDataOperation(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    PRIVATE_DATA_OPERATION_UNSPECIFIED: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_CAPABILITIES: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_LIST: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_READ: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_WRITE: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_DELETE: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_EXPORT_DATABASE: _ClassVar[PrivateDataOperation]
+    PRIVATE_DATA_IMPORT_DATABASE: _ClassVar[PrivateDataOperation]
+
+class DiagnosticKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    DIAGNOSTIC_UNSPECIFIED: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_SCREENSHOT: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_HIERARCHY: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_DEVICE_LOGS: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_DRIVER_LOG: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_EVENTS: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_SERVER_INFO: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_DEVICE_INFO: _ClassVar[DiagnosticKind]
+    DIAGNOSTIC_DEVICES: _ClassVar[DiagnosticKind]
+
 class SelectorOrigin(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     SELECTOR_ORIGIN_UNSPECIFIED: _ClassVar[SelectorOrigin]
@@ -58,6 +90,29 @@ class DeviceCheck(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     DEVICE_CHECK_KEYBOARD_SHOWN: _ClassVar[DeviceCheck]
     DEVICE_CHECK_KEYBOARD_HIDDEN: _ClassVar[DeviceCheck]
     DEVICE_CHECK_CLIPBOARD_EQUALS: _ClassVar[DeviceCheck]
+APP_QUERY_UNSPECIFIED: AppQuery
+APP_QUERY_INSTALLED: AppQuery
+APP_QUERY_RUNNING: AppQuery
+APP_QUERY_PROCESS: AppQuery
+APP_QUERY_LOCALES: AppQuery
+APP_QUERY_PERMISSION: AppQuery
+PRIVATE_DATA_OPERATION_UNSPECIFIED: PrivateDataOperation
+PRIVATE_DATA_CAPABILITIES: PrivateDataOperation
+PRIVATE_DATA_LIST: PrivateDataOperation
+PRIVATE_DATA_READ: PrivateDataOperation
+PRIVATE_DATA_WRITE: PrivateDataOperation
+PRIVATE_DATA_DELETE: PrivateDataOperation
+PRIVATE_DATA_EXPORT_DATABASE: PrivateDataOperation
+PRIVATE_DATA_IMPORT_DATABASE: PrivateDataOperation
+DIAGNOSTIC_UNSPECIFIED: DiagnosticKind
+DIAGNOSTIC_SCREENSHOT: DiagnosticKind
+DIAGNOSTIC_HIERARCHY: DiagnosticKind
+DIAGNOSTIC_DEVICE_LOGS: DiagnosticKind
+DIAGNOSTIC_DRIVER_LOG: DiagnosticKind
+DIAGNOSTIC_EVENTS: DiagnosticKind
+DIAGNOSTIC_SERVER_INFO: DiagnosticKind
+DIAGNOSTIC_DEVICE_INFO: DiagnosticKind
+DIAGNOSTIC_DEVICES: DiagnosticKind
 SELECTOR_ORIGIN_UNSPECIFIED: SelectorOrigin
 SELECTOR_ORIGIN_SYNTHESIZED: SelectorOrigin
 SELECTOR_ORIGIN_ALTERNATIVE: SelectorOrigin
@@ -89,6 +144,88 @@ DEVICE_CHECK_FOREGROUND_ACTIVITY: DeviceCheck
 DEVICE_CHECK_KEYBOARD_SHOWN: DeviceCheck
 DEVICE_CHECK_KEYBOARD_HIDDEN: DeviceCheck
 DEVICE_CHECK_CLIPBOARD_EQUALS: DeviceCheck
+
+class QueryAppRequest(_message.Message):
+    __slots__ = ("package_name", "query", "permission", "timeout_ms")
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    QUERY_FIELD_NUMBER: _ClassVar[int]
+    PERMISSION_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    package_name: str
+    query: AppQuery
+    permission: str
+    timeout_ms: int
+    def __init__(self, package_name: _Optional[str] = ..., query: _Optional[_Union[AppQuery, str]] = ..., permission: _Optional[str] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+
+class QueryAppResponse(_message.Message):
+    __slots__ = ("json",)
+    JSON_FIELD_NUMBER: _ClassVar[int]
+    json: str
+    def __init__(self, json: _Optional[str] = ...) -> None: ...
+
+class DatabaseBundle(_message.Message):
+    __slots__ = ("format", "name", "database", "wal", "journal")
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    DATABASE_FIELD_NUMBER: _ClassVar[int]
+    WAL_FIELD_NUMBER: _ClassVar[int]
+    JOURNAL_FIELD_NUMBER: _ClassVar[int]
+    format: str
+    name: str
+    database: bytes
+    wal: bytes
+    journal: bytes
+    def __init__(self, format: _Optional[str] = ..., name: _Optional[str] = ..., database: _Optional[bytes] = ..., wal: _Optional[bytes] = ..., journal: _Optional[bytes] = ...) -> None: ...
+
+class PrivateDataRequest(_message.Message):
+    __slots__ = ("package_name", "operation", "path", "name", "data", "bundle", "overwrite", "confirmed", "timeout_ms")
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    PATH_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    BUNDLE_FIELD_NUMBER: _ClassVar[int]
+    OVERWRITE_FIELD_NUMBER: _ClassVar[int]
+    CONFIRMED_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    package_name: str
+    operation: PrivateDataOperation
+    path: str
+    name: str
+    data: bytes
+    bundle: DatabaseBundle
+    overwrite: bool
+    confirmed: bool
+    timeout_ms: int
+    def __init__(self, package_name: _Optional[str] = ..., operation: _Optional[_Union[PrivateDataOperation, str]] = ..., path: _Optional[str] = ..., name: _Optional[str] = ..., data: _Optional[bytes] = ..., bundle: _Optional[_Union[DatabaseBundle, _Mapping]] = ..., overwrite: _Optional[bool] = ..., confirmed: _Optional[bool] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+
+class PrivateDataResponse(_message.Message):
+    __slots__ = ("json", "data", "bundle")
+    JSON_FIELD_NUMBER: _ClassVar[int]
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    BUNDLE_FIELD_NUMBER: _ClassVar[int]
+    json: str
+    data: bytes
+    bundle: DatabaseBundle
+    def __init__(self, json: _Optional[str] = ..., data: _Optional[bytes] = ..., bundle: _Optional[_Union[DatabaseBundle, _Mapping]] = ...) -> None: ...
+
+class DiagnosticRequest(_message.Message):
+    __slots__ = ("kind", "after_seq")
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    AFTER_SEQ_FIELD_NUMBER: _ClassVar[int]
+    kind: DiagnosticKind
+    after_seq: int
+    def __init__(self, kind: _Optional[_Union[DiagnosticKind, str]] = ..., after_seq: _Optional[int] = ...) -> None: ...
+
+class DiagnosticResponse(_message.Message):
+    __slots__ = ("data", "filename", "content_type")
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    FILENAME_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_TYPE_FIELD_NUMBER: _ClassVar[int]
+    data: bytes
+    filename: str
+    content_type: str
+    def __init__(self, data: _Optional[bytes] = ..., filename: _Optional[str] = ..., content_type: _Optional[str] = ...) -> None: ...
 
 class InfoRequest(_message.Message):
     __slots__ = ()
