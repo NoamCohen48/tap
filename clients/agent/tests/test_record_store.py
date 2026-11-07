@@ -53,6 +53,33 @@ def test_a_failed_schema_creation_leaves_nothing_behind(store, monkeypatch):
     assert [row["name"] for row in store.list()] == ["first"]
 
 
+@pytest.mark.parametrize("failure,expire", [("database is locked", False), ("database is locked", True), ("disk I/O error", False)])
+def test_journal_mode_retries_only_busy_setup_with_a_deadline(store, monkeypatch, failure, expire):
+    connect = sqlite3.connect
+    attempts = []
+
+    class ContendedConnection(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            if sql == "PRAGMA journal_mode=WAL":
+                attempts.append(sql)
+                if len(attempts) == 1 or expire:
+                    raise sqlite3.OperationalError(failure)
+            return super().execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(records.sqlite3, "connect", lambda *a, **kw: connect(*a, factory=ContendedConnection, **kw))
+    monkeypatch.setattr(records.time, "sleep", lambda _: None)
+    clock = iter([0, 6])
+    monkeypatch.setattr(records.time, "monotonic", lambda: next(clock) if expire else 0)
+    if failure != "database is locked" or expire:
+        with pytest.raises(RecordError, match=failure):
+            store.start("first", "agent", "c")
+        assert len(attempts) == 1
+    else:
+        store.start("first", "agent", "c")
+        # One retry on creation, then a new connection to read the saved record.
+        assert len(attempts) == 3
+
+
 def test_two_first_starts_share_one_schema(store):
     _empty_catalog(store)
     first, second = RecordStore(store.directory), RecordStore(store.directory)

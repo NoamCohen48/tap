@@ -14,6 +14,7 @@ import pathlib
 import re
 import sqlite3
 import stat
+import time
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -121,7 +122,21 @@ class RecordStore:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA synchronous=FULL")
-            connection.execute("PRAGMA journal_mode=WAL")
+            # Switching journal mode may return SQLITE_BUSY immediately instead of invoking
+            # SQLite's busy timeout when simultaneous first opens need to upgrade locks.
+            # Retry only this idempotent setup, never a transaction or device command.
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    connection.execute("PRAGMA journal_mode=WAL")
+                    break
+                except sqlite3.OperationalError as error:
+                    code = getattr(error, "sqlite_errorcode", None)
+                    # sqlite_errorcode was added in Python 3.11; 5 is SQLITE_BUSY.
+                    busy = (code & 0xFF == 5) if isinstance(code, int) else str(error) == "database is locked"
+                    if not busy or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.01)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             if version == 0 and create:
                 # The schema and its version commit together, so a crash leaves version 0 and no
