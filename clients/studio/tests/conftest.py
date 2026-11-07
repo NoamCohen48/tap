@@ -10,6 +10,7 @@ import pytest
 
 from tap_e2e import TapClient
 from tap_e2e import proto as tap
+from tap_studio.library import Library
 from tap_studio.service import Studio
 
 _path = pathlib.Path(__file__).resolve().parents[2] / "python" / "tests" / "unit" / "conftest.py"
@@ -67,5 +68,5 @@ def device(client):
 
 
 @pytest.fixture
-def studio(daemon):
-    return Studio(lambda: TapClient.create(daemon.address, TOKEN), slow=0.05, backoff_start=0.01)
+def studio(daemon, tmp_path):
+    return Studio(lambda: TapClient.create(daemon.address, TOKEN), store=Library(tmp_path / "library"), slow=0.05, backoff_start=0.01)

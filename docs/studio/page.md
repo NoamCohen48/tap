@@ -136,6 +136,17 @@ value clears the results of the steps that use it. Parameters are written to the
 keep anything private in a secret, whose value never is. A parameter stands only for that text: it
 is never part of a selector, and `${x}` typed into a step is just those characters.
 
+The **Library** keeps named recordings privately on this machine, in `~/.tap/studio/recordings`. It
+works with no device attached and no Tap server running, so you can open, rename, delete, read and
+export a recording; attach a device to edit or replay it. Saved recordings hold definitions only:
+never a secret's value, and no results. If another Studio changed an entry since you opened it,
+saving is refused rather than overwriting it.
+
+**Autosave** is off until you turn it on for a saved recording, and turns itself off and says why if
+a write fails. A file recovered after a crash is the recording as it was last saved. It records
+your edits, not what ran on the device, so it cannot tell you whether input was sent before the
+crash.
+
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
 app into a state you do not want in the flow. Wait for the current operation before changing
 the recording mode.

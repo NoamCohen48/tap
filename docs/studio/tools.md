@@ -80,6 +80,6 @@ Downloads are requested through the browser, not written to arbitrary paths on t
 server. Browser download permissions and retention apply; Studio cannot guarantee a download
 completed or assign POSIX permissions to it. Save sensitive artifacts securely.
 
-The toolkit currently requires an attachment. Studio remains single-device with one in-memory
-editable recording and manual export/open. It does not yet provide a persistent named library,
+The toolkit currently requires an attachment. Studio remains single-device, with one editable
+recording at a time; saved recordings keep named copies on this computer. It does not yet provide
 agent archive conversion, shared-storage/APK tools, or owned audio/video capture controls.

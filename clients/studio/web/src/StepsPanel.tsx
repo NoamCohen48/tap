@@ -5,10 +5,11 @@ import { describeStep, describeWait, stepKind } from "./describe";
 import { stepChips } from "./edit";
 import { errorMessage } from "./frames";
 import type { ScreenNode } from "./gen/device_pb";
-import type { Outcome, Parameter, Step } from "./gen/studio_pb";
+import type { Outcome, Parameter, Session, Step } from "./gen/studio_pb";
 import { ChoiceDialog, useModal } from "./Dialogs";
 import { Close, Down, Download, Play, Stop, Trash, Up, Upload } from "./icons";
 import { passed, type ReplayRequest, type StepState } from "./replay";
+import { Library } from "./Library";
 import { Parameters } from "./Parameters";
 import { StepEditor } from "./StepEditor";
 
@@ -36,6 +37,8 @@ export function StepsPanel({
   onDelete,
   onMove,
   onDuplicate,
+  session,
+  onSession,
   parameters,
   onParameters,
   onDirty,
@@ -66,6 +69,8 @@ export function StepsPanel({
   onDelete: (stepId: string) => void;
   onMove: (stepId: string, beforeStepId: string) => void;
   onDuplicate: (stepId: string) => void;
+  session: Session;
+  onSession: (session: Session) => void;
   parameters: readonly Parameter[];
   onParameters: (parameters: Parameter[]) => Promise<boolean>;
   /** Whether the open step has edits that are not saved. */
@@ -165,6 +170,7 @@ export function StepsPanel({
           {lastRun.text}
         </div>
       )}
+      <Library client={client} session={session} busy={locked} onSession={onSession} />
       <Parameters parameters={parameters} busy={locked} onSave={onParameters} />
       <ol className="steps" ref={list}>
         {steps.length === 0 ? (
@@ -320,7 +326,7 @@ function Result({ state, outcome }: { state: StepState | undefined; outcome: Out
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () => void }) {
+export function ExportDrawer({ client, onClose }: { client: StudioClient; onClose: () => void }) {
   const [state, setState] = useState<{ document: string; name: string; format: string } | { error: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLDivElement>(null);

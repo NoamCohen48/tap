@@ -145,6 +145,104 @@ DEVICE_CHECK_KEYBOARD_SHOWN: DeviceCheck
 DEVICE_CHECK_KEYBOARD_HIDDEN: DeviceCheck
 DEVICE_CHECK_CLIPBOARD_EQUALS: DeviceCheck
 
+class LibraryEntry(_message.Message):
+    __slots__ = ("id", "name", "revision", "updated_at", "steps")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    STEPS_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    name: str
+    revision: int
+    updated_at: _timestamp_pb2.Timestamp
+    steps: int
+    def __init__(self, id: _Optional[str] = ..., name: _Optional[str] = ..., revision: _Optional[int] = ..., updated_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., steps: _Optional[int] = ...) -> None: ...
+
+class ListLibraryRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ListLibraryResponse(_message.Message):
+    __slots__ = ("entries", "unreadable")
+    ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    UNREADABLE_FIELD_NUMBER: _ClassVar[int]
+    entries: _containers.RepeatedCompositeFieldContainer[LibraryEntry]
+    unreadable: int
+    def __init__(self, entries: _Optional[_Iterable[_Union[LibraryEntry, _Mapping]]] = ..., unreadable: _Optional[int] = ...) -> None: ...
+
+class SaveToLibraryRequest(_message.Message):
+    __slots__ = ("name", "as_new")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    AS_NEW_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    as_new: bool
+    def __init__(self, name: _Optional[str] = ..., as_new: _Optional[bool] = ...) -> None: ...
+
+class SaveToLibraryResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class OpenFromLibraryRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class OpenFromLibraryResponse(_message.Message):
+    __slots__ = ("session", "recording", "missing_secrets")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ..., recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class RenameInLibraryRequest(_message.Message):
+    __slots__ = ("id", "name", "revision")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    name: str
+    revision: int
+    def __init__(self, id: _Optional[str] = ..., name: _Optional[str] = ..., revision: _Optional[int] = ...) -> None: ...
+
+class RenameInLibraryResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class DeleteFromLibraryRequest(_message.Message):
+    __slots__ = ("id", "revision")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    revision: int
+    def __init__(self, id: _Optional[str] = ..., revision: _Optional[int] = ...) -> None: ...
+
+class DeleteFromLibraryResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
+class SetAutosaveRequest(_message.Message):
+    __slots__ = ("enabled",)
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    enabled: bool
+    def __init__(self, enabled: _Optional[bool] = ...) -> None: ...
+
+class SetAutosaveResponse(_message.Message):
+    __slots__ = ("session",)
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    session: Session
+    def __init__(self, session: _Optional[_Union[Session, _Mapping]] = ...) -> None: ...
+
 class QueryAppRequest(_message.Message):
     __slots__ = ("package_name", "query", "permission", "timeout_ms")
     PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -256,7 +354,7 @@ class AttachedDevice(_message.Message):
     def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
 
 class Session(_message.Message):
-    __slots__ = ("device", "recording", "steps", "controller_tab", "operation", "version", "recording_revision", "can_undo", "can_redo")
+    __slots__ = ("device", "recording", "steps", "controller_tab", "operation", "version", "recording_revision", "can_undo", "can_redo", "library")
     DEVICE_FIELD_NUMBER: _ClassVar[int]
     RECORDING_FIELD_NUMBER: _ClassVar[int]
     STEPS_FIELD_NUMBER: _ClassVar[int]
@@ -266,6 +364,7 @@ class Session(_message.Message):
     RECORDING_REVISION_FIELD_NUMBER: _ClassVar[int]
     CAN_UNDO_FIELD_NUMBER: _ClassVar[int]
     CAN_REDO_FIELD_NUMBER: _ClassVar[int]
+    LIBRARY_FIELD_NUMBER: _ClassVar[int]
     device: AttachedDevice
     recording: bool
     steps: int
@@ -275,7 +374,24 @@ class Session(_message.Message):
     recording_revision: int
     can_undo: bool
     can_redo: bool
-    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., controller_tab: _Optional[str] = ..., operation: _Optional[str] = ..., version: _Optional[int] = ..., recording_revision: _Optional[int] = ..., can_undo: _Optional[bool] = ..., can_redo: _Optional[bool] = ...) -> None: ...
+    library: LibraryLink
+    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., controller_tab: _Optional[str] = ..., operation: _Optional[str] = ..., version: _Optional[int] = ..., recording_revision: _Optional[int] = ..., can_undo: _Optional[bool] = ..., can_redo: _Optional[bool] = ..., library: _Optional[_Union[LibraryLink, _Mapping]] = ...) -> None: ...
+
+class LibraryLink(_message.Message):
+    __slots__ = ("id", "name", "revision", "unsaved", "autosave", "autosave_error")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    UNSAVED_FIELD_NUMBER: _ClassVar[int]
+    AUTOSAVE_FIELD_NUMBER: _ClassVar[int]
+    AUTOSAVE_ERROR_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    name: str
+    revision: int
+    unsaved: bool
+    autosave: bool
+    autosave_error: str
+    def __init__(self, id: _Optional[str] = ..., name: _Optional[str] = ..., revision: _Optional[int] = ..., unsaved: _Optional[bool] = ..., autosave: _Optional[bool] = ..., autosave_error: _Optional[str] = ...) -> None: ...
 
 class GetSessionRequest(_message.Message):
     __slots__ = ()

@@ -9,6 +9,8 @@ import { BoundsSchema, Direction, RangeType, StandardAction } from "./gen/comman
 import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
+  LibraryEntrySchema,
+  LibraryLinkSchema,
   OutcomeSchema,
   ParameterSchema,
   PerformResponseSchema,
@@ -21,6 +23,7 @@ import {
   SelectorOrigin,
   StudioService,
   type AddStepRequest,
+  type LibraryEntry,
   type Parameter,
   type PerformRequest,
   type ReplayRequest,
@@ -90,6 +93,13 @@ function fakeStudio() {
     updates: [] as UpdateStepRequest[],
     added: [] as AddStepRequest[],
     failUpdate: null as string | null,
+    noServer: false,
+    library: [] as LibraryEntry[],
+    unreadable: 0,
+    nextEntry: 1,
+    failLibrary: null as string | null,
+    opened: [] as string[],
+    autosave: [] as boolean[],
     parameters: [] as Parameter[],
     failParameters: null as string | null,
     undone: 0,
@@ -132,12 +142,13 @@ function fakeStudio() {
         state.session.version += 1n;
         return { session: state.session };
       },
-      listDevices: () => ({
-        devices: [
+      listDevices: () => {
+        if (state.noServer) throw new ConnectError("no Tap server: start one with `tap start`", Code.Unavailable);
+        return { devices: [
           { serial: "emulator-5554", state: DeviceState.DEVICE_FREE },
           { serial: "85e49002", state: DeviceState.DEVICE_LEASED },
-        ],
-      }),
+        ] };
+      },
       attach: (request) => {
         state.session = create(SessionSchema, {
           recording: state.session.recording,
@@ -202,6 +213,51 @@ function fakeStudio() {
         state.updates.push(request);
         state.steps[index(request.step!.id)] = clone(StepSchema, request.step!);
         return edited();
+      },
+      listLibrary: () => {
+        if (state.failLibrary) throw new ConnectError(state.failLibrary, Code.Aborted);
+        return { entries: state.library, unreadable: state.unreadable };
+      },
+      saveToLibrary: (request) => {
+        if (state.failLibrary) throw new ConnectError(state.failLibrary, Code.Aborted);
+        const revision = state.nextEntry++;
+        const entry = create(LibraryEntrySchema, { id: `e${revision}`, name: request.name ?? state.session.library?.name, revision: 1n, steps: state.steps.length });
+        if (request.asNew) state.library.push(entry);
+        state.session = Object.assign(clone(SessionSchema, state.session), {
+          version: state.session.version + 1n,
+          library: create(LibraryLinkSchema, { id: entry.id, name: entry.name, revision: 1n }),
+        });
+        return { session: state.session };
+      },
+      openFromLibrary: (request) => {
+        const entry = state.library.find((e) => e.id === request.id);
+        if (!entry) throw new ConnectError("no such recording", Code.NotFound);
+        state.opened.push(entry.id);
+        state.steps = [create(StepSchema, { id: "o1", kind: { case: "app", value: { operation: "launch", packageName: "com.opened" } } })];
+        state.session = Object.assign(clone(SessionSchema, state.session), {
+          version: state.session.version + 1n,
+          recordingRevision: state.session.recordingRevision + 1n,
+          steps: 1,
+          library: create(LibraryLinkSchema, { id: entry.id, name: entry.name, revision: entry.revision }),
+        });
+        return { session: state.session, ...edited() };
+      },
+      renameInLibrary: (request) => {
+        const entry = state.library.find((e) => e.id === request.id)!;
+        entry.name = request.name;
+        return { session: state.session };
+      },
+      deleteFromLibrary: (request) => {
+        state.library = state.library.filter((e) => e.id !== request.id);
+        return { session: state.session };
+      },
+      setAutosave: (request) => {
+        state.autosave.push(request.enabled);
+        state.session = Object.assign(clone(SessionSchema, state.session), {
+          version: state.session.version + 1n,
+          library: Object.assign(clone(LibraryLinkSchema, state.session.library ?? create(LibraryLinkSchema)), { autosave: request.enabled }),
+        });
+        return { session: state.session };
       },
       setParameters: (request) => {
         if (state.failParameters) throw new ConnectError(state.failParameters, Code.InvalidArgument);
@@ -584,6 +640,102 @@ describe("editing every value of a step", () => {
     fireEvent.keyDown(within(editor).getByLabelText("Key code"), { key: "z", ctrlKey: true });
     await act(async () => undefined);
     expect(fake.state.undone).toBe(0);
+  });
+});
+
+describe("the library", () => {
+  const entry = (name: string, id = name) => create(LibraryEntrySchema, { id, name, revision: 3n, steps: 2 });
+  const library = () => screen.getByRole("list", { name: "Saved recordings" });
+  /** A fake with entries, with nothing attached. */
+  async function offline(...names: string[]) {
+    const fake = fakeStudio();
+    fake.state.library = names.map((name) => entry(name));
+    render(<App client={fake.client} />);
+    await screen.findByRole("region", { name: "Recordings" });
+    return fake;
+  }
+
+  it("lists, opens and shows a recording with no device attached", async () => {
+    const fake = await offline("Checkout");
+    fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Open Checkout" }));
+    await waitFor(() => expect(fake.state.opened).toEqual(["Checkout"]));
+    await within(await screen.findByRole("list", { name: "Steps of the open recording" })).findByText(/com\.opened/);
+    expect(screen.getByRole("button", { name: "Export" })).toBeTruthy();
+  });
+
+  it("still lists the library when no Tap server runs", async () => {
+    const fake = fakeStudio();
+    fake.state.library = [entry("Checkout")];
+    fake.state.noServer = true;
+    render(<App client={fake.client} />);
+    expect((await screen.findByRole("alert")).textContent).toContain("tap start");
+    expect(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByText("Checkout")).toBeTruthy();
+  });
+
+  it("renames in place, and deletes only after asking", async () => {
+    const fake = await offline("Checkout");
+    fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Rename Checkout" }));
+    fireEvent.change(screen.getByLabelText("New name for Checkout"), { target: { value: "Basket" } });
+    fireEvent.click(within(library()).getByRole("button", { name: "Rename" }));
+    await within(library()).findByText("Basket");
+    fireEvent.click(within(library()).getByRole("button", { name: "Delete Basket" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Basket?" });
+    expect(fake.state.library).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await screen.findByText("Nothing saved yet.");
+    expect(fake.state.library).toHaveLength(0);
+  });
+
+  it("asks before replacing unsaved work, and not otherwise", async () => {
+    const fake = await offline("Checkout");
+    await act(async () => fake.watch({ steps: 2, library: create(LibraryLinkSchema, { unsaved: true }) }));
+    fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Open Checkout" }));
+    const dialog = await screen.findByRole("dialog", { name: "Open Checkout?" });
+    expect(dialog.textContent).toContain("cannot be undone");
+    expect(fake.state.opened).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(fake.state.opened).toEqual(["Checkout"]));
+  });
+
+  it("says when files could not be read", async () => {
+    const fake = fakeStudio();
+    fake.state.unreadable = 2;
+    render(<App client={fake.client} />);
+    await screen.findByText(/2 files in the library could not be read/);
+  });
+
+  it("saves a recording under a name, then Save and autosave become available", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    await act(async () => fake.watch({ steps: 1 }));
+    const steps = screen.getByRole("region", { name: "Steps" });
+    const autosave = within(steps).getByRole("checkbox", { name: "Autosave" }) as HTMLInputElement;
+    expect(autosave.disabled).toBe(true);
+    fireEvent.change(within(steps).getByLabelText("Save as"), { target: { value: "Checkout" } });
+    fireEvent.click(within(steps).getByRole("button", { name: "Save as new" }));
+    await within(steps).findByText(/Library · Checkout/);
+    await waitFor(() => expect(autosave.disabled).toBe(false));
+    fireEvent.click(autosave);
+    await waitFor(() => expect(fake.state.autosave).toEqual([true]));
+    await waitFor(() => expect(autosave.checked).toBe(true));
+  });
+
+  it("says why when a save is refused and keeps the name typed", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ steps: 1 }));
+    fake.state.failLibrary = "another Studio changed this recording since it was read";
+    const steps = screen.getByRole("region", { name: "Steps" });
+    fireEvent.change(within(steps).getByLabelText("Save as"), { target: { value: "Checkout" } });
+    fireEvent.click(within(steps).getByRole("button", { name: "Save as new" }));
+    expect((await within(steps).findByRole("alert")).textContent).toContain("another Studio");
+    expect((within(steps).getByLabelText("Save as") as HTMLInputElement).value).toBe("Checkout");
+  });
+
+  it("shows why autosave stopped", async () => {
+    const fake = await attached();
+    await act(async () => fake.watch({ library: create(LibraryLinkSchema, { id: "e1", name: "x", autosaveError: "disk full" }) }));
+    expect((await screen.findByText(/Autosave stopped: disk full/)).getAttribute("role")).toBe("alert");
   });
 });
 

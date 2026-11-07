@@ -34,7 +34,7 @@ from tap_e2e import (
 )
 from tap_e2e import proto as tap
 
-from . import __version__, steps, tools
+from . import __version__, library, steps, tools
 from ._gen import studio_pb2 as studio
 from .recording import FORMAT, RecordingError, dumps, loads, parameter_name, parameter_problems, secret_name
 from .screen import DeviceWorker, FrameError
@@ -43,6 +43,8 @@ CONNECTION_NAME = "tap-studio"
 TAB_HEADER = "x-tap-studio-tab"
 UNDO_LIMIT_BYTES = 16 * 1024 * 1024
 """How much undo history is kept; the oldest goes first."""
+AUTOSAVE_DELAY_SECONDS = 0.5
+"""How long after a change autosave writes, so a burst of edits is one write."""
 WATCH_HEARTBEAT_SECONDS = 1.0
 """The server only notices a closed stream when it sends, so a closed tab gives up control this soon,
 and a reloaded page is locked out for no longer. One small message a second on loopback costs little."""
@@ -52,8 +54,22 @@ T = TypeVar("T")
 class Studio:
     """``StudioService``. ``client_factory`` opens the daemon client (tests pass a fake's)."""
 
-    def __init__(self, client_factory: Callable[[], TapClient] = TapClient.create, **worker_options) -> None:
+    def __init__(self, client_factory: Callable[[], TapClient] = TapClient.create, *, store: library.Library | None = None, **worker_options) -> None:
         self._client_factory = client_factory
+        self._store = store or library.Library()
+        # The library entry the recording is saved in.
+        self._saved_id = ""
+        self._saved_name = ""
+        self._saved_revision = 0
+        self._changes = 0  # of the recording's definition, not its outcomes
+        self._saved_changes = 0
+        # Bumped whenever the open recording stops being the one the link was made for: a write
+        # that finishes after that must not move the link back.
+        self._link_generation = 0
+        self._autosave = False
+        self._autosave_error = ""
+        self._autosaving: asyncio.Task | None = None
+        self._writing = asyncio.Lock()
         self._worker_options = worker_options
         self._client: TapClient | None = None
         self._connection: TapConnection | None = None
@@ -130,6 +146,57 @@ class Studio:
         """The recording changed."""
         self._recording_revision += 1
         self._publish()
+        if self._autosave and self._changes != self._saved_changes and self._autosaving is None:
+            self._autosaving = asyncio.create_task(self._autosave_soon(), name="tap-studio autosave")
+
+    async def _autosave_soon(self) -> None:
+        try:
+            await asyncio.sleep(AUTOSAVE_DELAY_SECONDS)
+        finally:
+            self._autosaving = None
+        await self._write_autosave()
+
+    async def _write_autosave(self) -> None:
+        """Failure turns autosave off and says so: it must not look on while nothing is saved."""
+        if not self._autosave or self._changes == self._saved_changes:
+            return
+        if self.recording is None or not self.recording.steps:
+            return  # an undo back to nothing: the saved entry stays as it was
+        try:
+            await self._write_library(None, None, autosave=True)
+        except library.LibraryError as error:
+            self._autosave = False
+            self._autosave_error = str(error)
+        self._publish()
+
+    async def _write_library(self, name: str | None, entry_id: str | None, *, autosave: bool = False) -> None:
+        """One write at a time: autosave and Save must not race each other into a false conflict.
+        An autosave reads the entry it writes to once it holds the lock, so it never pairs one
+        entry's id with another's revision."""
+        async with self._writing:
+            if autosave:
+                if not self._autosave or not self._saved_id or self._changes == self._saved_changes:
+                    return  # unlinked, turned off or saved while it waited
+                if self.recording is None or not self.recording.steps:
+                    return
+                name, entry_id = self._saved_name, self._saved_id
+            assert self.recording is not None and name is not None
+            recording, changes, generation = studio.Recording(), self._changes, self._link_generation
+            recording.CopyFrom(self.recording)
+            revision = self._saved_revision if entry_id else None
+            entry = await _blocking(lambda: self._store.save(recording, name, entry_id, revision))
+            if generation != self._link_generation:
+                return  # another recording was opened meanwhile: this one's save is done, unlinked
+            self._saved_id, self._saved_name, self._saved_revision = entry.id, entry.name, entry.revision
+            self._saved_changes = changes
+
+    def _unlink_library(self) -> None:
+        """The recording in progress is no longer what the entry holds: never save over it."""
+        self._link_generation += 1
+        self._saved_id = self._saved_name = self._autosave_error = ""
+        self._saved_revision = 0
+        self._autosave = False
+        self._saved_changes = self._changes
 
     def _require_control(self, ctx: RequestContext | None) -> None:
         """While a tab controls Studio, a browser request must come from it. ``ctx`` is None for
@@ -199,6 +266,8 @@ class Studio:
         """Releases the device and closes the daemon connection (server shutdown)."""
         self._closing = True
         self._publish()  # ends the WatchSession streams
+        if self._autosaving is not None:
+            self._autosaving.cancel()
         # A browser/request disappearing never cancels a command already handed to the worker.
         # Shutdown drains its owner before clearing attachment or recording state.
         for task in (self._operation, self._replay_step):
@@ -206,6 +275,7 @@ class Studio:
                 # Its caller receives the failure; detach still runs. Do not log secret text.
                 with suppress(Exception):
                     await asyncio.shield(task)
+        await self._write_autosave()  # what the drained operation just recorded
         async with self._attaching:
             await self._release()
             connection, client = self._connection, self._client
@@ -250,6 +320,14 @@ class Studio:
             recording_revision=self._recording_revision,
             can_undo=bool(self._undo),
             can_redo=bool(self._redo),
+            library=studio.LibraryLink(
+                id=self._saved_id,
+                name=self._saved_name,
+                revision=self._saved_revision,
+                unsaved=self._changes != self._saved_changes,
+                autosave=self._autosave,
+                autosave_error=self._autosave_error,
+            ),
         )
         if self._attached is not None:
             session.device.CopyFrom(self._attached)
@@ -429,6 +507,7 @@ class Studio:
         """Call before changing the recording: this state becomes what undo goes back to."""
         self._undo.append(self._snapshot())
         self._redo.clear()
+        self._changes += 1
         while sum(len(entry or b"") for entry in self._undo) > UNDO_LIMIT_BYTES and len(self._undo) > 1:
             del self._undo[0]
 
@@ -449,6 +528,7 @@ class Studio:
                 if now is not None and now.HasField("outcome") and _same_run(now, step) and same_value:
                     step.outcome.CopyFrom(now.outcome)
         self.recording = restored
+        self._changes += 1
         if restored is not None:
             self._sync_secrets()
         else:
@@ -685,8 +765,99 @@ class Studio:
         self.recording = recording
         self._secrets.clear()
         self._next_id = 1
+        self._unlink_library()
         self._touch()
         return studio.OpenRecordingResponse(session=self._session(), recording=recording, missing_secrets=self._missing_secrets())
+
+    # --- library ---------------------------------------------------------------------------------
+
+    async def list_library(self, request: studio.ListLibraryRequest, ctx: RequestContext) -> studio.ListLibraryResponse:
+        try:
+            entries, unreadable = await _blocking(self._store.list)
+        except library.LibraryError as error:
+            raise _library_error(error) from None
+        return studio.ListLibraryResponse(entries=[_library_entry(e) for e in entries], unreadable=unreadable)
+
+    async def save_to_library(self, request: studio.SaveToLibraryRequest, ctx: RequestContext) -> studio.SaveToLibraryResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        if self.recording is None:
+            raise ConnectError(Code.FAILED_PRECONDITION, "nothing to save yet")
+        name = request.name if request.HasField("name") else ""
+        new = request.as_new or not self._saved_id
+        if new and not name:
+            raise ConnectError(Code.INVALID_ARGUMENT, "a new library entry needs a name")
+        await self._saving(lambda: self._write_library(name or self._saved_name, None if new else self._saved_id))
+        self._autosave_error = ""
+        self._publish()
+        return studio.SaveToLibraryResponse(session=self._session())
+
+    async def _saving(self, write: Callable[[], Awaitable[None]]) -> None:
+        async def guarded() -> None:
+            try:
+                await write()
+            except library.LibraryError as error:
+                raise _library_error(error) from None
+
+        await self._operate("save", guarded)
+
+    async def open_from_library(self, request: studio.OpenFromLibraryRequest, ctx: RequestContext) -> studio.OpenFromLibraryResponse:
+        self._require_control(ctx)
+
+        async def open_entry() -> studio.Recording:
+            try:
+                entry, recording = await _blocking(lambda: self._store.read(request.id))
+            except library.LibraryError as error:
+                raise _library_error(error) from None
+            # Still inside the gate: nothing else can change the recording between the read and this.
+            self.recording = recording
+            self._secrets.clear()
+            self._next_id = 1
+            self._undo.clear()
+            self._redo.clear()
+            self._unlink_library()
+            self._saved_id, self._saved_name, self._saved_revision = entry.id, entry.name, entry.revision
+            self._touch()
+            return recording
+
+        recording = await self._operate("open", open_entry)
+        return studio.OpenFromLibraryResponse(session=self._session(), recording=recording, missing_secrets=self._missing_secrets())
+
+    async def rename_in_library(self, request: studio.RenameInLibraryRequest, ctx: RequestContext) -> studio.RenameInLibraryResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        try:
+            entry = await _blocking(lambda: self._store.rename(request.id, request.name, request.revision))
+        except library.LibraryError as error:
+            raise _library_error(error) from None
+        if entry.id == self._saved_id:
+            self._saved_name, self._saved_revision = entry.name, entry.revision
+        self._publish()
+        return studio.RenameInLibraryResponse(session=self._session())
+
+    async def delete_from_library(self, request: studio.DeleteFromLibraryRequest, ctx: RequestContext) -> studio.DeleteFromLibraryResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        try:
+            await _blocking(lambda: self._store.delete(request.id, request.revision))
+        except library.LibraryError as error:
+            raise _library_error(error) from None
+        if request.id == self._saved_id:
+            self._unlink_library()
+            self._saved_changes = self._changes - 1  # saved nowhere now
+        self._publish()
+        return studio.DeleteFromLibraryResponse(session=self._session())
+
+    async def set_autosave(self, request: studio.SetAutosaveRequest, ctx: RequestContext) -> studio.SetAutosaveResponse:
+        self._require_control(ctx)
+        if request.enabled and not self._saved_id:
+            raise ConnectError(Code.FAILED_PRECONDITION, "save the recording to the library first")
+        self._autosave = request.enabled
+        self._autosave_error = ""
+        self._publish()
+        if self._autosave and self._changes != self._saved_changes:
+            await self._write_autosave()
+        return studio.SetAutosaveResponse(session=self._session())
 
     def _invalidate_secret(self, name: str) -> None:
         if self.recording is not None:
@@ -774,6 +945,7 @@ class Studio:
         self._remember()
         self.recording = None
         self._secrets.clear()
+        self._unlink_library()
         self._touch()
         return studio.NewRecordingResponse(session=self._session())
 
@@ -784,6 +956,23 @@ class Studio:
         return studio.GetRecordingResponse(
             recording=self.recording, document=dumps(self.recording) + "\n", missing_secrets=self._missing_secrets()
         )
+
+
+def _library_entry(entry: library.Entry) -> studio.LibraryEntry:
+    updated = Timestamp()
+    updated.FromJsonString(entry.updated_at)
+    return studio.LibraryEntry(id=entry.id, name=entry.name, revision=entry.revision, updated_at=updated, steps=entry.steps)
+
+
+def _library_error(error: library.LibraryError) -> ConnectError:
+    code = {
+        library.EntryNotFound: Code.NOT_FOUND,
+        library.RevisionConflict: Code.ABORTED,
+        library.NameTaken: Code.ALREADY_EXISTS,
+        library.InvalidName: Code.INVALID_ARGUMENT,
+        library.LibraryFull: Code.RESOURCE_EXHAUSTED,
+    }.get(type(error), Code.FAILED_PRECONDITION)
+    return ConnectError(code, str(error))
 
 
 def _check_tab(tab: str) -> None:

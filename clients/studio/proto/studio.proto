@@ -105,6 +105,27 @@ service StudioService {
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // The private library of named recordings on this machine. These need no device and no Tap
+  // server. Definitions only: no outcomes and no secret values. NOT_FOUND for an unknown id, ABORTED
+  // when another Studio changed the entry since `revision` was read, ALREADY_EXISTS for a name in
+  // use, RESOURCE_EXHAUSTED over a limit.
+  rpc ListLibrary(ListLibraryRequest) returns (ListLibraryResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Saves the recording: over the entry it came from, or as a new one with `as_new` (or when it came
+  // from none, and then `name` is required). FAILED_PRECONDITION with no recording.
+  rpc SaveToLibrary(SaveToLibraryRequest) returns (SaveToLibraryResponse);
+  // Replaces the recording with an entry. This cannot be undone: earlier versions of the recording
+  // would otherwise be saved over this entry. Secrets have no values until given.
+  rpc OpenFromLibrary(OpenFromLibraryRequest) returns (OpenFromLibraryResponse);
+  rpc RenameInLibrary(RenameInLibraryRequest) returns (RenameInLibraryResponse);
+  // The recording in progress stays, no longer saved anywhere.
+  rpc DeleteFromLibrary(DeleteFromLibraryRequest) returns (DeleteFromLibraryResponse);
+  // Saves every change of a recording that has been saved, a moment after it happens, until turned
+  // off or the recording is replaced. FAILED_PRECONDITION when it has not been saved. A failure
+  // turns it off and says why in the session's `library`. Not an execution journal: a recovered
+  // file says nothing about what ran on the device.
+  rpc SetAutosave(SetAutosaveRequest) returns (SetAutosaveResponse);
   // Explicit one-shot reads; never recorded. PROCESS can wait for a process identity.
   rpc QueryApp(QueryAppRequest) returns (QueryAppResponse);
   // SDK private data tools, never recorded. Browser transfers are capped at 1 MiB total;
@@ -112,6 +133,72 @@ service StudioService {
   rpc PrivateData(PrivateDataRequest) returns (PrivateDataResponse);
   // Explicit download of SDK diagnostics/metadata, at most 1 MiB. Not selector input.
   rpc ExportDiagnostic(DiagnosticRequest) returns (DiagnosticResponse);
+}
+
+// ---- the library -------------------------------------------------------------------------------
+
+message LibraryEntry {
+  string id = 1;
+  string name = 2;
+  int64 revision = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  int32 steps = 5;
+}
+
+message ListLibraryRequest {}
+
+message ListLibraryResponse {
+  // Newest first.
+  repeated LibraryEntry entries = 1;
+  // Files that could not be read; they are left in place.
+  int32 unreadable = 2;
+}
+
+message SaveToLibraryRequest {
+  // Required for a new entry; otherwise absent keeps its name.
+  optional string name = 1;
+  bool as_new = 2;
+}
+
+message SaveToLibraryResponse {
+  Session session = 1;
+}
+
+message OpenFromLibraryRequest {
+  string id = 1;
+}
+
+message OpenFromLibraryResponse {
+  Session session = 1;
+  Recording recording = 2;
+  repeated string missing_secrets = 3;
+}
+
+message RenameInLibraryRequest {
+  string id = 1;
+  string name = 2;
+  int64 revision = 3;
+}
+
+message RenameInLibraryResponse {
+  Session session = 1;
+}
+
+message DeleteFromLibraryRequest {
+  string id = 1;
+  int64 revision = 2;
+}
+
+message DeleteFromLibraryResponse {
+  Session session = 1;
+}
+
+message SetAutosaveRequest {
+  bool enabled = 1;
+}
+
+message SetAutosaveResponse {
+  Session session = 1;
 }
 
 // ---- explicit, non-recorded SDK tools -----------------------------------------------------------
@@ -227,8 +314,8 @@ message Session {
   // The tab that may change anything; every other tab reads. A request names its tab in the
   // `x-tap-studio-tab` header. Empty until a tab watches the session.
   string controller_tab = 4;
-  // What Studio is doing and every change waits for: "action", "tool", "attachment", "release" or
-  // "replay". It outlives a cancelled request: accepted work finishes first. Empty when idle.
+  // What Studio is doing and every change waits for: "action", "tool", "attachment", "release",
+  // "save" or "replay". It outlives a cancelled request: accepted work finishes first. Empty when idle.
   string operation = 5;
   // Increases with every change of the session, so a late response cannot replace a newer one.
   int64 version = 6;
@@ -236,6 +323,21 @@ message Session {
   int64 recording_revision = 7;
   bool can_undo = 8;
   bool can_redo = 9;
+  // Where the recording is saved in the library, and whether it has changed since.
+  LibraryLink library = 10;
+}
+
+message LibraryLink {
+  // Empty when the recording is not saved in the library.
+  string id = 1;
+  string name = 2;
+  // The entry's revision as last read or written.
+  int64 revision = 3;
+  // The recording has changed since it was saved or opened.
+  bool unsaved = 4;
+  bool autosave = 5;
+  // Why autosave turned itself off.
+  string autosave_error = 6;
 }
 
 message GetSessionRequest {}
