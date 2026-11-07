@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from tap_e2e import Bounds, Device, NodeChange, ScreenNode, ScreenSnapshot, Screenshot, SelectorKind, TapError
@@ -191,7 +191,7 @@ def screen_node(node: ScreenNode) -> tap.ScreenNode:
         depth=node.depth,
         window_package=node.window_package,
         bounds=tap.Bounds(left=node.bounds.left, top=node.bounds.top, right=node.bounds.right, bottom=node.bounds.bottom),
-        flags=sorted(tap.NodeFlag.Value(f"FLAG_{flag.name}") for flag in node.flags),
+        flags=sorted(cast(tap.NodeFlag, tap.NodeFlag.Value(f"FLAG_{flag.name}")) for flag in node.flags),
         password=node.password,
         showing_hint=node.showing_hint,
         content_invalid=node.content_invalid,

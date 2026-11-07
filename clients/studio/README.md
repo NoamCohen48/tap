@@ -2,7 +2,7 @@
 
 **Experimental.** A browser inspector and action recorder for Android apps on a running `tap`
 daemon: see the app's screen with its elements overlaid, select one and choose what to do with
-it, and get what you did as `tap-recording/1` JSON: element interactions (`tap res("search")`), never
+it, and get what you did as `tap-recording/2` JSON: element interactions (`tap res("search")`), never
 coordinates. The design is `.docs/recorder.md` in the repository.
 
 So far: pick a device and the app under test, see its screen with the element overlay, select an
@@ -12,8 +12,10 @@ the element now; Wait: element waits; App: launch, stop, clear, grant, app waits
 the device bar under the phone, inspect an element's selector candidates and properties or the screen tree,
 choose which selector candidate a step uses or type one in the SDK's DSL (with a live match
 count), edit, insert, reorder and delete steps, replay all or part of the recording (it stops at
-the first failure), and export and reopen `tap-recording/1` files. It needs a running daemon
-(`tap start`).
+the first failure), and export and reopen `tap-recording/2` files. Legacy `/1` files upgrade on
+open; older Studio refuses `/2` rather than silently dropping its new execution budgets.
+Counted taps, physical hold durations, phase budgets and whole-screen stability can be recorded
+and edited. It needs a running daemon (`tap start`).
 
 ```bash
 tap-studio              # serves on a free loopback port and opens the page
@@ -41,12 +43,12 @@ User guide: `docs/studio/` (published at
 ## Layout
 
 - `proto/studio.proto`: the one contract, `tap.studio.v1`: the page's API (`StudioService`,
-  served over Connect) and the `tap-recording/1` document (`Recording`). It imports `tap.v1`
+  served over Connect) and the `tap-recording/2` document (`Recording`). It imports `tap.v1`
   from `contracts/proto`.
 - `tap_studio/`: the Python back end (Starlette + connect-python on `tap-e2e`): `server.py`
   (the app, login and access checks), `service.py` (`StudioService`: session, device,
   recording), `screen.py` (the per-device worker thread and the frame loop), `steps.py`
-  (completing and running a step), `recording.py` (the `tap-recording/1` document); `_gen/` is
+  (completing and running a step), `recording.py` (the `/2` document and `/1` upgrade); `_gen/` is
   generated.
 - `web/`: the page (React + TypeScript 7, Bun + Vite): `App.tsx` (top bar, the three
   areas), `ScreenView.tsx` (frame, overlay, selecting), `Composer.tsx` (the selected element, the

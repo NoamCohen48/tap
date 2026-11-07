@@ -17,6 +17,8 @@ function elementOp(command: Command | undefined) {
     case "tap":
     case "longTap":
     case "doubleTap":
+    case "multiTap":
+    case "hold":
     case "setText":
     case "clearText":
     case "scroll":

@@ -1,5 +1,5 @@
 // tap.studio.v1 — Tap Studio: the page's API (served by `tap-studio` over Connect) and the
-// `tap-recording/1` document.
+// `tap-recording/2` document (Studio can also open legacy /1 files).
 //
 // The one contract between the studio's Python back end and its TypeScript page: both sides are
 // generated from this file (clients/studio/scripts/gen_protos.py). It imports tap.v1 from
@@ -66,7 +66,7 @@ service StudioService {
   rpc DeleteStep(DeleteStepRequest) returns (DeleteStepResponse);
   // Moves a recorded step.
   rpc MoveStep(MoveStepRequest) returns (MoveStepResponse);
-  // Replaces the recording with a tap-recording/1 document to continue or replay it.
+  // Replaces the recording with a /1 or /2 document to continue or replay; /1 upgrades to /2.
   // INVALID_ARGUMENT lists every rule the document breaks.
   rpc OpenRecording(OpenRecordingRequest) returns (OpenRecordingResponse);
   // Runs recorded steps in order on the attached device, stopping after the first that fails; each
@@ -90,7 +90,7 @@ message InfoRequest {}
 message InfoResponse {
   // The tool and its version, as a recording's `recorder`.
   string recorder = 1;
-  // The recording format this studio writes: "tap-recording/1".
+  // The recording format this studio writes: "tap-recording/2".
   string format = 2;
 }
 
@@ -229,6 +229,9 @@ message PerformRequest {
   // Run the step but never record it, whether recording is on or not: the page's own probes,
   // such as the scrolls that look for a scroll until's target before the user picks it.
   bool skip_recording = 4;
+  // An element action's inferred wait budget, 1..120000 ms. Only with a targeted action;
+  // persisted in action.wait.timeout_ms, never treated as the input command's own budget.
+  optional int64 precondition_timeout_ms = 5;
 }
 
 message PerformResponse {
@@ -276,7 +279,7 @@ message MoveStepResponse {
 }
 
 message OpenRecordingRequest {
-  // A tap-recording/1 file. Its secrets have no values until UpdateStep or Replay gives them.
+  // A tap-recording/1 or /2 file. Secrets have no values until UpdateStep or Replay gives them.
   string document = 1;
 }
 
@@ -323,7 +326,7 @@ message GetRecordingRequest {}
 
 message GetRecordingResponse {
   Recording recording = 1;
-  // The same recording as its tap-recording/1 file (tap_studio.recording.dumps), so the page
+  // The same recording as its tap-recording/2 file (tap_studio.recording.dumps), so the page
   // exports exactly what the back end writes and validates.
   string document = 2;
   // Secrets the steps use whose values the studio does not have (an opened recording): Replay
@@ -331,14 +334,15 @@ message GetRecordingResponse {
   repeated string missing_secrets = 3;
 }
 
-// ---- tap-recording/1 ----------------------------------------------------------------------------
+// ---- tap-recording/2 ----------------------------------------------------------------------------
 //
 // The document is this message in proto3 JSON with the original (snake_case) field names, as
-// `tap-events/1`. Readers ignore unknown fields: additive changes keep `/1`. Rules proto cannot
-// state are checked by tap_studio.recording.validate and listed on each field.
+// `tap-events/1`. /2 adds explicit type/wait/scroll budgets which /1 readers would silently drop;
+// older Studio versions must refuse it. This Studio upgrades /1 documents on open. Rules proto
+// cannot state are checked by tap_studio.recording.validate and listed on each field.
 
 message Recording {
-  // Exactly "tap-recording/1".
+  // Exactly "tap-recording/2" when written; legacy /1 is upgraded on open.
   string format = 1;
   // When recording started.
   google.protobuf.Timestamp recorded_at = 2;
@@ -398,7 +402,7 @@ message Step {
 
 // One command; a command with a selector is preceded by the wait that proved it could run.
 message ActionStep {
-  // On an element: tap, long_tap, double_tap, set_text, clear_text, scroll, swipe, fling, pinch,
+  // On an element: tap, long_tap, double_tap, multi_tap, hold, set_text, clear_text, scroll, swipe, fling, pinch,
   // drag, perform_ime_action, perform_accessibility_action or set_progress. On the device, with no
   // selector: press_key, open_system_panel, set_orientation, set_display_rotation,
   // unfreeze_rotation, dismiss_keyguard, hide_keyboard, set_clipboard, choose_permission,
@@ -431,6 +435,11 @@ message TypeStep {
   // The SDKs' `await_focus = false`: for fields whose focus lands elsewhere.
   bool skip_focus_wait = 4;
   SelectorOrigin selector_origin = 5;
+  // Separate 1..120000 ms budgets for tap/type, initial selector wait, and the focus wait.
+  // Absent fields use the SDK defaults; none promises keyboard/IME readiness.
+  optional int64 timeout_ms = 6;
+  optional int64 precondition_timeout_ms = 7;
+  optional int64 focus_timeout_ms = 8;
 }
 
 // The SDKs' element waits (`ElementWait`).
@@ -462,6 +471,8 @@ message WaitStep {
     int32 count = 4; // ≥ 0
   }
   SelectorOrigin selector_origin = 5;
+  // 1..120000 ms; absent uses the SDK wait default.
+  optional int64 timeout_ms = 6;
 }
 
 // What an assertion checks, with the SDKs' element queries, once and at once.
@@ -493,6 +504,8 @@ message AssertionStep {
     int32 count = 4; // ≥ 0
   }
   SelectorOrigin selector_origin = 5;
+  // One query's command budget, 1..120000 ms; not a wait for the assertion to hold.
+  optional int64 timeout_ms = 6;
 }
 
 // The SDKs' `Element.scrollUntil`: scrolls `container` towards `direction` until `target` exists
@@ -512,11 +525,15 @@ message ScrollUntilStep {
   optional int32 distance_percent = 5;
   // The container's.
   SelectorOrigin selector_origin = 6;
+  // Separate 1..120000 ms search and initial container-wait budgets.
+  optional int64 timeout_ms = 7;
+  optional int64 precondition_timeout_ms = 8;
 }
 
 // An app wait, one command on the app's package: `wait_app_visible` (`App.awaitVisible`: the app
 // owns the focused window) or `wait_screen_stable` (`App.awaitScreenStable`, or its shorthands
-// `awaitSettled` for STABILITY_TREE and `awaitAnimationEnd` for STABILITY_PIXELS).
+// `awaitSettled` for STABILITY_TREE and `awaitAnimationEnd` for STABILITY_PIXELS). An empty
+// wait_screen_stable.package_name watches the whole screen; wait_app_visible requires a package.
 message AppWaitStep {
   tap.v1.Command command = 1;
 }

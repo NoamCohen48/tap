@@ -58,7 +58,7 @@ Tap is in **alpha**: the first release was 0.0.1 for every family; 0.0.2 (2026-0
     - the agent surface: `tap-agent`, held connections (`connect(..., hold=...)`, `resume`),
       screen snapshots and refs (`screen_snapshot`, `resolve_ref`), the event log
       (`event_log`, the `Events` RPC) and the `tap-events/1` export format;
-    - Tap Studio: `tap-studio`, its page and the `tap-recording/1` format;
+    - Tap Studio: `tap-studio`, its page and the `tap-recording/2` format;
     - the watcher: `tap-watcher`, its page, the `tap-watch-steps/2` file and the server's
       `WatchService` (`Watch`, `WatchVideo`).
 - A published version is never replaced: a fix is a new patch release.

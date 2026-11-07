@@ -35,6 +35,11 @@ Tap Studio:
 - **Secret typing is sensitive.** Type keys now marks named secret values sensitive on both
   direct execution and replay, as Set text already did. The device receives the value but the
   daemon's event history, watcher and event exports omit it; recording exports keep only its name.
+- **Gesture and execution controls.** Counted taps, physical hold duration, command/query,
+  selector-precondition and typing-focus budgets, and whole-screen/package stability with custom
+  quiet periods and signals can be recorded, edited and replayed. Invalid parameters and bounded
+  selectors are rejected before input. New recordings use `tap-recording/2` so older readers cannot
+  silently discard the added budgets; legacy `/1` files upgrade on open.
 
 Server, Kotlin/Python clients and tap-agent:
 

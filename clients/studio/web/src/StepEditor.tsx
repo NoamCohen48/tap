@@ -11,6 +11,9 @@ import { SelectorOrigin, StepSchema, type Step } from "./gen/studio_pb";
 import { candidateChips } from "./nodes";
 import { parseSelector } from "./parse";
 import type { Target } from "./steps";
+import { budgetFields, ExecutionControls, stepBudgets, validBudgets, withBudgets } from "./ExecutionControls";
+import { PressFields, stepPress, validPress, withPress } from "./PressControls";
+import { StabilitySignal } from "./gen/command_pb";
 
 /** Edits one recorded step: its selector (another candidate of its node, or typed), what a scroll
  *  until scrolls to, how a swipe, scroll or scroll until moves, the text it enters or checks (or a
@@ -48,8 +51,8 @@ export function StepEditor({
   const movementError =
     movement && !(Number.isInteger(movement.distance) && movement.distance >= 1 && movement.distance <= 100)
       ? "The distance is 1 to 100 percent."
-      : movement?.maxScrolls !== undefined && !(Number.isInteger(movement.maxScrolls) && movement.maxScrolls >= 1 && movement.maxScrolls <= 1000)
-        ? "Max scrolls is 1 to 1000."
+      : movement?.maxScrolls !== undefined && !(Number.isInteger(movement.maxScrolls) && movement.maxScrolls >= 0 && movement.maxScrolls <= 1000)
+        ? "Max scrolls is 0 to 1000."
         : null;
 
   const initialText = stepText(step);
@@ -57,6 +60,12 @@ export function StepEditor({
   const [secret, setSecret] = useState<string | null>(initialText && "secret" in initialText ? initialText.secret : null);
   const [secretValue, setSecretValue] = useState("");
   const [note, setNote] = useState(step.note ?? "");
+  const [budgets, setBudgets] = useState(() => stepBudgets(step));
+  const [press, setPress] = useState(() => stepPress(step));
+  const originalStability = step.kind.case === "appWait" && step.kind.value.command?.op.case === "waitScreenStable" ? step.kind.value.command.op.value : undefined;
+  const [quiet, setQuiet] = useState(Number(originalStability?.stableForMs ?? 500n));
+  const [stabilityPackage, setStabilityPackage] = useState(originalStability?.packageName ?? "");
+  const [signal, setSignal] = useState(originalStability?.signal ?? StabilitySignal.STABILITY_ALL);
 
   const originOf = (selector: Selector): SelectorOrigin => {
     const index = node?.candidates.findIndex((c) => c.selector && equals(SelectorSchema, c.selector, selector)) ?? -1;
@@ -99,9 +108,16 @@ export function StepEditor({
     edited = clone(StepSchema, edited);
     edited.note = note || undefined;
   }
+  if (validBudgets(budgets)) edited = withBudgets(edited, budgets);
+  if (press && validPress(press)) edited = withPress(edited, press);
+  const stabilityOk = !originalStability || (Number.isInteger(quiet) && quiet >= 1 && quiet <= 30000);
+  if (originalStability && stabilityOk && edited.kind.case === "appWait" && edited.kind.value.command?.op.case === "waitScreenStable") {
+    edited = clone(StepSchema, edited);
+    if (edited.kind.case === "appWait" && edited.kind.value.command?.op.case === "waitScreenStable") Object.assign(edited.kind.value.command.op.value, { packageName: stabilityPackage, stableForMs: BigInt(quiet), signal });
+  }
   const changed = !equals(StepSchema, edited, step) || (secret !== null && secretValue !== "");
   const scrollToError = parsedScrollTo && "error" in parsedScrollTo ? `${parsedScrollTo.error} (at ${parsedScrollTo.at + 1})` : null;
-  const valid = !typedError && !scrollToError && !movementError && (secret === null || secret.trim() !== "");
+  const valid = !typedError && !scrollToError && !movementError && validBudgets(budgets) && (!press || validPress(press)) && stabilityOk && (secret === null || secret.trim() !== "");
 
   const movementFields = movement && (
     <>
@@ -132,7 +148,7 @@ export function StepEditor({
             <span>Max scrolls</span>
             <input
               type="number"
-              min={1}
+              min={0}
               max={1000}
               value={Number.isNaN(movement.maxScrolls) ? "" : movement.maxScrolls}
               aria-invalid={movementError?.startsWith("Max") ?? false}
@@ -223,6 +239,15 @@ export function StepEditor({
         </fieldset>
       )}
 
+      <ExecutionControls fields={budgetFields(step)} values={budgets} onChange={setBudgets} />
+      {press && <fieldset><legend>Press parameters</legend><PressFields value={press} onChange={setPress} /></fieldset>}
+      {originalStability && <fieldset><legend>Screen stability</legend>
+        <label className="field"><span>Stability package (empty = whole screen)</span><input value={stabilityPackage} onChange={(e) => setStabilityPackage(e.target.value)} /></label>
+        <label className="field"><span>Quiet period (ms)</span><input type="number" min={1} max={30000} value={Number.isNaN(quiet) ? "" : quiet} onChange={(e) => setQuiet(e.target.valueAsNumber)} aria-invalid={!stabilityOk} /></label>
+        <label className="field"><span>Stability signal</span><select value={signal} onChange={(e) => setSignal(Number(e.target.value))}><option value={StabilitySignal.STABILITY_ALL}>Tree and pixels</option><option value={StabilitySignal.STABILITY_TREE}>Tree</option><option value={StabilitySignal.STABILITY_PIXELS}>Pixels</option></select></label>
+        {!stabilityOk && <p role="alert">Quiet period must be 1..30000 whole milliseconds.</p>}
+      </fieldset>}
+
       {initialText && (
         <fieldset>
           <legend>{step.kind.case === "wait" || step.kind.case === "assertion" ? "Expected text" : "Text"}</legend>
@@ -291,6 +316,11 @@ export function StepEditor({
               setNote(step.note ?? "");
               setScrollTo(originalTarget ? describeSelector(originalTarget) : "");
               setMovement(initialMovement);
+              setBudgets(stepBudgets(step));
+              setPress(stepPress(step));
+              setQuiet(Number(originalStability?.stableForMs ?? 500n));
+              setStabilityPackage(originalStability?.packageName ?? "");
+              setSignal(originalStability?.signal ?? StabilitySignal.STABILITY_ALL);
             }}
           >
             Undo changes

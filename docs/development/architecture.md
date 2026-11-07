@@ -41,7 +41,7 @@ server has checked, and an export of everything the session did.
 
 **`tap-studio`** is another client on the Python one: a local web server and a browser page
 (React) that show the device's screen with its elements and record what the user does as
-`tap-recording/1` steps. Page and back end share one schema, `clients/studio/proto/studio.proto`.
+`tap-recording/2` steps. Page and back end share one schema, `clients/studio/proto/studio.proto`.
 
 **`tap-watcher`** is a read-only client on the Python one: a local web server and a browser page
 (React) that show what every connection does on each device, with the device's screen as video.

@@ -261,16 +261,18 @@ class ListNotificationsResponse(_message.Message):
     def __init__(self, notifications: _Optional[_Iterable[_Union[_command_pb2.DeviceNotification, _Mapping]]] = ...) -> None: ...
 
 class PerformRequest(_message.Message):
-    __slots__ = ("step", "secret_value", "before_step_id", "skip_recording")
+    __slots__ = ("step", "secret_value", "before_step_id", "skip_recording", "precondition_timeout_ms")
     STEP_FIELD_NUMBER: _ClassVar[int]
     SECRET_VALUE_FIELD_NUMBER: _ClassVar[int]
     BEFORE_STEP_ID_FIELD_NUMBER: _ClassVar[int]
     SKIP_RECORDING_FIELD_NUMBER: _ClassVar[int]
+    PRECONDITION_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     step: Step
     secret_value: str
     before_step_id: str
     skip_recording: bool
-    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ..., before_step_id: _Optional[str] = ..., skip_recording: _Optional[bool] = ...) -> None: ...
+    precondition_timeout_ms: int
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ..., before_step_id: _Optional[str] = ..., skip_recording: _Optional[bool] = ..., precondition_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class PerformResponse(_message.Message):
     __slots__ = ("step", "recorded", "message")
@@ -478,62 +480,76 @@ class ActionStep(_message.Message):
     def __init__(self, command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., wait: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., secret: _Optional[str] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
 
 class TypeStep(_message.Message):
-    __slots__ = ("selector", "text", "secret", "skip_focus_wait", "selector_origin")
+    __slots__ = ("selector", "text", "secret", "skip_focus_wait", "selector_origin", "timeout_ms", "precondition_timeout_ms", "focus_timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     SECRET_FIELD_NUMBER: _ClassVar[int]
     SKIP_FOCUS_WAIT_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    PRECONDITION_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    FOCUS_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
     text: str
     secret: str
     skip_focus_wait: bool
     selector_origin: SelectorOrigin
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., secret: _Optional[str] = ..., skip_focus_wait: _Optional[bool] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+    timeout_ms: int
+    precondition_timeout_ms: int
+    focus_timeout_ms: int
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., secret: _Optional[str] = ..., skip_focus_wait: _Optional[bool] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ..., precondition_timeout_ms: _Optional[int] = ..., focus_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class WaitStep(_message.Message):
-    __slots__ = ("selector", "condition", "text", "count", "selector_origin")
+    __slots__ = ("selector", "condition", "text", "count", "selector_origin", "timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     CONDITION_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
     condition: Condition
     text: str
     count: int
     selector_origin: SelectorOrigin
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+    timeout_ms: int
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
 
 class AssertionStep(_message.Message):
-    __slots__ = ("selector", "check", "text", "count", "selector_origin")
+    __slots__ = ("selector", "check", "text", "count", "selector_origin", "timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     CHECK_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
     check: Check
     text: str
     count: int
     selector_origin: SelectorOrigin
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., check: _Optional[_Union[Check, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+    timeout_ms: int
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., check: _Optional[_Union[Check, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
 
 class ScrollUntilStep(_message.Message):
-    __slots__ = ("container", "target", "direction", "max_scrolls", "distance_percent", "selector_origin")
+    __slots__ = ("container", "target", "direction", "max_scrolls", "distance_percent", "selector_origin", "timeout_ms", "precondition_timeout_ms")
     CONTAINER_FIELD_NUMBER: _ClassVar[int]
     TARGET_FIELD_NUMBER: _ClassVar[int]
     DIRECTION_FIELD_NUMBER: _ClassVar[int]
     MAX_SCROLLS_FIELD_NUMBER: _ClassVar[int]
     DISTANCE_PERCENT_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    PRECONDITION_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     container: _selector_pb2.Selector
     target: _selector_pb2.Selector
     direction: _command_pb2.Direction
     max_scrolls: int
     distance_percent: int
     selector_origin: SelectorOrigin
-    def __init__(self, container: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., target: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[_command_pb2.Direction, str]] = ..., max_scrolls: _Optional[int] = ..., distance_percent: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ...) -> None: ...
+    timeout_ms: int
+    precondition_timeout_ms: int
+    def __init__(self, container: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., target: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., direction: _Optional[_Union[_command_pb2.Direction, str]] = ..., max_scrolls: _Optional[int] = ..., distance_percent: _Optional[int] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ..., precondition_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class AppWaitStep(_message.Message):
     __slots__ = ("command",)

@@ -44,9 +44,20 @@ class ParseError extends Error {
 
 export function parseSelector(text: string): Parsed {
   try {
-    const parser = new Parser(tokenize(text));
+    if (new TextEncoder().encode(text).length > 65536) throw new ParseError("selector exceeds 64 KiB", 0);
+    const tokens = tokenize(text);
+    if (tokens.length > 4096) throw new ParseError("selector has too many tokens", 0);
+    const parser = new Parser(tokens);
     const sel = parser.expression();
     parser.expect("end");
+    const pending = [{ node: sel.node, depth: 1 }];
+    let count = 0;
+    while (pending.length) {
+      const { node, depth } = pending.pop()!;
+      if (++count > 256 || depth > 32) throw new ParseError("selector exceeds 32 levels or 256 nodes", 0);
+      if (node.kind.case === "allOf" || node.kind.case === "anyOf") pending.push(...node.kind.value.nodes.map((n) => ({ node: n, depth: depth + 1 })));
+      if (node.kind.case === "related" && node.kind.value.node) pending.push({ node: node.kind.value.node, depth: depth + 1 });
+    }
     return { selector: create(SelectorSchema, { node: sel.node, pick: sel.pick }) };
   } catch (error) {
     if (error instanceof ParseError) return { error: error.message, at: error.at };
@@ -102,6 +113,10 @@ function tokenize(text: string): Token[] {
         i++;
       }
       i++;
+      if (value.length > 1024) throw new ParseError("selector string exceeds 1024 UTF-16 units", start);
+      for (const char of value) {
+        if (char.length === 1 && char.charCodeAt(0) >= 0xd800 && char.charCodeAt(0) <= 0xdfff) throw new ParseError("unpaired Unicode surrogate", start);
+      }
       tokens.push({ kind: "string", text: text.slice(start, i), at: start, value });
     } else if ("().,=".includes(c)) {
       tokens.push({ kind: "punct", text: c, at: i });
@@ -165,6 +180,7 @@ const RELATION_NAMES = new Map([...reverse(RELATIONS)].filter(([, r]) => r !== R
 
 class Parser {
   private i = 0;
+  private depth = 0;
 
   constructor(private readonly tokens: Token[]) {}
 
@@ -194,14 +210,19 @@ class Parser {
 
   /** Infix `and` / `or`, left to right, as Kotlin's infix calls. */
   expression(): Sel {
-    let left = this.chain();
-    while (this.is("name", "and") || this.is("name", "or")) {
-      const at = this.token.at;
-      const operator = this.expect("name").text;
-      const right = this.chain();
-      left = operator === "and" ? this.and(left, right, at) : this.or(left, right, at);
+    if (++this.depth > 32) throw new ParseError("selector exceeds 32 levels", this.token.at);
+    try {
+      let left = this.chain();
+      while (this.is("name", "and") || this.is("name", "or")) {
+        const at = this.token.at;
+        const operator = this.expect("name").text;
+        const right = this.chain();
+        left = operator === "and" ? this.and(left, right, at) : this.or(left, right, at);
+      }
+      return left;
+    } finally {
+      this.depth--;
     }
-    return left;
   }
 
   private chain(): Sel {
@@ -342,7 +363,7 @@ class Parser {
         return { ...sel, pick: { case: "first", value: create(FirstSchema) } };
       case "at": {
         const [index] = this.take(name, args, at, ["number"]);
-        if ((index as number) < 0) throw new ParseError("at(…) takes an index ≥ 0", at);
+        if (!Number.isSafeInteger(index) || (index as number) < 0 || (index as number) > 2147483647) throw new ParseError("at(…) takes an index ≥ 0 and ≤ 2147483647", at);
         return { ...sel, pick: { case: "at", value: create(AtSchema, { index: index as number }) } };
       }
     }

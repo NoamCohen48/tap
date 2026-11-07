@@ -17,6 +17,34 @@ a human watches; here a human drives through Tap and Tap writes down what they d
 compatibility or by what is quickest to build. Where the right design needs a daemon, proto or
 driver change, it gets one.
 
+## SDK coverage extension (owner-approved follow-up)
+
+The owner requested the PR #40/#41 Studio gaps be fixed and every remainder tracked in
+[studio-todo.md](studio-todo.md). The original `/1` design/history below remains a record, not
+the current format definition: `clients/studio/proto/studio.proto` and its validator win.
+
+Current recordings are **`tap-recording/2`**. Added type, element-wait, assertion and scroll
+budgets would be silently ignored by a `/1` reader, so the existing versioning rule requires a
+bump. Studio opens `/1` and upgrades it before writing `/2`; older Studio refuses `/2`.
+Actions persist the inferred selector wait's budget in `action.wait.timeout_ms`; live requests
+supply it as `PerformRequest.precondition_timeout_ms`. Type steps carry separate input,
+precondition and focus budgets, scroll-until has separate container/search budgets, and element
+waits/assertions carry their own timeout. All explicit budgets are 1..120000 ms; unsupported
+fixed-budget calls refuse supplied options. SDK host-loop budgets are checked between calls,
+not a replacement for each in-flight command's timeout. Secret Type keys now propagates the
+SDK sensitive flag on direct execution and replay.
+
+Counted taps (single tap for count 1, `multi_tap` for 2..100) and physical timed holds are
+recordable, editable and replayed through SDK calls. Defaults and validation preserve the
+actual command parameters; invalid durations/sequence lengths fail before the initial wait.
+Stability can watch a package or the whole screen, select tree/pixels/both and use a custom
+quiet period. Typed/imported selectors are bounded by size, depth, node count, index and string
+length rather than relying only on the driver to refuse them.
+
+Single-device ownership, successful-step-only editable recordings and manual export/open remain
+unchanged. Multi-device routing, durable named libraries/intent journals, agent archive conversion,
+media controls/readiness and other deferred work are explicit in the todo document.
+
 ## Research summary
 
 ### Recorders and inspectors

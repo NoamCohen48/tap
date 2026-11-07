@@ -1,4 +1,4 @@
-"""``tap-recording/1``: what Tap Studio records, as one JSON document.
+"""``tap-recording/2``: Studio flows with explicit budgets; /1 is upgraded on open.
 
 The document is ``tap.studio.v1.Recording`` (``clients/studio/proto/studio.proto``) in proto3 JSON
 with the original field names, as ``tap-events/1``. The proto is the format's definition; this
@@ -17,7 +17,8 @@ from tap_e2e import proto as tap
 
 from ._gen import studio_pb2 as studio
 
-FORMAT = "tap-recording/1"
+FORMAT = "tap-recording/2"
+LEGACY_FORMAT = "tap-recording/1"
 
 APP_OPERATIONS = (
     "cold_launch",
@@ -36,6 +37,8 @@ TARGETED_OPS = (
     "tap",
     "long_tap",
     "double_tap",
+    "multi_tap",
+    "hold",
     "set_text",
     "clear_text",
     "scroll",
@@ -94,20 +97,25 @@ _MAX_ID = 64
 
 
 class RecordingError(ValueError):
-    """A document that is not valid ``tap-recording/1``; ``problems`` lists every rule it breaks."""
+    """An invalid Studio document; ``problems`` lists every rule it breaks."""
 
     def __init__(self, problems: list[str]):
-        super().__init__("not a valid tap-recording/1 document:\n  " + "\n  ".join(problems))
+        super().__init__(f"not a valid {FORMAT} document:\n  " + "\n  ".join(problems))
         self.problems = problems
 
 
 def loads(text: str | bytes) -> studio.Recording:
-    """Parse and validate a document. Unknown fields are ignored: additive changes keep ``/1``."""
+    """Parse and validate, upgrading legacy /1 before writing /2. Unknown fields are ignored.
+
+    /2 prevents an older /1 reader from silently dropping the added execution budgets.
+    """
     recording = studio.Recording()
     try:
         json_format.Parse(text, recording, ignore_unknown_fields=True)
     except json_format.ParseError as error:
         raise RecordingError([str(error)]) from None
+    if recording.format == LEGACY_FORMAT:
+        recording.format = FORMAT
     validate(recording)
     return recording
 
@@ -206,7 +214,66 @@ def _step(step: studio.Step, used: set[str]) -> list[str]:
     results = [step.outcome.HasField("error"), step.outcome.HasField("failure"), bool(step.outcome.mismatch)]
     if sum(results) > 1:
         problems.append("outcome has at most one of error, failure and mismatch")
+    problems += _budget_problems(step)
+    problems += _selector_problems(step)
     return problems
+
+
+def _budget_problems(step: studio.Step) -> list[str]:
+    kind = step.WhichOneof("kind")
+    messages = []
+    if kind == "action":
+        messages = [step.action.command, step.action.wait]
+    elif kind == "app":
+        messages = [step.app]
+    elif kind in ("type", "wait", "assertion", "scroll_until"):
+        messages = [getattr(step, kind)]
+    elif kind in ("app_wait", "device_wait"):
+        messages = [getattr(step, kind).command]
+    problems = []
+    for message in messages:
+        for name in ("timeout_ms", "precondition_timeout_ms", "focus_timeout_ms"):
+            if name in message.DESCRIPTOR.fields_by_name and message.HasField(name) and not 1 <= getattr(message, name) <= 120000:
+                problems.append(f"{kind}.{name} must be 1..120000")
+    if kind == "type" and step.type.skip_focus_wait and step.type.HasField("focus_timeout_ms"):
+        problems.append("type.focus_timeout_ms requires a focus wait")
+    return problems
+
+
+def _selector_problems(step: studio.Step) -> list[str]:
+    # Iterative traversal: typed/imported predicates must not consume an unbounded call stack.
+    if step.ByteSize() > 1024 * 1024:
+        return ["step exceeds 1 MiB"]
+    messages = [step]
+    while messages:
+        message = messages.pop()
+        if isinstance(message, tap.Selector):
+            if message.ByteSize() > 65536:
+                return ["selector exceeds 64 KiB"]
+            if message.WhichOneof("pick") == "at" and message.at.index > 2147483647:
+                return ["selector index must be 0..2147483647"]
+            nodes = [(message.node, 1)]
+            count = 0
+            while nodes:
+                node, depth = nodes.pop()
+                count += 1
+                if depth > 32 or count > 256:
+                    return ["selector exceeds 32 levels or 256 nodes"]
+                which = node.WhichOneof("kind")
+                if which in ("all_of", "any_of"):
+                    nodes.extend((n, depth + 1) for n in getattr(node, which).nodes)
+                elif which == "related":
+                    nodes.append((node.related.node, depth + 1))
+                elif (
+                    (which == "match" and len(node.match.value.encode("utf-16-le")) > 2048)
+                    or (which == "resource" and max(len(node.resource.name.encode("utf-16-le")), len(node.resource.package_name.encode("utf-16-le"))) > 2048)
+                ):
+                    return ["selector string exceeds 1024 UTF-16 units"]
+            continue
+        for field, value in message.ListFields():
+            if field.message_type is not None:
+                messages.extend(value if field.is_repeated else [value])
+    return []
 
 
 def _app(call, used: set[str]) -> list[str]:
@@ -218,6 +285,8 @@ def _app(call, used: set[str]) -> list[str]:
     op = call.operation
     if call.HasField("permission") != (op in ("grant_permission", "revoke_permission")):
         problems.append("app.permission is required by grant_permission and revoke_permission and only there")
+    if call.HasField("timeout_ms") and op not in ("launch", "cold_launch", "foreground", "open_link", "force_stop", "clear_data"):
+        problems.append(f"app.{op} takes no timeout_ms")
     launches = ("launch", "cold_launch")
     if call.HasField("activity") and op not in launches:
         problems.append("app.activity applies to launch and cold_launch only")
@@ -252,6 +321,8 @@ def _action(action: studio.ActionStep, used: set[str]) -> list[str]:
     if op in UNTARGETED_OPS:
         if action.HasField("wait") or action.selector_origin:
             problems.append(f"{op} has no selector, so no wait or selector_origin")
+        if action.command.HasField("timeout_ms"):
+            problems.append(f"{op} takes no timeout_ms")
         problems += _device_command(action.command)
     else:
         selector = getattr(action.command, op).selector
@@ -341,7 +412,9 @@ def _app_wait(step: studio.AppWaitStep, used: set[str]) -> list[str]:
     if op not in APP_WAIT_OPS:
         return [f"app_wait.command must be one of {', '.join(APP_WAIT_OPS)}, not {op or 'empty'}"]
     wait = getattr(step.command, op)
-    problems = [] if wait.package_name else [f"app_wait.command.{op}.package_name is required"]
+    problems = [] if op == "wait_screen_stable" or wait.package_name else [f"app_wait.command.{op}.package_name is required"]
+    if op == "wait_screen_stable" and wait.signal not in (tap.STABILITY_UNSPECIFIED, tap.STABILITY_ALL, tap.STABILITY_TREE, tap.STABILITY_PIXELS):
+        problems.append("wait_screen_stable.signal is invalid")
     if op == "wait_screen_stable" and wait.HasField("stable_for_ms") and not 1 <= wait.stable_for_ms <= 30000:
         problems.append("wait_screen_stable.stable_for_ms must be 1..30000")
     return problems
@@ -380,6 +453,16 @@ def _element_command(command: tap.Command) -> list[str]:
     """The rules of an action op on an element that proto cannot state."""
     op = command.WhichOneof("op")
     message = getattr(command, op)
+    if op == "multi_tap":
+        interval = message.interval_ms if message.HasField("interval_ms") else 100
+        if not 2 <= message.count <= 100 or not 40 <= interval <= 1000:
+            return ["multi_tap needs count 2..100 (use tap for 1) and interval_ms 40..1000"]
+        if message.count * 50 + (message.count - 1) * interval > 30000:
+            return ["multi_tap sequence exceeds 30000 ms"]
+    if op == "hold" and not 1 <= message.duration_ms <= 30000:
+        return ["hold.duration_ms must be 1..30000"]
+    if op in ("scroll", "swipe") and message.HasField("distance_percent") and not 1 <= message.distance_percent <= 100:
+        return [f"{op}.distance_percent must be 1..100"]
     if op in ("scroll", "swipe", "fling") and message.direction not in _DIRECTIONS:
         return [f"{op}.direction is required"]
     if op == "pinch":
