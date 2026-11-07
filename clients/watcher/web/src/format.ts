@@ -19,6 +19,12 @@ export function duration(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+/** Signed frame offset from a call boundary; sub-50 ms differences round to the boundary. */
+export function frameOffset(offsetMs: number, boundary: "started" | "ended"): string {
+  if (Math.abs(offsetMs) < 50) return `as it ${boundary}`;
+  return `${duration(Math.abs(offsetMs) / 1000)} ${offsetMs < 0 ? "before" : "after"} it ${boundary}`;
+}
+
 export function ago(epochMs: bigint | number, now: number): string {
   const seconds = Math.max(0, (now - Number(epochMs)) / 1000);
   if (seconds < 5) return "just now";

@@ -79,3 +79,61 @@ async def exercise(tmp_path):
 
 def test_service_reads_only_and_saves_clips_from_retained_video(tmp_path):
     asyncio.run(exercise(tmp_path))
+
+
+async def screens(tmp_path):
+    daemon = FakeDaemon()
+    daemon.video = encoded([n * 100_000 for n in range(6)], keyint=3)
+    server, endpoint = await serve(daemon)
+    watcher = Watcher(Library(tmp_path), endpoint)
+    ctx = Mock(spec=RequestContext)
+    await watcher.start()
+    try:
+        # Warm one serial's history so the wall has something older to skip.
+        page = watcher.watch_video(watch.WatchVideoRequest(serial="a"), ctx)
+        assert [(await anext(page)).frame.seq for _ in range(7)][1:] == [1, 2, 3, 4, 5, 6]
+
+        stream = watcher.watch_screens(pb.WatchScreensRequest(serials=["a", "b", "a"]), ctx)
+        got: dict[str, list[pb.ScreenUpdate]] = {"a": [], "b": []}
+        while len(got["a"]) < 4 or len(got["b"]) < 7:
+            update = await asyncio.wait_for(anext(stream), 5)
+            got[update.serial].append(update)
+        # Each serial opens with its header; "a" skips its history to the newest key frame,
+        # "b" (no history yet) gets what the daemon sends from its first key frame.
+        assert got["a"][0].HasField("header") and got["b"][0].HasField("header")
+        assert [u.frame.seq for u in got["a"][1:4]] == [4, 5, 6]
+        assert [u.frame.seq for u in got["b"][1:7]] == [1, 2, 3, 4, 5, 6]
+        assert set(got) == {"a", "b"}
+        await stream.aclose()
+        await page.aclose()
+
+        for bad in ([], [""], [str(n) for n in range(33)]):
+            with pytest.raises(ConnectError):
+                await anext(watcher.watch_screens(pb.WatchScreensRequest(serials=bad), ctx))
+    finally:
+        await watcher.close()
+        await server.stop(0)
+
+
+def test_watch_screens_tags_each_serial_from_its_latest_key_frame(tmp_path):
+    asyncio.run(screens(tmp_path))
+
+
+async def screen_errors(tmp_path):
+    daemon = FakeDaemon()  # no video: the daemon refuses WatchVideo
+    server, endpoint = await serve(daemon)
+    watcher = Watcher(Library(tmp_path), endpoint)
+    ctx = Mock(spec=RequestContext)
+    await watcher.start()
+    try:
+        stream = watcher.watch_screens(pb.WatchScreensRequest(serials=["a"]), ctx)
+        update = await asyncio.wait_for(anext(stream), 5)
+        assert update.serial == "a" and "scrcpy" in update.error
+        await stream.aclose()
+    finally:
+        await watcher.close()
+        await server.stop(0)
+
+
+def test_watch_screens_reports_a_serial_without_video(tmp_path):
+    asyncio.run(screen_errors(tmp_path))

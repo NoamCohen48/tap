@@ -1,13 +1,14 @@
 // The device's screen: live, paused or playing back the retained video, with a Before / After
 // pair for the selected action, a transport bar, clips and recordings.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { Action } from "./activity";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
+import type { Action, Running, SessionMark } from "./activity";
 import { api, errorText } from "./api";
-import { bytes, clock, duration } from "./format";
+import { ago, bytes, clock, duration, frameOffset } from "./format";
 import type { ActiveRecording, Recording } from "./gen/watcher_pb";
 import { useVideo } from "./hooks";
 import * as Icon from "./icons";
+import { axisTicks, unheldSpans } from "./steps";
 import { FrameBuffer, Player, type Limits } from "./video";
 import { Overview, useZoom, ZoomControls } from "./zoom";
 
@@ -23,13 +24,25 @@ type Props = {
   actions: Action[];
   selected?: Action;
   onSelect: (key: string | undefined) => void;
+  /** The call running now, marked on the scrubber. */
+  running?: Running;
+  /** Where sessions began and ended: the scrubber hatches the time nobody held the device. */
+  marks: SessionMark[];
+  /** Why the device has no screen (offline, unauthorized), when it has none. */
+  unavailable?: string;
+  /** Before / After of the selected action, instead of the video. Kept by the page, so n / N can turn it on. */
+  comparing: boolean;
+  onComparing: Dispatch<SetStateAction<boolean>>;
+  /** Failures on the device, and a step to the previous (-1) or next (1) one. */
+  failures: number;
+  onFailure: (dir: 1 | -1) => void;
   recording?: ActiveRecording;
   onRecordingChanged: () => void;
   onSaved: (recording: Recording) => void;
   notify: (message: string, failed?: boolean) => void;
 };
 
-export function Stage({ serial, limits, actions, selected, onSelect, recording, onRecordingChanged, onSaved, notify }: Props) {
+function StageView({ serial, limits, actions, selected, onSelect, running, marks, unavailable, comparing, onComparing: setComparing, failures, onFailure, recording, onRecordingChanged, onSaved, notify }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const beforeCanvas = useRef<HTMLCanvasElement>(null);
   const afterCanvas = useRef<HTMLCanvasElement>(null);
@@ -41,7 +54,6 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
   const [clip, setClip] = useState<{ from: number; to: number }>();
   // Compare: the selected action's Before and After frames side by side, each a fixed frame
   // with its own canvas. Moving through the video (scrub, play, step, live) leaves it.
-  const [comparing, setComparing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [decodeError, setDecodeError] = useState("");
 
@@ -52,7 +64,8 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
 
   // Positions are absolute indices, so a new stream (a rotation) keeps a pause, a replay and a
   // clip where they are; only the live player follows it.
-  const feed = useVideo(serial, limits, (buffer) => {
+  // A device with no screen is not asked for one.
+  const feed = useVideo(unavailable ? "" : serial, limits, (buffer) => {
     if (modeRef.current.kind === "live") {
       try {
         player.current?.live(buffer);
@@ -165,7 +178,7 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
     if (next !== undefined && next < afterNs) afterNs = next;
     const before = buffer.indexAtTimeline(buffer.timelineOf(event.clockId, event.startedMonotonicNs)!);
     const after = Math.max(before, buffer.indexAtTimeline(buffer.timelineOf(event.clockId, afterNs)!));
-    return { before, after, afterMs: Number(buffer.timeline(after) - buffer.timelineOf(event.clockId, finished)!) / 1e6 };
+    return { before, after, afterMs: Number(buffer.timeline(after) - buffer.timelineOf(event.clockId, finished)!) / 1e6, beforeMs: Number(buffer.timelineOf(event.clockId, event.startedMonotonicNs)! - buffer.timeline(before)) / 1e6 };
     // feed.version: the buffer changed under the same objects.
   }, [selected, actions, buffer, feed.version]);
   const compareKey = compare && selected ? `${selected.key}:${compare.before}:${compare.after}` : "";
@@ -206,7 +219,7 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
       const current = modeRef.current;
       const at = current.kind === "live" ? buffer.end - 1 : current.index;
       if (event.key === "c" || event.key === "C") {
-        setComparing((on) => !on);
+        if (selected) setComparing((on) => !on);
         return;
       }
       if (event.key === " ") {
@@ -229,7 +242,7 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [buffer, clip, goLive, pause, play]);
+  }, [buffer, clip, goLive, pause, play, selected, setComparing]);
 
   const startClip = () => {
     if (buffer.empty) return;
@@ -285,7 +298,9 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
   const behindS = current ? Number(buffer.timeline(buffer.end - 1) - buffer.timeline(position)) / 1e9 : 0;
   const placeholder = !serial
     ? "Pick a device to watch its screen."
-    : feed.state === "unavailable"
+    : unavailable
+      ? `No screen: ${unavailable}.`
+      : feed.state === "unavailable"
       ? `No video: ${feed.error}`
       : feed.state === "connecting"
         ? "Connecting to the device's screen…"
@@ -301,16 +316,18 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
         </figure>
         <figure className="screen" hidden={!showCompare}>
           <canvas ref={beforeCanvas} aria-label="Screen before the action" />
-          <figcaption>Before{compare && ` · ${clock(buffer.at(compare.before).receivedEpochMs)}`}</figcaption>
+          <figcaption>Before ≈ {compare && `${frameOffset(-compare.beforeMs, "started")} · ${clock(buffer.at(compare.before).receivedEpochMs)}`}</figcaption>
         </figure>
         <figure className="screen" hidden={!showCompare}>
           <canvas ref={afterCanvas} aria-label="Screen after the action" />
-          <figcaption>After{compare && ` · +${duration(Math.max(0, compare.afterMs) / 1000)}`}</figcaption>
+          <figcaption>After ≈ {compare && `${frameOffset(compare.afterMs, "ended")} · ${clock(buffer.at(compare.after).receivedEpochMs)}`}</figcaption>
         </figure>
         {placeholder && <p className="placeholder">{placeholder}</p>}
         {!empty && (
           <div className="badges">
-            {mode.kind === "live" ? (
+            {showCompare ? (
+              <span className="badge">Before / after</span>
+            ) : mode.kind === "live" ? (
               <span className="badge live">
                 <span className="dot" /> Live
               </span>
@@ -333,14 +350,11 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
             )}
           </div>
         )}
-        {comparing && !selected && serial && !empty && (
-          <p className="note stage-note">Select an action (click it, or press j / k) to compare the screen before and after it.</p>
-        )}
-        {selected && !compare && serial && (
+        {selected && !compare && serial && !unavailable && (
           <p className="note stage-note">
             {pending(buffer, selected)
               ? "Waiting for the video of this action…"
-              : `The video of this action is not retained (the watcher keeps the last ${limits?.maxSeconds ?? 120} s while a page watches the device).`}
+              : `This action ran ${ago(selected.event.atEpochMs, Date.now())}, before the oldest video kept for this device${buffer.oldest() ? ` (${clock(buffer.oldest()!.receivedEpochMs)})` : ""}; the watcher keeps up to ${limits?.maxSeconds ?? 120} s.`}
           </p>
         )}
         {decodeError && (
@@ -352,9 +366,7 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
       {showCompare && selected && (
         <p className="note compare-note">
           <span className="compare-what">{selected.summary}</span>
-          <span title="Frames are matched to the daemon's send and reply times, so they are approximate.">
-            <Icon.Info />
-          </span>
+          <span className="compare-how">Approximate: frames matched to the daemon's send and reply times.</span>
           <button className="link" onClick={browse}>
             Close
           </button>
@@ -383,6 +395,8 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
           live={mode.kind === "live"}
           position={position}
           actions={actions}
+          running={running}
+          marks={marks}
           selected={selected}
           clip={clip}
           onSeek={(index) => {
@@ -403,20 +417,28 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
         >
           <Icon.Live /> <span className="label">Live</span>
         </button>
+        <span className="transport-group" role="group" aria-label="Failures">
+          <button className="button" disabled={!failures} onClick={() => onFailure(-1)} title="Previous failure (Shift+N)" aria-label="Previous failure">
+            <Icon.PrevFailure /> <span className="label">Previous failure</span>
+          </button>
+          <button className="button" disabled={!failures} onClick={() => onFailure(1)} title="Next failure (N)" aria-label="Next failure">
+            <span className="label">Next failure</span> <Icon.NextFailure />
+          </button>
+        </span>
         <button
-          className={`button${comparing ? " on" : ""}`}
-          disabled={empty}
-          aria-pressed={comparing}
+          className={`button${showCompare ? " on" : ""}`}
+          disabled={empty || !selected}
+          aria-pressed={showCompare}
           onClick={() => setComparing((on) => !on)}
-          title="Compare the screen before and after the selected action (C)"
-          aria-label="Compare"
+          title={selected ? "The screen before and after the selected action (C)" : "Select an action to see the screen before and after it"}
+          aria-label="Before / after"
         >
-          <Icon.Compare /> <span className="label">Compare</span>
+          <Icon.Compare /> <span className="label">Before / after</span>
         </button>
-        <button className={`button${clip ? " on" : ""}`} disabled={empty} aria-pressed={Boolean(clip)} onClick={() => (clip ? setClip(undefined) : startClip())} title="Save part of the retained video" aria-label="Clip">
-          <Icon.Scissors /> <span className="label">Clip</span>
+        <button className={`button${clip ? " on" : ""}`} disabled={empty} aria-pressed={Boolean(clip)} onClick={() => (clip ? setClip(undefined) : startClip())} title="Save part of the retained video as a clip" aria-label="Save clip">
+          <Icon.Scissors /> <span className="label">Save clip</span>
         </button>
-        <button className={`button${clip ? "" : " primary"}${recording ? " primary recording" : ""}`} disabled={!serial || busy || (feed.state !== "streaming" && !recording)}
+        <button className={`button${recording ? " recording" : ""}`} disabled={!serial || busy || (feed.state !== "streaming" && !recording)}
           onClick={toggleRecording}
           title={recording ? "Stop and save the recording" : "Record the device until you stop"}
           aria-label={recording ? "Stop recording" : "Record"}
@@ -442,13 +464,16 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
             Cancel
           </button>
           <button className="button primary" disabled={busy} onClick={saveClip}>
-            Save clip
+            Save
           </button>
         </div>
       )}
     </section>
   );
 }
+
+/** Re-renders when its device, actions, selection or recording change, not on every page tick. */
+export const Stage = memo(StageView);
 
 /** Whether [action] is newer than the newest frame (its video has not arrived yet). */
 function pending(buffer: FrameBuffer, action: Action): boolean {
@@ -465,15 +490,18 @@ type TrackProps = {
   live: boolean;
   position: number;
   actions: Action[];
+  running?: Running;
+  marks: SessionMark[];
   selected?: Action;
   clip?: { from: number; to: number };
   onSeek: (index: number) => void;
   onSelect: (key: string) => void;
 };
 
-/** The scrubber: time-proportional (a still screen sends no frames), with action markers and a
- * tick where the stream changed (a rotation or a capture restart). */
-function Track({ buffer, version, live, position, actions, selected, clip, onSeek, onSelect }: TrackProps) {
+/** The scrubber: time-proportional (a still screen sends no frames), with action markers (the
+ * selected one's whole duration), the running call, hatching where no connection held the
+ * device, a tick where the stream changed (a rotation or a capture restart) and a time axis. */
+function Track({ buffer, version, live, position, actions, running, marks, selected, clip, onSeek, onSelect }: TrackProps) {
   const track = useRef<HTMLDivElement>(null);
   const empty = buffer.empty;
   const frozen = useRef<{ startNs: bigint; endNs: bigint }>(undefined);
@@ -521,6 +549,34 @@ function Track({ buffer, version, live, position, actions, selected, clip, onSee
     [buffer, version, endNs],
   );
 
+  // Where nobody held the device, clipped to the track.
+  const gaps = useMemo(() => {
+    if (empty) return [];
+    const newest = buffer.timeline(buffer.end - 1);
+    return unheldSpans(marks).flatMap((span) => {
+      const from = buffer.timelineAtEpoch(span.from)!;
+      const to = span.to === undefined ? newest : buffer.timelineAtEpoch(span.to)!;
+      return to > startNs && from < endNs ? [{ key: span.from, from, to }] : [];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marks, buffer, version, startNs, endNs]);
+
+  const nsOf = (action: { clockId: string; startedMonotonicNs?: bigint; finishedMonotonicNs?: bigint }, finished = false) =>
+    buffer.timelineOf(action.clockId, finished ? (action.finishedMonotonicNs ?? action.startedMonotonicNs) : action.startedMonotonicNs);
+  const selectedRange = (() => {
+    if (!selected || empty) return undefined;
+    const from = nsOf(selected.event);
+    const to = nsOf(selected.event, true);
+    if (from === undefined || to === undefined) return undefined;
+    const left = clamp(fractionAt(from));
+    const right = clamp(fractionAt(to));
+    return right > 0 && left < 1 ? { left, width: Math.max(0, right - left) } : undefined;
+  })();
+  const runningAt = running && !empty && buffer.covers(running.call.clockId, running.call.startedMonotonicNs) ? fractionAt(nsOf(running.call)!) : undefined;
+  const newestS = empty ? 0 : secondsOf(buffer.timeline(buffer.end - 1));
+  // About one label per 90 px, so they never run into each other.
+  const ticks = empty ? [] : axisTicks(zoom.shown.start, zoom.shown.end, newestS, Math.max(2, Math.floor((track.current?.clientWidth ?? 600) / 90)));
+
   const seekTo = (event: ReactPointerEvent) => {
     const box = track.current?.getBoundingClientRect();
     if (!box || empty) return;
@@ -553,6 +609,15 @@ function Track({ buffer, version, live, position, actions, selected, clip, onSee
     >
       {/* While frozen, history evicted from the start leaves the left of the rail empty. */}
       <div className="rail" style={{ left: `${railStart * 100}%` }} />
+      {gaps.map((gap) => (
+        <div
+          key={gap.key}
+          className="unheld"
+          style={{ left: `${clamp(fractionAt(gap.from)) * 100}%`, width: `${Math.max(0, clamp(fractionAt(gap.to)) - clamp(fractionAt(gap.from))) * 100}%` }}
+          title="No connection held the device"
+        />
+      ))}
+      {selectedRange && <div className="step-range" style={{ left: `${selectedRange.left * 100}%`, width: `${selectedRange.width * 100}%` }} />}
       {clip && <div className="clip-range" style={{ left: `${clamp(at(clip.from)) * 100}%`, width: `${Math.max(0, clamp(at(clip.to)) - clamp(at(clip.from))) * 100}%` }} />}
       <div className="played" style={{ left: `${railStart * 100}%`, width: `${Math.max(0, clamp(at(position)) - railStart) * 100}%` }} />
       {changes.filter((change) => shown(at(change.index))).map((change) => (
@@ -561,14 +626,24 @@ function Track({ buffer, version, live, position, actions, selected, clip, onSee
       {markers.filter((action) => shown(fractionAt(buffer.timelineOf(action.event.clockId, action.event.startedMonotonicNs)!))).map((action) => (
         <button
           key={action.key}
-          className={`marker${action.failed ? " failed" : ""}${action.key === selected?.key ? " selected" : ""}`}
+          className={`marker${action.failed ? " failed" : " ok"}${action.key === selected?.key ? " selected" : ""}`}
           style={{ left: `${fractionAt(buffer.timelineOf(action.event.clockId, action.event.startedMonotonicNs)!) * 100}%` }}
           data-tip={action.summary}
           aria-label={action.summary}
           onClick={() => onSelect(action.key)}
         />
       ))}
+      {runningAt !== undefined && shown(runningAt) && running && (
+        <span className="marker running" style={{ left: `${runningAt * 100}%` }} data-tip={`Running: ${running.summary}`} role="img" aria-label={`Running: ${running.summary}`} />
+      )}
       {shown(at(position)) && <div className="head" style={{ left: `${at(position) * 100}%` }} />}
+      <div className="axis" aria-hidden="true">
+        {ticks.map((tick) => (
+          <span key={tick.label} style={{ left: `${zoom.fraction(tick.at) * 100}%` }}>
+            {tick.label}
+          </span>
+        ))}
+      </div>
       <Overview zoom={zoom} />
     </div>
     <ZoomControls zoom={zoom} />

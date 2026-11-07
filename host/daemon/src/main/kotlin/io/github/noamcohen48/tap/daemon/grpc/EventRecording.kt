@@ -12,7 +12,8 @@ import kotlinx.coroutines.CancellationException
  * connection's event log with its outcome: the driver error [errorOf] finds in the result, or
  * the RPC failure it threw (rethrown as its mapped status). A cancelled call is not logged: its
  * outcome is unknown and the caller is gone. Its start/finish boundaries are on [MediaClock], the
- * clock video frames are received on, so a viewer can line the two up.
+ * clock video frames are received on, so a viewer can line the two up. Watchers also see the
+ * call when it starts ([io.github.noamcohen48.tap.daemon.core.EventLog.started]).
  */
 internal suspend fun <T> AttachedDevice.recorded(
     call: LoggedEvent.Builder.() -> Unit,
@@ -28,6 +29,7 @@ internal suspend fun <T> AttachedDevice.recorded(
             .setStartedMonotonicNs(started)
             .setClockId(MediaClock.id)
             .apply(call)
+    events.started(event.build())
 
     fun finish() {
         val finished = MediaClock.nowNs()

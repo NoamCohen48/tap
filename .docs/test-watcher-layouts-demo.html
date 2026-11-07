@@ -1,0 +1,742 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Mock (no device, no back end): the first three multi-device layouts, Wall / Spotlight / Lanes. Record for .docs/test-watcher-wall.md. -->
+<title>Tap Watcher Fleet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one fixed app frame (top bar + view), three alternative views over one simulated fleet.
+   Tokens are Tap's brand tokens (clients/watcher/web/src/styles.css) plus connection hues. */
+:root {
+  --bg: #eef0f3; --surface: #ffffff; --surface-2: #f5f6f8; --ink: #17202a; --muted: #5b6673;
+  --faint: #68727e; --line: #d9dde3; --accent: #d9481c; --accent-fill: #ff6a3d;
+  --accent-soft: rgba(255,106,61,.12); --on-accent: #1f0b03;
+  --ok: #1b8a4b; --ok-soft: rgba(27,138,75,.12); --warn: #a86a08; --warn-soft: rgba(214,152,20,.16);
+  --bad: #c63d3d; --bad-soft: rgba(198,61,61,.12); --screen-bg: #0b0f14; --bezel: #1b222b;
+  --c1: #2f6fd6; --c2: #8a4fd0; --c3: #0f8f8a;
+  --shadow: 0 1px 2px rgba(23,32,42,.06), 0 4px 16px rgba(23,32,42,.06);
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* the phones' app content is its own world: same in both themes */
+  --app-bg: #f7f8fa; --app-ink: #1d232b; --app-muted: #6b7480; --app-line: #e3e6ea; --app-card: #ffffff;
+  --app-bar: #24577a; --app-on-bar: #ffffff; --app-btn: #24577a; --launcher: #1e3442;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark; --bg: #0c1117; --surface: #141c25; --surface-2: #1a2430; --ink: #e6eaef; --muted: #9aa6b4;
+  --faint: #7f8b99; --line: #273341; --accent: #ff8a62; --accent-soft: rgba(255,106,61,.16);
+  --ok: #4cd38a; --ok-soft: rgba(76,211,138,.14); --warn: #f2b84b; --warn-soft: rgba(242,184,75,.16);
+  --bad: #f27a74; --bad-soft: rgba(242,122,116,.15); --screen-bg: #05080b; --bezel: #0a0e12;
+  --c1: #6ea2ff; --c2: #b98af0; --c3: #3fc7bf;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark; --bg: #0c1117; --surface: #141c25; --surface-2: #1a2430; --ink: #e6eaef; --muted: #9aa6b4;
+  --faint: #7f8b99; --line: #273341; --accent: #ff8a62; --accent-soft: rgba(255,106,61,.16);
+  --ok: #4cd38a; --ok-soft: rgba(76,211,138,.14); --warn: #f2b84b; --warn-soft: rgba(242,184,75,.16);
+  --bad: #f27a74; --bad-soft: rgba(242,122,116,.15); --screen-bg: #05080b; --bezel: #0a0e12;
+  --c1: #6ea2ff; --c2: #b98af0; --c3: #3fc7bf;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--mono); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+.app { height: 100%; display: grid; grid-template-rows: auto auto 1fr; }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -.01em; margin-right: 8px; }
+.brand svg { width: 22px; height: 22px; }
+.brand small { font-weight: 400; color: var(--faint); }
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 500; }
+.seg svg { width: 15px; height: 15px; }
+.spacer { flex: 1; }
+.ctl { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; }
+.btn:hover { background: var(--surface-2); }
+.btn svg { width: 15px; height: 15px; }
+.btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.stepper button { border: 0; background: var(--surface); width: 28px; height: 28px; }
+.stepper button:hover { background: var(--surface-2); }
+.stepper output { min-width: 26px; text-align: center; font-weight: 600; }
+
+/* fleet summary strip */
+.sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-block: 7px; border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 10px 2px 8px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+.chip b { color: var(--ink); font-weight: 600; }
+.chip button { all: unset; cursor: pointer; }
+.chip.active { border-color: var(--ink); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+.dot.run { background: var(--accent-fill); }
+.dot.wait { background: var(--warn); }
+.dot.fail { background: var(--bad); }
+.dot.idle { background: var(--faint); opacity: .6; }
+.dot.off { background: transparent; border: 1.5px solid var(--faint); }
+.conns { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; color: var(--muted); }
+.conn { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.mockflag { color: var(--faint); font-size: 12px; }
+
+.view { min-height: 0; overflow: hidden; position: relative; }
+.view[hidden] { display: none !important; }
+
+/* ---------- phone screen mock (scaled by container units) ---------- */
+.scr { container-type: size; aspect-ratio: 9 / 19.5; background: var(--app-bg); color: var(--app-ink); overflow: hidden; position: relative;
+  border-radius: 6%/2.8%; --u: 1cqw; font-family: var(--sans); max-width: 100%; }
+.scr > * { font-size: calc(var(--u)*4); line-height: 1.35; }
+.scr.tab { aspect-ratio: 16 / 10; border-radius: 3%/4.8%; --u: .62cqw; }
+.scr.offline { background: var(--screen-bg); }
+.s-status { height: calc(var(--u)*7); display: flex; align-items: center; justify-content: space-between; padding: 0 calc(var(--u)*5);
+  font-size: calc(var(--u)*3.6); color: var(--app-on-bar); background: var(--app-bar); font-weight: 600; }
+.s-bar { background: var(--app-bar); color: var(--app-on-bar); padding: calc(var(--u)*3) calc(var(--u)*5) calc(var(--u)*4); font-size: calc(var(--u)*5.6); font-weight: 600; display: flex; align-items: center; gap: calc(var(--u)*3); }
+.s-bar .gear { margin-left: auto; width: calc(var(--u)*6); height: calc(var(--u)*6); border-radius: 50%; border: calc(var(--u)*1.2) solid currentColor; }
+.s-body { padding: calc(var(--u)*5); display: flex; flex-direction: column; gap: calc(var(--u)*3.4); font-size: calc(var(--u)*4); }
+.s-h { font-size: calc(var(--u)*7.4); font-weight: 600; margin-top: calc(var(--u)*4); }
+.s-p { color: var(--app-muted); }
+.s-field { border: 1px solid var(--app-line); background: var(--app-card); border-radius: calc(var(--u)*2); padding: calc(var(--u)*3); color: var(--app-muted); min-height: calc(var(--u)*11); }
+.s-field.filled { color: var(--app-ink); }
+.s-btn { background: var(--app-btn); color: #fff; text-align: center; border-radius: calc(var(--u)*2.4); padding: calc(var(--u)*3.2); font-weight: 600; margin-top: calc(var(--u)*2); }
+.s-link { color: var(--app-btn); text-align: center; }
+.s-row { background: var(--app-card); border: 1px solid var(--app-line); border-radius: calc(var(--u)*2.4); padding: calc(var(--u)*3.2); display: flex; justify-content: space-between; align-items: center; gap: calc(var(--u)*2); }
+.s-row small { display: block; color: var(--app-muted); font-size: calc(var(--u)*3.2); }
+.s-tag { font-size: calc(var(--u)*3); padding: calc(var(--u)*.8) calc(var(--u)*2); border-radius: 99px; background: #e5f3ea; color: #1f7a45; font-weight: 600; white-space: nowrap; }
+.s-tag.pending { background: #fff1d9; color: #8a5a00; }
+.s-toggle { width: calc(var(--u)*10); height: calc(var(--u)*5.6); border-radius: 99px; background: #c9ced5; position: relative; flex: none; }
+.s-toggle::after { content: ""; position: absolute; top: 12%; left: 8%; width: 40%; height: 76%; border-radius: 50%; background: #fff; }
+.s-toggle.on { background: var(--app-btn); }
+.s-toggle.on::after { left: 52%; }
+.s-big { font-size: calc(var(--u)*9); font-weight: 600; }
+.s-scrim { position: absolute; inset: 0; background: rgba(10,14,20,.45); display: flex; align-items: center; justify-content: center; padding: calc(var(--u)*7); }
+.s-dialog { background: #fff; border-radius: calc(var(--u)*4); padding: calc(var(--u)*6); display: flex; flex-direction: column; gap: calc(var(--u)*4); font-size: calc(var(--u)*4.2); box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+.s-dialog b { font-size: calc(var(--u)*4.8); }
+.s-actions { display: flex; justify-content: flex-end; gap: calc(var(--u)*6); color: var(--app-btn); font-weight: 600; }
+.s-launch { background: linear-gradient(180deg, #2a4a5c, var(--launcher)); color: #fff; height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: calc(var(--u)*24); gap: calc(var(--u)*2); }
+.s-clock { font-size: calc(var(--u)*16); font-weight: 300; letter-spacing: -.02em; }
+.s-icons { display: grid; grid-template-columns: repeat(4, calc(var(--u)*12)); gap: calc(var(--u)*6); margin-top: auto; margin-bottom: calc(var(--u)*16); }
+.s-icons i { aspect-ratio: 1; border-radius: 30%; background: rgba(255,255,255,.22); }
+.s-icons i:nth-child(3) { background: #3d86b3; }
+.s-off { height: 100%; display: flex; align-items: center; justify-content: center; color: #7f8b99; font-size: calc(var(--u)*4.4); text-align: center; padding: calc(var(--u)*8); }
+.hit { outline: calc(var(--u)*1) solid var(--accent-fill); outline-offset: calc(var(--u)*.6); position: relative; }
+.hit::after { content: ""; position: absolute; left: 50%; top: 50%; width: calc(var(--u)*9); height: calc(var(--u)*9); margin: calc(var(--u)*-4.5); border-radius: 50%; background: rgba(255,106,61,.55); animation: tapping 1s ease-out infinite; pointer-events: none; }
+@keyframes tapping { from { transform: scale(.5); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+
+/* ---------- A: Wall ---------- */
+.wall { height: 100%; padding: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); overflow: auto; }
+.wall-grid { display: grid; gap: 12px; justify-content: center; align-content: center; min-height: 100%; }
+.wall-grid.grouped { align-content: start; }
+.tile { all: unset; box-sizing: border-box; cursor: pointer; display: block; min-width: 0; border-radius: 14px; padding: 4px; background: var(--bezel); border: 2px solid transparent; box-shadow: var(--shadow); position: relative; }
+.tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tile:hover { border-color: var(--faint); }
+.tile.s-run { border-color: transparent; }
+.tile .cell { aspect-ratio: 9 / 19.5; border-radius: 10px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.tile .cell .scr { width: 100%; }
+.tile .cell .scr.tab { width: 100%; }
+.tile.s-fail { border-color: var(--bad); box-shadow: 0 0 0 4px var(--bad-soft), var(--shadow); }
+.tile.s-idle .cell .scr, .tile.s-off .cell .scr { opacity: .45; filter: grayscale(.6); }
+.tile .badge-live { position: absolute; top: 9px; left: 9px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 1px 7px 1px 6px; border-radius: 99px; background: rgba(8,12,16,.72); color: #fff; }
+.tile .num { position: absolute; top: 9px; right: 9px; z-index: 2; font: 500 11px var(--mono); color: #fff; background: rgba(8,12,16,.72); border-radius: 5px; padding: 0 5px; }
+.cap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: 1px; padding: 22px 8px 7px; min-width: 0; color: #fff;
+  background: linear-gradient(180deg, transparent, rgba(8,12,16,.78) 40%, rgba(8,12,16,.92)); }
+.cap .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
+.cap .ser { font: 11px var(--mono); color: rgba(255,255,255,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; }
+.cap .l1 b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap .l2 { font: 11.5px var(--mono); color: rgba(255,255,255,.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap .l2.bad { color: #ff9b94; }
+.group-h { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-weight: 600; padding-top: 6px; }
+.group-h span { font-weight: 400; color: var(--muted); font-size: 13px; }
+.view-tools { position: absolute; z-index: 5; display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- drawer (detail for one device, used by Wall and Lanes) ---------- */
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(0,0,0,.18); z-index: 20; display: grid; grid-template-rows: auto 1fr; transform: translateX(0); transition: transform .22s ease-out; }
+.drawer[hidden] { display: none !important; }
+.dr-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.dr-head h2 { font-size: 16px; margin: 0; font-weight: 600; }
+.dr-head .x { margin-left: auto; }
+.dr-body { display: grid; grid-template-columns: 200px 1fr; min-height: 0; }
+.dr-screen { padding: 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.dr-screen .bez { background: var(--bezel); border-radius: 14px; padding: 5px; }
+.meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; color: var(--muted); }
+.meta dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.log { overflow: auto; min-height: 0; font-size: 13px; }
+.ev { display: grid; grid-template-columns: 62px 1fr auto; gap: 8px; align-items: baseline; padding: 5px 14px; border-bottom: 1px solid var(--line); }
+.ev .t { color: var(--faint); font: 11.5px var(--mono); }
+.ev .what { font: 12.5px var(--mono); min-width: 0; overflow-wrap: anywhere; }
+.ev .what em { font-style: normal; color: var(--muted); }
+.ev .r { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; }
+.ev.fail { background: var(--bad-soft); }
+.ev.fail .r { color: var(--bad); font-weight: 500; }
+.ev.run .r { color: var(--accent); }
+.ev.mark { grid-template-columns: 62px 1fr; color: var(--muted); font-size: 12px; background: var(--surface-2); }
+
+/* ---------- B: Spotlight ---------- */
+.spot { height: 100%; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+.spot-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 420px); min-height: 0; }
+.stage { display: flex; align-items: center; justify-content: center; gap: 28px; padding: 18px; min-height: 0; min-width: 0; position: relative; }
+.stage .bez { background: var(--bezel); border-radius: 22px; padding: 7px; height: 100%; max-height: 100%; display: flex; align-items: center; box-shadow: var(--shadow); }
+.stage .bez.tab { height: auto; width: min(100%, 720px); }
+.stage .bez .scr { height: 100%; width: auto; }
+.stage .bez.tab .scr { width: 100%; height: auto; }
+.stage-info { display: flex; flex-direction: column; gap: 10px; max-width: 240px; min-width: 0; }
+.stage-info h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.statebig { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
+.now { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); font: 12.5px var(--mono); }
+.now .k { font: 12px var(--sans); color: var(--muted); display: block; margin-bottom: 2px; }
+.now.bad { border-color: var(--bad); background: var(--bad-soft); }
+.spot-log { border-left: 1px solid var(--line); background: var(--surface); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+.spot-log h3 { margin: 0; font-size: 13px; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+.spot-log h3 span { color: var(--muted); font-weight: 400; }
+.strip { border-top: 1px solid var(--line); background: var(--surface); display: flex; gap: 10px; overflow-x: auto; padding: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.thumb { all: unset; box-sizing: border-box; cursor: pointer; flex: none; width: 108px; display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 10px; border: 1px solid transparent; }
+.thumb:hover { background: var(--surface-2); }
+.thumb[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.thumb:focus-visible { outline: 2px solid var(--accent); }
+.thumb .cell { height: 128px; background: var(--bezel); border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 3px; position: relative; border-top: 3px solid var(--faint); }
+.thumb .cell .scr { height: 100%; width: auto; }
+.thumb .cell .scr.tab { width: 100%; height: auto; }
+.thumb.s-run .cell { border-top-color: var(--accent-fill); }
+.thumb.s-wait .cell { border-top-color: var(--warn); }
+.thumb.s-fail .cell { border-top-color: var(--bad); }
+.thumb.s-idle .cell .scr, .thumb.s-off .cell .scr { opacity: .45; }
+.thumb .tl { font-size: 12px; display: flex; gap: 5px; align-items: center; min-width: 0; }
+.thumb .tl b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thumb .pulse { height: 14px; display: flex; gap: 1px; align-items: flex-end; }
+.thumb .pulse i { flex: 1; background: var(--line); border-radius: 1px; min-height: 2px; }
+.thumb .pulse i.ok { background: var(--ok); opacity: .7; }
+.thumb .pulse i.fail { background: var(--bad); }
+.toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 6px 12px; border-radius: 8px; font-size: 13px; z-index: 6; }
+
+/* ---------- C: Lanes ---------- */
+.lanes { height: 100%; display: grid; grid-template-rows: auto auto 1fr; min-height: 0; }
+.frames { display: flex; gap: 8px; overflow-x: auto; padding: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: var(--surface); border-bottom: 1px solid var(--line); align-items: flex-end; }
+.frames .fr { flex: none; display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.frames .fr .cell { height: 140px; background: var(--bezel); border-radius: 8px; padding: 3px; display: flex; align-items: center; }
+.frames .fr .cell .scr { height: 100%; width: auto; }
+.frames .fr .cell .scr.tab { height: auto; width: 210px; }
+.frames .fr span { font-size: 11px; color: var(--muted); max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frames .fr.dim .cell .scr { opacity: .4; }
+.frames-lbl { flex: none; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding-right: 8px; min-width: 96px; }
+.frames-lbl b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.frames-lbl span { font-size: 12px; color: var(--muted); }
+.lanes { --who: 210px; }
+.axis, .lane { display: grid; grid-template-columns: var(--who) 1fr; }
+.axis { border-bottom: 1px solid var(--line); background: var(--surface-2); height: 26px; font: 11px var(--mono); color: var(--faint); }
+.axis .ticks { position: relative; }
+.axis .ticks span { position: absolute; top: 6px; transform: translateX(-50%); white-space: nowrap; }
+.axis .lbl { padding: 5px 16px; font-family: var(--sans); font-size: 12px; }
+.lane-list { overflow-y: auto; overflow-x: hidden; min-height: 0; position: relative; }
+.lane { border-bottom: 1px solid var(--line); min-height: 52px; }
+.lane .who { display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 6px 12px 6px 16px; border-right: 1px solid var(--line); background: var(--surface); min-width: 0; cursor: pointer; }
+.lane .who:hover { background: var(--surface-2); }
+.lane .who .n { display: flex; gap: 6px; align-items: center; font-weight: 500; font-size: 13px; min-width: 0; }
+.lane .who .n b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane .who .s { font: 11px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { position: relative; cursor: crosshair; background-image: repeating-linear-gradient(90deg, transparent 0 calc(100%/9 - 1px), var(--line) calc(100%/9 - 1px) calc(100%/9)); background-size: 100% 100%; }
+.blk { position: absolute; top: 14px; height: 24px; border-radius: 3px; background: var(--ok); opacity: .75; min-width: 3px; border: 0; padding: 0; }
+.blk.wait { background: var(--muted); opacity: .4; }
+.blk.fail { background: var(--bad); opacity: 1; height: 30px; top: 11px; }
+.blk.run { background: var(--accent-fill); opacity: 1; }
+.blk.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+.blk:focus-visible { outline: 2px solid var(--accent); }
+.gapzone { position: absolute; top: 4px; bottom: 4px; background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line) 5px 6px); border-radius: 3px; }
+.cursor { position: absolute; top: 0; bottom: 0; width: 0; margin-left: var(--who); border-left: 1.5px solid var(--accent); pointer-events: none; z-index: 3; }
+.cursor span { position: absolute; top: 2px; left: 4px; font: 11px var(--mono); color: var(--accent); background: var(--bg); padding: 0 3px; border-radius: 3px; white-space: nowrap; }
+.lane.idle .track { background-color: var(--surface-2); }
+.lane.idle .track::after { content: attr(data-note); position: absolute; left: 12px; top: 16px; color: var(--faint); font-size: 12px; }
+.ba { display: flex; gap: 10px; padding: 14px; border-bottom: 1px solid var(--line); }
+.ba figure { margin: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.ba figcaption { font-size: 12px; color: var(--muted); }
+.ba .bez { background: var(--bezel); border-radius: 10px; padding: 3px; width: 100%; max-width: 140px; }
+.sel-detail { padding: 12px 14px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+.sel-detail .what { font: 13px var(--mono); overflow-wrap: anywhere; }
+
+.legend { display: flex; gap: 12px; align-items: center; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+@media (max-width: 760px) {
+  .spot-main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 200px; }
+  .spot-log { border-left: 0; border-top: 1px solid var(--line); }
+  .stage-info { display: none; }
+  .lanes { --who: 112px; }
+  .lane .who { padding-left: 10px; }
+  .dr-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .dr-screen { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); }
+  .dr-screen .bez { width: 110px; flex: none; }
+  .conns { display: none; }
+  .brand small { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hit::after { animation: none; opacity: .5; }
+  .drawer { transition: none; }
+}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="3.2" fill="var(--accent-fill)"/></svg>
+      tap-watcher <small>fleet</small>
+    </div>
+    <div class="seg" role="group" aria-label="Layout">
+      <button id="v-wall" aria-pressed="true" data-view="wall"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 1h4v6H1zM6 1h4v6H6zM11 1h4v6h-4zM1 9h4v6H1zM6 9h4v6H6zM11 9h4v6h-4z"/></svg>Wall</button>
+      <button id="v-spot" aria-pressed="false" data-view="spot"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 1h14v10H1zM1 12h3v3H1zM5 12h3v3H5zM9 12h3v3H9zM13 12h2v3h-2z"/></svg>Spotlight</button>
+      <button id="v-lanes" aria-pressed="false" data-view="lanes"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 2h3v2H1zM5 2h6v2H5zM1 7h3v2H1zM5 7h2v2H5zM8 7h7v2H8zM1 12h3v2H1zM5 12h9v2H5z"/></svg>Lanes</button>
+    </div>
+    <span class="spacer"></span>
+    <label class="ctl">Devices
+      <span class="stepper"><button id="n-minus" aria-label="Fewer devices">−</button><output id="n-out" class="tnum">10</output><button id="n-plus" aria-label="More devices">+</button></span>
+    </label>
+    <button class="btn" id="pause" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 2h3v12H4zM9 2h3v12H9z"/></svg><span>Pause</span></button>
+    <button class="btn" id="theme" aria-label="Switch theme"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 2v10a5 5 0 0 1 0-10z"/></svg></button>
+  </header>
+  <div class="sum" id="sum"></div>
+
+  <section class="view" id="view-wall"></section>
+  <section class="view" id="view-spot" hidden></section>
+  <section class="view" id="view-lanes" hidden></section>
+</div>
+
+<script>
+"use strict";
+/* ---------------- fleet model (mock) ---------------- */
+const CONNS = {
+  c1: { name: "junit 48213 checkout-e2e", short: "junit 48213", color: "var(--c1)" },
+  c2: { name: "pytest 9120 onboarding", short: "pytest 9120", color: "var(--c2)" },
+  c3: { name: "tap-agent 3307 (MCP)", short: "tap-agent", color: "var(--c3)" },
+};
+const DEVICES = [
+  { serial: "emulator-5554", model: "Pixel 7", api: 34, emu: true, conn: "c1" },
+  { serial: "85e49002", model: "Galaxy J8", api: 29, emu: false, conn: "c2", flaky: true },
+  { serial: "emulator-5556", model: "Pixel 7", api: 33, emu: true, conn: "c1" },
+  { serial: "emulator-5558", model: "Pixel Tablet", api: 34, emu: true, conn: "c1", tab: true },
+  { serial: "R58N91XKZ2", model: "Galaxy S21", api: 33, emu: false, conn: "c2" },
+  { serial: "HT7A1B2030", model: "Pixel 4a", api: 30, emu: false, conn: "c2" },
+  { serial: "emulator-5560", model: "Pixel 6", api: 31, emu: true, conn: "c3" },
+  { serial: "RF8M33QWE", model: "Galaxy A52", api: 34, emu: false, conn: null },
+  { serial: "ZY2243KLM", model: "Moto G Power", api: 30, emu: false, conn: "c1" },
+  { serial: "a3f9c2d1", model: "OnePlus Nord", api: 31, emu: false, conn: null, offline: true },
+];
+// step: verb, selector text, screen after, duration ms, element that is acted on
+const S = (v, s, to, d, k) => ({ v, s, to, d, k });
+const SCRIPTS = {
+  c1: [
+    S("launch", "io.tap.fixture", "login", 900), S("type", 'id("email") "qa@tap.dev"', "login1", 600, "email"),
+    S("type", 'id("password") <sensitive>', "login2", 500, "pass"), S("tap", 'text("Sign in")', "inbox", 380, "signin"),
+    S("wait_for", 'text("Orders")', "inbox", 1200), S("tap", 'text("Order #1042")', "detail", 350, "o1042"),
+    S("assert", 'text("Shipped")', "detail", 160, "shipped"), S("press_back", "", "inbox", 220),
+    S("tap", 'desc("Settings")', "settings", 300, "gear"), S("tap", 'id("notify_switch")', "perm", 320, "notify"),
+    S("permission", "allow", "settings2", 700, "allow"), S("force_stop", "io.tap.fixture", "home", 400),
+  ],
+  c2: [
+    S("launch", "io.tap.fixture", "perm", 1100), S("permission", "allow", "login", 650, "allow"),
+    S("type", 'id("email") "new@tap.dev"', "login1", 650, "email"), S("type", 'id("password") <sensitive>', "login2", 520, "pass"),
+    S("tap", 'text("Sign in")', "inbox", 420, "signin"), S("swipe", 'id("orders") up', "inbox2", 600),
+    S("tap", 'text("Order #1057")', "detail2", 360, "o1057"), S("assert", 'text("Delivered")', "detail2", 180, "shipped"),
+    S("press_home", "", "home", 300),
+  ],
+  c3: [
+    S("snapshot", "", null, 260), S("tap", "@e7  Sign in", "inbox", 400, "signin"), S("snapshot", "", null, 240),
+    S("tap", "@e12  Order #1042", "detail", 380, "o1042"), S("snapshot", "", null, 250),
+    S("press_back", "", "inbox", 220), S("tap", "@e3  Settings", "settings", 330, "gear"), S("snapshot", "", null, 230),
+    S("press_back", "", "inbox", 240), S("launch", "io.tap.fixture", "login", 800),
+  ],
+};
+const FAILS = [
+  ["NOT_FOUND", "no match after 5.0 s"], ["TIMEOUT", "condition not met in 10 s"],
+  ["OBSCURED", "touch point covered by another window"], ["AMBIGUOUS", "2 elements match"],
+];
+
+let simT = 60000; // ms; start with 60 s of history already recorded
+const devs = DEVICES.map((d, i) => ({
+  ...d, i, state: d.offline ? "off" : d.conn ? "wait" : "idle", step: 0, cur: null, nextAt: 0, screen: d.offline ? "offline" : "home",
+  hit: null, ev: [], hist: [{ t: 0, screen: d.offline ? "offline" : "home", hit: null }], lastFail: null, failUntil: 0, attachedAt: 0,
+}));
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function setScreen(d, screen, hit) {
+  if (screen) d.screen = screen;
+  d.hit = hit || null;
+  const last = d.hist[d.hist.length - 1];
+  if (last.screen !== d.screen || last.hit !== d.hit) d.hist.push({ t: simT, screen: d.screen, hit: d.hit });
+}
+function screenAt(d, t) { let s = d.hist[0]; for (const h of d.hist) { if (h.t <= t) s = h; else break; } return s; }
+
+function tickDevice(d) {
+  if (!d.conn || d.state === "off") return;
+  const sc = SCRIPTS[d.conn];
+  if (d.state === "fail") {
+    if (simT < d.failUntil) return;
+    d.state = "wait"; d.step = 0; d.nextAt = simT + rand(800, 1600); setScreen(d, "home");
+    d.ev.push({ mark: true, t0: simT, text: "detached, next test attaching" });
+    return;
+  }
+  if (d.cur) {
+    if (simT < d.cur.t1) return;
+    const st = d.cur.step, e = d.cur.ev;
+    const pFail = d.flaky ? 0.07 : d.conn === "c3" ? 0.0 : 0.012;
+    if (st.v !== "snapshot" && st.v !== "press_back" && st.v !== "press_home" && Math.random() < pFail) {
+      const [code, msg] = FAILS[Math.floor(Math.random() * FAILS.length)];
+      e.status = "fail"; e.code = code; e.msg = msg; e.t1 = simT;
+      d.cur = null; d.state = "fail"; d.failUntil = simT + 6500; d.lastFail = { ...e };
+      if (code === "OBSCURED") setScreen(d, "anr"); else setScreen(d, null, null);
+      return;
+    }
+    e.status = "ok"; e.t1 = simT;
+    setScreen(d, st.to, null);
+    d.cur = null; d.step++;
+    if (d.step >= sc.length) {
+      d.step = 0; d.state = "wait"; d.nextAt = simT + rand(1200, 2400);
+      d.ev.push({ mark: true, t0: simT, text: "test finished, devices detached" });
+      return;
+    }
+    d.nextAt = simT + (d.conn === "c3" ? rand(1200, 2600) : rand(120, 520));
+    return;
+  }
+  if (simT < d.nextAt) return;
+  if (d.state === "wait") { d.state = "run"; d.attachedAt = simT; d.ev.push({ mark: true, t0: simT, text: "attached by " + CONNS[d.conn].short }); }
+  const st = sc[d.step];
+  const dur = st.d * rand(0.7, 1.5) * (d.flaky ? 1.6 : 1) * (d.api < 31 ? 1.25 : 1);
+  const ev = { v: st.v, s: st.s, t0: simT, t1: null, status: "run" };
+  d.ev.push(ev); if (d.ev.length > 400) d.ev.splice(0, d.ev.length - 400);
+  d.cur = { step: st, t1: simT + dur, ev };
+  setScreen(d, null, st.k || null);
+}
+
+// pre-roll: build 60 s of history so the first frame shows a working fleet
+devs.forEach(d => { d.nextAt = rand(0, 4000); });
+for (simT = 0; simT < 60000; simT += 50) devs.forEach(tickDevice);
+
+/* ---------------- phone screens ---------------- */
+const h = (k, hit) => (k && k === hit ? ' class="hit"' : "");
+function hk(k, hit, cls) { return ` class="${cls || ""}${k && k === hit ? " hit" : ""}"`; }
+function status() { return '<div class="s-status"><span>9:41</span><span>▮▮ ◔</span></div>'; }
+function screenHTML(name, hit, tab) {
+  const bar = (title, gear) => `${status()}<div class="s-bar">${title}${gear ? `<span${hk("gear", hit, "gear")}></span>` : ""}</div>`;
+  const login = (e, p) => `${bar("Fixture")}<div class="s-body"><div class="s-h">Sign in</div><div class="s-p">Use your work account.</div>
+    <div${hk("email", hit, "s-field" + (e ? " filled" : ""))}>${e || "Email"}</div><div${hk("pass", hit, "s-field" + (p ? " filled" : ""))}>${p ? "••••••••" : "Password"}</div>
+    <div${hk("signin", hit, "s-btn")}>Sign in</div><div class="s-link">Create account</div></div>`;
+  const row = (k, a, b, tag, pend) => `<div${hk(k, hit, "s-row")}><span>${a}<small>${b}</small></span><span class="s-tag${pend ? " pending" : ""}">${tag}</span></div>`;
+  const inbox = scrolled => `${bar("Orders", true)}<div class="s-body">${scrolled ? "" : row("o1042", "Order #1042", "2 items, €48.20", "Shipped")}
+    ${row("o1043", "Order #1043", "1 item, €12.00", "Packing", true)}${row("o1051", "Order #1051", "4 items, €96.10", "Shipped")}
+    ${row("o1057", "Order #1057", "1 item, €8.50", "Delivered")}${row("", "Order #1060", "3 items, €31.75", "Packing", true)}
+    ${scrolled ? row("", "Order #1064", "2 items, €19.90", "Packing", true) : ""}</div>`;
+  const detail = (n, tag) => `${bar("‹ Order")}<div class="s-body"><div class="s-p">Order</div><div class="s-big">#${n}</div>
+    <div><span${hk("shipped", hit, "s-tag")}>${tag}</span></div><div class="s-row"><span>Wireless charger<small>Qty 1</small></span><span>€29.90</span></div>
+    <div class="s-row"><span>USB-C cable<small>Qty 2</small></span><span>€18.30</span></div><div${hk("", hit, "s-btn")}>Track parcel</div></div>`;
+  const settings = (on, dialog) => `${bar("Settings")}<div class="s-body">
+    <div class="s-row"><span>Dark mode</span><span class="s-toggle"></span></div>
+    <div class="s-row"><span>Order notifications</span><span${hk("notify", hit, "s-toggle" + (on ? " on" : ""))}></span></div>
+    <div class="s-row"><span>Analytics</span><span class="s-toggle on"></span></div><div class="s-row"><span>Sign out</span></div></div>
+    ${dialog ? `<div class="s-scrim"><div class="s-dialog"><b>Allow Fixture to send you notifications?</b><div class="s-actions"><span>Don't allow</span><span${h("allow", hit)}>Allow</span></div></div></div>` : ""}`;
+  switch (name) {
+    case "home": return `<div class="s-launch"><div class="s-clock">9:41</div><div>Saturday, 7 November</div><div class="s-icons"><i></i><i></i><i></i><i></i></div></div>`;
+    case "login": return login("", false);
+    case "login1": return login("qa@tap.dev", false);
+    case "login2": return login("qa@tap.dev", true);
+    case "inbox": return inbox(false);
+    case "inbox2": return inbox(true);
+    case "detail": return detail(1042, "Shipped");
+    case "detail2": return detail(1057, "Delivered");
+    case "settings": return settings(false, false);
+    case "settings2": return settings(true, false);
+    case "perm": return settings(false, true);
+    case "anr": return `${inbox(false)}<div class="s-scrim"><div class="s-dialog"><b>Fixture isn't responding</b><div class="s-actions"><span>Close app</span><span>Wait</span></div></div></div>`;
+    case "offline": return `<div class="s-off">Not connected to adb</div>`;
+  }
+  return "";
+}
+function scr(d, frame) {
+  const f = frame || { screen: d.screen, hit: d.hit };
+  return `<div class="scr${d.tab ? " tab" : ""}${f.screen === "offline" ? " offline" : ""}" role="img" aria-label="${d.model} screen">${screenHTML(f.screen, f.hit, d.tab)}</div>`;
+}
+const frameKey = (d, f) => (f ? f.screen + "|" + f.hit : d.screen + "|" + d.hit);
+
+/* ---------------- shared helpers ---------------- */
+const STATE_LABEL = { run: "Running", wait: "Between tests", fail: "Failed", idle: "Not attached", off: "Offline" };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtMs = ms => (ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(1) + " s");
+const fmtClock = t => { const s = Math.floor(t / 1000) + 14 * 3600 + 22 * 60; return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(n => String(n).padStart(2, "0")).join(":"); };
+function call(e) { if (e.v === "type" && e.s.includes("<sensitive>")) return `type <em>${esc(e.s.replace(" <sensitive>", ""))}</em> ••••`; return `${esc(e.v)}${e.s ? ` <em>${esc(e.s)}</em>` : ""}`; }
+function lastLine(d) {
+  if (d.state === "off") return { t: "adb: device offline", bad: false };
+  if (!d.conn) return { t: "no connection holds this device", bad: false };
+  if (d.state === "fail" && d.lastFail) return { t: `${d.lastFail.code} ${d.lastFail.v} ${d.lastFail.s}`, bad: true };
+  const e = [...d.ev].reverse().find(x => !x.mark);
+  if (!e) return { t: "waiting for first call", bad: false };
+  if (e.status === "run") return { t: `${e.v} ${e.s.replace(" <sensitive>", " ••••")}`.trim() + " …", bad: false };
+  return { t: `${e.v} ${e.s.replace(" <sensitive>", " ••••")}`.trim() + "  " + fmtMs(e.t1 - e.t0), bad: false };
+}
+function connDot(d) { return d.conn ? `<span class="sw" style="background:${CONNS[d.conn].color}" title="${esc(CONNS[d.conn].name)}"></span>` : `<span class="sw" style="background:var(--line)"></span>`; }
+function evRow(e) {
+  if (e.mark) return `<div class="ev mark"><span class="t">${fmtClock(e.t0)}</span><span>${esc(e.text)}</span></div>`;
+  const r = e.status === "run" ? "running" : e.status === "fail" ? e.code : fmtMs(e.t1 - e.t0);
+  return `<div class="ev ${e.status}"><span class="t">${fmtClock(e.t0)}</span><span class="what">${call(e)}${e.status === "fail" ? `<br><em>${esc(e.msg)}</em>` : ""}</span><span class="r">${r}</span></div>`;
+}
+function metaHTML(d) {
+  return `<dl class="meta"><dt>Serial</dt><dd class="mono">${d.serial}</dd><dt>Android</dt><dd>API ${d.api}${d.emu ? ", emulator" : ""}</dd>
+    <dt>Held by</dt><dd>${d.conn ? esc(CONNS[d.conn].name) : "nobody"}</dd><dt>State</dt><dd>${STATE_LABEL[d.state]}</dd></dl>`;
+}
+
+/* ---------------- app state ---------------- */
+const ui = { view: "wall", n: 10, paused: false, filter: "all", group: false, sel: 1, follow: true, drawer: null, cursor: null, pick: null };
+try { const v = localStorage.getItem("tw-view"); if (v) ui.view = v; } catch (_) {}
+const shown = () => devs.slice(0, ui.n);
+
+function renderSum() {
+  const c = { run: 0, wait: 0, fail: 0, idle: 0, off: 0 };
+  shown().forEach(d => c[d.state]++);
+  const chip = (k, label) => `<span class="chip${ui.filter === k ? " active" : ""}"><button data-filter="${k}"><span class="dot ${k}"></span> <b class="tnum">${c[k]}</b> ${label}</button></span>`;
+  const used = [...new Set(shown().map(d => d.conn).filter(Boolean))];
+  document.getElementById("sum").innerHTML = chip("run", "running") + chip("wait", "between tests") + chip("fail", "failed") + chip("idle", "free") + chip("off", "offline")
+    + `<span class="conns">${used.map(k => `<span class="conn"><span class="sw" style="background:${CONNS[k].color}"></span>${esc(CONNS[k].name)}</span>`).join("")}</span>`
+    + `<span class="mockflag">Mock: devices and actions are simulated</span>`;
+}
+
+/* ---------------- A: Wall ---------------- */
+const wallEl = document.getElementById("view-wall");
+wallEl.innerHTML = `<div class="wall" id="wall"><div class="wall-grid" id="wall-grid"></div></div>
+  <div class="view-tools" style="right:max(16px, env(safe-area-inset-right, 0px));bottom:12px"><button class="btn" id="group" aria-pressed="false">Group by connection</button></div>
+  <aside class="drawer" id="drawer" hidden></aside>`;
+const tiles = new Map();
+function fitWall(n) {
+  const box = document.getElementById("wall"); if (!box) return 200;
+  const W = box.clientWidth - 32, H = box.clientHeight - 28 - (ui.group ? 34 * 3 : 0), gap = 12, cap = 0, pad = 12;
+  if (W < 640) return { w: (W - gap) / 2, cols: Math.min(2, n) };
+  let best = { w: 80, cols: 1 };
+  for (let cols = 1; cols <= Math.max(1, n); cols++) {
+    const rows = Math.ceil(n / cols);
+    const wByW = (W - gap * (cols - 1)) / cols;
+    const wByH = ((H - gap * (rows - 1)) / rows - cap - pad) * 9 / 19.5 + pad;
+    const w = Math.min(wByW, Math.max(wByH, 160), 320);
+    if (w > best.w) best = { w, cols };
+  }
+  return best;
+}
+function renderWall() {
+  const grid = document.getElementById("wall-grid");
+  const list = shown().filter(d => ui.filter === "all" || d.state === ui.filter);
+  const fit = fitWall(list.length || 1);
+  grid.style.gridTemplateColumns = `repeat(${fit.cols}, ${Math.floor(fit.w)}px)`;
+  grid.classList.toggle("grouped", ui.group);
+  let order = list;
+  if (ui.group) order = [...list].sort((a, b) => (a.conn || "z").localeCompare(b.conn || "z"));
+  const wanted = []; let lastConn;
+  for (const d of order) {
+    if (ui.group && d.conn !== lastConn) { lastConn = d.conn; wanted.push({ head: d.conn || "none" }); }
+    wanted.push(d);
+  }
+  const sig = wanted.map(x => (x.head ? "h" + x.head : x.i)).join(",") + fit.cols;
+  if (grid.dataset.sig !== sig) {
+    grid.dataset.sig = sig; grid.innerHTML = ""; tiles.clear();
+    for (const x of wanted) {
+      if (x.head) {
+        const hd = document.createElement("div"); hd.className = "group-h";
+        hd.innerHTML = x.head === "none" ? `<span class="sw" style="background:var(--line)"></span>Not held <span>free or offline</span>` : `<span class="sw" style="background:${CONNS[x.head].color}"></span>${esc(CONNS[x.head].name)}`;
+        grid.appendChild(hd); continue;
+      }
+      const t = document.createElement("button"); t.className = "tile"; t.dataset.i = x.i;
+      t.innerHTML = `<div class="cell"><span class="badge-live"></span><div class="slot"></div><div class="cap"><div class="l1"></div><div class="l2"></div></div></div>`;
+      t.querySelector(".slot").style.cssText = "width:100%;display:flex;justify-content:center";
+      t.addEventListener("click", () => openDrawer(x.i));
+      grid.appendChild(t); tiles.set(x.i, t);
+    }
+  }
+  for (const [i, t] of tiles) {
+    const d = devs[i];
+    t.className = "tile s-" + d.state;
+    const k = frameKey(d);
+    if (t.dataset.k !== k) { t.dataset.k = k; t.querySelector(".slot").innerHTML = scr(d); }
+    const live = d.state === "off" ? "" : `<span class="dot ${d.state}"></span>${STATE_LABEL[d.state]}`;
+    const bl = t.querySelector(".badge-live"); bl.innerHTML = live; bl.hidden = !live;
+    t.querySelector(".l1").innerHTML = `${connDot(d)}<b>${d.model}</b><span class="ser">${d.serial}</span>`;
+    const ll = lastLine(d), l2 = t.querySelector(".l2"); l2.textContent = ll.t; l2.className = "l2" + (ll.bad ? " bad" : "");
+    t.setAttribute("aria-label", `${d.model} ${d.serial}, ${STATE_LABEL[d.state]}. ${ll.t}`);
+  }
+  if (ui.drawer != null) renderDrawer();
+}
+function openDrawer(i) { ui.drawer = i; ui.pick = null; renderDrawer(true); }
+function closeDrawer() { ui.drawer = null; ui.pick = null; document.querySelectorAll(".drawer").forEach(x => (x.hidden = true)); renderLanes(); }
+function renderDrawer(first) {
+  const el = document.querySelector(`#view-${ui.view} .drawer`); if (!el) return;
+  const d = devs[ui.drawer]; el.hidden = false;
+  const pick = ui.pick && ui.pick.i === d.i ? ui.pick.e : null;
+  const k = frameKey(d) + d.ev.length + (d.ev.at(-1) || {}).status + d.state + (pick ? pick.t0 : "");
+  if (!first && el.dataset.k === k) return; el.dataset.k = k;
+  const ba = pick ? `<div class="sel-detail"><span class="mono what">${call(pick)}</span><span style="color:var(--muted);font-size:12px">${fmtClock(pick.t0)}, ${pick.t1 ? fmtMs(pick.t1 - pick.t0) : "running"}${pick.status === "fail" ? `, <b style="color:var(--bad)">${pick.code}</b> ${esc(pick.msg)}` : ""}</span></div>
+    <div class="ba"><figure><div class="bez">${scr(d, screenAt(d, pick.t0 - 1))}</div><figcaption>Before, approx.</figcaption></figure><figure><div class="bez">${scr(d, screenAt(d, (pick.t1 || simT) + 300))}</div><figcaption>After, approx.</figcaption></figure></div>` : "";
+  const evs = d.ev.slice(-80).map(evRow).join("") || `<div class="ev mark"><span class="t"></span><span>No calls on this device yet.</span></div>`;
+  el.innerHTML = `<div class="dr-head">${connDot(d)}<h2>${d.model}</h2><span class="mono" style="color:var(--faint);font-size:12px">${d.serial}</span>
+    <button class="btn x" id="dr-close" aria-label="Close">Close</button></div>
+    <div class="dr-body"><div class="dr-screen"><div class="bez">${scr(d)}</div>${metaHTML(d)}</div><div class="log" id="dr-log">${ba}${evs}</div></div>`;
+  el.querySelector("#dr-close").onclick = closeDrawer;
+  const log = el.querySelector("#dr-log"); if (!pick) log.scrollTop = log.scrollHeight;
+  if (first) el.querySelector("#dr-close").focus();
+}
+document.getElementById("group").onclick = e => { ui.group = !ui.group; e.currentTarget.setAttribute("aria-pressed", ui.group); renderWall(); };
+
+/* ---------------- B: Spotlight ---------------- */
+const spotEl = document.getElementById("view-spot");
+spotEl.innerHTML = `<div class="spot"><div class="spot-main"><div class="stage" id="stage"></div>
+  <div class="spot-log"><h3 id="spot-h">Actions</h3><div class="log" id="spot-log"></div></div></div>
+  <div class="strip" id="strip" role="listbox" aria-label="Devices"></div></div>
+  <div class="view-tools" style="left:max(16px, env(safe-area-inset-left, 0px));top:12px"><button class="btn" id="follow" aria-pressed="true" title="Jump to a device when it fails">Follow failures</button></div>`;
+let toastTimer;
+function toast(msg) {
+  let t = spotEl.querySelector(".toast"); if (!t) { t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status"); spotEl.appendChild(t); }
+  t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2600);
+}
+function pulseBars(d) {
+  const bins = new Array(18).fill(null), span = 36000, start = simT - span;
+  for (const e of d.ev) { if (e.mark || e.t0 < start) continue; const b = Math.min(17, Math.floor((e.t0 - start) / (span / 18))); if (e.status === "fail") bins[b] = "fail"; else if (!bins[b]) bins[b] = "ok"; }
+  return bins.map(b => `<i class="${b || ""}" style="height:${b === "fail" ? 100 : b ? 70 : 15}%"></i>`).join("");
+}
+function renderSpot() {
+  const list = shown(); if (ui.sel >= list.length) ui.sel = 0;
+  const d = devs[ui.sel];
+  const stage = document.getElementById("stage");
+  const k = frameKey(d) + d.state + d.i + (d.ev.at(-1) || {}).status;
+  if (stage.dataset.k !== k) {
+    stage.dataset.k = k;
+    const ll = lastLine(d);
+    stage.innerHTML = `<div class="bez${d.tab ? " tab" : ""}">${scr(d)}</div>
+      <div class="stage-info"><h2>${d.model}</h2><span class="mono" style="color:var(--faint);font-size:12px">${d.serial}</span>
+      <span class="statebig"><span class="dot ${d.state}"></span>${STATE_LABEL[d.state]}</span>
+      <div class="now${ll.bad ? " bad" : ""}"><span class="k">${ll.bad ? "Failed call" : "Last call"}</span>${esc(ll.t)}</div>${metaHTML(d)}</div>`;
+  }
+  const h3 = document.getElementById("spot-h"); h3.innerHTML = `${connDot(d)}Actions <span>${d.model}, ${d.conn ? esc(CONNS[d.conn].short) : "not held"}</span>`;
+  const log = document.getElementById("spot-log");
+  const lk = d.i + ":" + d.ev.length + (d.ev.at(-1) || {}).status;
+  if (log.dataset.k !== lk) { log.dataset.k = lk; log.innerHTML = d.ev.slice(-80).map(evRow).join("") || `<div class="ev mark"><span class="t"></span><span>${d.state === "off" ? "This device is not connected to adb." : "No connection holds this device, so nothing is logged."}</span></div>`; log.scrollTop = log.scrollHeight; }
+  const strip = document.getElementById("strip");
+  if (strip.dataset.n != list.length) {
+    strip.dataset.n = list.length;
+    strip.innerHTML = list.map(x => `<button class="thumb" role="option" data-i="${x.i}"><div class="cell"></div><div class="tl"></div><div class="pulse"></div></button>`).join("");
+    strip.querySelectorAll(".thumb").forEach(b => b.onclick = () => { ui.sel = +b.dataset.i; renderSpot(); });
+  }
+  strip.querySelectorAll(".thumb").forEach(b => {
+    const x = devs[+b.dataset.i]; b.className = "thumb s-" + x.state; b.setAttribute("aria-current", x.i === ui.sel); b.setAttribute("aria-selected", x.i === ui.sel);
+    const fk = frameKey(x); const cell = b.querySelector(".cell"); if (cell.dataset.k !== fk) { cell.dataset.k = fk; cell.innerHTML = scr(x); }
+    b.querySelector(".tl").innerHTML = `${connDot(x)}<b>${x.model}</b>`;
+    b.querySelector(".pulse").innerHTML = pulseBars(x);
+    b.title = `${x.model} ${x.serial}: ${STATE_LABEL[x.state]}`;
+  });
+}
+document.getElementById("follow").onclick = e => { ui.follow = !ui.follow; e.currentTarget.setAttribute("aria-pressed", ui.follow); };
+
+/* ---------------- C: Lanes ---------------- */
+const SPAN = 90000;
+const lanesEl = document.getElementById("view-lanes");
+lanesEl.innerHTML = `<div class="lanes"><div class="frames" id="frames"></div>
+  <div class="axis"><div class="lbl legend"><span><i style="background:var(--ok);opacity:.75"></i>ok</span><span><i style="background:var(--bad)"></i>failed</span></div><div class="ticks" id="ticks"></div></div>
+  <div class="lane-list" id="lane-list"></div></div><aside class="drawer" id="drawer2" hidden></aside>`;
+function renderFrames() {
+  const list = shown(), t1 = simT, at = ui.cursor != null ? ui.cursor : t1;
+  const fr = document.getElementById("frames");
+  const lbl = ui.cursor != null ? `<b>−${((t1 - at) / 1000).toFixed(1)} s</b><span>${fmtClock(at)}, approx. frames</span>` : `<b>Live</b><span>Hover the lanes to look back</span>`;
+  fr.innerHTML = `<div class="frames-lbl">${lbl}</div>` + list.map(d => { const f = screenAt(d, at); return `<div class="fr${d.state === "idle" || d.state === "off" ? " dim" : ""}"><div class="cell">${scr(d, f)}</div><span>${d.model}</span></div>`; }).join("");
+}
+function renderCursor() {
+  const c = document.getElementById("cursor"); if (!c) return;
+  c.hidden = ui.cursor == null; if (ui.cursor == null) return;
+  const f = (ui.cursor - (simT - SPAN)) / SPAN;
+  c.style.left = `calc((100% - var(--who)) * ${f})`;
+  c.innerHTML = `<span>−${((simT - ui.cursor) / 1000).toFixed(1)} s</span>`;
+}
+function renderLanes() {
+  if (ui.view !== "lanes") return;
+  const list = shown(), t1 = simT, t0 = t1 - SPAN;
+  const at = ui.cursor != null ? ui.cursor : t1;
+  const x = t => ((t - t0) / SPAN) * 100;
+  document.getElementById("ticks").innerHTML = Array.from({ length: 10 }, (_, i) => { const s = i * 10; return `<span style="left:${100 - (s * 1000 / SPAN) * 100}%">${s ? "−" + s + " s" : "now"}</span>`; }).join("").replace(/left:0%/, "left:2%").replace(/left:100%/, "left:97%");
+  renderFrames();
+  document.getElementById("lane-list").innerHTML = list.map(d => {
+    let inner = "";
+    if (d.conn) {
+      for (const e of d.ev) {
+        if (e.mark || (e.t1 || t1) < t0) continue;
+        const l = Math.max(0, x(e.t0)), w = Math.min(100 - l, Math.max(0.25, x(e.t1 || t1) - l));
+        const sel = ui.pick && ui.pick.i === d.i && ui.pick.e === e ? " sel" : "";
+        inner += `<button class="blk ${e.status}${sel}" style="left:${l}%;width:${w}%" data-i="${d.i}" data-t="${e.t0}" aria-label="${esc(e.v + " " + e.s)} ${e.status === "fail" ? e.code : e.t1 ? fmtMs(e.t1 - e.t0) : "running"}" title="${esc(e.v + " " + e.s.replace(" <sensitive>", " ••••"))}  ${e.status === "fail" ? e.code : e.t1 ? fmtMs(e.t1 - e.t0) : "running"}"></button>`;
+      }
+      // between-test gaps: from a "finished"/"detached" mark to the next attach
+      let gapStart = null;
+      for (const e of d.ev) {
+        if (!e.mark) continue;
+        if (e.text.startsWith("attached")) { if (gapStart != null && e.t0 > t0) { const l = Math.max(0, x(gapStart)); inner += `<span class="gapzone" style="left:${l}%;width:${x(e.t0) - l}%" title="between tests"></span>`; } gapStart = null; }
+        else gapStart = e.t0;
+      }
+      if (gapStart != null) { const l = Math.max(0, x(gapStart)); inner += `<span class="gapzone" style="left:${l}%;width:${100 - l}%" title="between tests"></span>`; }
+    }
+    const note = d.state === "off" ? "offline: not connected to adb" : !d.conn ? "free: no connection holds this device" : "";
+    return `<div class="lane${note ? " idle" : ""}"><div class="who" data-open="${d.i}" tabindex="0" role="button" aria-label="Open ${d.model}"><span class="n">${connDot(d)}<span class="dot ${d.state}"></span><b>${d.model}</b></span><span class="s">${d.serial}</span></div>
+      <div class="track" data-note="${note}">${inner}</div></div>`;
+  }).join("") + `<span class="cursor" id="cursor" hidden></span>`;
+  renderCursor();
+  if (ui.drawer != null) renderDrawer();
+}
+const laneList = () => document.getElementById("lane-list");
+lanesEl.addEventListener("mousemove", e => {
+  const tr = e.target.closest(".track"); if (!tr) return;
+  const r = tr.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  ui.cursor = simT - SPAN + f * SPAN; renderFrames(); renderCursor();
+});
+lanesEl.addEventListener("mouseleave", () => { ui.cursor = null; renderLanes(); });
+lanesEl.addEventListener("pointerdown", e => {
+  const b = e.target.closest(".blk");
+  if (b) { const d = devs[+b.dataset.i]; const ev = d.ev.find(x => x.t0 === +b.dataset.t); ui.drawer = d.i; ui.pick = { i: d.i, e: ev }; renderDrawer(true); renderLanes(); }
+});
+lanesEl.addEventListener("click", e => { const w = e.target.closest("[data-open]"); if (w) openDrawer(+w.dataset.open); });
+lanesEl.addEventListener("keydown", e => { const w = e.target.closest("[data-open]"); if (w && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDrawer(+w.dataset.open); } });
+
+/* ---------------- wiring ---------------- */
+function setView(v) {
+  ui.view = v; try { localStorage.setItem("tw-view", v); } catch (_) {}
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === v));
+  ["wall", "spot", "lanes"].forEach(k => (document.getElementById("view-" + k).hidden = k !== v));
+  ui.drawer = null; ui.pick = null; document.querySelectorAll(".drawer").forEach(x => (x.hidden = true));
+  render();
+}
+function render() { renderSum(); if (ui.view === "wall") renderWall(); else if (ui.view === "spot") renderSpot(); else renderLanes(); }
+document.querySelectorAll(".seg button").forEach(b => (b.onclick = () => setView(b.dataset.view)));
+document.getElementById("sum").addEventListener("click", e => { const b = e.target.closest("[data-filter]"); if (!b) return; ui.filter = ui.filter === b.dataset.filter ? "all" : b.dataset.filter; render(); });
+const setN = n => { ui.n = Math.max(1, Math.min(10, n)); document.getElementById("n-out").textContent = ui.n; render(); };
+document.getElementById("n-minus").onclick = () => setN(ui.n - 1);
+document.getElementById("n-plus").onclick = () => setN(ui.n + 1);
+document.getElementById("pause").onclick = e => { ui.paused = !ui.paused; const b = e.currentTarget; b.setAttribute("aria-pressed", ui.paused); b.querySelector("span").textContent = ui.paused ? "Resume" : "Pause"; };
+document.getElementById("theme").onclick = () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; };
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && ui.drawer != null) closeDrawer();
+  if (ui.view === "spot" && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { const n = shown().length; ui.sel = (ui.sel + (e.key === "ArrowRight" ? 1 : n - 1)) % n; renderSpot(); }
+});
+addEventListener("resize", () => { const g = document.getElementById("wall-grid"); if (g) g.dataset.sig = ""; render(); });
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(250, now - last); last = now;
+  if (!ui.paused) {
+    const prevFail = new Set(devs.filter(d => d.state === "fail").map(d => d.i));
+    for (let s = 0; s < dt; s += 50) { simT += Math.min(50, dt - s); devs.forEach(tickDevice); }
+    devs.forEach(d => d.hist.length > 600 && d.hist.splice(1, d.hist.length - 600));
+    if (ui.view === "spot" && ui.follow) {
+      const nf = shown().find(d => d.state === "fail" && !prevFail.has(d.i) && d.i !== ui.sel);
+      if (nf) { ui.sel = nf.i; toast(`Switched to ${nf.model}: ${nf.lastFail.code}`); }
+    }
+  }
+  render();
+  setTimeout(() => requestAnimationFrame(loop), 200);
+}
+setView(ui.view);
+requestAnimationFrame(loop);
+</script>

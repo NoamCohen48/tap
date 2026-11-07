@@ -58,6 +58,8 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/test-watcher.md` — decision record: `tap-watcher` (`clients/watcher`), a standalone
   read-only browser view of what every connection does on each device plus shared video
   (`WatchService`); test markers deferred (`.docs/test-watcher-test-markers.md`).
+  `.docs/test-watcher-wall.md` is many devices at once (the wall, the device pane, unseen
+  failures, `call_started`, `WatchScreens`) with its two mocks and the deferred options;
   `.docs/test-watcher-review.md` is the review of its first cut and each item's fix status;
   `.docs/shared-video.md` the passive scrcpy capture and its evidence.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a

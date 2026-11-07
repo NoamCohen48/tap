@@ -51,7 +51,19 @@ message Activity {
     DeviceDetached device_detached = 7;
     // A call the connection made, exactly as its own event log (`Events`) records it.
     LoggedEvent event = 8;
+    // A call the connection started; its `event` follows when it finishes.
+    CallStarted call_started = 9;
   }
+}
+
+// A device call as it begins, so a watcher can show what runs now. `call` is the event the log
+// will keep, before it ran: serial, call, `at_epoch_ms`, `started_monotonic_ns` and `clock_id`
+// are set; seq, duration, outcome and `finished_monotonic_ns` are not. The `event` activity for
+// the same call repeats the serial and `started_monotonic_ns`, which is how a watcher pairs them.
+// A call cancelled before it finished is never logged, so no `event` follows it; its device
+// detaching or its connection closing ends it.
+message CallStarted {
+  LoggedEvent call = 1;
 }
 
 message ConnectionOpened {

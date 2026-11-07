@@ -11,7 +11,7 @@ import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobu
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { ListDevicesRequestSchema, ListDevicesResponseSchema } from "./device_pb";
 import { file_device } from "./device_pb";
-import type { WatchRequestSchema, WatchResponseSchema, WatchVideoRequestSchema, WatchVideoResponseSchema } from "./watch_pb";
+import type { VideoFrame, VideoHeader, WatchRequestSchema, WatchResponseSchema, WatchVideoRequestSchema, WatchVideoResponseSchema } from "./watch_pb";
 import { file_watch } from "./watch_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -19,7 +19,70 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file watcher.proto.
  */
 export const file_watcher: GenFile = /*@__PURE__*/
-  fileDesc("Cg13YXRjaGVyLnByb3RvEg50YXAud2F0Y2hlci52MSIPCg1TdGF0dXNSZXF1ZXN0IqQBCg5TdGF0dXNSZXNwb25zZRIYChBkYWVtb25fY29ubmVjdGVkGAEgASgIEhQKDGRhZW1vbl9lcnJvchgCIAEoCRIzCgpyZWNvcmRpbmdzGAMgAygLMh8udGFwLndhdGNoZXIudjEuQWN0aXZlUmVjb3JkaW5nEi0KB2hpc3RvcnkYBCABKAsyHC50YXAud2F0Y2hlci52MS5WaWRlb0hpc3RvcnkiNgoMVmlkZW9IaXN0b3J5EhMKC21heF9zZWNvbmRzGAEgASgNEhEKCW1heF9ieXRlcxgCIAEoBCJbCg9BY3RpdmVSZWNvcmRpbmcSDgoGc2VyaWFsGAEgASgJEhgKEHN0YXJ0ZWRfZXBvY2hfbXMYAiABKAMSDQoFYnl0ZXMYAyABKAQSDwoHc2Vjb25kcxgEIAEoASLyAQoJUmVjb3JkaW5nEgoKAmlkGAEgASgJEisKBGtpbmQYAiABKA4yHS50YXAud2F0Y2hlci52MS5SZWNvcmRpbmdLaW5kEg4KBnNlcmlhbBgDIAEoCRIYChBjcmVhdGVkX2Vwb2NoX21zGAQgASgDEhgKEGR1cmF0aW9uX3NlY29uZHMYBSABKAESDQoFYnl0ZXMYBiABKAQSGAoQY29ubmVjdGlvbl9uYW1lcxgHIAMoCRIPCgdhY3Rpb25zGAggASgNEhAKCGZhaWx1cmVzGAkgASgNEg0KBWVuZGVkGAogASgJEg0KBXBhcnRzGAsgASgNIicKFVN0YXJ0UmVjb3JkaW5nUmVxdWVzdBIOCgZzZXJpYWwYASABKAkiTAoWU3RhcnRSZWNvcmRpbmdSZXNwb25zZRIyCglyZWNvcmRpbmcYASABKAsyHy50YXAud2F0Y2hlci52MS5BY3RpdmVSZWNvcmRpbmciJgoUU3RvcFJlY29yZGluZ1JlcXVlc3QSDgoGc2VyaWFsGAEgASgJIkUKFVN0b3BSZWNvcmRpbmdSZXNwb25zZRIsCglyZWNvcmRpbmcYASABKAsyGS50YXAud2F0Y2hlci52MS5SZWNvcmRpbmcicQoPU2F2ZUNsaXBSZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCRIWCg5mcm9tX3N0cmVhbV9pZBgCIAEoCRIQCghmcm9tX3NlcRgDIAEoBBIUCgx0b19zdHJlYW1faWQYBCABKAkSDgoGdG9fc2VxGAUgASgEIkAKEFNhdmVDbGlwUmVzcG9uc2USLAoJcmVjb3JkaW5nGAEgASgLMhkudGFwLndhdGNoZXIudjEuUmVjb3JkaW5nIhcKFUxpc3RSZWNvcmRpbmdzUmVxdWVzdCKUAQoWTGlzdFJlY29yZGluZ3NSZXNwb25zZRItCgpyZWNvcmRpbmdzGAEgAygLMhkudGFwLndhdGNoZXIudjEuUmVjb3JkaW5nEhEKCWRpcmVjdG9yeRgCIAEoCRISCgp1c2VkX2J5dGVzGAMgASgEEhEKCW1heF9ieXRlcxgEIAEoBBIRCglrZWVwX2RheXMYBSABKA0iJgoXRGVsZXRlUmVjb3JkaW5nc1JlcXVlc3QSCwoDaWRzGAEgAygJIhoKGERlbGV0ZVJlY29yZGluZ3NSZXNwb25zZSpmCg1SZWNvcmRpbmdLaW5kEh4KGlJFQ09SRElOR19LSU5EX1VOU1BFQ0lGSUVEEAASHAoYUkVDT1JESU5HX0tJTkRfUkVDT1JESU5HEAESFwoTUkVDT1JESU5HX0tJTkRfQ0xJUBACMvYFCg5XYXRjaGVyU2VydmljZRJHCgZTdGF0dXMSHS50YXAud2F0Y2hlci52MS5TdGF0dXNSZXF1ZXN0Gh4udGFwLndhdGNoZXIudjEuU3RhdHVzUmVzcG9uc2USRgoLTGlzdERldmljZXMSGi50YXAudjEuTGlzdERldmljZXNSZXF1ZXN0GhsudGFwLnYxLkxpc3REZXZpY2VzUmVzcG9uc2USNgoFV2F0Y2gSFC50YXAudjEuV2F0Y2hSZXF1ZXN0GhUudGFwLnYxLldhdGNoUmVzcG9uc2UwARJFCgpXYXRjaFZpZGVvEhkudGFwLnYxLldhdGNoVmlkZW9SZXF1ZXN0GhoudGFwLnYxLldhdGNoVmlkZW9SZXNwb25zZTABEl8KDlN0YXJ0UmVjb3JkaW5nEiUudGFwLndhdGNoZXIudjEuU3RhcnRSZWNvcmRpbmdSZXF1ZXN0GiYudGFwLndhdGNoZXIudjEuU3RhcnRSZWNvcmRpbmdSZXNwb25zZRJcCg1TdG9wUmVjb3JkaW5nEiQudGFwLndhdGNoZXIudjEuU3RvcFJlY29yZGluZ1JlcXVlc3QaJS50YXAud2F0Y2hlci52MS5TdG9wUmVjb3JkaW5nUmVzcG9uc2USTQoIU2F2ZUNsaXASHy50YXAud2F0Y2hlci52MS5TYXZlQ2xpcFJlcXVlc3QaIC50YXAud2F0Y2hlci52MS5TYXZlQ2xpcFJlc3BvbnNlEl8KDkxpc3RSZWNvcmRpbmdzEiUudGFwLndhdGNoZXIudjEuTGlzdFJlY29yZGluZ3NSZXF1ZXN0GiYudGFwLndhdGNoZXIudjEuTGlzdFJlY29yZGluZ3NSZXNwb25zZRJlChBEZWxldGVSZWNvcmRpbmdzEicudGFwLndhdGNoZXIudjEuRGVsZXRlUmVjb3JkaW5nc1JlcXVlc3QaKC50YXAud2F0Y2hlci52MS5EZWxldGVSZWNvcmRpbmdzUmVzcG9uc2ViBnByb3RvMw", [file_device, file_watch]);
+  fileDesc("Cg13YXRjaGVyLnByb3RvEg50YXAud2F0Y2hlci52MSImChNXYXRjaFNjcmVlbnNSZXF1ZXN0Eg8KB3NlcmlhbHMYASADKAkihQEKDFNjcmVlblVwZGF0ZRIOCgZzZXJpYWwYASABKAkSJQoGaGVhZGVyGAIgASgLMhMudGFwLnYxLlZpZGVvSGVhZGVySAASIwoFZnJhbWUYAyABKAsyEi50YXAudjEuVmlkZW9GcmFtZUgAEg8KBWVycm9yGAQgASgJSABCCAoGdXBkYXRlIg8KDVN0YXR1c1JlcXVlc3QipAEKDlN0YXR1c1Jlc3BvbnNlEhgKEGRhZW1vbl9jb25uZWN0ZWQYASABKAgSFAoMZGFlbW9uX2Vycm9yGAIgASgJEjMKCnJlY29yZGluZ3MYAyADKAsyHy50YXAud2F0Y2hlci52MS5BY3RpdmVSZWNvcmRpbmcSLQoHaGlzdG9yeRgEIAEoCzIcLnRhcC53YXRjaGVyLnYxLlZpZGVvSGlzdG9yeSI2CgxWaWRlb0hpc3RvcnkSEwoLbWF4X3NlY29uZHMYASABKA0SEQoJbWF4X2J5dGVzGAIgASgEIlsKD0FjdGl2ZVJlY29yZGluZxIOCgZzZXJpYWwYASABKAkSGAoQc3RhcnRlZF9lcG9jaF9tcxgCIAEoAxINCgVieXRlcxgDIAEoBBIPCgdzZWNvbmRzGAQgASgBIvIBCglSZWNvcmRpbmcSCgoCaWQYASABKAkSKwoEa2luZBgCIAEoDjIdLnRhcC53YXRjaGVyLnYxLlJlY29yZGluZ0tpbmQSDgoGc2VyaWFsGAMgASgJEhgKEGNyZWF0ZWRfZXBvY2hfbXMYBCABKAMSGAoQZHVyYXRpb25fc2Vjb25kcxgFIAEoARINCgVieXRlcxgGIAEoBBIYChBjb25uZWN0aW9uX25hbWVzGAcgAygJEg8KB2FjdGlvbnMYCCABKA0SEAoIZmFpbHVyZXMYCSABKA0SDQoFZW5kZWQYCiABKAkSDQoFcGFydHMYCyABKA0iJwoVU3RhcnRSZWNvcmRpbmdSZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCSJMChZTdGFydFJlY29yZGluZ1Jlc3BvbnNlEjIKCXJlY29yZGluZxgBIAEoCzIfLnRhcC53YXRjaGVyLnYxLkFjdGl2ZVJlY29yZGluZyImChRTdG9wUmVjb3JkaW5nUmVxdWVzdBIOCgZzZXJpYWwYASABKAkiRQoVU3RvcFJlY29yZGluZ1Jlc3BvbnNlEiwKCXJlY29yZGluZxgBIAEoCzIZLnRhcC53YXRjaGVyLnYxLlJlY29yZGluZyJxCg9TYXZlQ2xpcFJlcXVlc3QSDgoGc2VyaWFsGAEgASgJEhYKDmZyb21fc3RyZWFtX2lkGAIgASgJEhAKCGZyb21fc2VxGAMgASgEEhQKDHRvX3N0cmVhbV9pZBgEIAEoCRIOCgZ0b19zZXEYBSABKAQiQAoQU2F2ZUNsaXBSZXNwb25zZRIsCglyZWNvcmRpbmcYASABKAsyGS50YXAud2F0Y2hlci52MS5SZWNvcmRpbmciFwoVTGlzdFJlY29yZGluZ3NSZXF1ZXN0IpQBChZMaXN0UmVjb3JkaW5nc1Jlc3BvbnNlEi0KCnJlY29yZGluZ3MYASADKAsyGS50YXAud2F0Y2hlci52MS5SZWNvcmRpbmcSEQoJZGlyZWN0b3J5GAIgASgJEhIKCnVzZWRfYnl0ZXMYAyABKAQSEQoJbWF4X2J5dGVzGAQgASgEEhEKCWtlZXBfZGF5cxgFIAEoDSImChdEZWxldGVSZWNvcmRpbmdzUmVxdWVzdBILCgNpZHMYASADKAkiGgoYRGVsZXRlUmVjb3JkaW5nc1Jlc3BvbnNlKmYKDVJlY29yZGluZ0tpbmQSHgoaUkVDT1JESU5HX0tJTkRfVU5TUEVDSUZJRUQQABIcChhSRUNPUkRJTkdfS0lORF9SRUNPUkRJTkcQARIXChNSRUNPUkRJTkdfS0lORF9DTElQEAIyywYKDldhdGNoZXJTZXJ2aWNlEkcKBlN0YXR1cxIdLnRhcC53YXRjaGVyLnYxLlN0YXR1c1JlcXVlc3QaHi50YXAud2F0Y2hlci52MS5TdGF0dXNSZXNwb25zZRJGCgtMaXN0RGV2aWNlcxIaLnRhcC52MS5MaXN0RGV2aWNlc1JlcXVlc3QaGy50YXAudjEuTGlzdERldmljZXNSZXNwb25zZRI2CgVXYXRjaBIULnRhcC52MS5XYXRjaFJlcXVlc3QaFS50YXAudjEuV2F0Y2hSZXNwb25zZTABEkUKCldhdGNoVmlkZW8SGS50YXAudjEuV2F0Y2hWaWRlb1JlcXVlc3QaGi50YXAudjEuV2F0Y2hWaWRlb1Jlc3BvbnNlMAESUwoMV2F0Y2hTY3JlZW5zEiMudGFwLndhdGNoZXIudjEuV2F0Y2hTY3JlZW5zUmVxdWVzdBocLnRhcC53YXRjaGVyLnYxLlNjcmVlblVwZGF0ZTABEl8KDlN0YXJ0UmVjb3JkaW5nEiUudGFwLndhdGNoZXIudjEuU3RhcnRSZWNvcmRpbmdSZXF1ZXN0GiYudGFwLndhdGNoZXIudjEuU3RhcnRSZWNvcmRpbmdSZXNwb25zZRJcCg1TdG9wUmVjb3JkaW5nEiQudGFwLndhdGNoZXIudjEuU3RvcFJlY29yZGluZ1JlcXVlc3QaJS50YXAud2F0Y2hlci52MS5TdG9wUmVjb3JkaW5nUmVzcG9uc2USTQoIU2F2ZUNsaXASHy50YXAud2F0Y2hlci52MS5TYXZlQ2xpcFJlcXVlc3QaIC50YXAud2F0Y2hlci52MS5TYXZlQ2xpcFJlc3BvbnNlEl8KDkxpc3RSZWNvcmRpbmdzEiUudGFwLndhdGNoZXIudjEuTGlzdFJlY29yZGluZ3NSZXF1ZXN0GiYudGFwLndhdGNoZXIudjEuTGlzdFJlY29yZGluZ3NSZXNwb25zZRJlChBEZWxldGVSZWNvcmRpbmdzEicudGFwLndhdGNoZXIudjEuRGVsZXRlUmVjb3JkaW5nc1JlcXVlc3QaKC50YXAud2F0Y2hlci52MS5EZWxldGVSZWNvcmRpbmdzUmVzcG9uc2ViBnByb3RvMw", [file_device, file_watch]);
+
+/**
+ * @generated from message tap.watcher.v1.WatchScreensRequest
+ */
+export type WatchScreensRequest = Message<"tap.watcher.v1.WatchScreensRequest"> & {
+  /**
+   * At most 32, each non-empty.
+   *
+   * @generated from field: repeated string serials = 1;
+   */
+  serials: string[];
+};
+
+/**
+ * Describes the message tap.watcher.v1.WatchScreensRequest.
+ * Use `create(WatchScreensRequestSchema)` to create a new message.
+ */
+export const WatchScreensRequestSchema: GenMessage<WatchScreensRequest> = /*@__PURE__*/
+  messageDesc(file_watcher, 0);
+
+/**
+ * @generated from message tap.watcher.v1.ScreenUpdate
+ */
+export type ScreenUpdate = Message<"tap.watcher.v1.ScreenUpdate"> & {
+  /**
+   * @generated from field: string serial = 1;
+   */
+  serial: string;
+
+  /**
+   * @generated from oneof tap.watcher.v1.ScreenUpdate.update
+   */
+  update: {
+    /**
+     * A new stream: reset the decoder (the first update of each serial is one).
+     *
+     * @generated from field: tap.v1.VideoHeader header = 2;
+     */
+    value: VideoHeader;
+    case: "header";
+  } | {
+    /**
+     * @generated from field: tap.v1.VideoFrame frame = 3;
+     */
+    value: VideoFrame;
+    case: "frame";
+  } | {
+    /**
+     * Why this serial shows no video now (no scrcpy server, offline, fell behind).
+     *
+     * @generated from field: string error = 4;
+     */
+    value: string;
+    case: "error";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message tap.watcher.v1.ScreenUpdate.
+ * Use `create(ScreenUpdateSchema)` to create a new message.
+ */
+export const ScreenUpdateSchema: GenMessage<ScreenUpdate> = /*@__PURE__*/
+  messageDesc(file_watcher, 1);
 
 /**
  * @generated from message tap.watcher.v1.StatusRequest
@@ -32,7 +95,7 @@ export type StatusRequest = Message<"tap.watcher.v1.StatusRequest"> & {
  * Use `create(StatusRequestSchema)` to create a new message.
  */
 export const StatusRequestSchema: GenMessage<StatusRequest> = /*@__PURE__*/
-  messageDesc(file_watcher, 0);
+  messageDesc(file_watcher, 2);
 
 /**
  * @generated from message tap.watcher.v1.StatusResponse
@@ -66,7 +129,7 @@ export type StatusResponse = Message<"tap.watcher.v1.StatusResponse"> & {
  * Use `create(StatusResponseSchema)` to create a new message.
  */
 export const StatusResponseSchema: GenMessage<StatusResponse> = /*@__PURE__*/
-  messageDesc(file_watcher, 1);
+  messageDesc(file_watcher, 3);
 
 /**
  * How much video the back end retains per serial; the page keeps the same.
@@ -90,7 +153,7 @@ export type VideoHistory = Message<"tap.watcher.v1.VideoHistory"> & {
  * Use `create(VideoHistorySchema)` to create a new message.
  */
 export const VideoHistorySchema: GenMessage<VideoHistory> = /*@__PURE__*/
-  messageDesc(file_watcher, 2);
+  messageDesc(file_watcher, 4);
 
 /**
  * @generated from message tap.watcher.v1.ActiveRecording
@@ -124,7 +187,7 @@ export type ActiveRecording = Message<"tap.watcher.v1.ActiveRecording"> & {
  * Use `create(ActiveRecordingSchema)` to create a new message.
  */
 export const ActiveRecordingSchema: GenMessage<ActiveRecording> = /*@__PURE__*/
-  messageDesc(file_watcher, 3);
+  messageDesc(file_watcher, 5);
 
 /**
  * A saved library entry: `video-1.mp4` … `video-<parts>.mp4` and `steps.json` under
@@ -200,7 +263,7 @@ export type Recording = Message<"tap.watcher.v1.Recording"> & {
  * Use `create(RecordingSchema)` to create a new message.
  */
 export const RecordingSchema: GenMessage<Recording> = /*@__PURE__*/
-  messageDesc(file_watcher, 4);
+  messageDesc(file_watcher, 6);
 
 /**
  * @generated from message tap.watcher.v1.StartRecordingRequest
@@ -217,7 +280,7 @@ export type StartRecordingRequest = Message<"tap.watcher.v1.StartRecordingReques
  * Use `create(StartRecordingRequestSchema)` to create a new message.
  */
 export const StartRecordingRequestSchema: GenMessage<StartRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_watcher, 5);
+  messageDesc(file_watcher, 7);
 
 /**
  * @generated from message tap.watcher.v1.StartRecordingResponse
@@ -234,7 +297,7 @@ export type StartRecordingResponse = Message<"tap.watcher.v1.StartRecordingRespo
  * Use `create(StartRecordingResponseSchema)` to create a new message.
  */
 export const StartRecordingResponseSchema: GenMessage<StartRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_watcher, 6);
+  messageDesc(file_watcher, 8);
 
 /**
  * @generated from message tap.watcher.v1.StopRecordingRequest
@@ -251,7 +314,7 @@ export type StopRecordingRequest = Message<"tap.watcher.v1.StopRecordingRequest"
  * Use `create(StopRecordingRequestSchema)` to create a new message.
  */
 export const StopRecordingRequestSchema: GenMessage<StopRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_watcher, 7);
+  messageDesc(file_watcher, 9);
 
 /**
  * @generated from message tap.watcher.v1.StopRecordingResponse
@@ -268,7 +331,7 @@ export type StopRecordingResponse = Message<"tap.watcher.v1.StopRecordingRespons
  * Use `create(StopRecordingResponseSchema)` to create a new message.
  */
 export const StopRecordingResponseSchema: GenMessage<StopRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_watcher, 8);
+  messageDesc(file_watcher, 10);
 
 /**
  * @generated from message tap.watcher.v1.SaveClipRequest
@@ -305,7 +368,7 @@ export type SaveClipRequest = Message<"tap.watcher.v1.SaveClipRequest"> & {
  * Use `create(SaveClipRequestSchema)` to create a new message.
  */
 export const SaveClipRequestSchema: GenMessage<SaveClipRequest> = /*@__PURE__*/
-  messageDesc(file_watcher, 9);
+  messageDesc(file_watcher, 11);
 
 /**
  * @generated from message tap.watcher.v1.SaveClipResponse
@@ -322,7 +385,7 @@ export type SaveClipResponse = Message<"tap.watcher.v1.SaveClipResponse"> & {
  * Use `create(SaveClipResponseSchema)` to create a new message.
  */
 export const SaveClipResponseSchema: GenMessage<SaveClipResponse> = /*@__PURE__*/
-  messageDesc(file_watcher, 10);
+  messageDesc(file_watcher, 12);
 
 /**
  * @generated from message tap.watcher.v1.ListRecordingsRequest
@@ -335,7 +398,7 @@ export type ListRecordingsRequest = Message<"tap.watcher.v1.ListRecordingsReques
  * Use `create(ListRecordingsRequestSchema)` to create a new message.
  */
 export const ListRecordingsRequestSchema: GenMessage<ListRecordingsRequest> = /*@__PURE__*/
-  messageDesc(file_watcher, 11);
+  messageDesc(file_watcher, 13);
 
 /**
  * @generated from message tap.watcher.v1.ListRecordingsResponse
@@ -381,7 +444,7 @@ export type ListRecordingsResponse = Message<"tap.watcher.v1.ListRecordingsRespo
  * Use `create(ListRecordingsResponseSchema)` to create a new message.
  */
 export const ListRecordingsResponseSchema: GenMessage<ListRecordingsResponse> = /*@__PURE__*/
-  messageDesc(file_watcher, 12);
+  messageDesc(file_watcher, 14);
 
 /**
  * @generated from message tap.watcher.v1.DeleteRecordingsRequest
@@ -398,7 +461,7 @@ export type DeleteRecordingsRequest = Message<"tap.watcher.v1.DeleteRecordingsRe
  * Use `create(DeleteRecordingsRequestSchema)` to create a new message.
  */
 export const DeleteRecordingsRequestSchema: GenMessage<DeleteRecordingsRequest> = /*@__PURE__*/
-  messageDesc(file_watcher, 13);
+  messageDesc(file_watcher, 15);
 
 /**
  * @generated from message tap.watcher.v1.DeleteRecordingsResponse
@@ -411,7 +474,7 @@ export type DeleteRecordingsResponse = Message<"tap.watcher.v1.DeleteRecordingsR
  * Use `create(DeleteRecordingsResponseSchema)` to create a new message.
  */
 export const DeleteRecordingsResponseSchema: GenMessage<DeleteRecordingsResponse> = /*@__PURE__*/
-  messageDesc(file_watcher, 14);
+  messageDesc(file_watcher, 16);
 
 /**
  * @generated from enum tap.watcher.v1.RecordingKind
@@ -489,6 +552,19 @@ export const WatcherService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchVideoRequestSchema;
     output: typeof WatchVideoResponseSchema;
+  },
+  /**
+   * Several devices' screens on one stream, for the wall: each from its latest key frame (no
+   * history), then live, tagged by serial. One stream for all of them because a browser keeps
+   * at most six connections to a host and every open stream holds one. A serial whose video
+   * fails gets an `error` update and is tried again a few seconds later.
+   *
+   * @generated from rpc tap.watcher.v1.WatcherService.WatchScreens
+   */
+  watchScreens: {
+    methodKind: "server_streaming";
+    input: typeof WatchScreensRequestSchema;
+    output: typeof ScreenUpdateSchema;
   },
   /**
    * Records `serial` from its latest key frame until StopRecording or a limit. One per serial.

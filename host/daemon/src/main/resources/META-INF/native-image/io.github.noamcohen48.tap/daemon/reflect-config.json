@@ -381,6 +381,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.CallStarted",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.ConnectionClosed",
     "allDeclaredFields": true
   },

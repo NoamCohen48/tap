@@ -85,7 +85,9 @@ Retention: none beyond the current GOP, which a joining reader needs to decode a
 (otherwise it waits up to scrcpy's ~10 s key-frame interval); a GOP over 16 MiB
 (`VIDEO_JOIN_BYTES`) is dropped. Decided 2026-10-03: the daemon stays stateless, look-back
 is the watcher's (it was a 120 s / 32 MiB window, a second copy of the watcher's history). Limits:
-four producers, eight readers per producer, 128 updates / 4 MiB per reader. Slow readers are
+16 producers (raised from four on 2026-11-07 so tap-watcher's wall can stream every device of
+a lab host; each producer encodes on its own device, so the cap bounds host processes and
+sockets), eight readers per producer, 128 updates / 4 MiB per reader. Slow readers are
 closed (`VideoReaderOverflowException`) without blocking; last-reader exit stops capture.
 Cleanup failure gates restart. Daemon shutdown interrupts producers within the existing
 shutdown budget.

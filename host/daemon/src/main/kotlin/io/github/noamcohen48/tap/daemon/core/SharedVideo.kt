@@ -25,8 +25,12 @@ import io.github.noamcohen48.tap.api.v1.WatchVideoResponse as VideoResponse
 /** A video reader fell [VIDEO_READER_UPDATES] updates or [VIDEO_READER_BYTES] behind and was dropped. */
 class VideoReaderOverflowException : RuntimeException("video reader fell behind; reconnect to resume from the latest key frame")
 
-/** Producers at once: each is a scrcpy server encoding on its device. */
-const val VIDEO_MAX_PRODUCERS = 4
+/**
+ * Producers at once: each is a scrcpy server encoding on its own device, so the cap bounds the
+ * host's scrcpy processes and sockets, not one device's load. It fits a watcher's wall of
+ * every device on a lab host.
+ */
+const val VIDEO_MAX_PRODUCERS = 16
 
 /** Readers sharing one producer. */
 const val VIDEO_MAX_READERS = 8
