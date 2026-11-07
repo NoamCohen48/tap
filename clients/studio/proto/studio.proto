@@ -68,12 +68,23 @@ service StudioService {
   rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
   // Runs one step on the attached device and, while recording, adds it when it passed.
   rpc Perform(PerformRequest) returns (PerformResponse);
+  // Adds a step without running it, whether recording is on or not: a wait or check for a screen
+  // that is not here yet. Checked as Perform's step; it has no outcome until it runs.
+  // FAILED_PRECONDITION with no device attached and no recording to add to.
+  rpc AddStep(AddStepRequest) returns (AddStepResponse);
   // Replaces a recorded step without running it. NOT_FOUND for an unknown id.
   rpc UpdateStep(UpdateStepRequest) returns (UpdateStepResponse);
   // Removes a recorded step.
   rpc DeleteStep(DeleteStepRequest) returns (DeleteStepResponse);
   // Moves a recorded step.
   rpc MoveStep(MoveStepRequest) returns (MoveStepResponse);
+  // Adds a copy of a step right after it, with a new id and no outcome. Nothing runs.
+  rpc DuplicateStep(DuplicateStepRequest) returns (DuplicateStepResponse);
+  // Takes back the last change to the recording, or brings it back. The recording only: what ran
+  // on the device stays done. A step keeps its outcome only if the current recording has the same
+  // step, unchanged, with one. FAILED_PRECONDITION with nothing to undo or redo.
+  rpc UndoRecording(UndoRecordingRequest) returns (UndoRecordingResponse);
+  rpc RedoRecording(RedoRecordingRequest) returns (RedoRecordingResponse);
   // Replaces the recording with a /1 or /2 document to continue or replay; /1 upgrades to /2.
   // INVALID_ARGUMENT lists every rule the document breaks.
   rpc OpenRecording(OpenRecordingRequest) returns (OpenRecordingResponse);
@@ -220,6 +231,8 @@ message Session {
   int64 version = 6;
   // Increases with every change of the recording, including a step's outcome.
   int64 recording_revision = 7;
+  bool can_undo = 8;
+  bool can_redo = 9;
 }
 
 message GetSessionRequest {}
@@ -368,6 +381,18 @@ message PerformResponse {
   string message = 3;
 }
 
+message AddStepRequest {
+  // As PerformRequest's.
+  Step step = 1;
+  optional string secret_value = 2;
+  string before_step_id = 3;
+}
+
+message AddStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
 message UpdateStepRequest {
   // The step with the same id is replaced. Checked as Perform's step, except that an action's
   // `wait` is ignored and inferred again from its selector and the id is kept. The outcome is kept
@@ -399,6 +424,29 @@ message MoveStepRequest {
 }
 
 message MoveStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message DuplicateStepRequest {
+  string step_id = 1;
+}
+
+message DuplicateStepResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message UndoRecordingRequest {}
+
+message UndoRecordingResponse {
+  Recording recording = 1;
+  repeated string missing_secrets = 2;
+}
+
+message RedoRecordingRequest {}
+
+message RedoRecordingResponse {
   Recording recording = 1;
   repeated string missing_secrets = 2;
 }

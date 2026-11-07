@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { useId, useState } from "react";
 import { Row } from "./controls";
+import { ChoiceDialog } from "./Dialogs";
 import { IntentExtraSchema, type IntentExtra } from "./gen/app_pb";
 import type { PerformRequest } from "./gen/studio_pb";
 import { KEY_HOME } from "./keys";
@@ -65,6 +66,7 @@ type Props = {
  */
 export function AppControls({ appPackage, onAppPackage, packages, busy, onPerform }: Props) {
   const id = useId();
+  const [clearing, setClearing] = useState(false);
   const [permission, setPermission] = useState("");
   const [activity, setActivity] = useState("");
   const [extras, setExtras] = useState<ExtraRow[]>([]);
@@ -226,11 +228,35 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
       </form>
       <Row label="Stop">
         {STOP.map(({ operation, label, title }) => (
-          <button key={operation} type="button" className="btn" title={title} disabled={!usable} onClick={() => onPerform(steps.app(operation, app))}>
+          <button
+            key={operation}
+            type="button"
+            className="btn"
+            title={title}
+            disabled={!usable}
+            onClick={() => (operation === "clear_data" ? setClearing(true) : onPerform(steps.app(operation, app)))}
+          >
             {label}
           </button>
         ))}
       </Row>
+      {clearing && (
+        <ChoiceDialog
+          title={`Clear the data of ${app}?`}
+          body={<p>This runs on the device now and cannot be undone: the app loses its data and its permissions. Undo in Studio only changes the recording.</p>}
+          choices={[
+            {
+              label: "Clear data",
+              primary: true,
+              onChoose: () => {
+                setClearing(false);
+                onPerform(steps.app("clear_data", app));
+              },
+            },
+          ]}
+          onCancel={() => setClearing(false)}
+        />
+      )}
       <form
         className="crow"
         aria-label="Grant or revoke a permission"

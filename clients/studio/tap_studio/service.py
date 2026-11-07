@@ -41,6 +41,8 @@ from .screen import DeviceWorker, FrameError
 
 CONNECTION_NAME = "tap-studio"
 TAB_HEADER = "x-tap-studio-tab"
+UNDO_LIMIT_BYTES = 16 * 1024 * 1024
+"""How much undo history is kept; the oldest goes first."""
 WATCH_HEARTBEAT_SECONDS = 1.0
 """The server only notices a closed stream when it sends, so a closed tab gives up control this soon,
 and a reloaded page is locked out for no longer. One small message a second on loopback costs little."""
@@ -61,6 +63,9 @@ class Studio:
         self.recording: studio.Recording | None = None
         self._recording_on = True
         self._next_id = 1
+        # Whole recordings, newest last; None is no recording. Definitions only: never secret values.
+        self._undo: list[bytes | None] = []
+        self._redo: list[bytes | None] = []
         self._replaying = False
         self._tool_running = False
         self._operation: asyncio.Task | None = None
@@ -243,6 +248,8 @@ class Studio:
             operation="replay" if self._replaying else self._operation_name,
             version=self._version,
             recording_revision=self._recording_revision,
+            can_undo=bool(self._undo),
+            can_redo=bool(self._redo),
         )
         if self._attached is not None:
             session.device.CopyFrom(self._attached)
@@ -414,10 +421,46 @@ class Studio:
             self._add(step, secret_value, request.before_step_id)
         return studio.PerformResponse(step=step, recorded=recorded, message=str(failure) if failure else "")
 
+    def _snapshot(self) -> bytes | None:
+        return self.recording.SerializeToString() if self.recording is not None else None
+
+    def _remember(self) -> None:
+        """Call before changing the recording: this state becomes what undo goes back to."""
+        self._undo.append(self._snapshot())
+        self._redo.clear()
+        while sum(len(entry or b"") for entry in self._undo) > UNDO_LIMIT_BYTES and len(self._undo) > 1:
+            del self._undo[0]
+
+    def _restore(self, snapshot: bytes | None) -> None:
+        current = {step.id: step for step in self.recording.steps} if self.recording is not None else {}
+        restored = None
+        if snapshot is not None:
+            restored = studio.Recording.FromString(snapshot)
+            for step in restored.steps:
+                # A result stands only if it is about this step as it is now: an old pass may have
+                # used a secret's earlier value.
+                now = current.get(step.id)
+                step.ClearField("outcome")
+                if now is not None and now.HasField("outcome") and _same_run(now, step):
+                    step.outcome.CopyFrom(now.outcome)
+        self.recording = restored
+        if restored is not None:
+            self._sync_secrets()
+        else:
+            self._secrets.clear()
+        self._touch()
+
+    def _step_history(self, source: list[bytes | None], target: list[bytes | None], empty: str) -> None:
+        if not source:
+            raise ConnectError(Code.FAILED_PRECONDITION, f"nothing to {empty}")
+        target.append(self._snapshot())
+        self._restore(source.pop())
+
     def _add(self, step: studio.Step, secret_value: str | None, before_step_id: str) -> None:
         attached = self._attached
-        assert attached is not None
+        self._remember()
         if self.recording is None or not self.recording.steps:
+            assert attached is not None
             self.recording = _new_recording(attached)
         step.id = self._new_id()
         name = secret_name(step)
@@ -495,6 +538,22 @@ class Studio:
 
     # --- editing ---------------------------------------------------------------------------------
 
+    async def add_step(self, request: studio.AddStepRequest, ctx: RequestContext) -> studio.AddStepResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        if self._attached is None and (self.recording is None or not self.recording.steps):
+            raise ConnectError(Code.FAILED_PRECONDITION, "no device attached and no recording to add to")
+        secret_value = request.secret_value if request.HasField("secret_value") else None
+        try:
+            step = steps.prepare(request.step, secret_value)
+        except RecordingError as error:
+            raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
+        if request.before_step_id:
+            self._index(request.before_step_id)
+        self._add(step, secret_value, request.before_step_id)
+        assert self.recording is not None
+        return studio.AddStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
+
     async def update_step(self, request: studio.UpdateStepRequest, ctx: RequestContext) -> studio.UpdateStepResponse:
         self._require_control(ctx)
         self._require_idle()
@@ -505,6 +564,7 @@ class Studio:
             step = steps.revise(request.step, secret_value)
         except RecordingError as error:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
+        self._remember()
         current = self.recording.steps[index]
         step.ClearField("outcome")
         name = secret_name(step)
@@ -526,6 +586,7 @@ class Studio:
         self._require_idle()
         index = self._index(request.step_id)
         assert self.recording is not None
+        self._remember()
         del self.recording.steps[index]
         self._sync_secrets()
         self._touch()
@@ -537,10 +598,37 @@ class Studio:
         index = self._index(request.step_id)
         assert self.recording is not None
         target = self._index(request.before_step_id) if request.before_step_id else len(self.recording.steps)
+        self._remember()
         _move(self.recording.steps, index, target)
         self._sync_secrets()
         self._touch()
         return studio.MoveStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
+
+    async def duplicate_step(self, request: studio.DuplicateStepRequest, ctx: RequestContext) -> studio.DuplicateStepResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        index = self._index(request.step_id)
+        assert self.recording is not None
+        self._remember()
+        copy = studio.Step()
+        copy.CopyFrom(self.recording.steps[index])
+        copy.ClearField("outcome")
+        copy.id = self._new_id()
+        self.recording.steps.insert(index + 1, copy)
+        self._touch()
+        return studio.DuplicateStepResponse(recording=self.recording, missing_secrets=self._missing_secrets())
+
+    async def undo_recording(self, request: studio.UndoRecordingRequest, ctx: RequestContext) -> studio.UndoRecordingResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        self._step_history(self._undo, self._redo, "undo")
+        return studio.UndoRecordingResponse(recording=self.recording, missing_secrets=self._missing_secrets())
+
+    async def redo_recording(self, request: studio.RedoRecordingRequest, ctx: RequestContext) -> studio.RedoRecordingResponse:
+        self._require_control(ctx)
+        self._require_idle()
+        self._step_history(self._redo, self._undo, "redo")
+        return studio.RedoRecordingResponse(recording=self.recording, missing_secrets=self._missing_secrets())
 
     async def open_recording(self, request: studio.OpenRecordingRequest, ctx: RequestContext) -> studio.OpenRecordingResponse:
         self._require_control(ctx)
@@ -549,6 +637,7 @@ class Studio:
             recording = loads(request.document)
         except RecordingError as error:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
+        self._remember()
         self.recording = recording
         self._secrets.clear()
         self._next_id = 1
@@ -637,6 +726,7 @@ class Studio:
     async def new_recording(self, request: studio.NewRecordingRequest, ctx: RequestContext) -> studio.NewRecordingResponse:
         self._require_control(ctx)
         self._require_idle()
+        self._remember()
         self.recording = None
         self._secrets.clear()
         self._touch()

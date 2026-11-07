@@ -256,7 +256,7 @@ class AttachedDevice(_message.Message):
     def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
 
 class Session(_message.Message):
-    __slots__ = ("device", "recording", "steps", "controller_tab", "operation", "version", "recording_revision")
+    __slots__ = ("device", "recording", "steps", "controller_tab", "operation", "version", "recording_revision", "can_undo", "can_redo")
     DEVICE_FIELD_NUMBER: _ClassVar[int]
     RECORDING_FIELD_NUMBER: _ClassVar[int]
     STEPS_FIELD_NUMBER: _ClassVar[int]
@@ -264,6 +264,8 @@ class Session(_message.Message):
     OPERATION_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     RECORDING_REVISION_FIELD_NUMBER: _ClassVar[int]
+    CAN_UNDO_FIELD_NUMBER: _ClassVar[int]
+    CAN_REDO_FIELD_NUMBER: _ClassVar[int]
     device: AttachedDevice
     recording: bool
     steps: int
@@ -271,7 +273,9 @@ class Session(_message.Message):
     operation: str
     version: int
     recording_revision: int
-    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., controller_tab: _Optional[str] = ..., operation: _Optional[str] = ..., version: _Optional[int] = ..., recording_revision: _Optional[int] = ...) -> None: ...
+    can_undo: bool
+    can_redo: bool
+    def __init__(self, device: _Optional[_Union[AttachedDevice, _Mapping]] = ..., recording: _Optional[bool] = ..., steps: _Optional[int] = ..., controller_tab: _Optional[str] = ..., operation: _Optional[str] = ..., version: _Optional[int] = ..., recording_revision: _Optional[int] = ..., can_undo: _Optional[bool] = ..., can_redo: _Optional[bool] = ...) -> None: ...
 
 class GetSessionRequest(_message.Message):
     __slots__ = ()
@@ -453,6 +457,24 @@ class PerformResponse(_message.Message):
     message: str
     def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., recorded: _Optional[bool] = ..., message: _Optional[str] = ...) -> None: ...
 
+class AddStepRequest(_message.Message):
+    __slots__ = ("step", "secret_value", "before_step_id")
+    STEP_FIELD_NUMBER: _ClassVar[int]
+    SECRET_VALUE_FIELD_NUMBER: _ClassVar[int]
+    BEFORE_STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    step: Step
+    secret_value: str
+    before_step_id: str
+    def __init__(self, step: _Optional[_Union[Step, _Mapping]] = ..., secret_value: _Optional[str] = ..., before_step_id: _Optional[str] = ...) -> None: ...
+
+class AddStepResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
 class UpdateStepRequest(_message.Message):
     __slots__ = ("step", "secret_value")
     STEP_FIELD_NUMBER: _ClassVar[int]
@@ -492,6 +514,44 @@ class MoveStepRequest(_message.Message):
     def __init__(self, step_id: _Optional[str] = ..., before_step_id: _Optional[str] = ...) -> None: ...
 
 class MoveStepResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class DuplicateStepRequest(_message.Message):
+    __slots__ = ("step_id",)
+    STEP_ID_FIELD_NUMBER: _ClassVar[int]
+    step_id: str
+    def __init__(self, step_id: _Optional[str] = ...) -> None: ...
+
+class DuplicateStepResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class UndoRecordingRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class UndoRecordingResponse(_message.Message):
+    __slots__ = ("recording", "missing_secrets")
+    RECORDING_FIELD_NUMBER: _ClassVar[int]
+    MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]
+    recording: Recording
+    missing_secrets: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, recording: _Optional[_Union[Recording, _Mapping]] = ..., missing_secrets: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class RedoRecordingRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class RedoRecordingResponse(_message.Message):
     __slots__ = ("recording", "missing_secrets")
     RECORDING_FIELD_NUMBER: _ClassVar[int]
     MISSING_SECRETS_FIELD_NUMBER: _ClassVar[int]

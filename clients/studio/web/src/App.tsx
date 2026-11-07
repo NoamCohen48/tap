@@ -152,7 +152,10 @@ type RecordingState = { steps: Step[]; missingSecrets: string[] };
 
 /** `launched`: the cold launch was just performed as step 1, so the replay starts after it and counts it. */
 type Checked = { launch?: boolean; launched?: boolean };
-type Dialog = { kind: "launch"; request: ReplayRequest } | { kind: "secrets"; names: string[]; request: ReplayRequest; checked: Checked };
+type Dialog =
+  | { kind: "launch"; request: ReplayRequest }
+  | { kind: "secrets"; names: string[]; request: ReplayRequest; checked: Checked }
+  | { kind: "discard"; then: () => void };
 
 function Workspace({
   client,
@@ -176,6 +179,13 @@ function Workspace({
   const [chosen, setChosen] = useState<{ ref: string; index: number } | null>(null);
   const [recording, setRecording] = useState<RecordingState>({ steps: [], missingSecrets: [] });
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
+  const [dirty, setDirtyState] = useState(false);
+  // Read by the guards: a click can run before the render that this state would give it.
+  const dirtyNow = useRef(false);
+  const setDirty = useCallback((value: boolean) => {
+    dirtyNow.current = value;
+    setDirtyState(value);
+  }, []);
   const [busy, setBusy] = useState(false);
   const running = useRef(false); // set at once, so a second click cannot start another step
   const [lastRun, setLastRun] = useState<LastRun>(null);
@@ -185,6 +195,7 @@ function Workspace({
   const [seek, setSeek] = useState<Seek | null>(null);
   const [drag, setDrag] = useState<DragFrom | null>(null);
   const [revision, setRevision] = useState(0);
+  const history = useRef({ undo: () => undefined as unknown, redo: () => undefined as unknown }); // for the key handler
   const searching = useRef(false); // for the key handler: the tab cannot change during a search or a drag
   searching.current = seek !== null || drag !== null;
   const { steps } = recording;
@@ -221,6 +232,12 @@ function Workspace({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]")) return;
+      if (document.querySelector('[aria-modal="true"]')) return; // the dialog has the keyboard
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        (e.shiftKey ? history.current.redo : history.current.undo)();
+        return;
+      }
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "Escape") {
         setSeek(null);
@@ -293,13 +310,15 @@ function Workspace({
     }
   };
 
-  const edit = async (call: () => Promise<{ recording?: Recording; missingSecrets: string[] }>) => {
+  const edit = async (call: () => Promise<{ recording?: Recording; missingSecrets: string[] }>): Promise<boolean> => {
     replay.clearSummary();
     try {
       apply(await call());
       setLastRun(null);
+      return true;
     } catch (e) {
       setLastRun({ tone: "fail", text: errorMessage(e) });
+      return false;
     }
   };
 
@@ -397,11 +416,39 @@ function Workspace({
   const locked = busy || replay.running || session.operation !== "" || observing;
   const seeking = seek ? (nodeFor(nodes, seek.container.selector) ?? seek.containerNode) : null;
 
-  const selectStep = (stepId: string | null) => {
-    setSelectedStep(stepId);
-    const step = steps.find((s) => s.id === stepId);
-    const node = step && nodeFor(nodes, stepSelector(step));
-    if (node) setSelected(node);
+  // The recording lives in the server, but an open step's unsaved edits only here.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const unlessDiscarding = (then: () => void) => (dirtyNow.current ? setDialog({ kind: "discard", then }) : then());
+
+  const undo = () => {
+    if (session.canUndo && !locked) void edit(() => client.undoRecording({}));
+  };
+  const redo = () => {
+    if (session.canRedo && !locked) void edit(() => client.redoRecording({}));
+  };
+  history.current = { undo, redo };
+
+  const selectStep = (stepId: string | null) =>
+    unlessDiscarding(() => {
+      setSelectedStep(stepId);
+      const step = steps.find((s) => s.id === stepId);
+      const node = step && nodeFor(nodes, stepSelector(step));
+      if (node) setSelected(node);
+    });
+
+  /** An element picked on the screen or in the tree: the same choice by mouse or keyboard. */
+  const pick = (node: ScreenNode) => {
+    if (seek) return void pickTarget(seek, node);
+    if (drag) return void pickDrop(drag, node);
+    setSelected(node);
+    // Picking an element is for a step on it: leave the App and Device tabs.
+    setTab((t) => (t === "app" || t === "device" ? "act" : t));
   };
 
   return (
@@ -418,7 +465,7 @@ function Workspace({
             aria-label="Release the device"
             title="Release the device"
             disabled={locked}
-            onClick={() => change(() => client.release({}))}
+            onClick={() => unlessDiscarding(() => void change(() => client.release({})))}
           >
             <Eject />
           </button>
@@ -445,13 +492,7 @@ function Workspace({
           onOverlay={setOverlay}
           selectedRef={inspected?.ref ?? null}
           busy={locked}
-          onSelect={(node) => {
-            if (seek) return void pickTarget(seek, node);
-            if (drag) return void pickDrop(drag, node);
-            setSelected(node);
-            // Picking an element is for a step on it: leave the App and Device tabs.
-            setTab((t) => (t === "app" || t === "device" ? "act" : t));
-          }}
+          onSelect={pick}
           targetOf={targetOf}
           seeking={seeking}
           dragging={drag ? (nodes.find((n) => n.ref === drag.node.ref) ?? drag.node) : null}
@@ -471,6 +512,12 @@ function Workspace({
             target={inspected ? targetOf(inspected) : null}
             onChoose={(node, index) => setChosen({ ref: node.ref, index })}
             onPerform={(request) => void perform(request)}
+            onAdd={(request) => {
+              const index = selectedStep ? steps.findIndex((s) => s.id === selectedStep) : -1;
+              const beforeStepId = index >= 0 ? (steps[index + 1]?.id ?? "") : "";
+              const { step, secretValue } = requestBudgets(request, budgets);
+              void edit(() => client.addStep({ step, secretValue, beforeStepId }));
+            }}
             distance={distance}
             onDistance={setDistance}
             seek={seek}
@@ -488,7 +535,7 @@ function Workspace({
             <details className="execution-defaults"><summary>Defaults for new steps</summary><ExecutionControls values={budgets} onChange={setBudgets} /></details>
             <Tools client={client} appPackage={appPackage} onAppPackage={setAppPackage} disabled={locked} onBusy={setBusy} />
           </Composer>
-          <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={setSelected} />
+          <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={pick} />
         </div>
         <StepsPanel
           client={client}
@@ -531,8 +578,31 @@ function Workspace({
           onUpdate={(step, secretValue) => edit(() => client.updateStep({ step, secretValue }))}
           onDelete={(stepId) => edit(() => client.deleteStep({ stepId }))}
           onMove={(stepId, beforeStepId) => edit(() => client.moveStep({ stepId, beforeStepId }))}
+          onDuplicate={(stepId) => edit(() => client.duplicateStep({ stepId }))}
+          onDirty={setDirty}
+          canUndo={session.canUndo}
+          canRedo={session.canRedo}
+          onUndo={undo}
+          onRedo={redo}
         />
       </main>
+      {dialog?.kind === "discard" && (
+        <ChoiceDialog
+          title="Discard your changes to this step?"
+          body={<p>The edits in the open step have not been saved.</p>}
+          choices={[
+            {
+              label: "Discard",
+              primary: true,
+              onChoose: () => {
+                setDialog(null);
+                dialog.then();
+              },
+            },
+          ]}
+          onCancel={() => setDialog(null)}
+        />
+      )}
       {dialog?.kind === "launch" && (
         <ChoiceDialog
           title="Start from a cold launch?"

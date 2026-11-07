@@ -699,6 +699,9 @@ code,
 .crow .why.bad {
   color: var(--bad);
 }
+.crow > .check {
+  grid-column: 2;
+}
 .crow .actions {
   align-items: center;
 }
@@ -706,6 +709,7 @@ code,
   .crow {
     grid-template-columns: minmax(0, 1fr);
   }
+  .crow > .check,
   .crow .why {
     grid-column: 1;
   }
@@ -1272,6 +1276,9 @@ code,
   text-align: center;
 }
 .tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
   gap: 1px;
   max-height: 560px;
@@ -1279,6 +1286,7 @@ code,
   font-size: 12.5px;
 }
 .tree button {
+  width: 100%;
   border: 0;
   background: transparent;
   text-align: left;

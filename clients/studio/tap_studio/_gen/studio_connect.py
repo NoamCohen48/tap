@@ -56,6 +56,9 @@ class StudioService(Protocol):
     async def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def add_step(self, request: studio__pb2.AddStepRequest, ctx: RequestContext) -> studio__pb2.AddStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def update_step(self, request: studio__pb2.UpdateStepRequest, ctx: RequestContext) -> studio__pb2.UpdateStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -63,6 +66,15 @@ class StudioService(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
     async def move_step(self, request: studio__pb2.MoveStepRequest, ctx: RequestContext) -> studio__pb2.MoveStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def duplicate_step(self, request: studio__pb2.DuplicateStepRequest, ctx: RequestContext) -> studio__pb2.DuplicateStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def undo_recording(self, request: studio__pb2.UndoRecordingRequest, ctx: RequestContext) -> studio__pb2.UndoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def redo_recording(self, request: studio__pb2.RedoRecordingRequest, ctx: RequestContext) -> studio__pb2.RedoRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
     async def open_recording(self, request: studio__pb2.OpenRecordingRequest, ctx: RequestContext) -> studio__pb2.OpenRecordingResponse:
@@ -225,6 +237,16 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                     ),
                     function=svc.perform,
                 ),
+                "/tap.studio.v1.StudioService/AddStep": Endpoint.unary(
+                    method=MethodInfo(
+                        name="AddStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.AddStepRequest,
+                        output=studio__pb2.AddStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.add_step,
+                ),
                 "/tap.studio.v1.StudioService/UpdateStep": Endpoint.unary(
                     method=MethodInfo(
                         name="UpdateStep",
@@ -254,6 +276,36 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.move_step,
+                ),
+                "/tap.studio.v1.StudioService/DuplicateStep": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DuplicateStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DuplicateStepRequest,
+                        output=studio__pb2.DuplicateStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.duplicate_step,
+                ),
+                "/tap.studio.v1.StudioService/UndoRecording": Endpoint.unary(
+                    method=MethodInfo(
+                        name="UndoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.UndoRecordingRequest,
+                        output=studio__pb2.UndoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.undo_recording,
+                ),
+                "/tap.studio.v1.StudioService/RedoRecording": Endpoint.unary(
+                    method=MethodInfo(
+                        name="RedoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.RedoRecordingRequest,
+                        output=studio__pb2.RedoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.redo_recording,
                 ),
                 "/tap.studio.v1.StudioService/OpenRecording": Endpoint.unary(
                     method=MethodInfo(
@@ -620,6 +672,26 @@ class StudioServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def add_step(
+        self,
+        request: studio__pb2.AddStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.AddStepResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="AddStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.AddStepRequest,
+                output=studio__pb2.AddStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def update_step(
         self,
         request: studio__pb2.UpdateStepRequest,
@@ -674,6 +746,66 @@ class StudioServiceClient(ConnectClient):
                 service_name="tap.studio.v1.StudioService",
                 input=studio__pb2.MoveStepRequest,
                 output=studio__pb2.MoveStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def duplicate_step(
+        self,
+        request: studio__pb2.DuplicateStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DuplicateStepResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DuplicateStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DuplicateStepRequest,
+                output=studio__pb2.DuplicateStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def undo_recording(
+        self,
+        request: studio__pb2.UndoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.UndoRecordingResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="UndoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.UndoRecordingRequest,
+                output=studio__pb2.UndoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def redo_recording(
+        self,
+        request: studio__pb2.RedoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.RedoRecordingResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RedoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.RedoRecordingRequest,
+                output=studio__pb2.RedoRecordingResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -870,11 +1002,19 @@ class StudioServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def perform(self, request: studio__pb2.PerformRequest, ctx: RequestContext) -> studio__pb2.PerformResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def add_step(self, request: studio__pb2.AddStepRequest, ctx: RequestContext) -> studio__pb2.AddStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def update_step(self, request: studio__pb2.UpdateStepRequest, ctx: RequestContext) -> studio__pb2.UpdateStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def delete_step(self, request: studio__pb2.DeleteStepRequest, ctx: RequestContext) -> studio__pb2.DeleteStepResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def move_step(self, request: studio__pb2.MoveStepRequest, ctx: RequestContext) -> studio__pb2.MoveStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def duplicate_step(self, request: studio__pb2.DuplicateStepRequest, ctx: RequestContext) -> studio__pb2.DuplicateStepResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def undo_recording(self, request: studio__pb2.UndoRecordingRequest, ctx: RequestContext) -> studio__pb2.UndoRecordingResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def redo_recording(self, request: studio__pb2.RedoRecordingRequest, ctx: RequestContext) -> studio__pb2.RedoRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def open_recording(self, request: studio__pb2.OpenRecordingRequest, ctx: RequestContext) -> studio__pb2.OpenRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
@@ -1028,6 +1168,16 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.perform,
                 ),
+                "/tap.studio.v1.StudioService/AddStep": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="AddStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.AddStepRequest,
+                        output=studio__pb2.AddStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.add_step,
+                ),
                 "/tap.studio.v1.StudioService/UpdateStep": EndpointSync.unary(
                     method=MethodInfo(
                         name="UpdateStep",
@@ -1057,6 +1207,36 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.move_step,
+                ),
+                "/tap.studio.v1.StudioService/DuplicateStep": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DuplicateStep",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.DuplicateStepRequest,
+                        output=studio__pb2.DuplicateStepResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.duplicate_step,
+                ),
+                "/tap.studio.v1.StudioService/UndoRecording": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="UndoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.UndoRecordingRequest,
+                        output=studio__pb2.UndoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.undo_recording,
+                ),
+                "/tap.studio.v1.StudioService/RedoRecording": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="RedoRecording",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.RedoRecordingRequest,
+                        output=studio__pb2.RedoRecordingResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.redo_recording,
                 ),
                 "/tap.studio.v1.StudioService/OpenRecording": EndpointSync.unary(
                     method=MethodInfo(
@@ -1423,6 +1603,26 @@ class StudioServiceClientSync(ConnectClientSync):
             timeout_ms=timeout_ms,
         )
 
+    def add_step(
+        self,
+        request: studio__pb2.AddStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.AddStepResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="AddStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.AddStepRequest,
+                output=studio__pb2.AddStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     def update_step(
         self,
         request: studio__pb2.UpdateStepRequest,
@@ -1477,6 +1677,66 @@ class StudioServiceClientSync(ConnectClientSync):
                 service_name="tap.studio.v1.StudioService",
                 input=studio__pb2.MoveStepRequest,
                 output=studio__pb2.MoveStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def duplicate_step(
+        self,
+        request: studio__pb2.DuplicateStepRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.DuplicateStepResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DuplicateStep",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.DuplicateStepRequest,
+                output=studio__pb2.DuplicateStepResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def undo_recording(
+        self,
+        request: studio__pb2.UndoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.UndoRecordingResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="UndoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.UndoRecordingRequest,
+                output=studio__pb2.UndoRecordingResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def redo_recording(
+        self,
+        request: studio__pb2.RedoRecordingRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.RedoRecordingResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RedoRecording",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.RedoRecordingRequest,
+                output=studio__pb2.RedoRecordingResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

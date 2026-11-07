@@ -1,5 +1,5 @@
 import { clone, equals } from "@bufbuild/protobuf";
-import { useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { StudioClient } from "./api";
 import { useCount } from "./count";
 import { describeSelector } from "./describe";
@@ -14,6 +14,7 @@ import type { Target } from "./steps";
 import { budgetFields, ExecutionControls, stepBudgets, validBudgets, withBudgets } from "./ExecutionControls";
 import { PressFields, stepPress, validPress, withPress } from "./PressControls";
 import { StabilitySignal } from "./gen/command_pb";
+import { StepValues } from "./ValueFields";
 
 /** Edits one recorded step: its selector (another candidate of its node, or typed), what a scroll
  *  until scrolls to, how a swipe, scroll or scroll until moves, the text it enters or checks (or a
@@ -24,14 +25,29 @@ export function StepEditor({
   client,
   busy,
   onSave,
+  onDirty,
 }: {
   step: Step;
   nodes: readonly ScreenNode[];
   client: StudioClient;
   busy: boolean;
-  onSave: (step: Step, secretValue?: string) => void;
+  /** Resolves whether it was saved; a refused save keeps the draft. */
+  onSave: (step: Step, secretValue?: string) => Promise<boolean>;
+  /** Whether there are edits that are not saved; false when the editor closes. */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const id = useId();
+  // The draft of the values `StepValues` edits. It follows the recording (a new outcome, a save)
+  // until something is typed here.
+  const [values, setValues] = useState(() => clone(StepSchema, step));
+  const typing = useRef(false);
+  useEffect(() => {
+    if (!typing.current) setValues(clone(StepSchema, step));
+  }, [step]);
+  const changeValues = () => {
+    typing.current = true;
+    setValues((draft) => clone(StepSchema, draft));
+  };
   const original = stepSelector(step);
   const node = nodeFor(nodes, original);
   const [target, setTarget] = useState<Target | null>(original ? { selector: original, origin: stepOrigin(step) } : null);
@@ -55,7 +71,8 @@ export function StepEditor({
         ? "Max scrolls is 0 to 1000."
         : null;
 
-  const initialText = stepText(step);
+  // A wait's or an assertion's value goes with its condition (`StepValues`).
+  const initialText = step.kind.case === "wait" || step.kind.case === "assertion" ? null : stepText(step);
   const [text, setText] = useState(initialText && "text" in initialText ? initialText.text : "");
   const [secret, setSecret] = useState<string | null>(initialText && "secret" in initialText ? initialText.secret : null);
   const [secretValue, setSecretValue] = useState("");
@@ -91,7 +108,8 @@ export function StepEditor({
     setTypedError(null);
   };
 
-  let edited = step;
+  let edited = clone(StepSchema, values);
+  edited.outcome = step.outcome;
   if (target && original && !(equals(SelectorSchema, target.selector, original) && target.origin === stepOrigin(step))) {
     edited = withSelector(edited, target);
   }
@@ -116,6 +134,11 @@ export function StepEditor({
     if (edited.kind.case === "appWait" && edited.kind.value.command?.op.case === "waitScreenStable") Object.assign(edited.kind.value.command.op.value, { packageName: stabilityPackage, stableForMs: BigInt(quiet), signal });
   }
   const changed = !equals(StepSchema, edited, step) || (secret !== null && secretValue !== "");
+  // In the commit, not after it: a click right after an edit must already see it as unsaved.
+  useLayoutEffect(() => {
+    onDirty?.(changed);
+  }, [onDirty, changed]);
+  useLayoutEffect(() => () => onDirty?.(false), [onDirty]);
   const scrollToError = parsedScrollTo && "error" in parsedScrollTo ? `${parsedScrollTo.error} (at ${parsedScrollTo.at + 1})` : null;
   const valid = !typedError && !scrollToError && !movementError && validBudgets(budgets) && (!press || validPress(press)) && stabilityOk && (secret === null || secret.trim() !== "");
 
@@ -167,7 +190,11 @@ export function StepEditor({
       aria-label="Edit the step"
       onSubmit={(e) => {
         e.preventDefault();
-        if (changed && valid) onSave(edited, secret !== null && secretValue !== "" ? secretValue : undefined);
+        if (changed && valid) {
+          void onSave(edited, secret !== null && secretValue !== "" ? secretValue : undefined).then((saved) => {
+            if (saved) typing.current = false;
+          });
+        }
       }}
     >
       {target && (
@@ -248,9 +275,11 @@ export function StepEditor({
         {!stabilityOk && <p role="alert">Quiet period must be 1..30000 whole milliseconds.</p>}
       </fieldset>}
 
+      <StepValues step={values} onChange={changeValues} />
+
       {initialText && (
         <fieldset>
-          <legend>{step.kind.case === "wait" || step.kind.case === "assertion" ? "Expected text" : "Text"}</legend>
+          <legend>Text</legend>
           {secret === null ? (
             <label className="field">
               <span className="sr-only">Text</span>
@@ -308,6 +337,8 @@ export function StepEditor({
             type="button"
             className="btn small"
             onClick={() => {
+              typing.current = false;
+              setValues(clone(StepSchema, step));
               if (original) choose(original);
               setTarget(original ? { selector: original, origin: stepOrigin(step) } : null);
               setText(initialText && "text" in initialText ? initialText.text : "");
