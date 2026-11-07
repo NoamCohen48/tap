@@ -387,6 +387,10 @@ message DeviceChoice {
   bool attached = 3;
   // QUARANTINED: why.
   string quarantine_reason = 4;
+  // What the device is. Zero and empty when the server could not read it (offline, unauthorized).
+  int32 api_level = 5;
+  string model = 6;
+  bool emulator = 7;
 }
 
 message ListDevicesResponse {

@@ -136,8 +136,8 @@ value clears the results of the steps that use it. Parameters are written to the
 keep anything private in a secret, whose value never is. A parameter stands only for that text: it
 is never part of a selector, and `${x}` typed into a step is just those characters.
 
-The **Library** keeps named recordings privately on this machine, in `~/.tap/studio/recordings`. It
-works with no device attached and no Tap server running, so you can open, rename, delete, read and
+**Saved recordings** keeps named recordings privately on this machine, in
+`~/.tap/studio/recordings`. It works with no device attached and no Tap server running, so you can open, rename, delete, read and
 export a recording; attach a device to edit or replay it. Saved recordings hold definitions only:
 never a secret's value, and no results. If another Studio changed an entry since you opened it,
 saving is refused rather than overwriting it.
@@ -151,7 +151,8 @@ crash.
 download of its results. Results stay in memory and do not hold secrets; known secret values are
 also removed from their messages, though that cannot catch a value the app changed. Studio captures
 a screenshot, hierarchy or device logs only when you ask, showing the device as it is at that moment,
-and any of them can show private data. Results cover the steps that finished, so they cannot say
+and any of them can show private data, such as a secret typed into a field Android does not mask.
+Results cover the steps that finished, so they cannot say
 whether a step cut off by a crash sent its input.
 
 **Pause** stops recording, but steps still run on the device. This is useful for getting the
