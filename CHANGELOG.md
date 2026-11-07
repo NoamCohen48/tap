@@ -36,6 +36,9 @@ Tap Studio:
   attachment and release cannot race an in-flight action. Canceling its browser request keeps
   the operation gate until its result is reconciled; a canceled replay finishes only its accepted
   step. Shutdown drains it before detach. Changing a shared secret invalidates old outcomes.
+- **A private library of named recordings,** usable with no device or Tap server, with opt-in
+  autosave. It stores definitions only, never secret values or results, and refuses to overwrite
+  an entry another Studio changed.
 - **Parameters.** Named, non-secret test data for the text a step types or expects, kept in the
   recording and resolved before any input.
 - **Harder to lose work.** Unsaved step edits and Clear data ask first. Dialogs trap and restore

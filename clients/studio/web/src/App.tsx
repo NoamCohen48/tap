@@ -30,7 +30,8 @@ import { ScreenView, type OverlayFilter } from "./ScreenView";
 import { useReplay, type ReplayRequest } from "./replay";
 import * as stepsApi from "./steps";
 import { synthesized, type Target } from "./steps";
-import { StepsPanel, type LastRun } from "./StepsPanel";
+import { ExportDrawer, StepsPanel, type LastRun } from "./StepsPanel";
+import { Library } from "./Library";
 import { ExecutionControls, requestBudgets, type Budgets } from "./ExecutionControls";
 import { Tools } from "./Tools";
 
@@ -84,6 +85,7 @@ export function App({ client }: { client: StudioClient }) {
         <>
           <TopBar status={status} />
           {session && <DevicePicker client={client} onSession={setSession} disabled={observing} />}
+          {session && <Offline client={client} session={session} onSession={setSession} disabled={observing} />}
         </>
       )}
     </div>
@@ -128,6 +130,48 @@ function ControlBanner({ client, session, onSession }: { client: StudioClient; s
       </button>
       {error && <span role="alert">{error}</span>}
     </div>
+  );
+}
+
+/** With no device: the library, and the recording opened from it to read and export. */
+function Offline({ client, session, onSession, disabled }: { client: StudioClient; session: Session; onSession: (session: Session) => void; disabled: boolean }) {
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const { recordingRevision } = session;
+  useEffect(() => {
+    let cancelled = false;
+    client.getRecording({}).then(
+      (r) => !cancelled && setSteps(r.recording?.steps ?? []),
+      () => !cancelled && setSteps([]), // nothing yet
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, recordingRevision]);
+  return (
+    <section className="panel offline" aria-label="Recordings">
+      <Library client={client} session={session} busy={disabled || session.operation !== ""} open onSession={onSession} />
+      {steps.length > 0 && (
+        <div>
+          <div className="panel-h">
+            <h2>Open recording</h2>
+            <span className="spacer" />
+            <button type="button" className="btn small" onClick={() => setExporting(true)}>
+              Export
+            </button>
+          </div>
+          <ol aria-label="Steps of the open recording">
+            {steps.map((step) => (
+              <li key={step.id}>
+                <code>{describeStep(step)}</code>
+              </li>
+            ))}
+          </ol>
+          <p className="hint">Attach a device to edit or replay it.</p>
+        </div>
+      )}
+      {exporting && <ExportDrawer client={client} onClose={() => setExporting(false)} />}
+    </section>
   );
 }
 
@@ -581,6 +625,8 @@ function Workspace({
           onMove={(stepId, beforeStepId) => edit(() => client.moveStep({ stepId, beforeStepId }))}
           onDuplicate={(stepId) => edit(() => client.duplicateStep({ stepId }))}
           onDirty={setDirty}
+          session={session}
+          onSession={onSession}
           parameters={recording.parameters}
           onParameters={(parameters) => edit(() => client.setParameters({ parameters }))}
           canUndo={session.canUndo}
