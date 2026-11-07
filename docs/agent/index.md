@@ -1,11 +1,11 @@
-# Coding agents: tap-agent
+# Tap agent
 
 !!! warning "Experimental"
     `tap-agent`, the server features it is built on (held connections, screen snapshots with
     refs, the event log) and the `tap-events/1` history / `tap-agent-recording/1` step formats are experimental: they may change
     in any release, including after 1.0, until this notice goes away.
 
-`tap-agent` lets a coding agent (Claude Code, Cursor, …) drive a device through the same `tap`
+Tap agent (`tap-agent`) lets a coding agent (Claude Code, Cursor, …) drive a device through the same `tap`
 server your tests use. The agent reads the screen as text, acts on it, checks the result, and
 hands you a log of what it did. That covers checking a change on a real device, reproducing a
 bug, or exploring an app before writing a test for it.

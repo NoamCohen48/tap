@@ -35,8 +35,8 @@ device locks.
 | Which devices a role may use | `@pytest.mark.tap_devices(role={"min_api": 33})` | `@RequireDevice(role = "role", minApi = 33)` |
 
 Only the Python client has [held connections and screen snapshots](python.md#held-connections-and-screen-snapshots),
-the multi-process surface [tap-agent](../agent/index.md) and [Tap Studio](../studio/index.md)
-are built on; tests do not need them. [tap-watcher](../watcher/index.md) watches tests in either
+the multi-process surface [Tap agent](../agent/index.md) and [Tap Studio](../studio/index.md)
+are built on; tests do not need them. [Tap watcher](../watcher/index.md) watches tests in either
 language without any change to them.
 
 ## API reference
