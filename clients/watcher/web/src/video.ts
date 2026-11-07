@@ -212,6 +212,16 @@ export class FrameBuffer {
     return this.search((index) => this.timeline(index) <= ns);
   }
 
+  /**
+   * The timeline position at wall time [epochMs], counted from the frame received last before
+   * it; undefined when empty. For activity that has only a wall time (attach, detach).
+   */
+  timelineAtEpoch(epochMs: number): bigint | undefined {
+    if (this.empty) return undefined;
+    const index = this.search((at) => Number(this.at(at).receivedEpochMs) <= epochMs);
+    return this.timeline(index) + BigInt(Math.round((epochMs - Number(this.at(index).receivedEpochMs)) * 1e6));
+  }
+
   /** Binary search for the last index where [before] holds; frames are ordered. */
   private search(before: (index: number) => boolean): number {
     let low = this.first;
@@ -267,6 +277,13 @@ export function codecString(header: VideoHeader): string {
 
 const MAX_DECODE_QUEUE = 8;
 
+export type PlayerOptions = {
+  /** Size the canvas to its displayed width (times the pixel ratio) instead of the video's. */
+  fit?: boolean;
+  /** Live frames are drawn at most this often; the newest one waits for its turn. */
+  minFrameMs?: number;
+};
+
 /**
  * Draws a [FrameBuffer] onto a canvas. One decoder at a time; every decoded frame is drawn or
  * closed at once except in playback, where at most a few wait for their time.
@@ -281,10 +298,14 @@ export class Player {
   private playing?: { originUs: number; startedAt: number; onTick: (mediaUs: number) => void; onEnd: () => void };
   private waiting: VideoFrame[] = [];
   private raf = 0;
+  private pending?: VideoFrame;
+  private lastDrawn = -Infinity;
+  private timer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private canvas: HTMLCanvasElement,
     private onError: (message: string) => void,
+    private options: PlayerOptions = {},
   ) {}
 
   /** Stops decoding and drops anything queued. The canvas keeps its last picture. */
@@ -294,6 +315,10 @@ export class Player {
     this.playing = undefined;
     this.waiting.forEach((frame) => frame.close());
     this.waiting = [];
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.pending?.close();
+    this.pending = undefined;
     if (this.decoder && this.decoder.state !== "closed") this.decoder.close();
     this.decoder = undefined;
   }
@@ -322,14 +347,41 @@ export class Player {
       return;
     }
     if (this.target !== undefined && frame.timestamp !== this.target) return frame.close();
+    if (this.target === undefined && this.options.minFrameMs) return this.throttled(frame, this.options.minFrameMs);
     this.draw(frame);
+  }
+
+  /** Live at a capped rate: a frame due too soon waits, replaced by any newer one; none is lost for good. */
+  private throttled(frame: VideoFrame, minFrameMs: number) {
+    const wait = this.lastDrawn + minFrameMs - performance.now();
+    if (wait <= 0 && !this.pending) return this.draw(frame);
+    this.pending?.close();
+    this.pending = frame;
+    this.timer ??= setTimeout(
+      () => {
+        this.timer = undefined;
+        const due = this.pending;
+        this.pending = undefined;
+        if (due) this.draw(due);
+      },
+      Math.max(0, wait),
+    );
   }
 
   private draw(frame: VideoFrame) {
     try {
-      if (this.canvas.width !== frame.displayWidth) this.canvas.width = frame.displayWidth;
-      if (this.canvas.height !== frame.displayHeight) this.canvas.height = frame.displayHeight;
-      this.canvas.getContext("2d")?.drawImage(frame, 0, 0);
+      this.lastDrawn = performance.now();
+      let width = frame.displayWidth;
+      let height = frame.displayHeight;
+      if (this.options.fit && this.canvas.clientWidth > 0) {
+        // Drawn at the size it is shown: scaling down here writes a fraction of the pixels.
+        const scale = Math.min(1, (this.canvas.clientWidth * (globalThis.devicePixelRatio || 1)) / width);
+        width = Math.max(1, Math.round(width * scale));
+        height = Math.max(1, Math.round(height * scale));
+      }
+      if (this.canvas.width !== width) this.canvas.width = width;
+      if (this.canvas.height !== height) this.canvas.height = height;
+      this.canvas.getContext("2d")?.drawImage(frame, 0, 0, width, height);
     } finally {
       frame.close();
     }

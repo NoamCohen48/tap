@@ -311,14 +311,22 @@ class Feed:
             reader.queue.put_nowait(error if error is not None else _END)
         self._readers.clear()
 
-    async def read(self) -> AsyncGenerator[watch.WatchVideoResponse, None]:
-        """Each retained segment (its header, then its frames), then live updates, until the
-        reader is dropped."""
+    async def read(
+        self, latest_only: bool = False
+    ) -> AsyncGenerator[watch.WatchVideoResponse, None]:
+        """Each retained segment (its header, then its frames), or with [latest_only] just the
+        latest GOP, then live updates, until the reader is dropped."""
         reader = _Reader()
         backlog: list[watch.WatchVideoResponse] = []
-        for segment in self.history.segments:
-            backlog.append(watch.WatchVideoResponse(header=segment.header))
-            backlog.extend(watch.WatchVideoResponse(frame=f) for f in segment.frames)
+        if latest_only:
+            gop = self.history.latest_gop()
+            if gop:
+                backlog.append(watch.WatchVideoResponse(header=gop[0][0]))
+                backlog.extend(watch.WatchVideoResponse(frame=f) for _, f in gop)
+        else:
+            for segment in self.history.segments:
+                backlog.append(watch.WatchVideoResponse(header=segment.header))
+                backlog.extend(watch.WatchVideoResponse(frame=f) for f in segment.frames)
         if self.history.pending is not None:
             backlog.append(watch.WatchVideoResponse(header=self.history.pending))
         self._readers.add(reader)

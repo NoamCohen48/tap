@@ -27,6 +27,12 @@ from .video import HISTORY_BYTES, HISTORY_SECONDS, VideoHub
 
 # How often entries past `--keep-days` are deleted while the watcher runs.
 SWEEP_S = 60 * 60
+# WatchScreens: how many serials one stream carries, its queue, and the wait (doubling) before
+# a serial whose video failed is tried again.
+MAX_SCREENS = 32
+SCREEN_QUEUE = 64
+SCREEN_RETRY_S = 3.0
+SCREEN_RETRY_MAX_S = 30.0
 _log = logging.getLogger(__name__)
 
 
@@ -120,6 +126,46 @@ class Watcher:
             raise ConnectError(Code.INVALID_ARGUMENT, "serial is required")
         async for response in self.video.feed(request.serial).read():
             yield response
+
+    async def watch_screens(
+        self, request: pb.WatchScreensRequest, ctx: RequestContext
+    ) -> AsyncGenerator[pb.ScreenUpdate, None]:
+        serials = list(dict.fromkeys(request.serials))
+        if not serials or len(serials) > MAX_SCREENS or not all(serials):
+            raise ConnectError(
+                Code.INVALID_ARGUMENT, f"serials: 1 to {MAX_SCREENS} non-empty serials"
+            )
+        # A full queue stops a serial's task reading, so its feed drops it as too slow and
+        # it restarts from the next key frame: a slow page skips ahead instead of piling up.
+        updates: asyncio.Queue[pb.ScreenUpdate] = asyncio.Queue(SCREEN_QUEUE)
+
+        async def follow(serial: str) -> None:
+            delay = SCREEN_RETRY_S
+            while True:
+                try:
+                    async for response in self.video.feed(serial).read(latest_only=True):
+                        delay = SCREEN_RETRY_S
+                        if response.HasField("header"):
+                            await updates.put(pb.ScreenUpdate(serial=serial, header=response.header))
+                        else:
+                            await updates.put(pb.ScreenUpdate(serial=serial, frame=response.frame))
+                    message = "the video stream ended"
+                except ConnectError as error:
+                    if error.code == Code.RESOURCE_EXHAUSTED:
+                        continue  # fell behind: start again from the newest key frame
+                    message = error.message
+                await updates.put(pb.ScreenUpdate(serial=serial, error=message))
+                await asyncio.sleep(delay)
+                delay = min(SCREEN_RETRY_MAX_S, delay * 2)
+
+        tasks = [asyncio.create_task(follow(serial)) for serial in serials]
+        try:
+            while True:
+                yield await updates.get()
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def start_recording(
         self, request: pb.StartRecordingRequest, ctx: RequestContext

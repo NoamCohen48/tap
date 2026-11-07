@@ -19,6 +19,24 @@ RECORDING_KIND_UNSPECIFIED: RecordingKind
 RECORDING_KIND_RECORDING: RecordingKind
 RECORDING_KIND_CLIP: RecordingKind
 
+class WatchScreensRequest(_message.Message):
+    __slots__ = ("serials",)
+    SERIALS_FIELD_NUMBER: _ClassVar[int]
+    serials: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, serials: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class ScreenUpdate(_message.Message):
+    __slots__ = ("serial", "header", "frame", "error")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    HEADER_FIELD_NUMBER: _ClassVar[int]
+    FRAME_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    header: _watch_pb2.VideoHeader
+    frame: _watch_pb2.VideoFrame
+    error: str
+    def __init__(self, serial: _Optional[str] = ..., header: _Optional[_Union[_watch_pb2.VideoHeader, _Mapping]] = ..., frame: _Optional[_Union[_watch_pb2.VideoFrame, _Mapping]] = ..., error: _Optional[str] = ...) -> None: ...
+
 class StatusRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...

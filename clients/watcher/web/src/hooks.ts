@@ -1,11 +1,12 @@
-// Streams and polls the page keeps open: activity (always), status and devices (polled), and
-// the selected device's video.
+// Streams and polls the page keeps open: activity (always), status and devices (polled), the
+// opened device's video and the wall's screens.
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityStore } from "./activity";
 import { aborted, api, denied, errorText, permanent, sleep } from "./api";
 import type { ListDevicesResponse } from "./gen/device_pb";
 import type { StatusResponse } from "./gen/watcher_pb";
+import { ScreenHub } from "./screens";
 import { FrameBuffer, type Limits } from "./video";
 
 export const store = new ActivityStore();
@@ -152,6 +153,50 @@ export function useVideo(serial: string, limits: Limits | undefined, onFrames: (
   }, [serial]);
 
   return { buffer: buffer.current, version, state, error };
+}
+
+/**
+ * Streams [serials]' screens into one [ScreenHub] while there are any, reconnecting with
+ * backoff. A new set of serials reopens the stream; the hub and its buffers stay.
+ */
+export function useScreens(serials: string[]): ScreenHub {
+  const hub = useRef(new ScreenHub());
+  const key = serials.join("\n");
+  useEffect(() => {
+    const wanted = key ? key.split("\n") : [];
+    if (!wanted.length) return;
+    const abort = new AbortController();
+    (async () => {
+      let retryMs = 1000;
+      while (!abort.signal.aborted) {
+        try {
+          for await (const update of api.watchScreens({ serials: wanted }, { signal: abort.signal })) {
+            hub.current.receive(update);
+            retryMs = 1000;
+          }
+        } catch (failure) {
+          if (aborted(failure) || abort.signal.aborted) return;
+          hub.current.fail(wanted, errorText(failure));
+          if (permanent(failure)) return;
+        }
+        await sleep(retryMs, abort.signal);
+        retryMs = Math.min(retryMs * 2, 10000);
+      }
+    })();
+    return () => abort.abort();
+  }, [key]);
+  return hub.current;
+}
+
+/** False while the tab is hidden (another tab, a minimised window). */
+export function usePageVisible(): boolean {
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
+  useEffect(() => {
+    const onChange = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
+  return visible;
 }
 
 /** The current time, refreshed every [ms] (for "12 s ago" labels). */

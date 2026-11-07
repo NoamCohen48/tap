@@ -670,11 +670,15 @@ tap_watcher/
   recorder.py    Recorder (a Sink) and Recorders: start/stop, limits, SaveClip
   media.py       Mp4Writer (PyAV, no re-encode) and the steps.json document
   recordings.py  Library: staging, commit, list, delete, ZIP on download
-  service.py     the Connect service; server.py the routes, login cookie and Guard
+  service.py     the Connect service (WatchScreens: every tile's screen on one stream);
+                 server.py the routes, login cookie and Guard
 web/src/
-  App.tsx        top bar, Live / Library views, polling
-  DeviceRail, Stage (+ Track), Timeline, Library   the views
-  activity.ts    ActivityStore (connections, actions per device)
+  App.tsx        top bar, Live (wall, or device pane + device) / Library views, polling
+  Wall, DeviceTile, FleetPane, DeviceHeader, Stage (+ Track), Timeline, Library   the views
+  fleet.ts       device order and each tile's readout (state, step, outcome)
+  screens.ts     ScreenHub: the wall's one screens stream split per serial
+  activity.ts    ActivityStore (connections, actions, running calls, session marks, unseen failures)
+  steps.ts       failure navigation, session separators, unheld spans and scrubber axis
   describe.ts    readable action rows from tap.v1 messages
   video.ts       FrameBuffer (absolute indices, binary search) and Player (WebCodecs)
   hooks.ts, api.ts

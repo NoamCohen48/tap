@@ -4,6 +4,8 @@ Date: 2026-10-02. Handout + decision record (**proposed**; the direction was app
 owner on 2026-10-02, the details below are for the implementing session to confirm or change
 with the owner). Worktree: `.worktrees/feat/test-watcher`, branch `feat/test-watcher`.
 
+Many devices at once (the wall, 2026-11-07): [test-watcher-wall.md](test-watcher-wall.md).
+
 ## Current scope after owner discussion
 
 These decisions supersede the corresponding parts of the original proposal below:

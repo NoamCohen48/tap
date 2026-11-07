@@ -137,11 +137,6 @@ svg {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The shortcut list wraps rather than hiding the last ones. */
-.timeline .hint {
-  white-space: normal;
-  line-height: 1.9;
-}
 kbd {
   font: 11.5px var(--mono);
   padding: 0 4px;
@@ -198,7 +193,7 @@ kbd {
 .button.primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent-fill) 85%, #fff);
 }
-.button.primary.recording {
+.button.recording {
   background: var(--bad);
   color: var(--on-bad);
 }
@@ -362,25 +357,21 @@ kbd {
   margin: 0;
 }
 
-/* live view: devices | stage | timeline */
+/* live view: the wall, or the device pane | stage | timeline */
 .live {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr) 400px;
+  grid-template-columns: var(--pane, 152px) minmax(0, 1fr) 400px;
   min-height: 0;
 }
-.rail-devices,
+.fleet-pane,
 .timeline {
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--surface);
 }
-.rail-devices {
-  border-right: 1px solid var(--line);
-  overflow: auto;
-}
-.rail-devices h2,
-.library-list h2 {
+.library-list h2,
+.wall-bar h2 {
   padding: 14px 16px 8px;
   font-size: 12px;
   font-weight: 600;
@@ -388,7 +379,6 @@ kbd {
   text-transform: uppercase;
   color: var(--muted);
 }
-.rail-devices ul,
 .library-list ul {
   list-style: none;
   margin: 0;
@@ -396,7 +386,6 @@ kbd {
   display: grid;
   gap: 2px;
 }
-.device,
 .entry {
   display: grid;
   gap: 2px;
@@ -407,20 +396,13 @@ kbd {
   background: none;
   text-align: left;
 }
-.device:hover,
 .entry-row:hover {
   background: var(--surface-2);
 }
-.device.selected,
 .entry-row.selected {
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
 }
-.device.idle:not(.selected) .serial,
-.device.idle:not(.selected) .device-owner {
-  color: var(--muted);
-}
-.device-top,
 .entry-top {
   display: flex;
   align-items: center;
@@ -438,9 +420,17 @@ kbd {
   flex: none;
   background: var(--faint);
 }
-.status-dot.busy {
-  background: var(--ok);
-  box-shadow: 0 0 0 3px var(--ok-soft);
+.status-dot.run {
+  background: var(--accent-fill);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.status-dot.idle {
+  background: transparent;
+  border: 1.5px dashed var(--muted);
+}
+.status-dot.free {
+  background: var(--faint);
+  opacity: 0.6;
 }
 .status-dot.warn {
   background: var(--warn);
@@ -448,11 +438,6 @@ kbd {
 .status-dot.bad {
   background: var(--bad);
 }
-.device-owner {
-  font-size: 13px;
-  padding-left: 16px;
-}
-.device-last,
 .entry-meta {
   font-size: 12px;
   color: var(--muted);
@@ -460,8 +445,266 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.device-last {
-  padding-left: 16px;
+
+/* the wall: every device, the step under each screen */
+.live-wall {
+  display: flex;
+  min-height: 0;
+}
+.wall {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.wall-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 0 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.wall-bar h2 {
+  padding-right: 0;
+  padding-bottom: 14px;
+}
+.wall-count {
+  color: var(--muted);
+  font-size: 13px;
+}
+.wall-bar .pill {
+  border: 0;
+  cursor: pointer;
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.wall-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+}
+.wall-grid {
+  display: grid;
+  gap: 14px;
+  justify-content: center;
+  align-items: start;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  text-align: left;
+  color: inherit;
+}
+.tile:hover {
+  border-color: var(--faint);
+}
+.tile.landscape {
+  grid-column: span 2;
+}
+.tile.tone-idle {
+  border-style: dashed;
+}
+.tile.unseen {
+  border-color: var(--bad);
+  border-style: solid;
+  box-shadow: 0 0 0 3px var(--bad-soft), var(--shadow);
+}
+.tile.current {
+  border-color: var(--accent-fill);
+  border-style: solid;
+}
+.tile-video {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: var(--screen-bg);
+}
+.tile-screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 19.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  overflow: hidden;
+}
+.tile-screen canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.tile.tone-free .tile-screen canvas,
+.tile.tone-bad .tile-screen canvas {
+  opacity: 0.5;
+}
+.tile-note {
+  position: absolute;
+  font-size: 12px;
+  color: #9aa6b4;
+  text-align: center;
+  padding: 8px;
+}
+.tile-band {
+  display: flex;
+  gap: 8px;
+  padding: 3px 9px;
+  background: var(--bad);
+  color: var(--on-bad);
+  font: 500 11.5px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tile-band .more {
+  margin-left: auto;
+}
+.tile-cap {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 7px 9px 8px;
+  min-width: 0;
+}
+.tile.wall .tile-cap {
+  height: 104px;
+}
+.tile-l1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.tile-l1 b {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile-state {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tile-count {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bad);
+  color: var(--on-bad);
+  font: 600 11px var(--mono);
+  text-align: center;
+}
+.tile-step {
+  font: 12px/1.35 var(--mono);
+  min-height: 32px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tile-step.quiet {
+  font-family: var(--sans);
+  color: var(--muted);
+}
+.tile-outcome {
+  font: 11.5px var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-outcome.run {
+  color: var(--accent);
+}
+.tile-outcome.slow {
+  color: var(--warn);
+  font-weight: 600;
+}
+.tile-outcome.ok {
+  color: var(--ok);
+}
+.tile-outcome.bad {
+  color: var(--bad);
+}
+.tile-owner {
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the device pane beside an opened device: a column when narrow, the wall when wide */
+.fleet-pane {
+  position: relative;
+  border-right: 1px solid var(--line);
+}
+.fleet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  align-content: start;
+  gap: 8px;
+  padding: 8px;
+}
+.fleet-pane.wall .fleet-grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.tile.pane {
+  border-radius: 10px;
+  box-shadow: none;
+}
+.tile.pane .tile-video {
+  padding: 3px;
+}
+.tile.pane .tile-cap {
+  padding: 4px 6px 6px;
+}
+.tile.pane .tile-l1 {
+  font-size: 12px;
+}
+.tile.pane .tile-band {
+  font-size: 10.5px;
+  padding: 2px 6px;
+}
+.fleet-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.fleet-resize:hover,
+.fleet-resize:focus-visible {
+  background: color-mix(in srgb, var(--accent-fill) 35%, transparent);
 }
 .fail-count {
   margin-left: auto;
@@ -482,6 +725,120 @@ kbd {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+/* the opened device: its header over the screen */
+.device-view {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.device-view > .stage {
+  flex: 1;
+}
+.device-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.device-id {
+  min-width: 0;
+}
+.device-id h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.device-id p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.device-state {
+  font-weight: 600;
+}
+.device-state.tone-run {
+  color: var(--accent);
+}
+.device-state.tone-bad {
+  color: var(--bad);
+}
+.device-state.tone-warn {
+  color: var(--warn);
+}
+.device-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.device-index {
+  min-width: 56px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.keys {
+  position: relative;
+  flex: none;
+}
+.keys summary {
+  list-style: none;
+}
+.keys summary::-webkit-details-marker {
+  display: none;
+}
+.keys[open] summary {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.keys dl {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.keys dl div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+}
+.keys dt {
+  color: var(--muted);
+}
+.keys dd {
+  margin: 0;
+}
+/* A touch screen has no keyboard to explain. */
+@media (hover: none) {
+  .keys {
+    display: none;
+  }
 }
 
 /* stage */
@@ -605,6 +962,7 @@ kbd {
   color: #f27a74;
 }
 .compare-note {
+  flex-wrap: wrap;
   justify-content: center;
   padding: 0 16px 8px;
   color: #9aa6b4;
@@ -619,6 +977,9 @@ kbd {
 .compare-note > span[title] {
   display: inline-flex;
   cursor: help;
+}
+.compare-note .compare-how {
+  flex: 0 1 auto;
 }
 .compare-note .link {
   margin-left: 8px;
@@ -647,6 +1008,10 @@ kbd {
 .transport.stacked .time {
   margin-right: auto;
 }
+.transport-group {
+  display: inline-flex;
+  gap: 4px;
+}
 .clip-bar {
   font-size: 13px;
   background: var(--surface-2);
@@ -660,7 +1025,7 @@ kbd {
   position: relative;
   flex: 1;
   min-width: 120px;
-  height: 32px;
+  height: 46px;
   cursor: pointer;
   touch-action: none;
 }
@@ -687,15 +1052,62 @@ kbd {
   background: var(--accent-soft);
   outline: 1px solid var(--accent-fill);
 }
-.track .head {
+/* The selected action, start to end. */
+.track .step-range {
   position: absolute;
   top: 8px;
-  width: 4px;
   height: 16px;
-  margin-left: -2px;
-  border-radius: 2px;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  outline: 1px solid color-mix(in srgb, var(--accent-fill) 60%, transparent);
+  pointer-events: none;
+}
+/* No connection held the device: between sessions. */
+.track .unheld {
+  position: absolute;
+  top: 10px;
+  height: 12px;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 35%, transparent) 0 2px, transparent 2px 6px);
+  pointer-events: none;
+}
+.track .axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 29px;
+  height: 12px;
+  pointer-events: none;
+}
+.track .axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--faint);
+  font: 10.5px/12px var(--mono);
+  white-space: nowrap;
+}
+.track .axis span:last-child {
+  transform: translateX(-100%);
+}
+/* The head: taller than the markers, with a cap, so it never reads as one of them. */
+.track .head {
+  position: absolute;
+  top: 3px;
+  width: 2px;
+  height: 26px;
+  margin-left: -1px;
   background: var(--ink);
   pointer-events: none;
+}
+.track .head::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -4px;
+  width: 10px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--ink);
 }
 /* Zoomed: which part of the whole the track shows, under the rail. */
 .track .overview {
@@ -745,12 +1157,13 @@ kbd {
   background: var(--surface-2);
   color: var(--ink);
 }
+/* A wide hit area around a thin, coloured tick: green done, red failed, amber running. */
 .marker {
   position: absolute;
   top: 6px;
-  width: 8px;
+  width: 12px;
   height: 20px;
-  margin-left: -4px;
+  margin-left: -6px;
   padding: 0;
   border: 0;
   background: none;
@@ -758,21 +1171,33 @@ kbd {
 .marker::before {
   content: "";
   position: absolute;
-  left: 3px;
-  top: 2px;
-  width: 2px;
-  height: 16px;
-  border-radius: 1px;
+  left: 4.5px;
+  top: 3px;
+  width: 3px;
+  height: 14px;
+  border-radius: 1.5px;
   background: var(--muted);
 }
+.marker.ok::before {
+  background: var(--ok);
+}
 .marker.failed::before {
+  left: 4px;
+  width: 4px;
+  top: 1px;
+  height: 18px;
   background: var(--bad);
-  width: 3px;
+}
+.marker.running::before {
+  background: var(--warn);
 }
 .marker.selected::before {
-  left: 1px;
+  left: 3px;
   width: 6px;
+  top: 0;
+  height: 20px;
   background: var(--accent-fill);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 .stream-change {
   position: absolute;
@@ -898,6 +1323,58 @@ kbd {
   background: var(--accent-soft);
   border-left-color: var(--accent-fill);
 }
+/* The live list: one line per action, details under the selected one. */
+.timeline .item {
+  border-left: 3px solid transparent;
+}
+.timeline .item.failed {
+  border-left-color: var(--bad);
+}
+.timeline .item.selected {
+  border-left-color: var(--accent-fill);
+  background: var(--accent-soft);
+}
+.timeline .row {
+  grid-template-columns: 64px minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  padding: 4px 12px 4px 9px;
+  border-left: 0;
+}
+.timeline .item.selected .row {
+  background: none;
+}
+.timeline .row .outcome {
+  font-size: 12px;
+}
+.separator {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 12px 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.separator:first-child {
+  margin-top: 0;
+  border-top: 0;
+}
+.separator span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.separator time {
+  margin-left: auto;
+  color: var(--faint);
+  font: 11.5px var(--mono);
+}
+.separator.detached {
+  margin-bottom: 6px;
+}
 .row-time,
 .row-duration {
   font: 12px/20px var(--mono);
@@ -935,22 +1412,13 @@ kbd {
   font-weight: 600;
 }
 .details {
-  max-height: 45%;
-  overflow: auto;
-  padding: 12px;
-  border-top: 1px solid var(--line);
-  background: var(--surface-2);
+  padding: 0 12px 10px 81px;
+  cursor: auto;
 }
-.details header {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-.details h2 {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+.details-keys {
+  margin: 0 0 6px;
+  color: var(--faint);
+  font-size: 12px;
 }
 .outcome-line {
   display: flex;
@@ -1274,31 +1742,31 @@ kbd {
 
 /* narrow windows: stack the panels and let the page scroll */
 @media (max-width: 1100px) {
-  /* Devices become a strip above the screen; the screen and the actions share the height. */
+  /* The device pane becomes a strip above the screen; the screen and the actions share the height. */
   .live {
     grid-template-columns: minmax(0, 1fr) 340px;
     grid-template-rows: auto minmax(0, 1fr);
   }
-  .rail-devices {
+  .fleet-pane {
     grid-column: 1 / -1;
+    flex-direction: row;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .rail-devices h2,
-  .device-last {
+  .fleet-resize {
     display: none;
   }
-  .rail-devices ul {
-    display: flex;
-    gap: 4px;
-    padding: 6px 8px;
+  .fleet-scroll {
     overflow-x: auto;
+    overflow-y: hidden;
   }
-  .rail-devices li {
+  .fleet-grid,
+  .fleet-pane.wall .fleet-grid {
+    display: flex;
+  }
+  .fleet-grid .tile {
     flex: none;
-  }
-  .device {
-    padding: 4px 10px;
+    width: 96px;
   }
   .viewer-body {
     grid-template-columns: minmax(0, 1fr) 300px;
@@ -1322,8 +1790,15 @@ kbd {
   }
   .live,
   .library {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
+  }
+  .fleet-pane,
+  .device-view {
+    min-width: 0;
+  }
+  .device-header {
+    flex-wrap: wrap;
   }
   .timeline {
     border-left: 0;
@@ -1335,7 +1810,7 @@ kbd {
   .timeline {
     max-height: 70vh;
   }
-  .rail-devices,
+  .fleet-pane,
   .library-list {
     border-right: 0;
     border-bottom: 1px solid var(--line);

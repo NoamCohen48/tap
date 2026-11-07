@@ -65,7 +65,7 @@ per device however many pages are open.
 
 ## Next
 
-- [The Live view](live.md): devices, the actions list, the screen and its scrubber, Before /
+- [The Live view](live.md): the wall of devices, the actions list, the screen and its scrubber, Before /
   After, zoom and the keyboard.
 - [Clips, recordings and the Library](library.md): saving video, what is saved, and playing it
   back.

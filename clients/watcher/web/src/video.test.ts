@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VideoFrameSchema, VideoHeaderSchema } from "./gen/watch_pb";
-import { codecString, FrameBuffer } from "./video";
+import { codecString, FrameBuffer, Player } from "./video";
 
 const SPS = [0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1f, 0xaa];
 const header = (streamId = "s1", clockId = "clock", width = 32, height = 48) =>
@@ -96,7 +96,98 @@ describe("FrameBuffer", () => {
     expect(buffer.segments.map((segment) => segment.header.streamId)).toEqual(["s2"]);
   });
 
+  it("places a wall time on the timeline", () => {
+    const buffer = filled(9);
+    // Frame 3 arrived at 300 ms of wall time and 300 ms of timeline.
+    expect(buffer.timelineAtEpoch(350)).toBe(buffer.timeline(2) + 50_000_000n);
+    expect(new FrameBuffer().timelineAtEpoch(1)).toBeUndefined();
+  });
+
   it("derives the codec string from the SPS", () => {
     expect(codecString(header())).toBe("avc1.42c01f");
+  });
+});
+
+describe("Player at a capped rate", () => {
+  // WebCodecs stand-ins: every chunk decodes at once into a frame stamped with its time.
+  const closed: number[] = [];
+  const drawn: number[] = [];
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("cancelAnimationFrame", () => undefined);
+    closed.length = 0;
+    drawn.length = 0;
+    vi.stubGlobal(
+      "VideoDecoder",
+      class {
+        state = "unconfigured";
+        decodeQueueSize = 0;
+        constructor(private init: { output: (frame: unknown) => void }) {}
+        configure() {
+          this.state = "configured";
+        }
+        decode(chunk: { timestamp: number }) {
+          const timestamp = chunk.timestamp;
+          this.init.output({ timestamp, displayWidth: 320, displayHeight: 480, close: () => closed.push(timestamp) });
+        }
+        close() {
+          this.state = "closed";
+        }
+      },
+    );
+    vi.stubGlobal(
+      "EncodedVideoChunk",
+      class {
+        timestamp: number;
+        constructor(init: { timestamp: number }) {
+          this.timestamp = init.timestamp;
+        }
+      },
+    );
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const canvas = () =>
+    ({
+      width: 0,
+      height: 0,
+      clientWidth: 80,
+      getContext: () => ({ drawImage: (frame: { timestamp: number }) => drawn.push(frame.timestamp) }),
+    }) as unknown as HTMLCanvasElement;
+
+  it("draws the newest frame once its turn comes, and never loses the last one", () => {
+    const buffer = new FrameBuffer({ maxSeconds: 120, maxBytes: 1 << 20 });
+    buffer.setHeader(header());
+    const target = canvas();
+    const player = new Player(target, () => undefined, { fit: true, minFrameMs: 200 });
+    for (let seq = 1; seq <= 4; seq++) {
+      buffer.append(frame(seq));
+      player.live(buffer);
+    }
+    // The first is drawn at once; the next three arrive too soon and only the newest waits.
+    expect(drawn).toEqual([0]);
+    expect(closed).toEqual([0, 100_000, 200_000]);
+    vi.advanceTimersByTime(200);
+    expect(drawn).toEqual([0, 300_000]);
+    // Drawn at the canvas's shown size, not the video's.
+    expect([target.width, target.height]).toEqual([80, 120]);
+    player.stop();
+    expect(closed).toContain(300_000);
+  });
+
+  it("drops a waiting frame when stopped", () => {
+    const buffer = new FrameBuffer({ maxSeconds: 120, maxBytes: 1 << 20 });
+    buffer.setHeader(header());
+    const player = new Player(canvas(), () => undefined, { minFrameMs: 200 });
+    buffer.append(frame(1));
+    buffer.append(frame(2));
+    player.live(buffer);
+    player.stop();
+    vi.advanceTimersByTime(500);
+    expect(drawn).toEqual([0]);
+    expect(closed).toEqual([0, 100_000]);
   });
 });

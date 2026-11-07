@@ -1,14 +1,20 @@
-// The page: a top bar (views, daemon status), then Live (devices, screen, actions) or Library.
+// The page: a top bar (views, daemon status), then Live or Library. Live is the wall of every
+// device until one is opened; then the device pane, its screen and its actions.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "./api";
-import { DeviceRail } from "./DeviceRail";
+import { DeviceHeader } from "./DeviceHeader";
+import { FleetPane } from "./FleetPane";
+import { fleet, readout } from "./fleet";
 import { RecordingKind, type Recording } from "./gen/watcher_pb";
-import { useActivity, useDevices, useNow, usePoll, useStatus, useStore, store } from "./hooks";
+import { useActivity, useDevices, useNow, usePageVisible, usePoll, useScreens, useStatus, useStore, store } from "./hooks";
+import { ScreensContext } from "./screens";
 import * as Icon from "./icons";
 import { Library } from "./Library";
 import { Stage } from "./Stage";
+import { openingFailure, stepFailure } from "./steps";
 import { Timeline } from "./Timeline";
+import { Wall } from "./Wall";
 
 type View = "live" | "library";
 type Toast = { id: number; message: string; failed: boolean; recording?: Recording };
@@ -22,13 +28,21 @@ export function App() {
   const [view, setView] = useState<View>(() => fromHash().view);
   const [serial, setSerial] = useState(() => fromHash().serial);
   const [selectedKey, setSelectedKey] = useState<string>();
+  const [comparing, setComparing] = useState(false);
   const [libraryId, setLibraryId] = useState("");
   const [toast, setToast] = useState<Toast>();
-  const now = useNow(5000);
+  const [liveScreens, setLiveScreens] = useState(() => {
+    try {
+      return globalThis.localStorage?.getItem("tap-watcher.live-screens") !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const [paneWidth, setPaneWidth] = useState(152);
+  const now = useNow(1000);
 
   useStore();
   const activity = useActivity();
-  const status = useStatus();
   const devices = useDevices();
   const library = usePoll((signal) => api.listRecordings({}, { signal }), view === "library" ? 5000 : 30000);
 
@@ -37,7 +51,9 @@ export function App() {
     const onHash = () => {
       const target = fromHash();
       setView(target.view);
-      if (target.serial) setSerial(target.serial);
+      setSerial(target.serial);
+      setSelectedKey(undefined);
+      setComparing(false);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -47,12 +63,84 @@ export function App() {
     if (window.location.hash !== next) window.history.replaceState(null, "", next);
   }, [view, serial]);
 
-  // Until the user picks one, watch the first device in use (else the first device).
   const inventory = devices.value?.devices ?? [];
+  // store.version: the activity store is mutable; this re-derives on every change.
+  const everyDevice = useMemo(
+    () => fleet(inventory, store.connections.values(), (s) => store.device(s), (s) => store.owner(s)),
+    [inventory, store.version], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // One stream for every tile's screen, while Live shows tiles, screens are on and the tab is
+  // visible: a hidden tab closes it, so the devices stop encoding for it.
+  const pageVisible = usePageVisible();
+  const screenSerials = useMemo(
+    () => (view === "live" && liveScreens && pageVisible ? everyDevice.filter((entry) => entry.streamable && entry.serial !== serial).map((entry) => entry.serial) : []),
+    [view, liveScreens, pageVisible, everyDevice, serial],
+  );
+  const screens = useScreens(screenSerials);
+
+  const status = useStatus();
+  const keptMs = (status.value?.history?.maxSeconds ?? 120) * 1000;
+  // Opening a device shows its newest failure the viewer has not seen (preferring one whose
+  // video is still kept), and marks them seen.
+  const open = useCallback(
+    (next: string) => {
+      setSelectedKey(openingFailure(store.unseen(next), Date.now(), keptMs)?.key);
+      setComparing(false);
+      setSerial(next);
+    },
+    [keptMs],
+  );
+  const toWall = useCallback(() => {
+    setSerial("");
+    setSelectedKey(undefined);
+    setComparing(false);
+  }, []);
+  const stepDevice = useCallback(
+    (dir: 1 | -1) => {
+      if (!everyDevice.length) return;
+      const index = everyDevice.findIndex((entry) => entry.serial === serial);
+      open(everyDevice[(index < 0 ? 0 : index + dir + everyDevice.length) % everyDevice.length].serial);
+    },
+    [everyDevice, serial, open],
+  );
+  // n / N and the failure buttons: the next or previous failure, shown before / after.
+  const moveFailure = useCallback(
+    (dir: 1 | -1) => {
+      const actions = store.device(serial).actions;
+      const next = stepFailure(actions, actions.find((action) => action.key === selectedKey), dir);
+      if (!next) return;
+      setSelectedKey(next.key);
+      setComparing(true);
+    },
+    [serial, selectedKey],
+  );
   useEffect(() => {
-    if (serial || !inventory.length) return;
-    setSerial(inventory.find((device) => store.owner(device.serial))?.serial ?? inventory[0].serial);
-  }, [serial, inventory]);
+    if (serial) store.markSeen(serial);
+  }, [serial, store.version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // G: back to the wall; [ and ]: the previous or next device, in the wall's order.
+  useEffect(() => {
+    if (view !== "live") return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.ctrlKey || event.metaKey || event.altKey || target?.closest("input, textarea, select")) return;
+      if ((event.key === "g" || event.key === "G") && serial) toWall();
+      else if (event.key === "[" || event.key === "]") stepDevice(event.key === "]" ? 1 : -1);
+      else if ((event.key === "n" || event.key === "N") && serial) moveFailure(event.key === "n" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, serial, stepDevice, moveFailure, toWall]);
+
+  const switchScreens = useCallback((on: boolean) => {
+    setLiveScreens(on);
+    try {
+      globalThis.localStorage?.setItem("tap-watcher.live-screens", on ? "on" : "off");
+    } catch {
+      // Not remembered in a private window.
+    }
+  }, []);
 
   const notify = useCallback((message: string, failed = false, recording?: Recording) => {
     setToast({ id: Date.now(), message, failed, recording });
@@ -74,7 +162,14 @@ export function App() {
 
   const deviceActivity = store.device(serial);
   const selected = useMemo(() => deviceActivity.actions.find((action) => action.key === selectedKey), [deviceActivity, selectedKey]);
-  const onSelect = useCallback((key: string | undefined) => setSelectedKey(key), []);
+  const onSelect = useCallback((key: string | undefined) => {
+    setSelectedKey(key);
+    if (!key) setComparing(false);
+  }, []);
+  const entryIndex = everyDevice.findIndex((entry) => entry.serial === serial);
+  const entry = everyDevice[entryIndex];
+  // Once the inventory is in, a device without a screen is not asked for one.
+  const unavailable = devices.value && (!entry || !entry.streamable) ? (entry ? readout(entry, now).step : "the daemon does not list this device") : undefined;
   const recordingSerials = useMemo(() => new Set(status.value?.recordings.map((entry) => entry.serial)), [status.value]);
   const history = status.value?.history;
   const limits = useMemo(() => (history ? { maxSeconds: history.maxSeconds, maxBytes: Number(history.maxBytes) } : undefined), [history]);
@@ -128,36 +223,53 @@ export function App() {
           <Icon.Alert /> {daemon.daemonError}. Start it with <code>tap start</code>; the watcher reconnects on its own.
         </p>
       )}
-      {view === "live" ? (
-        <main className="live">
-          <DeviceRail
-            devices={inventory}
-            recording={recordingSerials}
-            selected={serial}
-            now={now}
-            onSelect={(next) => {
-              setSerial(next);
-              setSelectedKey(undefined);
-            }}
-          />
-          <Stage
-            serial={serial}
-            limits={limits}
-            actions={deviceActivity.actions}
-            selected={selected}
-            onSelect={onSelect}
-            recording={status.value?.recordings.find((entry) => entry.serial === serial)}
-            onRecordingChanged={status.refresh}
-            onSaved={onSaved}
-            notify={notify}
-          />
-          <Timeline actions={deviceActivity.actions} failures={deviceActivity.failures} dropped={store.dropped} selected={selected} onSelect={onSelect} />
-        </main>
-      ) : (
-        <main className="library-view">
-          <Library library={library.value} error={library.error} selected={libraryId} onSelect={setLibraryId} onChanged={library.refresh} notify={notify} />
-        </main>
-      )}
+      <ScreensContext value={screens}>
+        {view === "live" && !serial ? (
+          <main className="live-wall">
+            <Wall devices={everyDevice} now={now} live={liveScreens} recording={recordingSerials} onLive={switchScreens} onOpen={open} />
+          </main>
+        ) : view === "live" ? (
+          <main className="live" style={{ "--pane": `${paneWidth}px` } as CSSProperties}>
+            <FleetPane devices={everyDevice} current={serial} now={now} live={liveScreens} recording={recordingSerials} onOpen={open} onWidth={setPaneWidth} />
+            <div className="device-view">
+            <DeviceHeader entry={entry} serial={serial} count={everyDevice.length} index={entryIndex} onWall={toWall} onStep={stepDevice} />
+            <Stage
+              key={serial}
+              serial={serial}
+              limits={limits}
+              actions={deviceActivity.actions}
+              selected={selected}
+              onSelect={onSelect}
+              running={deviceActivity.running}
+              marks={deviceActivity.marks}
+              unavailable={unavailable}
+              comparing={comparing}
+              onComparing={setComparing}
+              failures={deviceActivity.failures}
+              onFailure={moveFailure}
+              recording={status.value?.recordings.find((entry) => entry.serial === serial)}
+              onRecordingChanged={status.refresh}
+              onSaved={onSaved}
+              notify={notify}
+            />
+            </div>
+            <Timeline
+              key={serial}
+              actions={deviceActivity.actions}
+              marks={deviceActivity.marks}
+              failures={deviceActivity.failures}
+              held={Boolean(entry?.owner)}
+              dropped={store.dropped}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          </main>
+        ) : (
+          <main className="library-view">
+            <Library library={library.value} error={library.error} selected={libraryId} onSelect={setLibraryId} onChanged={library.refresh} notify={notify} />
+          </main>
+        )}
+      </ScreensContext>
       {toast && (
         <div key={toast.id} className={`toast${toast.failed ? " bad" : ""}`} role={toast.failed ? "alert" : "status"}>
           {toast.failed ? <Icon.Alert /> : <Icon.Check />}

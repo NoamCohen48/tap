@@ -21,6 +21,11 @@ service WatcherService {
   // One device's video: the header and the back end's retained history (whole GOPs, within
   // `StatusResponse.history`), then live frames. Readers of a serial share one daemon stream.
   rpc WatchVideo(tap.v1.WatchVideoRequest) returns (stream tap.v1.WatchVideoResponse);
+  // Several devices' screens on one stream, for the wall: each from its latest key frame (no
+  // history), then live, tagged by serial. One stream for all of them because a browser keeps
+  // at most six connections to a host and every open stream holds one. A serial whose video
+  // fails gets an `error` update and is tried again a few seconds later.
+  rpc WatchScreens(WatchScreensRequest) returns (stream ScreenUpdate);
   // Records `serial` from its latest key frame until StopRecording or a limit. One per serial.
   // A new stream (rotation, encoder or daemon restart) continues it as the next part.
   rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
@@ -31,6 +36,22 @@ service WatcherService {
   rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
   // Deletes library entries; unknown ids are ignored.
   rpc DeleteRecordings(DeleteRecordingsRequest) returns (DeleteRecordingsResponse);
+}
+
+message WatchScreensRequest {
+  // At most 32, each non-empty.
+  repeated string serials = 1;
+}
+
+message ScreenUpdate {
+  string serial = 1;
+  oneof update {
+    // A new stream: reset the decoder (the first update of each serial is one).
+    tap.v1.VideoHeader header = 2;
+    tap.v1.VideoFrame frame = 3;
+    // Why this serial shows no video now (no scrcpy server, offline, fell behind).
+    string error = 4;
+  }
 }
 
 message StatusRequest {}

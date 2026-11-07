@@ -132,6 +132,32 @@ def test_readers_share_one_upstream():
     asyncio.run(readers_share_one_upstream())
 
 
+async def a_tile_reads_from_the_latest_key_frame():
+    daemon = FakeDaemon()
+    daemon.video = encoded([n * 100_000 for n in range(6)], keyint=3)
+    server, endpoint = await serve(daemon)
+    hub = VideoHub(Daemon(endpoint))
+    try:
+        page = hub.feed("serial").read()
+        assert [(await anext(page)).frame.seq for _ in range(7)][1:] == [1, 2, 3, 4, 5, 6]
+        # A wall tile skips the history: the header, then the newest GOP, then live frames.
+        tile = hub.feed("serial").read(latest_only=True)
+        assert (await anext(tile)).HasField("header")
+        latest = [await anext(tile) for _ in range(3)]
+        assert [u.frame.seq for u in latest] == [4, 5, 6]
+        assert latest[0].frame.key_frame
+        assert daemon.video_calls == 1
+        await page.aclose()
+        await tile.aclose()
+    finally:
+        await hub.close()
+        await server.stop(0)
+
+
+def test_a_tile_reads_from_the_latest_key_frame():
+    asyncio.run(a_tile_reads_from_the_latest_key_frame())
+
+
 async def unconfigured_video_ends_readers():
     daemon = FakeDaemon()
     server, endpoint = await serve(daemon)

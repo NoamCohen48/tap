@@ -1,23 +1,28 @@
-// The selected device's actions, newest last, with search, a failures filter and the details of
-// an explicitly selected action.
+// The opened device's actions, newest last, one line each, with where sessions began and
+// ended, search, a failures filter and the selected action's details under its row. Mounted
+// per device (a new device starts unfiltered).
 
 import { toJsonString } from "@bufbuild/protobuf";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Action } from "./activity";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { Action, SessionMark } from "./activity";
 import { clock, duration } from "./format";
 import { LoggedEventSchema } from "./gen/event_log_pb";
 import { store } from "./hooks";
 import * as Icon from "./icons";
+import { listItems, nearestFailure, type Item } from "./steps";
 
 type Props = {
   actions: Action[];
+  marks: SessionMark[];
   failures: number;
+  /** Whether a connection holds the device (an empty list says why it is empty). */
+  held: boolean;
   dropped: bigint;
   selected?: Action;
   onSelect: (key: string | undefined) => void;
 };
 
-export function Timeline({ actions, failures, dropped, selected, onSelect }: Props) {
+function TimelineView({ actions, marks, failures, held, dropped, selected, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [onlyFailures, setOnlyFailures] = useState(false);
   const list = useRef<HTMLOListElement>(null);
@@ -27,6 +32,9 @@ export function Timeline({ actions, failures, dropped, selected, onSelect }: Pro
     const needle = query.trim().toLowerCase();
     return actions.filter((action) => (!onlyFailures || action.failed) && (!needle || action.search.includes(needle)));
   }, [actions, query, onlyFailures]);
+  // Sessions show in the whole list; a filtered one names each connection where it starts.
+  const filtered = onlyFailures || Boolean(query.trim());
+  const items = useMemo(() => listItems(visible, marks, !filtered), [visible, marks, filtered]);
 
   // A selection the filter hides is cleared, so the details never show a hidden row.
   useEffect(() => {
@@ -82,7 +90,14 @@ export function Timeline({ actions, failures, dropped, selected, onSelect }: Pro
           <button aria-pressed={!onlyFailures} onClick={() => setOnlyFailures(false)}>
             All <span className="count">{actions.length}</span>
           </button>
-          <button aria-pressed={onlyFailures} onClick={() => setOnlyFailures(true)}>
+          <button
+            aria-pressed={onlyFailures}
+            onClick={() => {
+              // A step the filter would hide gives way to the failure nearest it.
+              if (selected && !selected.failed) onSelect(nearestFailure(actions, selected)?.key);
+              setOnlyFailures(true);
+            }}
+          >
             Failures <span className={`count${failures ? " bad" : ""}`}>{failures}</span>
           </button>
         </div>
@@ -91,66 +106,70 @@ export function Timeline({ actions, failures, dropped, selected, onSelect }: Pro
       <ol
         ref={list}
         className="rows"
-        role="listbox"
         aria-label="Actions on this device"
         onScroll={(event) => {
           const element = event.currentTarget;
           following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
         }}
       >
-        {visible.map((action) => (
-          <Row key={action.key} action={action} selected={action === selected} onSelect={onSelect} />
-        ))}
-        {!visible.length && <li className="empty">{actions.length ? "No action matches." : "No actions on this device yet. They appear here as tests run."}</li>}
+        {items.map((item) => (item.kind === "action" ? <Row key={item.key} action={item.action} selected={item.action === selected} onSelect={onSelect} /> : <Separator key={item.key} item={item} />))}
+        {!visible.length && (
+          <li className="empty">
+            {actions.length ? "No action matches." : held ? "No actions on this device yet. They appear here as tests run." : "No connection holds this device, so nothing is logged."}
+          </li>
+        )}
       </ol>
-      <p className="hint">
-        <kbd>j</kbd>/<kbd>k</kbd> actions · <kbd>space</kbd> play · <kbd>←</kbd>/<kbd>→</kbd> frame · <kbd>L</kbd> live · <kbd>C</kbd> compare · <kbd>+</kbd>/<kbd>-</kbd> zoom
-      </p>
-      {selected && <Details action={selected} onClose={() => onSelect(undefined)} />}
     </aside>
+  );
+}
+
+/** Where a session began or ended, or whose actions follow. */
+function Separator({ item }: { item: Exclude<Item, { kind: "action" }> }) {
+  if (item.kind === "connection") {
+    return (
+      <li className="separator">
+        <span>{store.label(item.connectionId)}</span>
+      </li>
+    );
+  }
+  const { mark } = item;
+  const why = mark.kind === "detached" && mark.reason && mark.reason !== "detached" ? `: ${mark.reason}` : "";
+  return (
+    <li className={`separator ${mark.kind}`}>
+      <span>
+        {mark.kind === "attached" ? "Attached by" : "Detached by"} {store.label(mark.connectionId)}
+        {why}
+      </span>
+      <time>{clock(mark.atEpochMs)}</time>
+    </li>
   );
 }
 
 function Row({ action, selected, onSelect }: { action: Action; selected: boolean; onSelect: (key: string | undefined) => void }) {
   const { described } = action;
   return (
-    <li
-      role="option"
-      aria-selected={selected}
-      data-key={action.key}
-      className={`row${action.failed ? " failed" : ""}${selected ? " selected" : ""}`}
-      onClick={() => onSelect(selected ? undefined : action.key)}
-    >
-      <span className="row-time">{clock(action.event.atEpochMs)}</span>
-      <span className="row-main">
+    <li data-key={action.key} className={`item${action.failed ? " failed" : ""}${selected ? " selected" : ""}`}>
+      <button className="row" aria-expanded={selected} onClick={() => onSelect(selected ? undefined : action.key)}>
+        <span className="row-time">{clock(action.event.atEpochMs)}</span>
         <span className="row-line">
           <strong>{described.verb}</strong>
           {described.target && <code>{described.target}</code>}
           {described.input && <span className="row-input">← {described.input}</span>}
         </span>
-        <span className="row-meta">
-          {action.failed && <span className="outcome">{described.outcome}</span>}
-          <span>{store.label(action.connectionId)}</span>
-        </span>
-      </span>
-      <span className="row-duration">{duration(Number(action.event.durationMs) / 1000)}</span>
+        {action.failed && <span className="outcome">{described.outcome}</span>}
+        <span className="row-duration">{duration(Number(action.event.durationMs) / 1000)}</span>
+      </button>
+      {selected && <Details action={action} />}
     </li>
   );
 }
 
-function Details({ action, onClose }: { action: Action; onClose: () => void }) {
+/** The selected action, under its row. */
+function Details({ action }: { action: Action }) {
   const { described, event } = action;
   const json = useMemo(() => toJsonString(LoggedEventSchema, event, { prettySpaces: 2 }), [event]);
   return (
     <section className="details" aria-label="Selected action">
-      <header>
-        <h2>
-          {described.verb} {described.target && <code>{described.target}</code>}
-        </h2>
-        <button className="icon-button" aria-label="Close details (Esc)" onClick={onClose}>
-          <Icon.Close />
-        </button>
-      </header>
       {action.failed ? (
         <p className="outcome-line bad">
           <Icon.Alert /> <strong>{described.outcome}</strong> {described.detail}
@@ -174,6 +193,9 @@ function Details({ action, onClose }: { action: Action; onClose: () => void }) {
         <dt>By</dt>
         <dd>{store.label(action.connectionId)}</dd>
       </dl>
+      <p className="details-keys">
+        <kbd>c</kbd> before / after · <kbd>n</kbd> next failure · <kbd>Esc</kbd> close
+      </p>
       <details>
         <summary>Raw event</summary>
         <pre>{json}</pre>
@@ -181,3 +203,6 @@ function Details({ action, onClose }: { action: Action; onClose: () => void }) {
     </section>
   );
 }
+
+/** Re-renders only when its device's actions or the selection change, not on every page tick. */
+export const Timeline = memo(TimelineView);

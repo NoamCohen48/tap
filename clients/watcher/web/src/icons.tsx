@@ -113,3 +113,35 @@ export const Info = () => (
     <path d="M12 11v6M12 7.5v.5" />
   </svg>
 );
+
+export const ChevronLeft = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M14.5 6l-6 6 6 6" />
+  </svg>
+);
+
+export const ChevronRight = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M9.5 6l6 6-6 6" />
+  </svg>
+);
+
+/** Jump to the previous failure: a chevron back to a bar. */
+export const PrevFailure = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M6 5v14M17 6l-6 6 6 6" />
+  </svg>
+);
+
+export const NextFailure = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <path d="M18 5v14M7 6l6 6-6 6" />
+  </svg>
+);
+
+export const Keyboard = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <rect x="2.5" y="6" width="19" height="12" rx="2" />
+    <path d="M6 10h1M10 10h1M14 10h1M18 10h0.5M7 14h10" />
+  </svg>
+);

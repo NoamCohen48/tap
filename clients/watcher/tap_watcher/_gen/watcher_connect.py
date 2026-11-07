@@ -31,6 +31,9 @@ class WatcherService(Protocol):
     def watch_video(self, request: watch__pb2.WatchVideoRequest, ctx: RequestContext) -> AsyncIterator[watch__pb2.WatchVideoResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    def watch_screens(self, request: watcher__pb2.WatchScreensRequest, ctx: RequestContext) -> AsyncIterator[watcher__pb2.ScreenUpdate]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def start_recording(self, request: watcher__pb2.StartRecordingRequest, ctx: RequestContext) -> watcher__pb2.StartRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -91,6 +94,16 @@ class WatcherServiceASGIApplication(ConnectASGIApplication[WatcherService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.watch_video,
+                ),
+                "/tap.watcher.v1.WatcherService/WatchScreens": Endpoint.server_stream(
+                    method=MethodInfo(
+                        name="WatchScreens",
+                        service_name="tap.watcher.v1.WatcherService",
+                        input=watcher__pb2.WatchScreensRequest,
+                        output=watcher__pb2.ScreenUpdate,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.watch_screens,
                 ),
                 "/tap.watcher.v1.WatcherService/StartRecording": Endpoint.unary(
                     method=MethodInfo(
@@ -235,6 +248,26 @@ class WatcherServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    def watch_screens(
+        self,
+        request: watcher__pb2.WatchScreensRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> AsyncIterator[watcher__pb2.ScreenUpdate]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchScreens",
+                service_name="tap.watcher.v1.WatcherService",
+                input=watcher__pb2.WatchScreensRequest,
+                output=watcher__pb2.ScreenUpdate,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def start_recording(
         self,
         request: watcher__pb2.StartRecordingRequest,
@@ -345,6 +378,8 @@ class WatcherServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def watch_video(self, request: watch__pb2.WatchVideoRequest, ctx: RequestContext) -> Iterator[watch__pb2.WatchVideoResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def watch_screens(self, request: watcher__pb2.WatchScreensRequest, ctx: RequestContext) -> Iterator[watcher__pb2.ScreenUpdate]:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def start_recording(self, request: watcher__pb2.StartRecordingRequest, ctx: RequestContext) -> watcher__pb2.StartRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def stop_recording(self, request: watcher__pb2.StopRecordingRequest, ctx: RequestContext) -> watcher__pb2.StopRecordingResponse:
@@ -400,6 +435,16 @@ class WatcherServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.watch_video,
+                ),
+                "/tap.watcher.v1.WatcherService/WatchScreens": EndpointSync.server_stream(
+                    method=MethodInfo(
+                        name="WatchScreens",
+                        service_name="tap.watcher.v1.WatcherService",
+                        input=watcher__pb2.WatchScreensRequest,
+                        output=watcher__pb2.ScreenUpdate,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.watch_screens,
                 ),
                 "/tap.watcher.v1.WatcherService/StartRecording": EndpointSync.unary(
                     method=MethodInfo(
@@ -538,6 +583,26 @@ class WatcherServiceClientSync(ConnectClientSync):
                 service_name="tap.watcher.v1.WatcherService",
                 input=watch__pb2.WatchVideoRequest,
                 output=watch__pb2.WatchVideoResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def watch_screens(
+        self,
+        request: watcher__pb2.WatchScreensRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> Iterator[watcher__pb2.ScreenUpdate]:
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchScreens",
+                service_name="tap.watcher.v1.WatcherService",
+                input=watcher__pb2.WatchScreensRequest,
+                output=watcher__pb2.ScreenUpdate,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
