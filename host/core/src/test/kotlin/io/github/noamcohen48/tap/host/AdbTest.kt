@@ -411,7 +411,80 @@ class AdbTest {
         }
 
     @Test
-    fun `restoring state locks rotation first, writes newest first and reads everything back`() =
+    fun `restored rotation that another writer changes back is written again until it holds`() =
+        runBlocking {
+            val settings = mutableMapOf("accelerometer_rotation" to "0", "user_rotation" to "1")
+            val writes = mutableListOf<String>()
+            // A late writer (UiAutomation's snapshot, SystemUI's lock sync) locks rotation once,
+            // after the restore's own writes.
+            var lateLock = true
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        val args = command.dropWhile { it != "settings" }
+                        val out =
+                            when (args.getOrNull(1)) {
+                                "get" -> {
+                                    if (lateLock && writes.isNotEmpty()) {
+                                        lateLock = false
+                                        settings["accelerometer_rotation"] = "0"
+                                    }
+                                    settings[args[3]] ?: "null"
+                                }
+                                "put" -> "".also {
+                                    writes += "${args[3]}=${args[4]}"
+                                    settings[args[3]] = args[4]
+                                }
+                                "delete" -> "Deleted 1 rows".also {
+                                    writes += "${args[3]}=null"
+                                    settings.remove(args[3])
+                                }
+                                else -> ""
+                            }
+                        FakeProcess(stdout = out)
+                    },
+                )
+            val saved =
+                listOf(
+                    SavedState(StateKey.DEVICE_STATE_ROTATION_LOCK, null),
+                    SavedState(StateKey.ACCELEROMETER_ROTATION, "1"),
+                    SavedState(StateKey.USER_ROTATION, "0"),
+                )
+            adb.restoreState(serial, saved)
+
+            assertEquals(mapOf("accelerometer_rotation" to "1", "user_rotation" to "0"), settings)
+            val once = listOf("user_rotation=0", "accelerometer_rotation=1", "device_state_rotation_lock=null")
+            assertEquals(once + once, writes)
+        }
+
+    @Test
+    fun `restoring rotation locked locks it before writing the numeric rotation`() =
+        runBlocking {
+            val settings = mutableMapOf("accelerometer_rotation" to "1", "user_rotation" to "1")
+            val writes = mutableListOf<String>()
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        val args = command.dropWhile { it != "settings" }
+                        val out =
+                            when (args.getOrNull(1)) {
+                                "get" -> settings[args[3]] ?: "null"
+                                "put" -> "".also {
+                                    writes += "${args[3]}=${args[4]}"
+                                    settings[args[3]] = args[4]
+                                }
+                                else -> ""
+                            }
+                        FakeProcess(stdout = out)
+                    },
+                )
+            adb.restoreState(serial, listOf(SavedState(StateKey.ACCELEROMETER_ROTATION, "0"), SavedState(StateKey.USER_ROTATION, "3")))
+            assertEquals(listOf("accelerometer_rotation=0", "user_rotation=3", "accelerometer_rotation=0"), writes)
+            assertEquals(mapOf("accelerometer_rotation" to "0", "user_rotation" to "3"), settings)
+        }
+
+    @Test
+    fun `restoring state writes newest first and reads everything back`() =
         runBlocking {
             val settings = mutableMapOf("accelerometer_rotation" to "0", "user_rotation" to "1", "font_scale" to "1.3")
             val writes = mutableListOf<String>()
@@ -446,7 +519,8 @@ class AdbTest {
                     SavedState(StateKey.FONT_SCALE, null),
                 )
             adb.restoreState(serial, saved)
-            assertEquals(listOf("accelerometer_rotation=0", "font_scale=null", "user_rotation=0", "accelerometer_rotation=1"), writes)
+            // Restoring auto-rotate *on* writes no transient lock for SystemUI to mirror.
+            assertEquals(listOf("font_scale=null", "user_rotation=0", "accelerometer_rotation=1"), writes)
             assertEquals(mapOf("accelerometer_rotation" to "1", "user_rotation" to "0"), settings)
 
             settings["font_scale"] = "1.3"

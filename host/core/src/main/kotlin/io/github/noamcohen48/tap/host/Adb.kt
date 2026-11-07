@@ -1153,15 +1153,28 @@ open class Adb internal constructor(
 
     /**
      * Writes [entries] back, newest first, and reads every one back; a value that did not take is
-     * a [DeviceSettingException]. When the rotation lock is among them, the sensor is locked
-     * first so the numeric rotation is written while it cannot move.
+     * a [DeviceSettingException].
+     *
+     * Rotation entries ([StateKey.ROTATION]) have more than one writer: Android's UiAutomation
+     * puts back its own snapshot when the driver's instrumentation ends, and SystemUI mirrors the
+     * lock into [StateKey.DEVICE_STATE_ROTATION_LOCK] and back, late, on its main thread. So when
+     * the lock is restored *locked*, it is locked first, so the numeric rotation is written while
+     * the sensor cannot move it; restoring it *unlocked* never writes a transient lock, which
+     * SystemUI would mirror and could re-apply after the restore. Then the rotation entries must
+     * hold for [ROTATION_SETTLE_STABLE_MS] in a row; one that another writer changes back is
+     * written again (settings writes are idempotent; no input is replayed), until
+     * [ROTATION_SETTLE_TIMEOUT_MS]. What still does not hold fails the restore.
      */
     open suspend fun restoreState(
         serial: String,
         entries: List<SavedState>,
     ) {
-        if (entries.any { it.key == StateKey.ACCELEROMETER_ROTATION }) writeState(serial, StateKey.ACCELEROMETER_ROTATION, "0")
+        val rotation = entries.filter { it.key in StateKey.ROTATION }
+        if (rotation.any { it.key == StateKey.ACCELEROMETER_ROTATION && it.value == "0" }) {
+            writeState(serial, StateKey.ACCELEROMETER_ROTATION, "0")
+        }
         for (entry in entries.asReversed()) writeState(serial, entry.key, entry.value)
+        if (rotation.isNotEmpty()) settleRotation(serial, rotation)
         val wrong =
             entries.mapNotNull { entry ->
                 readState(serial, entry.key).let { actual ->
@@ -1173,6 +1186,29 @@ open class Adb internal constructor(
                 serial,
                 "Restoring device state on $serial did not take effect: ${wrong.joinToString()}",
             )
+        }
+    }
+
+    /**
+     * Waits until every [rotation] entry has held for [ROTATION_SETTLE_STABLE_MS] in a row, writing
+     * all of them again (newest first) whenever one reads back changed. Returns at
+     * [ROTATION_SETTLE_TIMEOUT_MS] either way; [restoreState]'s read-back then decides.
+     */
+    private suspend fun settleRotation(
+        serial: String,
+        rotation: List<SavedState>,
+    ) {
+        val deadline = System.nanoTime() + ROTATION_SETTLE_TIMEOUT_MS * 1_000_000
+        var stableSince = System.nanoTime()
+        while (System.nanoTime() < deadline) {
+            delay(ROTATION_SETTLE_POLL_MS)
+            val holds = rotation.all { StateKey.holds(it.key, it.value, readState(serial, it.key)) }
+            if (!holds) {
+                for (entry in rotation.asReversed()) writeState(serial, entry.key, entry.value)
+                stableSince = System.nanoTime()
+            } else if (System.nanoTime() - stableSince >= ROTATION_SETTLE_STABLE_MS * 1_000_000) {
+                return
+            }
         }
     }
 
@@ -1670,6 +1706,18 @@ const val ADB_PERMITS_PER_SERIAL = 1
  * only a started command that left uncertainty quarantines.
  */
 const val ADB_GLOBAL_PERMITS = 4
+
+/**
+ * How long restored rotation settings must read back unchanged before the restore counts:
+ * SystemUI syncs the rotation lock late, from its main thread, which a rotation keeps busy.
+ */
+const val ROTATION_SETTLE_STABLE_MS = 1_000L
+
+/** Interval between rotation read-backs while settling. */
+const val ROTATION_SETTLE_POLL_MS = 200L
+
+/** Bound on settling restored rotation; past it the read-back fails the restore (quarantine). */
+const val ROTATION_SETTLE_TIMEOUT_MS = 5_000L
 
 /** Default-display rotation settings; null = the setting is absent on the device. */
 data class RotationState(

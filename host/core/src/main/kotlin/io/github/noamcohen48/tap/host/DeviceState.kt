@@ -112,8 +112,21 @@ sealed interface StateKey {
         val ACCELEROMETER_ROTATION = Setting("system", "accelerometer_rotation").id
         val USER_ROTATION = Setting("system", "user_rotation").id
 
-        /** The rotation lock before the numeric rotation: restoring goes newest first. */
-        val ROTATION = listOf(ACCELEROMETER_ROTATION, USER_ROTATION)
+        /**
+         * SystemUI's own copy of the rotation lock, per device state (`state:lock:state:lock…`),
+         * on devices whose overlay sets `config_perDeviceStateRotationLockDefaults` (absent
+         * elsewhere). SystemUI mirrors every [ACCELEROMETER_ROTATION] change into it and, when the
+         * copy changes, writes the copy back to the live lock (AOSP android-14.0.0_r1
+         * `DeviceStateRotationLockSettingController`), both late, on its main thread. Restoring
+         * only the live lock leaves a stale copy that SystemUI can put back after the restore.
+         */
+        val DEVICE_STATE_ROTATION_LOCK = Setting("secure", "device_state_rotation_lock").id
+
+        /**
+         * Restoring goes newest first: the numeric rotation, then the lock, then SystemUI's copy of
+         * the lock, which therefore already matches when SystemUI reconciles the two.
+         */
+        val ROTATION = listOf(DEVICE_STATE_ROTATION_LOCK, ACCELEROMETER_ROTATION, USER_ROTATION)
         val ANIMATIONS =
             listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale").map { Setting("global", it).id }
         val FONT_SCALE = Setting("system", "font_scale").id

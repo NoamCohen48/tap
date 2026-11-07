@@ -207,8 +207,8 @@ display density. All are restored on detach, which needed one generic mechanism.
 - Keys: `setting:<namespace>/<name>`, `uimode:night`, `wm:density`, `locale:<package>`
   (`StateKey`). Rotation's two settings are now just two keys; the rotation hook calls the same
   capture.
-- Detach writes back newest first (rotation: auto-rotate locked first, so the frozen rotation
-  is written while the sensor cannot move it), reads every value back, and quarantines on a
+- Detach writes back newest first (rotation restored *locked*: auto-rotate locked first, so the
+  frozen rotation is written while the sensor cannot move it), reads every value back, and quarantines on a
   mismatch. This is the journal fix for rotation: before, a server that died mid-session left
   the rotation changed with no record; now the next attach restores it from the journal
   (`restorePriorState`, quarantine `DEVICE_STATE_RESTORE_FAILED` when it does not take).
@@ -221,6 +221,21 @@ display density. All are restored on detach, which needed one generic mechanism.
   order, including mock providers before the driver loses its app-op. Each phase removes only
   successfully restored entries; failed instrumentation cleanup leaves rotation in the
   quarantined journal. Regression tests model a late Android rotation write and failed cleanup.
+- A second late writer is SystemUI. On images with per-device-state rotation locks
+  (`config_perDeviceStateRotationLockDefaults`; the API 34 `pixel_6` emulator in CI), SystemUI
+  keeps a copy of the lock in `secure/device_state_rotation_lock`: it mirrors every
+  `accelerometer_rotation` change into the copy and, when the copy changes, writes it back to the
+  live lock if they disagree, both late on its main thread (AOSP `android-14.0.0_r1`,
+  `packages/SystemUI/.../DeviceStateRotationLockSettingController.java`). CI saw detach read
+  `accelerometer_rotation=0 (expected 1)` while SystemUI was still syncing, which quarantined the
+  emulator. So: the copy is a third rotation key (captured with the other two, written last so it
+  already matches when SystemUI reconciles; absent elsewhere, so restored as absent); restoring
+  auto-rotate *on* no longer writes the transient lock (SystemUI mirrored it and could re-apply
+  it), which is kept only when the restored lock is itself *locked*; and `Adb.restoreState`
+  settles rotation: the keys must read back unchanged for `ROTATION_SETTLE_STABLE_MS` (1 s), are
+  written again whenever one changed back (idempotent settings writes, no input replayed), and
+  past `ROTATION_SETTLE_TIMEOUT_MS` (5 s) the read-back fails the restore and quarantines as
+  before. Regression tests model SystemUI writing a stale copy back and a one-off late lock.
 
 ### The conditions
 
