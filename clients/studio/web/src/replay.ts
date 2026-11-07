@@ -6,7 +6,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useRef, useState } from "react";
 import type { StudioClient } from "./api";
 import { errorMessage } from "./frames";
-import type { Outcome } from "./gen/studio_pb";
+import { RunStatus, type Outcome, type RunResult } from "./gen/studio_pb";
 
 export type StepState = "run" | "ok" | "fail";
 
@@ -14,7 +14,13 @@ export type ReplayRequest = { fromStepId?: string; only?: boolean; secretValues?
 
 /** How a replay ended. A failed step is named by id: the page numbers it when it shows it, since
  *  steps can be inserted while the replay runs (a prepended cold launch). */
-export type ReplaySummary = { tone: "ok" | "fail" | "info"; text: string; failedStepId?: string };
+export type ReplaySummary = {
+  tone: "ok" | "fail" | "info";
+  text: string;
+  failedStepId?: string;
+  /** Stopped from the page: when the step it had sent finishes, the server knows how this ended. */
+  stoppedAfter?: number;
+};
 
 export const passed = (outcome: Outcome | undefined) => !!outcome && !outcome.error && !outcome.failure && !outcome.mismatch;
 
@@ -34,6 +40,7 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
       setStopping(false);
       setStates({});
       setSummary(null);
+      const startedAt = Date.now();
       // Steps run just before the stream (a prepended cold launch) count in the summary.
       let ran = alreadyRan;
       let last: string | null = null;
@@ -68,7 +75,7 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
             const { [stopped]: _running, ...rest } = s;
             return rest;
           });
-          setSummary({ tone: "info", text: `Stopped after ${ran} step${ran === 1 ? "" : "s"}.` });
+          setSummary({ tone: "info", text: `Stopped after ${ran} step${ran === 1 ? "" : "s"}.`, stoppedAfter: startedAt });
         } else {
           setSummary({ tone: "fail", text: errorMessage(e) });
         }
@@ -86,5 +93,17 @@ export function useReplay(client: StudioClient, onOutcome: (stepId: string, outc
     abort.current?.abort();
   }, []);
 
-  return { running, stopping, states, summary, start, stop, clearSummary: () => setSummary(null) };
+  /** The summary of a stopped replay, from the run the server kept for it. */
+  const settle = useCallback((run: RunResult, why: string) => {
+    const plural = run.ran === 1 ? "step" : "steps";
+    if (run.status === RunStatus.FAILED) {
+      setSummary({ tone: "fail", text: why, failedStepId: run.failedStepId });
+    } else if (run.status === RunStatus.PASSED) {
+      setSummary({ tone: "ok", text: run.ran === 1 ? "The step passed." : `All ${run.ran} steps passed.` });
+    } else {
+      setSummary({ tone: "info", text: `Stopped after ${run.ran} ${plural}.` });
+    }
+  }, []);
+
+  return { running, stopping, states, summary, start, stop, settle, clearSummary: () => setSummary(null) };
 }

@@ -86,6 +86,15 @@ class StudioService(Protocol):
     def replay(self, request: studio__pb2.ReplayRequest, ctx: RequestContext) -> AsyncIterator[studio__pb2.ReplayResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def export_pytest(self, request: studio__pb2.ExportPytestRequest, ctx: RequestContext) -> studio__pb2.ExportPytestResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def list_runs(self, request: studio__pb2.ListRunsRequest, ctx: RequestContext) -> studio__pb2.ListRunsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def get_run(self, request: studio__pb2.GetRunRequest, ctx: RequestContext) -> studio__pb2.GetRunResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def set_recording(self, request: studio__pb2.SetRecordingRequest, ctx: RequestContext) -> studio__pb2.SetRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -357,6 +366,36 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.replay,
+                ),
+                "/tap.studio.v1.StudioService/ExportPytest": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ExportPytest",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ExportPytestRequest,
+                        output=studio__pb2.ExportPytestResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.export_pytest,
+                ),
+                "/tap.studio.v1.StudioService/ListRuns": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListRuns",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListRunsRequest,
+                        output=studio__pb2.ListRunsResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.list_runs,
+                ),
+                "/tap.studio.v1.StudioService/GetRun": Endpoint.unary(
+                    method=MethodInfo(
+                        name="GetRun",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetRunRequest,
+                        output=studio__pb2.GetRunResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.get_run,
                 ),
                 "/tap.studio.v1.StudioService/SetRecording": Endpoint.unary(
                     method=MethodInfo(
@@ -963,6 +1002,72 @@ class StudioServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def export_pytest(
+        self,
+        request: studio__pb2.ExportPytestRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ExportPytestResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportPytest",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ExportPytestRequest,
+                output=studio__pb2.ExportPytestResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def list_runs(
+        self,
+        request: studio__pb2.ListRunsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListRunsResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListRuns",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListRunsRequest,
+                output=studio__pb2.ListRunsResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    async def get_run(
+        self,
+        request: studio__pb2.GetRunRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetRunResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetRun",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetRunRequest,
+                output=studio__pb2.GetRunResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
     async def set_recording(
         self,
         request: studio__pb2.SetRecordingRequest,
@@ -1255,6 +1360,12 @@ class StudioServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def replay(self, request: studio__pb2.ReplayRequest, ctx: RequestContext) -> Iterator[studio__pb2.ReplayResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def export_pytest(self, request: studio__pb2.ExportPytestRequest, ctx: RequestContext) -> studio__pb2.ExportPytestResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def list_runs(self, request: studio__pb2.ListRunsRequest, ctx: RequestContext) -> studio__pb2.ListRunsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def get_run(self, request: studio__pb2.GetRunRequest, ctx: RequestContext) -> studio__pb2.GetRunResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def set_recording(self, request: studio__pb2.SetRecordingRequest, ctx: RequestContext) -> studio__pb2.SetRecordingResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def new_recording(self, request: studio__pb2.NewRecordingRequest, ctx: RequestContext) -> studio__pb2.NewRecordingResponse:
@@ -1514,6 +1625,36 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.replay,
+                ),
+                "/tap.studio.v1.StudioService/ExportPytest": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ExportPytest",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ExportPytestRequest,
+                        output=studio__pb2.ExportPytestResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.export_pytest,
+                ),
+                "/tap.studio.v1.StudioService/ListRuns": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListRuns",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.ListRunsRequest,
+                        output=studio__pb2.ListRunsResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.list_runs,
+                ),
+                "/tap.studio.v1.StudioService/GetRun": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="GetRun",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.GetRunRequest,
+                        output=studio__pb2.GetRunResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.get_run,
                 ),
                 "/tap.studio.v1.StudioService/SetRecording": EndpointSync.unary(
                     method=MethodInfo(
@@ -2118,6 +2259,72 @@ class StudioServiceClientSync(ConnectClientSync):
             ),
             headers=headers,
             timeout_ms=timeout_ms,
+        )
+
+    def export_pytest(
+        self,
+        request: studio__pb2.ExportPytestRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ExportPytestResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ExportPytest",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ExportPytestRequest,
+                output=studio__pb2.ExportPytestResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def list_runs(
+        self,
+        request: studio__pb2.ListRunsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.ListRunsResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListRuns",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.ListRunsRequest,
+                output=studio__pb2.ListRunsResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
+    def get_run(
+        self,
+        request: studio__pb2.GetRunRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> studio__pb2.GetRunResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetRun",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.GetRunRequest,
+                output=studio__pb2.GetRunResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
         )
 
     def set_recording(

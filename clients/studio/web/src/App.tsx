@@ -1,4 +1,5 @@
 import { clone } from "@bufbuild/protobuf";
+import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { TAB_ID, type StudioClient } from "./api";
@@ -12,12 +13,14 @@ import { nodeFor, stepSelector, stepText } from "./edit";
 import {
   PerformRequestSchema,
   SelectorOrigin,
+  RunStatus,
   StepSchema,
   type InfoResponse,
   type Outcome,
   type Parameter,
   type PerformRequest,
   type Recording,
+  type RunResult,
   type Session,
   type Step,
 } from "./gen/studio_pb";
@@ -131,6 +134,13 @@ function ControlBanner({ client, session, onSession }: { client: StudioClient; s
       {error && <span role="alert">{error}</span>}
     </div>
   );
+}
+
+/** Why a run's failed step failed. */
+function failureIn(run: RunResult): string {
+  const step = run.steps.find((s) => s.stepId === run.failedStepId);
+  const outcome = step?.outcome;
+  return step?.message || outcome?.mismatch || outcome?.error?.message || outcome?.failure?.detail || "It did not pass.";
 }
 
 /** With no device: the library, and the recording opened from it to read and export. */
@@ -458,6 +468,31 @@ function Workspace({
   const inspected = current ?? selected;
   const observing = isObserver(session);
   const finishing = session.operation !== "" && !busy && !replay.running;
+  // A stop drops the replay stream, so the step already sent finishes unseen. Its result is in the
+  // run, which may have failed: say that, rather than how many steps the page saw finish.
+  const stoppedAfter = replay.summary?.stoppedAfter;
+  const settleReplay = replay.settle;
+  useEffect(() => {
+    if (stoppedAfter === undefined || finishing) return;
+    let cancelled = false;
+    client.listRuns({}).then(
+      ({ runs }) => {
+        const run = runs[0];
+        // Stopped before it began, no run was kept: the newest one is an earlier replay's.
+        if (cancelled || !run?.startedAt || timestampDate(run.startedAt).getTime() < stoppedAfter) return;
+        if (run.status === RunStatus.RUNNING) return;
+        if (run.status !== RunStatus.FAILED) return settleReplay(run, "");
+        // The list holds summaries: why it failed is in the whole run.
+        return client.getRun({ id: run.id }).then((whole) => {
+          if (!cancelled) settleReplay(run, whole.run ? failureIn(whole.run) : "It did not pass.");
+        });
+      },
+      () => undefined, // the count stands
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, stoppedAfter, finishing, settleReplay]);
   const locked = busy || replay.running || session.operation !== "" || observing;
   const seeking = seek ? (nodeFor(nodes, seek.container.selector) ?? seek.containerNode) : null;
 

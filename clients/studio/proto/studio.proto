@@ -97,6 +97,19 @@ service StudioService {
   // and NewRecording are FAILED_PRECONDITION, and so is a replay for another app than the one
   // attached, or with a secret whose value the studio does not have.
   rpc Replay(ReplayRequest) returns (stream ReplayResponse);
+  // The recording as a pytest file on tap-e2e's public API. NOT_FOUND before anything is recorded;
+  // FAILED_PRECONDITION for a recording it cannot write without changing what it does.
+  rpc ExportPytest(ExportPytestRequest) returns (ExportPytestResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The last replays of this process, newest first, without their steps.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // One run's results. NOT_FOUND once it is no longer kept.
+  rpc GetRun(GetRunRequest) returns (GetRunResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   // Record or pause: paused, Perform still runs steps but records nothing.
   rpc SetRecording(SetRecordingRequest) returns (SetRecordingResponse);
   // Discards the recording and starts an empty one.
@@ -592,6 +605,71 @@ message ReplayResponse {
   // Absent while the step runs.
   Outcome outcome = 2;
   // Why it failed, for a person; empty when it passed or runs.
+  string message = 3;
+  // The run this step belongs to (`GetRun`).
+  string run_id = 4;
+}
+
+message ExportPytestRequest {}
+
+message ExportPytestResponse {
+  string source = 1;
+}
+
+message ListRunsRequest {}
+
+message ListRunsResponse {
+  repeated RunResult runs = 1;
+}
+
+message GetRunRequest {
+  string id = 1;
+}
+
+message GetRunResponse {
+  RunResult run = 1;
+  // The same run as a JSON file (tap-studio-run/1), to download.
+  string document = 2;
+}
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_RUNNING = 1;
+  // Every planned step ran and passed.
+  RUN_STATUS_PASSED = 2;
+  // A step failed, so the run ended there.
+  RUN_STATUS_FAILED = 3;
+  // It ended early with no failure: cancelled, interrupted or Studio shut down.
+  RUN_STATUS_STOPPED = 4;
+}
+
+// What one replay did (tap-studio-run/1), from Studio or `tap-studio replay`. It covers the steps
+// that finished and is not an execution journal: it cannot say whether input was sent by a step
+// that a crash or interruption cut off.
+message RunResult {
+  // Exactly "tap-studio-run/1".
+  string format = 1;
+  string id = 2;
+  google.protobuf.Timestamp started_at = 3;
+  // Absent while it runs.
+  google.protobuf.Timestamp finished_at = 4;
+  RunStatus status = 5;
+  string serial = 6;
+  // How many steps it set out to run, and how many finished.
+  int32 planned = 7;
+  int32 ran = 8;
+  string failed_step_id = 9;
+  // The parameter values it ran with. Secrets are never here: known values are also scrubbed from
+  // every message, which cannot catch a value the device or app has changed.
+  map<string, string> parameters = 10;
+  repeated StepResult steps = 11;
+  // More steps ran than a result keeps; `ran` still counts them.
+  bool truncated = 12;
+}
+
+message StepResult {
+  string step_id = 1;
+  Outcome outcome = 2;
   string message = 3;
 }
 

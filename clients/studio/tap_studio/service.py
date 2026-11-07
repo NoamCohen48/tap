@@ -34,7 +34,7 @@ from tap_e2e import (
 )
 from tap_e2e import proto as tap
 
-from . import __version__, library, steps, tools
+from . import __version__, export, library, runs, steps, tools
 from ._gen import studio_pb2 as studio
 from .recording import FORMAT, RecordingError, dumps, loads, parameter_name, parameter_problems, secret_name
 from .screen import DeviceWorker, FrameError
@@ -96,6 +96,7 @@ class Studio:
         self._changed = asyncio.Event()
         # Secret values by name, for this process only: never written anywhere.
         self._secrets: dict[str, str] = {}
+        self._runs = runs.RunLog()
 
     # --- session ---------------------------------------------------------------------------------
 
@@ -494,11 +495,13 @@ class Studio:
             await worker.call(lambda: steps.run(device, runnable, secret_value))
         except (TapError, steps.CheckFailed) as error:
             failure = error
+        known = [*self._secrets.values(), *([secret_value] if secret_value else [])]
         step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
+        runs.scrub_message(step.outcome, known)
         recorded = self._recording_on and failure is None and not request.skip_recording
         if recorded:
             self._add(step, secret_value, request.before_step_id)
-        return studio.PerformResponse(step=step, recorded=recorded, message=str(failure) if failure else "")
+        return studio.PerformResponse(step=step, recorded=recorded, message=runs.scrub(str(failure), known) if failure else "")
 
     def _snapshot(self) -> bytes | None:
         return self.recording.SerializeToString() if self.recording is not None else None
@@ -888,28 +891,31 @@ class Studio:
             raise ConnectError(Code.FAILED_PRECONDITION, f"values are needed for the secrets {', '.join(missing)}")
         self._replaying = True
         self._publish()
+        run = self._runs.begin(device.serial, len(chosen), {p.name: p.value for p in self.recording.parameters})
+        run_id = run.result.id
         try:
             for step_id in chosen:
                 if self._closing:
                     return
                 step = self.recording.steps[self._index(step_id)]
-                yield studio.ReplayResponse(step_id=step_id)
+                yield studio.ReplayResponse(step_id=step_id, run_id=run_id)
                 if self._closing:
                     return
                 name = secret_name(step)
                 value = self._secrets[name] if name is not None else None
 
                 runnable = self._resolved(step)
-                self._replay_step = asyncio.create_task(self._run_replay_step(worker, device, step, runnable, value), name="tap-studio replay step")
+                self._replay_step = asyncio.create_task(self._run_replay_step(worker, device, step, runnable, value, run), name="tap-studio replay step")
                 self._replay_step.add_done_callback(lambda done: None if done.cancelled() else done.exception())
-                failure = await asyncio.shield(self._replay_step)
-                yield studio.ReplayResponse(step_id=step_id, outcome=step.outcome, message=str(failure) if failure else "")
-                if failure is not None:
+                message = await asyncio.shield(self._replay_step)
+                yield studio.ReplayResponse(step_id=step_id, outcome=step.outcome, message=message, run_id=run_id)
+                if message:
                     return
         finally:
             # A canceled stream stops before the next step, but its accepted step still owns
             # the recording until its outcome is reconciled.
             def settled(_=None):
+                run.finish()
                 self._replaying = False
                 self._replay_step = None
                 self._publish()
@@ -920,17 +926,39 @@ class Studio:
                 settled()
 
     async def _run_replay_step(
-        self, worker: DeviceWorker, device: Device, step: studio.Step, runnable: studio.Step, value: str | None
-    ) -> TapError | steps.CheckFailed | None:
+        self, worker: DeviceWorker, device: Device, step: studio.Step, runnable: studio.Step, value: str | None, run: runs.Run
+    ) -> str:
+        """Runs an accepted step and keeps its result. Why it failed, or empty when it passed."""
         started = time.monotonic()
         failure: TapError | steps.CheckFailed | None = None
         try:
             await worker.call(lambda: steps.run(device, runnable, value))
         except (TapError, steps.CheckFailed) as error:
             failure = error
+        known = list(self._secrets.values())
         step.outcome.CopyFrom(steps.outcome(round((time.monotonic() - started) * 1000), failure, device.serial))
+        runs.scrub_message(step.outcome, known)
+        message = runs.scrub(str(failure) or type(failure).__name__, known) if failure is not None else ""
+        run.add(step.id, step.outcome, message)
         self._touch()
-        return failure
+        return message
+
+    async def export_pytest(self, request: studio.ExportPytestRequest, ctx: RequestContext) -> studio.ExportPytestResponse:
+        if self.recording is None or not self.recording.steps:
+            raise ConnectError(Code.NOT_FOUND, "nothing recorded yet")
+        try:
+            return studio.ExportPytestResponse(source=export.to_pytest(self.recording, self._saved_name or "recording"))
+        except export.ExportError as error:
+            raise ConnectError(Code.FAILED_PRECONDITION, str(error)) from None
+
+    async def list_runs(self, request: studio.ListRunsRequest, ctx: RequestContext) -> studio.ListRunsResponse:
+        return studio.ListRunsResponse(runs=self._runs.summaries())
+
+    async def get_run(self, request: studio.GetRunRequest, ctx: RequestContext) -> studio.GetRunResponse:
+        run = self._runs.get(request.id)
+        if run is None:
+            raise ConnectError(Code.NOT_FOUND, f"no run {request.id!r}: only the last {runs.MAX_RUNS} are kept")
+        return studio.GetRunResponse(run=run, document=runs.dumps(run) + "\n")
 
     async def set_recording(self, request: studio.SetRecordingRequest, ctx: RequestContext) -> studio.SetRecordingResponse:
         self._require_control(ctx)

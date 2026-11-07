@@ -36,9 +36,18 @@ large streamed browser transfers, owned media controls/readiness and other unres
 platform work stay in `studio-todo.md`. No synchronization work, automatic app restoration,
 implicit lifecycle or replay of uncertain input.
 
+## Status
+
+All seven are implemented. What the implementation deliberately stops short of:
+
+- With no device, the page can open, read and export a recording. Editing and replay still need one.
+- The library's locks and permissions are POSIX only (`studio-todo.md`).
+- Parameters stand for typed and expected text only (`studio-todo.md`).
+- Run results are in memory and cover finished steps; they are not an execution journal.
+
 ## Verification
 
-Baseline before this follow-up: 318 backend and 118 browser tests passed. Service-level
-probes separately reproduced recording replacement/release during Perform, cancellation
-unlocking a live worker, and retained success after a secret value change. Add regression
-coverage before treating any of those findings as resolved.
+Baseline before this follow-up: 318 backend and 118 browser tests passed. Service-level probes
+separately reproduced recording replacement/release during Perform, cancellation unlocking a live
+worker, and retained success after a secret value change; each now has a regression test. Automated
+checks run on the in-process fake daemon. Device validation has not been run for any of this work.

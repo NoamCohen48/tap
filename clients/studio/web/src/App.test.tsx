@@ -1,4 +1,5 @@
 import { clone, create, fromJsonString, toJsonString, type MessageInitShape } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, createClient, createRouterTransport, type HandlerContext } from "@connectrpc/connect";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +10,11 @@ import { BoundsSchema, Direction, RangeType, StandardAction } from "./gen/comman
 import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
+  DiagnosticKind,
   LibraryEntrySchema,
   LibraryLinkSchema,
+  RunResultSchema,
+  RunStatus,
   OutcomeSchema,
   ParameterSchema,
   PerformResponseSchema,
@@ -23,6 +27,7 @@ import {
   SelectorOrigin,
   StudioService,
   type AddStepRequest,
+  type RunResult,
   type LibraryEntry,
   type Parameter,
   type PerformRequest,
@@ -94,6 +99,11 @@ function fakeStudio() {
     added: [] as AddStepRequest[],
     failUpdate: null as string | null,
     noServer: false,
+    failExport: null as string | null,
+    runs: [] as RunResult[],
+    wholeRun: null as RunResult | null,
+    fetchedRuns: [] as string[],
+    diagnostics: [] as DiagnosticKind[],
     library: [] as LibraryEntry[],
     unreadable: 0,
     nextEntry: 1,
@@ -213,6 +223,19 @@ function fakeStudio() {
         state.updates.push(request);
         state.steps[index(request.step!.id)] = clone(StepSchema, request.step!);
         return edited();
+      },
+      exportPytest: () => {
+        if (state.failExport) throw new ConnectError(state.failExport, Code.FailedPrecondition);
+        return { source: "def test_recording(tap_device):\n    pass\n" };
+      },
+      listRuns: () => ({ runs: state.runs }),
+      getRun: (request) => {
+        state.fetchedRuns.push(request.id);
+        return { document: `{"id":"${request.id}"}`, run: state.wholeRun ?? undefined };
+      },
+      exportDiagnostic: (request) => {
+        state.diagnostics.push(request.kind);
+        return { data: new Uint8Array([1]), filename: "shot.png", contentType: "image/png" };
       },
       listLibrary: () => {
         if (state.failLibrary) throw new ConnectError(state.failLibrary, Code.Aborted);
@@ -640,6 +663,53 @@ describe("editing every value of a step", () => {
     fireEvent.keyDown(within(editor).getByLabelText("Key code"), { key: "z", ctrlKey: true });
     await act(async () => undefined);
     expect(fake.state.undone).toBe(0);
+  });
+});
+
+describe("pytest export", () => {
+  async function drawer() {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    return { fake, drawer: await screen.findByRole("dialog", { name: "Export recording" }) };
+  }
+
+  it("shows the source when asked", async () => {
+    const { drawer: panel } = await drawer();
+    fireEvent.click(within(panel).getByRole("button", { name: "pytest" }));
+    expect((await within(panel).findByTestId("recording-python")).textContent).toContain("def test_recording(tap_device)");
+    expect(within(panel).getByRole("button", { name: "Download" })).toBeTruthy();
+  });
+
+  it("says why when a recording cannot be exported, and offers nothing to download", async () => {
+    const { fake, drawer: panel } = await drawer();
+    fake.state.failExport = "cannot export the action 'new_thing'";
+    fireEvent.click(within(panel).getByRole("button", { name: "pytest" }));
+    expect((await within(panel).findByRole("alert")).textContent).toContain("new_thing");
+    expect(within(panel).queryByRole("button", { name: "Download" })).toBeNull();
+  });
+});
+
+describe("runs", () => {
+  it("lists past runs and downloads a run's results when asked", async () => {
+    const fake = await attached();
+    fake.state.runs = [create(RunResultSchema, { id: "r1", status: RunStatus.FAILED, ran: 2, planned: 3, serial: "emulator-5554", failedStepId: "s2" })];
+    await act(async () => fake.watch({ recordingRevision: 4n }));
+    const runs = await screen.findByRole("list", { name: "Recent runs" });
+    expect(runs.textContent).toContain("Failed");
+    expect(runs.textContent).toContain("2 of 3 steps on emulator-5554");
+    fireEvent.click(within(runs).getByRole("button", { name: /results/i }));
+    await waitFor(() => expect(fake.state.fetchedRuns).toEqual(["r1"]));
+  });
+
+  it("captures evidence only when asked", async () => {
+    const fake = await attached();
+    await perform(300, 450, "Tap");
+    await waitFor(() => expect(fake.state.steps).toHaveLength(1));
+    expect(fake.state.diagnostics).toEqual([]);
+    fireEvent.click(within(screen.getByRole("group", { name: "Capture from the device" })).getByRole("button", { name: "Screenshot" }));
+    await waitFor(() => expect(fake.state.diagnostics).toEqual([DiagnosticKind.DIAGNOSTIC_SCREENSHOT]));
   });
 });
 
@@ -1621,6 +1691,43 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Stop" }));
       expect(await screen.findByText("Stopped after 0 steps.")).toBeTruthy();
       expect(screen.queryByText("running…")).toBeNull();
+    });
+
+    it("says a stopped replay failed when the step it had sent then failed", async () => {
+      const fake = await recordTwo();
+      fake.state.replayGate = new Promise(() => undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Replay as it is" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      await screen.findByText("Stopped after 0 steps.");
+      // The run was still going: the page keeps its count until the server has settled it.
+      fake.state.runs = [
+        create(RunResultSchema, {
+          id: "r1",
+          status: RunStatus.FAILED,
+          ran: 2,
+          planned: 2,
+          failedStepId: "s2",
+          startedAt: timestampFromDate(new Date(Date.now() + 60_000)),
+        }),
+      ];
+      // As the server does: the list has summaries, and only GetRun has the steps.
+      fake.state.wholeRun = create(RunResultSchema, { id: "r1", failedStepId: "s2", steps: [{ stepId: "s2", outcome: { error: { message: "no key" } } }] });
+      await act(async () => fake.watch({ operation: "replay" }));
+      await act(async () => fake.watch({ operation: "" }));
+      expect((await screen.findByRole("alert")).textContent).toBe("Step 2 failed. no key");
+    });
+
+    it("keeps the count when a stopped replay left no run of its own", async () => {
+      const fake = await recordTwo();
+      fake.state.runs = [create(RunResultSchema, { id: "old", status: RunStatus.PASSED, ran: 9, startedAt: timestampFromDate(new Date(0)) })];
+      fake.state.replayGate = new Promise(() => undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Replay" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Replay as it is" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      await screen.findByText("Stopped after 0 steps.");
+      await act(async () => undefined);
+      expect(screen.getByText("Stopped after 0 steps.")).toBeTruthy();
     });
 
     it("an opened recording asks for its secret values before replaying", async () => {

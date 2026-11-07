@@ -46,9 +46,10 @@ See `CONTRIBUTING.md` for build/run commands.
   screen snapshots with refs, event log, and `tap-agent` — CLI + MCP in Python on `tap-e2e`).
 - `.docs/recorder.md` — decision record (proposed): Tap Studio (`clients/studio`), a browser
   inspector + action recorder (React front end, Python back end on `tap-e2e`); element
-  interactions, never coordinates; `tap-recording/1`. The page is select-then-choose
+  interactions, never coordinates; `tap-recording/2` (opens /1). The page is select-then-choose
   (an Act / Assert / Wait composer); `.docs/studio-demo.html` is the first design's click-mode
-  demo (mock app, no device), kept as a record.
+  demo (mock app, no device), kept as a record. `.docs/studio-workflows.md` is the approved scope of
+  tab control, parameters, the library, headless replay and export; `.docs/studio-todo.md` the rest.
 - `.docs/app-and-screen.md` — decision record: an attached device names no app; selectors have
   no scope (package ownership is a `PROPERTY_PACKAGE_NAME` predicate, `app(pkg)` / `screen` are
   client-side), and gestures refuse a covered touch point (`OBSCURED`).
@@ -207,7 +208,7 @@ multi-commit one (`gh pr merge N --rebase`) so its commits land as they are, and
   pytest clients/python/tests` validates the server + client on the local matrix (starts and
   stops the server; without `TAP_MANAGE_DAEMON` a running one is required).
 - `tap-studio` (`clients/studio`, experimental): `proto/studio.proto` (`tap.studio.v1`, imports
-  `tap.v1`) is the page ↔ back-end contract and the `tap-recording/1` format; after editing it run
+  `tap.v1`) is the page ↔ back-end contract and the `tap-recording/2` format; after editing it run
   `.venv/bin/python clients/studio/scripts/gen_protos.py` (Python + TypeScript, committed; needs
   `bun install` in `clients/studio/web`). Back end: `uv pip install --python .venv/bin/python -e
   clients/python -e "clients/studio[dev]"`, `pytest clients/studio/tests`. Page (Bun, TypeScript 7,
