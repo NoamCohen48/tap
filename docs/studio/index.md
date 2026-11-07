@@ -1,7 +1,7 @@
 # Tap Studio: inspect and record
 
 !!! warning "Experimental"
-    `tap-studio`, its page and the `tap-recording/1` format are experimental: they may change in
+    `tap-studio`, its page and the `tap-recording/2` format are experimental: they may change in
     any release, including after 1.0, until this notice goes away.
 
 Tap Studio shows a device's screen in your browser with its elements overlaid. It records what
@@ -24,7 +24,8 @@ pip install https://github.com/NoamCohen48/tap/releases/download/client-python/v
 pip install https://github.com/NoamCohen48/tap/releases/download/client-studio/v0.0.1/tap_studio-0.0.1-py3-none-any.whl
 ```
 
-Or install it from a checkout of the repository. The page is built with [Bun](https://bun.sh).
+For the unreleased coverage additions and `/2` recordings, install from a current checkout;
+the older release above writes `/1`. The page is built with [Bun](https://bun.sh).
 Run these from the repository root:
 
 ```bash
@@ -61,5 +62,5 @@ until the studio releases it.
 - [A first recording](first-recording.md): record, check, replay and export a search in the
   Settings app, step by step.
 - [The page](page.md): the screen, the composer and its tabs, and how steps are recorded.
-- [Steps and export](steps.md): editing and replaying steps, the `tap-recording/1` file, and
+- [Steps and export](steps.md): editing and replaying steps, the `/2` file and `/1` upgrade, and
   turning a recording into a test.

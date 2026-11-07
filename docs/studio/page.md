@@ -34,7 +34,10 @@ Each button runs its step on the device and records it. The composer's tabs, wit
 
 **Act** offers, for the selected element:
 
-- **Tap**, **Double tap** and **Long press**.
+- **Tap**, **Double tap** and Android's default **Long press**. **Tap sequence** selects 1–100
+  taps with a release-to-press interval of 40–1000 ms (at most 30 seconds total). **Hold for
+  duration** injects a physical press for 1–30000 ms, which is not an accessibility long-click.
+  Each resolves the target once, requires an unobscured touch point and never retries input.
 - **Drag to…**: the element is outlined; click the element to drop it on, and one
   `dragTo(res("bin"))` step is recorded. Esc cancels.
 - **Swipe** up, down, left or right on the element.
@@ -80,7 +83,13 @@ or any app's), **Force stop** and **Clear data**, **Grant** or **Revoke** a perm
 stops the app, as Android does), the app's own **Languages** (Android 13+; **Follow system**
 undoes them), and waits until the app is in the foreground (`awaitVisible()`), its screen is
 stable, settled (the elements stop changing) or its animation ended (the pixels stop changing).
-Selecting an element on the screen switches back to **Act**.
+For stability, choose **Whole screen** to omit the package requirement, and set **Quiet period
+(ms)** (1–30000). Foreground visibility still requires a package. These waits do not use
+synchronization or `awaitIdle`. Selecting an element on the screen switches back to **Act**.
+
+**Defaults for new steps**, at the top of the composer, sets separate command/wait,
+selector-precondition and typing-focus budgets where the SDK supports them. The step editor
+can change these later; replay keeps the recorded values. See [Steps and export](steps.md).
 
 **Device** starts with what the device is now: the screen, its rotation, the keyboard and the
 activity in front, read again after every step. Each control below marks the value the device

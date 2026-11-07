@@ -49,6 +49,16 @@ export function gesture({ selector, origin }: Target, kind: Gesture): PerformReq
   return request(action({ case: kind, value: { selector } }, origin));
 }
 
+/** A single bounded sequence, resolved once. Count 1 keeps the SDK's ordinary tap op. */
+export function countedTap(target: Target, count: number, intervalMs = 100): PerformRequest {
+  return count === 1 ? gesture(target, "tap") : request(action({ case: "multiTap", value: { selector: target.selector, count, intervalMs: BigInt(intervalMs) } }, target.origin));
+}
+
+/** Physical duration, distinct from Android's default long-press gesture. */
+export function hold(target: Target, durationMs: number): PerformRequest {
+  return request(action({ case: "hold", value: { selector: target.selector, durationMs: BigInt(durationMs) } }, target.origin));
+}
+
 /** The SDKs' gesture distance, in percent of the element: left out of a step that uses it. */
 export const DEFAULT_DISTANCE = 80;
 
@@ -276,10 +286,10 @@ const SIGNALS: Record<Exclude<AppWait, "visible">, StabilitySignal> = {
 };
 
 /** `App.awaitVisible`, or `App.awaitScreenStable` on one signal or both. */
-export function appWait(kind: AppWait, packageName: string): PerformRequest {
+export function appWait(kind: AppWait, packageName: string, stableForMs = 500): PerformRequest {
   const op =
     kind === "visible"
       ? { case: "waitAppVisible" as const, value: { packageName } }
-      : { case: "waitScreenStable" as const, value: { packageName, signal: SIGNALS[kind] } };
+      : { case: "waitScreenStable" as const, value: { packageName, signal: SIGNALS[kind], stableForMs: BigInt(stableForMs) } };
   return request(create(StepSchema, { kind: { case: "appWait", value: { command: create(CommandSchema, { op }) } } }));
 }

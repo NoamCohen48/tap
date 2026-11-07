@@ -76,12 +76,12 @@ def test_cookie_of_another_studio_does_not_count(anonymous):
 def test_info(signed_in):
     response = call(signed_in, "Info")
     assert response.status_code == 200
-    assert response.json() == {"recorder": f"tap-studio {__version__}", "format": "tap-recording/1"}
+    assert response.json() == {"recorder": f"tap-studio {__version__}", "format": "tap-recording/2"}
 
 
 def test_info_over_get_for_side_effect_free_methods(signed_in):
     response = signed_in.get(f"{INFO}?encoding=json&message=%7B%7D")
-    assert response.json()["format"] == "tap-recording/1"
+    assert response.json()["format"] == "tap-recording/2"
 
 
 def test_no_recording_yet_is_not_found(signed_in):

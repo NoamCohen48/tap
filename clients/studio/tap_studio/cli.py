@@ -20,7 +20,7 @@ from .service import Studio
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tap-studio",
-        description="Inspect an Android app's screen in the browser and record what you do as tap-recording/1 JSON.",
+        description="Inspect an Android app's screen in the browser and record what you do as tap-recording/2 JSON (opens legacy /1).",
     )
     parser.add_argument("--port", type=int, default=0, help="loopback port to serve on (default: a free one)")
     parser.add_argument("--no-open", action="store_true", help="print the link but do not open a browser")

@@ -23,6 +23,7 @@ import {
 } from "./gen/command_pb";
 import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Match, type Node, type Selector } from "./gen/selector_pb";
 import { KEY_BACK, KEY_HOME, KEY_SLEEP, KEY_WAKEUP, keyName } from "./keys";
+import { stepBudgets } from "./ExecutionControls";
 
 /** A Kotlin string literal: JSON's escapes, and `$` escaped so it is not a template. */
 export const quote = (value: string) => JSON.stringify(value).replace(/\$/g, "\\$");
@@ -435,6 +436,10 @@ function command(c: Command | undefined, secret: string | undefined): string {
       return `${element(c.op.value.selector)}.tap()`;
     case "longTap":
       return `${element(c.op.value.selector)}.longTap()`;
+    case "multiTap":
+      return `${element(c.op.value.selector)}.tap(count = ${c.op.value.count}, interval = ${c.op.value.intervalMs ?? 100n}.milliseconds)`;
+    case "hold":
+      return `${element(c.op.value.selector)}.longTap(duration = ${c.op.value.durationMs}.milliseconds)`;
     case "setText":
       return `${element(c.op.value.selector)}.setText(${value(c.op.value.text, secret)})`;
     case "clearText":
@@ -529,8 +534,14 @@ export function stepKind(step: Step): StepKind | null {
   }
 }
 
-/** The step as the SDK call it replays as. */
+/** Budgets are annotations, not invented parameters on fixed-signature SDK methods. */
 export function describeStep(step: Step): string {
+  const budgets = Object.entries(stepBudgets(step)).filter(([, value]) => value !== undefined).map(([name, value]) => `${name} = ${value} ms`);
+  return describeCall(step) + (budgets.length ? ` /* ${budgets.join(", ")} */` : "");
+}
+
+/** The step as the SDK call it replays as. */
+function describeCall(step: Step): string {
   switch (step.kind.case) {
     case "app":
       return appCall(step.kind.value);

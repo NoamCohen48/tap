@@ -385,7 +385,7 @@ jobs:
             Tap Studio (experimental): a browser inspector and action
             recorder for Android apps, run on a device through a running
             `tap` daemon. It records element interactions as
-            `tap-recording/1` files you replay or turn into tests. It
+            `tap-recording/2` files you replay or turn into tests (opens legacy /1). It
             depends on `tap-e2e`, which is not on PyPI yet: install the
             `tap-e2e` wheel from its `client-python/v*` release first, then
 

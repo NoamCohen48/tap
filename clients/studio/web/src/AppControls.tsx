@@ -71,6 +71,9 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
   const [link, setLink] = useState("");
   const [anyApp, setAnyApp] = useState(false);
   const [locales, setLocales] = useState("");
+  const [wholeScreen, setWholeScreen] = useState(false);
+  const [quiet, setQuiet] = useState(500);
+  const quietOk = Number.isInteger(quiet) && quiet >= 1 && quiet <= 30000;
   const app = appPackage.trim();
   const built = extras.map(extraOf);
   const extrasOk = built.every((e) => e !== null);
@@ -287,9 +290,14 @@ export function AppControls({ appPackage, onAppPackage, packages, busy, onPerfor
         </div>
         <div className="why">This app's own languages (Android 13 and up), leaving the system's alone.</div>
       </form>
+      <Row label="Stability">
+        <label className="chk"><input type="checkbox" checked={wholeScreen} onChange={(e) => setWholeScreen(e.target.checked)} />Whole screen</label>
+        <label className="field"><span>Quiet period (ms)</span><input type="number" min={1} max={30000} value={Number.isNaN(quiet) ? "" : quiet} onChange={(e) => setQuiet(e.target.valueAsNumber)} aria-invalid={!quietOk} /></label>
+      </Row>
+      {!quietOk && <p role="alert">Quiet period must be 1..30000 whole milliseconds.</p>}
       <Row label="Wait until">
         {WAITS.map(({ kind, label, title }) => (
-          <button key={kind} type="button" className="btn wait" title={title} disabled={!usable} onClick={() => onPerform(steps.appWait(kind, app))}>
+          <button key={kind} type="button" className="btn wait" title={kind === "visible" ? title : "Wait for the selected stability signal and quiet period"} disabled={busy || (kind === "visible" ? !app : (!wholeScreen && !app) || !quietOk)} onClick={() => onPerform(steps.appWait(kind, kind === "visible" || !wholeScreen ? app : "", quiet))}>
             {label}
           </button>
         ))}

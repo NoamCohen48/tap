@@ -1440,7 +1440,8 @@ code,
   display: grid;
   gap: 10px;
 }
-.step-editor fieldset {
+.step-editor fieldset,
+.execution-controls {
   margin: 0;
   padding: 8px 10px 10px;
   border: 1px solid var(--line);
@@ -1449,7 +1450,8 @@ code,
   gap: 8px;
   min-width: 0;
 }
-.step-editor legend {
+.step-editor legend,
+.execution-controls legend {
   padding: 0 4px;
   font-size: 11px;
   font-weight: 600;
@@ -1487,6 +1489,22 @@ code,
 }
 .step-editor .row.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.execution-controls .row,
+.press-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.execution-defaults {
+  margin-bottom: 10px;
+}
+.execution-defaults > summary {
+  padding: 8px 0;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
 }
 .check {
   display: flex;

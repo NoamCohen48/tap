@@ -1,4 +1,4 @@
-"""tap-recording/1: the documented example round-trips, and every rule rejects what it should."""
+"""Studio /2 round trips, legacy /1 upgrades, and invalid recordings are refused."""
 
 from __future__ import annotations
 
@@ -7,7 +7,15 @@ import json
 
 import pytest
 
-from tap_studio.recording import FORMAT, RecordingError, dump, dumps, load, loads, validate
+from tap_studio.recording import (
+    FORMAT,
+    RecordingError,
+    dump,
+    dumps,
+    load,
+    loads,
+    validate,
+)
 
 SEARCH = {"node": {"resource": {"name": "search"}}}
 PASSWORD = {"node": {"resource": {"name": "password"}}}
@@ -15,7 +23,7 @@ ONE = {"wait_visible": {"selector": SEARCH, "exactly_one": True}}
 SECOND = {"node": {"match": {"property": "PROPERTY_TEXT", "value": "Add"}}, "at": {"index": 1}}
 
 EXAMPLE = {
-    "format": "tap-recording/1",
+    "format": FORMAT,
     "recorded_at": "2026-09-29T17:42:10Z",
     "recorder": "tap-studio 0.0.1",
     "device": {"serial": "emulator-5554", "api_level": 34, "manufacturer": "Google", "model": "sdk_gphone64_x86_64"},
@@ -73,6 +81,13 @@ def test_example_round_trips_unchanged():
     assert loads(dumps(recording)) == recording
 
 
+def test_legacy_files_upgrade_without_losing_steps():
+    legacy = {**EXAMPLE, "format": "tap-recording/1"}
+    recording = loads(text(legacy))
+    assert recording.format == FORMAT == "tap-recording/2"
+    assert json.loads(dumps(recording)) == EXAMPLE
+
+
 def test_dump_and_load_a_file(tmp_path):
     path = tmp_path / "nested" / "flow.json"
     dump(loads(text(EXAMPLE)), path)
@@ -111,13 +126,13 @@ def test_malformed_json_and_wrong_types_are_recording_errors():
 
 def test_header_rules():
     document = copy.deepcopy(EXAMPLE)
-    document["format"] = "tap-recording/2"
+    document["format"] = "tap-recording/99"
     for key in ("recorded_at", "recorder", "device"):
         del document[key]
     with pytest.raises(RecordingError) as caught:
         loads(text(document))
     assert caught.value.problems[:4] == [
-        f"format must be {FORMAT!r}, not 'tap-recording/2'",
+        f"format must be {FORMAT!r}, not 'tap-recording/99'",
         "recorded_at is required",
         "recorder is required",
         "device.serial is required",

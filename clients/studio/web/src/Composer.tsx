@@ -1,5 +1,5 @@
 import { create, equals } from "@bufbuild/protobuf";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { StudioClient } from "./api";
 import { AppControls } from "./AppControls";
 import { DIRECTIONS, Directions, Group, Row, directionName } from "./controls";
@@ -17,6 +17,7 @@ import type { Intent } from "./ScreenView";
 import * as steps from "./steps";
 import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
+import { PressControls } from "./PressControls";
 
 /** The composer's tabs: the three kinds of step on the selected element, then the app and the device. */
 export type Tab = Intent | "app" | "device";
@@ -49,6 +50,7 @@ export type Seek = {
 
 type Props = {
   client: StudioClient;
+  children?: ReactNode;
   tab: Tab;
   onTab: (tab: Tab) => void;
   /** The selected node, as on the newest frame that had it. */
@@ -124,6 +126,7 @@ export function Composer(props: Props) {
         ))}
       </div>
       <div className="panel-b" role="tabpanel" id={panel} aria-labelledby={`${panel}-${tab}`}>
+        {props.children}
         {tab === "app" ? (
           <AppControls appPackage={props.appPackage} onAppPackage={props.onAppPackage} packages={props.packages} busy={props.busy} onPerform={props.onPerform} />
         ) : tab === "device" ? (
@@ -302,6 +305,7 @@ function ActOnElement({
           Drag to…
         </button>
       </Row>
+      <PressControls target={pressTarget} disabled={!usable} onPerform={onPerform} />
       <Row label="Swipe">
         <Directions verb="Swipe" disabled={!usable} onDirection={(d) => onPerform(steps.swipe(target, d, distance))} />
       </Row>

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator, Callable
+from typing import TypeVar, cast
 
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
@@ -36,6 +37,7 @@ from .recording import FORMAT, RecordingError, dumps, loads, secret_name
 from .screen import DeviceWorker, FrameError
 
 CONNECTION_NAME = "tap-studio"
+T = TypeVar("T")
 
 
 class Studio:
@@ -205,12 +207,12 @@ class Studio:
         except TapError as error:
             raise _connect_error(error) from None
         response = studio.DescribeElementResponse(
-            actions=[tap.StandardAction.Value(f"A11Y_{action.name}") for action in snapshot.actions],
+            actions=[f"A11Y_{action.name}" for action in snapshot.actions],
             custom_actions=list(snapshot.custom_actions),
         )
         if snapshot.range is not None:
             r = snapshot.range
-            kind = tap.RANGE_TYPE_UNSPECIFIED if r.type.name == "UNKNOWN" else tap.RangeType.Value(f"RANGE_{r.type.name}")
+            kind = "RANGE_TYPE_UNSPECIFIED" if r.type.name == "UNKNOWN" else f"RANGE_{r.type.name}"
             response.range.CopyFrom(tap.Range(type=kind, min=r.min, max=r.max, current=r.current))
         return response
 
@@ -263,7 +265,7 @@ class Studio:
         self._require_idle()
         secret_value = request.secret_value if request.HasField("secret_value") else None
         try:
-            step = steps.prepare(request.step, secret_value)
+            step = steps.prepare(request.step, secret_value, precondition_timeout_ms=request.precondition_timeout_ms if request.HasField("precondition_timeout_ms") else None)
         except RecordingError as error:
             raise ConnectError(Code.INVALID_ARGUMENT, "; ".join(error.problems)) from None
         if request.before_step_id:
@@ -509,14 +511,14 @@ def _device_info(info: DeviceInfo) -> tap.DeviceInfo:
     return message
 
 
-def _device_state(name: str) -> int:
+def _device_state(name: str) -> tap.DeviceState:
     try:
-        return tap.DeviceState.Value(f"DEVICE_{name}")
+        return cast(tap.DeviceState, tap.DeviceState.Value(f"DEVICE_{name}"))
     except ValueError:
         return tap.DEVICE_STATE_UNSPECIFIED
 
 
-async def _blocking(function: Callable[[], object]):
+async def _blocking(function: Callable[[], T]) -> T:
     return await asyncio.to_thread(function)
 
 

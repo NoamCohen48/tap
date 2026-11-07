@@ -30,6 +30,7 @@ import { useReplay, type ReplayRequest } from "./replay";
 import * as stepsApi from "./steps";
 import { synthesized, type Target } from "./steps";
 import { StepsPanel, type LastRun } from "./StepsPanel";
+import { ExecutionControls, requestBudgets, type Budgets } from "./ExecutionControls";
 
 type Status = { kind: "loading" } | { kind: "ready"; info: InfoResponse } | { kind: "failed"; message: string };
 
@@ -117,6 +118,7 @@ function Workspace({
   const [lastRun, setLastRun] = useState<LastRun>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [distance, setDistance] = useState(stepsApi.DEFAULT_DISTANCE);
+  const [budgets, setBudgets] = useState<Budgets>({});
   const [seek, setSeek] = useState<Seek | null>(null);
   const [drag, setDrag] = useState<DragFrom | null>(null);
   const [revision, setRevision] = useState(0);
@@ -185,7 +187,7 @@ function Workspace({
       const sent = clone(PerformRequestSchema, request);
       sent.beforeStepId = before;
       try {
-        const response = await client.perform(sent);
+        const response = await client.perform(requestBudgets(sent, budgets));
         const step = response.step!;
         if (response.recorded) {
           setRecording((r) => {
@@ -210,7 +212,7 @@ function Workspace({
         setRevision((n) => n + 1);
       }
     },
-    [client, replay, selectedStep, steps],
+    [client, replay, selectedStep, steps, budgets],
   );
 
   const change = async (call: () => Promise<{ session?: Session }>) => {
@@ -410,7 +412,9 @@ function Workspace({
             appPackage={appPackage}
             onAppPackage={setAppPackage}
             packages={packages}
-          />
+          >
+            <details className="execution-defaults"><summary>Defaults for new steps</summary><ExecutionControls values={budgets} onChange={setBudgets} /></details>
+          </Composer>
           <Inspector node={inspected} nodes={nodes} appPackage={app} onSelect={setSelected} />
         </div>
         <StepsPanel
