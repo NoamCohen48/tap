@@ -50,4 +50,19 @@ All seven are implemented. What the implementation deliberately stops short of:
 Baseline before this follow-up: 318 backend and 118 browser tests passed. Service-level probes
 separately reproduced recording replacement/release during Perform, cancellation unlocking a live
 worker, and retained success after a secret value change; each now has a regression test. Automated
-checks run on the in-process fake daemon. Device validation has not been run for any of this work.
+checks run on the in-process fake daemon.
+
+Device run: the page, `tap-studio replay` and the exported pytest test on emulator-5554 (API 34, no
+reboot) with the daemon CI built from the same commit. It covered recording, a selector-only wait and
+absent checks, editing, undo, redo, duplicate, parameters, secret typing, two tabs, Stop, a failing
+run, per-run results, on-request evidence, Clear data, the library and the headless exit codes. A
+marked secret stayed out of the daemon log, journals, raw event history, library file, export, run
+results and pytest artifacts. It was not run on API 29.
+
+That run found what the fake daemon could not: a stopped replay reported its count while the accepted
+step went on to fail; open sections left the step list no height; the device list stayed stale after
+release; an empty "contains" wait could be recorded; a reload flashed the other-tab banner. Each is
+fixed with a page test, except the step list's height, which was checked in a browser.
+
+Known limit: a hierarchy captured on request holds the text on screen, so a secret typed into a field
+Android does not mask is in that file. The screenshot can show it too.

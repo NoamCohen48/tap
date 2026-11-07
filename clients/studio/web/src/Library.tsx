@@ -69,13 +69,8 @@ export function Library({
     });
   };
 
-  return (
-    <details className="library" open={open}>
-      <summary>
-        Library
-        {link?.id ? ` · ${link.name}` : ""}
-        {link?.id && link.unsaved ? " · unsaved changes" : ""}
-      </summary>
+  const content = (
+    <>
       {error && (
         <div className="error" role="alert">
           {error}
@@ -86,6 +81,8 @@ export function Library({
           Autosave stopped: {link.autosaveError}
         </div>
       )}
+      {(session.steps > 0 || !!link?.id) && (
+      <>
       <div className="row">
         <label className="field" htmlFor={`${id}-name`}>
           <span>Save as</span>
@@ -109,10 +106,15 @@ export function Library({
           Autosave
         </label>
       </div>
+      </>
+      )}
       {entries === null ? (
-        !error && <div className="empty">Reading the library…</div>
+        !error && <p className="start-note">Reading saved recordings…</p>
       ) : entries.length === 0 ? (
-        <div className="empty">Nothing saved yet.</div>
+        <div className="library-empty">
+          <p>Nothing saved yet.</p>
+          <p className="start-note">Attach a device, record some steps, then save them to find them here next time.</p>
+        </div>
       ) : (
         <ul className="library-list" aria-label="Saved recordings">
           {entries.map((entry) => (
@@ -137,10 +139,12 @@ export function Library({
                 </form>
               ) : (
                 <>
-                  <span className="library-name">{entry.name}</span>
-                  <span className="count">
-                    {steps(entry.steps)}
-                    {entry.updatedAt ? ` · ${timestampDate(entry.updatedAt).toLocaleString()}` : ""}
+                  <span className="library-about">
+                    <span className="library-name">{entry.name}</span>
+                    <span className="count">
+                      {steps(entry.steps)}
+                      {entry.updatedAt ? `, saved ${timestampDate(entry.updatedAt).toLocaleString()}` : ""}
+                    </span>
                   </span>
                   <span className="actions">
                     <button
@@ -200,6 +204,30 @@ export function Library({
           onCancel={() => setConfirming(null)}
         />
       )}
+    </>
+  );
+
+  if (open) {
+    return (
+      <div className="library library-page">
+        <div className="start-h">
+          <h2>Saved recordings</h2>
+        </div>
+        <p className="start-note">
+          They stay on this computer. Open one to read or export it; attach a device to edit or replay it.
+        </p>
+        {content}
+      </div>
+    );
+  }
+  return (
+    <details className="library">
+      <summary>
+        Saved recordings
+        {link?.id ? ` · ${link.name}` : ""}
+        {link?.id && link.unsaved ? " · unsaved changes" : ""}
+      </summary>
+      {content}
     </details>
   );
 }

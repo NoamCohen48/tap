@@ -41,7 +41,7 @@ Tap Studio:
   need `tap start`, retry nothing and refuse rather than lose meaning.
 - **Per-run results.** Each replay has an identity and bounded step results with known secret values
   scrubbed. Evidence from the device is captured only when asked.
-- **A private library of named recordings,** usable with no device or Tap server, with opt-in
+- **Saved recordings, a private library of named flows,** usable with no device or Tap server, with opt-in
   autosave. It stores definitions only, never secret values or results, and refuses to overwrite
   an entry another Studio changed.
 - **Parameters.** Named, non-secret test data for the text a step types or expects, kept in the

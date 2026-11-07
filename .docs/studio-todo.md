@@ -89,5 +89,5 @@ work, including broader follow-ups beyond that approved scope.
 
 ## Verification still needed on real devices
 
-- [ ] Exercise the Studio changes on the approved API 34/API 29 fixture matrix when the owner
-  requests device validation. No reboot; API 29 was disconnected during the preceding agent work.
+- [x] Exercise the Studio changes on the API 34 emulator (`studio-workflows.md`, Verification).
+- [ ] The same on the API 29 device, when the owner asks. No reboot.

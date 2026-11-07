@@ -216,6 +216,9 @@ class Studio:
                     state=_device_state(entry.state.name),
                     attached=entry.serial == attached,
                     quarantine_reason=entry.quarantine_reason or "",
+                    api_level=entry.properties.api_level if entry.properties else 0,
+                    model=entry.properties.model if entry.properties else "",
+                    emulator=entry.properties.emulator if entry.properties else False,
                 )
                 for entry in entries
             ]

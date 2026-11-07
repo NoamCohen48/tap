@@ -445,16 +445,22 @@ class ListDevicesRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class DeviceChoice(_message.Message):
-    __slots__ = ("serial", "state", "attached", "quarantine_reason")
+    __slots__ = ("serial", "state", "attached", "quarantine_reason", "api_level", "model", "emulator")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     ATTACHED_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
+    API_LEVEL_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    EMULATOR_FIELD_NUMBER: _ClassVar[int]
     serial: str
     state: _device_pb2.DeviceState
     attached: bool
     quarantine_reason: str
-    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[_device_pb2.DeviceState, str]] = ..., attached: _Optional[bool] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    api_level: int
+    model: str
+    emulator: bool
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[_device_pb2.DeviceState, str]] = ..., attached: _Optional[bool] = ..., quarantine_reason: _Optional[str] = ..., api_level: _Optional[int] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ...) -> None: ...
 
 class ListDevicesResponse(_message.Message):
     __slots__ = ("devices",)

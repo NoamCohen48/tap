@@ -11,6 +11,7 @@ import { NodeFlag, SelectorSchema, TextProperty } from "./gen/selector_pb";
 import {
   FramesResponseSchema,
   DiagnosticKind,
+  DeviceChoiceSchema,
   LibraryEntrySchema,
   LibraryLinkSchema,
   RunResultSchema,
@@ -102,6 +103,10 @@ function fakeStudio() {
     failExport: null as string | null,
     runs: [] as RunResult[],
     wholeRun: null as RunResult | null,
+    devices: [
+      { serial: "emulator-5554", state: DeviceState.DEVICE_FREE },
+      { serial: "85e49002", state: DeviceState.DEVICE_LEASED },
+    ] as MessageInitShape<typeof DeviceChoiceSchema>[],
     fetchedRuns: [] as string[],
     diagnostics: [] as DiagnosticKind[],
     library: [] as LibraryEntry[],
@@ -154,10 +159,7 @@ function fakeStudio() {
       },
       listDevices: () => {
         if (state.noServer) throw new ConnectError("no Tap server: start one with `tap start`", Code.Unavailable);
-        return { devices: [
-          { serial: "emulator-5554", state: DeviceState.DEVICE_FREE },
-          { serial: "85e49002", state: DeviceState.DEVICE_LEASED },
-        ] };
+        return { devices: state.devices };
       },
       attach: (request) => {
         state.session = create(SessionSchema, {
@@ -725,6 +727,44 @@ describe("the library", () => {
     return fake;
   }
 
+  it("offers no save form until there is a recording to save, and says what saved recordings are", async () => {
+    const fake = await offline();
+    await screen.findByText("Nothing saved yet.");
+    await screen.findByText(/They stay on this computer/);
+    expect(screen.queryByLabelText("Save as")).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Autosave/ })).toBeNull();
+    await act(async () => fake.watch({ steps: 1 }));
+    await screen.findByLabelText("Save as");
+  });
+
+  it("reads the device list again by itself after it could not reach the server", async () => {
+    const fake = fakeStudio();
+    fake.state.noServer = true;
+    render(<App client={fake.client} />);
+    const picker = await screen.findByRole("region", { name: "Attach a device" });
+    await within(picker).findByText(/no Tap server/);
+    fake.state.noServer = false; // `tap start` ran
+    await within(picker).findByText("emulator-5554", undefined, { timeout: 5000 });
+    expect(within(picker).queryByText(/no Tap server/)).toBeNull();
+  });
+
+  it("says what each device is, and reads the list again while one is not ready", async () => {
+    const fake = fakeStudio();
+    fake.state.devices = [{ serial: "emulator-5554", state: DeviceState.DEVICE_LEASED, apiLevel: 34, model: "sdk_gphone64", emulator: true }];
+    render(<App client={fake.client} />);
+    const picker = await screen.findByRole("region", { name: "Attach a device" });
+    await within(picker).findByText("sdk_gphone64");
+    within(picker).getByText("emulator-5554");
+    within(picker).getByText("API 34");
+    within(picker).getByText("Emulator");
+    within(picker).getByText("In use by another test or tool");
+    expect((within(picker).getByRole("button", { name: "Attach" }) as HTMLButtonElement).disabled).toBe(true);
+    // Released a moment ago: no Refresh needed.
+    fake.state.devices = [{ serial: "emulator-5554", state: DeviceState.DEVICE_FREE, apiLevel: 34, model: "sdk_gphone64", emulator: true }];
+    await waitFor(() => expect((within(picker).getByRole("button", { name: "Attach" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+    expect(within(picker).queryByText("In use by another test or tool")).toBeNull();
+  });
+
   it("lists, opens and shows a recording with no device attached", async () => {
     const fake = await offline("Checkout");
     fireEvent.click(await within(await screen.findByRole("list", { name: "Saved recordings" })).findByRole("button", { name: "Open Checkout" }));
@@ -784,7 +824,7 @@ describe("the library", () => {
     expect(autosave.disabled).toBe(true);
     fireEvent.change(within(steps).getByLabelText("Save as"), { target: { value: "Checkout" } });
     fireEvent.click(within(steps).getByRole("button", { name: "Save as new" }));
-    await within(steps).findByText(/Library · Checkout/);
+    await within(steps).findByText(/Saved recordings · Checkout/);
     await waitFor(() => expect(autosave.disabled).toBe(false));
     fireEvent.click(autosave);
     await waitFor(() => expect(fake.state.autosave).toEqual([true]));
@@ -1091,7 +1131,7 @@ describe("control of the studio", () => {
 describe("App", () => {
   it("shows which studio it is connected to", async () => {
     render(<App client={fakeStudio().client} />);
-    expect(await screen.findByText("tap-studio 0.0.1 · writes tap-recording/1")).toBeTruthy();
+    expect(await screen.findByText("tap-studio 0.0.1")).toBeTruthy();
   });
 
   it("says when the studio cannot be reached", async () => {

@@ -87,8 +87,12 @@ export function App({ client }: { client: StudioClient }) {
       ) : (
         <>
           <TopBar status={status} />
-          {session && <DevicePicker client={client} onSession={setSession} disabled={observing} />}
-          {session && <Offline client={client} session={session} onSession={setSession} disabled={observing} />}
+          {session && (
+            <main className="start">
+              <DevicePicker client={client} onSession={setSession} disabled={observing} />
+              <Offline client={client} session={session} onSession={setSession} disabled={observing} />
+            </main>
+          )}
         </>
       )}
     </div>
@@ -143,7 +147,7 @@ function failureIn(run: RunResult): string {
   return step?.message || outcome?.mismatch || outcome?.error?.message || outcome?.failure?.detail || "It did not pass.";
 }
 
-/** With no device: the library, and the recording opened from it to read and export. */
+/** With no device: the saved recordings, and the recording opened from it to read and export. */
 function Offline({ client, session, onSession, disabled }: { client: StudioClient; session: Session; onSession: (session: Session) => void; disabled: boolean }) {
   const [steps, setSteps] = useState<Step[]>([]);
   const [exporting, setExporting] = useState(false);
@@ -159,13 +163,12 @@ function Offline({ client, session, onSession, disabled }: { client: StudioClien
     };
   }, [client, recordingRevision]);
   return (
-    <section className="panel offline" aria-label="Recordings">
+    <section className="offline" aria-label="Recordings">
       <Library client={client} session={session} busy={disabled || session.operation !== ""} open onSession={onSession} />
       {steps.length > 0 && (
-        <div>
-          <div className="panel-h">
+        <div className="offline-open">
+          <div className="start-h">
             <h2>Open recording</h2>
-            <span className="spacer" />
             <button type="button" className="btn small" onClick={() => setExporting(true)}>
               Export
             </button>
@@ -177,7 +180,6 @@ function Offline({ client, session, onSession, disabled }: { client: StudioClien
               </li>
             ))}
           </ol>
-          <p className="hint">Attach a device to edit or replay it.</p>
         </div>
       )}
       {exporting && <ExportDrawer client={client} onClose={() => setExporting(false)} />}
@@ -195,7 +197,7 @@ function TopBar({ status, children }: { status: Status; children?: ReactNode }) 
       {children ?? (
         <span className="status" role="status">
           {status.kind === "loading" && "Connecting…"}
-          {status.kind === "ready" && `${status.info.recorder} · writes ${status.info.format}`}
+          {status.kind === "ready" && status.info.recorder}
           {status.kind === "failed" && `Cannot reach tap-studio: ${status.message}`}
         </span>
       )}
