@@ -8,6 +8,9 @@ experimental may change in any release.
 
 tap-agent:
 
+- **Concurrent recording startup.** Two first starts sharing an empty catalog now wait through
+  SQLite journal-mode contention instead of failing immediately with “storage unavailable”.
+  Only database initialization is retried; no device input is replayed.
 - **Named step recordings.** `record start|stop|list|clean` manages durable private recordings of
   actions and explicit waits, with resolved selectors, device identity, sensitive redaction and
   explicit unfinished outcomes. `export [NAME] [-o FILE]` exports them even after release.
