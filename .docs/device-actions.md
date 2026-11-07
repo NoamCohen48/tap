@@ -212,6 +212,15 @@ display density. All are restored on detach, which needed one generic mechanism.
   mismatch. This is the journal fix for rotation: before, a server that died mid-session left
   the rotation changed with no record; now the next attach restores it from the journal
   (`restorePriorState`, quarantine `DEVICE_STATE_RESTORE_FAILED` when it does not take).
+- Rotation restores only after `cleanupInstrumentation` proves the driver stopped and reaps its
+  child/drain. Closing the protocol connection is not that proof: Android's
+  `UiAutomationConnection.disconnect()` calls `restoreRotationStateLocked()` and can overwrite
+  an earlier host restore (checked against AOSP `android-14.0.0_r1`,
+  `core/java/android/app/UiAutomationConnection.java`, blob
+  `34f0964cf8234440e41b77432eb7e5d137b4decb`). Other saved state retains its earlier teardown
+  order, including mock providers before the driver loses its app-op. Each phase removes only
+  successfully restored entries; failed instrumentation cleanup leaves rotation in the
+  quarantined journal. Regression tests model a late Android rotation write and failed cleanup.
 
 ### The conditions
 
