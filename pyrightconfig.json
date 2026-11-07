@@ -1,0 +1,7 @@
+{
+  "include": ["clients/explorer"],
+  "extraPaths": ["clients/explorer", "clients/python"],
+  "pythonVersion": "3.10",
+  "venvPath": ".",
+  "venv": ".venv"
+}

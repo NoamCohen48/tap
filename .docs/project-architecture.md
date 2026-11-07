@@ -49,6 +49,17 @@ Android driver instrumentation  (package io.github.noamcohen48.tap.driver, own U
 Application under test  (any package)          device/sync-sdk: TapSynchronization + provider
 ```
 
+`clients/explorer` (`tap-explorer`, experimental) provides a Python graph store/CLI (SQLite,
+`tap-exploration/1`) and an optional `tap-e2e` bounded live adapter. `tap-explorer sample` explores
+only explicitly configured landmarks/actions in `samples/explorer-app`; its observed graph
+and checked route trials passed two physical API 29 runs. Snapshot-derived discovery/session
+modules add reviewed native execution and conservative signatures; a separate
+`samples/explorer-machine` wizard passed a 30-state physical API 29 benchmark. Optional OpenAI
+nano proposals are fake-tested, not yet live-provider validated. `clients/explorer/web` is a
+React/TypeScript/Vite graph workbench (React Flow/Dagre), served by the Python loopback backend;
+historical viewing acquires no device. Robots and unfamiliar-APK validation remain pending.
+It owns no ADB/daemon lifecycle. See [app-explorer.md](app-explorer.md).
+
 ADB is used for setup, lifecycle, forwarding, and recovery. Ordinary UI commands travel over
 the persistent RPC connection; Tap never launches an ADB process per action.
 

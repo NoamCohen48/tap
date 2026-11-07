@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="state" />
+    <item type="id" name="open_profile" />
+    <item type="id" name="open_preferences" />
+    <item type="id" name="open_about" />
+    <item type="id" name="name_input" />
+    <item type="id" name="submit" />
+    <item type="id" name="validation" />
+    <item type="id" name="greeting" />
+    <item type="id" name="toggle_option" />
+    <item type="id" name="option_value" />
+    <item type="id" name="home" />
+    <item type="id" name="close_about" />
+</resources>

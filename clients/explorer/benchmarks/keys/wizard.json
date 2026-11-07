@@ -1,0 +1,89 @@
+{
+  "format": "tap-robots-key/1",
+  "package": "io.github.noamcohen48.tap.explorer.machine",
+  "provenance": "fixture-source",
+  "note": "Written from samples/explorer-machine MainActivity.kt (pages, buttons, the name.isEmpty() and pro && !accepted rules), not from any explorer output. Checks are what a tester would assert: the values a page shows, the checkbox states and the validation message. Static texts and typed inputs are not checks.",
+  "screens": [
+    {
+      "id": "home", "name": "LocalRequests",
+      "recognize": [{"resource": "title", "text": "Local requests"}],
+      "methods": [
+        {"verb": "tap", "control": "wizard", "to": "identity"},
+        {"verb": "tap", "control": "about", "to": "about"}
+      ],
+      "checks": []
+    },
+    {
+      "id": "about", "name": "About",
+      "recognize": [{"resource": "title", "text": "About requests"}],
+      "methods": [{"verb": "tap", "control": "close", "to": "home"}],
+      "checks": []
+    },
+    {
+      "id": "identity", "name": "YourName", "workflow": true,
+      "recognize": [{"resource": "title", "text": "Your name"}],
+      "methods": [
+        {"verb": "fill", "control": "name", "to": "identity"},
+        {"verb": "tap", "control": "next", "to": "identity", "when": {"mode": "all", "facts": ["name is empty"]}},
+        {"verb": "tap", "control": "next", "to": "options", "when": {"mode": "all", "facts": ["name is not empty"]}},
+        {"verb": "tap", "control": "home", "to": "home"}
+      ],
+      "checks": [
+        {"resource": "validation", "kind": "shown"},
+        {"resource": "summary", "kind": "value"}
+      ]
+    },
+    {
+      "id": "options", "name": "ChoosePlan",
+      "recognize": [{"resource": "title", "text": "Choose a plan"}],
+      "methods": [
+        {"verb": "tap", "control": "tier", "to": "options"},
+        {"verb": "tap", "control": "terms", "to": "options"},
+        {"verb": "tap", "control": "next", "to": "options",
+         "when": {"mode": "all", "facts": ["tier checked", "terms unchecked"]}},
+        {"verb": "tap", "control": "next", "to": "review",
+         "when": {"mode": "any", "facts": ["tier unchecked", "terms checked"]}},
+        {"verb": "tap", "control": "explain", "to": "explain"},
+        {"verb": "tap", "control": "edit", "to": "identity"},
+        {"verb": "tap", "control": "home", "to": "home"}
+      ],
+      "checks": [
+        {"resource": "summary", "kind": "value"},
+        {"resource": "tier", "kind": "checked"},
+        {"resource": "terms", "kind": "checked"},
+        {"resource": "validation", "kind": "shown"}
+      ]
+    },
+    {
+      "id": "explain", "name": "PlanDetails",
+      "recognize": [{"resource": "title", "text": "Plan details"}],
+      "methods": [
+        {"verb": "tap", "control": "tier", "to": "explain"},
+        {"verb": "tap", "control": "terms", "to": "explain"},
+        {"verb": "tap", "control": "close", "to": "options"}
+      ],
+      "checks": [
+        {"resource": "summary", "kind": "value"},
+        {"resource": "tier", "kind": "checked"},
+        {"resource": "terms", "kind": "checked"},
+        {"resource": "validation", "kind": "shown", "optional": true}
+      ]
+    },
+    {
+      "id": "review", "name": "ReviewRequest",
+      "recognize": [{"resource": "title", "text": "Review request"}],
+      "methods": [
+        {"verb": "tap", "control": "confirm", "to": "receipt"},
+        {"verb": "tap", "control": "edit", "to": "identity"},
+        {"verb": "tap", "control": "home", "to": "home"}
+      ],
+      "checks": [{"resource": "summary", "kind": "value"}]
+    },
+    {
+      "id": "receipt", "name": "RequestSaved",
+      "recognize": [{"resource": "title", "text": "Request saved"}],
+      "methods": [{"verb": "tap", "control": "home", "to": "home"}],
+      "checks": [{"resource": "summary", "kind": "value"}]
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "format": "tap-robots-key/1",
+  "package": "org.isoron.uhabits",
+  "provenance": "analyst-provisional",
+  "note": "Loop Habit Tracker 2.3.1, written from its source at commit 516bf394 (EditHabitActivity.validate: Save needs a non-empty name, and a non-empty target for measurable habits; text.isEmpty(), so whitespace passes; HabitTypeDialog; FrequencyPickerDialog, where focusing a count field checks its radio button and a count below 1 or not below the period falls back to every day; list_habits.xml menu; the manifest's parent activity for Navigate up) and the resource IDs its snapshots expose, not from explorer output. Scope: the habit list, the habit-type chooser, both create forms with their pickers, and the filter menu. Out of scope: the first-run intro (shown after every clear-data), habit details and check-ins, the list's selection mode (long press), reminders and the notification-permission dialog they open, colors, the overflow menu (settings, about, help, night mode) and the Sort submenu. Not keyed: Save crashes on a target or frequency count that is not a number (toDouble / parseInt), which the explorer's values never produce. Re-checked against the source at v2.3.1 (516bf394) by the analyst on 2026-10-13: no method, precondition or check changed. Still needs the operator's review before it is evidence.",
+  "screens": [
+    {
+      "id": "habit-type", "name": "HabitType",
+      "recognize": [{"resource": "buttonMeasurable"}],
+      "methods": [
+        {"verb": "tap", "control": "buttonYesNo", "to": "binary-form"},
+        {"verb": "tap", "control": "buttonMeasurable", "to": "numeric-form"},
+        {"verb": "tap", "control": "background", "to": "habit-list", "optional": true}
+      ],
+      "checks": []
+    },
+    {
+      "id": "binary-frequency", "name": "Frequency",
+      "recognize": [{"resource": "xTimesPerWeekRadioButton"}],
+      "methods": [
+        {"verb": "tap", "control": "everyDayRadioButton", "to": "binary-frequency"},
+        {"verb": "tap", "control": "everyXDaysRadioButton", "to": "binary-frequency"},
+        {"verb": "tap", "control": "xTimesPerWeekRadioButton", "to": "binary-frequency"},
+        {"verb": "tap", "control": "xTimesPerMonthRadioButton", "to": "binary-frequency"},
+        {"verb": "tap", "control": "xTimesPerYDaysRadioButton", "to": "binary-frequency"},
+        {"verb": "fill", "control": "everyXDaysTextView", "to": "binary-frequency"},
+        {"verb": "fill", "control": "xTimesPerWeekTextView", "to": "binary-frequency"},
+        {"verb": "fill", "control": "xTimesPerMonthTextView", "to": "binary-frequency"},
+        {"verb": "fill", "control": "xTimesPerYDaysXTextView", "to": "binary-frequency", "optional": true},
+        {"verb": "fill", "control": "xTimesPerYDaysYTextView", "to": "binary-frequency", "optional": true},
+        {"verb": "tap", "control": "button1", "to": "binary-form"}
+      ],
+      "checks": [
+        {"resource": "everyDayRadioButton", "kind": "checked"},
+        {"resource": "xTimesPerWeekRadioButton", "kind": "checked"},
+        {"resource": "everyXDaysRadioButton", "kind": "checked", "optional": true},
+        {"resource": "xTimesPerMonthRadioButton", "kind": "checked", "optional": true},
+        {"resource": "xTimesPerYDaysRadioButton", "kind": "checked", "optional": true}
+      ]
+    },
+    {
+      "id": "numeric-form", "name": "CreateMeasurableHabit",
+      "recognize": [{"resource": "nameInput"}, {"resource": "targetInput"}],
+      "workflow": true,
+      "methods": [
+        {"verb": "fill", "control": "nameInput", "to": "numeric-form"},
+        {"verb": "fill", "control": "unitInput", "to": "numeric-form"},
+        {"verb": "fill", "control": "targetInput", "to": "numeric-form"},
+        {"verb": "fill", "control": "questionInput", "to": "numeric-form", "optional": true},
+        {"verb": "fill", "control": "notesInput", "to": "numeric-form", "optional": true},
+        {"verb": "tap", "control": "targetTypePicker", "to": "target-comparison"},
+        {"verb": "tap", "control": "numericalFrequencyPicker", "to": "numeric-period"},
+        {"verb": "tap", "control": "buttonSave", "to": "habit-list",
+         "when": {"mode": "all", "facts": ["nameInput is not empty", "targetInput is not empty"]}},
+        {"verb": "tap", "control": "buttonSave", "to": "numeric-form",
+         "when": {"mode": "any", "facts": ["nameInput is empty", "targetInput is empty"]}},
+        {"verb": "tap", "control": "Navigate up", "to": "habit-list"}
+      ],
+      "checks": [
+        {"resource": "targetTypePicker", "kind": "value"},
+        {"resource": "numericalFrequencyPicker", "kind": "value"},
+        {"resource": "nameInput", "kind": "error"},
+        {"resource": "targetInput", "kind": "error"}
+      ]
+    },
+    {
+      "id": "binary-form", "name": "CreateYesNoHabit",
+      "recognize": [{"resource": "nameInput"}],
+      "workflow": true,
+      "methods": [
+        {"verb": "fill", "control": "nameInput", "to": "binary-form"},
+        {"verb": "fill", "control": "questionInput", "to": "binary-form", "optional": true},
+        {"verb": "fill", "control": "notesInput", "to": "binary-form", "optional": true},
+        {"verb": "tap", "control": "boolean_frequency_picker", "to": "binary-frequency"},
+        {"verb": "tap", "control": "buttonSave", "to": "habit-list",
+         "when": {"mode": "all", "facts": ["nameInput is not empty"]}},
+        {"verb": "tap", "control": "buttonSave", "to": "binary-form",
+         "when": {"mode": "all", "facts": ["nameInput is empty"]}},
+        {"verb": "tap", "control": "Navigate up", "to": "habit-list"}
+      ],
+      "checks": [
+        {"resource": "boolean_frequency_picker", "kind": "value"},
+        {"resource": "nameInput", "kind": "error"}
+      ]
+    },
+    {
+      "id": "target-comparison", "name": "TargetType",
+      "recognize": [{"text": "At least"}, {"text": "At most"}],
+      "methods": [
+        {"verb": "tap", "control": "At least", "to": "numeric-form"},
+        {"verb": "tap", "control": "At most", "to": "numeric-form"}
+      ],
+      "checks": []
+    },
+    {
+      "id": "numeric-period", "name": "Period",
+      "recognize": [{"text": "Every day"}, {"text": "Every week"}, {"text": "Every month"}],
+      "methods": [
+        {"verb": "tap", "control": "Every day", "to": "numeric-form"},
+        {"verb": "tap", "control": "Every week", "to": "numeric-form"},
+        {"verb": "tap", "control": "Every month", "to": "numeric-form"}
+      ],
+      "checks": []
+    },
+    {
+      "id": "filter-menu", "name": "FilterMenu",
+      "recognize": [{"text": "Hide archived"}, {"text": "Hide completed"}, {"text": "Sort"}],
+      "methods": [
+        {"verb": "tap", "control": "Hide archived", "to": "habit-list"},
+        {"verb": "tap", "control": "Hide completed", "to": "habit-list"}
+      ],
+      "checks": [
+        {"resource": "checkbox", "kind": "checked", "optional": true}
+      ]
+    },
+    {
+      "id": "habit-list", "name": "Habits",
+      "recognize": [{"text": "Habits"}],
+      "methods": [
+        {"verb": "tap", "control": "actionCreateHabit", "to": "habit-type"},
+        {"verb": "tap", "control": "action_filter", "to": "filter-menu"}
+      ],
+      "checks": [
+        {"resource": "habit rows", "kind": "list"}
+      ]
+    }
+  ]
+}
