@@ -9,6 +9,7 @@ import androidx.test.uiautomator.Until
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.xmlpull.v1.XmlPullParser
@@ -25,16 +26,25 @@ class HierarchyDumpTest {
         try {
             device.executeShellCommand("am start -W -n $PACKAGE/.FieldStateActivity")
             assertTrue(device.wait(Until.hasObject(By.res(PACKAGE, "validate_field")), 10_000))
-            device.waitForIdle()
-            val upstream = ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }.toString("UTF-8")
-            val tap = ByteArrayOutputStream().also { HierarchyDump.write(device, it) }.toString("UTF-8")
-            val expected = fixtureTree(upstream)
-            assertFalse("Fixture must be present, not two empty trees", expected.isEmpty())
-            assertEquals(expected, fixtureTree(tap))
+            // The window can still change between two dumps (its system-bar background views
+            // come and go right after the activity starts), so Tap's dump is compared only when
+            // UiAutomator's dumps on either side of it agree: the window held still meanwhile.
+            repeat(STILL_ATTEMPTS) {
+                device.waitForIdle()
+                val before = fixtureTree(upstreamDump(device))
+                val tap = fixtureTree(ByteArrayOutputStream().also { HierarchyDump.write(device, it) }.toString("UTF-8"))
+                if (before != fixtureTree(upstreamDump(device))) return@repeat
+                assertFalse("Fixture must be present, not two empty trees", before.isEmpty())
+                assertEquals(before, tap)
+                return
+            }
+            fail("The fixture window kept changing between dumps in $STILL_ATTEMPTS attempts")
         } finally {
             device.executeShellCommand("am force-stop $PACKAGE")
         }
     }
+
+    private fun upstreamDump(device: UiDevice): String = ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }.toString("UTF-8")
 
     /** Compare structure and every attribute, not serializer whitespace. Ignore unrelated system
      * windows (the clock can change between dumps); omit only Tap's three extra attributes. */
@@ -54,5 +64,6 @@ class HierarchyDumpTest {
     private companion object {
         const val PACKAGE = "io.github.noamcohen48.tap.fixture"
         val EXTRA_ATTRIBUTES = setOf("showing-hint", "content-invalid", "error")
+        const val STILL_ATTEMPTS = 5
     }
 }
