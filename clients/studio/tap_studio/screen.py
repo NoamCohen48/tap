@@ -71,9 +71,7 @@ class DeviceWorker:
             self._urgent += 1
             self._touched = self._touched or changes_screen
             self._calm.clear()
-        try:
-            return await asyncio.get_running_loop().run_in_executor(self._executor, function)
-        finally:
+        def settled() -> None:
             if urgent:
                 self._urgent -= 1
                 if self._urgent == 0:
@@ -81,6 +79,21 @@ class DeviceWorker:
                     if self._touched:
                         self._touched = False
                         self._kick.set()
+
+        try:
+            future = asyncio.get_running_loop().run_in_executor(self._executor, function)
+        except BaseException:
+            settled()
+            raise
+
+        def finished(done) -> None:
+            settled()
+            # The request may have gone away. Observe failures without logging input values.
+            if not done.cancelled():
+                done.exception()
+
+        future.add_done_callback(finished)
+        return await asyncio.shield(future)
 
     async def frames(self) -> AsyncIterator[studio.FramesResponse]:
         """The newest frame, then each new one; a reader that falls behind skips frames. Ends

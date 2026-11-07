@@ -15,9 +15,12 @@ const STATE_NOTES: Partial<Record<DeviceState, string>> = {
 export function DevicePicker({
   client,
   onSession,
+  disabled = false,
 }: {
   client: StudioClient;
   onSession: (session: Session) => void;
+  /** Another tab controls the studio. */
+  disabled?: boolean;
 }) {
   const [devices, setDevices] = useState<DeviceChoice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +99,7 @@ export function DevicePicker({
           )}
         </fieldset>
         <div>
-          <button type="submit" className="btn primary" disabled={!serial || attaching}>
+          <button type="submit" className="btn primary" disabled={!serial || attaching || disabled}>
             {attaching ? "Attaching…" : "Attach"}
           </button>
         </div>

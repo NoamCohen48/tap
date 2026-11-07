@@ -1754,3 +1754,14 @@ code,
   flex-wrap: wrap;
   margin-top: 4px;
 }
+
+.control-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--warn-bg, #fff4d6);
+  color: var(--warn-fg, #5c4400);
+  border-bottom: 1px solid currentColor;
+  font-size: 13px;
+}
