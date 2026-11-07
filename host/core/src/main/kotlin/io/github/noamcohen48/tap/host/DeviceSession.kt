@@ -261,12 +261,13 @@ class DeviceSession private constructor(
         }
     }
 
-    /** Writes back everything this session changed. Throws into cleanup/quarantine; the journal keeps the record then. */
-    private suspend fun restoreSavedState() {
+    /** Restore one teardown phase; retain unproven entries for cleanup/quarantine recovery. */
+    private suspend fun restoreSavedState(rotation: Boolean = false) {
         savedStateMutex.withLock {
-            if (savedState.isEmpty()) return
-            adb.restoreState(serial, savedState.toList())
-            savedState.clear()
+            val entries = savedState.filter { (it.key in StateKey.ROTATION) == rotation }
+            if (entries.isEmpty()) return
+            adb.restoreState(serial, entries)
+            savedState.removeAll(entries.toSet())
         }
     }
 
@@ -277,8 +278,9 @@ class DeviceSession private constructor(
     private val cancellationCleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Releases in reverse — client, exact forward, instrumentation — then finalizes the journal
-     * and releases the lease. The whole cleanup runs NonCancellable with an explicit
+     * Releases in reverse — client, exact forward, instrumentation — restores rotation after
+     * instrumentation stops, then finalizes the journal and releases the lease. Other saved
+     * state restores before driver shutdown. The whole cleanup runs NonCancellable with an explicit
      * [timeoutMs]: journal finalization and lease release always run, and on timeout or
      * uncertainty the journal records quarantine. Throws the first cleanup failure (or a timeout
      * describing the quarantine); the journal detail is what the server reports.
@@ -313,6 +315,11 @@ class DeviceSession private constructor(
                     }
                     cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
                         cleanupInstrumentation(adb, serial, running)
+                        // UiAutomation.disconnect restores Android's own rotation snapshot. A
+                        // closed protocol socket does not prove that disconnect has finished.
+                        // Put our saved rotation back only after instrumentation is gone; if
+                        // cleanup fails, leave these entries journaled instead of claiming restore.
+                        restoreSavedState(rotation = true)
                     }
                     true
                 }

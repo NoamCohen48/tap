@@ -640,17 +640,27 @@ class DeviceSessionTest {
                 val priorResponder = adb.responder
                 adb.responder = { requestSerial, command ->
                     when {
-                        command == "shell settings get system accelerometer_rotation" -> ok(accelerometer.toString())
-                        command == "shell settings get system user_rotation" -> ok(userRotation.toString())
+                        command == "shell settings get system accelerometer_rotation" -> {
+                            ok(accelerometer.toString())
+                        }
+
+                        command == "shell settings get system user_rotation" -> {
+                            ok(userRotation.toString())
+                        }
+
                         command.startsWith("shell settings put system accelerometer_rotation ") -> {
                             accelerometer = command.substringAfterLast(' ').toInt()
                             ok("")
                         }
+
                         command.startsWith("shell settings put system user_rotation ") -> {
                             userRotation = command.substringAfterLast(' ').toInt()
                             ok("")
                         }
-                        else -> priorResponder?.invoke(requestSerial, command)
+
+                        else -> {
+                            priorResponder?.invoke(requestSerial, command)
+                        }
                     }
                 }
                 val processes = mutableListOf<FakeProcess>()
@@ -659,9 +669,10 @@ class DeviceSessionTest {
                 fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
 
-                val rotating = async(Dispatchers.IO) {
-                    session.client.execute(Commands.setOrientation(Orientation.ORIENTATION_LANDSCAPE))
-                }
+                val rotating =
+                    async(Dispatchers.IO) {
+                        session.client.execute(Commands.setOrientation(Orientation.ORIENTATION_LANDSCAPE))
+                    }
                 val (frame, request) = withTimeout(5_000) { fake.nextRequest() }
                 assertTrue(request.command.hasSetOrientation())
                 // Model the device-side mutation after the host captured the initial values.
@@ -677,6 +688,64 @@ class DeviceSessionTest {
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
             } finally {
                 fake.close()
+            }
+        }
+
+    @Test
+    fun `rotation is restored after instrumentation can no longer overwrite it`() =
+        runBlocking {
+            val state =
+                FakeDeviceState(mapOf(StateKey.ACCELEROMETER_ROTATION to "1", StateKey.USER_ROTATION to "2", StateKey.FONT_SCALE to "1.0"))
+            openWithState("session-late-rotation", state) { session, adb ->
+                session.conditions.setFontScale(1.5f)
+                session.captureBeforeChange(StateKey.ROTATION)
+                state.values[StateKey.ACCELEROMETER_ROTATION] = "0"
+                state.values[StateKey.USER_ROTATION] = "1"
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    // UiAutomation.disconnect restores its own rotation snapshot during shutdown.
+                    // Model that write happening after the protocol connection has closed.
+                    if (command == "shell am force-stop $DRIVER_PACKAGE") {
+                        assertEquals("1.0", state.values[StateKey.FONT_SCALE], "other settings retain their pre-stop restore order")
+                        state.values[StateKey.ACCELEROMETER_ROTATION] = "0"
+                        state.values[StateKey.USER_ROTATION] = "3"
+                    }
+                    priorResponder?.invoke(requestSerial, command)
+                }
+
+                session.close(timeoutMs = 5_000)
+
+                assertEquals("1", state.values[StateKey.ACCELEROMETER_ROTATION])
+                assertEquals("2", state.values[StateKey.USER_ROTATION])
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                assertEquals(emptyList(), journalStore().read()?.savedState)
+            }
+        }
+
+    @Test
+    fun `uncertain instrumentation cleanup retains rotation in the quarantine journal`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.ACCELEROMETER_ROTATION to "1", StateKey.USER_ROTATION to "2"))
+            openWithState("session-uncertain-rotation", state) { session, adb ->
+                session.captureBeforeChange(StateKey.ROTATION)
+                state.values[StateKey.ACCELEROMETER_ROTATION] = "0"
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    if (command == "shell am force-stop $DRIVER_PACKAGE") {
+                        throw AdbCommandException(requestSerial, command.split(' '), 1, "driver stop failed")
+                    }
+                    priorResponder?.invoke(requestSerial, command)
+                }
+
+                assertFailsWith<AdbCommandException> { session.close(timeoutMs = 5_000) }
+
+                assertEquals("0", state.values[StateKey.ACCELEROMETER_ROTATION])
+                val journal = journalStore().read()
+                assertEquals(JournalState.QUARANTINED, journal?.state)
+                assertEquals(
+                    listOf(SavedState(StateKey.ACCELEROMETER_ROTATION, "1"), SavedState(StateKey.USER_ROTATION, "2")),
+                    journal?.savedState,
+                )
             }
         }
 
@@ -756,7 +825,11 @@ class DeviceSessionTest {
                 val closed = journalStore().read()
                 assertEquals(JournalState.CLOSED, closed?.state)
                 assertEquals(emptyList(), closed?.savedState)
-                val file = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(serial.encodeToByteArray()) + ".json"
+                val file =
+                    java.util.Base64
+                        .getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(serial.encodeToByteArray()) + ".json"
                 assertFalse("savedState" in Files.readString(tempDir.resolve("sessions").resolve(file)))
             }
         }
@@ -767,7 +840,10 @@ class DeviceSessionTest {
             val state = FakeDeviceState(mapOf(FakeDeviceState.AIRPLANE to "0", FakeDeviceState.WIFI to "1", FakeDeviceState.DATA to "1"))
             openWithState("session-network", state) { session, adb ->
                 session.conditions.setNetwork(airplaneMode = true, wifi = true, mobileData = false)
-                assertEquals(listOf("1", "2", "0"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] })
+                assertEquals(
+                    listOf("1", "2", "0"),
+                    listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] },
+                )
                 val writes = adb.calls.filter { "airplane-mode" in it || "svc" in it }
                 assertTrue(writes.first().endsWith("airplane-mode enable"), "$writes")
                 assertEquals(
@@ -785,7 +861,10 @@ class DeviceSessionTest {
                 session.close(timeoutMs = 5_000)
                 val restores = adb.calls.drop(before).filter { "airplane-mode" in it || "svc" in it }
                 assertTrue(restores.first().endsWith("airplane-mode disable"), "$restores")
-                assertEquals(listOf("0", "1", "1"), listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] })
+                assertEquals(
+                    listOf("0", "1", "1"),
+                    listOf(FakeDeviceState.AIRPLANE, FakeDeviceState.WIFI, FakeDeviceState.DATA).map { state.values[it] },
+                )
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
             }
         }
@@ -967,7 +1046,10 @@ class DeviceSessionTest {
                 assertEquals(emptySet(), state.mockProviders)
                 // Removed while the driver still had the app-op, which is restored after.
                 val removed = state.writes.indexOf("mock-providers-removed=gps,network")
-                assertTrue(removed >= 0 && removed < state.writes.lastIndexOf("${StateKey.DRIVER_MOCK_LOCATION}=default"), "${state.writes}")
+                assertTrue(
+                    removed >= 0 && removed < state.writes.lastIndexOf("${StateKey.DRIVER_MOCK_LOCATION}=default"),
+                    "${state.writes}",
+                )
                 assertEquals("0", state.values[StateKey.LOCATION_MODE])
                 assertEquals("default", state.values[StateKey.DRIVER_MOCK_LOCATION])
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
@@ -988,7 +1070,13 @@ class DeviceSessionTest {
                 assertFailsWith<IllegalArgumentException> { session.conditions.setAccessibilityDisplay(null, null, null) }
                 state.stuck += StateKey.COLOR_INVERSION
                 // Never set on this device and the write ignored: absent is a mismatch, not a pass.
-                assertFailsWith<DeviceSettingException> { session.conditions.setAccessibilityDisplay(null, colorInversion = true, boldText = null) }
+                assertFailsWith<DeviceSettingException> {
+                    session.conditions.setAccessibilityDisplay(
+                        null,
+                        colorInversion = true,
+                        boldText = null,
+                    )
+                }
                 state.stuck.clear()
 
                 session.close(timeoutMs = 5_000)
@@ -997,7 +1085,10 @@ class DeviceSessionTest {
                 assertEquals(null, state.values[StateKey.HIGH_CONTRAST_TEXT])
                 assertEquals(null, state.values[StateKey.BOLD_TEXT])
                 // Off before it is removed: a deleted weight alone leaves the configuration bold.
-                assertEquals(listOf("300", "0", "null"), state.writes.filter { it.startsWith("${StateKey.BOLD_TEXT}=") }.map { it.substringAfter('=') })
+                assertEquals(
+                    listOf("300", "0", "null"),
+                    state.writes.filter { it.startsWith("${StateKey.BOLD_TEXT}=") }.map { it.substringAfter('=') },
+                )
                 assertEquals(JournalState.CLOSED, journalStore().read()?.state)
             }
         }
@@ -1039,7 +1130,8 @@ class DeviceSessionTest {
         runBlocking {
             val state = FakeDeviceState(apiLevel = 30)
             openWithState("session-bold-api", state) { session, _ ->
-                val refused = assertFailsWith<UnsupportedApiException> { session.conditions.setAccessibilityDisplay(true, null, boldText = true) }
+                val refused =
+                    assertFailsWith<UnsupportedApiException> { session.conditions.setAccessibilityDisplay(true, null, boldText = true) }
                 assertEquals(31, refused.requiredApi)
                 assertEquals(emptyList(), journalStore().read()?.savedState)
                 session.close(timeoutMs = 5_000)
@@ -1136,11 +1228,21 @@ class DeviceSessionTest {
                 val priorResponder = adb.responder
                 adb.responder = { requestSerial, command ->
                     when (command) {
-                        "shell settings get system accelerometer_rotation" -> ok("0")
-                        "shell settings get system user_rotation" -> ok("2")
-                        "shell settings put system accelerometer_rotation 0" ->
+                        "shell settings get system accelerometer_rotation" -> {
+                            ok("0")
+                        }
+
+                        "shell settings get system user_rotation" -> {
+                            ok("2")
+                        }
+
+                        "shell settings put system accelerometer_rotation 0" -> {
                             throw AdbCommandException(requestSerial, command.split(' '), 1, "denied")
-                        else -> priorResponder?.invoke(requestSerial, command)
+                        }
+
+                        else -> {
+                            priorResponder?.invoke(requestSerial, command)
+                        }
                     }
                 }
                 val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
@@ -1148,9 +1250,10 @@ class DeviceSessionTest {
                 fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }
 
-                val rotating = async(Dispatchers.IO) {
-                    session.client.execute(Commands.setOrientation(Orientation.ORIENTATION_PORTRAIT))
-                }
+                val rotating =
+                    async(Dispatchers.IO) {
+                        session.client.execute(Commands.setOrientation(Orientation.ORIENTATION_PORTRAIT))
+                    }
                 val (frame, request) = withTimeout(5_000) { fake.nextRequest() }
                 assertTrue(request.command.hasSetOrientation())
                 fake.respond(frame.requestId, Responses.done(1))
@@ -1160,6 +1263,10 @@ class DeviceSessionTest {
                 val record = journalStore().read()
                 assertEquals(JournalState.QUARANTINED, record?.state)
                 assertTrue(record?.quarantineReason?.contains("SESSION_CLEANUP_UNCERTAIN") == true)
+                assertEquals(
+                    listOf(SavedState(StateKey.ACCELEROMETER_ROTATION, "0"), SavedState(StateKey.USER_ROTATION, "2")),
+                    record?.savedState,
+                )
             } finally {
                 fake.close()
             }
@@ -1186,7 +1293,12 @@ class DeviceSessionTest {
                         serial,
                     ),
                 )
-                assertFailsWith<DeviceQuarantinedException> { captured.submit(io.github.noamcohen48.tap.protocol.Requests.health()) }
+                assertFailsWith<DeviceQuarantinedException> {
+                    captured.submit(
+                        io.github.noamcohen48.tap.protocol.Requests
+                            .health(),
+                    )
+                }
                 // No frame was emitted: the next frame poll times out instead of delivering a REQUEST.
                 val noFrame =
                     try {
@@ -1368,7 +1480,11 @@ class DeviceSessionTest {
             val fake = FakeDriverServer("unused", 1, ByteArray(32), acceptAnySession = true)
             try {
                 val processes = mutableListOf<FakeProcess>()
-                val apk = tempDir.resolve("driver.apk").also { java.nio.file.Files.write(it, byteArrayOf(1)) }
+                val apk =
+                    tempDir.resolve("driver.apk").also {
+                        java.nio.file.Files
+                            .write(it, byteArrayOf(1))
+                    }
                 val base = sessionConfig(adb, fake, processes)
                 val config = base.copy(driverApk = apk)
                 assertFailsWith<AdbReapUncertainException> { DeviceSession.open(config) }
@@ -1550,7 +1666,9 @@ class DeviceSessionTest {
         )
         assertEquals(
             "Error: Activity class {com.example/.Missing} does not exist.",
-            AmStartOutput.failure("Starting: Intent { cmp=com.example/.Missing }\nError: Activity class {com.example/.Missing} does not exist."),
+            AmStartOutput.failure(
+                "Starting: Intent { cmp=com.example/.Missing }\nError: Activity class {com.example/.Missing} does not exist.",
+            ),
         )
         assertEquals("Error type 3", AmStartOutput.failure("Starting: x\nError type 3\nError: nope"))
         assertEquals(
@@ -1575,18 +1693,34 @@ class DeviceSessionTest {
                 val priorResponder = adb.responder
                 adb.responder = { serial, command ->
                     when (command) {
-                        "shell am force-stop com.example" -> ok("")
-                        "shell pm clear com.example" -> ok("Success")
-                        "shell pidof com.example" -> Adb.Result(1, "")
+                        "shell am force-stop com.example" -> {
+                            ok("")
+                        }
+
+                        "shell pm clear com.example" -> {
+                            ok("Success")
+                        }
+
+                        "shell pidof com.example" -> {
+                            Adb.Result(1, "")
+                        }
+
                         // The process is gone at once; the record outlives it for two polls.
-                        "shell dumpsys activity activities" ->
+                        "shell dumpsys activity activities" -> {
                             ok(if (adb.calls.count { "dumpsys activity" in it } <= 2) exiting else "")
-                        else -> priorResponder?.invoke(serial, command)
+                        }
+
+                        else -> {
+                            priorResponder?.invoke(serial, command)
+                        }
                     }
                 }
                 withTimeout(5_000) { session.app("com.example").clearData(timeoutMs = 2_000) }
                 // Force-stopped and gone before `pm clear`, so it removes no finishing activity.
-                val lifecycle = adb.calls.filter { "force-stop com.example" in it || "pm clear" in it || "dumpsys activity activities" in it }
+                val lifecycle =
+                    adb.calls.filter {
+                        "force-stop com.example" in it || "pm clear" in it || "dumpsys activity activities" in it
+                    }
                 assertEquals(
                     listOf("force-stop", "dumpsys", "dumpsys", "dumpsys", "pm clear", "dumpsys"),
                     lifecycle.map { call -> listOf("force-stop", "pm clear", "dumpsys").first { it in call } },
@@ -1646,16 +1780,34 @@ class DeviceSessionTest {
                 val starts = java.util.concurrent.CopyOnWriteArrayList<String>()
                 adb.responder = { serial, command ->
                     when {
-                        command.startsWith("shell cmd package resolve-activity") -> ok("priority=0\ncom.example/.Main")
+                        command.startsWith("shell cmd package resolve-activity") -> {
+                            ok("priority=0\ncom.example/.Main")
+                        }
+
                         command.startsWith("shell am start") -> {
                             starts += command
                             when {
-                                "missing://" in command -> ok("Starting: Intent { act=android.intent.action.VIEW }\nError: Activity not started, unable to resolve Intent")
-                                "-p com.example" in command -> ok("Starting: Intent { dat=test://orders/42 }\nStatus: ok\nActivity: com.example/.Orders\nComplete")
-                                else -> ok("Starting: Intent { cmp=com.example/.Main }\nStatus: ok\nComplete")
+                                "missing://" in command -> {
+                                    ok(
+                                        "Starting: Intent { act=android.intent.action.VIEW }\nError: Activity not started, unable to resolve Intent",
+                                    )
+                                }
+
+                                "-p com.example" in command -> {
+                                    ok(
+                                        "Starting: Intent { dat=test://orders/42 }\nStatus: ok\nActivity: com.example/.Orders\nComplete",
+                                    )
+                                }
+
+                                else -> {
+                                    ok("Starting: Intent { cmp=com.example/.Main }\nStatus: ok\nComplete")
+                                }
                             }
                         }
-                        else -> priorResponder?.invoke(serial, command)
+
+                        else -> {
+                            priorResponder?.invoke(serial, command)
+                        }
                     }
                 }
                 val app = session.app("com.example")
@@ -1699,16 +1851,33 @@ class DeviceSessionTest {
                             starts += command
                             ok("Starting: Intent { cmp=com.example/.Main }\nStatus: ok\nComplete")
                         }
-                        command.startsWith("shell pm revoke") -> ok("")
-                        command == "shell dumpsys package com.example" -> ok("    android.permission.CAMERA: $granted, flags=[ USER_SET ]")
-                        else -> priorResponder?.invoke(serial, command)
+
+                        command.startsWith("shell pm revoke") -> {
+                            ok("")
+                        }
+
+                        command == "shell dumpsys package com.example" -> {
+                            ok("    android.permission.CAMERA: $granted, flags=[ USER_SET ]")
+                        }
+
+                        else -> {
+                            priorResponder?.invoke(serial, command)
+                        }
                     }
                 }
                 val app = session.app("com.example")
                 val extras =
                     listOf(
-                        IntentExtra.newBuilder().setKey("query").setStringValue("shoes red").build(),
-                        IntentExtra.newBuilder().setKey("id").setLongValue(42).build(),
+                        IntentExtra
+                            .newBuilder()
+                            .setKey("query")
+                            .setStringValue("shoes red")
+                            .build(),
+                        IntentExtra
+                            .newBuilder()
+                            .setKey("id")
+                            .setLongValue(42)
+                            .build(),
                     )
                 app.launch(".Main", timeoutMs = 2_000, extras = extras)
                 assertEquals(listOf("shell am start -W --es query 'shoes red' --el id 42 -n com.example/.Main"), starts)

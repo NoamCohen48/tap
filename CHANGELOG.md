@@ -6,6 +6,12 @@ experimental may change in any release.
 
 ## Unreleased
 
+Engine:
+
+- **Restore rotation after instrumentation stops.** Android's UiAutomation teardown can no
+  longer overwrite the session's restored auto-rotate and frozen-rotation settings. If driver
+  cleanup is uncertain, the device is quarantined and its saved rotation remains journaled.
+
 ## 0.1.0 — 2026-11-07
 
 Release set: engine, Kotlin client, Python client, tap-agent, Tap Studio and tap-watcher
