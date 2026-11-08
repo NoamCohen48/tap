@@ -1,6 +1,8 @@
 # Framework Gaps
 
-Last updated: 2026-09-28 (first release, 0.0.1 alpha)
+Capability inventory reviewed: 2026-11-08 against current `origin/main`.
+The plan-section inventory originated with the 2026-09-28 first release; older device-evidence
+notes below retain their original dates and are not a fresh matrix run.
 
 This is the honest delta between what `.docs/android-e2e-framework-implementation-plan.md`
 specifies and what the repository implements and proves on devices today. It is the
@@ -40,7 +42,7 @@ describes.
 | Gap | Impact | Notes |
 |---|---|---|
 | `session.shutdown` | Sessions end by closing the socket and `am force-stop` of the instrumentation. Works, but the driver never gets a graceful close and the journal cannot distinguish "host asked" from "connection died". | Small; add an operation + a driver-side clean exit. |
-| `inspector.snapshot` | No JSON hierarchy with selector suggestions; `DUMP_HIERARCHY` returns raw UiAutomator XML only. | Phase 5 inspector UI depends on it; failure artifacts use the XML for now. |
+| Snapshot follow-ups | Structured screen snapshots, refs and optional selector candidates now exist (`ScreenSnapshot`, `ResolveRef`; `ScreenSnapshotServiceTest`, `SelectorSynthesisTest`). XML dumps remain diagnostic artifacts, not the only inspection surface. | Do not treat the original `inspector.snapshot` proposal as missing; see `agent-surface.md` and `recorder.md` for current inspector scope. |
 | `AUT_NOT_INSTALLED` emission | A selector on an app that is not installed is `NOT_FOUND`. `AUT_CRASHED` / `AUT_ANR` are emitted by the server, not the driver (`AppDeaths`; `AppDeathsServiceTest`, `AppDeathTest` on emulator-5554). Their limits: only apps started through the attachment count, the failure comes when the running wait ends and not when the app dies, and a hang with no input waiting is no ANR to Android, so it stays a plain timeout. | Needs a package to check against, which a selector need not name. |
 | Occlusion check coverage | `OBSCURED` reads the window list only: a view covering the target inside the same window (a floating bar, an in-window bottom sheet) is not detected, only the default display is checked, and `set_text` / `clear_text` (accessibility actions, not touches) are not checked. | `.docs/app-and-screen.md` Limits. Same-window covering would need a hit test over the node tree. |
 | Secondary-display pointer gestures | `double_tap` and `drag` inject on the default display even when their selector resolves on another display, so they can touch an unrelated view. Tap and long tap use `UiObject2` on secondary displays; a refresh failure after the mutation gate is conservatively `STALE_DURING_COMMAND`, even if no touch was sent. | Follow-up: route pointer events with the node's display id (as AndroidX `GestureController` does), validate drag endpoints are on the same display, and add secondary-display device coverage. Until then use these pointer gestures only on the default display. |
@@ -79,7 +81,7 @@ cancels the other's in-flight wait without replaying the pre-scope mutation; the
 | `WaitOptions.stableFor` | Host-polled waits (`enabled`, `textEquals`, `count`, …) have `timeout` and `pollInterval` only; no "condition held for N ms". | Small. |
 | Wait diagnostics | `WaitTimeoutException` carries description, serial, selector, elapsed, poll count and last observation; it does not attach a bounded hierarchy/screenshot snapshot at timeout. | The JUnit extension captures those on failure, so the information exists per test but not per wait. |
 | `Element.getProperty` | Covered by `snapshot()`; there is no single-property accessor beyond `text/isEnabled/isChecked`. | Convenience only. |
-| Device constraints | The daemon leases nothing (decided 2026-09-20, `pool-and-leases.md`: exclusive use is the per-serial journal lock a device session holds; roles and constraints are a client concern). Clients map roles to `tap.serials`, pins, or the inventory; no API-range/emulator/model/locale/orientation filtering exists in any client. The earlier daemon-side matcher and lease table are archived under `archive/pool-roles/` and `archive/pool-leases/`. | Client-side selection (`getprop` per serial, or `DeviceInfo` after open); a `@TapDevice(minApi = …)` style annotation. |
+| Device constraints beyond current criteria | pytest role criteria and JUnit `@RequireDevice` now filter by API range, emulator/physical, manufacturer and model (`test_plugin.py`, `DeviceCriteriaTest`). Locale/orientation criteria and a JUnit `ExecutionCondition` remain absent. | Selection stays client-side; the daemon leases nothing (`pool-and-leases.md`). Device choice is not automatic test sharding. |
 | Remaining fake-ADB lifecycle coverage | `AdbTest` (17), `DeviceSessionTest` (20), `DriverClientTest` (27), `SessionJournalTest` (6) and `TapDaemonLifecycleTest` (12) now cover typed ADB parsing/process ownership, session open/cleanup/quarantine, transport races and daemon lifecycle with fakes. Dedicated `AppLifecycle` failure/postcondition tests and artifact-capture failure paths remain. | Highest-value remaining JVM testing gap; extend the existing `FakeAdb` rather than introducing another abstraction. |
 | Localization / text normalisation | `text(...)` is exact and case-sensitive; Material buttons expose all-caps accessibility text, so `text("Sign in")` misses `SIGN IN`. | Document (done in the samples) or add a case-insensitive match mode. |
 
@@ -252,15 +254,253 @@ languages and nothing under `host/` depends on `clients/`. Remaining:
 
 | Gap | Impact | Notes |
 |---|---|---|
-| Server has no per-run structured event stream | Bindings cannot build reports from server events | Partly there: every connection has an event log of its device calls (`Events` RPC, `event_log()` in Python, `tap-agent export`; experimental). No streaming, no run-level events, not in the Kotlin client. |
+| No aggregated per-run command stream | A report cannot yet correlate every command across connections/workers from one run stream | Per-connection `Events` and passive `Watch` streaming exist, and the runners write `tap-run/1` lifecycle records. Cross-worker aggregation and per-command run JSONL remain missing (`run-records.md`). Agent raw event export is now `history`; named step `record`/`export` is a separate feature (`agent-step-recordings.md`). |
 | Synchronous Python API only | Multi-device tests use threads | `asyncio` façade later; the Kotlin coroutine façade landed in client 0.2.0. |
 
-## Suggested order
+## User-facing capability inventory
 
-1. Finish fake-ADB JVM coverage for `AppLifecycle` failure/postcondition paths and artifact
-   capture; `DeviceSession` and `TapDaemon` lifecycle coverage has landed.
-2. Provider visibility decision + `session.shutdown` (small protocol
-   additions; update `protocol-contract.md` and golden fixtures in the same change).
-3. Logcat + `dumpsys` in failure artifacts, run layout, JSONL events, then JUnit XML/HTML.
-4. Quarantine re-run and the remaining Phase 3 JUnit contracts. The coroutine façade and its
-   13-device-test API 29/API 34 matrix are complete (`coroutines.md`).
+This inventory adds user needs beyond the original plan. **Missing** means no built-in Tap
+API/workflow, not that a test cannot use an external tool. **Partial** means an existing
+capability has a specific limit. **Scope decision** means the current boundary is deliberate:
+listing it is not approval to change that boundary. Synchronization remains deferred and is
+not part of this audit. These are backlog/research items, not promised APIs or a delivery order.
+
+### App delivery and failure diagnosis
+
+- **Missing — split APK / app bundle installation.** Users need to install release-like builds
+  containing a base APK plus configuration or dynamic-feature splits. `App.install` and
+  `InstallRequest` upload one APK; there is no install-multiple/session workflow, APK-set
+  selection or `.aab` conversion. Bundletool integration would be a separate dependency and
+  device-targeting decision. A future implementation needs transactional failure/cleanup tests
+  and verification of the expected package and split set, not just package presence.
+- **Partial — crash/ANR reporting.** This is no longer wholly missing: `AppDeaths` upgrades
+  failures to `AUT_CRASHED` / `AUT_ANR` for apps started through the attachment
+  (`AppDeathsServiceTest`, sample `AppDeathTest`). It does not interrupt a wait immediately
+  when the app dies, monitor arbitrary already-running packages, or classify every application
+  hang as an Android ANR. Users still need timely, attributable failures and the supporting
+  evidence. `AUT_NOT_INSTALLED` also needs an explicit app target rather than a scope-free
+  selector. Do not equate an ordinary timeout with a crash or an ANR.
+
+### Network and system scenarios
+
+- **Missing — packet recording and live network monitoring.** Users need to see which endpoints
+  a device contacts, record sent/received traffic and correlate it with UI steps. No Tap
+  capture API exists. See the feasibility/options section below; passive packet evidence is
+  different from HTTP decoding and from modifying network behavior.
+- **Missing — network fault simulation and request-level testing.** Existing airplane-mode,
+  Wi-Fi and mobile-data switches cover offline transitions, not bandwidth limits, latency,
+  jitter, loss, DNS failures, selected connection drops, HTTP error injection, request assertions
+  or response mocking. Those unlock retry, timeout, caching and error-state tests. Emulator
+  controls, a controlled gateway and an opt-in application proxy have different coverage;
+  neither capture nor a Wi-Fi switch is a substitute. Changes must be scoped and restored,
+  and must not silently break Tap's control connection.
+- **Missing — biometric and clock controls.** Fingerprint success/failure on supported
+  emulators, and controlled date/time/timezone, would exercise login, token expiration,
+  scheduling and day-boundary bugs. Fingerprint and time/timezone are already in the
+  `device-actions.md` backlog. Real biometric hardware cannot be assumed to accept simulated
+  input, and changing a device clock can break TLS and other apps; capability checks and
+  restoration are prerequisites, not an unconditional cross-device promise.
+
+### UI coverage and assertions
+
+- **Partial — hybrid/WebView testing.** Nodes exposed through Android accessibility can be
+  selected, but Tap has no DOM selectors, JavaScript execution, frame handling or web-context
+  switching. Users with embedded checkout/login flows may need these. A full web automation
+  surface is outside the current no-WebDriver design; document unsupported content and decide
+  on a separate integration rather than quietly adding a second driver model.
+- **Partial — Compose-specific semantics.** Exposed semantics text/descriptions and
+  `testTagsAsResourceId` work. There is no direct semantics-tree API, `useUnmergedTree`, or
+  lazy-list scrolling by item key; selector-driven scrolling only sees exposed nodes. Users
+  needing unmerged child state or stable off-screen item identity would need an explicitly
+  designed app-side integration, not assumptions about UiAutomator visibility.
+- **Scope decision — custom canvas/game UI and image-based targeting.** Content without
+  accessibility nodes has no general element-targeting path. OCR/image matching or coordinate
+  input would help some users, but coordinate actions are deliberately excluded. Prefer app
+  accessibility/test hooks; any broader adapter needs approval and must preserve unambiguous
+  mutations. Inspecting a screenshot is not an image locator implementation.
+- **Scope decision — visual regression assertions.** Screenshots exist; baseline storage,
+  comparison, masks, tolerances and review/approval do not. These would catch layout/theme
+  regressions that semantic assertions miss. Visual testing is explicitly a non-goal in
+  `docs/development/architecture.md`; evaluate an external integration before expanding Tap.
+- **Missing — accessibility auditing.** Accessibility inspection/actions and display-condition
+  controls are not a rules engine for unlabeled controls, small touch targets, reading order
+  or contrast. Users may want a bounded report attached to each screen/test. Any audit needs
+  defined rule coverage and platform limits: a successful UiAutomator action is not proof of
+  TalkBack usability or accessibility compliance.
+- **Partial — stable property waits and timeout evidence.** Element waits can assert state,
+  text and count, but there is no general "condition held for N ms" option for these waits.
+  A transient match can therefore pass. Per-wait bounded screenshot/hierarchy evidence would
+  also explain timeouts that a later test-level capture cannot reconstruct. See the host SDK
+  gaps above; neither requires an implicit global wait.
+
+### Evidence, privacy and execution at scale
+
+- **Partial — automatic failure video.** Explicit SDK and agent audio/video recording exists.
+  Automatic per-test capture, bounded rolling pre-failure footage and failure-artifact
+  attachment do not. Users want the actions leading to a failure, with bounded disk use and
+  clear opt-in/privacy controls. Reuse the recording lifecycle and manifest, and report capture
+  failure without hiding the original test failure.
+- **Partial — reports and long-running diagnostics.** `tap-run/1` already provides run/test
+  identities, manifests, hashes, collection errors and lifecycle JSONL. Remaining needs are a
+  browsable HTML report, cross-worker aggregation, per-command run events and continuous or
+  bounded rolling logcat so busy-device ring-buffer rollover cannot erase earlier evidence.
+  This is not a missing artifact manifest anymore (`run-records.md`).
+- **Partial — sensitive-data defaults.** Explicit sensitive typing flags withhold event-log
+  text, but password fields are not automatically marked sensitive and screenshots/hierarchies
+  may contain secrets regardless. Users need an explicit retention/redaction policy spanning
+  logs, media and future network artifacts; no blanket "all artifacts are redacted" guarantee
+  is justified by the existing input flag.
+- **Missing — automatic test sharding.** Device locks prevent conflicting ownership and
+  multi-device tests can coordinate roles, but no scheduler distributes classes/tests across
+  available devices or aggregates those workers. Users with large suites need capacity-aware
+  scheduling that preserves multi-device role requirements and test isolation.
+- **Partial — device selection.** Both pytest and JUnit now support API/device-kind/vendor/model
+  criteria; the earlier JUnit-parity gap is resolved (`DeviceCriteriaTest`). Locale/orientation
+  criteria and JUnit prerequisite reporting before connecting to the server remain follow-ups.
+- **Missing — asynchronous Python facade.** Python's SDK is synchronous; concurrent device
+  journeys need threads. Async applications and orchestrators may want native `asyncio`
+  cancellation and multi-device concurrency. A facade must preserve connection ownership and
+  indeterminate-mutation semantics; automatically replaying an interrupted action is not safe.
+
+### Agent parity: what remains and what is already supported
+
+The previous audit was made against an older checkout. Current `origin/main` already includes
+richer state/text/count waits, recording start/stop, bounded `scroll_until`, and boolean,
+text-mode and relational/logical JSON selectors. Do **not** re-add these as missing. Evidence:
+`agent-api-coverage.md`, `clients/agent/api-coverage.json`, `test_api_coverage.py` and adapter
+regression tests. That record includes an API 34 device check, not API 29 verification.
+
+- **Partial — toast/notification match modes.** Agent helpers still expose exact/contains,
+  while the SDK supports additional modes such as regex. Dynamic message IDs or variable
+  counters may need regex matching. This is a narrow parameter-parity gap, distinct from the
+  now-supported richer element selector language.
+- **Existing mechanism — snackbars.** There is no snackbar-specific helper or dedicated
+  snackbar regression scenario found in this audit. Accessible snackbars use ordinary element
+  waits and action selectors; unlike buffered toast events, the wait must catch the snackbar
+  while its node exists. A Material/Compose fixture covering message, action and dismissal
+  would prove that workflow. A new helper is optional ergonomics, not a missing locator engine.
+- **Intentional exclusions.** Passive `Watch`/`WatchVideo` belong to Tap watcher; arbitrary
+  Python callbacks remain SDK-only. Synchronization is deferred. Coordinate input, XPath,
+  persistent element handles, implicit retry/settling, iOS and a YAML flow runner are not
+  accidental gaps; changing those boundaries requires an explicit scope decision.
+
+## Packet capture and monitoring: proposed capability
+
+**Status: VPN implementation requested first (2026-11-08); not implemented yet.** Emulator
+capture and privileged device capture remain explicit alternative-backend backlog items.
+The VPN forwarding engine, packaging and public API still need design. The goal is
+opt-in recording of traffic sent/received by a device, plus bounded live flow/packet summaries
+that can be correlated with test steps. Export PCAP/PCAPNG for Wireshark or tshark; decoded
+HTTP assertions are a separate layer. No rooting, VPN takeover, CA installation or TLS
+interception should happen implicitly.
+
+### Feasible backends and their limits
+
+| Backend | What it could provide | Prerequisites and boundaries |
+|---|---|---|
+| Emulator host capture | Device traffic without changing the AUT or installing a VPN. | Capture depends on emulator version and network path. Android's console `network capture` covers legacy cellular/WAN through QEMU slirp; Emulator 36.5+ defaults Wi-Fi to netsim, which has separate per-radio PCAP capture (`-netsim-args="--pcap"`). Detect capabilities and identify the captured path rather than promising one command captures every interface. |
+| Privileged device `tcpdump`/libpcap | Broad interface-level send/receive evidence, including a physical test phone. | Requires a suitable capture binary and privileges allowed by the build, capabilities and SELinux policy; ordinary production `adb shell` is insufficient. A rooted/userdebug test device may work, but root alone is not a guarantee. Never root/reboot a shared device automatically. Capture selected interfaces or `any` where supported; report filters, truncation and drops. |
+| No-root `VpnService` helper | IP traffic routed through a local TUN, either selected apps or the supported profile-wide route set. | Requires explicit VPN permission and a service that forwards traffic, not just reads it. Only one VPN is active per user/profile, so it conflicts with an existing VPN/always-on policy. IPv4/IPv6 routes, UDP/TCP forwarding, DNS, excluded/protected sockets and revocation must be handled. It sees routed IP traffic, not raw Wi-Fi frames, every profile or all bypass paths. |
+| Controlled router/gateway or mirrored network | Traffic crossing that network boundary, without changing the phone. | Requires infrastructure access. Wi-Fi capture does not include cellular, loopback or traffic on other paths; an ordinary USB ADB connection does not route all phone internet traffic through the host. VPN/TLS traffic remains encrypted at this point. |
+| Explicit HTTP(S) proxy | Readable requests/responses and potential request assertions or fault injection for cooperating apps. | Not an all-packet recorder: apps may ignore proxies and arbitrary TCP/UDP/QUIC needs other handling. HTTPS interception needs deliberate trust configuration; pinning/custom TLS can prevent it. Use an opt-in debug build or instrumentation, never silent certificate/pinning bypass. |
+
+### What "all packets" must not imply
+
+- Coverage must name the interface(s), profile/app scope, capture point and start/stop interval.
+  Device-wide IP capture is not modem/baseband, Bluetooth or raw over-the-air Wi-Fi capture.
+  Loopback, tethering, other profiles, VPN bypass and hardware offload need separate validation.
+- TLS/HTTPS and QUIC remain encrypted in a raw capture, even with root. IP addresses, ports,
+  sizes, timing and some handshake/DNS metadata can be useful; encrypted DNS/ECH can hide
+  names too. Full URLs, headers and bodies require an additional authorized decryption or
+  application-instrumentation strategy. A user-installed CA is not trusted by every Android
+  app; debug-only Network Security Configuration is one controlled option for an owned AUT.
+- No backend should promise lossless capture under all loads. Record captured/dropped counts
+  when available, packet-size limits, filters, byte/time caps and incomplete-stop conditions.
+  Interface capture also does not automatically identify the originating Android package;
+  per-app attribution needs a supported mechanism or must be marked unknown.
+
+### Proposed Tap integration and acceptance evidence
+
+These are design requirements to evaluate, not new callable method names:
+
+1. **Explicit lifecycle and capabilities.** Probe the selected backend, fail clearly when
+   unsupported, then start/stop/query a bounded capture and optionally subscribe to bounded
+   summaries. Define the readiness boundary so a test knows when triggering network activity
+   is safe. Never retry a transmitted start/stop mutation automatically.
+2. **Host-owned supervision.** Keep process/device lifecycle, serial-specific ADB and journal
+   cleanup in `host/core`, exposed through contracts/server and both SDKs, then thin CLI/MCP
+   adapters. A VPN helper belongs on-device, but clients must not spawn their own ADB/capture
+   processes. Account for device exclusivity and cleanup after disconnect, cancellation,
+   process death and host restart. Do not silently displace or claim to restore a third-party
+   VPN session.
+3. **Evidence and monitoring.** Stream/download artifacts without exposing arbitrary server
+   paths; include backend/version, serial, interface/scope, timestamps, filters, counts/drops,
+   truncation and SHA-256 in the artifact metadata. Relate capture times to run/step IDs with
+   known clock offsets. Bound live summary queues and report subscriber gaps/backpressure.
+4. **Privacy.** Capture can include unrelated apps, tokens, messages and personal data. Require
+   explicit opt-in and scope, private artifact permissions, size/time/retention limits and no
+   raw payloads in default logs or MCP responses. Prefer per-app filtering where supported.
+   Raw PCAP is not made safe by the existing sensitive-input flag; define any derived redacted
+   view separately and disclose what the original artifact still contains.
+5. **Proving tests.** Use an owned endpoint to exercise outbound/inbound TCP and UDP, IPv4/IPv6,
+   DNS and HTTPS/QUIC where supported. Verify readable cleartext versus encrypted payloads,
+   capture readiness, counts/limits, unsupported privileges, VPN refusal/conflict/revocation,
+   detach/crash cleanup, control-channel survival and artifact integrity. Prove each advertised
+   backend on its actual device/network path; do not infer physical-device support from an
+   emulator-only pass. Device tests require explicit user approval.
+
+### Selected first backend and alternative-backend backlog
+
+The user selected **no-root VPN capture first**, for sent/received IP packet evidence on
+physical phones. It must forward traffic while recording it; merely reading a TUN interface
+would break connectivity. Start with raw encrypted packet evidence, not implicit HTTPS
+interception. Forwarding-library/helper packaging still needs an explicit decision.
+
+Keep the other two implementation paths on the backlog behind the same eventual capture API:
+
+- **Emulator-native capture — not implemented.** Prefer this for emulator/CI runs where it
+  avoids occupying Android's VPN slot and changing AUT routing. Detect the emulator version
+  and actual network path; cover legacy QEMU cellular/WAN and netsim Wi-Fi separately. Record
+  capability/coverage metadata and collect private, bounded PCAP artifacts. Prove inbound and
+  outbound traffic on each advertised path before claiming support.
+- **Privileged device `tcpdump`/libpcap — not implemented.** An optional backend for an already
+  privileged physical test phone, useful when VPN conflicts make no-root capture unsuitable.
+  Probe binary availability and actual capture permission, select interfaces explicitly,
+  supervise the process per serial and collect bounded private artifacts plus drop statistics.
+  Never root/reboot automatically or infer all-interface coverage from one successful capture.
+
+A controlled gateway and an explicit HTTP proxy remain research alternatives, not additional
+backends promised by this request. Keep API capability reporting honest: an unsupported VPN
+must not silently fall back to root capture or change the device's network configuration.
+
+### Primary references
+
+- [Android VPN guide](https://developer.android.com/develop/connectivity/vpn): TUN packets,
+  permission, per-app routing, lifecycle and the single-active-VPN constraint.
+- [Android Emulator console](https://developer.android.com/studio/run/emulator-console#network):
+  capture commands and the legacy cellular/WAN versus netsim Wi-Fi boundary.
+- [Advanced emulator networking](https://developer.android.com/studio/run/emulator-networking-advanced#capture-network):
+  netsim per-radio PCAP and artifact locations.
+- [Network Security Configuration](https://developer.android.com/privacy-and-security/security-config):
+  CA trust defaults, debug-only trust anchors and certificate pinning.
+- [tcpdump manual](https://man7.org/linux/man-pages/man1/tcpdump.1.html): capture interfaces,
+  snapshot length, filters, output files and drop statistics.
+
+These are feasibility references, not borrowed implementations. Before adapting an upstream
+capture tool, pin its commit and record the adopt/adapt/license decision in
+`upstream-reference-audit.md`.
+
+## Suggested next evaluations
+
+Not an approved implementation sequence:
+
+1. Implement the requested no-root VPN capture after selecting forwarding/packaging; keep
+   emulator-native and privileged `tcpdump` capture on the alternative-backend backlog.
+   Encrypted packet evidence stays distinct from HTTP decoding and network fault injection.
+2. Add split-APK installation and the remaining narrow agent match-mode parity when selected.
+3. Evaluate automatic failure video, continuous bounded logs and a report consumer on top of
+   the existing `tap-run/1` records, rather than rebuilding manifests or lifecycle JSONL.
+4. Improve crash/ANR timeliness, same-window occlusion and secondary-display gesture safety;
+   preserve the distinction between missing behavior and matrix coverage still to be run.
+5. Address the remaining fake-ADB lifecycle/failure-capture coverage and JUnit contracts.
+   Synchronization stays deferred; quarantine/reboot validation requires explicit approval.
